@@ -393,6 +393,7 @@ cc_library(
         "//third_party/tf_runtime_google:__subpackages__",
     ],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:lib",
     ] + if_static([
         ":traceme_recorder_impl",
@@ -406,9 +407,13 @@ cc_library(
         "traceme_recorder.cc",
         "traceme_recorder.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = True,
 )
@@ -476,7 +481,10 @@ cc_library(
         "annotation_stack.cc",
         "annotation_stack.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -526,7 +534,7 @@ tf_cc_test(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "profiler_interface.h",
     ],

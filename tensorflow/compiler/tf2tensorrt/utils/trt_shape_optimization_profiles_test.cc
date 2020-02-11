@@ -73,14 +73,17 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
   void SetUp() override {
     builder_ = TrtUniquePtrType<nvinfer1::IBuilder>(
         nvinfer1::createInferBuilder(logger_));
-
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
     network_ = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
         builder_->createNetworkV2(flags_));
-    // TODO(Tamas) think over where do we need TRT version ifdefs
     builder_config_ = TrtUniquePtrType<nvinfer1::IBuilderConfig>(
         builder_->createBuilderConfig());
-
     builder_config_->setMaxWorkspaceSize(1 << 10);
+#else
+    network_ = TrtUniquePtrType<nvinfer1::INetworkDefinition>(
+        builder_->createNetwork());
+    builder_->setMaxWorkspaceSize(1 << 10);
+#endif
   }
 
   // define a simple network: output = input1 + input2
@@ -106,7 +109,9 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
   Logger logger_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
   TrtUniquePtrType<nvinfer1::INetworkDefinition> network_;
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config_;
+#endif
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
   std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> exec_context_;
   // The order is important: exec_context_ must be destroyed first, and logger
@@ -124,24 +129,29 @@ TEST_F(TrtShapeOptimizationProfileTest, Static) {
 
   TrtShapeOptimizationProfile profile;
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Configure and build engine - should be a no-op
-  profile.configureBuilder(builder_.get(), builder_config_.get(),
+  profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
                            network_.get());
 
   engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
-      builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
+      builder_->buildEngineWithConfig(*network_, *builder_config_));
+#else
+  engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
+      builder_->buildCudaEngine(*network_));
+#endif
   EXPECT_NE(nullptr, engine);
-
-  profile.createExecutionContexts(engine.get(), exec_context_);
+  profile.CreateExecutionContexts(engine.get(), exec_context_);
   // A single execution context should be created for a graph with static input
   ASSERT_EQ(exec_context_.size(), 1);
   EXPECT_NE(nullptr, exec_context_[0]);
 
   std::vector<nvinfer1::Dims3> dim_vec(2, dims);
   std::vector<TensorShape> shape_vec = dimvec2shapevec(dim_vec);
-  EXPECT_EQ(-1, profile.getProfileNumber(shape_vec));
+  EXPECT_EQ(-1, profile.GetProfileNumber(shape_vec));
 }
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
   // Network with dynamic input shapes
   nvinfer1::Dims3 dims(-1, -1, 10);
@@ -157,28 +167,28 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
   // Simulate a profile collection phase
   for (auto dim_vec : input_profiles) {
     std::vector<TensorShape> shape_vec = dimvec2shapevec(dim_vec);
-    profile.addShape(shape_vec);
+    profile.AddShape(shape_vec);
   }
-  profile.initProfiles();
+  profile.InitProfiles();
 
   // Configure and build engine
-  profile.configureBuilder(builder_.get(), builder_config_.get(),
+  profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
                            network_.get());
   engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
       builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
   ASSERT_NE(nullptr, engine);
 
-  profile.createExecutionContexts(engine.get(), exec_context_);
+  profile.CreateExecutionContexts(engine.get(), exec_context_);
 
   // Each profile has an associated execution context
   // This test depends on the profile creation strategy:
-  // e.g. if we have a default context, then the sizes will not match
+  // e.g. if we would introduce a default context, then the sizes will not match
   EXPECT_EQ(exec_context_.size(), input_profiles.size());
 
   // Check if the profiles are assigned correctly
   for (auto dimvec : input_profiles) {
     std::vector<TensorShape> shape_vec = dimvec2shapevec(dimvec);
-    int idx = profile.getProfileNumber(shape_vec);
+    int idx = profile.GetProfileNumber(shape_vec);
     int prof_idx = exec_context_[idx]->getOptimizationProfile();
     ASSERT_GE(prof_idx, 0);
 
@@ -195,6 +205,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
     }
   }
 }
+#endif
 
 }  // namespace tensorrt
 }  // namespace tensorflow

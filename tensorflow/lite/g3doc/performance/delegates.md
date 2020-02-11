@@ -14,15 +14,24 @@ Running inference on compute-heavy machine learning models on mobile devices is 
 
 Instead of relying on the CPU, some devices have hardware accelerators, such as GPU or DSP, that allows for better performance and higher energy efficiency.
 
-## Using the GPU delegate
+## Using the GPU / NNAPI delegate
 
-TensorFlow Lite provides a GPU delegate that can be used to accelerate models on
-devices that have a GPU available.
+TensorFlow Lite provides the following delegates for hardware acceleration:
 
-For an overview of the GPU delegate, see
-[TensorFlow Lite on GPU](https://www.tensorflow.org/lite/performance/gpu_advanced).
-For step-by-step tutorials on using the GPU delegate with Android and iOS, see
-[TensorFlow Lite GPU Delegate Tutorial](https://www.tensorflow.org/lite/performance/gpu).
+*   **GPU delegate for cross platform acceleration** - The GPU delegate can be
+    used on both Android and iOS. It is optimized to run 32-bit and 16-bit float
+    based models where a GPU is available. For an overview of the GPU delegate,
+    see
+    [TensorFlow Lite on GPU](gpu_advanced.md).
+    For step-by-step tutorials on using the GPU delegate with Android and iOS,
+    see
+    [TensorFlow Lite GPU Delegate Tutorial](gpu.md).
+*   **NNAPI delegate for newer Android devices** - The NNAPI delegate can be
+    used to accelerate models on Android devices with GPU, DSP and / or NPU
+    available. It is available in Android 8.1 (API 27+) or higher. For an
+    overview of the NNAPI delegate, step-by-step instructions and best
+    practices, see
+    [TensorFlow Lite NNAPI delegate](nnapi.md).
 
 ## How do delegates work?
 

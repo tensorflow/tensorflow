@@ -262,9 +262,6 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("input_layer_value_range",
                           BenchmarkParam::Create<std::string>(""));
-  default_params.AddParam("use_hexagon", BenchmarkParam::Create<bool>(false));
-  default_params.AddParam("hexagon_profiling",
-                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam("use_legacy_nnapi",
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
@@ -311,9 +308,6 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
       CreateFlag<bool>("require_full_delegation", &params_,
                        "require delegate to run the entire graph"),
-      CreateFlag<bool>("use_hexagon", &params_, "Use Hexagon delegate api"),
-      CreateFlag<bool>("hexagon_profiling", &params_,
-                       "Enables Hexagon profiling"),
       CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
       CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
                           "max profiling buffer entries")};
@@ -339,8 +333,6 @@ void BenchmarkTfLiteModel::LogParams() {
                    << params_.Get<std::string>("input_layer_value_range")
                    << "]";
 #if defined(__ANDROID__)
-  TFLITE_LOG(INFO) << "Use Hexagon : [" << params_.Get<bool>("use_hexagon")
-                   << "]";
   TFLITE_LOG(INFO) << "Use legacy nnapi : ["
                    << params_.Get<bool>("use_legacy_nnapi") << "]";
 #endif
@@ -613,22 +605,6 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     auto delegate = delegate_util->CreateTfLiteDelegate(params_);
     if (delegate != nullptr) {
       delegates.emplace(delegate_util->GetName(), std::move(delegate));
-    }
-  }
-
-  if (params_.Get<bool>("use_hexagon")) {
-    const std::string libhexagon_path("/data/local/tmp");
-    const bool profiling = params_.Get<bool>("hexagon_profiling");
-    Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateHexagonDelegate(libhexagon_path, profiling);
-    if (!delegate) {
-      // Refer to the Tensorflow Lite Hexagon delegate documentation for more
-      // information about how to get the required libraries.
-      TFLITE_LOG(WARN)
-          << "Could not create Hexagon delegate: platform may not support "
-             "delegate or required libraries are missing";
-    } else {
-      delegates.emplace("Hexagon", std::move(delegate));
     }
   }
 

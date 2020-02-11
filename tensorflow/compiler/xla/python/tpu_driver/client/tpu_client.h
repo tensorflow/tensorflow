@@ -258,6 +258,15 @@ class PyTpuBuffer {
 class PyTpuExecutable {
  public:
   // Compiles a computation to an executable.
+  static StatusOr<std::unique_ptr<PyTpuExecutable>> CompileForDevices(
+      const XlaComputation& computation,
+      absl::optional<std::vector<Shape>> argument_layouts,
+      const ExecutableBuildOptions* build_options,
+      std::shared_ptr<PyTpuClient> client,
+      const std::vector<std::vector<std::shared_ptr<Device>>>&
+          device_assignment);
+
+  // TODO(phawkins): remove after changing callers to use the first overload.
   static StatusOr<std::unique_ptr<PyTpuExecutable>> Compile(
       const XlaComputation& computation,
       absl::optional<std::vector<Shape>> argument_layouts,

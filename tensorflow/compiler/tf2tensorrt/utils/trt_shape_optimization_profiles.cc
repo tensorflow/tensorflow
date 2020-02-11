@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include <algorithm>
 #include <functional>
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-bool isAnyInputDynamic(const nvinfer1::INetworkDefinition *network) {
+bool IsAnyInputDynamic(const nvinfer1::INetworkDefinition *network) {
   bool is_any_dynamic = false;
   for (int i = 0; i < network->getNbInputs(); i++) {
     auto input = network->getInput(i);
@@ -31,36 +31,36 @@ bool isAnyInputDynamic(const nvinfer1::INetworkDefinition *network) {
   return is_any_dynamic;
 }
 
-/// Create optimization profiles for a list of input shapes.
-/// The list of input shapes are stored in shapes_.
-void TrtShapeOptimizationProfile::initProfiles() {
-  if (input_shapes_.size()==0) {
+// Create optimization profiles for a list of input shapes. The list of input
+// shapes are stored in shapes_.
+void TrtShapeOptimizationProfile::InitProfiles() {
+  if (input_shapes_.size() == 0) {
     VLOG(1) << "Not creating profiles without input_shapes. "
                "You have to enable profile generation mode first (build).";
   } else {
     VLOG(1) << "Creating profiles with startegy of one profile "
             << "for each input (min=opt=max).";
   }
-  for (auto& shape_vec: input_shapes_) {
+  for (auto& shape_vec : input_shapes_) {
     std::vector<nvinfer1::Dims> dimvec;
-    for (auto& shape: shape_vec) {
-       dimvec.push_back(TensorShapeToTrtDims(shape, false));
-     }
+    for (auto& shape : shape_vec) {
+      dimvec.push_back(TensorShapeToTrtDims(shape, false));
+    }
     // We set min=opt=max.
-    OptimizationProfileConfig profConfig {dimvec, dimvec, dimvec};
+    OptimizationProfileConfig profConfig{dimvec, dimvec, dimvec};
     profiles_.push_back(std::move(profConfig));
     VLOG(1) << "Created profile " << profiles_.back().DebugString();
   }
 }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-Status TrtShapeOptimizationProfile::addProfiles(
-    nvinfer1::IBuilder *builder, nvinfer1::IBuilderConfig* config,
-    const nvinfer1::INetworkDefinition *network) {
+Status TrtShapeOptimizationProfile::AddProfiles(
+    nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
+    const nvinfer1::INetworkDefinition* network) {
   // Create a vector of optimization profiles
   for (int i = 0; i < profiles_.size(); i++) {
     auto* optProfile = builder->createOptimizationProfile();
-    Status status = profiles_[i].setDimensions(network, optProfile);
+    Status status = profiles_[i].SetDimensions(network, optProfile);
     if (!status.ok()) {
       return status;
     }
@@ -71,7 +71,8 @@ Status TrtShapeOptimizationProfile::addProfiles(
     if (idx >= 0) {
       if (i != idx) {
         return errors::Internal(
-            "Profile index of engine config is different from resource profile index: ",
+            "Profile index of engine config is different from resource profile "
+            "index: ",
             i, " != ", idx);
       }
       VLOG(1) << "Added optimization profile " << profiles_[i].DebugString()
@@ -83,47 +84,48 @@ Status TrtShapeOptimizationProfile::addProfiles(
     }
   }
   if (config->getNbOptimizationProfiles() == 0) {
-     return errors::Internal("Failure in adding an optimization profile.");
+    return errors::Internal("Failure in adding an optimization profile.");
   }
-// if TRT_VERSION < 6, then we do not need to add
+  // if TRT_VERSION < 6, then we do not need to add
   return Status::OK();
 }
 #endif
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-Status TrtShapeOptimizationProfile::configureBuilder(
-  nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
-  const nvinfer1::INetworkDefinition* network) {
-  addProfiles(builder, config, network);
+Status TrtShapeOptimizationProfile::ConfigureBuilder(
+    nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
+    const nvinfer1::INetworkDefinition* network) {
+  AddProfiles(builder, config, network);
   return Status::OK();
 }
 #endif
 
-int TrtShapeOptimizationProfile::getProfileNumber(std::vector<TensorShape> shapes) {
+int TrtShapeOptimizationProfile::GetProfileNumber(
+    std::vector<TensorShape> shapes) {
   for (int i = 0; i < profiles_.size(); i++) {
     if (profiles_[i].IncludesShapes(shapes)) {
       return i;
     }
   }
-  VLOG(1) << "Profile not found for input shapes " <<  DebugString(shapes) << ".";
+  VLOG(1) << "Profile not found for input shapes " << DebugString(shapes)
+          << ".";
   return -1;
 }
 
-Status TrtShapeOptimizationProfile::createExecutionContexts(
-  nvinfer1::ICudaEngine* engine,
-  std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context) {
-  int i=0;
-  // The following loops runs once if we have static shapes, to create a single
-  // execution context without profiles.
-  // In dynamic mode we create one context for each profile and set the
-  // corresponding optimization profile.
+Status TrtShapeOptimizationProfile::CreateExecutionContexts(
+    nvinfer1::ICudaEngine* engine,
+    std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context) {
+  int i = 0;
+  // The following loop runs once if we have static shapes, to create a single
+  // execution context without profiles. In dynamic mode we create one context
+  // for each profile and set the corresponding optimization profile.
   do {
-    VLOG(1) << "Creating execution context " <<  i;
-    nvinfer1::IExecutionContext *ctx = engine->createExecutionContext();
+    VLOG(1) << "Creating execution context " << i;
+    nvinfer1::IExecutionContext* ctx = engine->createExecutionContext();
     if (ctx == nullptr) {
       return errors::Internal("Failed to create execution context");
     }
-    if (i>0) {
+    if (i > 0) {
       // This condition is needed for two reasons:
       // - using static shapes we do not have any profiles so we cannot call
       //   set optimizationprofiles.
@@ -138,15 +140,15 @@ Status TrtShapeOptimizationProfile::createExecutionContexts(
 #endif
     }
     exec_context.push_back(
-      std::move(TrtUniquePtrType<nvinfer1::IExecutionContext>(ctx)));
+        std::move(TrtUniquePtrType<nvinfer1::IExecutionContext>(ctx)));
     i++;
-  } while (i<profiles_.size());
+  } while (i < profiles_.size());
 
   return Status::OK();
 }
 
 Status TrtShapeOptimizationProfile::RestoreProfiles(
-    const nvinfer1::ICudaEngine *engine) {
+    const nvinfer1::ICudaEngine* engine) {
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   if (!engine || engine->hasImplicitBatchDimension()) {
     // Nothing to do, we cannot have profiles in implicit batch mode
@@ -156,9 +158,9 @@ Status TrtShapeOptimizationProfile::RestoreProfiles(
   int n_inputs = GetNumberOfEngineInputs(engine);
   VLOG(2) << "Attempting to restore " << n_profiles << " profiles, each with "
           << n_inputs << " inputs";
-  for (int prof_idx=0; prof_idx<n_profiles; prof_idx++) {
+  for (int prof_idx = 0; prof_idx < n_profiles; prof_idx++) {
     OptimizationProfileConfig cfg;
-    for (int j=0; j<n_inputs; j++) {
+    for (int j = 0; j < n_inputs; j++) {
       nvinfer1::Dims min = engine->getProfileDimensions(
           j, prof_idx, nvinfer1::OptProfileSelector::kMIN);
       nvinfer1::Dims max = engine->getProfileDimensions(

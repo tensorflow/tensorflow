@@ -54,47 +54,72 @@ class Pad : public NodeShader {
     std::vector<Variable> parameters = {
         {"input_data_0_h", input->tensor.shape.h},
         {"input_data_0_w", input->tensor.shape.w},
+        {"input_data_0_c", input->tensor.shape.c},
         {"prepended",
          int4(attr.prepended.w, attr.prepended.h, attr.prepended.c, 0)},
-        {"src_channels", input->tensor.shape.c},
     };
-    std::string reflection = "";
+    std::string source;
     if (attr.type == PaddingContentType::REFLECT) {
-      reflection = R"(
-        if (src_x < 0) {
-          src_x *= -1;
-        }
+      source = R"(
+  int src_x = gid.x - $prepended.x$;
+  src_x = abs(src_x);
+  src_x = $input_data_0_w$ - 1 - abs(src_x - $input_data_0_w$ + 1);
 
-        if (src_y < 0) {
-          src_y *= -1;
-        }
-
-        if (src_x >= $input_data_0_w$) {
-          int diff = src_x - $input_data_0_w$;
-          src_x = $input_data_0_w$ - 1 - diff - 1;
-        }
-
-        if (src_y >= $input_data_0_h$) {
-          int diff = src_y - $input_data_0_h$;
-          src_y = $input_data_0_h$ - 1 - diff - 1;
-        })";
-    }
-
-    std::string source = R"(
+  int src_y = gid.y - $prepended.y$;
+  src_y = abs(src_y);
+  src_y = $input_data_0_h$ - 1 - abs(src_y - $input_data_0_h$ + 1);
+)";
+      if (attr.prepended.c == 0 && attr.appended.c == 0) {
+        // optimized case
+        source += "  value_0 = $input_data_0[src_x, src_y, gid.z]$;\n";
+      } else {
+        source += R"(
+  int start_channel = gid.z * 4;
+  for (int i = 0; i < 4; ++i) {
+    int channel = start_channel + i;
+    int src_z = channel - $prepended.z$;
+    src_z = abs(src_z);
+    src_z = $input_data_0_c$ - 1 - abs(src_z - $input_data_0_c$ + 1);
+    // We need additional clamp for z, so that we use alignment for channels
+    // and can proceed extra channels that can lead to reading out of
+    // resource.
+    src_z = clamp(src_z, 0, $input_data_0_c$ - 1);
+    value_0[i] = $input_data_0[src_x, src_y, src_z / 4]$[src_z % 4];
+  }
+)";
+      }
+    } else {
+      source = R"(
   int src_x = gid.x - $prepended.x$;
   int src_y = gid.y - $prepended.y$;
-  )" + reflection + R"(
   if (src_x >= 0 && src_x < $input_data_0_w$ && src_y >= 0 && src_y < $input_data_0_h$) {
+)";
+      if (attr.prepended.c == 0 && attr.appended.c == 0) {
+        // optimized case
+        source += "    value_0 = $input_data_0[src_x, src_y, gid.z]$;\n";
+      } else if (attr.prepended.c % 4 == 0) {
+        parameters.push_back(
+            {"src_slices", IntegralDivideRoundUp(input->tensor.shape.c, 4)});
+        source += R"(
+    int src_z = gid.z - $prepended.z$ / 4;
+    if (src_z >= 0 && src_z < $src_slices$) {
+      value_0 = $input_data_0[src_x, src_y, src_z]$;
+    }
+)";
+      } else {
+        source += R"(
     int start_channel = gid.z * 4;
     for (int i = 0; i < 4; ++i) {
       int channel = start_channel + i;
       int src_z = channel - $prepended.z$;
-      if (src_z >= 0 && src_z < $src_channels$) {
+      if (src_z >= 0 && src_z < $input_data_0_c$) {
         value_0[i] = $input_data_0[src_x, src_y, src_z / 4]$[src_z % 4];
       }
     }
-  }
 )";
+      }
+      source += "  }\n";
+    }
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/{},

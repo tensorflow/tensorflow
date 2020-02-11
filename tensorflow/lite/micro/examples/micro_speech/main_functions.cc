@@ -43,6 +43,8 @@ int32_t previous_time = 0;
 // determined by experimentation.
 constexpr int kTensorArenaSize = 10 * 1024;
 uint8_t tensor_arena[kTensorArenaSize];
+uint8_t feature_buffer[kFeatureElementCount];
+uint8_t* model_input_buffer = nullptr;
 }  // namespace
 
 // The name of this function is important for Arduino compatibility.
@@ -102,12 +104,13 @@ void setup() {
     error_reporter->Report("Bad input tensor parameters in model");
     return;
   }
+  model_input_buffer = model_input->data.uint8;
 
   // Prepare to access the audio spectrograms from a microphone or other source
   // that will provide the inputs to the neural network.
   // NOLINTNEXTLINE(runtime-global-variables)
   static FeatureProvider static_feature_provider(kFeatureElementCount,
-                                                 model_input->data.uint8);
+                                                 feature_buffer);
   feature_provider = &static_feature_provider;
 
   static RecognizeCommands static_recognizer(error_reporter);
@@ -132,6 +135,11 @@ void loop() {
   // running the network model.
   if (how_many_new_slices == 0) {
     return;
+  }
+
+  // Copy feature buffer to input tensor
+  for (int i = 0; i < kFeatureElementCount; i++) {
+    model_input_buffer[i] = feature_buffer[i];
   }
 
   // Run the model on the spectrogram input and make sure it succeeds.

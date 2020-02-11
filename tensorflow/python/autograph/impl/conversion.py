@@ -61,6 +61,7 @@ from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.utils import ag_logging as logging
+from tensorflow.python.eager import function
 from tensorflow.python.util import tf_inspect
 
 
@@ -433,6 +434,8 @@ def is_whitelisted(
     # longer be whitelisted.
 
     owner_class = inspect_utils.getmethodclass(o)
+    if owner_class is function.TfMethodTarget:
+      owner_class = o.__self__.target_class
     if owner_class is not None:
       if issubclass(owner_class, unittest.TestCase):
         logging.log(2, 'Whitelisted: %s: method of TestCase subclass', o)

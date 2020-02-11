@@ -36,7 +36,7 @@ from tensorflow.python.eager.benchmarks.resnet50 import resnet50_test_util
 def compute_gradients(model, images, labels, num_replicas=1):
   with tf.GradientTape() as grad_tape:
     logits = model(images, training=True)
-    loss = tf.losses.softmax_cross_entropy(
+    loss = tf.compat.v1.losses.softmax_cross_entropy(
         logits=logits, onehot_labels=labels)
     tf.compat.v2.summary.write('loss', loss)
     if num_replicas != 1:

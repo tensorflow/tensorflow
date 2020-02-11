@@ -57,7 +57,7 @@ llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
   if (llvm::sys::getHostCPUFeatures(host_features)) {
     for (auto& feature : host_features) {
       if (feature.second) {
-        result.push_back(feature.first());
+        result.push_back(std::string(feature.first()));
       }
     }
   }
@@ -93,8 +93,8 @@ SimpleOrcJIT::SimpleOrcJIT(
       data_layout_(target_machine_->createDataLayout()),
       symbol_resolver_(llvm::orc::createLegacyLookupResolver(
           execution_session_,
-          [this](const std::string& name) -> llvm::JITSymbol {
-            return this->ResolveRuntimeSymbol(name);
+          [this](llvm::StringRef name) -> llvm::JITSymbol {
+            return this->ResolveRuntimeSymbol(std::string(name));
           },
           [](llvm::Error Err) {
             cantFail(std::move(Err), "lookupFlags failed");
@@ -186,13 +186,25 @@ void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::VModuleKeyT key) {
 }
 
 llvm::JITSymbol SimpleOrcJIT::FindCompiledSymbol(const std::string& name) {
+#ifdef _WIN32
+  // The symbol lookup of ObjectLinkingLayer uses the SymbolRef::SF_Exported
+  // flag to decide whether a symbol will be visible or not, when we call
+  // IRCompileLayer::findSymbolIn with ExportedSymbolsOnly set to true.
+  //
+  // But for Windows COFF objects, this flag is currently never set.
+  // For a potential solution see: https://reviews.llvm.org/rL258665
+  // For now, we allow non-exported symbols on Windows as a workaround.
+  const bool exported_symbols_only = false;
+#else
+  const bool exported_symbols_only = true;
+#endif
+
   // Resolve symbol from last module to first, allowing later redefinitions of
   // symbols shadow earlier ones.
   for (auto& key :
        llvm::make_range(module_keys_.rbegin(), module_keys_.rend())) {
     if (auto symbol =
-            compile_layer_.findSymbolIn(key, name,
-                                        /*ExportedSymbolsOnly=*/true)) {
+            compile_layer_.findSymbolIn(key, name, exported_symbols_only)) {
       return symbol;
     }
   }

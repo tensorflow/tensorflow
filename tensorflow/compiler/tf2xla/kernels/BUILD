@@ -285,6 +285,13 @@ cc_library(
     name = "if_while_utils",
     srcs = ["if_while_utils.cc"],
     hdrs = ["if_while_utils.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:lib",
+    ],
 )
 
 tf_kernel_library(

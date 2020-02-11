@@ -369,13 +369,11 @@ Status CreateTRTNode(const ConversionParams& params,
         out_types.at(conn.port_number) = conn.connection_type;
       } else {
         // Set the shapes and data types of input edge.
-        tensorflow::TensorShapeProto in_shape;
-        conn.outside_shape.AsProto(&in_shape);
         if (input_shapes.size() <= conn.port_number) {
           input_shape_protos.resize(conn.port_number + 1);
           input_shapes.resize(conn.port_number + 1);
         }
-        input_shape_protos.at(conn.port_number) = in_shape;
+        conn.outside_shape.AsProto(&input_shape_protos.at(conn.port_number));
         input_shapes.at(conn.port_number) = conn.outside_shape;
         // Shape must be fully defined (excluding batch dimension) for static
         // mode.
@@ -434,7 +432,7 @@ Status CreateTRTNode(const ConversionParams& params,
         max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
         alloc, /*calibrator=*/nullptr, &engine, info.use_calibration,
         params.use_implicit_batch, /*convert_successfully=*/nullptr,
-        /*profiles=*/nullptr));
+        /*profile=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());

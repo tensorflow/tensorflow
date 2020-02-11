@@ -74,8 +74,6 @@ void AppendMainFlags(std::vector<Flag>* flag_list, MainFlags* flags) {
        "Generate name-to-index data for Lookup{Arg,Result}Index methods."},
       {"gen_program_shape", &flags->gen_program_shape,
        "Generate program shape data for the ProgramShape method."},
-      {"tensorflow_header_root", &flags->tensorflow_header_root,
-       "Root directory of tensorflow headers."},
   };
   flag_list->insert(flag_list->end(), tmp.begin(), tmp.end());
 }

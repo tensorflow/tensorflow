@@ -57,6 +57,8 @@ class Node;
 
 namespace data {
 
+using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
+
 constexpr int kInfiniteCardinality = -1;
 constexpr int kUnknownCardinality = -2;
 
@@ -154,9 +156,6 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
-#ifdef USE_TSTRING
-  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
-  // migration.
   Status AddVector(const std::vector<string>& val, Node** output) {
     Tensor val_t = Tensor(DataTypeToEnum<tstring>::v(),
                           TensorShape({static_cast<int64>(val.size())}));
@@ -169,7 +168,6 @@ class GraphDefBuilderWrapper {
     }
     return Status::OK();
   }
-#endif  // USE_TSTRING
 
   // Adds a `Const` node for the given tensor value to the graph.
   //
@@ -647,6 +645,9 @@ class IteratorBase {
     return 0;
   }
 
+  int64 id_ = 0;
+  int64 parent_id_ = 0;
+
  private:
   // For access to `AddCleanupFunction` and `Restore`.
   friend class DatasetBase;
@@ -662,8 +663,22 @@ class IteratorBase {
   // Associates the given performance modeling `Node` with this iterator.
   void SetNode(std::shared_ptr<model::Node> node) { node_ = node.get(); }
 
+  // Sets the parent iterator of this iterator.
+  void SetParent(const IteratorBase* parent) {
+    parent_ = parent;
+    if (id_ == 0) {
+      id_ = Hash64CombineUnordered(Hash64(prefix()),
+                                   reinterpret_cast<uint64>(this));
+    }
+    if (parent_ && parent_id_ == 0) {
+      parent_id_ = Hash64CombineUnordered(Hash64(parent_->prefix()),
+                                          reinterpret_cast<uint64>(parent_));
+    }
+  }
+
   std::vector<std::function<void()>> cleanup_fns_;
   model::Node* node_ = nullptr;  // Not owned.
+  const IteratorBase* parent_ = nullptr;  // Not owned.
 };
 
 // Represents runtime information needed to construct a dataset.
@@ -742,24 +757,25 @@ class DatasetBase : public core::RefCounted {
   //
   // The prefix identifies the sequence of iterators leading up to the newly
   // created iterator.
-  Status MakeIterator(IteratorContext* ctx, const string& output_prefix,
+  Status MakeIterator(IteratorContext* ctx, const IteratorBase* parent,
+                      const string& output_prefix,
+                      std::unique_ptr<IteratorBase>* iterator) const;
+
+  Status MakeIterator(IteratorContext&& ctx, const IteratorBase* parent,
+                      const string& output_prefix,
                       std::unique_ptr<IteratorBase>* iterator) const {
-    *iterator = MakeIteratorInternal(output_prefix);
-    if (const auto& model = ctx->model()) {
-      const string& prefix = (*iterator)->prefix();
-      (*iterator)->SetNode(model->AddNode(MakeNodeFactory(ctx, iterator->get()),
-                                          prefix, output_prefix));
-      (*iterator)->AddCleanupFunction(
-          [model, prefix]() { model->RemoveNode(prefix); });
-    }
-    Status s = (*iterator)->Initialize(ctx);
-    if (!s.ok()) {
-      // Reset the iterator to avoid returning an uninitialized iterator.
-      iterator->reset();
-    }
-    return s;
+    return MakeIterator(&ctx, parent, output_prefix, iterator);
   }
 
+  // TODO(jsimsa): Remove this overlead once all callers are migrated to the API
+  // that passes in the parent iterator pointer.
+  Status MakeIterator(IteratorContext* ctx, const string& output_prefix,
+                      std::unique_ptr<IteratorBase>* iterator) const {
+    return MakeIterator(ctx, /*parent=*/nullptr, output_prefix, iterator);
+  }
+
+  // TODO(jsimsa): Remove this overlead once all callers are migrated to the API
+  // that passes in the parent iterator pointer.
   Status MakeIterator(IteratorContext&& ctx, const string& output_prefix,
                       std::unique_ptr<IteratorBase>* iterator) const {
     return MakeIterator(&ctx, output_prefix, iterator);
@@ -882,15 +898,11 @@ class DatasetBaseIterator : public IteratorBase {
     const string prefix;
   };
 
-  explicit DatasetBaseIterator(const BaseParams& params) : params_(params) {
-    params_.dataset->Ref();
-    VLOG(2) << prefix() << " constructor";
-  }
+  explicit DatasetBaseIterator(const BaseParams& params);
 
-  ~DatasetBaseIterator() override {
-    VLOG(2) << prefix() << " destructor";
-    params_.dataset->Unref();
-  }
+  ~DatasetBaseIterator() override;
+
+  virtual const DatasetBase* dataset() const { return params_.dataset; }
 
   const DataTypeVector& output_dtypes() const override {
     return params_.dataset->output_dtypes();
@@ -900,16 +912,13 @@ class DatasetBaseIterator : public IteratorBase {
     return params_.dataset->output_shapes();
   }
 
-  virtual const DatasetBase* dataset() const { return params_.dataset; }
-
-  // The sequence of iterators leading up to this iterator.
   const string& prefix() const override { return params_.prefix; }
 
   // Returns a name to be used for the TraceMe event.
   //
-  // NOTE: TraceMe support passing key value pairs of "arguments" using the
+  // NOTE: TraceMe supports passing key-value pairs of "arguments" using the
   // following format "name#arg_1=value_,...,arg_n=value_n".
-  virtual string BuildTraceMeName() { return params_.prefix; }
+  string BuildTraceMeName();
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final;
@@ -948,6 +957,9 @@ class DatasetBaseIterator : public IteratorBase {
     return strings::StrCat(kFullNameRandomHex, kPipe, params_.prefix, kColon,
                            name);
   }
+
+  // Returns a map of key-value pairs to included in the TraceMe string.
+  virtual TraceMeMetadata GetTraceMeMetadata() const { return {}; }
 
   // By default we model iterators using an unknown node, which acts as
   // pass-through with respect to performance modeling.

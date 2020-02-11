@@ -300,6 +300,22 @@ cc_library(
 )
 
 cc_library(
+    name = "resource_loader",
+    testonly = 1,
+    srcs = ["resource_loader.cc"],
+    hdrs = ["//tensorflow/core/platform:resource_loader.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@bazel_tools//tools/cpp/runfiles",
+    ],
+)
+
+cc_library(
     name = "rocm_rocdl_path",
     srcs = ["rocm_rocdl_path.cc"],
     hdrs = ["//tensorflow/core/platform:rocm_rocdl_path.h"],
@@ -319,11 +335,6 @@ cc_library(
 cc_library(
     name = "stacktrace",
     hdrs = ["stacktrace.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
@@ -334,11 +345,7 @@ cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
     hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
+    linkstatic = 1,
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:stacktrace",

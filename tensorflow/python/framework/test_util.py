@@ -44,9 +44,9 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import _pywrap_stacktrace_handler
 from tensorflow.python import _pywrap_util_port
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.client import session
 from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import context
@@ -199,7 +199,7 @@ def assert_equal_graph_def(actual, expected, checkpoint_v2=False,
     _strip_hash_table_shared_name(actual)
     _strip_hash_table_shared_name(expected)
 
-  diff = pywrap_tensorflow.EqualGraphDefWrapper(actual.SerializeToString(),
+  diff = pywrap_tf_session.EqualGraphDefWrapper(actual.SerializeToString(),
                                                 expected.SerializeToString())
   if diff:
     raise AssertionError(compat.as_str(diff))
@@ -1646,9 +1646,9 @@ def disable_cudnn_autotune(func):
       original_tf_cudnn_use_autotune = os.environ.get("TF_CUDNN_USE_AUTOTUNE")
       os.environ["TF_CUDNN_USE_AUTOTUNE"] = "false"
       original_xla_flags = os.environ.get("XLA_FLAGS")
-      new_xla_flags = "--xla_gpu_disable_autotune"
+      new_xla_flags = "--xla_gpu_autotune_level=0"
       if original_xla_flags:
-        new_xla_flags += " " + original_xla_flags
+        new_xla_flags = original_xla_flags + " " + new_xla_flags
       os.environ["XLA_FLAGS"] = new_xla_flags
 
       result = f(self, *args, **kwargs)
@@ -1694,10 +1694,10 @@ def enable_tf_xla_constant_folding(description):
     def decorator(f):
 
       def decorated(self, *args, **kwargs):
-        original_var = pywrap_tensorflow.TF_GetXlaConstantFoldingDisabled()
-        pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(False)
+        original_var = pywrap_tf_session.TF_GetXlaConstantFoldingDisabled()
+        pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(False)
         result = f(self, *args, **kwargs)
-        pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(original_var)
+        pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(original_var)
         return result
 
       return decorated
@@ -1799,9 +1799,9 @@ def xla_allow_fallback(description):  # pylint: disable=unused-argument
           # Update the global XLABuildOpsPassFlags to enable lazy compilation,
           # which allows the compiler to fall back to TF classic. Remember the
           # old value so that we can reset it.
-          old_value = pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(True)
+          old_value = pywrap_tf_session.TF_SetXlaEnableLazyCompilation(True)
           result = func(self, *args, **kwargs)
-          pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(old_value)
+          pywrap_tf_session.TF_SetXlaEnableLazyCompilation(old_value)
           return result
         else:
           return func(self, *args, **kwargs)
@@ -1835,13 +1835,13 @@ class TensorFlowTestCase(googletest.TestCase):
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
     if is_xla_enabled():
-      pywrap_tensorflow.TF_SetXlaAutoJitMode("2")
-      pywrap_tensorflow.TF_SetXlaMinClusterSize(1)
-      pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(False)
-      pywrap_tensorflow.TF_SetTfXlaCpuGlobalJit(True)
+      pywrap_tf_session.TF_SetXlaAutoJitMode("2")
+      pywrap_tf_session.TF_SetXlaMinClusterSize(1)
+      pywrap_tf_session.TF_SetXlaEnableLazyCompilation(False)
+      pywrap_tf_session.TF_SetTfXlaCpuGlobalJit(True)
       # Constant folding secretly runs code on TF:Classic CPU, so we also
       # disable it here.
-      pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(True)
+      pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
 
     self._threads = []
     self._tempdir = None

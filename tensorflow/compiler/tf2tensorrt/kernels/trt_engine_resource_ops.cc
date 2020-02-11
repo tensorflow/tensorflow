@@ -146,7 +146,7 @@ class InitializeTRTResource : public OpKernel {
         // in dynamic mode therefore we call this only for the 0th engine.
         // it is a no-op in implicit batch mode.
         resource->profiles_.RestoreProfiles(raw_engine);
-        resource->profiles_.createExecutionContexts(raw_engine, ctx_vec);
+        resource->profiles_.CreateExecutionContexts(raw_engine, ctx_vec);
       } else {
         // Multiple engines are only available in static mode. For each engine
         // we have only a single execution context.

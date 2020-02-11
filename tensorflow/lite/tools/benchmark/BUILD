@@ -121,8 +121,10 @@ cc_library(
         ":benchmark_utils",
         ":delegate_provider_hdr",
         ":gpu_delegate_provider",
+        ":hexagon_delegate_provider",
         ":logging",
         ":nnapi_delegate_provider",
+        ":xnnpack_delegate_provider",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/ruy/profiler",
@@ -241,6 +243,35 @@ cc_library(
         ":delegate_provider_hdr",
         ":logging",
         "//tensorflow/lite/tools/evaluation:utils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "hexagon_delegate_provider",
+    srcs = ["hexagon_delegate_provider.cc"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_params",
+        ":delegate_provider_hdr",
+        ":logging",
+        "//tensorflow/lite/tools/evaluation:utils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xnnpack_delegate_provider",
+    srcs = ["xnnpack_delegate_provider.cc"],
+    copts = tflite_copts(),
+    linkstatic = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":benchmark_model_lib",
+        ":delegate_provider_hdr",
+        ":logging",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
     alwayslink = 1,
 )

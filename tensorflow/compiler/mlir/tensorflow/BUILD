@@ -22,9 +22,29 @@ filegroup(
     srcs = [
         "ir/tf_generated_ops.td",
         "ir/tf_op_base.td",
+        "ir/tf_op_interfaces.td",
         "ir/tf_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.td",
+    ],
+)
+
+gentbl(
+    name = "tensorflow_op_interfaces_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "ir/tf_op_interfaces.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "ir/tf_op_interfaces.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/tf_op_interfaces.td",
+    td_srcs = [
+        ":tensorflow_ops_td_files",
     ],
 )
 
@@ -146,11 +166,14 @@ cc_library(
         "ir/tf_executor.cc",
         "ir/tf_executor.cc.inc",
         "ir/tf_executor.h.inc",
+        "ir/tf_op_interfaces.cc.inc",
+        "ir/tf_op_interfaces.h.inc",
         "ir/tf_ops.cc",
         "ir/tf_ops.cc.inc",
         "ir/tf_ops.h.inc",
         "ir/tf_saved_model.cc",
         "ir/tf_types.cc",
+        "ir/tf_verifiers.cc",
     ],
     hdrs = [
         "ir/control_flow_ops.h",
@@ -161,6 +184,7 @@ cc_library(
         "ir/tf_traits.h",
         "ir/tf_types.def",
         "ir/tf_types.h",
+        "ir/tf_verifiers.h",
         "transforms/bridge.h",
         "transforms/passes.h",
         "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.h",
@@ -172,6 +196,7 @@ cc_library(
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_device_ops_inc_gen",
         ":tensorflow_executor_inc_gen",
+        ":tensorflow_op_interfaces_inc_gen",
         ":tensorflow_ops_inc_gen",
         ":tf_saved_model_inc_gen",
         "//tensorflow/compiler/mlir/lite:validators",
@@ -234,7 +259,6 @@ cc_library(
         "transforms/cluster_formation.cc",
         "transforms/cluster_outlining.cc",
         "transforms/decompose_resource_ops_pass.cc",
-        "transforms/delete_unused_funcs.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/fold_switch.cc",
         "transforms/functional_control_flow_to_cfg.cc",
@@ -242,6 +266,8 @@ cc_library(
         "transforms/generated_optimize.inc",
         "transforms/graph_pruning.cc",
         "transforms/inline_global_tensors.cc",
+        "transforms/layout_optimization.cc",
+        "transforms/mark_function_visibility.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/optimize_global_tensors.cc",
@@ -255,7 +281,9 @@ cc_library(
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
         "transforms/test_side_effect_analysis.cc",
+        "transforms/tf_device_assignment.cc",
         "transforms/tpu_cluster_formation.cc",
+        "transforms/tpu_dynamic_layout_pass.cc",
         "transforms/tpu_dynamic_padding_mapper.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",
@@ -383,15 +411,24 @@ cc_library(
 )
 
 cc_library(
+    name = "parse_text_proto",
+    srcs = ["utils/parse_text_proto.cc"],
+    hdrs = ["utils/parse_text_proto.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:casts",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "import_utils",
-    srcs = [
-        "utils/import_utils.cc",
-    ],
-    hdrs = [
-        "utils/import_utils.h",
-    ],
+    srcs = ["utils/import_utils.cc"],
+    hdrs = ["utils/import_utils.h"],
     deps = [
         ":error_util",
+        ":parse_text_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
@@ -598,6 +635,7 @@ cc_library(
     srcs = ["utils/mangling_util.cc"],
     hdrs = ["utils/mangling_util.h"],
     deps = [
+        ":parse_text_proto",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -798,6 +836,7 @@ genrule(
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "ir/tf_generated_ops.td",
         "ir/tf_op_base.td",
+        "ir/tf_op_interfaces.td",
         "ir/tf_ops.td",
     ],
     outs = [
@@ -838,6 +877,7 @@ cc_library(
     srcs = ["utils/compile_mlir_util.cc"],
     hdrs = ["utils/compile_mlir_util.h"],
     deps = [
+        ":bridge_logger",
         ":convert_type",
         ":dump_mlir_util",
         ":error_util",

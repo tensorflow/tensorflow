@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_3d.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
@@ -230,8 +231,9 @@ class Conv3DBackpropInputOp : public OpKernel {
     TensorShape input_shape;
     if (takes_shape_) {
       const Tensor& input_sizes = context->input(0);
-      // MakeShape is able to handle both DT_INT32 and DT_INT64 for input_sizes.
-      OP_REQUIRES_OK(context, MakeShape(input_sizes, &input_shape));
+      // tensor::MakeShape is able to handle both DT_INT32 and DT_INT64 for
+      // input_sizes.
+      OP_REQUIRES_OK(context, tensor::MakeShape(input_sizes, &input_shape));
     } else {
       input_shape = context->input(0).shape();
     }
@@ -336,8 +338,9 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
     TensorShape input_shape;
     if (takes_shape_) {
       const Tensor& input_sizes = context->input(0);
-      // MakeShape is able to handle both DT_INT32 and DT_INT64 for input_sizes.
-      OP_REQUIRES_OK(context, MakeShape(input_sizes, &input_shape));
+      // tensor::MakeShape is able to handle both DT_INT32 and DT_INT64 for
+      // input_sizes.
+      OP_REQUIRES_OK(context, tensor::MakeShape(input_sizes, &input_shape));
     } else {
       input_shape = context->input(0).shape();
     }
@@ -1153,7 +1156,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     TensorShape input_shape;
     if (takes_shape_) {
       const Tensor& input_sizes = context->input(0);
-      OP_REQUIRES_OK(context, MakeShape(input_sizes, &input_shape));
+      OP_REQUIRES_OK(context, tensor::MakeShape(input_sizes, &input_shape));
     } else {
       input_shape = context->input(0).shape();
     }
@@ -1621,7 +1624,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     TensorShape filter_shape;
     if (takes_shape_) {
       const Tensor& filter_sizes = context->input(1);
-      OP_REQUIRES_OK(context, MakeShape(filter_sizes, &filter_shape));
+      OP_REQUIRES_OK(context, tensor::MakeShape(filter_sizes, &filter_shape));
     } else {
       filter_shape = context->input(1).shape();
     }

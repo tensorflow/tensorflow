@@ -21,11 +21,12 @@ from __future__ import print_function
 
 import contextlib
 import functools
+import weakref
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import _pywrap_utils
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
@@ -55,7 +56,7 @@ from tensorflow.python.util.deprecation import deprecated_args
 def get_resource_handle_data(graph_op):
   assert type(graph_op) == ops.Tensor  # pylint: disable=unidiomatic-typecheck
 
-  handle_data = pywrap_tensorflow.GetHandleShapeAndType(
+  handle_data = pywrap_tf_session.GetHandleShapeAndType(
       graph_op.graph._c_graph, graph_op._as_tf_output())  # pylint: disable=protected-access
 
   return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
@@ -90,10 +91,12 @@ def _set_handle_shapes_and_types(tensor, handle_data, graph_mode):
   ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
   shapes = [[d.size for d in s.dim]  # pylint: disable=g-complex-comprehension
             if not s.unknown_rank else None for s in shapes]
-  pywrap_tensorflow.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+  pywrap_tf_session.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
       tensor._op._graph._c_graph,  # pylint: disable=protected-access
       tensor._as_tf_output(),  # pylint: disable=protected-access
-      shapes, ranks, types)
+      shapes,
+      ranks,
+      types)
 
 
 def _combine_handle_data(handle, initial_value):
@@ -347,6 +350,7 @@ class BaseResourceVariable(variables.VariableV1):
       cached_value=None,
       save_slice_info=None,
       handle_deleter=None,
+      caching_device=None,
       **unused_kwargs):
     """Creates a variable from a handle.
 
@@ -387,6 +391,11 @@ class BaseResourceVariable(variables.VariableV1):
       save_slice_info: Metadata for variable partitioning.
       handle_deleter: EagerResourceDeleter responsible for cleaning up the
         handle.
+      caching_device: Optional device string or function describing where the
+        Variable should be cached for reading.  Defaults to the Variable's
+        device.  If not `None`, caches on another device.  Typical use is to
+        cache on the device where the Ops using the Variable reside, to
+        deduplicate copying through `Switch` and other conditional statements.
     """
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
@@ -401,6 +410,7 @@ class BaseResourceVariable(variables.VariableV1):
     self._initializer_op = initializer_op
     self._is_initialized_op = is_initialized_op
     self._graph_element = graph_element
+    self._caching_device = caching_device
     self._cached_value = cached_value
     self._distribute_strategy = distribute_strategy
     # Store the graph key so optimizers know how to only retrieve variables from
@@ -612,9 +622,19 @@ class BaseResourceVariable(variables.VariableV1):
 
   def _read_variable_op(self):
     variable_accessed(self)
-    result = gen_resource_variable_ops.read_variable_op(self._handle,
-                                                        self._dtype)
-    _maybe_set_handle_data(self._dtype, self._handle, result)
+
+    def read_and_set_handle():
+      result = gen_resource_variable_ops.read_variable_op(self._handle,
+                                                          self._dtype)
+      _maybe_set_handle_data(self._dtype, self._handle, result)
+      return result
+
+    if getattr(self, "_caching_device", None) is not None:
+      with ops.colocate_with(None, ignore_existing=True):
+        with ops.device(self._caching_device):
+          result = read_and_set_handle()
+    else:
+      result = read_and_set_handle()
 
     if not context.executing_eagerly():
       # Note that if a control flow context is active the input of the read op
@@ -1614,6 +1634,12 @@ class ResourceVariable(BaseResourceVariable):
               _maybe_set_handle_data(dtype, handle, cached_value)
           else:
             cached_value = None
+
+        if cached_value is not None:
+          # Store the variable object so that the original variable can be
+          # accessed to generate functions that are compatible with SavedModel.
+          cached_value._cached_variable = weakref.ref(self)  # pylint: disable=protected-access
+
         if not context.executing_eagerly():
           # Eager variables are only added to collections if they are part of an
           # eager variable store (otherwise in an interactive session they would
@@ -1629,7 +1655,7 @@ class ResourceVariable(BaseResourceVariable):
           name=name, unique_id=unique_id, handle_name=handle_name,
           graph_element=graph_element, initial_value=initial_value,
           initializer_op=initializer_op, is_initialized_op=is_initialized_op,
-          cached_value=cached_value)
+          cached_value=cached_value, caching_device=caching_device)
 
   def _init_from_proto(self, variable_def, import_scope=None):
     """Initializes from `VariableDef` proto."""

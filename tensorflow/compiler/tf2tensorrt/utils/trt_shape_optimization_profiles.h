@@ -29,18 +29,15 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
-
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 
 #include "third_party/tensorrt/NvInfer.h"
 
-
 namespace tensorflow {
 namespace tensorrt {
 
-
-// Stores optimization profile parameters (min/opt/max of each input shape)
+// Stores optimization profile parameters (min/opt/max of each input shape).
 //
 // A TensorRT optimization profile describes the possible min/max values of
 // each dynamic input shape along with an optimum value. These values are used
@@ -60,19 +57,20 @@ struct OptimizationProfileConfig {
   }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  // Set the stored min/opt/max dimensions for profile
+  // Set the stored min/opt/max dimensions for profile.
   //
   // Parameters:
   // network - TensorRT network, used to enumerate all the input tensors
   // profile - on exit the profile information will be set for each input tensor
-  Status setDimensions(const nvinfer1::INetworkDefinition *network,
-                       nvinfer1::IOptimizationProfile *profile) const {
+  Status SetDimensions(const nvinfer1::INetworkDefinition* network,
+                       nvinfer1::IOptimizationProfile* profile) const {
     int n_inputs = network->getNbInputs();
-    if (min.size()!=n_inputs || opt.size()!=n_inputs || max.size()!=n_inputs) {
+    if (min.size() != n_inputs || opt.size() != n_inputs ||
+        max.size() != n_inputs) {
       return errors::Internal("Incorrect number of profile config parameters");
     }
     for (int i = 0; i < n_inputs; i++) {
-      const char *name = network->getInput(i)->getName();
+      const char* name = network->getInput(i)->getName();
       profile->setDimensions(name, nvinfer1::OptProfileSelector::kMIN, min[i]);
       profile->setDimensions(name, nvinfer1::OptProfileSelector::kOPT, opt[i]);
       profile->setDimensions(name, nvinfer1::OptProfileSelector::kMAX, max[i]);
@@ -89,19 +87,19 @@ struct OptimizationProfileConfig {
       return false;
     }
     for (int i = 0; i < shapes.size(); i++) {
-       auto current_shape = shapes[i];
-       // min, max, and opt must have the same nbDims, which is
-       // already verified in SetDimensions.
-       if (min[i].nbDims != current_shape.dims()) {
-         return false;
+      auto current_shape = shapes[i];
+      // min, max, and opt must have the same nbDims, which is
+      // already verified in SetDimensions.
+      if (min[i].nbDims != current_shape.dims()) {
+        return false;
+      }
+      // Check if range [min, max] includes current_shape.
+      for (int dim = 0; dim < current_shape.dims(); dim++) {
+        if ((min[i].d[dim] > current_shape.dim_size(dim)) ||
+            (max[i].d[dim] < current_shape.dim_size(dim))) {
+          return false;
         }
-       // Check if range [min, max] includes current_shape.
-       for (int dim = 0; dim < current_shape.dims(); dim++) {
-         if ((min[i].d[dim] > current_shape.dim_size(dim)) ||
-             (max[i].d[dim] < current_shape.dim_size(dim))) {
-           return false;
-         }
-       }
+      }
     }
     return true;
   }
@@ -114,54 +112,47 @@ struct OptimizationProfileConfig {
 // optimization.
 //
 // This class stores the list of input shapes that were seen during the
-// build/profile_generation_mode phase, and using them it creates a set
-// of OptimizationProfileConfigs. These configs will be added to
-// IBuilderConfig before the engine is created.
-//
+// build/profile_generation_mode phase, and using them it creates a set of
+// OptimizationProfileConfigs. These configs will be added to IBuilderConfig
+// before the engine is created.
 class TrtShapeOptimizationProfile {
  public:
-  TrtShapeOptimizationProfile() {};
+  TrtShapeOptimizationProfile(){};
 
   // Stores input shape information during profile_generation_mode
-  void addShape(std::vector<TensorShape> shapes) {
+  void AddShape(std::vector<TensorShape> shapes) {
     input_shapes_.insert(shapes);
     VLOG(1) << "Collected shape(s) " << DebugString(shapes) << " for profiles.";
   }
 
-  void addShapeIfEmpty(std::vector<TensorShape> shapes) {
-    if (input_shapes_.size() == 0) {
-      addShape(shapes);
-      VLOG(1) << "Collected shape(s) " << DebugString(shapes) << " for profiles.";
-    }
-  }
   void clear() { profiles_.clear(); }
 
-  // Returns the profile number that should be used to execute the network
-  // with the given input shapes. Returns -1 if none of cached profiles
-  // is compatible with the given input shapes.
-  int getProfileNumber(std::vector<TensorShape> shapes);
+  // Returns the profile number that should be used to execute the network with
+  // the given input shapes. Returns -1 if none of cached profiles are
+  // compatible with the given input shapes.
+  int GetProfileNumber(std::vector<TensorShape> shapes);
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Creates optimization profiles and add them to the builder config.
-  Status configureBuilder(
-    nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
-    const nvinfer1::INetworkDefinition* network);
+  Status ConfigureBuilder(nvinfer1::IBuilder* builder,
+                          nvinfer1::IBuilderConfig* config,
+                          const nvinfer1::INetworkDefinition* network);
 #endif
 
   // Creates execution contexts for each optimization profile.
-  Status createExecutionContexts(
-    nvinfer1::ICudaEngine* engine,
-    std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context);
+  Status CreateExecutionContexts(
+      nvinfer1::ICudaEngine* engine,
+      std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context);
 
   /// Map input vector shapes to TRT Optimization profiles (min, max, opt)
   // i.e. maps input_shapes_ to profiles_
-  void initProfiles();
+  void InitProfiles();
 
   // Returns number of created profiles.
   int GetNumProfiles() const;
 
   // Restore profiles from the engine (used after deserialization)
-  Status RestoreProfiles(const nvinfer1::ICudaEngine *engine);
+  Status RestoreProfiles(const nvinfer1::ICudaEngine* engine);
 
  private:
   // Set of input shape vetors that we collect during profile_generation_mode
@@ -173,9 +164,9 @@ class TrtShapeOptimizationProfile {
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   /// Add optimization profiles to the builder config
-  Status addProfiles(nvinfer1::IBuilder *builder,
+  Status AddProfiles(nvinfer1::IBuilder* builder,
                      nvinfer1::IBuilderConfig* config,
-                     const nvinfer1::INetworkDefinition *network);
+                     const nvinfer1::INetworkDefinition* network);
 #endif
 };
 

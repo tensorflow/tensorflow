@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
@@ -87,14 +88,14 @@ bool TFE_ProfilerClientStartTracing(const char* service_addr,
                                     int num_tracing_attempts,
                                     TF_Status* status) {
   tensorflow::Status s =
-      tensorflow::profiler::client::ValidateHostPortPair(service_addr);
+      tensorflow::profiler::ValidateHostPortPair(service_addr);
   if (!s.ok()) {
     Set_TF_Status_from_Status(status, s);
     return false;
   }
-  s = tensorflow::profiler::client::StartTracing(
-      service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
-      num_tracing_attempts);
+  s = tensorflow::profiler::Trace(service_addr, logdir, worker_list,
+                                  include_dataset_ops, duration_ms,
+                                  num_tracing_attempts);
   tensorflow::Set_TF_Status_from_Status(status, s);
   return s.ok();
 }
@@ -103,14 +104,14 @@ void TFE_ProfilerClientMonitor(const char* service_addr, int duration_ms,
                                int monitoring_level, bool display_timestamp,
                                TF_Buffer* result, TF_Status* status) {
   tensorflow::Status s =
-      tensorflow::profiler::client::ValidateHostPortPair(service_addr);
+      tensorflow::profiler::ValidateHostPortPair(service_addr);
   if (!s.ok()) {
     Set_TF_Status_from_Status(status, s);
     return;
   }
   string content;
-  s = tensorflow::profiler::client::Monitor(
-      service_addr, duration_ms, monitoring_level, display_timestamp, &content);
+  s = tensorflow::profiler::Monitor(service_addr, duration_ms, monitoring_level,
+                                    display_timestamp, &content);
   void* data = tensorflow::port::Malloc(content.length());
   content.copy(static_cast<char*>(data), content.length(), 0);
   result->data = data;
@@ -617,4 +618,17 @@ void TFE_ContextSetExecutorForThread(TFE_Context* ctx, TFE_Executor* executor) {
 
 TFE_Executor* TFE_ContextGetExecutorForThread(TFE_Context* ctx) {
   return new TFE_Executor(&ctx->context->Executor());
+}
+
+void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
+  auto address_space = tensorflow::DeviceNameUtils::AddressSpace(
+      ctx->context->HostCPU()->parsed_name());
+  auto str = tensorflow::DeviceNameUtils::ParsedNameToString(address_space);
+  void* data = tensorflow::port::Malloc(str.length());
+  str.copy(static_cast<char*>(data), str.length(), 0);
+  buf->data = data;
+  buf->length = str.length();
+  buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
 }

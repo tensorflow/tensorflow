@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 namespace data {
@@ -100,7 +102,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         buffer_output_elements_(buffer_output_elements),
         prefetch_input_elements_(prefetch_input_elements),
         output_types_(output_types),
-        output_shapes_(output_shapes) {
+        output_shapes_(output_shapes),
+        traceme_metadata_(
+            {{"block_length", strings::Printf("%lld", block_length)},
+             {"cycle_length", strings::Printf("%lld", cycle_length)},
+             {"deterministic", sloppy ? "false" : "true"}}) {
     input_->Ref();
   }
 
@@ -227,18 +233,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     ~Iterator() override { CancelThreads(); }
 
-    string BuildTraceMeName() override {
-      return strings::StrCat(prefix(),
-                             "#cycle_length=", dataset()->cycle_length_,
-                             ",block_length=", dataset()->block_length_,
-                             ",deterministic=", !dataset()->sloppy_, "#");
-    }
-
     Status Initialize(IteratorContext* ctx) override {
       // TODO(jsimsa): Register cancellation callback once the implementation is
       // refactored not to hold mu_ while calling `GetNext` on the input.
       TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+          dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -508,6 +507,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      return dataset()->traceme_metadata_;
+    }
+
    private:
     // OutputElem contains the information from a call to GetNext by an output
     // iterator.
@@ -710,7 +713,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             tf_shared_lock l(ckpt_mu_);
             worker_thread_states_[thread_index].iterator_creation_status =
                 MakeIteratorFromInputElement(
-                    ctx.get(), worker_thread_states_[thread_index].input,
+                    ctx.get(), this, worker_thread_states_[thread_index].input,
                     thread_index, *instantiated_captured_func_, prefix(),
                     &worker_thread_states_[thread_index].iterator);
             iterator_creation_status =
@@ -940,9 +943,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         state->iterator.reset();
       } else {
         std::unique_ptr<IteratorBase> iterator;
-        Status s = MakeIteratorFromInputElement(ctx, state->input, index,
-                                                *instantiated_captured_func_,
-                                                prefix(), &iterator);
+        TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
+            ctx, this, state->input, index, *instantiated_captured_func_,
+            prefix(), &iterator));
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
         state->iterator.swap(iterator);
       }
@@ -1089,6 +1092,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   const int64 prefetch_input_elements_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
+  const TraceMeMetadata traceme_metadata_;
 };
 
 ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(

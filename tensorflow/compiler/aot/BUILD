@@ -33,6 +33,7 @@ cc_library(
     deps = [
         ":aot_only_var_handle_op",
         ":embedded_protocol_buffers",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -133,8 +134,9 @@ cc_library(
 # tfcompile.bzl correctly handles usage from outside of the package that it is
 # defined in.
 
-# A simple test of tf_library from a text protobuf, mostly to enable the
-# benchmark_test.
+# A simple test of tf_library from a text protobuf, to enable benchmark_test.
+# This test uses an incompleted graph with a node that is not defined. The
+# compilation works because the undefined node is a feed node.
 tf_library(
     name = "test_graph_tfadd",
     testonly = 1,
@@ -146,8 +148,21 @@ tf_library(
     ],
 )
 
+tf_library(
+    name = "test_graph_tfadd_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfadd.config.pbtxt",
+    cpp_class = "AddComp",
+    graph = "test_graph_tfadd.pbtxt",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
 # A test of tf_library that includes a graph with an unknown op, but where
-# the compilation works because the unknown op is not needed for the fetches.
+# the compilation works because the node with the unknown op is not needed
+# for the fetches.
 tf_library(
     name = "test_graph_tfunknownop",
     testonly = 1,
@@ -159,9 +174,21 @@ tf_library(
     ],
 )
 
+tf_library(
+    name = "test_graph_tfunknownop_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfunknownop.config.pbtxt",
+    cpp_class = "UnknownOpAddComp",
+    graph = "test_graph_tfunknownop.pbtxt",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
 # A test of tf_library that includes a graph with an unknown op, but where
-# the compilation works because the op between the unknown op and the
-# fetches is a feed.
+# the compilation works because the node with the unknown op is only used as
+# an input of a feed node.
 tf_library(
     name = "test_graph_tfunknownop2",
     testonly = 1,
@@ -173,14 +200,38 @@ tf_library(
     ],
 )
 
+tf_library(
+    name = "test_graph_tfunknownop2_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfunknownop2.config.pbtxt",
+    cpp_class = "UnknownOpAddComp",
+    graph = "test_graph_tfunknownop.pbtxt",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
 # A test of tf_library that includes a graph with an unknown op, but where
-# the compilation works because the unknown op is fed.
+# the compilation works because the node with the unknown op is a feed node.
 tf_library(
     name = "test_graph_tfunknownop3",
     testonly = 1,
     config = "test_graph_tfunknownop3.config.pbtxt",
     cpp_class = "UnknownOpAddComp",
     graph = "test_graph_tfunknownop.pbtxt",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfunknownop3_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfunknownop3.config.pbtxt",
+    cpp_class = "UnknownOpAddComp",
+    graph = "test_graph_tfunknownop.pbtxt",
+    mlir_components = "Bridge",
     tags = [
         "manual",
     ],
@@ -260,9 +311,13 @@ test_suite(
     tests = [
         ":benchmark_test",
         ":codegen_test",
+        ":test_graph_tfadd_mlir_bridge_test",
         ":test_graph_tfadd_test",
+        ":test_graph_tfunknownop2_mlir_bridge_test",
         ":test_graph_tfunknownop2_test",
+        ":test_graph_tfunknownop3_mlir_bridge_test",
         ":test_graph_tfunknownop3_test",
+        ":test_graph_tfunknownop_mlir_bridge_test",
         ":test_graph_tfunknownop_test",
         "//tensorflow/compiler/aot/tests:all_tests",
     ],

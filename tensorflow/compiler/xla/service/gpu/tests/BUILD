@@ -58,7 +58,9 @@ tf_cc_test(
     srcs = [
         "gemm_rewrite_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_rocm",
+    ],
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -140,7 +142,7 @@ tf_cc_test(
     srcs = [
         "tree_reduction_rewriter_test.cc",
     ],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
         ":gpu_codegen_test",
         "//tensorflow/compiler/xla:debug_options_flags",

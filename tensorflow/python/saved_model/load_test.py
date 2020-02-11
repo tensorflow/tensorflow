@@ -27,6 +27,7 @@ import weakref
 
 from absl.testing import parameterized
 
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -1826,6 +1827,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     rt = ragged_factory_ops.constant([[1, 2], [3]])
     self.assertAllEqual(imported2.f(rt), [[2, 3], [4]])
 
+
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 @parameterized.named_parameters(
     dict(testcase_name="ReloadOnce", cycles=1),
@@ -1942,6 +1944,53 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
         ValueError,
         "object has an attribute named a, which is reserved."):
       save.save(root, path)
+
+  def test_save_cached_variable(self):
+    with ops.Graph().as_default(), session_lib.Session() as session:
+      obj = tracking.AutoTrackable()
+      obj.v = variables.Variable(2., caching_device=lambda op: op.device)
+      obj.w = variables.Variable(3.)
+      session.run([obj.v.initializer, obj.w.initializer])
+
+      @def_function.function
+      def total():
+        return obj.v + obj.w
+
+      @def_function.function(input_signature=[tensor_spec.TensorSpec([])])
+      def wrapped_total(x):
+        return total() + x
+
+      @def_function.function
+      def increment_v(x):
+        obj.v.assign_add(x)
+
+      session.run(increment_v(constant_op.constant(3.)))  # generate signatures
+      self.assertAllClose(8, total())
+      self.assertAllClose(13, wrapped_total(constant_op.constant(5.)))
+
+      obj.total = total
+      obj.wrapped_total = wrapped_total.get_concrete_function()
+      obj.increment_v = increment_v
+
+      save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+      save.save(obj, save_dir, signatures=total.get_concrete_function())
+      imported = load.load(save_dir)
+      session.run(variables.global_variables_initializer())
+      self.assertAllClose(8, imported.total())
+      session.run(imported.increment_v(4))
+      self.assertAllClose(12, imported.total())
+      self.assertAllClose(15, imported.wrapped_total(constant_op.constant(3.)))
+      self.assertAllClose({"output_0": 12},
+                          imported.signatures["serving_default"]())
+
+    # Try loading and running the function in eager mode
+    imported = load.load(save_dir)
+    self.assertAllClose(8, imported.total())
+    imported.increment_v(5)
+    self.assertAllClose(13, imported.total())
+    self.assertAllClose(13.5, imported.wrapped_total(constant_op.constant(.5)))
+    self.assertAllClose({"output_0": 13},
+                        imported.signatures["serving_default"]())
 
 
 if __name__ == "__main__":

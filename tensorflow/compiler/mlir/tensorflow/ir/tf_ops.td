@@ -313,6 +313,10 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
       return getAttrOfType<SymbolRefAttr>("f");
     }
   }];
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_PlaceholderOp : TF_Op<"Placeholder", [NoSideEffect]> {

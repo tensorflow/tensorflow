@@ -41,7 +41,6 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
     %PIP_EXE% install absl-py==0.5.0
     %PIP_EXE% install colorama==0.3.9
     %PIP_EXE% install cycler==0.10.0
-    %PIP_EXE% install gast==0.3.2
     %PIP_EXE% install jedi==0.11.1
     %PIP_EXE% install oauth2client==4.1.2
     %PIP_EXE% install portpicker==1.2.0
@@ -53,9 +52,9 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
 )
 
 @REM TODO(amitpatankar): this is just a quick fix so that windows build doesn't
-@REM break with gast upgrade to 0.3.2. Need to figure out the right way to
+@REM break with gast upgrade to 0.3.3. Need to figure out the right way to
 @REM handle this case.
-%PIP_EXE% install gast==0.3.2
+%PIP_EXE% install gast==0.3.3
 %PIP_EXE% install astunparse==1.6.3
 
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.

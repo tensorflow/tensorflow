@@ -27,7 +27,9 @@ from scipy.special import expit
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
+from tensorflow.python.keras import models
 from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -1480,6 +1482,42 @@ class MultiAUCTest(test.TestCase):
     # fpr = [[1, 0.67, 0,    0,    0], [1, 0, 0, 0, 0]]
     expected_result = 1.0 - 0.5 * 0.43 * 0.67
     self.assertAllClose(self.evaluate(result), expected_result, 1e-1)
+
+  def test_pr_interpolation_unweighted(self):
+    self.setup()
+    auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, curve='PR',
+                          multi_label=True)
+    self.evaluate(variables.variables_initializer(auc_obj.variables))
+    good_result = auc_obj(self.y_true_good, self.y_pred)
+    with self.subTest(name='good'):
+      # PR AUCs are 0.917 and 1.0 respectively
+      self.assertAllClose(self.evaluate(good_result), (0.91667 + 1.0) / 2.0,
+                          1e-1)
+    bad_result = auc_obj(self.y_true_bad, self.y_pred)
+    with self.subTest(name='bad'):
+      # PR AUCs are 0.917 and 0.5 respectively
+      self.assertAllClose(self.evaluate(bad_result), (0.91667 + 0.5) / 2.0,
+                          1e-1)
+
+  def test_pr_interpolation(self):
+    self.setup()
+    auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, curve='PR',
+                          multi_label=True)
+    self.evaluate(variables.variables_initializer(auc_obj.variables))
+    good_result = auc_obj(self.y_true_good, self.y_pred,
+                          sample_weight=self.sample_weight)
+    # PR AUCs are 0.939 and 1.0 respectively
+    self.assertAllClose(self.evaluate(good_result), (0.939 + 1.0) / 2.0,
+                        1e-1)
+
+  def test_keras_model(self):
+    inputs = layers.Input(shape=(10,))
+    output = layers.Dense(3, activation='sigmoid')(inputs)
+    model = models.Model(inputs=inputs, outputs=output)
+    model.compile(
+        loss='binary_crossentropy',
+        metrics=[metrics.AUC(multi_label=True)]
+    )
 
 
 if __name__ == '__main__':

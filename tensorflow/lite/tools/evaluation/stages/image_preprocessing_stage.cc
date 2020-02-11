@@ -117,9 +117,9 @@ inline void Crop(ImageData* image_data, const CroppingParams& crop_params) {
   } else if (crop_params.has_target_size()) {
     crop_height = crop_params.target_size().height();
     crop_width = crop_params.target_size().width();
-  } else {
-    // Square cropping.
-    crop_height = std::min(input_height, input_width);
+  }
+  if (crop_params.has_cropping_fraction() && crop_params.square_cropping()) {
+    crop_height = std::min(crop_height, crop_width);
     crop_width = crop_height;
   }
   int start_w = static_cast<int>(round((input_width - crop_width) / 2.0));

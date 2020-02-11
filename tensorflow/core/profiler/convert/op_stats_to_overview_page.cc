@@ -86,18 +86,19 @@ void ComputeFaqTips(OverviewPageRecommendation* re) {
 
 void ComputeDocumentationTips(OverviewPageRecommendation* re) {
   *re->add_documentation_tips() = MakeOverviewPageTipDocLink(
-      "https://www.tensorflow.org/versions/master/api_docs/python/tf/data/"
-      "Dataset",
-      "TensorFlow Input Pipeline API");
+      "https://www.tensorflow.org/guide/"
+      "data_performance",
+      "Better performance with the tf.data API");
 }
 
 }  // namespace
 
-void SetCommonRecommendation(const CommonBottleneck& bottleneck,
+void SetCommonRecommendation(const string& input_classification,
+                             const string& input_statement,
                              HardwareType hardware_type,
                              OverviewPageRecommendation* re) {
-  re->set_bottleneck(bottleneck.input_classification);
-  re->set_statement(bottleneck.input_statement);
+  re->set_bottleneck(input_classification);
+  re->set_statement(input_statement);
   ComputeHostTips(re);
   ComputeDeviceTips(hardware_type, re);
   ComputeDocumentationTips(re);
@@ -105,13 +106,14 @@ void SetCommonRecommendation(const CommonBottleneck& bottleneck,
 }
 
 OverviewPageRecommendation ComputeGenericRecommendation(
-    const GenericBottleneck& bottleneck) {
+    const BottleneckAnalysis& bottleneck) {
   OverviewPageRecommendation re;
   GenericRecommendation generic;
-  generic.set_kernel_launch_bottleneck(bottleneck.kernel_launch_classification);
-  generic.set_kernel_launch_statement(bottleneck.kernel_launch_statement);
-  generic.set_all_other_bottleneck(bottleneck.all_other_classification);
-  generic.set_all_other_statement(bottleneck.all_other_statement);
+  generic.set_kernel_launch_bottleneck(
+      bottleneck.kernel_launch_classification());
+  generic.set_kernel_launch_statement(bottleneck.kernel_launch_statement());
+  generic.set_all_other_bottleneck(bottleneck.all_other_classification());
+  generic.set_all_other_statement(bottleneck.all_other_statement());
   re.mutable_recommendation()->PackFrom(generic);
   return re;
 }
@@ -138,18 +140,67 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   return analysis;
 }
 
+// Converts from HostIndependentJobInfo to OverviewPageHostIndependentJobInfo.
+OverviewPageHostIndependentJobInfo ToOverviewPageHostIndependentJobInfo(
+    const HostIndependentJobInfoResult& host_independent_job_info) {
+  OverviewPageHostIndependentJobInfo result;
+  result.set_change_list(host_independent_job_info.change_list());
+  result.set_build_time(host_independent_job_info.build_time());
+  result.set_build_target(host_independent_job_info.build_target());
+  result.set_profile_duration_ms(
+      host_independent_job_info.profile_duration_ms());
+  return result;
+}
+
+// Converts from HostDependentJobInfo to OverviewPageHostDependentJobInfo.
+OverviewPageHostDependentJobInfo ToOverviewPageHostDependentJobInfo(
+    const HostDependentJobInfoResult& host_dependent_job_info) {
+  OverviewPageHostDependentJobInfo result;
+  result.set_host_id(host_dependent_job_info.host_id());
+  result.set_command_line(host_dependent_job_info.command_line());
+  result.set_start_time(host_dependent_job_info.start_time());
+  result.set_bns_address(host_dependent_job_info.bns_address());
+  result.set_profile_time_ns(host_dependent_job_info.profile_time_ns());
+  return result;
+}
+
+OverviewPageRunEnvironment ComputeRunEnvironment(
+    const RunEnvironment& run_environment) {
+  OverviewPageRunEnvironment re;
+  re.set_host_count(run_environment.host_count());
+  re.set_task_count(run_environment.task_count());
+  re.set_device_type(run_environment.device_type());
+  re.set_device_core_count(run_environment.device_core_count());
+  re.set_per_core_batch_size(run_environment.per_core_batch_size());
+  re.set_replica_count(run_environment.replica_count());
+  re.set_num_cores_per_replica(run_environment.num_cores_per_replica());
+  *re.mutable_host_independent_job_info() =
+      ToOverviewPageHostIndependentJobInfo(
+          run_environment.host_independent_job_info());
+  for (const auto& host_dependent_job_info :
+       run_environment.host_dependent_job_info()) {
+    *re.add_host_dependent_job_info() =
+        ToOverviewPageHostDependentJobInfo(host_dependent_job_info);
+  }
+  return re;
+}
+
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           HardwareType hardware_type) {
   OverviewPageAnalysis analysis = ComputeAnalysisResult(op_stats);
   InputPipelineAnalysisResult input_analysis =
       ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
-  GenericBottleneck bottleneck = GenericOverallBottleneck(input_analysis);
+  BottleneckAnalysis bottleneck =
+      ComputeBottleneckAnalysis(input_analysis.step_details());
   OverviewPageRecommendation recommendation =
       ComputeGenericRecommendation(bottleneck);
-  SetCommonRecommendation(bottleneck.common, hardware_type, &recommendation);
+  SetCommonRecommendation(bottleneck.input_classification(),
+                          bottleneck.input_statement(), hardware_type,
+                          &recommendation);
 
   OverviewPage overview_page;
-  *overview_page.mutable_run_environment() = op_stats.run_environment();
+  *overview_page.mutable_run_environment() =
+      ComputeRunEnvironment(op_stats.run_environment());
   *overview_page.mutable_analysis() = analysis;
   *overview_page.mutable_input_analysis() = input_analysis;
   *overview_page.mutable_recommendation() = recommendation;

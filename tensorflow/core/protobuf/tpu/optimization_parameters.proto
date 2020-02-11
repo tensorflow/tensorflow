@@ -302,6 +302,11 @@ message OptimizationParameters {
   // once per minibatch.
   float weight_decay_factor = 16;
 
+  // If true, the weight decay factor is multiplied by the current learning rate
+  // before use; this is to match the note in DecoupledWeightDecayExtension in
+  // weight_decay_optimizers.py.
+  bool multiply_weight_decay_factor_by_learning_rate = 22;
+
   // Status of using gradient accumulation (doing two passes over the input
   // gradients: one to accumulate them into a temporary array and another to
   // apply them using the actual optimization algorithm).

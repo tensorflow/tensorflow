@@ -27,7 +27,7 @@ import hashlib
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import dtypes

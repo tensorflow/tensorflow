@@ -229,6 +229,7 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "PadV2",
           "ParallelDynamicStitch",
           "ParseExample",
+          "ParseExampleV2",
           "ParseSequenceExample",
           "ParseSingleExample",
           "ParseSingleSequenceExample",
