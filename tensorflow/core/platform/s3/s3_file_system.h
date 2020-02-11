@@ -104,8 +104,13 @@ class S3FileSystem : public FileSystem {
   std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> GetExecutor();
   std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> executor_;
 
-  Status MultiPartCopy(const string& source_bucket, const string& source_key,
-                       const Aws::String& target_bucket, const Aws::String& target_key);
+  Status CopyFile(const Aws::String& source_bucket, const Aws::String& source_key,
+                  const Aws::String& target_bucket, const Aws::String& target_key);
+  Status SimpleCopy(const Aws::String& source,
+                    const Aws::String& target_bucket, const Aws::String& target_key);
+  Status MultiPartCopy(const Aws::String& source,
+                       const Aws::String& target_bucket, const Aws::String& target_key, 
+                       const int num_parts, const uint64 file_length);
   Status AbortMultiPartCopy(Aws::String target_bucket, Aws::String target_key, Aws::String uploadID);
   Status CompleteMultiPartCopy(Aws::String target_bucket, Aws::String target_key, Aws::String uploadId,
                                Aws::S3::Model::CompletedMultipartUpload completedMPURequest);
@@ -116,8 +121,8 @@ class S3FileSystem : public FileSystem {
   // Lock held when checking for s3_client_ and transfer_manager_ initialization
   mutex initialization_lock_;
 
-  // size to split objects during multipart upload
-  uint64 multipart_part_size_;
+  // size to split objects during multipart copy
+  uint64 multi_part_copy_part_size_;
 };
 
 }  // namespace tensorflow
