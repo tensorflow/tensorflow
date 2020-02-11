@@ -53,15 +53,18 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
         auto& args = *event->mutable_args();
         event->set_device_id(device_id);
         event->set_resource_id(resource_id);
-        event->set_name(string(xevent.DisplayName().empty()
-                                   ? xevent.Name()
-                                   : xevent.DisplayName()));
+        if (xevent.HasDisplayName()) {
+          event->set_name(string(xevent.DisplayName()));
+          args["long_name"] = string(xevent.Name());
+        } else {
+          event->set_name(string(xevent.Name()));
+        }
         event->set_timestamp_ps(xevent.TimestampPs());
         event->set_duration_ps(xevent.DurationPs());
 
         xevent.ForEachStat([&](const XStatVisitor& stat) {
           if (stat.ValueCase() == XStat::VALUE_NOT_SET) return;
-          args[std::string(stat.Name())] = stat.ToString();
+          args[string(stat.Name())] = stat.ToString();
         });
       });
     });
