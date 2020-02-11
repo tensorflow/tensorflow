@@ -238,7 +238,7 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   ASSERT_EQ(1, cache->count({input_shape}));
   EngineContext* ectx = cache->at({input_shape}).get();
   // Since engine creation failed, we expect to find nullptr. Finding a nullptr
-  // indicates that the unknown shapes were used to define the TensorRT network.
+  // indicates that unknown shapes were used to define the TensorRT network.
   EXPECT_EQ(ectx->cuda_engine, nullptr);
 }
 
