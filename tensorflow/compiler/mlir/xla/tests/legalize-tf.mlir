@@ -2375,6 +2375,39 @@ func @strided_slice_ellipsis_mask(%input: tensor<2x4x8x16x32x64xf32>) {
   return
 }
 
+// CHECK-LABEL: strided_slice_new_axis_mask
+// CHECK-SAME: %[[INPUT:[a-z0-9]+]]: tensor<2x4x8x16x32x64xf32>
+func @strided_slice_new_axis_mask(%input: tensor<2x4x8x16x32x64xf32>) {
+  // For StridedSlice input[1, tf.new_axis, ..., 8:, :10, 2:6:2, tf.new_axis]
+  // New axis mask is at index 1 and 6 of sparse spec, so
+  // new_axis_mask = 2^1 + 2^6 = 66
+  // The ellipsis mask is applied to dim #1, #2 of input i.e, we get
+  // canonicalized slice input[1, :, :, 8:, :10, 2:6:2]
+  // This is then reshaped to add the new axes.
+
+  // The start, limit indices and strides attributes of xla_hlo.slice would
+  // reflect the canonicalized slice.
+  // As output shape of StridedSlice differs, a reshape will follow to reflect
+  // new axes added.
+
+  %begin = "tf.Const"() {value = dense<[1, 0, 0, 8, 1, 2, 0]> : tensor<7xi32>} : () -> (tensor<7xi32>)
+  %end = "tf.Const"() {value = dense<[2, 0, 0, 10, 10, 6, 0]> : tensor<7xi32>} : () -> (tensor<7xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 1, 1, 1, 1, 2, 1]> : tensor<7xi32>} : () -> (tensor<7xi32>)
+
+  // CHECK: %[[SLICE:.*]] = "xla_hlo.slice"(%[[INPUT]])
+  // CHECK-DAG-SAME: limit_indices = dense<[2, 4, 8, 16, 10, 6]> : tensor<6xi64>
+  // CHECK-DAG-SAME: start_indices = dense<[1, 0, 0, 8, 0, 2]> : tensor<6xi64>
+  // CHECK-DAG-SAME: strides = dense<[1, 1, 1, 1, 1, 2]> : tensoe<6xi64>
+  // CHECK-SAME: -> tensor<1x4x8x8x10x2xf32>
+  %0 = "tf.StridedSlice"(%input, %begin, %end, %strides) {begin_mask = 16, end_mask = 8, shrink_axis_mask = 1, ellipsis_mask = 4, new_axis_mask = 66} : (tensor<2x4x8x16x32x64xf32>, tensor<7xi32>, tensor<7xi32>, tensor<7xi32>) -> tensor<1x4x8x8x10x2x1xf32>
+
+  // CHECK: "xla_hlo.reshape"(%[[SLICE]])
+  // CHECK-SAME: -> tensor<1x4x8x8x10x2x1xf32>
+
+  return
+}
+
+
 //===----------------------------------------------------------------------===//
 // Reduction op legalizations.
 //===----------------------------------------------------------------------===//
