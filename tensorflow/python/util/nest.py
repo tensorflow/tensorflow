@@ -148,14 +148,11 @@ def _sequence_like(instance, args):
     instance_type = type(instance)
     if instance_type == _collections.defaultdict:
       d = _collections.defaultdict(instance.default_factory)
-      for key in instance:
-        d[key] = result[key]
-      return d
     else:
       d = instance_type()
-      for key in instance:
-        d[key] = instance[key]
-      return d
+    for key in instance:
+        d[key] = result[key]
+    return d
   elif _is_mapping(instance):
     result = dict(zip(_sorted(instance), args))
     instance_type = type(instance)
@@ -163,10 +160,7 @@ def _sequence_like(instance, args):
       tf_logging.WARN, "Mapping types may not work well with tf.nest. Prefer using" 
       "MutableMapping for {}".format(instance_type), 1
     )
-    d = instance_type()
-    for key in instance:
-      d[key] = instance[key]
-    return d
+    return instance_type((key, result[key]) for key in instance)
   elif _is_mapping_view(instance):
     # We can't directly construct mapping views, so we create a list instead
     return list(args)
