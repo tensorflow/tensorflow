@@ -99,9 +99,9 @@ class ExplicitBatchTest(TrtModeTestBase):
 
   def GetParams(self):
     """ We specify input/output mask with static (known) shapes """
-    return self.BuildParams(self.GraphFn, dtypes.float32, [[1, 12, 5]],
-                            [[12, 5]], input_mask=[[True, True, True]],
-                            output_mask=[[True, True]])
+    return self.BuildParamsWithMask(self.GraphFn, dtypes.float32, [[1, 12, 5]],
+                                    [[12, 5]], input_mask=[[True, True, True]],
+                                    output_mask=[[True, True]])
 
   def GetConversionParams(self, run_params):
     """Return a TrtConversionParams for test that enables explicit batch."""
@@ -123,17 +123,18 @@ class ExplicitBatchTest(TrtModeTestBase):
 
 
 class DynamicShapesTest(TrtModeTestBase):
-  """ Test with dynamic input shape.
+  """ Test with dynamic input shapes.
 
-  The difference compered to ExplicitBatchTest is that we specify an input and
-  output mask with unknown shapes.
+  DynamicShapesTest is different from ExplicitBatchTest in that it uses input
+  and output masks to change the input and output shapes to unknown shapes.
   """
 
   def GetParams(self):
     """ We specify input/output mask with dynamic (unknown) shapes. """
-    return self.BuildParams(self.GraphFn, dtypes.float32, [[1, 12, 5]],
-                            [[12, 5]], input_mask=[[False, False, False]],
-                            output_mask=[[False, False]])
+    return self.BuildParamsWithMask(self.GraphFn, dtypes.float32, [[1, 12, 5]],
+                                    [[12, 5]],
+                                    input_mask=[[False, False, False]],
+                                    output_mask=[[False, False]])
 
   def GetConversionParams(self, run_params):
     """Return a TrtConversionParams for test that enables explicit batch. """

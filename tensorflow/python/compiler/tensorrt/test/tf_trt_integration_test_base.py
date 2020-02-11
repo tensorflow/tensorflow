@@ -158,20 +158,38 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     warnings.simplefilter("always")
 
   def _GetTensorSpec(self, shape, mask, dtype, name):
-    # Unset shape where mask[i] == None
+    # Set dimension i to None if mask[i] == False
     assert len(shape) == len(mask)
     new_shape = [None if m is False else s for s, m in zip(shape, mask)]
     return tensor_spec.TensorSpec(new_shape, dtype, name)
 
-  def BuildParams(self, graph_fn, dtype, input_shapes, output_shapes,
-                  input_mask=None, output_mask=None):
+  def BuildParams(self, graph_fn, dtype, input_shapes, output_shapes):
+    """Build test parameters.
+
+    The input_shapes and output_shapes arguments are known (static) shapes that
+    can be used to generate test data. To define the model, we also specify
+    corresponding input/output TensoSpecs. These are defined using the shape
+    arguments. For each input tensor we define:
+
+    input_spec = [None] + input_shape[1:]
+
+    and similarly for output shapes. This means that we leave the first (batch)
+    dimension unknown, the rest is just copied from the shapes arg.
+    """
+
+    input_mask = [[False] + [True]*(len(shape)-1) for shape in input_shapes]
+    output_mask = [[False] + [True]*(len(shape)-1) for shape in output_shapes]
+
+    return self.BuildParamsWithMask(graph_fn, dtype, input_shapes,
+                                    output_shapes, input_mask, output_mask)
+
+  def BuildParamsWithMask(self, graph_fn, dtype, input_shapes, output_shapes,
+                          input_mask, output_mask):
     """Build test parameters with static or dynamic input shapes.
 
-    Implicit batch mode is assumed if input_mask==None (default). This means
-    that each input dimension is static, except of the batch dim which is set
-    to dynamic. To define dynamic shapes give a boolean mask that describes
-    which dimensions to treat as known. The values in input_mask are
-    interpreted the following way:
+    To define dynamic shapes give a boolean mask that describes which
+    dimensions to treat as known. The values in input_mask are interpreted the
+    following way:
     - True: known dim (use the corresponding value from input_shapes)
     - False: unknown dim (replace the corresponding value from input_shapes
              with None)
@@ -179,25 +197,16 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     input_shapes=[[1,2,1,8]], input_mask=[[False, False, True, True]].
     """
 
-    def _Validate(shapes):
+    def _ValidateShapes(shapes):
       # Make sure all the shapes are fully specified.
       for shape in shapes:
         assert all(shape)
 
-    _Validate(input_shapes)
-    _Validate(output_shapes)
+    _ValidateShapes(input_shapes)
+    _ValidateShapes(output_shapes)
 
-    if input_mask is None:
-      # Define mask for implicit batch mode: batch dim is set to unknown
-      input_mask = [[False] + [True]*(len(shape)-1) for shape in input_shapes]
-    else:
-      assert len(input_mask) == len(input_shapes)
-
-    if output_mask is None:
-      output_mask = [[False] + [True]*(len(shape)-1)
-                     for shape in output_shapes]
-    else:
-      assert len(output_mask) == len(output_shapes)
+    assert len(input_mask) == len(input_shapes)
+    assert len(output_mask) == len(output_shapes)
 
     return TfTrtIntegrationTestParams(
         graph_fn=graph_fn,
