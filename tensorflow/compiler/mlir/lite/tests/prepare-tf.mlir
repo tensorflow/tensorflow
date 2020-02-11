@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-prepare-tf %s | FileCheck %s
+// RUN: tf-opt -tfl-prepare-tf %s | FileCheck %s --dump-input-on-failure
 
 func @conv(tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>, tensor<256x3x32x32xf32>) -> (tensor<256x30x30x16xf32>, tensor<256x16x30x30xf32>, tensor<256x30x30x16xf32>, tensor<256x30x30x16xf32>, tensor<256x30x30x16xf32>) {
 ^bb0(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>, %arg2: tensor<256x3x32x32xf32>) :
@@ -115,6 +115,37 @@ func @fusedBatchNormV3(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor
 
 // CHECK:  %[[BATCHNORM1_a:[^,]+]], {{.*}} = "tf.FusedBatchNormV3"(%[[ADD2]], %[[ARG1]], %[[ARG2]], %[[ARG3]], %[[ARG4]])
 // CHECK:  "tf.FusedBatchNormV3"(%[[BATCHNORM1_a]], %[[ARG1]], %[[ARG2]], %[[ARG3]], %[[ARG4]])
+}
+
+func @batchNormWithGlobalNormalization(
+    %t:tensor<1x10x10x3xf32>, %m:tensor<3xf32>, %v:tensor<3xf32>, %beta:tensor<3xf32>, %gamma:tensor<3xf32>) -> (tensor<1x10x10x3xf32>) {
+  %0 = "tf.BatchNormWithGlobalNormalization"(%t, %m, %v, %beta, %gamma) {T = "tfdtype$DT_FLOAT", variance_epsilon = 0.001 : f32, scale_after_normalization = false} : (tensor<1x10x10x3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> (tensor<1x10x10x3xf32>)
+  return %0 : tensor<1x10x10x3xf32>
+// CHECK-LABEL: batchNormWithGlobalNormalization
+// CHECK:  %[[EPSILON:.*]] = constant dense<1.000000e-03>
+// CHECK:  %[[VARIANCE:.*]] = "tf.Add"(%[[ARG_V:.*]], %[[EPSILON]])
+// CHECK:  %[[RSQRT:.*]] = "tf.Rsqrt"(%[[VARIANCE]])
+// CHECK:  %[[MUL1:.*]] = "tf.Mul"(%[[ARG_T:.*]], %[[RSQRT]])
+// CHECK:  %[[MUL2:.*]] = "tf.Mul"(%[[ARG_M:.*]], %[[RSQRT]])
+// CHECK:  %[[SUB:.*]] = "tf.Sub"(%[[ARG_BETA:.*]], %[[MUL2]])
+// CHECK:  %[[RESULT:.*]] = "tf.Add"(%[[MUL1]], %[[SUB]])
+// CHECK:  return %[[RESULT]]
+}
+
+func @batchNormWithGlobalNormalizationWithScaleAfterNormalization(
+    %t:tensor<1x10x10x3xf32>, %m:tensor<3xf32>, %v:tensor<3xf32>, %beta:tensor<3xf32>, %gamma:tensor<3xf32>) -> (tensor<1x10x10x3xf32>) {
+  %0 = "tf.BatchNormWithGlobalNormalization"(%t, %m, %v, %beta, %gamma) {T = "tfdtype$DT_FLOAT", variance_epsilon = 0.001 : f32, scale_after_normalization = true} : (tensor<1x10x10x3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>, tensor<3xf32>) -> (tensor<1x10x10x3xf32>)
+  return %0 : tensor<1x10x10x3xf32>
+// CHECK-LABEL: batchNormWithGlobalNormalizationWithScaleAfterNormalization
+// CHECK:  %[[EPSILON:.*]] = constant dense<1.000000e-03>
+// CHECK:  %[[VARIANCE:.*]] = "tf.Add"(%[[ARG_V:.*]], %[[EPSILON]])
+// CHECK:  %[[RSQRT:.*]] = "tf.Rsqrt"(%[[VARIANCE]])
+// CHECK:  %[[MUL0:.*]] = "tf.Mul"(%[[RSQRT]], %[[ARG_GAMMA:.*]])
+// CHECK:  %[[MUL1:.*]] = "tf.Mul"(%[[ARG_T:.*]], %[[MUL0]])
+// CHECK:  %[[MUL2:.*]] = "tf.Mul"(%[[ARG_M:.*]], %[[MUL0]])
+// CHECK:  %[[SUB:.*]] = "tf.Sub"(%[[ARG_BETA:.*]], %[[MUL2]])
+// CHECK:  %[[RESULT:.*]] = "tf.Add"(%[[MUL1]], %[[SUB]])
+// CHECK:  return %[[RESULT]]
 }
 
 // CHECK-LABEL: fakeQuantPerChannelForActivation
