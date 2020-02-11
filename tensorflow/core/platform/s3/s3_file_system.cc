@@ -698,12 +698,10 @@ void S3FileSystem::MultiPartCopyCallback(const Aws::S3::Model::UploadPartCopyReq
 
 }
 
-
 Status S3FileSystem::CopyFile(const Aws::String& source_bucket, const Aws::String& source_key,
                               const Aws::String& target_bucket, const Aws::String& target_key) {
   Aws::String source = Aws::String((source_bucket + "/" + source_key).c_str());
   Aws::String source_full_path = Aws::String("s3://") + source;
-  LOG(INFO) << "target key is "<< target_key;
   uint64 file_length;
   TF_RETURN_IF_ERROR(this->GetFileSize(std::string(source_full_path.c_str()), &file_length));
   int num_parts;
@@ -729,11 +727,11 @@ Status S3FileSystem::CopyFile(const Aws::String& source_bucket, const Aws::Strin
 
 Status S3FileSystem::SimpleCopy(const Aws::String& source,
                                 const Aws::String& target_bucket, const Aws::String& target_key) {
+  VLOG(1) << "SimpleCopy from " << source <<  " to: "<< target_bucket <<"/" << target_key;
   Aws::S3::Model::CopyObjectRequest copyObjectRequest;
   copyObjectRequest.SetBucket(target_bucket.c_str());
   copyObjectRequest.SetKey(target_key);
   copyObjectRequest.SetCopySource(source);
-  LOG(INFO) << "Copy source is "<< source;
   auto copyObjectOutcome =
           this->GetS3Client()->CopyObject(copyObjectRequest);
   if (!copyObjectOutcome.IsSuccess()) {
@@ -744,7 +742,7 @@ Status S3FileSystem::SimpleCopy(const Aws::String& source,
 } 
 
 Status S3FileSystem::MultiPartCopy(const Aws::String& source,
-                                   const Aws::String& target_bucket, const Aws::String& target_key, 
+                                   const Aws::String& target_bucket, const Aws::String& target_key,
                                    const int num_parts, const uint64 file_length) {
   VLOG(1) << "MultiPartCopy from " << source <<  " to: "<< target_bucket <<"/" << target_key;
   Aws::S3::Model::CreateMultipartUploadRequest multipartUploadRequest;
@@ -882,9 +880,7 @@ Status S3FileSystem::AbortMultiPartCopy(Aws::String target_bucket, Aws::String t
 }
 
 
-Status S3FileSystem::CompleteMultiPartCopy(Aws::String target_bucket,
-                                           Aws::String target_key,
-                                           Aws::String uploadID,
+Status S3FileSystem::CompleteMultiPartCopy(Aws::String target_bucket, Aws::String target_key, Aws::String uploadID,
                                            Aws::S3::Model::CompletedMultipartUpload completedMPURequest) {
   Aws::S3::Model::CompleteMultipartUploadRequest completeRequest;
   completeRequest.SetBucket(target_bucket);
