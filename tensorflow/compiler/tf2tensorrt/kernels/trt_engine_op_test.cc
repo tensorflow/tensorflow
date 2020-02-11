@@ -13,34 +13,45 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <dirent.h>
-#include <string.h>
-
-#include <fstream>
+#include <memory>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/function_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/public/version.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 
 namespace tensorflow {
 namespace tensorrt {
