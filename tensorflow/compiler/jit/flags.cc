@@ -108,7 +108,7 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
           "(LRN, LRNGrad)."
           " BN: TF FusedBatchNorm* operations."
           " FUSIBLE: All TF operations that XLA can fuse (All the above). "
-          "You can also put any TF operation name, e.g. 'FUSIBLE,Matmul'."),
+          "You can also put any TF operation name, e.g. 'FUSIBLE,MatMul'."),
       Flag("tf_xla_clustering_debug",
            &mark_for_compilation_flags->tf_xla_clustering_debug,
            "Dump graphs during XLA compilation."),
