@@ -2285,8 +2285,6 @@ func @strided_slice_begin_end_mask(%input: tensor<4x128x1024xf32>) {
   // Dim #2: begin -3 + 1024 = 1021; end mask (1) -> end = -1: so 1022
   // result shape: [4, 16, 1022]
 
-  // As output shape of StridedSlice differs, a reshape will follow.
-
   %begin = "tf.Const"() {value = dense<[1, 4, -3]> : tensor<3xi32>} : () -> (tensor<3xi32>)
   %end = "tf.Const"() {value = dense<[8, 65, 42]> : tensor<3xi32>} : () -> (tensor<3xi32>)
   %strides = "tf.Const"() {value = dense<[1, 4, -1]> : tensor<3xi32>} : () -> (tensor<3xi32>)
@@ -2299,10 +2297,10 @@ func @strided_slice_begin_end_mask(%input: tensor<4x128x1024xf32>) {
   // CHECK-DAG-SAME: strides = dense<[1, 4, 1]>
   // CHECK-SAME: -> tensor<4x16x1022xf32>
 
-  %0 = "tf.StridedSlice"(%input, %begin, %end, %strides) {begin_mask = 1, end_mask = 4} : (tensor<4x128x1024xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<f32>
+  %0 = "tf.StridedSlice"(%input, %begin, %end, %strides) {begin_mask = 1, end_mask = 4} : (tensor<4x128x1024xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<4x16x1022xf32>
 
   // CHECK: "xla_hlo.reshape"(%[[SLICE]])
-  // CHECK-SAME: -> tensor<f32>
+  // CHECK-SAME: -> tensor<4x16x1022xf32>
 
   return
 }

@@ -938,6 +938,27 @@ static LogicalResult Verify(PadOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReshapeOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(ReshapeOp op) {
+  auto operand_ty = op.operand().getType().cast<TensorType>();
+  if (!operand_ty || !operand_ty.hasStaticShape()) return success();
+  int64_t num_input_elements = operand_ty.getNumElements();
+
+  auto out_ty = op.getType().cast<RankedTensorType>();
+  if (out_ty && out_ty.hasStaticShape()) {
+    int64_t num_output_elements = out_ty.getNumElements();
+    if (num_input_elements != num_output_elements)
+      return op.emitOpError()
+             << "number of output elements (" << num_output_elements
+             << ") doesn't match expected number of elements ("
+             << num_input_elements << ")";
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BinaryOps
 //===----------------------------------------------------------------------===//
 
