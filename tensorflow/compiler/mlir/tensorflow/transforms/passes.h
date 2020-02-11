@@ -79,7 +79,7 @@ LogicalResult MarkFunctionVisibilityUsingEntryFunctionSpecification(
 std::unique_ptr<OpPassBase<ModuleOp>>
 CreateMarkFunctionVisibilityUsingEntryFunctionSpecificationPass();
 
-// Create a simple device assignment pass on TF dialect for CoreRT use case.
+// Creates a simple device assignment pass on TF dialect for CoreRT use case.
 std::unique_ptr<OpPassBase<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
     llvm::StringRef default_device);
 
@@ -98,15 +98,21 @@ class GraphOp;
 // Returns a pass that folds switch nodes with constant predicates.
 std::unique_ptr<OpPassBase<FuncOp>> CreateSwitchFoldPass();
 
-// Create a pass to merge IslandOps from TFExecutor dialect.
+// Creates a pass to merge IslandOps from TFExecutor dialect.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass();
 
-// Create a pass to inline calls to the nested TPU module, this reverses the
+// Creates a pass to outlining TPU clusters from single IslandOp into a nested
+// module suitable for being processed as-if it was a V2 module.
+// This is a V1 backward compatibility.
+std::unique_ptr<OpPassBase<ModuleOp>>
+CreateTFExecutorTPUV1IslandOutliningPass();
+
+// Creates a pass to inline calls to the nested TPU module, this reverses the
 // effect of the `TFExecutorTPUV1IslandOutlining` pass above.
 // This is a V1 backward compatibility.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTFExecutorTPUV1IslandInliningPass();
 
-// Create a pass to prune tf_executor.graph from dead nodes.
+// Creates a pass to prune tf_executor.graph from dead nodes.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass();
 
 // Prunes unreachable operations of a tf_executor.graph operation.
