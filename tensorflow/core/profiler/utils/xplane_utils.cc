@@ -207,6 +207,15 @@ void SortXSpace(XSpace* space) {
   for (XPlane& plane : *space->mutable_planes()) SortXPlane(&plane);
 }
 
+void NormalizeTimeLine(XSpace* space, uint64 start_time_ns) {
+  for (XPlane& plane : *space->mutable_planes()) {
+    for (XLine& line : *plane.mutable_lines()) {
+      DCHECK_GE(line.timestamp_ns(), start_time_ns);
+      line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
+    }
+  }
+}
+
 void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
   XPlaneVisitor src(&src_plane);
   XPlaneBuilder dst(dst_plane);

@@ -73,6 +73,9 @@ void SortXPlane(XPlane* plane);
 // Sorts each plane of the XSpace.
 void SortXSpace(XSpace* space);
 
+// Normalize the XLines by time-shifting to start_time_ns_ as origin.
+void NormalizeTimeLine(XSpace* space, uint64 start_time_ns);
+
 // Merge Xplane src_plane into Xplane dst_plane, both plane level stats, lines,
 // events and event level stats are merged; If src_plane and dst_plane both have
 // the same line, which have different start timestamps, we will normalize the

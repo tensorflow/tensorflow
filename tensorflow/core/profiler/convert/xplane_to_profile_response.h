@@ -24,13 +24,12 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-// Collect profiled data, converts to tools data based on the specified list
-// of tools, and save to ProfileResponse. The accepted tools are:
-// "overview_page", "input_pipeline" and "tensorflow_stats".
-// TODO(b/148617985) Avoid passing start/end timestamps to this converter.
+// Convert collected trace in XSpace format to tools data based on the
+// specified list of tools, and save to ProfileResponse.
+// The accepted tools are:
+//   "overview_page", "input_pipeline" and "tensorflow_stats".
 void ConvertXSpaceToProfileResponse(const XSpace& xspace,
                                     const ProfileRequest& req,
-                                    uint64 start_time_ns, uint64 end_time_ns,
                                     ProfileResponse* response);
 
 }  // namespace profiler

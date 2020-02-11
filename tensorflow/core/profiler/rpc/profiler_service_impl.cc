@@ -32,12 +32,11 @@ namespace tensorflow {
 namespace {
 
 Status CollectDataToResponse(const ProfileRequest& req,
-                             ProfilerSession* profiler, uint64 start_time_ns,
+                             ProfilerSession* profiler,
                              ProfileResponse* response) {
   profiler::XSpace xspace;
   TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
-  profiler::ConvertXSpaceToProfileResponse(xspace, req, start_time_ns,
-                                           EnvTime::NowNanos(), response);
+  profiler::ConvertXSpaceToProfileResponse(xspace, req, response);
   return Status::OK();
 }
 
@@ -51,7 +50,6 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
   ::grpc::Status Profile(::grpc::ServerContext* ctx, const ProfileRequest* req,
                          ProfileResponse* response) override {
     LOG(INFO) << "Received a profile request: " << req->DebugString();
-    uint64 start_time_ns = EnvTime::NowNanos();
     std::unique_ptr<ProfilerSession> profiler = ProfilerSession::Create();
     Status status = profiler->Status();
     if (!status.ok()) {
@@ -67,8 +65,7 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
       }
     }
 
-    status =
-        CollectDataToResponse(*req, profiler.get(), start_time_ns, response);
+    status = CollectDataToResponse(*req, profiler.get(), response);
     if (!status.ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
                             status.error_message());

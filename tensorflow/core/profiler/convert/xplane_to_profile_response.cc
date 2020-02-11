@@ -60,11 +60,10 @@ string ToolName(absl::string_view tool) { return absl::StrCat(tool, ".pb"); }
 
 void ConvertXSpaceToProfileResponse(const XSpace& xspace,
                                     const ProfileRequest& req,
-                                    uint64 start_time_ns, uint64 end_time_ns,
                                     ProfileResponse* response) {
   {
     Trace trace;
-    ConvertXSpaceToTraceEvents(start_time_ns, end_time_ns, xspace, &trace);
+    ConvertXSpaceToTraceEvents(xspace, &trace);
     trace.SerializeToString(response->mutable_encoded_trace());
   }
   absl::flat_hash_set<absl::string_view> tools(req.tools().begin(),
