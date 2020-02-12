@@ -539,10 +539,10 @@ class _EagerDefinedFunction(object):
     if not g and context.executing_eagerly():
       context.context().add_function_def(self.definition)
     else:
-      if self.name not in g._functions:
+      if not g._is_function(self.name):
         g._add_function(self)
       for f in self.graph._functions.values():
-        if f.name not in g._functions:
+        if not g._is_function(f.name):
           g._add_function(f)
     # pylint: enable=protected-access
 
