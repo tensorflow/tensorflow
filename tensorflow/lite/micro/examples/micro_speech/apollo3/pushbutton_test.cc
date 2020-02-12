@@ -63,10 +63,10 @@ TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
   const tflite::Model* model =
       ::tflite::GetModel(g_tiny_conv_simple_features_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    error_reporter->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.\n",
-        model->version(), TFLITE_SCHEMA_VERSION);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Model provided is schema version %d not equal "
+                         "to supported version %d.\n",
+                         model->version(), TFLITE_SCHEMA_VERSION);
   }
 
   // This pulls in all the operation implementations we need.
@@ -102,7 +102,7 @@ TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
   // Run the model on this input and make sure it succeeds.
   TfLiteStatus invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed\n");
+    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -126,7 +126,7 @@ TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
   g_yes_score = output->data.uint8[kYesIndex];
   g_no_score = output->data.uint8[kNoIndex];
 
-  error_reporter->Report("Ran successfully\n");
+  TF_LITE_REPORT_ERROR(error_reporter, "Ran successfully\n");
 }
 
 TF_LITE_MICRO_TESTS_END
