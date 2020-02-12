@@ -35,9 +35,7 @@ namespace optimize {
 //
 // Note: This is a private API, subject to change.
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
-                           ModelT* input_model,
-                           const TensorType& activations_type,
-                           ErrorReporter* error_reporter);
+                           ModelT* input_model, ErrorReporter* error_reporter);
 
 // Same as above, but the types of quantized inputs and outputs are
 // configurable.
@@ -46,7 +44,6 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* input_model, const TensorType& input_type,
                            const TensorType& output_type,
-                           const TensorType& activations_type,
                            ErrorReporter* error_reporter);
 
 // Same as above, but can enable allowing float intermediate operations for ops
@@ -56,7 +53,6 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* input_model, const TensorType& input_type,
                            const TensorType& output_type, bool allow_float,
-                           const TensorType& activations_type,
                            ErrorReporter* error_reporter);
 
 // Same as above, but enables only quantizing a whitelist of operations,
@@ -65,6 +61,25 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
 // Note: This is a private API, subject to change.
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* input_model, const TensorType& input_type,
+                           const TensorType& output_type, bool allow_float,
+                           const std::unordered_set<string>& operator_names,
+                           ErrorReporter* error_reporter);
+
+// Same as above, but enables to provide activation type, which
+// could be TensorType_INT16 or TensorType_INT8.
+//
+// Note: This is a private API, subject to change.
+TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
+                           ModelT* model, const TensorType& input_type,
+                           const TensorType& output_type, bool allow_float,
+                           const TensorType& activations_type,
+                           ErrorReporter* error_reporter);
+
+// Quantizes input_model and populates the provided builder with the new model
+// with all possible input parameters.
+// All functions above call this function underneath.
+TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
+                           ModelT* model, const TensorType& input_type,
                            const TensorType& output_type, bool allow_float,
                            const std::unordered_set<string>& operator_names,
                            const TensorType& activations_type,

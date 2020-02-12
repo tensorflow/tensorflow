@@ -106,9 +106,9 @@ TEST_P(QuantizeConvModelTest, QuantizationSucceeds) {
 }
 
 TEST_P(QuantizeConvModelTest, SkipUnspecifiedLayer) {
-  auto status =
-      QuantizeModel(&builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
-                    /*allow_float=*/true, {}, tensor_type_, &error_reporter_);
+  auto status = QuantizeModel(
+      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
+      /*allow_float=*/true, {}, TensorType_FLOAT32, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   ASSERT_EQ(model_.subgraphs.size(), readonly_model_->subgraphs()->size());
   // The resulting model should be the same.
@@ -190,8 +190,9 @@ TEST_P(QuantizeConvModelTest, OperatorsAreUnchanged) {
 }
 
 TEST_P(QuantizeConvModelTest, GraphIsFullyQuantized) {
-  auto status = QuantizeModel(&builder_, &model_, tensor_type_, tensor_type_,
-                              tensor_type_, &error_reporter_);
+  auto status =
+      QuantizeModel(&builder_, &model_, tensor_type_, tensor_type_,
+                    /*allow_float*/ false, tensor_type_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   for (const auto& subgraph : model_.subgraphs) {
     for (const auto& tensor : subgraph->tensors) {
@@ -210,7 +211,7 @@ TEST_P(QuantizeConvModelTest, GraphIsFullyQuantized) {
 TEST_P(QuantizeConvModelTest, FloatInputAndOutput) {
   auto status =
       QuantizeModel(&builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
-                    tensor_type_, &error_reporter_);
+                    /*allow_float*/ false, tensor_type_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
 
   for (int32_t subgraph_idx = 0; subgraph_idx < model_.subgraphs.size();
@@ -384,7 +385,7 @@ class QuantizeConcatModelTest : public QuantizeModelTest,
 //                              input1 /
 TEST_P(QuantizeConcatModelTest, AddRequantBeforeConcat) {
   auto status = QuantizeModel(&builder_, &model_, tensor_type_, tensor_type_,
-                              tensor_type_, &error_reporter_);
+                              false, tensor_type_, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
 
   // There is only one subgraph.
@@ -549,7 +550,7 @@ class QuantizeConvModel1Test : public QuantizeModelTest {
 
 TEST_F(QuantizeConvModel1Test, VerifyConvQuantizationWithUnitScale) {
   auto status =
-      QuantizeModel(&builder_, &model_, TensorType_INT8, TensorType_INT8,
+      QuantizeModel(&builder_, &model_, TensorType_INT8, TensorType_INT8, false,
                     TensorType_INT8, &error_reporter_);
   EXPECT_EQ(status, kTfLiteOk);
   const auto& subgraph = model_.subgraphs[0];
@@ -658,7 +659,7 @@ INSTANTIATE_TEST_SUITE_P(QuantizeConvModel2TestInst, QuantizeConvModel2Test,
 
 TEST_P(QuantizeConvModel2Test, VerifyConvQuantization) {
   auto status = QuantizeModel(&builder_, &model_, tensor_type_, tensor_type_,
-                              tensor_type_, &error_reporter_);
+                              false, tensor_type_, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
   const auto& subgraph = model_.subgraphs[0];
   auto conv_op = subgraph->operators[0].get();
@@ -1353,8 +1354,7 @@ class QuantizePackTest : public QuantizeModelTest {
 };
 
 TEST_F(QuantizePackTest, VerifyPack) {
-  auto status =
-      QuantizeModel(&builder_, &model_, TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
 
   ASSERT_EQ(kTfLiteOk, status);
 
@@ -1418,8 +1418,7 @@ class QuantizeMinimumMaximumTest
 };
 
 TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
-  auto status =
-      QuantizeModel(&builder_, &model_, TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
   const auto& subgraph = model_.subgraphs[0];
 
@@ -1500,8 +1499,7 @@ class QuantizeUnpackTest : public QuantizeModelTest {
   }
 };
 TEST_F(QuantizeUnpackTest, VerifyUnpack) {
-  auto status =
-      QuantizeModel(&builder_, &model_, TensorType_INT8, &error_reporter_);
+  auto status = QuantizeModel(&builder_, &model_, &error_reporter_);
 
   ASSERT_EQ(kTfLiteOk, status);
 

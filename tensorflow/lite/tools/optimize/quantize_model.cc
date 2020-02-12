@@ -1210,18 +1210,25 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
 
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            ModelT* model, const TensorType& input_type,
-                           const TensorType& output_type,
-                           const TensorType& activations_type,
+                           const TensorType& output_type, bool allow_float,
                            ErrorReporter* error_reporter) {
-  return QuantizeModel(builder, model, input_type, output_type,
-                       /*allow_float=*/false, activations_type, error_reporter);
+  return QuantizeModel(builder, model, input_type, output_type, allow_float,
+                       GetAllOperatorOutputs(model), TensorType_INT8,
+                       error_reporter);
 }
 
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
-                           ModelT* model, const TensorType& activations_type,
+                           ModelT* model, const TensorType& input_type,
+                           const TensorType& output_type,
                            ErrorReporter* error_reporter) {
+  return QuantizeModel(builder, model, input_type, output_type,
+                       /*allow_float=*/false, error_reporter);
+}
+
+TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
+                           ModelT* model, ErrorReporter* error_reporter) {
   return QuantizeModel(builder, model, TensorType_FLOAT32, TensorType_FLOAT32,
-                       /*allow_float=*/false, activations_type, error_reporter);
+                       /*allow_float=*/false, error_reporter);
 }
 
 }  // namespace optimize

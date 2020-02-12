@@ -108,14 +108,10 @@ TfLiteStatus GetQuantizationParams(TensorT* tensor, TensorType activations_type,
         std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max(),
         quantization_params);
   } else if (activations_type == TensorType_INT16) {
-    float range = std::max(std::abs(tensor->quantization->min[0]),
-                           std::abs(tensor->quantization->max[0]));
     const float quantized_range = 32767.0;
-    const float scale = range / quantized_range;
-    quantization_params->min = std::vector<float>(1, -range);
-    quantization_params->max = std::vector<float>(1, range);
-    quantization_params->scale = std::vector<float>(1, scale);
-    quantization_params->zero_point = std::vector<int64_t>(1, 0);
+    GetSymmetricQuantizationParams(tensor->quantization->min[0],
+                                   tensor->quantization->max[0],
+                                   quantized_range, quantization_params);
   } else {
     error_reporter->Report(
         "Unsupported activation type for quantize-activation: %s",
