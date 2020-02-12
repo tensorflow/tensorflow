@@ -47,6 +47,7 @@ bazel test \
       --build_tests_only \
       --test_output=errors \
       --test_sharding_strategy=disabled \
+      --test_size_filters=small,medium,large \
       --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
       -- \
       //tensorflow/compiler/... \
