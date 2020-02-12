@@ -151,14 +151,14 @@ def _sequence_like(instance, args):
     else:
       d = instance_type()
     for key in instance:
-        d[key] = result[key]
+      d[key] = result[key]
     return d
   elif _is_mapping(instance):
     result = dict(zip(_sorted(instance), args))
     instance_type = type(instance)
     tf_logging.log_first_n(
-      tf_logging.WARN, "Mapping types may not work well with tf.nest. Prefer using" 
-      "MutableMapping for {}".format(instance_type), 1
+        tf_logging.WARN, "Mapping types may not work well with tf.nest. Prefer"
+        "using MutableMapping for {}".format(instance_type), 1
     )
     return instance_type((key, result[key]) for key in instance)
   elif _is_mapping_view(instance):
@@ -278,8 +278,8 @@ def flatten(structure, expand_composites=False):
   running.
 
   Args:
-    structure: an arbitrarily nested structure. Note, numpy arrays are considered
-      atoms and are not flattened.
+    structure: an arbitrarily nested structure. Note, numpy arrays are
+      considered atoms and are not flattened.
     expand_composites: If true, then composite tensors such as tf.SparseTensor
        and tf.RaggedTensor are expanded into their component tensors.
 
@@ -532,8 +532,9 @@ def map_structure(func, *structure, **kwargs):
 
   Args:
     func: A callable that accepts as many arguments as there are structures.
-    *structure: scalar, or tuple or dict or list of constructed scalars and/or other
-      tuples/lists, or scalars.  Note: numpy arrays are considered as scalars.
+    *structure: scalar, or tuple or dict or list of constructed scalars and/or
+      other tuples/lists, or scalars.  Note: numpy arrays are considered as
+      scalars.
     **kwargs: Valid keyword args are:
 
       * `check_types`: If set to `True` (default) the types of
