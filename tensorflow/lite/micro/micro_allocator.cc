@@ -410,7 +410,7 @@ TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
     status = GetRegistrationFromOpCode(opcode, op_resolver, error_reporter_,
                                        &(output[i].registration));
     if (status != kTfLiteOk) {
-      error_reporter_->Report("Failed to get registration from op code % d\n ",
+      error_reporter_->Report("Failed to get registration from op code %d\n ",
                               opcode);
       return status;
     }

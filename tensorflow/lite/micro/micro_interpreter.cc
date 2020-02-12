@@ -140,7 +140,7 @@ TfLiteStatus MicroInterpreter::Invoke() {
   // Ensure tensors are allocated before the interpreter is invoked to avoid
   // difficult to debug segfaults.
   if (!tensors_allocated_) {
-    AllocateTensors();
+    TF_LITE_ENSURE_OK(&context_, AllocateTensors());
   }
 
   // Init method is not yet implemented.
