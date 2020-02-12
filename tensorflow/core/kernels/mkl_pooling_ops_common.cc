@@ -126,11 +126,7 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
   }
 
 #ifdef ENABLE_MKLDNN_V1
-  DCHECK_EQ(context_.fwd_primitives.size(), context_.net_args.size());
-  for (size_t i = 0; i < context_.fwd_primitives.size(); ++i) {
-    context_.fwd_primitives.at(i).execute(*context_.fwd_stream,
-                                          context_.net_args.at(i));
-  }
+  execute_primitives(context_.fwd_primitives, context_.fwd_stream, context_.net_args);
 #else
   context_.fwd_stream->submit(context_.fwd_primitives);
 #endif  // ENABLE_MKLDNN_V1
