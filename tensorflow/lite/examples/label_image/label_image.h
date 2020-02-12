@@ -30,6 +30,7 @@ struct Settings {
   bool profiling = false;
   bool allow_fp16 = false;
   bool gl_backend = false;
+  bool hexagon_delegate = false;
   int loop_count = 1;
   float input_mean = 127.5f;
   float input_std = 127.5f;
