@@ -859,7 +859,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           (Dataset, generator, Sequence) is given in the `Unpacking behavior
           for iterator-like inputs` section of `Model.fit`.
         batch_size: Integer or `None`.
-            Number of samples per gradient update.
+            Number of samples per batch.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,
