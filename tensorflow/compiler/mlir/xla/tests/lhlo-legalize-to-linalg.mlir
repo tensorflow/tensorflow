@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s
+// RUN: tf-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s --dump-input-on-failure
 
 // CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @element_wise
@@ -411,3 +411,26 @@ func @tanh(%input: memref<2x2xf32>,
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
 // CHECK-NEXT:   %[[RESULT:.*]] = tanh %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+
+// -----
+
+// CHECK: func @slice(%[[IN:.*]]: memref<?x?xf32>, %[[OUT:.*]]: memref<?x?xf32>)
+func @slice(%operand: memref<?x?xf32>, %result: memref<?x?xf32>) {
+  "xla_lhlo.slice"(%operand, %result) {
+    start_indices = dense<[0,1]> : tensor<2xi64>,
+    limit_indices = dense<[2,3]> : tensor<2xi64>,
+    strides = dense<[1,1]> : tensor<2xi64>
+  } : (memref<?x?xf32>, memref<?x?xf32>) -> ()
+  return
+}
+// CHECK: %[[L0:.*]] = constant 0 : index
+// CHECK: %[[L2:.*]] = constant 2 : index
+// CHECK: %[[L1:.*]] = constant 1 : index
+// CHECK: %[[LHS:.*]] = linalg.range %[[L0]] : %[[L2]] : %[[L1]]
+// CHECK: %[[R0:.*]] = constant 1 : index
+// CHECK: %[[R2:.*]] = constant 3 : index
+// CHECK: %[[R1:.*]] = constant 1 : index
+// CHECK: %[[RHS:.*]] = linalg.range %[[R0]] : %[[R2]] : %[[R1]]
+// CHECK: %[[RESULT:.*]] = linalg.slice %[[IN]][%[[LHS]], %[[RHS]]]
+// CHECK: linalg.copy(%[[RESULT]], %[[OUT]])
