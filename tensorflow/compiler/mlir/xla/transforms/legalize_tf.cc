@@ -3511,6 +3511,28 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
   }
 };
 
+// Converts a TF XlaDynamicUpdateSlice op to DynamicUpdateSlice HLO.
+class ConvertXlaDynamicUpdateSliceOp
+    : public OpRewritePattern<TF::XlaDynamicUpdateSliceOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::XlaDynamicUpdateSliceOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto indices_type = op.indices().getType().dyn_cast<RankedTensorType>();
+    if (!indices_type) return matchFailure();
+
+    SmallVector<Type, 2> unpacked_indices_type(
+        2, RankedTensorType::get({}, indices_type.getElementType()));
+    auto unpacked_indices = rewriter.create<TF::UnpackOp>(
+        op.getLoc(), unpacked_indices_type, op.indices(),
+        IntegerAttr::get(rewriter.getIntegerType(64), 0));
+    rewriter.replaceOpWithNewOp<xla_hlo::DynamicUpdateSliceOp>(
+        op, op.getType(), op.input(), op.update(), unpacked_indices.output());
+    return matchSuccess();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -3540,8 +3562,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
       ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
-      ConvertRandomShuffleOp, ConvertVariableShapeOp, ConvertXlaShardingOp>(
-      op->getContext());
+      ConvertRandomShuffleOp, ConvertVariableShapeOp, ConvertXlaShardingOp,
+      ConvertXlaDynamicUpdateSliceOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

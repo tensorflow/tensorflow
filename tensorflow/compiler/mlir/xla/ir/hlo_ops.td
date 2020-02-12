@@ -681,7 +681,8 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
 }
 
 def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
-      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>]> {
+      [NoSideEffect, AllElementTypesMatch<["operand", "update", "result"]>,
+       AllShapesMatch<["operand", "result"]>]> {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$update,

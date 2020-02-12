@@ -7561,6 +7561,35 @@ An op which shards the input based on the given sharding attribute.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_XlaDynamicUpdateSliceOp : TF_Op<"XlaDynamicUpdateSlice", [NoSideEffect]> {
+  let summary = "Wraps the XLA DynamicUpdateSlice operator, documented at";
+
+  let description = [{
+https://www.tensorflow.org/performance/xla/operation_semantics#dynamicupdateslice
+.
+
+XlaDynamicUpdateSlice generates a result which is the value of the `input`
+operand, with a slice update overwritten at `indices`. The shape of `update`
+determines the shape of the sub-array of the result which is updated. The shape
+of indices must be rank == 1, with dimension size equal to the rank of `input`.
+
+Handling of out-of-bounds slice indices is implementation-defined.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_Tensor:$update,
+    TF_I32OrI64Tensor:$indices
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns a tensor of zeros with the same shape and type as x.";
 
