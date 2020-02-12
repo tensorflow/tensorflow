@@ -1504,11 +1504,11 @@ tf_cc_test(
     tags = ["no_rocm"] + tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/core:test_main",
-    ] + if_cuda_is_configured([
-        ":buffer_comparator",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:test",
+    ] + if_cuda_is_configured([
+        ":buffer_comparator",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
         "//tensorflow/stream_executor:device_memory",
     ]),
