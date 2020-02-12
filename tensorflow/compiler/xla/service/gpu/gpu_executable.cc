@@ -303,6 +303,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
     HloExecutionProfile* hlo_execution_profile) {
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat("GpuExecutable::ExecuteAsyncOnStream(",
+                                        module().name(), ")"));
   se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
   // Force synchronous execution if the allocator requires it.
   const bool block_host_until_done =
