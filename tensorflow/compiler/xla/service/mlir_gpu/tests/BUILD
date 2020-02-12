@@ -5,6 +5,10 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load(
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     default_visibility = [":friends"],
@@ -20,12 +24,14 @@ package_group(
 
 tf_cc_test(
     name = "mlir_gpu_lhlo_gen_test",
-    srcs = ["mlir_gpu_lhlo_gen_test.cc"],
+    srcs = if_cuda_is_configured(["mlir_gpu_lhlo_gen_test.cc"]),
     tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test",
+    ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service:gpu_plugin_mlir",
         "//tensorflow/compiler/xla/service/mlir_gpu:mlir_irgen_test_base",
-        "//tensorflow/core:test_main",
         "//tensorflow/stream_executor/lib",
-    ],
+    ]),
 )
