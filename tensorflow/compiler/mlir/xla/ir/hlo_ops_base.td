@@ -810,6 +810,22 @@ class BASE_HLO_BroadcastInDimOp  {
   }];
 }
 
+class BASE_HLO_DynamicBroadcastInDimOp  {
+  string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
+
+  string description = [{
+    This is a generalization of the BroadcastInDimOp which accepts its output
+    dimensions as an argument. It should eventually supercede the statically
+    shaped original, but is being phased as a separate op in order to support
+    compatibility with lowerings and translations that precede dynamic
+    shapes.
+
+    Note that the `broadcast_dimensions` attribute is optional and if omitted,
+    it is assumed to be an ordered, right-aligned mapping from input to
+    output dimensions.
+  }];
+}
+
 class BASE_HLO_CholeskyOp {
   string summary = "Cholesky operator";
 

@@ -801,14 +801,6 @@ func @broadcast_to(%arg0: tensor<16xf32>) -> tensor<16x16x16x16xf32> {
   return %0 : tensor<16x16x16x16xf32>
 }
 
-// CHECK-LABEL: func @broadcast_to_dynamic
-func @broadcast_to_dynamic(%arg0: tensor<?x?xf32>, %arg1: tensor<3xi32>) -> tensor<?x?x?xf32> {
-  // CHECK: "xla_hlo.broadcast_in_dim"
-  // CHECK-SAME: {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
-  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<?x?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
-  return %0 : tensor<?x?x?xf32>
-}
-
 //===----------------------------------------------------------------------===//
 // Equality op legalizations.
 //===----------------------------------------------------------------------===//
