@@ -274,6 +274,7 @@ def _process_single_batch(model,
           if isinstance(model.optimizer,
                         loss_scale_optimizer.LossScaleOptimizer):
             grads = model.optimizer.get_unscaled_gradients(grads)
+          grads = model.optimizer._clip_gradients(grads)
           model.optimizer.apply_gradients(zip(grads, trainable_weights))
       else:
         logging.warning('The list of trainable weights is empty. Make sure that'
