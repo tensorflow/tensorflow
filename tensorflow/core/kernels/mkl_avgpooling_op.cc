@@ -244,7 +244,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                              this->data_format_mkldnn_);
 
       // TODO(nammbash): Refactor (lines 249-262) common code for
-      // max & avg pooling into superclass or common utils function. 
+      // max & avg pooling into superclass or common utils function.
       // Check whether we need to reorder diff_dst.
       std::shared_ptr<PoolingBwdPd> pooling_bwd_pd =
           pooling_bwd->GetPoolingBwdPd();
