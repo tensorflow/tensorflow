@@ -131,6 +131,8 @@ $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util*.cc) \
+tensorflow/lite/experimental/ruy/tune_tool.cc \
+tensorflow/lite/tools/make/downloads/absl/absl/hash/internal/print_hash_of.cc \
 $(MINIMAL_SRCS)
 
 BUILD_WITH_MMAP ?= true
