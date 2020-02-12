@@ -153,12 +153,12 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
         DCHECK(!hlo_op_name.empty());
         hlo_ops.ExpandOrAddEvent(*plane.GetOrCreateEventMetadata(hlo_op_name),
                                  event, group_id, level);
-        auto tf_op_name = symbol_resolver(hlo_module_name, hlo_op_name);
-        if (!tf_op_name.empty()) {
-          tf_ops.ExpandOrAddEvent(*plane.GetOrCreateEventMetadata(tf_op_name),
-                                  event, group_id, level);
-        }
         ++level;
+      }
+      auto tf_op_name = symbol_resolver(hlo_module_name, hlo_op_names.back());
+      if (!tf_op_name.empty()) {
+        tf_ops.ExpandOrAddEvent(*plane.GetOrCreateEventMetadata(tf_op_name),
+                                event, group_id);
       }
     } else if (!tf_op_fullname.empty()) {  // GPU kernel not compiled by XLA
       tf_ops.ExpandOrAddEvent(*plane.GetOrCreateEventMetadata(tf_op_fullname),
