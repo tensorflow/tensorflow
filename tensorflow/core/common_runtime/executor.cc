@@ -658,7 +658,6 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     if (!s.ok()) {
       item->kernel = nullptr;
       s = AttachDef(s, *n);
-      LOG(ERROR) << "Executor failed to create kernel. " << s;
       return s;
     }
     CHECK(item->kernel);
