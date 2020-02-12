@@ -64,6 +64,8 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     parallel_interleave = "ParallelInterleaveV2"
     if compat.forward_compatible(2020, 2, 20):
       parallel_interleave = "ParallelInterleaveV3"
+    if compat.forward_compatible(2020, 3, 6):
+      parallel_interleave = "ParallelInterleaveV4"
     dataset = dataset.apply(
         testing.assert_next([parallel_interleave, "Prefetch", "FiniteTake"]))
     dataset = dataset.interleave(
@@ -79,6 +81,8 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     parallel_interleave = "ParallelInterleaveV2"
     if compat.forward_compatible(2020, 2, 20):
       parallel_interleave = "ParallelInterleaveV3"
+    if compat.forward_compatible(2020, 3, 6):
+      parallel_interleave = "ParallelInterleaveV4"
     dataset = dataset.apply(
         testing.assert_next([
             "ParallelMap", "Prefetch", parallel_interleave, "Prefetch",

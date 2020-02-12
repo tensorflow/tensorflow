@@ -60,6 +60,10 @@ namespace data {
 /* static */ constexpr const char* const
     ParallelInterleaveDatasetOp::kBlockLength;
 /* static */ constexpr const char* const
+    ParallelInterleaveDatasetOp::kBufferOutputElements;
+/* static */ constexpr const char* const
+    ParallelInterleaveDatasetOp::kPrefetchInputElements;
+/* static */ constexpr const char* const
     ParallelInterleaveDatasetOp::kNumParallelCalls;
 /* static */ constexpr const char* const ParallelInterleaveDatasetOp::kFunc;
 /* static */ constexpr const char* const
@@ -91,34 +95,64 @@ constexpr char kSizeSuffix[] = ".size";
 constexpr char kInputsSuffix[] = ".inputs";
 constexpr char kIsReadySuffix[] = ".is_ready";
 
-// `kCyclePrefetchFactor * cycle_length` is the number of future cycle elements
-// that will be prefetched ahead of time. The purpose of prefetching future
-// cycle elements is to overlap expensive initialization (e.g. opening of a
-// remote file) with other computation.
-constexpr double kCyclePrefetchFactor = 2.0L;
+constexpr char kParallelInterleaveDatasetV2[] = "ParallelInterleaveDatasetV2";
+constexpr char kParallelInterleaveDatasetV3[] = "ParallelInterleaveDatasetV3";
+constexpr char kParallelInterleaveDatasetV4[] = "ParallelInterleaveDatasetV4";
 
-// `kPerIteratorPrefetchFactor * block_length + 1` is the number of per-iterator
-// results that will be prefetched ahead of time. The `+ 1` is to match the
-// behavior of the original autotune implementation.
-constexpr double kPerIteratorPrefetchFactor = 2.0L;
+// `kCyclePrefetchFactor * cycle_length` is the default number of future cycle
+// elements that will be prefetched ahead of time. The purpose of prefetching
+// future cycle elements is to overlap expensive initialization (e.g. opening of
+// a remote file) with other computation.
+constexpr double kDefaultCyclePrefetchFactor = 2.0L;
+
+// `kPerIteratorPrefetchFactor * block_length + 1` is the defualt number of
+// per-iterator results that will be prefetched ahead of time. The `+ 1` is to
+// match the behavior of the original implementation.
+constexpr double kDefaultPerIteratorPrefetchFactor = 2.0L;
 
 // Period between reporting dataset statistics.
 constexpr int kStatsReportingPeriodMillis = 1000;
+
+namespace {
+int64 ComputeBufferOutputElements(int64 configured_buffer_output_elements,
+                                  int64 block_length) {
+  if (configured_buffer_output_elements != model::kAutotune) {
+    return configured_buffer_output_elements;
+  }
+  return kDefaultPerIteratorPrefetchFactor * block_length + 1;
+}
+
+int64 ComputePrefetchInputElements(int64 configured_prefetch_input_elements,
+                                   int64 cycle_length) {
+  if (configured_prefetch_input_elements != model::kAutotune) {
+    return configured_prefetch_input_elements;
+  }
+  return kDefaultCyclePrefetchFactor * cycle_length;
+}
+
+int64 OpVersionFromOpName(absl::string_view op_name) {
+  if (op_name == kParallelInterleaveDatasetV2) {
+    return 2;
+  } else if (op_name == kParallelInterleaveDatasetV3) {
+    return 3;
+  } else {
+    DCHECK_EQ(op_name, kParallelInterleaveDatasetV4);
+    return 4;
+  }
+}
+}  // namespace
 
 // The motivation for creating an alternative implementation of parallel
 // interleave is to decouple the degree of parallelism from the cycle length.
 // This makes it possible to change the degree of parallelism (e.g. through
 // auto-tuning) without changing the cycle length (which would change the order
 // in which elements are produced).
-//
-// Furthermore, this class favors modularity over extended functionality. In
-// particular, it refrains from implementing configurable buffering of output
-// elements and prefetching of input iterators.
 class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
           std::unique_ptr<CapturedFunction> captured_func, int64 cycle_length,
-          int64 block_length, int64 num_parallel_calls,
+          int64 block_length, int64 buffer_output_elements,
+          int64 prefetch_input_elements, int64 num_parallel_calls,
           DeterminismPolicy deterministic, const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes, int op_version)
       : DatasetBase(DatasetContext(ctx)),
@@ -126,6 +160,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         captured_func_(std::move(captured_func)),
         cycle_length_(cycle_length),
         block_length_(block_length),
+        buffer_output_elements_(
+            ComputeBufferOutputElements(buffer_output_elements, block_length)),
+        prefetch_input_elements_(ComputePrefetchInputElements(
+            prefetch_input_elements, cycle_length)),
         num_parallel_calls_(num_parallel_calls),
         deterministic_(deterministic),
         output_types_(output_types),
@@ -179,19 +217,44 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** output) const override {
+    std::vector<std::pair<size_t, Node*>> inputs;
+    std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>> list_inputs;
+    int input_index = 0;
+
     Node* input_node;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
-    Node* cycle_length_node;
-    TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
-    Node* block_length_node;
-    TF_RETURN_IF_ERROR(b->AddScalar(block_length_, &block_length_node));
-    Node* num_parallel_calls_node;
-    TF_RETURN_IF_ERROR(
-        b->AddScalar(num_parallel_calls_, &num_parallel_calls_node));
+    inputs.emplace_back(input_index++, input_node);
+
     std::vector<Node*> other_arguments;
     DataTypeVector other_arguments_types;
     TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
                                                   &other_arguments_types));
+    list_inputs.emplace_back(input_index++, other_arguments);
+
+    Node* cycle_length_node;
+    TF_RETURN_IF_ERROR(b->AddScalar(cycle_length_, &cycle_length_node));
+    inputs.emplace_back(input_index++, cycle_length_node);
+
+    Node* block_length_node;
+    TF_RETURN_IF_ERROR(b->AddScalar(block_length_, &block_length_node));
+    inputs.emplace_back(input_index++, block_length_node);
+
+    if (op_version_ >= 4) {
+      Node* buffer_output_elements_node;
+      TF_RETURN_IF_ERROR(
+          b->AddScalar(buffer_output_elements_, &buffer_output_elements_node));
+      inputs.emplace_back(input_index++, buffer_output_elements_node);
+
+      Node* prefetch_input_elements_node;
+      TF_RETURN_IF_ERROR(b->AddScalar(prefetch_input_elements_,
+                                      &prefetch_input_elements_node));
+      inputs.emplace_back(input_index++, prefetch_input_elements_node);
+    }
+
+    Node* num_parallel_calls_node;
+    TF_RETURN_IF_ERROR(
+        b->AddScalar(num_parallel_calls_, &num_parallel_calls_node));
+    inputs.emplace_back(input_index++, num_parallel_calls_node);
 
     std::vector<std::pair<StringPiece, AttrValue>> attrs;
     AttrValue f;
@@ -207,18 +270,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       b->BuildAttrValue(deterministic_.IsNondeterministic(), &sloppy_attr);
       attrs.emplace_back(kSloppy, sloppy_attr);
     }
-    if (op_version_ == 3) {
+    if (op_version_ >= 3) {
       AttrValue deterministic_attr;
       b->BuildAttrValue(deterministic_.String(), &deterministic_attr);
       attrs.emplace_back(kDeterministic, deterministic_attr);
     }
 
-    TF_RETURN_IF_ERROR(b->AddDataset(this,
-                                     {{0, input_node},
-                                      {2, cycle_length_node},
-                                      {3, block_length_node},
-                                      {4, num_parallel_calls_node}},
-                                     {{1, other_arguments}}, attrs, output));
+    TF_RETURN_IF_ERROR(b->AddDataset(this, inputs, list_inputs, attrs, output));
     return Status::OK();
   }
 
@@ -227,12 +285,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
    public:
     ParallelInterleaveIterator(const Params& params, bool deterministic)
         : DatasetIterator<Dataset>(params),
-          per_iterator_prefetch_(
-              static_cast<int>(params.dataset->block_length_ *
-                               kPerIteratorPrefetchFactor) +
-              1),
-          future_elements_prefetch_(static_cast<int>(
-              params.dataset->cycle_length_ * kCyclePrefetchFactor)),
           mu_(std::make_shared<mutex>()),
           num_parallel_calls_cond_var_(std::make_shared<condition_variable>()),
           num_parallel_calls_(std::make_shared<model::SharedState>(
@@ -257,7 +309,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // collection, `cycle_length_` threads for the current workers, and
       // `future_elements_prefetch_` for the future workers.
       int max_current_workers = dataset()->cycle_length_;
-      int future_workers = future_elements_prefetch_ + dataset()->cycle_length_;
+      int future_workers =
+          dataset()->prefetch_input_elements_ + dataset()->cycle_length_;
       int num_threads = 1 + max_current_workers + future_workers;
       if (ctx->stats_aggregator()) {
         num_threads++;
@@ -656,7 +709,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // `cycle_length_` future workers to guarantee that whenever
       // `future_element_.size() < future_elements_prefetch_`, there will be a
       // future worker available to create a new future element.
-      int future_workers = future_elements_prefetch_ + dataset()->cycle_length_;
+      int future_workers =
+          dataset()->prefetch_input_elements_ + dataset()->cycle_length_;
       {
         mutex_lock l(*mu_);
         initial_current_workers = num_parallel_calls_->value;
@@ -800,9 +854,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
               current_workers_cond_var_.notify_one();
             }
           }
-          while (!cancelled_ &&
-                 (future_elements_.size() >= future_elements_prefetch_ ||
-                  wait_for_checkpoint_)) {
+          while (!cancelled_ && (future_elements_.size() >=
+                                     dataset()->prefetch_input_elements_ ||
+                                 wait_for_checkpoint_)) {
             WaitWorkerThread(&future_workers_cond_var_, &l);
           }
           if (cancelled_) {
@@ -860,7 +914,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         mutex_lock l(*mu_);
         element->results.push_back(std::move(result));
         NotifyElementUpdate(element);
-        if (element->results.size() == per_iterator_prefetch_) {
+        if (element->results.size() == dataset()->buffer_output_elements_) {
           break;
         }
       }
@@ -954,7 +1008,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         return true;
       }
       return element->iterator &&
-             element->results.size() < per_iterator_prefetch_;
+             element->results.size() < dataset()->buffer_output_elements_;
     }
 
     inline void IncrementCurrentWorkers() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -1311,9 +1365,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // its elements are null.
     int64 last_valid_current_element_ GUARDED_BY(mu_) = -1;
 
-    const int per_iterator_prefetch_;
-    const int future_elements_prefetch_;
-
     // Identifies whether the current_elements_ vector has been initialized.
     bool initial_elements_created_ GUARDED_BY(mu_) = false;
 
@@ -1421,6 +1472,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   const std::unique_ptr<CapturedFunction> captured_func_;
   const int64 cycle_length_;
   const int64 block_length_;
+  const int64 buffer_output_elements_;
+  const int64 prefetch_input_elements_;
   const int64 num_parallel_calls_;
   const DeterminismPolicy deterministic_;
   const DataTypeVector output_types_;
@@ -1431,7 +1484,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
 ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(
     OpKernelConstruction* ctx)
-    : UnaryDatasetOpKernel(ctx), op_version_(ctx->HasAttr(kSloppy) ? 2 : 3) {
+    : UnaryDatasetOpKernel(ctx),
+      op_version_(OpVersionFromOpName(ctx->def().op())) {
   FunctionMetadata::Params params;
   params.is_multi_device_function = true;
   OP_REQUIRES_OK(ctx,
@@ -1448,7 +1502,7 @@ ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(
       deterministic_ = DeterminismPolicy(DeterminismPolicy::Type::kDefault);
     }
   }
-  if (op_version_ == 3) {
+  if (op_version_ >= 3) {
     std::string deterministic;
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kDeterministic, &deterministic));
     OP_REQUIRES_OK(
@@ -1472,6 +1526,26 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES(ctx, block_length > 0,
               errors::InvalidArgument("`block_length` must be > 0"));
 
+  int64 buffer_output_elements = model::kAutotune;
+  int64 prefetch_input_elements = model::kAutotune;
+  if (op_version_ >= 4) {
+    OP_REQUIRES(ctx,
+                buffer_output_elements == model::kAutotune ||
+                    buffer_output_elements >= 0,
+                errors::InvalidArgument("`buffer_output_elements` must be ",
+                                        model::kAutotune, " or >= 0 but is ",
+                                        buffer_output_elements));
+
+    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kPrefetchInputElements,
+                                            &prefetch_input_elements));
+    OP_REQUIRES(ctx,
+                prefetch_input_elements == model::kAutotune ||
+                    prefetch_input_elements >= 0,
+                errors::InvalidArgument("`prefetch_input_elements` must be ",
+                                        model::kAutotune, " or >= 0 but is ",
+                                        prefetch_input_elements));
+  }
+
   int64 num_parallel_calls = 0;
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument(ctx, kNumParallelCalls, &num_parallel_calls));
@@ -1492,18 +1566,22 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
     metrics::RecordTFDataAutotune(kDatasetType);
   }
 
-  *output = new Dataset(ctx, input, std::move(captured_func), cycle_length,
-                        block_length, num_parallel_calls, deterministic_,
-                        output_types_, output_shapes_, op_version_);
+  *output = new Dataset(
+      ctx, input, std::move(captured_func), cycle_length, block_length,
+      buffer_output_elements, prefetch_input_elements, num_parallel_calls,
+      deterministic_, output_types_, output_shapes_, op_version_);
 }
 
 namespace {
-REGISTER_KERNEL_BUILDER(Name("ParallelInterleaveDatasetV2").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name(kParallelInterleaveDatasetV2).Device(DEVICE_CPU),
                         ParallelInterleaveDatasetOp);
-REGISTER_KERNEL_BUILDER(Name("ParallelInterleaveDatasetV3").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name(kParallelInterleaveDatasetV3).Device(DEVICE_CPU),
                         ParallelInterleaveDatasetOp);
-REGISTER_INPUT_COLOCATION_EXEMPTION("ParallelInterleaveDatasetV2");
-REGISTER_INPUT_COLOCATION_EXEMPTION("ParallelInterleaveDatasetV3");
+REGISTER_KERNEL_BUILDER(Name(kParallelInterleaveDatasetV4).Device(DEVICE_CPU),
+                        ParallelInterleaveDatasetOp);
+REGISTER_INPUT_COLOCATION_EXEMPTION(kParallelInterleaveDatasetV2);
+REGISTER_INPUT_COLOCATION_EXEMPTION(kParallelInterleaveDatasetV3);
+REGISTER_INPUT_COLOCATION_EXEMPTION(kParallelInterleaveDatasetV4);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
