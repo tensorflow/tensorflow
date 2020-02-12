@@ -63,7 +63,7 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
 
   When 'TF_CONFIG' environment variable is set, it parses cluster_spec,
   task_type and task_id from 'TF_CONFIG' and turns into a multi-worker strategy
-  which mirrores models on GPUs of all machines in a cluster. In the current
+  which mirrored models on GPUs of all machines in a cluster. In the current
   implementation, it uses all GPUs in a cluster and it assumes all workers have
   the same number of GPUs.
 
@@ -111,7 +111,7 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
 
   @classmethod
   def _from_local_devices(cls, devices):
-    """A convenience method to create an obejct with a list of devices."""
+    """A convenience method to create an object with a list of devices."""
     obj = cls()
     obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
     return obj

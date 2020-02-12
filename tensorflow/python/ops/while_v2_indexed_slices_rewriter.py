@@ -114,7 +114,7 @@ def _rewrite_input_as_indexed_slices(body_grad_graph, grad_output_slices,
   Args:
     body_grad_graph: _WhileBodyGradFuncGraph.
     grad_output_slices: IndexedSlices output of body_grad_graph.
-    forward_input: the corresonding Tensor input to the forward loop.
+    forward_input: the corresponding Tensor input to the forward loop.
     loop_vars: list of Tensors. The inputs to body_grad_graph.
 
   Returns:
@@ -161,7 +161,7 @@ def _create_grad_indexed_slices_init(grad_output_slices, forward_input):
   Args:
     grad_output_slices: IndexedSlices. The corresponding while grad function
       output.
-    forward_input: Tensor. The corresonding input to the forward while op.
+    forward_input: Tensor. The corresponding input to the forward while op.
 
   Returns:
     Zeros IndexedSlices, created in current Graph.
@@ -202,7 +202,7 @@ def _create_grad_indexed_slices_init(grad_output_slices, forward_input):
 
 
 def _rewrite_grad_indexed_slices_output(old_output_slices, new_input_slices):
-  """Creates a new verson of old_output_slices with new_input_slices as input.
+  """Creates a new version of old_output_slices with new_input_slices as input.
 
   This method assumes that old_output_slices.{values,indices} are produced by
   concatenating the incoming gradient Tensor input with the IndexedSlices
@@ -252,7 +252,7 @@ def _update_indexed_slices_param(graph, loop_vars, init_slices, input_slices,
     input_slices: the new IndexedSlices in graph that should be fed by
       init_slices.
     output_slices: the new IndexedSlices in graph that should be the
-      corresonding output to input_slices.
+      corresponding output to input_slices.
     old_output_slices: the IndexedSlices in graph that are currently
       being output.
 

@@ -290,7 +290,7 @@ class _DefinedFunction(object):
     device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
     # pylint: enable=protected-access
 
-    # Get the innermost device if possbile.
+    # Get the innermost device if possible.
     self._caller_device = device_funcs[-1] if device_funcs else None
 
     # Cached OpDef for this function. When C API is enabled, this is

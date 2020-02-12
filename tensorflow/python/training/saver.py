@@ -1655,7 +1655,7 @@ def saver_from_object_based_checkpoint(checkpoint_path,
       `var_list` will be set to all saveable objects.
     builder: a `BaseSaverBuilder` instance. If `None`, a new `BulkSaverBuilder`
       will be created.
-    names_to_keys: dict mapping string tensor names to checkpooint keys. If
+    names_to_keys: dict mapping string tensor names to checkpoint keys. If
       `None`, this dict will be generated from the checkpoint file.
     cached_saver: Cached `Saver` object with remapped variables.
 

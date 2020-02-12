@@ -1692,7 +1692,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
         # If the padding isn't a scalar, then require that all values in the
         # padding match each item in the tensor.  After this block of code,
         # `has_default.shape = tensor.shape[:2]`.  (Unfortunately, we can't just
-        # use reduce_all for both cases, becaue when you pass an empty `axis`
+        # use reduce_all for both cases, because when you pass an empty `axis`
         # list to reduce_all, it reduces all axes; but we want it to reduce no
         # axes -- i.e., to be a no-op.)
         tensor_rank = array_ops.rank(tensor)

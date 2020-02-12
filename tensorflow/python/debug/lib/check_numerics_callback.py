@@ -426,7 +426,7 @@ def disable_check_numerics():
   """Disable the eager/graph unified numerics checking mechanism.
 
   This method can be used after a call to `tf.debugging.enable_check_numerics()`
-  to disable the numerics-checking mechanism that catches inifnity and NaN
+  to disable the numerics-checking mechanism that catches infinity and NaN
   values output by ops executed eagerly or in tf.function-compiled graphs.
 
   This method is idempotent. Calling it multiple times has the same effect

@@ -370,7 +370,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
                           [t.shape for t in new_outputs])
     _copy_handle_data(new_outputs, op.outputs[orig_num_params:])
 
-  # Do not ingore grads wrt extra outputs when computing higher order
+  # Do not ignore grads wrt extra outputs when computing higher order
   # derivatives.
   while_op._set_attr("_num_original_outputs",
                      attr_value_pb2.AttrValue(i=len(while_op.outputs)))

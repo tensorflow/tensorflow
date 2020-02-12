@@ -296,7 +296,7 @@ def set_seed(seed):
   ```
 
   The reason we get 'A2' instead 'A1' on the second call of `tf.random.uniform`
-  above is because the same `tf.random.uniform` kernel (i.e. internel
+  above is because the same `tf.random.uniform` kernel (i.e. internal
   representation) is used by TensorFlow for all calls of it with the same
   arguments, and the kernel maintains an internal counter which is incremented
   every time it is executed, generating different results.

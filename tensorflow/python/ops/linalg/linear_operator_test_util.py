@@ -1014,7 +1014,7 @@ def random_normal_correlated_columns(shape,
 
   If `M < N`, `A` is a random `M x N` [batch] matrix with iid Gaussian entries.
 
-  If `M >= N`, then the colums of `A` will be made almost dependent as follows:
+  If `M >= N`, then the columns of `A` will be made almost dependent as follows:
 
   ```
   L = random normal N x N-1 matrix, mean = 0, stddev = 1 / sqrt(N - 1)

@@ -693,7 +693,7 @@ class OptimizerV2(trackable.Trackable):
 
   @abc.abstractmethod
   def get_config(self):
-    """Returns the config of the optimimizer.
+    """Returns the config of the optimizer.
 
     An optimizer config is a Python dictionary (serializable)
     containing the configuration of an optimizer.
@@ -1149,7 +1149,7 @@ class RestoredOptimizer(OptimizerV2):
   def get_config(self):
     # TODO(allenl): Save and restore the Optimizer's config
     raise NotImplementedError(
-        "Restoring functional Optimzers from SavedModels is not currently "
+        "Restoring functional Optimizers from SavedModels is not currently "
         "supported. Please file a feature request if this limitation bothers "
         "you.")
 

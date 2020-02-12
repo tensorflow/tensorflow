@@ -227,7 +227,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     loaded = keras_load.load(saved_model_dir)
     input_arr = array_ops.ones((4, 3))
 
-    # Run the layer, and use the keras backend learing phase
+    # Run the layer, and use the keras backend learning phase
     keras.backend.set_learning_phase(0)
     self.assertAllEqual(input_arr, loaded(input_arr))
     keras.backend.set_learning_phase(1)

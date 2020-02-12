@@ -589,7 +589,7 @@ class CheckpointManager(object):
     self._maybe_delete = collections.OrderedDict()
     if recovered_state is None:
       self._latest_checkpoint = None
-      # Set the clock back slightly to avoid race conditions when quckly
+      # Set the clock back slightly to avoid race conditions when quickly
       # re-creating a CheckpointManager.
       self._last_preserved_timestamp = current_clock - 1.
     else:

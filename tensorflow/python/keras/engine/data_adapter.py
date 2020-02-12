@@ -877,7 +877,7 @@ class GeneratorDataAdapter(DataAdapter):
     return peek, itertools.chain([peek], x)
 
   def _make_callable(self, x, workers, use_multiprocessing, max_queue_size):
-    """Create a callable, and possilbly include an Enqueuer."""
+    """Create a callable, and possibly include an Enqueuer."""
     if workers > 1 or (workers > 0 and use_multiprocessing):
       if use_multiprocessing:
         logging.warning(
@@ -1094,7 +1094,7 @@ def is_none_or_empty(inputs):
 
 
 def broadcast_sample_weight_modes(target_structure, sample_weight_modes):
-  """Match sample_weigt_modes structure with output structure."""
+  """Match sample_weight_modes structure with output structure."""
   if target_structure is None or not nest.flatten(target_structure):
     return sample_weight_modes
 

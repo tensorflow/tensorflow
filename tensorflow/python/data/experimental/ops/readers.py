@@ -440,7 +440,7 @@ def make_csv_dataset_v2(
     if compression_type is not None:
       compression_type_value = tensor_util.constant_value(compression_type)
       if compression_type_value is None:
-        raise ValueError("Received unkown compression_type")
+        raise ValueError("Received unknown compression_type")
       if compression_type_value == "GZIP":
         file_io_fn = lambda filename: gzip.open(filename, "rt")
       elif compression_type_value == "ZLIB":

@@ -2526,7 +2526,7 @@ def get_structure(dataset_or_iterator):
 
   Returns:
     A nested structure of `tf.TypeSpec` objects matching the structure of an
-    element of `dataset_or_iterator` and spacifying the type of individal
+    element of `dataset_or_iterator` and specifying the type of individual
     components.
 
   Raises:
@@ -3013,7 +3013,7 @@ class StructuredFunctionWrapper(object):
       use_legacy_function: (Optional.) A boolean that determines whether the
         function be created using `tensorflow.python.eager.function.defun`
         (default behavior) or `tensorflow.python.framework.function.Defun`
-        (legacy beheavior).
+        (legacy behavior).
       defun_kwargs: (Optional.) A dictionary mapping string argument names to
         values. If supplied, will be passed to `function` as keyword arguments.
 
@@ -3049,7 +3049,7 @@ class StructuredFunctionWrapper(object):
     # There is no graph to add in eager mode.
     add_to_graph &= not context.executing_eagerly()
     # There are some lifetime issues when a legacy function is not added to a
-    # out-living graph. It's already deprecated so de-priotizing the fix.
+    # out-living graph. It's already deprecated so de-prioritizing the fix.
     add_to_graph |= use_legacy_function
 
     if defun_kwargs is None:

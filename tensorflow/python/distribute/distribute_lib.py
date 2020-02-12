@@ -1998,7 +1998,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
         - last_step_outputs: A dictionary containing tensors set using
         `context.set_last_step_output`. Evaluating this returns the value of
         the tensors after the last iteration.
-        - non_tensor_outputs: A dictionatry containing anything that was set by
+        - non_tensor_outputs: A dictionary containing anything that was set by
           `fn` by calling `context.set_non_tensor_output`.
     """
     _require_cross_replica_or_default_context_extended(self)

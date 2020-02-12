@@ -96,7 +96,7 @@ def forward_compatible(year, month, day):
     if compat.forward_compatible(year, month, day):
       # Can use the awesome new implementation.
       return gen_math_ops.my_new_awesome_add(inputs, name)
-    # To maintain forward compatibiltiy, use the old implementation.
+    # To maintain forward compatibility, use the old implementation.
     return gen_math_ops.add(inputs, name)
   ```
 

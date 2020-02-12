@@ -507,7 +507,7 @@ def ragged_assert_compatible_and_get_flat_values(values, mask=None):
       values = [values]
       to_be_stripped = True
 
-    # NOTE: we leave the flat_values compatiblity to
+    # NOTE: we leave the flat_values compatibility to
     # tf.TensorShape `assert_is_compatible_with`
     # check if both dynamic dimensions are equal and then use the flat_values.
     nested_row_split_list = [rt.nested_row_splits for rt in values]
