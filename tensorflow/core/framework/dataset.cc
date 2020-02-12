@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/resource.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -570,6 +571,8 @@ void BackgroundWorker::Schedule(std::function<void()> work_item) {
 }
 
 void BackgroundWorker::WorkerLoop() {
+  tensorflow::ResourceTagger tag =
+      tensorflow::ResourceTagger(kTFDataResourceTag, "Background");
   while (true) {
     std::function<void()> work_item = nullptr;
     {
@@ -606,6 +609,8 @@ namespace {
 class RunnerImpl : public Runner {
  public:
   void Run(const std::function<void()>& f) override {
+    tensorflow::ResourceTagger tag =
+        tensorflow::ResourceTagger(kTFDataResourceTag, "Runner");
     f();
 
     // NOTE: We invoke a virtual function to prevent `f` being tail-called, and

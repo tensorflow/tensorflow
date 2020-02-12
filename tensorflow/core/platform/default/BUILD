@@ -114,6 +114,7 @@ cc_library(
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:resource",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
@@ -298,6 +299,18 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "resource",
+    hdrs = ["//tensorflow/core/platform:resource.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    textual_hdrs = ["resource.h"],
+    deps = ["//tensorflow/core/platform"],
 )
 
 cc_library(
@@ -501,6 +514,7 @@ filegroup(
         "port.cc",
         "posix_file_system.cc",
         "posix_file_system.h",
+        "resource.h",
         "stacktrace.h",
         "tracing_impl.h",
     ],

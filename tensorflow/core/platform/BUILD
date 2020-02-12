@@ -86,6 +86,7 @@ exports_files(
         "net.h",
         "numa.h",
         "resource_loader.h",
+        "resource.h",
         "snappy.h",
         "stacktrace_handler.h",
         "subprocess.h",
@@ -510,6 +511,14 @@ cc_library(
         ":platform",
         "@com_googlesource_code_re2//:re2",
     ],
+)
+
+cc_library(
+    name = "resource",
+    hdrs = ["resource.h"],
+    deps = [
+        ":platform",
+    ] + tf_platform_deps("resource"),
 )
 
 cc_library(
@@ -1181,6 +1190,7 @@ filegroup(
         "profile_utils/cpu_utils.h",
         "profile_utils/i_cpu_utils_helper.h",
         "protobuf.h",
+        "resource.h",
         "stacktrace.h",
         "stacktrace_handler.h",
         "status.h",
@@ -1397,6 +1407,7 @@ filegroup(
         "raw_coding.h",
         "refcount.h",
         "regexp.h",
+        "resource.h",
         "scanner.cc",
         "scanner.h",
         "setround.cc",
