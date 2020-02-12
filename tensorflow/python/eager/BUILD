@@ -226,7 +226,10 @@ py_library(
     name = "profiler_client",
     srcs = ["profiler_client.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/core/profiler:internal",
+    ],
     deps = [
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:pywrap_tf_session",
@@ -240,7 +243,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
-    visibility = ["//tensorflow:internal"],
     deps = [
         ":profiler_client",
         ":test",
