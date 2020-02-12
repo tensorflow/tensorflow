@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 
 namespace mlir {
-namespace TFDevice {
 
 namespace {
 
@@ -837,8 +836,6 @@ LogicalResult HoistForFunctionalControlFlow(Block* block, ModuleOp module) {
   return success();
 }
 
-}  // namespace
-
 // Lifts resource operation from tf_device.launch_func ops nested in `op`
 // outside. Returns failure if there are remaining resource-type values that can
 // not be lifted.
@@ -858,13 +855,55 @@ void ResourceOpLiftingPass::runOnModule() {
   }
 }
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceOpLiftingPass() {
-  return std::make_unique<ResourceOpLiftingPass>();
+struct ResourceOpLiftingForMainFunctionPass
+    : public ModulePass<ResourceOpLiftingForMainFunctionPass> {
+  void runOnModule() override;
+};
+
+void ResourceOpLiftingForMainFunctionPass::runOnModule() {
+  ModuleOp module = getModule();
+  FuncOp main_func = module.lookupSymbol<FuncOp>("main");
+  if (!main_func) {
+    return;
+  }
+
+  if (failed(TF::ResourceLiftingForFunctionalControlFlow(main_func))) {
+    return signalPassFailure();
+  }
 }
+
+static PassRegistration<ResourceOpLiftingForMainFunctionPass>
+    lift_main_func_pass(
+        "tf-resource-op-lifting-for-main-function",
+        "Lifting resource operations out of control flow statements for the "
+        "main function");
 
 static PassRegistration<ResourceOpLiftingPass> pass(
     "tf-resource-op-lifting",
     "Lifting resource operations out of device computation");
 
+}  // namespace
+
+namespace TFDevice {
+std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceOpLiftingPass() {
+  return std::make_unique<ResourceOpLiftingPass>();
+}
 }  // namespace TFDevice
+
+namespace TF {
+LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
+  // This routine should only be called when control flow operations are still
+  // represented with TF IfOp and WhileOp operations. In this case, there should
+  // be only one basic blocks in the MLIR representation.
+  if (!has_single_element(function.getBlocks())) {
+    return function.emitError()
+           << "expect the function to have 1 block while it has "
+           << function.getBlocks().size();
+  }
+
+  return HoistForFunctionalControlFlow(&function.front(),
+                                       cast<ModuleOp>(function.getParentOp()));
+}
+}  // namespace TF
+
 }  // namespace mlir

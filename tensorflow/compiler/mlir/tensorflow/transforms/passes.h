@@ -83,6 +83,9 @@ CreateMarkFunctionVisibilityUsingEntryFunctionSpecificationPass();
 std::unique_ptr<OpPassBase<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
     llvm::StringRef default_device);
 
+// Performs resource lifting on the function body to hoist resource variable
+// accesses outside all control flow statements.
+LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function);
 }  // namespace TF
 
 namespace TFControlFlow {
