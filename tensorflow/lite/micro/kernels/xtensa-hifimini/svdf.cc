@@ -309,8 +309,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int memory_size = weights_time->dims->data[1];
 
   if (input->type != kTfLiteInt8) {
-    context->ReportError(context,
-                         "HiFi Mini kernel SVDF only supports full integer.");
+    TF_LITE_KERNEL_LOG(context,
+                       "HiFi Mini kernel SVDF only supports full integer.");
     return kTfLiteError;
   }
 
