@@ -1933,7 +1933,6 @@ cc_library(
         "//tensorflow/core/platform:prefetch",
         "//tensorflow/core/platform:protobuf_internal",
         "//tensorflow/core/platform:regexp",
-        "//tensorflow/core/platform:resource",
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:stacktrace",

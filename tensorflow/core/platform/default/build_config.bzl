@@ -550,7 +550,6 @@ def tf_additional_lib_hdrs():
         "//tensorflow/core/platform/default:mutex.h",
         "//tensorflow/core/platform/default:mutex_data.h",
         "//tensorflow/core/platform/default:notification.h",
-        "//tensorflow/core/platform/default:resource.h",
         "//tensorflow/core/platform/default:stacktrace.h",
         "//tensorflow/core/platform/default:strong_hash.h",
         "//tensorflow/core/platform/default:test_benchmark.h",
