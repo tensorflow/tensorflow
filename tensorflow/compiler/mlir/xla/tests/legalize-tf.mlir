@@ -1228,6 +1228,14 @@ func @matmul_unranked(%a: tensor<*xf32>, %b: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// Verify SparseMatMul is legalized to dot.
+// CHECK-LABEL: test_sparse_mat_mul
+func @test_sparse_mat_mul(%arg0: tensor<3x4xf32>, %arg1: tensor<4x5xf32>) -> tensor<3x5xf32> {
+  // CHECK: "xla_hlo.dot"
+  %0 = "tf.SparseMatMul"(%arg0, %arg1) {a_is_sparse = true, b_is_sparse = false, transpose_a = false, transpose_b = false} : (tensor<3x4xf32>, tensor<4x5xf32>) -> tensor<3x5xf32>
+  return %0: tensor<3x5xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // MaxPool op legalizations.
 //===----------------------------------------------------------------------===//

@@ -345,6 +345,18 @@ def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
           (TF_TransposeOp $b, (TF_ConstOp (Get2DTransposePerm $transpose_b))),
           /*precision_config=*/(NullArrayAttr))>;
 
+
+//===----------------------------------------------------------------------===//
+// SparseMatMul op patterns.
+//===----------------------------------------------------------------------===//
+
+// Ignores the sparseness hints and translates tf.SparseMatMul to tf.MatMul
+// until we will have an implementation that can use the information.
+def SparseMatMulToMatMul : Pat<(TF_SparseMatMulOp $a, $b, $a_sparse, $b_sparse,
+                                $transpose_a, $transpose_b),
+                               (TF_MatMulOp $a, $b, $transpose_a,
+                                $transpose_b)>;
+
 //===----------------------------------------------------------------------===//
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
