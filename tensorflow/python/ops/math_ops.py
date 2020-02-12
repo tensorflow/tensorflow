@@ -4411,6 +4411,9 @@ def polyval(coeffs, x, name=None):
   Equivalent to numpy.polyval.
   @end_compatibility
   """
+  if not isinstance(coeffs, list):
+    raise ValueError("Argument coeffs must be list type "
+                     "found {}.".format(type(coeffs)))
 
   with ops.name_scope(name, "polyval", nest.flatten(coeffs) + [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
