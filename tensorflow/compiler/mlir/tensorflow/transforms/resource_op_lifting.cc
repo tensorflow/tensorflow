@@ -803,7 +803,7 @@ LogicalResult HanldeIfOP(TF::IfOp if_op, FuncOp then_branch,
   // Replace uses.
   for (int64_t i = 0; i < old_to_new_output_indices.size(); ++i) {
     if (old_to_new_output_indices[i] >= 0) {
-      new_if.getResult(i).replaceAllUsesWith(
+      if_op.getResult(i).replaceAllUsesWith(
           new_if.getResult(old_to_new_output_indices[i]));
     }
   }
