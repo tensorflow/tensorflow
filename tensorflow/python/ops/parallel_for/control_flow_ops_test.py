@@ -50,6 +50,7 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
@@ -634,6 +635,41 @@ class RandomTest(PForTestCase):
       return random_ops.categorical(logits_i, num_samples=3)
 
     self._test_loop_fn(loop_fn, 5)
+
+
+class StatelessRandomTest(PForTestCase):
+
+  # This test currently only tests that the vectorized and non-vectorized
+  # outputs have same shapes. This is needed since under XLA compilation,
+  # stateless random numbers can generate different random numbers.
+  # TODO(agarwal): switch to checking for actual values matching once
+  # b/149402339 is resolved.
+  def run_and_assert_equal(self, targets1, targets2):
+    outputs = self._run_targets(targets1, targets2)
+    n = len(outputs) // 2
+    for i in range(n):
+      self.assertAllEqual(outputs[i].shape, outputs[i + n].shape)
+
+  # TODO(agarwal): add tests for other random functions
+  def test_multinomial(self):
+    seeds = [[1, 2], [3, 4]]
+    logits = random_ops.random_uniform([2, 3, 4])
+
+    def loop_fn(i):
+      logits_0 = array_ops.gather(logits, 0)
+      logits_i = array_ops.gather(logits, i)
+      seeds_0 = array_ops.gather(seeds, 0)
+      seeds_i = array_ops.gather(seeds, i)
+      return (stateless_random_ops.stateless_categorical(
+          logits=logits_i, num_samples=3, seed=seeds_i),
+              stateless_random_ops.stateless_categorical(
+                  logits=logits_i, num_samples=3, seed=seeds_0),
+              stateless_random_ops.stateless_categorical(
+                  logits=logits_0, num_samples=3, seed=seeds_i),
+              stateless_random_ops.stateless_categorical(
+                  logits=logits_0, num_samples=3, seed=seeds_0))
+
+    self._test_loop_fn(loop_fn, 2)
 
 
 class LoggingTest(PForTestCase):
