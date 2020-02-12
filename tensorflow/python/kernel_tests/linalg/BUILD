@@ -260,6 +260,7 @@ cuda_py_test(
     srcs = ["linear_operator_full_matrix_test.py"],
     shard_count = 5,
     tags = [
+        "no_oss",  # b/149346156
         "noasan",
         "optonly",
     ],
