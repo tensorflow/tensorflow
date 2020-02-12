@@ -188,6 +188,12 @@ config_setting(
 )
 
 config_setting(
+    name = "fuchsia",
+    values = {"cpu": "fuchsia"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "ios_x86_64",
     values = {
         "crosstool_top": "//tools/osx/crosstool:crosstool",
