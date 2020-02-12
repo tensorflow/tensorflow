@@ -2253,17 +2253,8 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinDepthToSpace: {
       const TfLiteType input_type =
           context->tensors[node->inputs->data[0]].type;
-      if (version <= 1 &&
-          (input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
-           input_type == kTfLiteInt8)) {
-        return [](const NNAPIOpMappingArgs& mapping_args)
-                   -> ANeuralNetworksOperationType {
-          auto builtin = reinterpret_cast<TfLiteDepthToSpaceParams*>(
-              mapping_args.node->builtin_data);
-          mapping_args.builder->AddScalarInt32Operand(builtin->block_size);
-          return ANEURALNETWORKS_DEPTH_TO_SPACE;
-        };
-      }
+      EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteUInt8,
+                           kTfLiteInt8);
     } break;
     case kTfLiteBuiltinReduceProd:
     case kTfLiteBuiltinSum: {
@@ -3008,6 +2999,12 @@ TfLiteStatus NNAPIDelegateKernel::Map(
           mapping_args.node->builtin_data);
       mapping_args.builder->AddScalarBoolOperand(builtin->keep_dims);
       *nn_op_type = ANEURALNETWORKS_REDUCE_MAX;
+    } break;
+    case kTfLiteBuiltinDepthToSpace: {
+      auto builtin = reinterpret_cast<TfLiteDepthToSpaceParams*>(
+          mapping_args.node->builtin_data);
+      mapping_args.builder->AddScalarInt32Operand(builtin->block_size);
+      *nn_op_type = ANEURALNETWORKS_DEPTH_TO_SPACE;
     } break;
     case kTfLiteBuiltinReduceProd: {
       auto builtin = reinterpret_cast<TfLiteReducerParams*>(
