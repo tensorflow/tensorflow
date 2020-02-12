@@ -1,9 +1,10 @@
---------------------------------------------------------------------------------
+---
 
-name: Performance Issue about: Use this template for reporting a performance
-issue. labels: 'type:performance'
+name: Performance Issue 
+about: Use this template for reporting a performance issue. 
+labels: 'type:performance'
 
---------------------------------------------------------------------------------
+---
 
 <em>Please make sure that this is an issue related to performance of TensorFlow.
 As per our
