@@ -1877,7 +1877,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         };
         nodestats::SetOpStart(stats);
         {
-          profiler::TraceMe activity(
+          profiler::AnnotatedTraceMe activity(
               [&] {
                 return op_kernel->TraceString(
                     &state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
