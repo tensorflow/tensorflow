@@ -61,13 +61,10 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
   context_.fwd_pd.reset(
       new pooling_forward::primitive_desc(*context_.fwd_desc, cpu_engine_));
 
-#ifdef ENABLE_MKLDNN_V1
-  // Store expected primitive format.
-  context_.dst_fmt = MEMORY_FORMAT::any;
-#else
+#ifndef ENABLE_MKLDNN_V1
   context_.dst_fmt = static_cast<MEMORY_FORMAT>(
       context_.fwd_pd.get()->PRIMITIVE_DESC_DST.desc().data.format);
-#endif
+#endif // ENABLE_MKLDNN_V1
 
   // Create MKL-DNN internal memory object with dummy data.
   context_.src_mem.reset(new MEMORY_CONSTRUCTOR(
@@ -109,7 +106,7 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
 #else
     context_.fwd.reset(new pooling_forward(*context_.fwd_pd, *context_.src_mem,
                                            *context_.dst_mem));
-#endif //ENABLE_MKLDNN_V1
+#endif // ENABLE_MKLDNN_V1
   }
 
   context_.fwd_primitives.push_back(*context_.fwd);
@@ -129,6 +126,7 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
   }
 
 #ifdef ENABLE_MKLDNN_V1
+  //ExecuteFwdPrimitives(context_);
   DCHECK_EQ(context_.fwd_primitives.size(), context_.net_args.size());
   for (size_t i = 0; i < context_.fwd_primitives.size(); ++i) {
     context_.fwd_primitives.at(i).execute(*context_.fwd_stream,
@@ -136,7 +134,7 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
   }
 #else
   context_.fwd_stream->submit(context_.fwd_primitives);
-#endif  // ENABLE_MKLDNN_V1
+#endif // ENABLE_MKLDNN_V1
 
   // Set back data handle.
   context_.src_mem->set_data_handle(DummyData);
@@ -189,7 +187,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   context_.diff_src_fmt = static_cast<MEMORY_FORMAT>(
       context_.bwd_pd.get()->PRIMITIVE_DESC_DIFF_SRC.desc().data.format);
   context_.diff_dst_fmt = bwdParams.src_format;
-#endif
+#endif // ENABLE_MKLDNN_V1
 
 #ifdef ENABLE_MKLDNN_V1
   // Create MKL-DNN internal memory object with dummy data.
@@ -204,7 +202,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
       {{{bwdParams.dst_dims}, MklDnnType<T>(), context_.diff_dst_fmt},
        cpu_engine_},
       DummyData));
-#endif
+#endif // ENABLE_MKLDNN_V1
 
   // For max pooling, need to return workspace for backward computing.
   if (bwdParams.alg_kind == ALGORITHM::pooling_max) {
@@ -228,7 +226,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
     context_.bwd.reset(
         new pooling_backward(*context_.bwd_pd, *context_.diff_dst_mem,
                              *context_.ws_mem, *context_.diff_src_mem));
-#endif //ENABLE_MKLDNN_V1
+#endif // ENABLE_MKLDNN_V1
   } else {
 #ifdef ENABLE_MKLDNN_V1
     context_.net_args.push_back(
@@ -238,7 +236,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
 #else
     context_.bwd.reset(new pooling_backward(
         *context_.bwd_pd, *context_.diff_dst_mem, *context_.diff_src_mem));
-#endif
+#endif // ENABLE_MKLDNN_V1
   }
   context_.bwd_primitives.push_back(*context_.bwd);
 }
@@ -262,7 +260,7 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
   }
 #else
   context_.bwd_stream->submit(context_.bwd_primitives);
-#endif
+#endif // ENABLE_MKLDNN_V1
 
   // Set back data handle.
   context_.diff_dst_mem->set_data_handle(DummyData);

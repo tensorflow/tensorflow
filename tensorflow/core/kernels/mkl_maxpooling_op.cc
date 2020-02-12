@@ -334,7 +334,7 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
             GET_WORKSPACE_DESC_FROM_OP_PD(pooling_bwd_pd), cpu_engine_));
         ws_data = workspace_dnn_data.GetOpMem().get_data_handle();
       }
-#endif
+#endif // ENABLE_MKLDNN_V1
 
       T* diff_src_data = output_tensor->flat<T>().data();
 

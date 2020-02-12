@@ -129,7 +129,7 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
 
 #ifdef ENABLE_MKLDNN_V1
     std::vector<std::unordered_map<int, memory>> net_args;
-#endif
+#endif // ENABLE_MKLDNN_V1
 
     PoolingFwdContext()
         : src_fmt(MEMORY_FORMAT::any),
@@ -237,7 +237,7 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
 #ifndef ENABLE_MKLDNN_V1
   MEMORY_FORMAT GetDiffDstMemoryFormat() const { return context_.diff_dst_fmt; }
   MEMORY_FORMAT GetWorkspaceMemoryFormat() const { return context_.ws_fmt; }
-#endif
+#endif // ENABLE_MKLDNN_V1
 
   mkldnn::memory::data_type GetWorkspaceDataType() const {
     return context_.ws_dt;
@@ -283,7 +283,7 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
 
 #ifdef ENABLE_MKLDNN_V1
     std::vector<std::unordered_map<int, memory>> net_args;
-#endif
+#endif // ENABLE_MKLDNN_V1
 
     PoolingBwdContext()
         : diff_src_fmt(MEMORY_FORMAT::any),
