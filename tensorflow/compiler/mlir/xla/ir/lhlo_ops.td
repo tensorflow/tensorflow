@@ -103,6 +103,18 @@ def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign">, BASE_HLO_SignOp;
 
 def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh">, BASE_HLO_TanhOp;
 
+def LHLO_UniqueCountOp:  LHLO_Op<"unique_count", [NoSideEffect]> {
+  let arguments = (ins LHLO_Buffer:$input,
+                       LHLO_Buffer:$output);
+
+}
+
+def LHLO_UniqueOp: LHLO_Op<"unique", [NoSideEffect]> {
+  let arguments = (ins LHLO_Buffer:$x,
+                       LHLO_Buffer:$y,
+                       LHLO_Buffer:$idx);
+}
+
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
 //===----------------------------------------------------------------------===//

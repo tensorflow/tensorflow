@@ -552,6 +552,19 @@ cc_library(
 )
 
 cc_library(
+    name = "runner_utils",
+    srcs = [
+        "utils/runner_utils.cc",
+    ],
+    hdrs = [
+        "utils/runner_utils.h",
+    ],
+    deps = [
+        "@llvm-project//mlir:mlir_c_runner_utils",
+    ],
+)
+
+cc_library(
     name = "translate_utils",
     srcs = [
         "utils/translate_utils.cc",

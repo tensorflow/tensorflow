@@ -1687,6 +1687,27 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
   }
 };
 
+class ConvertUniqueOp : public OpRewritePattern<TF::UniqueOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::UniqueOp op,
+                                     PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+   
+    SmallVector<Value, 4> slices;
+    auto input_type = op.x().getType().dyn_cast<RankedTensorType>();
+    auto idcount_shape = RankedTensorType::get({}, input_type.getElementType());
+    auto idcount = rewriter.create<xla_hlo::UniqueCountOp>(op.getLoc(), idcount_shape, op.x());
+    auto result = rewriter.create<xla_hlo::UniqueOp>(loc, op.y().getType(), op.idx().getType(), op.x(), idcount);
+    slices.push_back(result.y());
+    slices.push_back(result.idx());
+    rewriter.replaceOp(op, slices);
+    return matchSuccess();
+  }
+};
+
+
 // Converts the tf.SplitV op into a series of HLO slice ops when the tensor to
 // be split has fully static shape and the dimension to split and split sizes
 // are constants.
@@ -3674,7 +3695,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
       ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
-      ConvertRandomShuffleOp, ConvertVariableShapeOp, ConvertXlaShardingOp,
+      ConvertRandomShuffleOp, ConvertVariableShapeOp, ConvertXlaShardingOp,ConvertUniqueOp,
       ConvertXlaDynamicUpdateSliceOp>(op->getContext());
 
   ConversionTarget target(*context);

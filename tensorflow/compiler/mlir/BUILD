@@ -83,6 +83,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_linalg",
+        "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_std",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
         "//tensorflow/compiler/mlir/xla:xla_lower",
         "//tensorflow/compiler/mlir/xla:xla_materialize_broadcasts",

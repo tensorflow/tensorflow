@@ -63,6 +63,7 @@ MAP_HLO_TO_LHLO(SignOp);
 MAP_HLO_TO_LHLO(SqrtOp);
 MAP_HLO_TO_LHLO(SubOp);
 MAP_HLO_TO_LHLO(TanhOp);
+MAP_HLO_TO_LHLO(UniqueCountOp);
 
 #undef MAP_HLO_TO_LHLO
 

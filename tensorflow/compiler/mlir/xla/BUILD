@@ -223,6 +223,24 @@ cc_library(
 )
 
 cc_library(
+    name = "lhlo_legalize_to_std",
+    srcs = ["transforms/lhlo_legalize_to_std.cc"],
+    hdrs = ["transforms/map_xla_to_scalar_op.h"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+        "//tensorflow/compiler/xla:status",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:AffineOps",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+cc_library(
     name = "xla_legalize_to_linalg",
     srcs = ["transforms/xla_legalize_to_linalg.cc"],
     deps = [

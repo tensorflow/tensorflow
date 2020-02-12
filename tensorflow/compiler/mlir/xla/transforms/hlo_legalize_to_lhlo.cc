@@ -365,6 +365,86 @@ Type ConvertType(Type t) {
   return t;
 }
 
+Value GetUniqueResultAlloc(
+    Value oper, Location loc,
+    ConversionPatternRewriter& rewriter,
+    SmallVector<Value, 4> alloc_operands) {
+  auto output_tensor_type = oper.getType().dyn_cast<RankedTensorType>();
+  if (!output_tensor_type) {
+    emitError(loc, "tensor to buffer conversion expects valid result type");
+    return nullptr;
+  }
+  if (output_tensor_type.getShape().size() != 1) {
+    emitError(loc, "UniqueOp only suport 1-D ranked tensor.");
+    return nullptr;
+  }
+
+  auto output_tensor_memref_type =
+      MemRefType::get(output_tensor_type.getShape(), output_tensor_type.getElementType());
+  Operation* def_op = oper.getDefiningOp();
+  auto block = def_op->getBlock();
+  OpBuilder alloc_builder(def_op);
+  auto alloc = alloc_builder.create<AllocOp>(
+      loc, output_tensor_memref_type, alloc_operands);
+  alloc.setAttr(kTempBufferAttr, rewriter.getBoolAttr(true));
+  alloc_builder.setInsertionPoint(block, std::prev(block->end()));
+  alloc_builder.create<DeallocOp>(loc, alloc);
+
+  return alloc;
+}
+
+struct HloToLHloUniqueOpConverter
+    : public OpConversionPattern<xla_hlo::UniqueOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+    xla_hlo::UniqueOp op, ArrayRef<Value> operands,
+    ConversionPatternRewriter& rewriter) const final {
+    auto loc = op.getLoc();
+    // Unique only support 1-D tensor
+    auto input_tensor_type = op.x().getType().dyn_cast<RankedTensorType>();
+    if (!input_tensor_type) {
+      emitError(op.getLoc(), "Only suport ranked tensor now.");
+      return matchFailure();
+    }
+
+    int input_tensor_rank = input_tensor_type.getShape().size();
+    if (input_tensor_rank != 1) {
+      emitError(op.getLoc(), "UniqueOp only suport 1-D ranked tensor.");
+      return matchFailure();
+    }
+
+    auto id_count_value = rewriter.create<LoadOp>(loc, op.count());
+    auto id_count_dim = rewriter.create<IndexCastOp>(
+        loc, mlir::IndexType::get(rewriter.getContext()), id_count_value);
+
+    // alloc memory for unique ids tensor
+    SmallVector<Value, 4> tensor_alloc_operands;
+    tensor_alloc_operands.push_back(id_count_dim);
+    auto tensor_alloc = GetUniqueResultAlloc(op.y(), loc, rewriter, tensor_alloc_operands);
+    if (!tensor_alloc) return matchFailure();
+
+    // alloc memory for index
+    SmallVector<Value, 4> idx_alloc_operands;
+    Operation* idx_def_op = op.idx().getDefiningOp();
+    OpBuilder idx_alloc_builder(idx_def_op);
+    auto total_count = idx_alloc_builder.create<DimOp>(loc, op.x(), 0);
+    idx_alloc_operands.push_back(total_count);
+    auto idx_alloc = GetUniqueResultAlloc(op.idx(), loc, rewriter, idx_alloc_operands);
+    if (!idx_alloc) return matchFailure();
+
+    auto result = rewriter.create<xla_lhlo::UniqueOp>(op.getLoc(), op.x(), tensor_alloc, idx_alloc);
+    SmallVector<Value, 4> out;
+    out.push_back(result.y());
+    out.push_back(result.idx());
+    rewriter.replaceOp(op, out);
+
+    return matchSuccess();
+  }
+};
+
+
 }  // namespace
 
 /// Transforms FuncOp arguments and results from tensors to buffers. Tensor
@@ -469,6 +549,8 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<xla_hlo::SqrtOp>,
       HloToLhloOpConverter<xla_hlo::SubOp>,
       HloToLhloOpConverter<xla_hlo::TanhOp>,
+      HloToLhloOpConverter<xla_hlo::UniqueCountOp>,
+      HloToLHloUniqueOpConverter,
       HloToLhloReduceOpConverter,
       HloToLhloTensorLoadOpConverter,
       HloToLhloTensorStoreOpConverter,
