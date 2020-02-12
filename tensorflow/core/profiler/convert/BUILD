@@ -16,6 +16,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:cost_utils",
         "//tensorflow/core/profiler/utils:event_span",
         "//tensorflow/core/profiler/utils:op_utils",
         "//tensorflow/core/profiler/utils:tf_op_utils",
