@@ -225,8 +225,6 @@ build --noincompatible_remove_legacy_whole_archive
 # These are bazel 2.0's incompatible flags. Tensorflow needs to use bazel 2.0.0
 # to use cc_shared_library, as part of the Tensorflow Build Improvements RFC:
 # https://github.com/tensorflow/community/pull/179
-build --noincompatible_remap_main_repo
-query --noincompatible_remap_main_repo
 build --noincompatible_prohibit_aapt1
 
 # Modular TF build options

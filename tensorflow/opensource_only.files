@@ -116,6 +116,7 @@ tensorflow/third_party/mkl/MKL_LICENSE
 tensorflow/third_party/mkl/build_defs.bzl
 tensorflow/third_party/mkl/mkl.BUILD
 tensorflow/third_party/mkl_dnn/LICENSE
+tensorflow/third_party/mkl_dnn/build_defs.bzl
 tensorflow/third_party/mkl_dnn/mkldnn.BUILD
 tensorflow/third_party/mpi/.gitignore
 tensorflow/third_party/nanopb.BUILD
