@@ -379,7 +379,7 @@ class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
 
     auto linalg_slice = rewriter.create<linalg::SliceOp>(
         loc, sliceOp.getOperand(0), ranges);
-    auto copy = rewriter.create<linalg::CopyOp>(
+    rewriter.create<linalg::CopyOp>(
         loc, linalg_slice, sliceOp.getOperand(1));
     rewriter.eraseOp(sliceOp);
     return matchSuccess();
