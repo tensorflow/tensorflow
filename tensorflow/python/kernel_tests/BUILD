@@ -2913,7 +2913,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "conv_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["conv_ops_test.py"],
     shard_count = 4,
     tags = [

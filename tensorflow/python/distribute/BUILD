@@ -1351,7 +1351,7 @@ py_library(
 
 distribute_py_test(
     name = "saved_model_save_load_test",
-    size = "medium",
+    size = "large",
     srcs = ["saved_model_save_load_test.py"],
     full_precision = True,
     main = "saved_model_save_load_test.py",
@@ -1368,7 +1368,7 @@ distribute_py_test(
 
 distribute_py_test(
     name = "keras_save_load_test",
-    size = "medium",
+    size = "large",
     srcs = ["keras_save_load_test.py"],
     full_precision = True,
     main = "keras_save_load_test.py",
@@ -1384,7 +1384,7 @@ distribute_py_test(
 
 distribute_py_test(
     name = "saved_model_mixed_api_test",
-    size = "medium",
+    size = "large",
     srcs = ["saved_model_mixed_api_test.py"],
     full_precision = True,
     main = "saved_model_mixed_api_test.py",
