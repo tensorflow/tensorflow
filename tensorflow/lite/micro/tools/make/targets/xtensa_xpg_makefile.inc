@@ -18,6 +18,8 @@ ifeq ($(TARGET), xtensa-xpg)
     -DXTENSA -DMAX_RFFT_PWR=9 -DMIN_RFFT_PWR=MAX_RFFT_PWR \
     -fdata-sections \
     -ffunction-sections \
+    -fno-exceptions \
+    -fno-unwind-tables \
     -fmessage-length=0
 
   TARGET_TOOLCHAIN_PREFIX := xt-
