@@ -23,6 +23,7 @@ load(
     "//third_party/remote_config:common.bzl",
     "execute",
     "files_exist",
+    "get_bash_bin",
     "get_cpu_value",
     "raw_exec",
     "realpath",
@@ -328,11 +329,9 @@ def _hipcc_is_hipclang(repository_ctx, rocm_config):
             return "True"
 
     # grep for "HIP_COMPILER=clang" in /opt/rocm/hip/lib/.hipInfo
-    grep_result = execute(
-        repository_ctx,
-        ["grep", "HIP_COMPILER=clang", rocm_config.rocm_toolkit_path + "/hip/lib/.hipInfo"],
-        empty_stdout_fine = True,
-    )
+    cmd = "grep HIP_COMPILER=clang %s/hip/lib/.hipInfo || true" % rocm_config.rocm_toolkit_path
+    bash_bin = get_bash_bin(repository_ctx)
+    grep_result = execute(repository_ctx, [bash_bin, "-c", cmd], empty_stdout_fine = True)
     result = grep_result.stdout.strip()
     if result == "HIP_COMPILER=clang":
         return "True"
