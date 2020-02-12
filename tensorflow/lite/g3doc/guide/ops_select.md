@@ -98,14 +98,48 @@ includes the necessary library of TensorFlow ops.
 
 ### Android AAR
 
-A new Android AAR target with select TensorFlow ops has been added for
-convenience. Assuming a <a href="android.md">working TensorFlow Lite build
-environment</a>, build the Android AAR with select TensorFlow ops as follows:
+For Android, we recommend using the prebuilt [AAR with TensorFlow ops hosted at
+JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-select-tf-ops).
+
+You can specify this in your `build.gradle` dependencies by adding it alongside
+the standard TensorFlow Lite AAR as follows:
+
+```build
+dependencies {
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    // This dependency adds the necessary TF op support.
+    implementation 'org.tensorflow:tensorflow-lite-select-tf-ops:0.0.0-nightly'
+}
+```
+
+Once you've added the dependency, the necessary delegate for handling
+the graph's TensorFlow ops should be automatically installed for
+graphs that require them.
+
+*Note*: The TensorFlow ops dependency is relatively large, so you'll probably
+want to filter out unnecessary x86 ABIs in your `.gradle` file by setting up
+your `abiFilters`.
+
+```build
+android {
+    defaultConfig {
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
+    }
+}
+```
+
+#### Building the Android AAR
+
+For more advanced cases, you can also build the library manually. Assuming a
+<a href="android.md">working TensorFlow Lite build environment</a>, build the
+Android AAR with select TensorFlow ops as follows:
 
 ```sh
-bazel build --cxxopt='--std=c++11' -c opt \
-  --config=android_arm --config=monolithic \
-  //tensorflow/lite/java:tensorflow-lite-with-select-tf-ops
+bazel build --cxxopt='--std=c++14' -c opt   \
+  --config=android_arm --config=monolithic  \
+  //tensorflow/lite/java:tensorflow-lite-select-tf-ops
 ```
 
 This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. From there,
