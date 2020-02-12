@@ -628,6 +628,25 @@ class BaseLayerTest(keras_parameterized.TestCase):
     out = self.evaluate(layer(x=x, y=y))
     self.assertAllClose(out, 2 * np.ones((10, 1)))
 
+  def test_build_input_shape(self):
+    class CustomLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.add_weight('w', shape=input_shape[1:])
+        super(CustomLayer, self).build(input_shape)
+
+    layer = CustomLayer()
+    self.assertFalse(layer.built)
+
+    layer.build([None, 1, 2, 3])
+    self.assertTrue(layer.built)
+    self.assertEqual([None, 1, 2, 3], layer._build_input_shape)
+
+    layer = CustomLayer()
+    layer(keras.Input((3,)))
+    self.assertTrue(layer.built)
+    self.assertEqual([None, 3], layer._build_input_shape.as_list())
+
 
 class SymbolicSupportTest(test.TestCase):
 
