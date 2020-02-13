@@ -192,7 +192,7 @@ class MklSlicePrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(sliceParams.to->get_data_handle());
 
 #ifdef ENABLE_MKLDNN_V1
-    ExecutePrimitives(context_.slice_primitives, context_.slice_stream,
+    execute_primitives(context_.slice_primitives, context_.slice_stream,
                       context_.slice_primitives_args);
 #else
     context_.slice_stream->submit(context_.slice_primitives);
