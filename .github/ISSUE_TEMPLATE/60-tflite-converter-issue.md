@@ -1,8 +1,9 @@
----
-name: TensorFlow Lite New Converter Issue
-about: Use this template for reporting issues during model conversion to TFLite.
+--------------------------------------------------------------------------------
 
----
+name: TensorFlow Lite New Converter Issue
+about: Use this template for reporting issues during model conversion to TFLite
+
+--------------------------------------------------------------------------------
 
 
 **System information**

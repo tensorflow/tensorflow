@@ -1,9 +1,10 @@
 --------------------------------------------------------------------------------
 
-name: Build/Installation Issue about: Use this template for build/installation
-issues labels: 'type:build/install'
+name: Build/Installation Issue
+about: Use this template for build/installation issues
+labels: 'type:build/install'
 
----
+--------------------------------------------------------------------------------
 
 <em>Please make sure that this is a build/installation issue. As per our [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md), we only address code/doc bugs, performance issues, feature requests and build/installation issues on GitHub. tag:build_template</em>
 

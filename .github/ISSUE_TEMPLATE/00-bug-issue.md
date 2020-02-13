@@ -1,9 +1,10 @@
----
+--------------------------------------------------------------------------------
+
 name: Bug Issue
-about: Use this template for reporting an issue related to bug
+about: Use this template for reporting a bug
 labels: 'type:bug'
 
----
+--------------------------------------------------------------------------------
 
 <em>Please make sure that this is a bug. As per our
 [GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md),
