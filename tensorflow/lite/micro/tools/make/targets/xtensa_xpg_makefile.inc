@@ -9,6 +9,7 @@ ifeq ($(TARGET), xtensa-xpg)
   PLATFORM_ARGS = \
     -DTF_LITE_MICRO_TENSORS_PREPARED \
     -DTF_LITE_STATIC_MEMORY \
+    -DTF_LITE_STRIP_ERROR_STRINGS \
     -DNDEBUG \
     -DTF_LITE_MCU_DEBUG_LOG \
     --xtensa-core=$(XTENSA_CORE) \
@@ -17,6 +18,8 @@ ifeq ($(TARGET), xtensa-xpg)
     -DXTENSA -DMAX_RFFT_PWR=9 -DMIN_RFFT_PWR=MAX_RFFT_PWR \
     -fdata-sections \
     -ffunction-sections \
+    -fno-exceptions \
+    -fno-unwind-tables \
     -fmessage-length=0
 
   TARGET_TOOLCHAIN_PREFIX := xt-

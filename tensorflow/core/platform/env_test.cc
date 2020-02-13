@@ -36,7 +36,7 @@ namespace {
 string CreateTestFile(Env* env, const string& filename, int length) {
   string input(length, 0);
   for (int i = 0; i < length; i++) input[i] = i;
-  TF_CHECK_OK(WriteStringToFile(env, filename, input));
+  TF_EXPECT_OK(WriteStringToFile(env, filename, input));
   return input;
 }
 

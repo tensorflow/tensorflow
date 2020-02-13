@@ -458,8 +458,7 @@ Status CreateTRTNode(const ConversionParams& params,
   NameAttrList function;
   function.set_name(StrCat(info.engine_name, "_native_segment"));
   Status status =
-      node_builder
-          .Attr("input_shapes", input_shape_protos)
+      node_builder.Attr("input_shapes", input_shape_protos)
           .Attr("static_engine",
                 info.engine_type == EngineInfo::EngineType::TRTStatic)
           .Attr("segment_func", function)

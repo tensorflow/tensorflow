@@ -86,6 +86,9 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
     case HloOpcode::kExp:
       func_builder.create<lhlo::ExpOp>(loc, rets, args, attrs);
       break;
+    case HloOpcode::kLog:
+      func_builder.create<lhlo::LogOp>(loc, rets, args, attrs);
+      break;
     case HloOpcode::kMaximum:
       func_builder.create<lhlo::MaxOp>(loc, rets, args, attrs);
       break;
@@ -100,6 +103,9 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
       break;
     case HloOpcode::kRemainder:
       func_builder.create<lhlo::RemOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kRsqrt:
+      func_builder.create<lhlo::RsqrtOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kSelect:
       func_builder.create<lhlo::SelectOp>(loc, rets, args, attrs);

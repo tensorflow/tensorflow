@@ -868,9 +868,10 @@ class Lambda(Layer):
       # checking only to immediately discard it.
       return
 
-    tracked_weights = set(v.experimental_ref() for v in self.weights)
-    untracked_new_vars = [v for v in created_variables
-                          if v.experimental_ref() not in tracked_weights]
+    tracked_weights = set(v.ref() for v in self.weights)
+    untracked_new_vars = [
+        v for v in created_variables if v.ref() not in tracked_weights
+    ]
     if untracked_new_vars:
       variable_str = '\n'.join('  {}'.format(i) for i in untracked_new_vars)
       error_str = textwrap.dedent(
@@ -886,8 +887,9 @@ class Lambda(Layer):
       ).format(name=self.name, variable_str=variable_str)
       raise ValueError(error_str)
 
-    untracked_used_vars = [v for v in accessed_variables
-                           if v.experimental_ref() not in tracked_weights]
+    untracked_used_vars = [
+        v for v in accessed_variables if v.ref() not in tracked_weights
+    ]
     if untracked_used_vars and not self._already_warned:
       variable_str = '\n'.join('  {}'.format(i) for i in untracked_used_vars)
       self._warn(textwrap.dedent(
@@ -1029,8 +1031,15 @@ class Dense(Layer):
   created by the layer, and `bias` is a bias vector created by the layer
   (only applicable if `use_bias` is `True`).
 
-  Note: If the input to the layer has a rank greater than 2, then
-  it is flattened prior to the initial dot product with `kernel`.
+  Note: If the input to the layer has a rank greater than 2, then `Dense`
+  computes the dot product between the `inputs` and the `kernel` along the
+  last axis of the `inputs` and axis 1 of the `kernel` (using `tf.tensordot`).
+  For example, if input has dimensions `(batch_size, d0, d1)`,
+  then we create a `kernel` with shape `(d1, units)`, and the `kernel` operates
+  along axis 2 of the `input`, on every sub-tensor of shape `(1, 1, d1)`
+  (there are `batch_size * d0` such sub-tensors).
+  The output in this case will have shape `(batch_size, d0, units)`.
+
   Besides, layer attributes cannot be modified after the layer has been called
   once (except the `trainable` attribute).
 

@@ -301,7 +301,7 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
     name:  A string name to prepend to created ops.
 
   Returns:
-    bcast_matrices: List of `Tensor`s, with `bcast_matricies[i]` containing
+    bcast_matrices: List of `Tensor`s, with `bcast_matrices[i]` containing
       the values from `batch_matrices[i]`, with possibly broadcast batch dims.
 
   Raises:

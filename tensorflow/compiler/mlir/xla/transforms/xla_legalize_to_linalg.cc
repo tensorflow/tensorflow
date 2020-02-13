@@ -339,6 +339,40 @@ class ConstConverter : public OpConversionPattern<xla_lhlo::ConstOp> {
   }
 };
 
+class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
+ public:
+  using OpConversionPattern<xla_lhlo::SliceOp>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      xla_lhlo::SliceOp sliceOp, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = sliceOp.getLoc();
+    auto argType =
+        sliceOp.getOperand(0).getType().template dyn_cast<ShapedType>();
+    if (!argType || !argType.hasRank()) {
+      emitError(loc, "lhlo to linalg conversion expects known-rank args");
+      return ConversionPattern::matchFailure();
+    }
+
+    SmallVector<Value, 3> ranges;
+    for (int i = 0, e = argType.getRank(); i < e; ++i) {
+      Value start_index = rewriter.create<ConstantIndexOp>(
+          loc, sliceOp.start_indices().getValue<int64_t>(i));
+      Value limit_index = rewriter.create<ConstantIndexOp>(
+          loc, sliceOp.limit_indices().getValue<int64_t>(i));
+      Value stride = rewriter.create<ConstantIndexOp>(
+          loc, sliceOp.strides().getValue<int64_t>(i));
+      ranges.push_back(rewriter.create<linalg::RangeOp>(loc, start_index,
+                                                        limit_index, stride));
+    }
+    auto linalg_slice =
+        rewriter.create<linalg::SliceOp>(loc, sliceOp.getOperand(0), ranges);
+    rewriter.create<linalg::CopyOp>(loc, linalg_slice, sliceOp.getOperand(1));
+    rewriter.eraseOp(sliceOp);
+    return matchSuccess();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
@@ -364,7 +398,8 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::SignOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SubOp>,
                    PointwiseToLinalgConverter<xla_lhlo::TanhOp>,
-                   ScalarPointwiseToStandardConverter<xla_lhlo::AddOp>
+                   ScalarPointwiseToStandardConverter<xla_lhlo::AddOp>,
+                   SliceConverter
                   >(context);
   // clang-format on
 }

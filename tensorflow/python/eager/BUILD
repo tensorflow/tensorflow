@@ -204,10 +204,9 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        "//tensorflow/python:c_api_util",
-        "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler_session",
     ],
 )
 
@@ -227,7 +226,10 @@ py_library(
     name = "profiler_client",
     srcs = ["profiler_client.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/core/profiler:internal",
+    ],
     deps = [
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:pywrap_tf_session",
@@ -241,7 +243,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
-    visibility = ["//tensorflow:internal"],
     deps = [
         ":profiler_client",
         ":test",
@@ -515,6 +516,7 @@ py_library(
         ":tape",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",

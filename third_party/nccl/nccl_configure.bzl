@@ -16,6 +16,9 @@ load(
     "compute_capabilities",
     "enable_cuda",
     "find_cuda_config",
+)
+load(
+    "//third_party/remote_config:common.bzl",
     "get_cpu_value",
 )
 

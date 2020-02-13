@@ -24,9 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-void ConvertXSpaceToTraceEvents(uint64 profile_start_time_ns,
-                                uint64 profile_end_time_ns,
-                                const XSpace& xspace, Trace* trace);
+void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace);
 
 }  // namespace profiler
 }  // namespace tensorflow

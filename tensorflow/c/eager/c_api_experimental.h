@@ -37,23 +37,6 @@ TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Op* op_to_reset,
 TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
                                               TF_Status* status);
 
-// A profiler which will start profiling when creating the object and will stop
-// when the object is destroyed. It will profile all operations run under the
-// given TFE_Context. Multiple instance of it can be created, but at most one
-// of them will profile for each TFE_Context.
-// Thread-safety: TFE_Profiler is thread-safe.
-typedef struct TFE_Profiler TFE_Profiler;
-
-TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler();
-TF_CAPI_EXPORT extern bool TFE_ProfilerIsOk(TFE_Profiler* profiler);
-TF_CAPI_EXPORT extern void TFE_DeleteProfiler(TFE_Profiler* profiler);
-
-// The output string is a binary string of tensorflow.tpu.Trace. User can write
-// the string to file for offline analysis by tensorboard.
-TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Profiler* profiler,
-                                                         TF_Buffer* buf,
-                                                         TF_Status* status);
-
 // Start a profiler grpc server which listens to specified port. It will start
 // the server on its own thread. It can be shutdown by terminating tensorflow.
 // It can be used in both Eager mode and graph mode. Creating multiple profiler
@@ -437,6 +420,12 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 // Clear pending streaming requests and error statuses on remote executors.
 TF_CAPI_EXPORT extern void TFE_ContextClearRemoteExecutors(TFE_Context* ctx,
                                                            TF_Status* status);
+
+// If the TensorHandle is copied to another device as part of an op execution,
+// the copy is destroyed after the op has executed. Enabling implicit mirroring
+// causes the copy to be held as a mirror for the lifetime of the TensorHandle.
+TF_CAPI_EXPORT extern void TFE_TensorHandleEnableImplicitMirroring(
+    TFE_TensorHandle*, TF_Status*);
 
 // This function will block till the operation that produces `h` has
 // completed. This is only valid on local TFE_TensorHandles. The pointer

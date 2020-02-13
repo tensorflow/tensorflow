@@ -450,7 +450,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
         value = value.to_list()
       elif isinstance(value, StructuredTensor):
         value = value.to_pyval()
-      # TODO(edloper): Throw an excpetion if value is an unexpected type.
+      # TODO(edloper): Throw an exception if value is an unexpected type.
       result[key] = value
 
     # If rank>0, then re-group each value from dict-of-list to list-of-dict.

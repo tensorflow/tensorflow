@@ -98,6 +98,7 @@ tf_library(
     # compile but the others in this directory succeed, you may need to
     # expand the "required by all tf_library targets" list in tfcompile.bzl.
     include_standard_runtime_deps = False,
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -110,6 +111,7 @@ tf_library(
     cpp_class = "AddWithCkptComp",
     freeze_checkpoint = "test_graph_tfadd_with_ckpt.ckpt",
     graph = "test_graph_tfadd_with_ckpt.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -123,6 +125,7 @@ tf_library(
     freeze_checkpoint = "test_graph_tfadd_with_ckpt_saver.ckpt",
     freeze_saver = "test_graph_tfadd_with_ckpt_saver.saver",
     graph = "test_graph_tfadd_with_ckpt_saver.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -134,6 +137,7 @@ tf_library(
     config = "test_graph_tfassert_eq.config.pbtxt",
     cpp_class = "AssertComp",
     graph = "test_graph_tfassert_eq.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -145,6 +149,7 @@ tf_library(
     config = "test_graph_tfcond.config.pbtxt",
     cpp_class = "CondComp",
     graph = "test_graph_tfcond.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -156,6 +161,7 @@ tf_library(
     config = "test_graph_tffunction.config.pbtxt",
     cpp_class = "FunctionComp",
     graph = "test_graph_tffunction.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -167,6 +173,7 @@ tf_library(
     config = "test_graph_tfgather.config.pbtxt",
     cpp_class = "GatherComp",
     graph = "test_graph_tfgather.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -178,6 +185,7 @@ tf_library(
     config = "test_graph_tfmatmul.config.pbtxt",
     cpp_class = "foo::bar::MatMulComp",
     graph = "test_graph_tfmatmul.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -189,6 +197,7 @@ tf_library(
     config = "test_graph_tfmatmulandadd.config.pbtxt",
     cpp_class = "::foo::bar::MatMulAndAddComp",
     graph = "test_graph_tfmatmulandadd.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -202,6 +211,7 @@ tf_library(
     cpp_class = "MatMulAndAddCompWithProfiling",
     enable_xla_hlo_profiling = True,
     graph = "test_graph_tfmatmulandadd.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -213,6 +223,7 @@ tf_library(
     config = "test_graph_tfsplits.config.pbtxt",
     cpp_class = "SplitsComp",
     graph = "test_graph_tfsplits.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -224,6 +235,7 @@ tf_library(
     config = "test_graph_tftop_k.config.pbtxt",
     cpp_class = "TopKComp",
     graph = "test_graph_tftop_k.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -235,6 +247,7 @@ tf_library(
     config = "test_graph_tfvariable.config.pbtxt",
     cpp_class = "VariableComp",
     graph = "test_graph_tfvariable.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -246,6 +259,7 @@ tf_library(
     config = "test_graph_tfvariable_readonly.config.pbtxt",
     cpp_class = "VariableReadonlyComp",
     graph = "test_graph_tfvariable_readonly.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -257,6 +271,7 @@ tf_library(
     config = "test_graph_tfvariable_sequential_updates.config.pbtxt",
     cpp_class = "VariableSequentialUpdatesComp",
     graph = "test_graph_tfvariable_sequential_updates.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],

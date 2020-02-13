@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // TF:llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // TF:llvm-project
 #include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // TF:llvm-project
 #include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"  // TF:llvm-project
@@ -275,6 +276,8 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   pm.addPass(absl::make_unique<FusionToLhloConverter>());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
+  // Remove unnecessary Lhlo copies.
+  pm.addPass(::mlir::xla_hlo::createLhloCopyRemovalPass());
   // Transform lhlo operations to LinAlg.
   pm.addPass(::mlir::xla_lhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations. This will yield a single tiled loop nest where
@@ -330,7 +333,7 @@ class LowerToNVVMPass
     ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,
                                                    &getContext());
     ::mlir::populateGpuToNVVMConversionPatterns(converter, patterns);
-
+    ::mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
     ::mlir::ConversionTarget target(getContext());
     target.addIllegalDialect<::mlir::gpu::GPUDialect>();
     target.addIllegalOp<::mlir::LLVM::ExpOp>();
@@ -339,7 +342,7 @@ class LowerToNVVMPass
     // TODO(csigg): Remove once we support replacing non-root ops.
     target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
                       ::mlir::gpu::YieldOp>();
-    if (failed(applyPartialConversion(m, target, patterns, &converter))) {
+    if (failed(mlir::applyFullConversion(m, target, patterns, &converter))) {
       signalPassFailure();
     }
   }

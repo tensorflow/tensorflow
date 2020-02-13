@@ -1264,6 +1264,9 @@ XlaBuilder supports these element-wise unary functions:
 
 <b>`Floor(operand)`</b> Element-wise floor `x -> ⌊x⌋`.
 
+<b>`Imag(operand)`</b> Element-wise imaginary part of a complex (or real)
+shape. `x -> imag(x)`. If the operand is a floating point type, returns 0.
+
 <b>`IsFinite(operand)`</b> Tests whether each element of `operand` is finite,
 i.e., is not positive or negative infinity, and is not `NaN`. Returns an array
 of `PRED` values with the same shape as the input, where each element is `true`
@@ -1278,11 +1281,19 @@ element of `operand`.
 
 <b>`Neg(operand)`</b> Element-wise negation `x -> -x`.
 
+<b>`Real(operand)`</b> Element-wise real part of a complex (or real) shape.
+`x -> real(x)`. If the operand is a floating point type, returns the same value.
+
+<b>`Rsqrt(operand)`</b> Element-wise reciprocal of square root operation
+`x -> 1.0 / sqrt(x)`.
+
 <b>`Sign(operand)`</b> Element-wise sign operation `x -> sgn(x)` where
 
 $$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ -0 & x = -0\\ NaN & x = NaN\\ +0 & x = +0\\ 1 & x > 0 \end{cases}$$
 
 using the comparison operator of the element type of `operand`.
+
+<b>`Sqrt(operand)`</b> Element-wise square root operation `x -> sqrt(x)`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 

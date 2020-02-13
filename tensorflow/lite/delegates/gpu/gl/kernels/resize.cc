@@ -80,14 +80,20 @@ class Resize : public NodeShader {
 
     std::string source;
     if (attr.type == SamplingType::BILINEAR) {
-      source = R"(
-      vec2 coord = vec2(gid.xy) * $scale_factor$;
+      if (attr.half_pixel_centers) {
+        source = "vec2 coord = (vec2(gid.xy) + 0.5) * $scale_factor$ - 0.5;";
+      } else {
+        source = "vec2 coord = vec2(gid.xy) * $scale_factor$;";
+      }
+      source += R"(
+      vec2 coord_floor = floor(coord);
+      ivec2 icoord_floor = ivec2(coord_floor);
       ivec2 borders = ivec2($input_data_0_w$, $input_data_0_h$) - ivec2(1, 1);
       ivec4 st;
-      st.xy = ivec2(coord);
-      st.zw = min(st.xy + ivec2(1, 1), borders);
+      st.xy = max(icoord_floor, ivec2(0, 0));
+      st.zw = min(icoord_floor + ivec2(1, 1), borders);
 
-      vec2 t = coord - vec2(st.xy); //interpolating factors
+      vec2 t = coord - coord_floor; //interpolating factors
 
       vec4 tex11 = $input_data_0[st.x, st.y, gid.z]$;
       vec4 tex21 = $input_data_0[st.z, st.y, gid.z]$;

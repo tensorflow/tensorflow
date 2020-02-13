@@ -1,4 +1,4 @@
-// RUN: tf-opt -hlo-legalize-to-lhlo %s -o - | FileCheck %s --dump-input=always
+// RUN: tf-opt -hlo-legalize-to-lhlo -lhlo-redundant-copies-removal %s -o - | FileCheck %s --dump-input=always
 
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -13,41 +13,50 @@ func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // CHECK-LABEL: func @func_op
 func @func_op(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-  // CHECK-NEXT: %[[MAX_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
+  // CHECK: (%[[NEW_ARG0:.*]]: memref<4xf32>, %[[NEW_ARG1:.*]]: memref<4xf32>, %[[RESULT:.*]]: memref<4xf32>)
   %0 = xla_hlo.max %arg0, %arg1 {name = "maximum.47"} : tensor<4xf32>
-  // CHECK-NEXT: "xla_lhlo.max"(%arg0, %arg1, %[[MAX_RESULT]])
-  // CHECK-NEXT: "xla_lhlo.copy"(%[[MAX_RESULT]], %arg2)
-  // CHECK-NEXT: dealloc %[[MAX_RESULT]] : memref<4xf32>
+  // CHECK-NEXT: "xla_lhlo.max"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[RESULT]])
   return %0 : tensor<4xf32>
   // CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
 }
 
 // CHECK-LABEL: func @func_op_long
 func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-  // CHECK-NEXT: %[[MUL_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
+  // CHECK: (%[[NEW_ARG0:.*]]: memref<4xf32>, %[[NEW_ARG1:.*]]: memref<4xf32>, %[[RESULT:.*]]: memref<4xf32>)
   // CHECK-NEXT: %[[SUB_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
   // CHECK-NEXT: %[[MIN_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
   // CHECK-NEXT: %[[ADD_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
   // CHECK-NEXT: %[[MAX_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
   %1 = xla_hlo.max %arg0, %arg1 {name = "maximum.47"} : tensor<4xf32>
-  // CHECK-NEXT: "xla_lhlo.max"(%arg0, %arg1, %[[MAX_RESULT]])
+  // CHECK-NEXT: "xla_lhlo.max"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[MAX_RESULT]])
   %2 = xla_hlo.add %arg0, %1 {name = "maximum.47"} : tensor<4xf32>
-  // CHECK-NEXT: "xla_lhlo.add"(%arg0, %[[MAX_RESULT]], %[[ADD_RESULT]])
+  // CHECK-NEXT: "xla_lhlo.add"(%[[NEW_ARG0]], %[[MAX_RESULT]], %[[ADD_RESULT]])
   %3 = xla_hlo.min %arg0, %arg1 {name = "maximum.47"} : tensor<4xf32>
-  // CHECK-NEXT: "xla_lhlo.min"(%arg0, %arg1, %[[MIN_RESULT]])
+  // CHECK-NEXT: "xla_lhlo.min"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[MIN_RESULT]])
   %4 = xla_hlo.sub %arg1, %3 {name = "maximum.47"} : tensor<4xf32>
-  // CHECK-NEXT: "xla_lhlo.sub"(%arg1, %[[MIN_RESULT]], %[[SUB_RESULT]])
+  // CHECK-NEXT: "xla_lhlo.sub"(%[[NEW_ARG1]], %[[MIN_RESULT]], %[[SUB_RESULT]])
   %5 = xla_hlo.mul %2, %4 {name = "maximum.47"} : tensor<4xf32>
-  // CHECK-NEXT: "xla_lhlo.mul"(%[[ADD_RESULT]], %[[SUB_RESULT]], %[[MUL_RESULT]])
+  // CHECK-NEXT: "xla_lhlo.mul"(%[[ADD_RESULT]], %[[SUB_RESULT]], %[[RESULT]])
   // CHECK-NEXT: dealloc %[[MAX_RESULT]] : memref<4xf32>
   // CHECK-NEXT: dealloc %[[ADD_RESULT]] : memref<4xf32>
   // CHECK-NEXT: dealloc %[[MIN_RESULT]] : memref<4xf32>
   // CHECK-NEXT: dealloc %[[SUB_RESULT]] : memref<4xf32>
-  // CHECK-NEXT: "xla_lhlo.copy"(%[[MUL_RESULT]], %arg2)
-  // CHECK-NEXT: dealloc %[[MUL_RESULT]] : memref<4xf32>
   return %5 : tensor<4xf32>
   // CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
 }
+
+// CHECK-LABEL: func @remove_lhlo_copy_op_created_from_tensor_store
+func @remove_lhlo_copy_op_created_from_tensor_store(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: memref<f32>) {
+  %0 = "xla_hlo.max"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  tensor_store %0, %arg2 : memref<f32>
+  return
+}
+// CHECK: (%[[NEW_ARG0:.*]]: memref<f32>, %[[NEW_ARG1:.*]]: memref<f32>, %[[RESULT:.*]]: memref<f32>)
+// CHECK-NOT: %[[ALLOC_OPERAND:.*]] = alloc() {temp = true} : memref<f32>
+// CHECK: "xla_lhlo.max"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[RESULT]]) : (memref<f32>, memref<f32>, memref<f32>) -> ()
+// CHECK-NOT: "xla_lhlo.copy"(%[[ALLOC_OPERAND]], %[[RESULT]]) : (memref<f32>, memref<f32>) -> ()
+// CHECK-NOT: dealloc %[[ALLOC_OPERAND]] : memref<f32>
+// CHECK: "xla_lhlo.terminator"() : () -> ()
 
 // CHECK-LABEL: func @fusion
 func @fusion(%multiplier: memref<2x2xf32>, %summand_1: memref<2x2xf32>,

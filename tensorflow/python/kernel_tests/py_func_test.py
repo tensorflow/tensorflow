@@ -740,7 +740,7 @@ class EagerPyFuncTest(PyFuncTestBase):
       self.assertEqual(dy_dx, 2.0)
 
   @test_util.run_v1_only("b/120545219")
-  def testEagerRespectsDevicePlacmentOfOp(self):
+  def testEagerRespectsDevicePlacementOfOp(self):
 
     def f(x):
       return math_ops.square(x)

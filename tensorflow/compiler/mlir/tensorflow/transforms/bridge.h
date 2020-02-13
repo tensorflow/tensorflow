@@ -27,6 +27,12 @@ namespace TFTPU {
 // tensorflow::BridgeLogger.
 tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging);
 
+// Run all the passes involved in transforming the graph before execution so
+// that it is suitable for targeting TPUs. When enable_logging is true, enables
+// tensorflow::BridgeLogger.
+// This variant of `TPUBridge` is intended for TensorFlow V1 compatibility.
+tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging);
+
 }  // namespace TFTPU
 
 namespace TF {

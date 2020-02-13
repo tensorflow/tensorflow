@@ -101,10 +101,6 @@ class DistributedValues(object):
   def devices(self):
     return tuple(v.device for v in self._values)
 
-  @property
-  def is_tensor_like(self):
-    return all(tensor_util.is_tensor(v) for v in self._values)
-
   def __str__(self):
     debug_str = ",\n".join(
         "  %d: %s" % (i, v) for i, v in enumerate(self._values))
@@ -1139,8 +1135,9 @@ class SyncOnReadVariable(DistributedVariable):
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
-    return ops.convert_to_tensor(
-        self._get(), dtype=dtype, name=name, as_ref=as_ref)
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      return ops.convert_to_tensor(
+          self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
 # Register a conversion function for SyncOnReadVariable which allows as_ref to

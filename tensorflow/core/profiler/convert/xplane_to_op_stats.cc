@@ -108,8 +108,11 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space) {
             *host_plane, /*use_device_step_events=*/has_device, step_events),
         &step_events);
   }
+  StepEvents nonoverlapped_step_events = ToNonOverlappedStepEvents(step_events);
   *op_stats.mutable_step_db() =
-      ConvertStepEventsToStepDb(has_device, step_events);
+      ConvertStepEventsToStepDb(has_device, nonoverlapped_step_events);
+  *op_stats.mutable_device_op_metrics_db()->mutable_precision_stats() =
+      ComputePrecisionStats(nonoverlapped_step_events);
   return op_stats;
 }
 

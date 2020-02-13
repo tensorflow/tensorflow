@@ -182,6 +182,7 @@ cc_library(
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite/tools/versioning:op_version",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -227,13 +228,9 @@ cc_test(
     ],
 )
 
-# TODO(b/148289189): Remove RUY_GEMV flag.
 cc_library(
     name = "tflite_with_ruy_enabled",
-    defines = [
-        "TFLITE_WITH_RUY",
-        "TFLITE_WITH_RUY_GEMV",
-    ],
+    defines = ["TFLITE_WITH_RUY"],
     visibility = ["//visibility:private"],
 )
 

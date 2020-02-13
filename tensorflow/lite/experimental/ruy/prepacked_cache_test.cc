@@ -137,7 +137,7 @@ TEST(PrepackedCacheTest, TestCacheEjection2) {
 TEST(PrepackedCacheTest, TestCacheOnCacheable) {
   // Create context and set the cache policy
   ruy::Context context;
-  context.cache_policy = ruy::kCacheLHSOnGemV;
+  context.cache_policy = ruy::kCacheLHSOnNarrowMul;
   PrepackedCache* cache = context.GetPrepackedCache();
   EXPECT_EQ(cache->TotalSize(), 0);
 
@@ -170,7 +170,7 @@ TEST(PrepackedCacheTest, TestCacheOnCacheable) {
 TEST(PrepackedCacheTest, TestClearCache) {
   // Create context and set the cache policy
   ruy::Context context;
-  context.cache_policy = ruy::kCacheLHSOnGemV;
+  context.cache_policy = ruy::kCacheLHSOnNarrowMul;
   PrepackedCache* cache = context.GetPrepackedCache();
   EXPECT_EQ(cache->TotalSize(), 0);
 

@@ -402,7 +402,7 @@ Status AddPlaceholdersForFeeds(
     // TODO(shikharagarwal): Add original node information.
     NodeDef* d = graph_def->add_node();
     d->set_name(info.placeholder_name);
-    d->set_op("PlaceholderV2");
+    d->set_op("Placeholder");
     auto& attr_map = *d->mutable_attr();
     attr_map["dtype"].set_type(info.data_type);
     *attr_map["shape"].mutable_shape() = info.feed->shape();

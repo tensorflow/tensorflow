@@ -405,7 +405,7 @@ if __name__ == "__main__":
                 full_matrices)
             _AddTest(SvdGradOpTest, "SvdGrad", name,
                      _GetSvdGradOpTest(dtype, shape, compute_uv, full_matrices))
-            # The results are too inacurate for float32.
+            # The results are too inaccurate for float32.
             if dtype in (np.float64, np.complex128):
               _AddTest(
                   SvdGradGradOpTest, "SvdGradGrad", name,

@@ -7,7 +7,7 @@ ifeq ($(TARGET),rpi)
 
   ifeq ($(TARGET_ARCH), armv7l)
     CXXFLAGS += \
-			-march=armv7-a \
+      -march=armv7-a \
       -mfpu=neon-vfpv4 \
       -funsafe-math-optimizations \
       -ftree-vectorize \
@@ -25,6 +25,8 @@ ifeq ($(TARGET),rpi)
       -Wl,--exclude-libs,ALL \
       -Wl,--gc-sections \
       -Wl,--as-needed
+
+    BUILD_WITH_RUY := true
   endif
 
   # TODO(petewarden) In the future, we'll want to use OpenBLAS as a faster
@@ -50,7 +52,7 @@ ifeq ($(TARGET),rpi)
       -Wl,--gc-sections \
       -Wl,--as-needed
   endif
-       
+
   LIBS := \
     -lstdc++ \
     -lpthread \

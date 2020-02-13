@@ -28,50 +28,81 @@ namespace profiler {
 namespace {
 
 // Helper for deriving an XLine from events in another XLine.
-// Merges consecutive events with the same metadata.
 class DerivedXLineBuilder {
  public:
   DerivedXLineBuilder(XPlaneBuilder* plane, int64 line_id,
-                      absl::string_view name, int64 timestamp_ns)
+                      absl::string_view name, int64 timestamp_ns,
+                      std::vector<DerivedXLineBuilder*> dependent_lines,
+                      bool try_expand)
       : line_(plane->GetOrCreateLine(line_id)),
-        group_id_stats_(plane->GetOrCreateStatMetadata(
-            GetStatTypeStr(StatType::kGroupId))) {
-    line_.SetName(std::string(name));
+        group_id_stats_(
+            plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))),
+        try_expand_(try_expand) {
+    line_.SetName(name);
     line_.SetTimestampNs(timestamp_ns);
+    dependent_lines_ = std::move(dependent_lines);
   }
 
-  // If the last event of the given level has the same metadata and group_id,
-  // expands it to include the time until (offset_ps + duration_ps). Otherwise,
-  // adds a new event and clears last_event_by_level_ for the levels below the
-  // given level. Clearing last_event_by_level_ prevents a nested event from
-  // growing larger than the parent event(s).
-  void ExpandOrAddEvent(const XEventMetadata& event_metadata,
-                        const XEventVisitor& event,
-                        absl::optional<int64> group_id, int level = 0) {
-    int64 offset_ps = event.OffsetPs(), duration_ps = event.DurationPs();
-    auto& last_event = last_event_by_level_[level];
-    DCHECK(!last_event || last_event->OffsetPs() <= offset_ps);
-    if (last_event && last_event->MetadataId() == event_metadata.id() &&
-        last_group_id_ == group_id) {
-      last_event->SetDurationPs((offset_ps + duration_ps) -
-                                last_event->OffsetPs());
-    } else {
-      last_event = line_.AddEvent(event_metadata);
-      last_event->SetOffsetPs(offset_ps);
-      last_event->SetDurationPs(duration_ps);
-      last_group_id_ = group_id;
-      if (group_id) last_event->AddStatValue(*group_id_stats_, *group_id);
-      for (int i = level + 1; i < last_event_by_level_.size(); ++i) {
-        last_event_by_level_[i] = absl::nullopt;
-      }
+  void ExpandOrAddEvents(
+      const std::vector<const XEventMetadata*>& metadata_per_level,
+      const XEventVisitor& events, absl::optional<int64> group_id) {
+    for (int level = 0; level < metadata_per_level.size(); ++level) {
+      ExpandOrAddLevelEvent(metadata_per_level[level], events, group_id, level);
+    }
+  }
+
+  // Reset last events lower than the given level.
+  void ResetLastEvents(int level = -1) {
+    for (int i = level + 1; i < last_event_by_level_.size(); ++i) {
+      last_event_by_level_[i] = absl::nullopt;
     }
   }
 
  private:
+  // If the last event of the given level has the same metadata and try_expand_
+  // is true, expands it to include the time until the given event's (offset_ps
+  // + duration_ps). Otherwise, adds a new event and clears last_event_by_level_
+  // for the levels below the given level and all levels of the dependent lines.
+  // Clearing last_event_by_level_ prevents a nested event from growing larger
+  // than the parent event(s).
+  void ExpandOrAddLevelEvent(const XEventMetadata* event_metadata,
+                             const XEventVisitor& event,
+                             absl::optional<int64> group_id, int level) {
+    int64 offset_ps = event.OffsetPs();
+    int64 duration_ps = event.DurationPs();
+    auto& last_event = last_event_by_level_[level];
+    // If last_event is not nullptr, its offset must be less than or equal to
+    // the given event's offset.
+    DCHECK(!last_event || last_event->OffsetPs() <= offset_ps);
+    if (try_expand_ && last_event &&
+        last_event->MetadataId() == event_metadata->id()) {
+      // If last_event is not nullptr and metadata is same, merge the given
+      // event into last_event.
+      last_event->SetDurationPs((offset_ps + duration_ps) -
+                                last_event->OffsetPs());
+    } else {
+      // Otherwise, create a new event for the given level.
+      last_event = line_.AddEvent(*event_metadata);
+      last_event->SetOffsetPs(offset_ps);
+      last_event->SetDurationPs(duration_ps);
+      if (group_id) last_event->AddStatValue(*group_id_stats_, *group_id);
+      // Reset last events lower than the given level.
+      ResetLastEvents(level);
+      if (level == 0) ResetDependentLines();
+    }
+  }
+
+  void ResetDependentLines() {
+    for (DerivedXLineBuilder* line : dependent_lines_) {
+      line->ResetLastEvents();
+    }
+  }
+
   XLineBuilder line_;
   absl::flat_hash_map<int, absl::optional<XEventBuilder>> last_event_by_level_;
-  absl::optional<int64> last_group_id_;
   XStatMetadata* group_id_stats_;
+  std::vector<DerivedXLineBuilder*> dependent_lines_;
+  bool try_expand_;
 };
 
 const absl::string_view kDerivedLineSteps = "Steps";
@@ -98,14 +129,16 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
   absl::c_sort(events);
 
   XPlaneBuilder plane(device_trace);
-  DerivedXLineBuilder steps(&plane, kThreadIdStepInfo, kDerivedLineSteps,
-                            start_timestamp_ns);
   DerivedXLineBuilder tf_ops(&plane, kThreadIdTfOp, kDerivedLineTensorFlowOps,
-                             start_timestamp_ns);
-  DerivedXLineBuilder hlo_ops(&plane, kThreadIdHloOp, kDerivedLineXlaModules,
-                              start_timestamp_ns);
+                             start_timestamp_ns, {}, /*try_expand=*/true);
+  DerivedXLineBuilder hlo_ops(&plane, kThreadIdHloOp, kDerivedLineXlaOps,
+                              start_timestamp_ns, {}, /*try_expand=*/true);
   DerivedXLineBuilder hlo_modules(&plane, kThreadIdHloModule,
-                                  kDerivedLineXlaOps, start_timestamp_ns);
+                                  kDerivedLineXlaModules, start_timestamp_ns,
+                                  {&tf_ops, &hlo_ops}, /*try_expand=*/false);
+  DerivedXLineBuilder steps(&plane, kThreadIdStepInfo, kDerivedLineSteps,
+                            start_timestamp_ns, {&tf_ops, &hlo_ops},
+                            /*try_expand=*/true);
 
   // Process events in order by start time.
   for (const XEventVisitor& event : events) {
@@ -130,39 +163,37 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
 
     if (group_id) {
       if (auto group_name = gtl::FindOrNull(event_group_name_map, *group_id)) {
-        steps.ExpandOrAddEvent(*plane.GetOrCreateEventMetadata(*group_name),
-                               event, group_id);
+        steps.ExpandOrAddEvents({plane.GetOrCreateEventMetadata(*group_name)},
+                                event, group_id);
       }
     }
 
-    if (!is_kernel) {
-      // For HLO/TF op lines, only use kernel events, (i.e. excluding memcpy or
-      // allocation events).
-      continue;
-    }
+    // For HLO/TF op lines, only use kernel events (i.e. excluding memcpy or
+    // allocation events).
+    if (!is_kernel) continue;
 
     if (!hlo_module_name.empty()) {
-      hlo_modules.ExpandOrAddEvent(
-          *plane.GetOrCreateEventMetadata(hlo_module_name), event, group_id);
+      hlo_modules.ExpandOrAddEvents(
+          {plane.GetOrCreateEventMetadata(hlo_module_name)}, event, group_id);
     }
 
     if (!hlo_op_names.empty()) {  // GPU kernel compiled by XLA
       DCHECK(!hlo_module_name.empty());
-      int level = 0;
+      std::vector<const XEventMetadata*> hlo_op_metadata_per_level;
       for (absl::string_view hlo_op_name : hlo_op_names) {
         DCHECK(!hlo_op_name.empty());
-        hlo_ops.ExpandOrAddEvent(*plane.GetOrCreateEventMetadata(hlo_op_name),
-                                 event, group_id, level);
-        auto tf_op_name = symbol_resolver(hlo_module_name, hlo_op_name);
-        if (!tf_op_name.empty()) {
-          tf_ops.ExpandOrAddEvent(*plane.GetOrCreateEventMetadata(tf_op_name),
-                                  event, group_id, level);
-        }
-        ++level;
+        hlo_op_metadata_per_level.push_back(
+            plane.GetOrCreateEventMetadata(hlo_op_name));
+      }
+      hlo_ops.ExpandOrAddEvents(hlo_op_metadata_per_level, event, group_id);
+      auto tf_op_name = symbol_resolver(hlo_module_name, hlo_op_names.back());
+      if (!tf_op_name.empty()) {
+        tf_ops.ExpandOrAddEvents({plane.GetOrCreateEventMetadata(tf_op_name)},
+                                 event, group_id);
       }
     } else if (!tf_op_fullname.empty()) {  // GPU kernel not compiled by XLA
-      tf_ops.ExpandOrAddEvent(*plane.GetOrCreateEventMetadata(tf_op_fullname),
-                              event, group_id);
+      tf_ops.ExpandOrAddEvents({plane.GetOrCreateEventMetadata(tf_op_fullname)},
+                               event, group_id);
     }
   }
   RemoveEmptyLines(device_trace);

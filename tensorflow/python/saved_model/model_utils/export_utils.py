@@ -222,7 +222,7 @@ def get_timestamped_export_dir(export_dir_base):
     time.sleep(1)
     attempts += 1
     logging.warn('Directory {} already exists; retrying (attempt {}/{})'.format(
-        result_dir, attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
+        compat.as_str(result_dir), attempts, MAX_DIRECTORY_CREATION_ATTEMPTS))
   raise RuntimeError('Failed to obtain a unique export directory name after '
                      '{} attempts.'.format(MAX_DIRECTORY_CREATION_ATTEMPTS))
 

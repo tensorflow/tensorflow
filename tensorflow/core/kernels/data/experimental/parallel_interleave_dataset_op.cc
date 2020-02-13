@@ -598,7 +598,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status EnsureWorkerThreadsStarted(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (worker_threads_.empty()) {
+      if (worker_threads_.empty() && input_impl_) {
         worker_threads_.reserve(dataset()->num_threads());
         for (int64 i = 0; i < dataset()->num_threads(); ++i) {
           std::vector<Tensor> args;

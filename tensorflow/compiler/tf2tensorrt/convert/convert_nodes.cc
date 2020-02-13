@@ -2248,6 +2248,14 @@ Status ConvertTranspose(OpConverterParams* params) {
         "Transpose at batch dimension is not supported.");
   }
 
+  // TensorRT as of version 7.0.0.11 is slow transposing large tensors.
+  // So check tensor size, and don't convert if it is too large.
+  constexpr int64_t kMaxEfficientTranspose = 2500000;
+  int64_t tensor_size = TrtTensorDimsNumElements(input_tensor->getDimensions());
+  if (tensor_size > kMaxEfficientTranspose) {
+    return errors::Unimplemented(StrCat("Transpose too large:", tensor_size));
+  }
+
   if (params->validation_only) return Status::OK();
 
   // Start conversion.
@@ -2417,7 +2425,7 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
   }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  // If the remaining dimensions of squeeze operation have dynamic sizes, we
+  // If the remaining dimensions of a squeeze operation have dynamic sizes, we
   // need to use TRT ops to build the result shape for the squeeze operation.
   // This is because IShuffleLayer::setReshapeDimensions treats -1 as a special
   // value.

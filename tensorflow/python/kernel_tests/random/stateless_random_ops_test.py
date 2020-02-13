@@ -133,11 +133,23 @@ class StatelessOpsTest(test.TestCase):
     for dtype in np.float16, np.float32, np.float64:
       for alpha in ([[.5, 1., 2.]], [[0.5, 0.5], [0.8, 0.2], [0.25, 0.75]]):
         kwds = dict(alpha=constant_op.constant(alpha, dtype=dtype), dtype=dtype)
-        yield (functools.partial(
-            stateless.stateless_random_gamma,
-            shape=(10,) + tuple(np.shape(alpha)),
-            **kwds),
-               functools.partial(random_ops.random_gamma, shape=(10,), **kwds))
+        yield (
+            functools.partial(stateless.stateless_random_gamma,
+                              shape=(10,) + tuple(np.shape(alpha)), **kwds),
+            functools.partial(random_ops.random_gamma, shape=(10,), **kwds))
+
+  def _poisson_cases(self):
+    for lam_dtype in np.float16, np.float32, np.float64, np.int32, np.int64:
+      for out_dtype in np.float16, np.float32, np.float64, np.int32, np.int64:
+        for lam in ([[5.5, 1., 2.]], [[7.5, 10.5], [3.8, 8.2], [1.25, 9.75]]):
+          kwds = dict(
+              lam=constant_op.constant(lam_dtype(lam), dtype=lam_dtype),
+              dtype=out_dtype)
+          yield (
+              functools.partial(stateless.stateless_random_poisson,
+                                shape=(10,) + tuple(np.shape(lam)),
+                                **kwds),
+              functools.partial(random_ops.random_poisson, shape=(10,), **kwds))
 
   @test_util.run_deprecated_v1
   def testMatchFloat(self):
@@ -156,6 +168,10 @@ class StatelessOpsTest(test.TestCase):
     self._test_match(self._gamma_cases())
 
   @test_util.run_deprecated_v1
+  def testMatchPoisson(self):
+    self._test_match(self._poisson_cases())
+
+  @test_util.run_deprecated_v1
   def testDeterminismFloat(self):
     self._test_determinism(
         self._float_cases(shape_dtypes=(dtypes.int32, dtypes.int64)))
@@ -172,6 +188,10 @@ class StatelessOpsTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testDeterminismGamma(self):
     self._test_determinism(self._gamma_cases())
+
+  @test_util.run_deprecated_v1
+  def testDeterminismPoisson(self):
+    self._test_determinism(self._poisson_cases())
 
 
 if __name__ == '__main__':

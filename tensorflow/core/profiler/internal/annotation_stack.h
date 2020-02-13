@@ -30,7 +30,7 @@ namespace internal {
 
 // Whether annotations are enabled.
 // Static atomic so Annotation::IsEnabled can be fast and non-blocking.
-TF_EXPORT extern std::atomic<bool> g_annotation_enabled;
+TF_EXPORT extern std::atomic<int> g_annotation_enabled;
 
 }  // namespace internal
 

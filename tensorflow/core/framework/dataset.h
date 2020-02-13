@@ -645,40 +645,20 @@ class IteratorBase {
     return 0;
   }
 
-  int64 id_ = 0;
-  int64 parent_id_ = 0;
-
  private:
   // For access to `AddCleanupFunction` and `Restore`.
   friend class DatasetBase;
   friend class DatasetBaseIterator;  // for access to `node_`
 
-  // Registers a cleanup function to be called upon object destruction.
-  //
-  // Registered functions are invoked in the reserve order of registration.
-  void AddCleanupFunction(std::function<void()>&& cleanup_fn) {
-    cleanup_fns_.push_back(std::move(cleanup_fn));
-  }
-
-  // Associates the given performance modeling `Node` with this iterator.
-  void SetNode(std::shared_ptr<model::Node> node) { node_ = node.get(); }
-
-  // Sets the parent iterator of this iterator.
-  void SetParent(const IteratorBase* parent) {
-    parent_ = parent;
-    if (id_ == 0) {
-      id_ = Hash64CombineUnordered(Hash64(prefix()),
-                                   reinterpret_cast<uint64>(this));
-    }
-    if (parent_ && parent_id_ == 0) {
-      parent_id_ = Hash64CombineUnordered(Hash64(parent_->prefix()),
-                                          reinterpret_cast<uint64>(parent_));
-    }
-  }
+  // Performs initialization of the base iterator.
+  Status InitializeBase(IteratorContext* ctx, const IteratorBase* parent,
+                        const string& output_prefix);
 
   std::vector<std::function<void()>> cleanup_fns_;
   model::Node* node_ = nullptr;  // Not owned.
   const IteratorBase* parent_ = nullptr;  // Not owned.
+  int64 id_ = 0;
+  int64 parent_id_ = 0;
 };
 
 // Represents runtime information needed to construct a dataset.
@@ -875,14 +855,6 @@ class DatasetBase : public core::RefCounted {
       const string& prefix) const = 0;
 
  private:
-  // Returns a factory for nodes that represent the given iterator.
-  static model::Node::Factory MakeNodeFactory(IteratorContext* ctx,
-                                              IteratorBase* iterator) {
-    return [ctx, iterator](model::Node::Args args) {
-      return iterator->CreateNode(ctx, std::move(args));
-    };
-  }
-
   const string type_string_;
   const string node_name_;
 };
@@ -1035,7 +1007,7 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
  private:
-  inline bool collect_resource_usage(IteratorContext* ctx) {
+  bool collect_resource_usage(IteratorContext* ctx) {
     auto model = ctx->model();
     return model && model->collect_resource_usage() && node_;
   }

@@ -100,8 +100,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                data->axis);
     }
     default: {
-      context->ReportError(context, "Type '%s' is not supported by pack.",
-                           TfLiteTypeGetName(output->type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by pack.",
+                         TfLiteTypeGetName(output->type));
       return kTfLiteError;
     }
   }

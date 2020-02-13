@@ -60,7 +60,7 @@ class BatchNormalizationBase(Layer):
 
   3) When performing inference using a model containing batch normalization, it
   is generally (though not always) desirable to use accumulated statistics
-  rather than mini-batch statistics. This is acomplished by passing
+  rather than mini-batch statistics. This is accomplished by passing
   `training=False` when calling the model, or using `model.predict`.
 
   Arguments:
@@ -1123,7 +1123,7 @@ class LayerNormalization(Layer):
       # self.gamma and self.beta have the wrong shape for fused_batch_norm, so
       # we cannot pass them as the scale and offset parameters. Therefore, we
       # create two constant tensors in correct shapes for fused_batch_norm and
-      # later constuct a separate calculation on the scale and offset.
+      # later construct a separate calculation on the scale and offset.
       scale = _set_const_tensor(1.0, self.dtype, [pre_dim])
       offset = _set_const_tensor(0.0, self.dtype, [pre_dim])
 

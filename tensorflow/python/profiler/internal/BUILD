@@ -119,3 +119,22 @@ tf_python_pybind_extension(
         "@pybind11",
     ],
 )
+
+tf_pybind_cc_library_wrapper(
+    name = "profiler_session_headers",
+    deps = ["//tensorflow/core/profiler/lib:profiler_session"],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_profiler_session",
+    srcs = ["profiler_session_wrapper.cc"],
+    features = ["-layering_check"],
+    module_name = "_pywrap_profiler_session",
+    visibility = ["//tensorflow/python/eager:__pkg__"],
+    deps = [
+        ":profiler_session_headers",
+        "//tensorflow/core:lib",
+        "//tensorflow/python:pybind11_status",
+        "@pybind11",
+    ],
+)

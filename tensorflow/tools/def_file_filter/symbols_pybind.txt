@@ -182,9 +182,6 @@ TFE_Py_SetEagerContext
 tensorflow::EagerExecutor::~EagerExecutor
 tensorflow::EagerContext::WaitForAndCloseRemoteContexts
 
-[profiler_session] # tfe
-tensorflow::ProfilerSession::~ProfilerSession
-
 [tf_status_helper] # tfe
 tensorflow::Set_TF_Status_from_Status
 
@@ -304,3 +301,40 @@ tensorflow::profiler::TraceMeRecorder::Record
 
 [annotation_stack_impl] # profiler
 tensorflow::profiler::AnnotationStack::ThreadAnnotationStack
+
+[profiler_session_impl] # profiler
+tensorflow::ProfilerSession::Create
+tensorflow::ProfilerSession::SerializeToString
+tensorflow::ProfilerSession::Status
+tensorflow::ProfilerSession::~ProfilerSession
+
+[status_macros] # tfcompile
+xla::status_macros::MakeErrorStream::Impl::Impl
+xla::status_macros::MakeErrorStream::Impl::~Impl
+xla::status_macros::MakeErrorStream::Impl::GetStatus
+xla::status_macros::MakeErrorStream::CheckNotDone
+
+[hlo] # tfcompile
+xla::DfsHloVisitorBase::SetVisited
+xla::DfsHloVisitorBase<class xla::HloInstruction.*>::SetVisited
+xla::HloComputation::Accept
+xla::HloComputation::AcceptOrdered
+xla::HloComputation::CollectUnreachableRoots
+xla::HloInstruction::ToString
+xla::HloInstruction::Accept
+xla::HloInstruction::Visit
+
+[tfcompile_lib] # tfcompile
+tensorflow::tfcompile::Main
+
+[model_analyzer_lib] # model_analyzer
+tensorflow::grappler::ModelAnalyzer::GenerateReport
+tensorflow::grappler::ModelAnalyzer::ModelAnalyzer
+
+[analytical_cost_estimator] # cost_analyzer
+tensorflow::grappler::AnalyticalCostEstimator::Initialize
+tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
+
+[cost_analyzer_lib] # cost_analyzer
+tensorflow::grappler::CostAnalyzer::CostAnalyzer
+tensorflow::grappler::CostAnalyzer::GenerateReport

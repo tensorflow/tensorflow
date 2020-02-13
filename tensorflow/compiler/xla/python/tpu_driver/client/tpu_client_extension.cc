@@ -177,6 +177,8 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                   py::call_guard<py::gil_scoped_release>())
       .def_static("Compile", &PyTpuExecutable::CompileForDevices,
                   py::call_guard<py::gil_scoped_release>())
+      .def("local_logical_device_ids",
+           &PyTpuExecutable::local_logical_device_ids)
       .def("local_devices", &PyTpuExecutable::local_devices)
       .def("SizeOfGeneratedCodeInBytes",
            &PyTpuExecutable::SizeOfGeneratedCodeInBytes)
