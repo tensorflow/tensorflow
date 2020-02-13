@@ -227,6 +227,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 3;
       }
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.output_types.at(0) == TensorType_INT16) {
+        return 4;
+      }
       return 1;
 
     case BuiltinOperator_DEQUANTIZE:
@@ -273,6 +277,19 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_MAXIMUM:
+    case BuiltinOperator_MINIMUM:
+    case BuiltinOperator_PACK:
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.output_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+      return 1;
+
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
@@ -280,8 +297,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_MAX_POOL_2D:
-    case BuiltinOperator_MAXIMUM:
-    case BuiltinOperator_MINIMUM:
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
     case BuiltinOperator_SOFTMAX:
@@ -293,7 +308,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_RELU6:
     case BuiltinOperator_RESIZE_BILINEAR:
     case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
-    case BuiltinOperator_PACK:
     case BuiltinOperator_TANH:
     case BuiltinOperator_LOGISTIC:
     case BuiltinOperator_LOG_SOFTMAX:
