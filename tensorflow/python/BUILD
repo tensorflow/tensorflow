@@ -2198,6 +2198,7 @@ tf_py_test(
     srcs = ["framework/importer_test.py"],
     main = "framework/importer_test.py",
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -4935,6 +4936,7 @@ cuda_py_test(
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     python_version = "PY3",
     shard_count = 16,
+    tags = ["no_rocm"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -7611,6 +7613,7 @@ tf_py_test(
     tags = [
         "grappler",
         "no_pip",  # graph_placer is not available in pip.
+        "no_rocm",
     ],
     deps = [
         ":client_testlib",
