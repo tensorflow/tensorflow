@@ -115,10 +115,7 @@ cc_library(
 tf_cc_test(
     name = "custom_call_test",
     srcs = if_cuda_is_configured(["custom_call_test.cc"]),
-    tags = [
-        "gpu",
-        "requires-gpu-sm35",
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
     ] + if_cuda_is_configured([
