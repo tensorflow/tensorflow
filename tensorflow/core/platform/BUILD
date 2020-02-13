@@ -44,6 +44,7 @@ load(
     "tf_cc_tests",
     "tf_copts",  # @unused
     "tf_cuda_library",
+    "tf_portable_full_lite_protos",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -449,10 +450,10 @@ cc_library(
         "protobuf_util.cc",
     ],
     hdrs = ["protobuf.h"],
-    defines = select({
-        "//tensorflow:android": ["TENSORFLOW_LITE_PROTOS"],
-        "//conditions:default": [],
-    }),
+    defines = tf_portable_full_lite_protos(
+        full = [],
+        lite = ["TENSORFLOW_LITE_PROTOS"],
+    ),
     deps = [
         ":platform",
         ":types",
