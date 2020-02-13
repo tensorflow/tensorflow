@@ -50,8 +50,8 @@ void RespondToDetection(tflite::ErrorReporter* error_reporter,
     am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_YELLOW);
   }
 
-  error_reporter->Report("Person score: %d No person score: %d", person_score,
-                         no_person_score);
+  TF_LITE_REPORT_ERROR(error_reporter, "Person score: %d No person score: %d",
+                       person_score, no_person_score);
 }
 
 #endif // ARDUINO_EXCLUDE_CODE

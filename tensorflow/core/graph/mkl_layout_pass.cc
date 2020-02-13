@@ -362,10 +362,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 // End - element-wise ops. See note above.
 
 // NOTE: names are alphabetically sorted.
-#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
@@ -654,6 +654,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       mkl_op_registry::GetMklOpName(csinfo_.quantize_v2),
                       CopyAttrsAll, QuantizeOpRewrite,
                       kRewriteForLayoutPropagation});
+#endif  // !ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
@@ -666,10 +667,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.relu6_grad, mkl_op_registry::GetMklOpName(csinfo_.relu6_grad),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back(
         {csinfo_.requantize, mkl_op_registry::GetMklOpName(csinfo_.requantize),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
-#endif  // !ENABLE_MKLDNN_V1
 // Disable these two MKL operators for now due to some test failures caused
 // by these two ops
 /*
@@ -682,7 +683,6 @@ rinfo_.push_back({csinfo_.tanh_grad,
                   CopyAttrsAll, AlwaysRewrite,
                   kRewriteForLayoutPropagation});
 */
-#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back(
         {csinfo_.reshape, mkl_op_registry::GetMklOpName(csinfo_.reshape),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
@@ -701,10 +701,12 @@ rinfo_.push_back({csinfo_.tanh_grad,
     rinfo_.push_back({csinfo_.sub, mkl_op_registry::GetMklOpName(csinfo_.sub),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
+#endif  // !ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.transpose,
                       mkl_op_registry::GetMklOpName(csinfo_.transpose),
                       CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
 
+#ifndef ENABLE_MKLDNN_V1
     // Add info about which ops to add workspace edge to and the slots.
     wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});
     wsinfo_.push_back({csinfo_.max_pool, csinfo_.max_pool_grad, 0, 1, 1, 3});

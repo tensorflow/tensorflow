@@ -1,7 +1,7 @@
 # Description:
 #  Tools for building the TensorFlow pip package.
 
-load("//tensorflow:tensorflow.bzl", "if_windows", "transitive_hdrs")
+load("//tensorflow:tensorflow.bzl", "if_windows", "if_xla_available", "transitive_hdrs")
 load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
@@ -82,11 +82,12 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/distribute:multi_process_runner",
     "//tensorflow/python/eager:eager_pip",
-    "//tensorflow/python/keras:model_subclassing_test_util",
-    "//tensorflow/python/keras:preprocessing_test_utils",
+    "//tensorflow/python/keras/layers/preprocessing:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
+    "//tensorflow/python/keras/tests:model_subclassing_test_util",
+    "//tensorflow/python/keras/tests:model_architectures",
     "//tensorflow/python/kernel_tests:cudnn_deterministic_base",
     "//tensorflow/python/kernel_tests:bias_op_base",
     "//tensorflow/python/kernel_tests/random:util",
@@ -104,7 +105,9 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/docs:generate_lib",
     "//tensorflow/tools/docs:parser",
     "//tensorflow/tools/docs:py_guide_parser",
-]
+] + if_xla_available([
+    "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+])
 
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
@@ -128,9 +131,11 @@ filegroup(
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/icu/data:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
+        "@astunparse_archive//:LICENSE",
         "@astor_archive//:LICENSE",
         "@boringssl//:LICENSE",
         "@com_google_absl//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
         "@double_conversion//:LICENSE",
@@ -144,29 +149,27 @@ filegroup(
         "@gemmlowp//:LICENSE",
         "@gif//:COPYING",
         "@highwayhash//:LICENSE",
-        "@hwloc//:COPYING",
         "@icu//:icu4c/LICENSE",
         "@kissfft//:COPYING",
         "@libjpeg_turbo//:LICENSE.md",
-        "@lmdb//:LICENSE",
         "@llvm-project//llvm:LICENSE.TXT",
         "@llvm-project//mlir:LICENSE.TXT",
+        "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@opt_einsum_archive//:LICENSE",
+        "@org_python_pypi_backports_weakref//:LICENSE",
         "@pasta//:LICENSE",
         "@pcre//:LICENCE",
         "@png//:LICENSE",
-        "@com_google_protobuf//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@sobol_data//:LICENSE",
         "@swig//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
         "@zlib_archive//:zlib.h",
-        "@org_python_pypi_backports_weakref//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -188,6 +191,11 @@ filegroup(
     }) + select({
         "//tensorflow/core/kernels:xsmm": [
             "@libxsmm_archive//:LICENSE.md",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_numa_support": [
+            "@hwloc//:COPYING",
         ],
         "//conditions:default": [],
     }) + if_cuda([

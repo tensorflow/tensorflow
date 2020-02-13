@@ -253,7 +253,7 @@ class Base(gast.NodeTransformer):
     self.enter_local_scope()
 
     # Allows scoping of local variables to keep state across calls to visit_*
-    # methods. Multiple scope hierchies may exist and are keyed by tag. A scope
+    # methods. Multiple scope hierarchies may exist and are keyed by tag. A scope
     # is valid at one or more nodes and all its children. Scopes created in
     # child nodes supersede their parent. Scopes are isolated from one another.
     self.state = _State()

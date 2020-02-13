@@ -54,7 +54,7 @@ message SystemTopology {
   int64 num_expected_reduced_chips = 4;
 }
 
-// Result proto for RunEnvironment (the run environment of a profiling session).
+// The run environment of a profiling session.
 message RunEnvironment {
   // Number of hosts used.
   int32 host_count = 1;
@@ -71,9 +71,9 @@ message RunEnvironment {
   int32 device_core_count = 5;
   // The per-device-core batch size.
   int32 per_core_batch_size = 6;
-  // Host-independent job information.
+  // Host-independent information about this job.
   HostIndependentJobInfoResult host_independent_job_info = 7;
-  // Host-dependent job information.
+  // Host-dependent information about this job.
   repeated HostDependentJobInfoResult host_dependent_job_info = 8;
   // The number of replicas, corresponds to input parallelism.
   // If there is no model parallelism, replica_count = device_core_count
@@ -97,4 +97,6 @@ message OpStats {
   PerfEnv perf_env = 3;
   // The database of step sequences.
   StepDatabaseResult step_db = 4;
+  // The run environment of this profiling session.
+  RunEnvironment run_environment = 5;
 }

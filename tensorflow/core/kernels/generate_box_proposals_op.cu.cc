@@ -309,7 +309,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
       tensorflow::OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("post_nms_topn", &post_nms_topn_));
-    OP_REQUIRES(context, post_nms_topn_ <= 0,
+    OP_REQUIRES(context, post_nms_topn_ > 0,
                 errors::InvalidArgument("post_nms_topn can't be 0 or less"));
     bbox_xform_clip_default_ = log(1000.0 / 16.);
   }

@@ -30,8 +30,8 @@ inline void Tanh(int32_t input_zero_point, int32_t input_range_radius,
   // Integer bits must be in sync with Prepare() function.
   static constexpr int32_t kInputIntegerBits = 4;
   static constexpr int32_t kOutputScale = 7;
-  static constexpr int8_t kMinInt8 = std::numeric_limits<int8_t>::min();
-  static constexpr int8_t kMaxInt8 = std::numeric_limits<int8_t>::max();
+  static constexpr int32_t kMinInt8 = std::numeric_limits<int8_t>::min();
+  static constexpr int32_t kMaxInt8 = std::numeric_limits<int8_t>::max();
   using F4 = gemmlowp::FixedPoint<int32_t, kInputIntegerBits>;
 
   for (int i = 0; i < input_size; ++i) {
@@ -51,9 +51,7 @@ inline void Tanh(int32_t input_zero_point, int32_t input_range_radius,
       using gemmlowp::RoundingDivideByPOT;
       int32_t output_in_q24 =
           RoundingDivideByPOT(output_in_q0, 31 - kOutputScale);
-      output_in_q24 =
-          std::min(std::max(output_in_q24, static_cast<int32_t>(kMinInt8)),
-                   static_cast<int32_t>(kMaxInt8));
+      output_in_q24 = std::min(std::max(output_in_q24, kMinInt8), kMaxInt8);
       output_data[i] = static_cast<int8_t>(output_in_q24);
     }
   }

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/micro/compatibility.h"
 #include "tensorflow/lite/micro/micro_optional_debug_tools.h"
 
@@ -51,11 +52,13 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       error_reporter_(error_reporter),
       allocator_(&context_, model_, tensor_arena, tensor_arena_size,
                  error_reporter_),
-      tensors_allocated_(false) {
+      tensors_allocated_(false),
+      tensors_prepared_(false) {
   const flatbuffers::Vector<flatbuffers::Offset<SubGraph>>* subgraphs =
       model->subgraphs();
   if (subgraphs->size() != 1) {
-    error_reporter->Report("Only 1 subgraph is currently supported.\n");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Only 1 subgraph is currently supported.\n");
     initialization_status_ = kTfLiteError;
     return;
   }
@@ -154,24 +157,30 @@ TfLiteStatus MicroInterpreter::Invoke() {
       init_data = reinterpret_cast<const char*>(node->builtin_data);
       init_data_size = 0;
     }
-    if (registration->init) {
+    if (!tensors_prepared_ && registration->init) {
       node->user_data =
           registration->init(&context_, init_data, init_data_size);
     }
   }
 
-  for (size_t i = 0; i < operators_->size(); ++i) {
-    auto* node = &(node_and_registrations_[i].node);
-    auto* registration = node_and_registrations_[i].registration;
-    if (registration->prepare) {
-      TfLiteStatus prepare_status = registration->prepare(&context_, node);
-      if (prepare_status != kTfLiteOk) {
-        error_reporter_->Report(
-            "Node %s (number %d) failed to prepare with status %d",
-            OpNameFromRegistration(registration), i, prepare_status);
-        return kTfLiteError;
+  if (!tensors_prepared_) {
+    for (size_t i = 0; i < operators_->size(); ++i) {
+      auto* node = &(node_and_registrations_[i].node);
+      auto* registration = node_and_registrations_[i].registration;
+      if (registration->prepare) {
+        TfLiteStatus prepare_status = registration->prepare(&context_, node);
+        if (prepare_status != kTfLiteOk) {
+          error_reporter_->Report(
+              "Node %s (number %d) failed to prepare with status %d",
+              OpNameFromRegistration(registration), i, prepare_status);
+          return kTfLiteError;
+        }
       }
     }
+#ifdef TF_LITE_MICRO_TENSORS_PREPARED
+    // TODO(b/148085107): Turn this value on by default.
+    tensors_prepared_ = true;
+#endif
   }
 
   for (size_t i = 0; i < operators_->size(); ++i) {
@@ -231,6 +240,22 @@ TfLiteTensor* MicroInterpreter::tensor(size_t index) {
     return nullptr;
   }
   return &context_.tensors[index];
+}
+
+TfLiteStatus MicroInterpreter::ResetVariableTensors() {
+  const size_t length = tensors_size();
+  for (size_t i = 0; i < length; ++i) {
+    TfLiteTensor* cur_tensor = tensor(i);
+    if (cur_tensor->is_variable) {
+      TfLiteStatus status = tflite::ResetVariableTensor(cur_tensor);
+      if (status != kTfLiteOk) {
+        error_reporter_->Report("Failed to reset variable tensor at index: %d",
+                                i);
+        return status;
+      }
+    }
+  }
+  return kTfLiteOk;
 }
 
 }  // namespace tflite

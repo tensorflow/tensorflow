@@ -124,8 +124,9 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
   // Collecting data at 25Hz.
   int accInitRes = initAccelerometer();
   if (accInitRes != (int)AM_HAL_STATUS_SUCCESS) {
-    error_reporter->Report("Failed to initialize the accelerometer. (code %d)",
-                           accInitRes);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Failed to initialize the accelerometer. (code %d)",
+                         accInitRes);
   }
 
   // Enable the accelerometer's FIFO buffer.
@@ -134,7 +135,7 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
   // it's not fetched in time, so we need to make sure that model inference is
   // faster than 1/25Hz * 32 = 1.28s
   if (lis2dh12_fifo_set(&dev_ctx, 1)) {
-    error_reporter->Report("Failed to enable FIFO buffer.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to enable FIFO buffer.");
   }
 
   if (lis2dh12_fifo_mode_set(&dev_ctx, LIS2DH12_BYPASS_MODE)) {
@@ -147,7 +148,7 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
     return kTfLiteError;
   }
 
-  error_reporter->Report("Magic starts!");
+  TF_LITE_REPORT_ERROR(error_reporter, "Magic starts!");
 
   return kTfLiteOk;
 }
@@ -165,7 +166,7 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
   // Check FIFO buffer for new samples
   lis2dh12_fifo_src_reg_t status;
   if (lis2dh12_fifo_status_get(&dev_ctx, &status)) {
-    error_reporter->Report("Failed to get FIFO status.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to get FIFO status.");
     return false;
   }
 
@@ -186,7 +187,7 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
     memset(data_raw_acceleration.u8bit, 0x00, 3 * sizeof(int16_t));
     // If the return value is non-zero, sensor data was successfully read
     if (lis2dh12_acceleration_raw_get(&dev_ctx, data_raw_acceleration.u8bit)) {
-      error_reporter->Report("Failed to get raw data.");
+      TF_LITE_REPORT_ERROR(error_reporter, "Failed to get raw data.");
     } else {
       // Convert each raw 16-bit value into floating point values representing
       // milli-Gs, a unit of acceleration, and store in the current position of

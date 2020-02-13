@@ -1584,20 +1584,22 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
         input_shape=(input_dim,),
         num_classes=num_classes)
 
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Input arrays should have the same number of samples as target arrays'):
       model.fit(x_train, np.concatenate([y_train, y_train], axis=-1))
 
-    if not context.executing_eagerly():
-      # TODO(psv): Investigate these use cases in eager mode.
-      with self.assertRaises(ValueError):
-        model.fit(x_train, y_train)
+    with self.assertRaisesRegexp(ValueError,
+                                 'expects targets to be binary matrices'):
+      model.fit(x_train, y_train)
 
-      with self.assertRaises(ValueError):
-        model.compile(
-            optimizer,
-            loss=None,
-            run_eagerly=testing_utils.should_run_eagerly(),
-            experimental_run_tf_function=testing_utils.should_run_tf_function())
+    with self.assertRaisesRegexp(ValueError, 'no loss to optimize'):
+      model.compile(
+          optimizer,
+          loss=None,
+          run_eagerly=testing_utils.should_run_eagerly(),
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
+      model.fit(x_train)
 
   @keras_parameterized.run_all_keras_modes
   def test_compile_warning_for_loss_missing_output(self):
@@ -3794,10 +3796,12 @@ class SubgraphUpdateLayer(keras.layers.Layer):
 class TestAutoUpdates(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
-  @parameterized.named_parameters(('bare_update', BareUpdateLayer()),
-                                  ('lambda_update', LambdaUpdateLayer()),
-                                  ('nested_update', NestedUpdateLayer()))
-  def test_updates_in_model(self, layer):
+  @parameterized.named_parameters(
+      ('bare_update', BareUpdateLayer),
+      ('lambda_update', LambdaUpdateLayer),
+      ('nested_update', NestedUpdateLayer))
+  def test_updates_in_model(self, layer_builder):
+    layer = layer_builder()
     x, y = np.ones((10, 10)), np.ones((10, 1))
     model = testing_utils.get_model_from_layers(
         [layer, keras.layers.Dense(1)], input_shape=(10,))
@@ -3845,10 +3849,12 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     model.fit(x, y, batch_size=2, epochs=1)
     self.assertEqual(self.evaluate(layer.counter), 5)
 
-  @parameterized.named_parameters(('bare_update', BareUpdateLayer()),
-                                  ('lambda_update', LambdaUpdateLayer()),
-                                  ('nested_update', NestedUpdateLayer()))
-  def test_updates_standalone_layer(self, layer):
+  @parameterized.named_parameters(
+      ('bare_update', BareUpdateLayer),
+      ('lambda_update', LambdaUpdateLayer),
+      ('nested_update', NestedUpdateLayer))
+  def test_updates_standalone_layer(self, layer_builder):
+    layer = layer_builder()
     y = layer(np.ones((10, 10)))
     self.evaluate(layer.counter.initializer)
     self.evaluate(y)

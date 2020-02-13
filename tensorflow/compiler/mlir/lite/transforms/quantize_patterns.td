@@ -20,7 +20,7 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
 // Quantize attribute $0 by using quantization parameter from %1.
-def QuantizeByQuantizedType : NativeCodeCall<"Quantize($0, $1.getValue())">;
+def QuantizeByQuantizedType : NativeCodeCall<"quant::Quantize($0, $1.getValue())">;
 
 // Squash tfl.dequantize and tfl.quantize pairs.
 // TODO(fengliuai): Compare the scale of input and output. This can also be

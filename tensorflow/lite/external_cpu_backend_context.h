@@ -34,6 +34,8 @@ class TfLiteInternalBackendContext {
   // Set the maximum number of threads that could be used for parallelizing
   // TfLite computation.
   virtual void SetMaxNumThreads(int max_num_threads) = 0;
+
+  virtual void ClearCaches() = 0;
 };
 
 // This TfLiteExternalContext-derived class is the default
@@ -68,6 +70,12 @@ class TfLiteInternalBackendContext {
 // Therefore, if different number of threads are used among different
 // interpreters, don't call 'SetNumThreads' consectutively but call it
 // separately between each interpreter's invocation as illustrated above.
+//
+// Note: it is the responsibility of the user of this context (i.e. a
+// TFLiteInterpreter) to clear any state from the internal backend
+// context if/when the interpreter no longer needs the shared context.
+// See, e.g., TFLiteInterpreter destructor clears caches in the case of a
+// shared ExternalCpuBackendContext.
 class ExternalCpuBackendContext : public TfLiteExternalContext {
  public:
   ExternalCpuBackendContext();

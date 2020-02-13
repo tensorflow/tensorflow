@@ -25,6 +25,8 @@ namespace profiler {
 // Special op types.
 ABSL_CONST_INIT extern const absl::string_view kUnknownOp;
 ABSL_CONST_INIT extern const absl::string_view kDatasetOp;
+ABSL_CONST_INIT extern const absl::string_view kMemcpyHToDOp;
+ABSL_CONST_INIT extern const absl::string_view kMemcpyDToHOp;
 
 // Breaks a TensorFlow op fullname into name and type.
 struct TfOp {
@@ -58,6 +60,15 @@ inline bool IsEmbeddingOp(absl::string_view tf_op_fullname) {
   return absl::StrContains(tf_op_fullname, "Embedding");
 }
 
+// Returns true if the given op is for copying data from host to device.
+inline bool IsMemcpyHToDOp(absl::string_view tf_op_type) {
+  return tf_op_type == kMemcpyHToDOp;
+}
+
+// Returns true if the given op is for copying data from device to host.
+inline bool IsMemcpyDToHOp(absl::string_view tf_op_type) {
+  return tf_op_type == kMemcpyDToHOp;
+}
 }  // namespace profiler
 }  // namespace tensorflow
 

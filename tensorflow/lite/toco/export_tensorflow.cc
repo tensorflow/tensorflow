@@ -1413,6 +1413,8 @@ void ConvertResizeBilinearOperator(const Model& model,
   *resize_op->add_input() = src_op.inputs[1];
   (*resize_op->mutable_attr())["T"].set_type(DT_FLOAT);
   (*resize_op->mutable_attr())["align_corners"].set_b(src_op.align_corners);
+  (*resize_op->mutable_attr())["half_pixel_centers"].set_b(
+      src_op.half_pixel_centers);
 }
 
 void ConvertOneHotOperator(const Model& model, const OneHotOperator& src_op,

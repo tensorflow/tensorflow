@@ -55,10 +55,10 @@ void setup() {
   // copying or parsing, it's a very lightweight operation.
   model = tflite::GetModel(g_magic_wand_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    error_reporter->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.",
-        model->version(), TFLITE_SCHEMA_VERSION);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Model provided is schema version %d not equal "
+                         "to supported version %d.",
+                         model->version(), TFLITE_SCHEMA_VERSION);
     return;
   }
 
@@ -67,25 +67,22 @@ void setup() {
   // An easier approach is to just use the AllOpsResolver, but this will
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
-  static tflite::MicroMutableOpResolver micro_mutable_op_resolver;  // NOLINT
-  micro_mutable_op_resolver.AddBuiltin(
+  static tflite::MicroOpResolver<5> micro_op_resolver;  // NOLINT
+  micro_op_resolver.AddBuiltin(
       tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
       tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
-  micro_mutable_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_MAX_POOL_2D,
-      tflite::ops::micro::Register_MAX_POOL_2D());
-  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                                       tflite::ops::micro::Register_CONV_2D());
-  micro_mutable_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_FULLY_CONNECTED,
-      tflite::ops::micro::Register_FULLY_CONNECTED());
-  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                                       tflite::ops::micro::Register_SOFTMAX());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_MAX_POOL_2D,
+                               tflite::ops::micro::Register_MAX_POOL_2D());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
+                               tflite::ops::micro::Register_CONV_2D());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_FULLY_CONNECTED,
+                               tflite::ops::micro::Register_FULLY_CONNECTED());
+  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
+                               tflite::ops::micro::Register_SOFTMAX());
 
   // Build an interpreter to run the model with
   static tflite::MicroInterpreter static_interpreter(
-      model, micro_mutable_op_resolver, tensor_arena, kTensorArenaSize,
-      error_reporter);
+      model, micro_op_resolver, tensor_arena, kTensorArenaSize, error_reporter);
   interpreter = &static_interpreter;
 
   // Allocate memory from the tensor_arena for the model's tensors
@@ -97,7 +94,8 @@ void setup() {
       (model_input->dims->data[1] != 128) ||
       (model_input->dims->data[2] != kChannelNumber) ||
       (model_input->type != kTfLiteFloat32)) {
-    error_reporter->Report("Bad input tensor parameters in model");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Bad input tensor parameters in model");
     return;
   }
 
@@ -105,7 +103,7 @@ void setup() {
 
   TfLiteStatus setup_status = SetupAccelerometer(error_reporter);
   if (setup_status != kTfLiteOk) {
-    error_reporter->Report("Set up failed\n");
+    TF_LITE_REPORT_ERROR(error_reporter, "Set up failed\n");
   }
 }
 
@@ -120,7 +118,8 @@ void loop() {
   // Run inference, and report any error
   TfLiteStatus invoke_status = interpreter->Invoke();
   if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed on index: %d\n", begin_index);
+    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed on index: %d\n",
+                         begin_index);
     return;
   }
   // Analyze the results to obtain a prediction

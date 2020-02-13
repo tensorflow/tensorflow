@@ -27,7 +27,8 @@ TfLiteStatus GetRegistrationFromOpCode(
 
   if (builtin_code > BuiltinOperator_MAX ||
       builtin_code < BuiltinOperator_MIN) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "Op builtin_code out of range: %d. Are you using old TFLite binary "
         "with newer model?",
         builtin_code);
@@ -35,13 +36,15 @@ TfLiteStatus GetRegistrationFromOpCode(
   } else if (builtin_code != BuiltinOperator_CUSTOM) {
     *registration = op_resolver.FindOp(builtin_code, version);
     if (*registration == nullptr) {
-      error_reporter->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
           "Didn't find op for builtin opcode '%s' version '%d'\n",
           EnumNameBuiltinOperator(builtin_code), version);
       status = kTfLiteError;
     }
   } else if (!opcode->custom_code()) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "Operator with CUSTOM builtin_code has no custom_code.\n");
     status = kTfLiteError;
   } else {

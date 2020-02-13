@@ -641,6 +641,13 @@ Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
     return errors::FailedPrecondition(
         strings::StrCat(error_message, overflow_message));
   }
+  // Domain resolution errors and certificate problems aren't going to improve
+  // on retry, so we return a FailedPrecondition (as the caller must take action
+  // before this can succeed).
+  if (code == CURLE_COULDNT_RESOLVE_HOST || code == CURLE_SSL_CACERT_BADFILE) {
+    return errors::FailedPrecondition(
+        strings::StrCat(error_message, error_buffer));
+  }
   // Return Unavailable to retry by default. There may be other permanent
   // failures that should be distinguished.
   return errors::Unavailable(

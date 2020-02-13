@@ -106,6 +106,10 @@ class Executor {
     typedef std::function<void()> Closure;
     typedef std::function<void(Closure)> Runner;
     Runner runner = nullptr;
+
+    // If true, all kernels will be treated as "inexpensive", and hence executed
+    // on the scheduling thread.
+    bool run_all_kernels_inline = false;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;

@@ -100,6 +100,7 @@ class MultiProcessRunner(object):
   def __init__(self,
                proc_func,
                cluster_spec,
+               rpc_layer=None,
                max_run_time=None,
                capture_std_stream=False,
                grpc_fail_fast=False,
@@ -117,6 +118,7 @@ class MultiProcessRunner(object):
                     "worker2.example.com:2222"],
          "ps": ["ps0.example.com:2222",
                 "ps1.example.com:2222"]}
+      rpc_layer: RPC layer to use. Default value is 'grpc+loas'.
       max_run_time: If set, child processes is forced to exit at approximately
         this many seconds after `start` is called. We achieve this through
         `signal.alarm()` api. Note that this is best effort at Python level
@@ -150,6 +152,7 @@ class MultiProcessRunner(object):
 
     self._proc_func = proc_func
     self._cluster_spec = cluster_spec
+    self._rpc_layer = rpc_layer
     self._max_run_time = max_run_time
     self._capture_std_stream = capture_std_stream
     self._grpc_fail_fast = grpc_fail_fast
@@ -230,7 +233,7 @@ class MultiProcessRunner(object):
     os._exit(0)  # pylint: disable=protected-access
 
   def _proc_func_wrapper(self, proc_func, task_type, task_id,
-                         per_process_cluster_spec, *arg, **kwargs):
+                         per_process_cluster_spec, rpc_layer, *arg, **kwargs):
     """The wrapper function that actually gets run in child process(es)."""
 
     if self._capture_std_stream:
@@ -249,13 +252,16 @@ class MultiProcessRunner(object):
         args=(task_type, task_id, stdout_collector, stderr_collector)).start()
 
     os.environ['GRPC_FAIL_FAST'] = str(self._grpc_fail_fast)
-    os.environ['TF_CONFIG'] = json.dumps({
+    tf_config_dict = {
         'cluster': per_process_cluster_spec,
         'task': {
             'type': task_type,
             'index': task_id,
-        }
-    })
+        },
+    }
+    if rpc_layer is not None:
+      tf_config_dict['rpc_layer'] = rpc_layer
+    os.environ['TF_CONFIG'] = json.dumps(tf_config_dict)
 
     if self._v2_enabled:
       v2_compat.enable_v2_behavior()
@@ -314,8 +320,8 @@ class MultiProcessRunner(object):
       for task_id, _ in enumerate(addresses):
         p = multi_process_lib.Process(
             target=self._proc_func_wrapper,
-            args=(self._proc_func, task_type, task_id, self._cluster_spec) +
-            self._args,
+            args=(self._proc_func, task_type, task_id, self._cluster_spec,
+                  self._rpc_layer) + self._args,
             kwargs=self._kwargs)
         p.start()
         self._outstanding_subprocess_count += 1
@@ -352,7 +358,8 @@ class MultiProcessRunner(object):
     proc_func = proc_func or self._proc_func
     p = multi_process_lib.Process(
         target=self._proc_func_wrapper,
-        args=(proc_func, task_type, task_id, self._cluster_spec) + (args or ()),
+        args=(proc_func, task_type, task_id, self._cluster_spec,
+              self._rpc_layer) + (args or ()),
         kwargs=(kwargs or {}))
     p.start()
     self._outstanding_subprocess_count += 1
@@ -462,6 +469,7 @@ class MultiProcessRunner(object):
 
 def run(proc_func,
         cluster_spec,
+        rpc_layer=None,
         max_run_time=None,
         capture_std_stream=False,
         grpc_fail_fast=False,
@@ -480,6 +488,7 @@ def run(proc_func,
   runner = MultiProcessRunner(
       proc_func,
       cluster_spec,
+      rpc_layer,
       max_run_time=max_run_time,
       capture_std_stream=capture_std_stream,
       grpc_fail_fast=grpc_fail_fast,

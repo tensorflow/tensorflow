@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 
-#include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
@@ -1421,9 +1421,7 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
                                     int out_x_buffer_start,
                                     int out_x_buffer_end, int output_depth,
                                     int32* acc_buffer) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::ScopedProfilingLabel label(__PRETTY_FUNCTION__);
-#endif
+  ruy::profiler::ScopeLabel label(__PRETTY_FUNCTION__);
   // Sanity check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
   // increase binary size unnecessarily.
@@ -1497,7 +1495,7 @@ inline void QuantizedDepthwiseConvAccumRowGeneric(
     int depth_multiplier, int filter_width, const int8* filter_data,
     int out_x_buffer_start, int out_x_buffer_end, int output_depth,
     int32* acc_buffer) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConvAccumRowGeneric (slow)");
+  ruy::profiler::ScopeLabel label("DepthwiseConvAccumRowGeneric (slow)");
   const int8* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     const int out_x_loop_start = std::max(
@@ -1767,7 +1765,7 @@ inline void DepthwiseConvGeneral(
         }
         // Finished accumulating int32 values. Now need to convert them to
         // the final 8bit form and store them.
-        gemmlowp::ScopedProfilingLabel label("downquantize+store");
+        ruy::profiler::ScopeLabel label("downquantize+store");
         const int num_output_values = output_depth * num_output_pixels;
 
         optimized_ops::Quantize(output_multiplier, output_shift, output_depth,
@@ -1792,7 +1790,7 @@ inline void DepthwiseConvWithRounding(
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
     int thread_start, int thread_end, int thread_dim) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConvInt8/8bit");
+  ruy::profiler::ScopeLabel label("DepthwiseConvInt8/8bit");
   const int depth_multiplier = params.depth_multiplier;
   const int dilation_width_factor = params.dilation_width_factor;
   const int dilation_height_factor = params.dilation_height_factor;
@@ -1821,8 +1819,7 @@ inline void DepthwiseConvWithRounding(
           input_shape, filter_shape, stride_width, stride_height,
           dilation_width_factor, dilation_height_factor, pad_width, pad_height,
           depth_multiplier, output_shape, 0, output_shift)) {
-    gemmlowp::ScopedProfilingLabel specialized_label(
-        "DepthwiseConvInt8/8bit/3x3");
+    ruy::profiler::ScopeLabel specialized_label("DepthwiseConvInt8/8bit/3x3");
     optimized_ops::depthwise_conv::DepthwiseConv3x3FilterPerChannel<
         DepthwiseConvOutputRounding::kUpward>(
         params, output_multiplier, output_shift, input_shape, input_data,
@@ -1832,8 +1829,7 @@ inline void DepthwiseConvWithRounding(
   }
 #endif
 
-  gemmlowp::ScopedProfilingLabel specialized_label(
-      "DepthwiseConvInt8/8bit/General");
+  ruy::profiler::ScopeLabel specialized_label("DepthwiseConvInt8/8bit/General");
   depthwise_conv::DepthwiseConvGeneral(
       params, output_multiplier, output_shift, input_shape, input_data,
       filter_shape, filter_data, bias_shape, bias_data, output_shape,
@@ -1924,7 +1920,7 @@ inline void DepthwiseConvPerChannel(
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
     CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConvInt8");
+  ruy::profiler::ScopeLabel label("DepthwiseConvInt8");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);

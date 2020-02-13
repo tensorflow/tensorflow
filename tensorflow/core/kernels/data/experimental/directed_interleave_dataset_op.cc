@@ -141,13 +141,12 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(dataset()->selector_input_->MakeIterator(
-            ctx, strings::StrCat(prefix(), ".selector"),
-            &selector_input_impl_));
+            ctx, this, strings::StrCat(prefix()), &selector_input_impl_));
         data_input_impls_.resize(dataset()->data_inputs_.size());
         for (size_t i = 0; i < data_input_impls_.size(); ++i) {
           const DatasetBase* data_input = dataset()->data_inputs_[i];
           TF_RETURN_IF_ERROR(data_input->MakeIterator(
-              ctx, strings::StrCat(prefix(), "[", i, "]"),
+              ctx, this, strings::StrCat(prefix(), "[", i, "]"),
               &data_input_impls_[i]));
         }
         return Status::OK();

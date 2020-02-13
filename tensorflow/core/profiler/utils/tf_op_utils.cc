@@ -35,6 +35,8 @@ const absl::string_view kSeparator = "::";
 
 const absl::string_view kUnknownOp = "";  // op types are non-empty strings
 const absl::string_view kDatasetOp = "Dataset";
+const absl::string_view kMemcpyHToDOp = "MemcpyHToD";
+const absl::string_view kMemcpyDToHOp = "MemcpyDToH";
 
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
   // TF Op names have the format "name:type" where:
@@ -51,6 +53,13 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
   std::vector<absl::string_view> parts =
       absl::StrSplit(tf_op_fullname, absl::MaxSplits(':', 1));
   if (parts.size() != 2) {
+    // GPU-related Ops that need to be tracked.
+    if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYHToD")) {
+      tf_op.type = kMemcpyHToDOp;
+    } else if (absl::StartsWithIgnoreCase(tf_op_fullname, "MEMCPYDToH")) {
+      tf_op.type = kMemcpyDToHOp;
+    }
+    // TODO(ckluk): Include the corresponding Ops on TPU.
   } else if (parts[0] == kIterator) {
     // Dataset Op names (e.g., Iterator::Batch::Map::TFRecord) do not follow the
     // format of TF Op names. But we still want to capture them for
@@ -59,8 +68,7 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
   } else if (RE2::FullMatch(parts[1], *kTfOpTypeRegEx) &&
              RE2::FullMatch(parts[0], *kTfOpNameRegEx)) {  // TensorFlow
     tf_op = {parts[0], parts[1]};
-  } else if (absl::StrContains(parts[0], " = ") &&
-             RE2::FullMatch(parts[1], *kJaxOpTypeRegEx)) {  // JAX
+  } else if (RE2::FullMatch(parts[1], *kJaxOpTypeRegEx)) {  // JAX
     tf_op = {parts[0], parts[1]};
   }
   return tf_op;

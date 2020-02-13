@@ -54,6 +54,15 @@ StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
 // Converts a PrimitiveType to a Numpy dtype.
 StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
 
+// Returns a numpy-style format descriptor string for `type`.
+StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type);
+
+// Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
+StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
+
+// Returns the strides for `shape`.
+std::vector<ssize_t> ByteStridesForShape(const Shape& shape);
+
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share
 // buffers with the literals. Takes ownership of `literal` and keeps the
@@ -87,7 +96,7 @@ std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
 // xla::BorrowingLiteral. Converts a Python array-like object into a buffer
 // pointer and shape.
 struct CastToArrayResult {
-  pybind11::array array;  // Holds a reference to the array to keep it alive.
+  pybind11::object array;  // Holds a reference to the array to keep it alive.
   const char* buf_ptr;
   xla::Shape shape;
 };

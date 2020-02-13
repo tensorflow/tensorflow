@@ -60,6 +60,15 @@ def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
+def HLO_DimensionTensor : ShapedContainerType<
+    [Index], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
+    "a 1D tensor of dimensions">;
+
+// In general, static shaped tensor constraints should be avoided unless
+// it is for a legacy op which is only correct with static shapes.
+def HLO_StaticShapeTensor : StaticShapeTensorOf<[
+      AnyFloat, AnyInteger, AnyComplex]>;
+
 //===----------------------------------------------------------------------===//
 // XLA combined type definitions.
 //===----------------------------------------------------------------------===//
@@ -83,7 +92,7 @@ def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_ConstOp : BASE_HLO_ConstOp, HLO_Op<"constant", [NoSideEffect]> {
+def HLO_ConstOp : HLO_Op<"constant", [NoSideEffect]>, BASE_HLO_ConstOp {
   let arguments = (ins
     ElementsAttr:$value
   );
@@ -105,7 +114,7 @@ def HLO_ConstOp : BASE_HLO_ConstOp, HLO_Op<"constant", [NoSideEffect]> {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_IotaOp : BASE_HLO_IotaOp, HLO_Op<"iota", [NoSideEffect]> {
+def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]>, BASE_HLO_IotaOp {
   let arguments = (ins I64Attr:$iota_dimension);
 
   let results = (outs HLO_Tensor:$output);
@@ -660,7 +669,7 @@ def HLO_SliceOp: HLO_Op<
 
 def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
       [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
-       AllTypesMatch<["start_indices", "slice_sizes"]>]> {
+       AllShapesMatch<["start_indices", "slice_sizes"]>]> {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$start_indices,
@@ -672,7 +681,8 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
 }
 
 def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
-      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>]> {
+      [NoSideEffect, AllElementTypesMatch<["operand", "update", "result"]>,
+       AllShapesMatch<["operand", "result"]>]> {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$update,
@@ -758,12 +768,29 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
     BroadcastDimAttr:$broadcast_dimensions
   );
 
-  let results = (outs HLO_Tensor);
+  let results = (outs HLO_StaticShapeTensor);
 
-  // TODO(b/130357376): One of the arguments comes from the new shape, which is
-  // not handled by the codegen.
+  // Only handles a static subset of the legacy format.
   let hasCustomHLOConverter = 1;
 }
+
+def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
+      [NoSideEffect]>, BASE_HLO_DynamicBroadcastInDimOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_DimensionTensor:$output_dimensions,
+    BroadcastDimAttr:$broadcast_dimensions
+  );
+
+  let results = (outs HLO_Tensor);
+
+  // Cannot be exported to legacy formats.
+  let hasCustomHLOConverter = 1;
+}
+
+// Note: There is no HLO_CallOp because the standard call operation mlir::CallOp
+// is used instead. A mlir::CallOp is exported to a HLO call instruction
+// directly.
 
 def HLO_CholeskyOp : HLO_Op<"cholesky",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_CholeskyOp {
@@ -800,14 +827,13 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
 
 }
 
-def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CrossReplicaSumOp {
+def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CollectivePermuteOp {
 
   let arguments = (ins
     HLO_Tensor:$operand,
-    I64ElementsAttr:$replica_groups
+    I64ElementsAttr:$source_target_pairs
   );
-
   let results = (outs HLO_Tensor);
 }
 
@@ -849,25 +875,19 @@ def HLO_ConvOp : HLO_Op<"conv", [NoSideEffect]>, BASE_HLO_ConvOp {
 
 }
 
-def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CollectivePermuteOp {
-
-  let arguments = (ins
-    HLO_Tensor:$operand,
-    I64ElementsAttr:$source_target_pairs
-  );
+def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CopyOp {
+  let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
 }
 
+def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CrossReplicaSumOp {
 
-def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
-  string summary = "Copy operator";
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64ElementsAttr:$replica_groups
+  );
 
-  string description = [{
-    Returns a copy of `operand`.
-  }];
-
-  let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
 }
 
@@ -988,6 +1008,19 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
   let results = (outs HLO_IntTensor);
 }
 
+def HLO_MapOp: HLO_Op<"map",
+      [NoSideEffect, SameOperandsElementType, SameOperandsAndResultShape,
+        SingleBlockImplicitTerminator<"ReturnOp">]>,
+      BASE_HLO_MapOp {
+  let arguments = (ins
+    Variadic<HLO_Tensor>:$operands,
+    I64ElementsAttr:$dimensions
+  );
+  let regions = (region SizedRegion<1>:$computation);
+  let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_ReshapeOp: HLO_Op<"reshape",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ReshapeOp {
   let arguments = (ins HLO_Tensor:$operand);
@@ -1075,7 +1108,7 @@ def HLO_SortOp : HLO_Op<"sort", [NoSideEffect]>, BASE_HLO_SortOp {
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState &state, ValueRange operands, "
-    "int64_t dimension, bool is_stable"
+    "int64_t dimension = -1, bool is_stable = false"
   >];
 
   // TODO(b/129422361): SortOp has special conversion logic to HLO.
@@ -1114,6 +1147,14 @@ def HLO_PadOp: HLO_Op<"pad",
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_TraceOp: HLO_Op<"trace", [NoSideEffect]>, BASE_HLO_TraceOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    StrAttr:$tag
+  );
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_TransposeOp: HLO_Op<"transpose",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_TransposeOp {
   let arguments = (ins
@@ -1123,6 +1164,20 @@ def HLO_TransposeOp: HLO_Op<"transpose",
   let results = (outs HLO_Tensor);
 
   let hasFolder = 1;
+}
+
+def HLO_TriangularSolveOp: HLO_Op<"triangular_solve",
+    [NoSideEffect, SameOperandsAndResultElementType]>,
+    BASE_HLO_TriangularSolveOp {
+  let arguments = (ins
+    HLO_FpOrComplexTensor:$a,
+    HLO_FpOrComplexTensor:$b,
+    BoolAttr:$left_side,
+    BoolAttr:$lower,
+    BoolAttr:$unit_diagonal,
+    HLO_TransposeAttr:$transpose_a
+  );
+  let results = (outs HLO_FpOrComplexTensor);
 }
 
 def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
@@ -1210,6 +1265,25 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
   );
 
   let results = (outs HLO_FpTensor);
+
+  let hasCustomHLOConverter = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// XLA Quantize Operator.
+//===----------------------------------------------------------------------===//
+def HLO_DequantizeOp : HLO_Op<"dequantize", [NoSideEffect]>,
+    BASE_HLO_DequantizeOp {
+  let arguments = (ins
+    TensorOf<[I32]>:$input,
+    F32Attr:$min_range,
+    F32Attr:$max_range,
+    HLO_DequantizeModeAttr:$mode,
+    BoolAttr:$transpose_output,
+    DefaultValuedAttr<BoolAttr, "false">:$is_16bits
+  );
+
+  let results = (outs TensorOf<[BF16]>:$output);
 
   let hasCustomHLOConverter = 1;
 }

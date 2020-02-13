@@ -122,7 +122,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     # The interleave transformation is essentially a flat map that
     # draws from multiple input datasets concurrently (in a cyclic
-    # fashion). By placing `Datsaet.from_generator()` inside an
+    # fashion). By placing `Dataset.from_generator()` inside an
     # interleave, we test its behavior when multiple iterators are
     # active at the same time; by additionally prefetching inside the
     # interleave, we create the possibility of parallel (modulo GIL)

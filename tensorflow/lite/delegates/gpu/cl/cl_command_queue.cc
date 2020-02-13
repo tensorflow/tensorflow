@@ -65,10 +65,12 @@ Status CLCommandQueue::DispatchImplicit(const CLKernel& kernel, int3 grid,
     global[i] = AlignByN(grid[i], work_group_size[i]);
   }
   cl_event resulting_event;
-  const int error_code =
-      clEnqueueNDRangeKernel(queue_, kernel.kernel(), 3, nullptr, global.data(),
-                             local.data(), 0, nullptr, &resulting_event);
-  *event = CLEvent(resulting_event);
+  const int error_code = clEnqueueNDRangeKernel(
+      queue_, kernel.kernel(), 3, nullptr, global.data(), local.data(), 0,
+      nullptr, event ? &resulting_event : nullptr);
+  if (event) {
+    *event = CLEvent(resulting_event);
+  }
   if (error_code != CL_SUCCESS) {
     return UnknownError(absl::StrCat("Failed to clEnqueueNDRangeKernel - ",
                                      CLErrorCodeToString(error_code)));
@@ -78,20 +80,7 @@ Status CLCommandQueue::DispatchImplicit(const CLKernel& kernel, int3 grid,
 
 Status CLCommandQueue::DispatchImplicit(const CLKernel& kernel, int3 grid,
                                         int3 work_group_size) {
-  std::vector<size_t> local(3);
-  std::vector<size_t> global(3);
-  for (int i = 0; i < 3; ++i) {
-    local[i] = work_group_size[i];
-    global[i] = AlignByN(grid[i], work_group_size[i]);
-  }
-  const int error_code =
-      clEnqueueNDRangeKernel(queue_, kernel.kernel(), 3, nullptr, global.data(),
-                             local.data(), 0, nullptr, nullptr);
-  if (error_code != CL_SUCCESS) {
-    return UnknownError(absl::StrCat("Failed to clEnqueueNDRangeKernel - ",
-                                     CLErrorCodeToString(error_code)));
-  }
-  return OkStatus();
+  return DispatchImplicit(kernel, grid, work_group_size, nullptr);
 }
 
 Status CLCommandQueue::EnqueueEvent(CLEvent* event) {
@@ -291,7 +280,6 @@ Status CreateCLCommandQueue(const CLDevice& device, const CLContext& context,
     return UnknownError(absl::StrCat("Failed to create a command queue - ",
                                      CLErrorCodeToString(error_code)));
   }
-
   *result = CLCommandQueue(queue, true);
   return OkStatus();
 }

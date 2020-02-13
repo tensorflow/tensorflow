@@ -40,7 +40,7 @@ TFLite on GPU supports the following ops in 16-bit and 32-bit float precision:
 * `RELU v1`
 * `RELU6 v1`
 * `RESHAPE v1`
-* `RESIZE_BILINEAR v1`
+* `RESIZE_BILINEAR v1-3`
 * `SOFTMAX v1`
 * `STRIDED_SLICE v1`
 * `SUB v1`

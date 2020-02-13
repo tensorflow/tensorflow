@@ -29,6 +29,7 @@ cc_binary(
         "//tensorflow:android": [
             "-pie",  # Android 5.0 and later supports only PIE
             "-lm",  # some builtin ops, e.g., tanh, need -lm
+            "-Wl,--rpath=/data/local/tmp/",  # Hexagon delegate libraries should be in /data/local/tmp
         ],
         "//conditions:default": [],
     }),
@@ -58,6 +59,10 @@ cc_binary(
     ],
 )
 
+# As with most target binaries that use flex, this should be built with the
+# `--config=monolithic` build flag, e.g.,
+#    bazel build --config=monolithic --config=android_arm64 \
+#        -c opt --cxxopt='--std=c++14' :benchmark_model_plus_flex
 tf_cc_binary(
     name = "benchmark_model_plus_flex",
     srcs = [
@@ -118,25 +123,26 @@ cc_library(
     deps = [
         ":benchmark_model_lib",
         ":benchmark_utils",
+        ":delegate_provider_hdr",
+        ":gpu_delegate_provider",
+        ":hexagon_delegate_provider",
         ":logging",
+        ":nnapi_delegate_provider",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@gemmlowp",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/experimental/ruy/profiler",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/nnapi:nnapi_util",
         "//tensorflow/lite/profiling:profile_summarizer",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [
+            ":xnnpack_delegate_provider",
         ],
-        "//tensorflow:ios": [
-            "//tensorflow/lite/delegates/gpu:metal_delegate",
-        ],
-        "//conditions:default": [],
     }),
 )
 
@@ -193,6 +199,89 @@ cc_library(
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
     ],
+)
+
+cc_library(
+    name = "delegate_provider_hdr",
+    hdrs = [
+        "delegate_provider.h",
+    ],
+    copts = common_copts,
+    deps = [
+        ":benchmark_params",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/tools:command_line_flags",
+    ],
+)
+
+cc_library(
+    name = "gpu_delegate_provider",
+    srcs = ["gpu_delegate_provider.cc"],
+    copts = common_copts + select({
+        "//tensorflow:ios": [
+            "-xobjective-c++",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_params",
+        ":delegate_provider_hdr",
+        ":logging",
+        "//tensorflow/lite/tools/evaluation:utils",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/gpu:delegate",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/lite/delegates/gpu:metal_delegate",
+        ],
+        "//conditions:default": [],
+    }),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "nnapi_delegate_provider",
+    srcs = ["nnapi_delegate_provider.cc"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_params",
+        ":delegate_provider_hdr",
+        ":logging",
+        "//tensorflow/lite/tools/evaluation:utils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "hexagon_delegate_provider",
+    srcs = ["hexagon_delegate_provider.cc"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_params",
+        ":delegate_provider_hdr",
+        ":logging",
+        "//tensorflow/lite/tools/evaluation:utils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xnnpack_delegate_provider",
+    srcs = ["xnnpack_delegate_provider.cc"],
+    copts = tflite_copts(),
+    linkstatic = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":benchmark_model_lib",
+        ":delegate_provider_hdr",
+        ":logging",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(

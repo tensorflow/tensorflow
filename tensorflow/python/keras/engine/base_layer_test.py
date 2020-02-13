@@ -32,7 +32,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
@@ -206,8 +205,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
           return self.layer2(inputs)
 
       def compute_output_shape(self, input_shape):
-        return tensor_shape.TensorShape(
-            tuple(input_shape[:-1].as_list()) + (3,))
+        return tuple(input_shape[:-1].as_list()) + (3,)
 
     model = MyModel()
     self.assertEqual(model.dynamic, True)
@@ -581,6 +579,73 @@ class BaseLayerTest(keras_parameterized.TestCase):
     dense = keras.layers.Dense(16, input_dim=4)
     model = keras.Sequential(dense)
     self.assertEqual(model.count_params(), 16 * 4 + 16)
+
+  def test_super_not_called(self):
+
+    class CustomLayerNotCallingSuper(keras.layers.Layer):
+
+      def __init__(self):
+        pass
+
+    layer = CustomLayerNotCallingSuper()
+    with self.assertRaisesRegexp(RuntimeError, 'You must call `super()'):
+      layer(np.random.random((10, 2)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_first_arg_not_called_inputs(self):
+    x, y = array_ops.ones((10, 1)), array_ops.ones((10, 1))
+
+    class ArgLayer(keras.layers.Layer):
+
+      def call(self, x, y):
+        return x + y
+
+    layer = ArgLayer()
+    out = self.evaluate(layer(x=x, y=y))
+    self.assertAllClose(out, 2 * np.ones((10, 1)))
+
+    class KwargLayer(keras.layers.Layer):
+
+      def call(self, x=None, y=None):
+        return x + y
+
+    layer = KwargLayer()
+    out = self.evaluate(layer(x=x, y=y))
+    self.assertAllClose(out, 2 * np.ones((10, 1)))
+
+    with self.assertRaisesRegexp(ValueError, 'must always be passed'):
+      layer(y=y)
+
+    class TFFunctionLayer(keras.layers.Layer):
+
+      @def_function.function
+      def call(self, x, y=None):
+        if y is None:
+          return x
+        return x + y
+
+    layer = TFFunctionLayer()
+    out = self.evaluate(layer(x=x, y=y))
+    self.assertAllClose(out, 2 * np.ones((10, 1)))
+
+  def test_build_input_shape(self):
+    class CustomLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.add_weight('w', shape=input_shape[1:])
+        super(CustomLayer, self).build(input_shape)
+
+    layer = CustomLayer()
+    self.assertFalse(layer.built)
+
+    layer.build([None, 1, 2, 3])
+    self.assertTrue(layer.built)
+    self.assertEqual([None, 1, 2, 3], layer._build_input_shape)
+
+    layer = CustomLayer()
+    layer(keras.Input((3,)))
+    self.assertTrue(layer.built)
+    self.assertEqual([None, 3], layer._build_input_shape.as_list())
 
 
 class SymbolicSupportTest(test.TestCase):

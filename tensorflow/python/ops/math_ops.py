@@ -335,16 +335,56 @@ def divide(x, y, name=None):
 @tf_export("math.multiply", "multiply")
 @dispatch.add_dispatch_support
 def multiply(x, y, name=None):
+  """Returns an element-wise x * y.
+
+  For example:
+
+  >>> x = tf.constant(([1, 2, 3, 4]))
+  >>> tf.math.multiply(x, x)
+  <tf.Tensor: shape=(4,), dtype=..., numpy=array([ 1,  4,  9, 16], dtype=int32)>
+
+  Since `tf.math.multiply` will convert its arguments to `Tensor`s, you can also
+  pass in non-`Tensor` arguments:
+
+  >>> tf.math.multiply(7,6)
+  <tf.Tensor: shape=(), dtype=int32, numpy=42>
+
+  If `x.shape` is not thes same as `y.shape`, they will be broadcast to a
+  compatible shape. (More about broadcasting
+  [here](https://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).)
+
+  For example:
+
+  >>> x = tf.ones([1, 2]);
+  >>> y = tf.ones([2, 1]);
+  >>> x * y  # Taking advantage of operator overriding
+  <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
+  array([[1., 1.],
+       [1., 1.]], dtype=float32)>
+
+  Args:
+    x: A Tensor. Must be one of the following types: `bfloat16`,
+      `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`,
+      `int16`, `int32`, `int64`, `complex64`, `complex128`.
+    y: A `Tensor`. Must have the same type as `x`.
+    name: A name for the operation (optional).
+
+  Returns:
+
+  A `Tensor`.  Has the same type as `x`.
+
+  Raises:
+
+   * InvalidArgumentError: When `x` and `y` have incomptatible shapes or types.
+  """
+
   return gen_math_ops.mul(x, y, name)
-
-
-multiply.__doc__ = gen_math_ops.mul.__doc__.replace("Multiply", "tf.multiply")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
 @deprecation.deprecated(
     "2016-12-30",
-    "`tf.mul(x, y)` is deprecated, please use `tf.multiply(x, y)` or `x * y`")
+    "`tf.mul(x, y)` is deprecated; use `tf.math.multiply(x, y)` or `x * y`")
 def _mul(x, y, name=None):
   return gen_math_ops.mul(x, y, name)
 
@@ -512,6 +552,45 @@ def complex(real, imag, name=None):
     return gen_math_ops._complex(real, imag, Tout=Tout, name=name)
 
 
+@tf_export("math.sign", "sign")
+@dispatch.add_dispatch_support
+def sign(x, name=None):
+  """Returns an element-wise indication of the sign of a number.
+
+  y = sign(x) = -1 if x < 0; 0 if x == 0; 1 if x > 0.
+
+  For complex numbers, y = sign(x) = x / |x| if x != 0, otherwise y = 0.
+
+  Example usage:
+
+  >>> tf.math.sign([0., 2., -3.])
+  <tf.Tensor: ... numpy=array([ 0.,  1., -1.], dtype=float32)>
+
+  Args:
+   x: A Tensor. Must be one of the following types: bfloat16, half, float32,
+      float64, int32, int64, complex64, complex128.
+   name: A name for the operation (optional).
+
+  Returns:
+   A Tensor. Has the same type as x.
+
+   If x is a SparseTensor, returns SparseTensor(x.indices,
+     tf.math.sign(x.values, ...), x.dense_shape).
+  """
+  x = ops.convert_to_tensor(x)
+  if x.dtype in (dtypes.complex64, dtypes.complex128):
+    return gen_math_ops.div_no_nan(
+        x,
+        cast(
+            gen_math_ops.complex_abs(
+                x,
+                Tout=dtypes.float32
+                if x.dtype == dtypes.complex64 else dtypes.float64),
+            dtype=x.dtype),
+        name=name)
+  return gen_math_ops.sign(x, name=name)
+
+
 @tf_export("math.real", v1=["math.real", "real"])
 @deprecation.deprecated_endpoints("real")
 @dispatch.add_dispatch_support
@@ -660,10 +739,9 @@ def cast(x, dtype, name=None):
 
   For example:
 
-  ```python
-  x = tf.constant([1.8, 2.2], dtype=tf.float32)
-  tf.dtypes.cast(x, tf.int32)  # [1, 2], dtype=tf.int32
-  ```
+  >>> x = tf.constant([1.8, 2.2], dtype=tf.float32)
+  >>> tf.dtypes.cast(x, tf.int32)
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([1, 2], dtype=int32)>
 
   The operation supports data types (for `x` and `dtype`) of
   `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`, `int64`,
@@ -1212,7 +1290,7 @@ def _mul_dispatch(x, y, name=None):
 
 # NOTE(aselle): When integer division is added for sparse_dense_cwise,
 # div, truediv, and floordiv should be delegated appropriately for
-# Python sematnics, analogous to dense cwise tensor operations.
+# Python semantics, analogous to dense cwise tensor operations.
 _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_div, "div",
                               sparse_tensor.SparseTensor)
 _OverrideBinaryOperatorHelper(_sparse_dense_truediv, "truediv",
@@ -1409,7 +1487,7 @@ def tensor_equals(self, other):
     return False
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
-      (g is None or g._building_function)):  # pylint: disable=protected-access
+      (g is None or g.building_function)):
     return gen_math_ops.equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
@@ -1487,9 +1565,12 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     start, limit = 0, start
 
   with ops.name_scope(name, "Range", [start, limit, delta]) as name:
-    start = ops.convert_to_tensor(start, dtype=dtype, name="start")
-    limit = ops.convert_to_tensor(limit, dtype=dtype, name="limit")
-    delta = ops.convert_to_tensor(delta, dtype=dtype, name="delta")
+    if not isinstance(start, ops.Tensor):
+      start = ops.convert_to_tensor(start, dtype=dtype, name="start")
+    if not isinstance(limit, ops.Tensor):
+      limit = ops.convert_to_tensor(limit, dtype=dtype, name="limit")
+    if not isinstance(delta, ops.Tensor):
+      delta = ops.convert_to_tensor(delta, dtype=dtype, name="delta")
 
     # infer dtype if not explicitly provided
     if dtype is None:
@@ -1499,10 +1580,14 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
       assert all(arg.dtype in dtype_hierarchy for arg in [start, limit, delta])
       inferred_dtype = max([arg.dtype for arg in [start, limit, delta]],
                            key=dtype_hierarchy.index)
-
-      start = cast(start, inferred_dtype)
-      limit = cast(limit, inferred_dtype)
-      delta = cast(delta, inferred_dtype)
+    else:
+      inferred_dtype = dtype
+    # Always try perform a cast even start/limit/delta are already tensors.
+    # This will revole the case where start/limit/delta's original's dtype
+    # is different from provided dtype.
+    start = cast(start, inferred_dtype)
+    limit = cast(limit, inferred_dtype)
+    delta = cast(delta, inferred_dtype)
 
     return gen_math_ops._range(start, limit, delta, name=name)
 
@@ -1512,7 +1597,8 @@ def _range_tensor_conversion_function(value, dtype=None, name=None,
   del as_ref
   return range(value.start, value.stop, value.step, dtype=dtype, name=name)
 
-if six.PY3:
+
+if not six.PY2:
   ops.register_tensor_conversion_function(builtins.range,
                                           _range_tensor_conversion_function)
 
@@ -1682,12 +1768,14 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   For example:
 
   ```python
-  x = tf.constant([[1, 2, 3], [1, 1, 1]])
-  tf.reduce_euclidean_norm(x)  # sqrt(17)
-  tf.reduce_euclidean_norm(x, 0)  # [sqrt(2), sqrt(5), sqrt(10)]
-  tf.reduce_euclidean_norm(x, 1)  # [sqrt(14), sqrt(3)]
-  tf.reduce_euclidean_norm(x, 1, keepdims=True)  # [[sqrt(14)], [sqrt(3)]]
-  tf.reduce_euclidean_norm(x, [0, 1])  # sqrt(17)
+  x = tf.constant([[1, 2, 3], [1, 1, 1]]) # x.dtype is tf.int32
+  tf.math.reduce_euclidean_norm(x)  # returns 4 as dtype is tf.int32
+  y = tf.constant([[1, 2, 3], [1, 1, 1]], dtype = tf.float32)
+  tf.math.reduce_euclidean_norm(y)  # returns 4.1231055 which is sqrt(17)
+  tf.math.reduce_euclidean_norm(y, 0)  # [sqrt(2), sqrt(5), sqrt(10)]
+  tf.math.reduce_euclidean_norm(y, 1)  # [sqrt(14), sqrt(3)]
+  tf.math.reduce_euclidean_norm(y, 1, keepdims=True)  # [[sqrt(14)], [sqrt(3)]]
+  tf.math.reduce_euclidean_norm(y, [0, 1])  # sqrt(17)
   ```
 
   Args:
@@ -2222,6 +2310,11 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   Returns:
     The reduced tensor.
 
+  For example:
+    >>> a = tf.constant([[1, 2], [3, 4]])
+    >>> tf.reduce_min(a)
+    <tf.Tensor: shape=(), dtype=int32, numpy=1>
+
   @compatibility(numpy)
   Equivalent to np.min
   @end_compatibility
@@ -2292,6 +2385,26 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
+  Usage example:
+
+  >>> x = tf.constant([5, 1, 2, 4])
+  >>> print(tf.reduce_max(x))
+  tf.Tensor(5, shape=(), dtype=int32)
+  >>> x = tf.constant([-5, -1, -2, -4])
+  >>> print(tf.reduce_max(x))
+  tf.Tensor(-1, shape=(), dtype=int32)
+  >>> x = tf.constant([4, float('nan')])
+  >>> print(tf.reduce_max(x))
+  tf.Tensor(4.0, shape=(), dtype=float32)
+  >>> x = tf.constant([float('nan'), float('nan')])
+  >>> print(tf.reduce_max(x))
+  tf.Tensor(-inf, shape=(), dtype=float32)
+  >>> x = tf.constant([float('-inf'), float('inf')])
+  >>> print(tf.reduce_max(x))
+  tf.Tensor(inf, shape=(), dtype=float32)
+
+  See the numpy docs for `np.amax` and `np.nanmax` behavior.
+
   Args:
     input_tensor: The tensor to reduce. Should have real numeric type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
@@ -2302,10 +2415,6 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
 
   Returns:
     The reduced tensor.
-
-  @compatibility(numpy)
-  Equivalent to np.max
-  @end_compatibility
   """
   return reduce_max_with_dims(input_tensor, axis, keepdims, name,
                               _ReductionDims(input_tensor, axis))
@@ -2773,8 +2882,16 @@ def matmul(a,
       multiplication.
     adjoint_b: If `True`, `b` is conjugated and transposed before
       multiplication.
-    a_is_sparse: If `True`, `a` is treated as a sparse matrix.
-    b_is_sparse: If `True`, `b` is treated as a sparse matrix.
+    a_is_sparse: If `True`, `a` is treated as a sparse matrix. Notice, this
+      **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
+      that assume most values in `a` are zero.
+      See `tf.sparse.sparse_dense_matmul`
+      for some support for `tf.SparseTensor` multiplication.
+    b_is_sparse: If `True`, `b` is treated as a sparse matrix. Notice, this
+      **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
+      that assume most values in `a` are zero.
+      See `tf.sparse.sparse_dense_matmul`
+      for some support for `tf.SparseTensor` multiplication.
     name: Name for the operation (optional).
 
   Returns:
@@ -3202,9 +3319,30 @@ def _accumulate_n_grad(op, grad):
 
 @tf_export("math.sigmoid", "nn.sigmoid", "sigmoid")
 def sigmoid(x, name=None):
-  """Computes sigmoid of `x` element-wise.
+  r"""Computes sigmoid of `x` element-wise.
 
-  Specifically, `y = 1 / (1 + exp(-x))`.
+  Formula for calculating sigmoid(x): `y = 1 / (1 + exp(-x))`.
+
+  For x \in (-inf, inf) => sigmoid(x) \in (0, 1)
+
+  Example Usage:
+
+  If a positive number is large, then its sigmoid will approach to 1 since the
+  formula will be `y = <large_num> / (1 + <large_num>)`
+
+  >>> x = tf.constant([0.0, 1.0, 50.0, 100.0])
+  >>> tf.math.sigmoid(x)
+  <tf.Tensor: shape=(4,), dtype=float32,
+  numpy=array([0.5      , 0.7310586, 1.       , 1.       ], dtype=float32)>
+
+  If a negative number is large, its sigmoid will approach to 0 since the
+  formula will be `y = 1 / (1 + <large_num>)`
+
+  >>> x = tf.constant([-100.0, -50.0, -1.0, 0.0])
+  >>> tf.math.sigmoid(x)
+  <tf.Tensor: shape=(4,), dtype=float32, numpy=
+  array([0.0000000e+00, 1.9287499e-22, 2.6894143e-01, 0.5],
+        dtype=float32)>
 
   Args:
     x: A Tensor with type `float16`, `float32`, `float64`, `complex64`, or
@@ -3213,6 +3351,13 @@ def sigmoid(x, name=None):
 
   Returns:
     A Tensor with the same type as `x`.
+  
+  Usage Example:
+  
+  >>> x = tf.constant([-128.0, 0.0, 128.0], dtype=tf.float32)
+  >>> tf.sigmoid(x)
+  <tf.Tensor: shape=(3,), dtype=float32,
+  numpy=array([0. , 0.5, 1. ], dtype=float32)>
 
   @compatibility(scipy)
   Equivalent to scipy.special.expit
@@ -4229,6 +4374,31 @@ def polyval(coeffs, x, name=None):
 
      p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
             x * coeffs[0]))
+            
+  Usage Example:
+  
+  >>> coefficients = [1.0, 2.5, -4.2]
+  >>> x = 5.0
+  >>> y = tf.math.polyval(coefficients, x)
+  >>> y
+  <tf.Tensor: shape=(), dtype=float32, numpy=33.3>
+
+  Usage Example:
+
+  >>> tf.math.polyval([2, 1, 0], 3) # evaluates 2 * (3**2) + 1 * (3**1) + 0 * (3**0)
+  <tf.Tensor: shape=(), dtype=int32, numpy=21>
+
+  `tf.math.polyval` can also be used in polynomial regression. Taking
+  advantage of this function can facilitate writing a polynomial equation
+  as compared to explicitly writing it out, especially for higher degree
+  polynomials.
+
+  >>> x = tf.constant(3)
+  >>> theta1 = tf.Variable(2)
+  >>> theta2 = tf.Variable(1)
+  >>> theta3 = tf.Variable(0)
+  >>> tf.math.polyval([theta1, theta2, theta3], x)
+  <tf.Tensor: shape=(), dtype=int32, numpy=21>
 
   Args:
     coeffs: A list of `Tensor` representing the coefficients of the polynomial.
@@ -4243,6 +4413,9 @@ def polyval(coeffs, x, name=None):
   Equivalent to numpy.polyval.
   @end_compatibility
   """
+  if not isinstance(coeffs, list):
+    raise ValueError("Argument coeffs must be list type "
+                     "found {}.".format(type(coeffs)))
 
   with ops.name_scope(name, "polyval", nest.flatten(coeffs) + [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
@@ -4288,6 +4461,43 @@ def reciprocal_no_nan(x, name=None):
     x = ops.convert_to_tensor(x, name="x")
     one = constant_op.constant(1, dtype=x.dtype.base_dtype, name="one")
     return gen_math_ops.div_no_nan(one, x, name=scope)
+
+
+@tf_export("math.xlog1py")
+@dispatch.add_dispatch_support
+def xlog1py(x, y, name=None):
+  r"""Compute x * log1p(y).
+
+  Given `x` and `y`, compute `x * log1p(y)`. This function safely returns
+  zero when `x = 0`, no matter what the value of `y` is.
+
+  Example:
+
+  >>> tf.math.xlog1py(0., 1.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.>
+  >>> tf.math.xlog1py(1., 1.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.6931472>
+  >>> tf.math.xlog1py(2., 2.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=2.1972246>
+  >>> tf.math.xlog1py(0., -1.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=0.>
+
+  Args:
+    x: A `tf.Tensor` of type `bfloat16`, `half`, `float32`, `float64`,
+      `complex64`, `complex128`
+    y: A `tf.Tensor` of type `bfloat16`, `half`, `float32`, `float64`,
+      `complex64`, `complex128`
+    name: A name for the operation (optional).
+
+  Returns:
+    `x * log1p(y)`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.xlog1py
+  @end_compatibility
+  """
+  with ops.name_scope(name, "xlog1py", [x]):
+    return gen_math_ops.xlog1py(x, y)
 
 
 @tf_export("math.erfinv")
@@ -4391,7 +4601,7 @@ def sqrt(x, name=None):  # pylint: disable=redefined-builtin
 @tf_export("math.exp", "exp")
 @dispatch.add_dispatch_support
 def exp(x, name=None):
-  """Computes exponential of x element-wise.  \\(y = e^x\\).
+  r"""Computes exponential of x element-wise.  \\(y = e^x\\).
 
   This function computes the exponential of the input tensor element-wise.
   i.e. `math.exp(x)` or \\(e^x\\), where `x` is the input tensor.
@@ -4437,7 +4647,7 @@ def exp(x, name=None):
 
 
 @tf_export("math.sobol_sample")
-def sobol_sample(dim, num_results, skip=0, dtype=None, name=None):
+def sobol_sample(dim, num_results, skip=0, dtype=dtypes.float32, name=None):
   """Generates points from the Sobol sequence.
 
   Creates a Sobol sequence with `num_results` samples. Each sample has dimension
@@ -4449,8 +4659,8 @@ def sobol_sample(dim, num_results, skip=0, dtype=None, name=None):
         points to return in the output.
     skip: (Optional) Positive scalar `Tensor` of dtype int32. The number of
         initial points of the Sobol sequence to skip. Default value is 0.
-    dtype: (Optional) The dtype of the sample. One of: `float32` or `float64`.
-        Default value is determined by the C++ kernel.
+    dtype: (Optional) The `tf.Dtype` of the sample. One of: `tf.float32` or
+        `tf.float64`. Defaults to `tf.float32`.
     name: (Optional) Python `str` name prefixed to ops created by this function.
 
   Returns:

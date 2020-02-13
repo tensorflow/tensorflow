@@ -325,7 +325,7 @@ def _AssertCompatible(values, dtype):
   except ValueError as e:
     [mismatch] = e.args
     if dtype is None:
-      raise TypeError("List of Tensors when single Tensor expected")
+      raise TypeError("Expected any non-tensor type, got a tensor instead.")
     else:
       raise TypeError("Expected %s, got %s of type '%s' instead." %
                       (dtype.name, repr(mismatch), type(mismatch).__name__))
@@ -981,7 +981,14 @@ def is_tensor(x):  # pylint: disable=invalid-name
 
   If `is_tensor(x)` returns `True`, it is safe to assume that `x` is a tensor or
   can be converted to a tensor using `ops.convert_to_tensor(x)`.
-
+  
+  Usage example:
+  
+  >>> tf.is_tensor(tf.constant([[1,2,3],[4,5,6],[7,8,9]])) 
+  True
+  >>> tf.is_tensor("Hello World")
+  False
+    
   Args:
     x: A python object to check.
 
@@ -1003,7 +1010,7 @@ def shape_tensor(shape):  # pylint: disable=invalid-name
       # If there are Dimension objects in the shape, unwrap them. This can be a
       # problem if v1 and v2 TensorShape objects get mixed up in partial
       # conversions, leading to shapes such as (1, 2, Dimension(5)), which are
-      # not convertible to Tensors becasue of mixed content.
+      # not convertible to Tensors because of mixed content.
       shape = tuple(map(tensor_shape.dimension_value, shape))
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 

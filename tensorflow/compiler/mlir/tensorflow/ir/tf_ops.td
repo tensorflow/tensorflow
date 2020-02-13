@@ -172,24 +172,6 @@ else_branch: A function that takes 'inputs' and returns a list of
   }];
 }
 
-def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
-  let summary = "Fetches multiple values from infeed as a tuple.";
-
-  let description = [{
-  }];
-
-  let arguments = (ins);
-
-  let results = (outs
-    Variadic<TF_Tensor>:$outputs
-  );
-
-  TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
-  // TODO(b/147021512): This op also has an attribute shapes : list(shape),
-  // which is a derived attribute from result types. Support for derived
-  // attributes of list(shape) kind is not yet present in ODS and mlir.
-}
-
 def TF_MeanOp : TF_Op<"Mean", [NoSideEffect]> {
   let summary = "Computes the mean of elements across dimensions of a tensor.";
 
@@ -309,7 +291,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
 
-    FlatSymbolRefAttr:$f,
+    SymbolRefAttr:$f,
     StrAttr:$config,
     StrAttr:$config_proto,
     StrAttr:$executor_type
@@ -331,6 +313,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
       return getAttrOfType<SymbolRefAttr>("f");
     }
   }];
+
+  let verifier = [{ return VerifyPartitionedCall(*this); }];
 }
 
 def TF_PlaceholderOp : TF_Op<"Placeholder", [NoSideEffect]> {
@@ -368,6 +352,36 @@ def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]
   DerivedAttr shape = TF_DerivedResultShapeAttr;
 }
 
+def TF_SparseMatMulOp : TF_Op<"SparseMatMul", [NoSideEffect]> {
+  let summary = [{
+SparseMatMul is MatMul with hints on the sparseness of the matrices.
+  }];
+
+  let description = [{
+Similar to MatMul, with a_is_sparse and b_is_sparse indicating whether a and b
+are sparse matrices.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$a,
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$b,
+
+    DefaultValuedAttr<BoolAttr, "true">:$a_is_sparse,
+    DefaultValuedAttr<BoolAttr, "false">:$b_is_sparse,
+
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_b
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$product
+  );
+
+  TF_DerivedOperandTypeAttr Ta = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tb = TF_DerivedOperandTypeAttr<1>;
+}
+
+
 def TF_StatefulPartitionedCallOp : TF_Op<"StatefulPartitionedCall",
                                          [CallOpInterface]> {
   let summary =
@@ -404,6 +418,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
       return getAttrOfType<SymbolRefAttr>("f");
     }
   }];
+
+  let verifier = [{ return VerifyPartitionedCall(*this); }];
 }
 
 def TF_WhileOp : TF_Op<"While", []> {

@@ -112,13 +112,10 @@ Status MklEagerOpRewrite::Run(
 Status MklEagerOpRewrite::SetupNewOp(
     EagerOperation* orig_op, const string mkl_op_name,
     std::unique_ptr<EagerOperation>* new_mkl_op) {
-  const tensorflow::AttrTypeMap* types;
-  bool is_function = false;
-  TF_RETURN_IF_ERROR(
-      tensorflow::AttrTypeMapForOp(mkl_op_name.c_str(), &types, &is_function));
-  EagerContext* ctx = orig_op->EagerContext();
-  new_mkl_op->reset(new tensorflow::EagerOperation(ctx, mkl_op_name.c_str(),
-                                                   is_function, types));
+  bool is_remote = false;
+  new_mkl_op->reset(new tensorflow::EagerOperation(&orig_op->EagerContext()));
+  TF_RETURN_IF_ERROR(new_mkl_op->get()->Reset(mkl_op_name.c_str(), nullptr,
+                                              is_remote, nullptr));
 
   int num_inputs = orig_op->Inputs().size();
   // Add all inputs to the new op.

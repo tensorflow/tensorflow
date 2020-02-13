@@ -974,7 +974,9 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   dst_params.cols = n_batch;
 
   GemmParams<int32, int32> gemm_params;
-  gemm_params.bias = bias;
+  if (bias) {
+    gemm_params.bias = bias;
+  }
   cpu_backend_gemm::Gemm(lhs_params, input_to_gate_weights, rhs_params, input,
                          dst_params, scratch, gemm_params, context);
 }
@@ -1143,6 +1145,48 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     free(aligned_row_free);
   }
   free(aligned_vec_free);
+}
+
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, int32_t* scratch, float* __restrict__ result,
+    int result_stride, CpuBackendContext* context) {
+  if (m_rows % 4 == 0 && result_stride == 1) {
+    const int32_t* bias = static_cast<const int32_t*>(nullptr);
+    NeonCpuBackendGemm(vectors, bias, matrix, n_batch, m_cols, m_rows,
+                       /*output_zp =*/0, scratch, context);
+
+    // Multiply by float scaling factors and write to result
+    const int total_size = n_batch * m_rows;
+    int i = 0;
+    for (; i <= total_size - 8; i += 8, result += 8 * result_stride) {
+      const float batch_scaling_factor0 = scaling_factors[i / m_rows];
+      const float batch_scaling_factor1 = scaling_factors[(i + 4) / m_rows];
+      const float32x4_t scaling_factor0 = vdupq_n_f32(batch_scaling_factor0);
+      const float32x4_t scaling_factor1 = vdupq_n_f32(batch_scaling_factor1);
+      const int32x4_t scratch_val0 = vld1q_s32(scratch + i);
+      const int32x4_t scratch_val1 = vld1q_s32(scratch + i + 4);
+      const float32x4_t float_val0 = vcvtq_f32_s32(scratch_val0);
+      const float32x4_t float_val1 = vcvtq_f32_s32(scratch_val1);
+      const float32x4_t result0 =
+          vmlaq_f32(vld1q_f32(result), float_val0, scaling_factor0);
+      const float32x4_t result1 = vmlaq_f32(
+          vld1q_f32(result + 4 * result_stride), float_val1, scaling_factor1);
+      vst1q_f32(result, result0);
+      vst1q_f32(result + 4 * result_stride, result1);
+    }
+    scratch += i;
+    for (; i < total_size; i++, result += result_stride) {
+      const float batch_scaling_factor = scaling_factors[i / m_rows];
+      int32_t x = *(scratch++);
+      *result += x * batch_scaling_factor;
+    }
+    return;
+  }
+  NeonMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
+                                          scaling_factors, n_batch, result,
+                                          result_stride);
 }
 
 void NeonMatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
@@ -1859,9 +1903,15 @@ void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result) {
 namespace {
 
 #if __aarch64__
-inline bool IsAllZero(const uint32x4_t u32x4) {
-  const uint32_t u32 = vmaxvq_u32(u32x4);
+inline bool IsAllZero(const int8x16_t v_s8x16) {
+  const uint32_t u32 = vmaxvq_u32(vreinterpretq_u32_s8(v_s8x16));
   return !u32;
+}
+
+inline bool IsAllZero(const float32x4_t v_f32x4) {
+  const uint32x4_t cmp_result = vceqzq_f32(v_f32x4);
+  const uint32_t u32 = vminvq_u32(cmp_result);
+  return u32;
 }
 #else
 inline bool IsAllZero(const uint32x4_t u32x4) {
@@ -1869,7 +1919,6 @@ inline bool IsAllZero(const uint32x4_t u32x4) {
   const uint64x1_t u64 = vreinterpret_u64_u32(u32x2);
   return !vget_lane_u64(u64, 0);
 }
-#endif
 
 #ifndef __SSE__
 // With Intel NEON-2-SSE translator library, this is a redefinition..
@@ -1884,6 +1933,7 @@ inline bool IsAllZero(const float32x4_t v_f32x4) {
   const uint32x4_t cmp_result = vcagtq_f32(v_f32x4, zero_f32x4);
   return IsAllZero(cmp_result);
 }
+#endif
 
 }  // namespace
 

@@ -1707,8 +1707,12 @@ tensorflow::Status ConvertResizeBilinearOperator(
   auto* op = new ResizeBilinearOperator;
 
   op->align_corners = false;
+  op->half_pixel_centers = false;
   if (HasAttr(node, "align_corners")) {
     op->align_corners = GetBoolAttr(node, "align_corners");
+  }
+  if (HasAttr(node, "half_pixel_centers")) {
+    op->half_pixel_centers = GetBoolAttr(node, "half_pixel_centers");
   }
 
   op->inputs.push_back(node.input(0));
@@ -2608,6 +2612,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"ReverseV2", ConvertSimpleOperator<ReverseV2Operator, 2, 1>},
       {"Round", ConvertRoundOperator},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1, 1>},
+      {"SegmentSum", ConvertSimpleOperator<SegmentSumOperator, 2, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3, 1>},
       {"SelectV2", ConvertSimpleOperator<SelectOperator, 3, 1>},
       {"Shape", ConvertShapeOperator},

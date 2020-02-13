@@ -62,8 +62,8 @@ def make_squeeze_tests(options):
       "fully_quantize": [True],
   }, {
       "dtype": [tf.float32],
-      "input_shape": [[1, 1, 5, 10], [1, 5, 1, 10]],
-      "axis": [[0], [3, 0], [-2, 0, 3, 2]],
+      "input_shape": [[1, 1, 5, 10], [1, 5, 1, 10], [5, 1, 10]],
+      "axis": [[0], [1], [3, 0], [-2, 0, 3, 2]],
       "fully_quantize": [True],
   }]
 
@@ -89,4 +89,4 @@ def make_squeeze_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=20)
+      expected_tf_failures=24)

@@ -52,6 +52,8 @@ class WindowsFileSystem : public FileSystem {
   Status GetMatchingPaths(const string& pattern,
                           std::vector<string>* result) override;
 
+  bool Match(const string& filename, const string& pattern) override;
+
   Status Stat(const string& fname, FileStatistics* stat) override;
 
   Status DeleteFile(const string& fname) override;
@@ -67,6 +69,8 @@ class WindowsFileSystem : public FileSystem {
   Status RenameFile(const string& src, const string& target) override;
 
   string TranslateName(const string& name) const override { return name; }
+
+  char Separator() const override { return '\\'; };
 };
 
 class LocalWinFileSystem : public WindowsFileSystem {
