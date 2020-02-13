@@ -116,7 +116,7 @@ def generate_raw_ops_doc():
       has_gradient = "\N{CROSS MARK}"
     link = (
         '<a id={op_name} href="{FLAGS.site_path}/api_docs/python/tf/raw_ops">'
-        '{op_name}</a>').format(op_name=op_name, FLAGS=FLAGS.site_path)
+        '{op_name}</a>').format(op_name=op_name, FLAGS=FLAGS)
     parts.append(
         "| {link} | {has_gradient} |".format(link=link,
                                              has_gradient=has_gradient))
