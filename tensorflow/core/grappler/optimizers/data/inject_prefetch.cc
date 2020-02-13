@@ -33,10 +33,11 @@ namespace {
 constexpr char kLegacyAutotune[] = "legacy_autotune";
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
-constexpr std::array<const char*, 6> kAsyncDatasetOps = {
-    "ExperimentalMapAndBatchDataset", "ParallelMapDataset",
+constexpr std::array<const char*, 7> kAsyncDatasetOps = {
+    "ExperimentalMapAndBatchDataset", "MapAndBatchDataset",
     "ParallelInterleaveDatasetV2",    "ParallelInterleaveDatasetV3",
-    "ParallelInterleaveDatasetV4",    "MapAndBatchDataset",
+    "ParallelInterleaveDatasetV4",    "ParallelMapDataset",
+    "ParallelMapDatasetV2",
 };
 
 }  // namespace
