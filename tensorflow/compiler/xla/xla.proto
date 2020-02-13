@@ -240,6 +240,12 @@ message DebugOptions {
   // directory.
   bool xla_dump_hlo_snapshots = 118;
 
+  // Include a timestamp in the dumped filenames.
+  bool xla_dump_include_timestamp = 131;
+
+  // Max number of hlo module dumps in a directory. Set to < 0 for unbounded.
+  int32 xla_dump_max_hlo_modules = 132;
+
   //
   // END flags controlling dumping HLO modules.
   //
@@ -254,7 +260,11 @@ message DebugOptions {
 
   // Guarantee run-to-run determinism from reductions on XLA:GPU.
   bool xla_gpu_deterministic_reductions = 130;
-  // Next id: 131
+
+  // Enable horizontal fusion on XLA GPU.
+  bool xla_gpu_use_horizontal_fusion = 133;
+
+  // Next id: 134
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

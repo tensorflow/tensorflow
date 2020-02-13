@@ -97,26 +97,30 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
 // each batch in the batch-vector matrix independently).
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride);
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, int result_stride);
 
 // Same as the function above, but provide a scratch buffer for the
 // int8 x int8 -> int32 and a CpuBackendContext for the accumulator
 // computation.
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, int32_t* scratch, float* __restrict__ result,
-    int result_stride, CpuBackendContext* context);
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    int32_t* __restrict__ scratch, float* __restrict__ result,
+    int result_stride, CpuBackendContext* __restrict__ context);
 
 // Same as the function above except that vector values
 // are quantized with asymmetric quantization per-batch and the matrix
 // is quantized per row.
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride,
-    const float* per_channel_scale, const int32_t* input_offset);
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, int result_stride,
+    const float* __restrict__ per_channel_scale,
+    const int32_t* __restrict__ input_offset);
 
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
@@ -130,10 +134,10 @@ void MatrixBatchVectorMultiplyAccumulate(
 //   1. m_cols is a multiple of 16 so that all blocks are full blocks.
 //   2. m_cols < 254 * 16 so that block index can be represented by uint8.
 void SparseMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
-    const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result,
-    int result_stride);
+    const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
+    const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, int result_stride);
 
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result

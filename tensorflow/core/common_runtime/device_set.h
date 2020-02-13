@@ -38,7 +38,7 @@ class DeviceSet {
   ~DeviceSet();
 
   // Does not take ownership of 'device'.
-  void AddDevice(Device* device);
+  void AddDevice(Device* device) LOCKS_EXCLUDED(devices_mu_);
 
   // Set the device designated as the "client".  This device
   // must also be registered via AddDevice().
@@ -69,14 +69,16 @@ class DeviceSet {
 
   // Return the prioritized list of devices in this set.
   // Devices are prioritized first by `DeviceTypeOrder`, then by name.
-  const PrioritizedDeviceVector& prioritized_devices() const;
+  const PrioritizedDeviceVector& prioritized_devices() const
+      LOCKS_EXCLUDED(devices_mu_);
 
   // Return the prioritized list of unique device types in this set.
   //
   // The list will be ordered by decreasing priority. The priorities (the second
   // element in the list's `std::pair<DeviceType, int32>`) will be initialized
   // to the value of `DeviceTypeOrder` for the device types.
-  const PrioritizedDeviceTypeVector& prioritized_device_types() const;
+  const PrioritizedDeviceTypeVector& prioritized_device_types() const
+      LOCKS_EXCLUDED(devices_mu_);
 
   // An order to sort by device types according to system-determined
   // priority.
@@ -103,16 +105,19 @@ class DeviceSet {
       PrioritizedDeviceTypeVector* vector);
 
  private:
+  mutable mutex devices_mu_;
+
   // Not owned.
   std::vector<Device*> devices_;
 
   // Cached prioritized vector, created on-the-fly when
   // prioritized_devices() is called.
-  mutable PrioritizedDeviceVector prioritized_devices_;
+  mutable PrioritizedDeviceVector prioritized_devices_ GUARDED_BY(devices_mu_);
 
   // Cached prioritized vector, created on-the-fly when
   // prioritized_device_types() is called.
-  mutable PrioritizedDeviceTypeVector prioritized_device_types_;
+  mutable PrioritizedDeviceTypeVector prioritized_device_types_
+      GUARDED_BY(devices_mu_);
 
   // Fullname -> device* for device in devices_.
   std::unordered_map<string, Device*> device_by_name_;

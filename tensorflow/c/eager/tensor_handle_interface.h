@@ -55,6 +55,14 @@ class AbstractTensorHandleInterface {
 
   // Return a copy of the handle.
   virtual AbstractTensorHandleInterface* Copy() = 0;
+
+  // Maintain mirror tensors for any implicit copies to local devices. This
+  // setting is offered on a per tensor handle basis to avoid potential memory
+  // over utilization due to holding on to mirrors as well as the original
+  // tensor. Note this setting overrides the context mirroring policy whereby if
+  // the mirroring policy is MIRRORING_NONE, we will still continue to mirror
+  // this tensor.
+  virtual void EnableImplicitMirroring() = 0;
 };
 
 namespace tensorflow {
@@ -76,6 +84,8 @@ class TensorHandleInterface : public AbstractTensorHandleInterface {
   TFE_TensorDebugInfo* TensorDebugInfo(Status* status) override;
 
   AbstractTensorHandleInterface* Copy() override;
+
+  void EnableImplicitMirroring() override;
 
   // TODO(gjn): This is not a very generic interface, but is needed for specific
   // use cases.

@@ -24,7 +24,9 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
@@ -380,6 +382,18 @@ def register_symbolic_tensor_type(cls):
   """
   global _user_convertible_tensor_types
   _user_convertible_tensor_types.add(cls)
+
+
+def type_spec_from_value(value):
+  """Grab type_spec without converting array-likes to tensors."""
+  if isinstance(value, composite_tensor.CompositeTensor):
+    return value._type_spec  # pylint: disable=protected-access
+  # Get a TensorSpec for array-like data without
+  # converting the data to a Tensor
+  if hasattr(value, 'shape') and hasattr(value, 'dtype'):
+    return tensor_spec.TensorSpec(value.shape, value.dtype)
+  else:
+    return type_spec.type_spec_from_value(value)
 
 
 def is_tensor_or_variable(x):

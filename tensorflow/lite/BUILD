@@ -38,8 +38,14 @@ config_setting(
 )
 
 config_setting(
-    name = "tflite_experimental_runtime",
-    values = {"define": "tflite_experimental_runtime=true"},
+    name = "tflite_experimental_runtime_eager",
+    values = {"define": "tflite_experimental_runtime=eager"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "tflite_experimental_runtime_non_eager",
+    values = {"define": "tflite_experimental_runtime=non-eager"},
     visibility = ["//visibility:public"],
 )
 
@@ -181,7 +187,6 @@ cc_library(
     ],
     copts = TFLITE_DEFAULT_COPTS,
     deps = [
-        ":simple_memory_arena",
         ":string",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",

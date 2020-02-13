@@ -508,8 +508,6 @@ cc_library(
     hdrs = ["regexp.h"],
     deps = [
         ":platform",
-        ":types",
-        "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
     ],
 )
@@ -958,7 +956,7 @@ tf_cc_test(
     srcs = ["platform_strings_test.cc"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
-        "platform_strings",
+        ":platform_strings",
         "//tensorflow/core:lib",
     ],
 )
@@ -1372,7 +1370,6 @@ filegroup(
         "file_statistics.h",
         "file_system.cc",
         "file_system.h",
-        "file_system_helper.cc",
         "file_system_helper.h",
         "hash.cc",
         "hash.h",
@@ -1413,10 +1410,8 @@ filegroup(
         "tensor_coding.cc",
         "tensor_coding.h",
         "thread_annotations.h",
-        "threadpool.cc",
         "threadpool.h",
         "threadpool_interface.h",
-        "tracing.cc",
         "tracing.h",
         "tstring.h",
         "types.h",
@@ -1424,6 +1419,9 @@ filegroup(
         tf_google_mobile_srcs_no_runtime(),
         otherwise = [
             "//tensorflow/core/platform/default:mobile_srcs_no_runtime",
+            "file_system_helper.cc",
+            "threadpool.cc",
+            "tracing.cc",
         ],
     ) + tf_platform_alias("additional_mobile_srcs_no_runtime"),
     visibility = ["//tensorflow/core:__pkg__"],

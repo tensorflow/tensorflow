@@ -19,11 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
-#if GOOGLE_CUDA
- #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
-#elif TENSORFLOW_USE_ROCM
- #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
-#endif
+#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -32,6 +28,47 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 
 namespace xla {
+namespace gpu {
+
+// Creating dummy data structure needed to initialize a GpuDummyCompiler
+PLATFORM_DEFINE_ID(kDummyTestId);
+constexpr char kDummyTriple[] = "dummy-triple";
+constexpr char kDummyLayout[] = "e";
+
+// This class is is a dummy implementation of GpuCompiler and is targeted for
+// unit test only
+class GpuDummyCompiler : public GpuCompiler {
+ public:
+  GpuDummyCompiler() : GpuCompiler(kDummyTestId, kDummyTriple, kDummyLayout) {}
+
+  Status OptimizeHloConvolutionCanonicalization(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) {
+    return Status::OK();
+  }
+
+  Status OptimizeHloPostLayoutAssignment(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) {
+    return Status::OK();
+  }
+
+  GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) { return 0; }
+
+  StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
+      const HloModule* hlo_module, llvm::Module* llvm_module,
+      GpuVersion gpu_version, se::StreamExecutor* stream_exec) {
+    if (user_post_optimization_hook_) {
+      user_post_optimization_hook_(*llvm_module);
+    }
+
+    std::vector<uint8> compiled_results;
+    return std::pair<std::string, std::vector<uint8>>(
+        "", std::move(compiled_results));
+  }
+};
+}  // namespace gpu
+
 namespace {
 
 class LLVMCompilerTest : public ::testing::Test {
@@ -142,11 +179,7 @@ class CpuCompilerTest : public LLVMCompilerTest {
 
 class GpuCompilerTest : public LLVMCompilerTest {
  public:
-#if TENSORFLOW_USE_ROCM
-  GpuCompilerTest() : LLVMCompilerTest("ROCM") {}
-#elif GOOGLE_CUDA
-  GpuCompilerTest() : LLVMCompilerTest("CUDA") {}
-#endif
+  GpuCompilerTest() : LLVMCompilerTest("GPU") {}
 };
 
 TEST_F(CpuCompilerTest, HooksTest) {
@@ -155,11 +188,7 @@ TEST_F(CpuCompilerTest, HooksTest) {
 }
 
 TEST_F(GpuCompilerTest, HooksTest) {
-#if TENSORFLOW_USE_ROCM
-  gpu::AMDGPUCompiler compiler;
-#elif GOOGLE_CUDA
-  gpu::NVPTXCompiler compiler;
-#endif
+  gpu::GpuDummyCompiler compiler;
   TestCompilerHooks(&compiler);
 }
 
@@ -169,11 +198,7 @@ TEST_F(CpuCompilerTest, CpuMultiModuleCompilation) {
 }
 
 TEST_F(GpuCompilerTest, GpuMultModuleCompilation) {
-#if TENSORFLOW_USE_ROCM
-  gpu::AMDGPUCompiler compiler;
-#elif GOOGLE_CUDA
-  gpu::NVPTXCompiler compiler;
-#endif
+  gpu::GpuDummyCompiler compiler;
   TestMultiModuleCompilation(&compiler);
 }
 }  // namespace

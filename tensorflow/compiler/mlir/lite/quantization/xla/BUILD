@@ -17,6 +17,7 @@ package_group(
 cc_library(
     name = "hlo_xla_quantization_passes",
     srcs = [
+        "materialize.cc",
         "op_quant_spec.inc",
         "propagate.cc",
     ],
@@ -26,11 +27,14 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
+        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/xla/client/lib:quantize",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:StandardOps",
     ],
     alwayslink = 1,
 )

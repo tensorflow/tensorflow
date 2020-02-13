@@ -86,18 +86,19 @@ void ComputeFaqTips(OverviewPageRecommendation* re) {
 
 void ComputeDocumentationTips(OverviewPageRecommendation* re) {
   *re->add_documentation_tips() = MakeOverviewPageTipDocLink(
-      "https://www.tensorflow.org/versions/master/api_docs/python/tf/data/"
-      "Dataset",
-      "TensorFlow Input Pipeline API");
+      "https://www.tensorflow.org/guide/"
+      "data_performance",
+      "Better performance with the tf.data API");
 }
 
 }  // namespace
 
-void SetCommonRecommendation(const CommonBottleneck& bottleneck,
+void SetCommonRecommendation(const string& input_classification,
+                             const string& input_statement,
                              HardwareType hardware_type,
                              OverviewPageRecommendation* re) {
-  re->set_bottleneck(bottleneck.input_classification);
-  re->set_statement(bottleneck.input_statement);
+  re->set_bottleneck(input_classification);
+  re->set_statement(input_statement);
   ComputeHostTips(re);
   ComputeDeviceTips(hardware_type, re);
   ComputeDocumentationTips(re);
@@ -105,13 +106,14 @@ void SetCommonRecommendation(const CommonBottleneck& bottleneck,
 }
 
 OverviewPageRecommendation ComputeGenericRecommendation(
-    const GenericBottleneck& bottleneck) {
+    const BottleneckAnalysis& bottleneck) {
   OverviewPageRecommendation re;
   GenericRecommendation generic;
-  generic.set_kernel_launch_bottleneck(bottleneck.kernel_launch_classification);
-  generic.set_kernel_launch_statement(bottleneck.kernel_launch_statement);
-  generic.set_all_other_bottleneck(bottleneck.all_other_classification);
-  generic.set_all_other_statement(bottleneck.all_other_statement);
+  generic.set_kernel_launch_bottleneck(
+      bottleneck.kernel_launch_classification());
+  generic.set_kernel_launch_statement(bottleneck.kernel_launch_statement());
+  generic.set_all_other_bottleneck(bottleneck.all_other_classification());
+  generic.set_all_other_statement(bottleneck.all_other_statement());
   re.mutable_recommendation()->PackFrom(generic);
   return re;
 }
@@ -188,10 +190,13 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
   OverviewPageAnalysis analysis = ComputeAnalysisResult(op_stats);
   InputPipelineAnalysisResult input_analysis =
       ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
-  GenericBottleneck bottleneck = GenericOverallBottleneck(input_analysis);
+  BottleneckAnalysis bottleneck =
+      ComputeBottleneckAnalysis(input_analysis.step_details());
   OverviewPageRecommendation recommendation =
       ComputeGenericRecommendation(bottleneck);
-  SetCommonRecommendation(bottleneck.common, hardware_type, &recommendation);
+  SetCommonRecommendation(bottleneck.input_classification(),
+                          bottleneck.input_statement(), hardware_type,
+                          &recommendation);
 
   OverviewPage overview_page;
   *overview_page.mutable_run_environment() =

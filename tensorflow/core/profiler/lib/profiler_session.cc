@@ -30,7 +30,9 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_utils.h"
+#include "tensorflow/core/profiler/utils/derived_timeline.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 #endif
 
 namespace tensorflow {
@@ -76,6 +78,26 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
     active_ = false;
   }
 
+#if !defined(IS_MOBILE_PLATFORM)
+  // Post processing the collected XSpace without hold profiler lock.
+  // 1. Merge plane of host events with plane of CUPTI driver api.
+  const profiler::XPlane* cupti_driver_api_plane =
+      profiler::FindPlaneWithName(*space, profiler::kCuptiDriverApiPlaneName);
+  if (cupti_driver_api_plane) {
+    profiler::XPlane* host_plane =
+        profiler::GetOrCreatePlane(space, profiler::kHostThreads);
+    profiler::MergePlanes(*cupti_driver_api_plane, host_plane);
+    profiler::RemovePlaneWithName(space, profiler::kCuptiDriverApiPlaneName);
+  }
+  // 2. Sort each plane of the XSpace
+  profiler::SortXSpace(space);
+  // 3. Grouping (i.e. marking step number) events in the XSpace.
+  profiler::EventGroupNameMap event_group_name_map;
+  profiler::GroupTfEvents(space, &event_group_name_map);
+  // 4. Generated miscellaneous derived time lines for device planes.
+  profiler::GenerateDerivedTimeLines(event_group_name_map, space);
+#endif
+
   return Status::OK();
 }
 
@@ -102,12 +124,11 @@ Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
 }
 
 Status ProfilerSession::SerializeToString(string* content) {
-  profiler::XSpace xspace;
-  TF_RETURN_IF_ERROR(CollectData(&xspace));
   profiler::Trace trace;
 #if !defined(IS_MOBILE_PLATFORM)
+  profiler::XSpace xspace;
+  TF_RETURN_IF_ERROR(CollectData(&xspace));
   uint64 end_time_ns = EnvTime::NowNanos();
-  profiler::GroupTfEvents(&xspace, /*event_group_name_map=*/nullptr);
   profiler::ConvertXSpaceToTraceEvents(start_time_ns_, end_time_ns, xspace,
                                        &trace);
 #endif

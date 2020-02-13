@@ -286,6 +286,13 @@ bool AlternateMemoryBestFitHeap::IsIntervalAllowedInAlternateMemory(
     return false;
   }
 
+  // Don't place scalars in the alternate memory.
+  if (ShapeUtil::IsEffectiveScalar(interval.buffer->shape())) {
+    VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
+            << " in default mem because it is a scalar.";
+    return false;
+  }
+
   // The semantics of TupleSelect are weird: TupleSelect doesn't define a
   // buffer, but just forwards the buffers in the either left or right side.
   // This means the the two different inputs to TupleSelect must not alias, yet

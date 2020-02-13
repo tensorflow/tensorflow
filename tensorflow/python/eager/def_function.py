@@ -723,7 +723,9 @@ class Function(object):
       return
 
     # Note: using defun here avoids an infinite recursion.
-    @function_lib.defun
+    # Most of the code in this function runs eagerly with init_scope, where
+    # autograph is not necessary.
+    @function_lib.defun(autograph=False)
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
       # Stack all the var_is_initialized values into one tensor and intepret the

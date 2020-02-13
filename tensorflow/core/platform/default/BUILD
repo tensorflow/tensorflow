@@ -335,11 +335,6 @@ cc_library(
 cc_library(
     name = "stacktrace",
     hdrs = ["stacktrace.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
@@ -350,11 +345,7 @@ cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
     hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
+    linkstatic = 1,
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:stacktrace",

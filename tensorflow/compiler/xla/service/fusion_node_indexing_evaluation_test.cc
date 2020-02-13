@@ -66,6 +66,11 @@ class InstructionFusionForTesting : public InstructionFusion {
     if (consumer->opcode() != HloOpcode::kFusion) {
       return 0;
     }
+    if (fusion_node_evaluations_.find(consumer) ==
+        fusion_node_evaluations_.end()) {
+      fusion_node_evaluations_.emplace(consumer,
+                                       FusionNodeIndexingEvaluation(consumer));
+    }
     return fusion_node_evaluations_.at(consumer)
         .EvaluateTotalEmittedInstructions(producer);
   }
@@ -178,6 +183,39 @@ TEST_F(FusionNodeIndexingEvaluationTest, ExponentialDuplicationPattern) {
   EXPECT_EQ(instruction_fusion.EvaluateTotalEmittedInstructions(add0, fusion),
             13);
   instruction_fusion.Fuse(add0, fusion);
+}
+
+TEST_F(FusionNodeIndexingEvaluationTest, RecomputeCache) {
+  // This is the same HloModule as in ExponentialDuplicationPattern above, but
+  // starting with the fusion node as it is before 'add0' is fused in.
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule test_module
+%fused_computation (param_0.5: f32[4]) -> f32[2] {
+  %param_0.5 = f32[4]{0} parameter(0)
+  %slice1.2 = f32[3]{0} slice(f32[4]{0} %param_0.5), slice={[0:3]}
+  %slice1.3 = f32[3]{0} slice(f32[4]{0} %param_0.5), slice={[1:4]}
+  %add1.1 = f32[3]{0} add(f32[3]{0} %slice1.2, f32[3]{0} %slice1.3)
+  %slice2.2 = f32[2]{0} slice(f32[3]{0} %add1.1), slice={[0:2]}
+  %slice2.3 = f32[2]{0} slice(f32[3]{0} %add1.1), slice={[1:3]}
+  ROOT %add2.1 = f32[2]{0} add(f32[2]{0} %slice2.2, f32[2]{0} %slice2.3)
+}
+
+ENTRY entry_computation {
+  p0 = f32[4]{0} parameter(0)
+  p1 = f32[4]{0} parameter(1)
+  add0 = f32[4]{0} add(p0, p1)
+  ROOT %fusion = f32[2]{0} fusion(add0), kind=kLoop, calls=%fused_computation
+})")
+                    .ValueOrDie();
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  InstructionFusionForTesting instruction_fusion(module.get());
+  HloInstruction* add0 = fusion->mutable_operand(0);
+  EXPECT_EQ(add0->opcode(), HloOpcode::kAdd);
+  // Here, the cache for the fusion node needs to be recomputed. Make sure we
+  // still get the same evaluation as before when we incrementally built the
+  // cache.
+  EXPECT_EQ(instruction_fusion.EvaluateTotalEmittedInstructions(add0, fusion),
+            13);
 }
 
 }  // namespace xla

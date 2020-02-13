@@ -71,8 +71,7 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"tensorflow::|"
                         r"toco::|"
                         r"functor::|"
-                        r"perftools::gputools|"
-                        r"grpc::")
+                        r"perftools::gputools")
 
 # We want to identify data members explicitly in the DEF file, so that no one
 # can implicitly link against the DLL if they use one of the variables exported
@@ -198,7 +197,7 @@ def get_pybind_export_symbols(symbols_file, lib_paths_file):
     if lib:
       for cc_lib in symbols:  # keys in symbols = cc_library target name
         path_to_lib = cc_lib.split("/")
-        cc_lib = path_to_lib[-1]
+        cc_target = path_to_lib[-1]
         # if `len(path_to_lib)` is larger than 1, that means, we are given one
         # or more parent directory of the target. e.g. `[foo/bar]` instead of
         # just the target name `[bar]`.
@@ -206,7 +205,7 @@ def get_pybind_export_symbols(symbols_file, lib_paths_file):
           parent_dir = path_to_lib[0]
         else:
           parent_dir = ""
-        if cc_lib in lib and parent_dir in lib:
+        if cc_target in lib and parent_dir in lib:
           symbols_all.extend(
             get_symbols(lib, "|".join(symbols[cc_lib])))
 

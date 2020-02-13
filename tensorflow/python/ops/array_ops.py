@@ -1297,7 +1297,7 @@ def stack(values, axis=0, name="stack"):
          [2, 5],
          [3, 6]], dtype=int32)>
 
-  >> tf.stack([x, y, z], axis=1)
+  >>> tf.stack([x, y, z], axis=1)
   <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
   array([[1, 2, 3],
          [4, 5, 6]], dtype=int32)>
@@ -3006,17 +3006,6 @@ def placeholder_with_default(input, shape, name=None):  # pylint: disable=redefi
   return gen_array_ops.placeholder_with_default(input, shape, name)
 
 
-# pylint: disable=redefined-outer-name
-def _normalize_sparse_shape(shape, name):
-  """Returns a tuple of (Tensor or None, rank or None)."""
-  if shape is None:
-    return (None, None)
-  rank = shape.get_shape()[0] if isinstance(shape, ops.Tensor) else len(shape)
-  if not isinstance(shape, ops.Tensor) and None in shape:
-    return (None, rank)
-  return (ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name), rank)
-
-
 @tf_export(v1=["sparse.placeholder", "sparse_placeholder"])
 @deprecation.deprecated_endpoints("sparse_placeholder")
 def sparse_placeholder(dtype, shape=None, name=None):
@@ -3065,14 +3054,37 @@ def sparse_placeholder(dtype, shape=None, name=None):
     RuntimeError: if eager execution is enabled
   """
   if context.executing_eagerly():
-    raise RuntimeError("tf.placeholder() is not compatible with "
+    raise RuntimeError("`sparse_placeholder` is not compatible with "
                        "eager execution.")
 
   shape_name = (name + "/shape") if name is not None else None
-  shape, rank = _normalize_sparse_shape(shape, shape_name)
+  default_shape_name = (name + "/shape_default") if name is not None else None
   if shape is None:
-    shape = placeholder(dtypes.int64, shape=[rank], name=shape_name)
-  return sparse_tensor.SparseTensor(
+    rank = None
+    dense_shape = placeholder(dtypes.int64, shape=[rank], name=shape_name)
+    dense_shape_default = tensor_util.constant_value_as_shape(dense_shape)
+  else:
+    if isinstance(shape, ops.Tensor):
+      rank = shape.get_shape()[0]
+      dense_shape_default = tensor_util.constant_value_as_shape(shape)
+    else:
+      rank = len(shape)
+      # determine the shape, to override the `.shape` property of the
+      # `SparseTensor`
+      dense_shape_default = tensor_shape.TensorShape(
+          tuple(None if dim == -1 else dim for dim in shape))
+      shape = tuple(-1 if dim is None else dim for dim in shape)
+      shape = ops.convert_to_tensor(
+          shape, dtype=dtypes.int64, name=default_shape_name)
+
+    # `dense_shape` needs to be feedable (for users that treat this as an
+    # actual placeholder). `constant_value_as_shape` sets constants to
+    # not-feedable. placeholder_with_default works, but blocks `SparseTensor`
+    # from reading the default value back out.
+    dense_shape = placeholder_with_default(
+        shape, shape=shape.shape, name=shape_name)
+
+  result = sparse_tensor.SparseTensor(
       values=placeholder(
           dtype,
           shape=[None],
@@ -3081,8 +3093,14 @@ def sparse_placeholder(dtype, shape=None, name=None):
           dtypes.int64,
           shape=[None, rank],
           name=(name + "/indices") if name is not None else None),
-      dense_shape=shape)
+      dense_shape=dense_shape)
 
+  # Now the SparseTensor.shape is a list of `None`s, since it couldn't read the
+  # default shape out of the placeholder. Override that
+  # shape to be the value determined here, so partial shapes can be
+  # propagated.
+  result._dense_shape_default = dense_shape_default
+  return result
 
 # pylint: enable=redefined-outer-name
 

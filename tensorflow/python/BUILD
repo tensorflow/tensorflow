@@ -43,26 +43,6 @@ package(
 
 exports_files(["LICENSE"])
 
-exports_files(["platform/base.i"])
-
-exports_files(
-    ["lib/core/strings.i"],
-    visibility = [
-        "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
-        "//engedu/ml/tf_from_scratch:__pkg__",
-        "//tensorflow:internal",
-        "//tensorflow/lite/toco/python:__pkg__",
-        "//tensorflow_model_optimization:__subpackages__",
-        "//tensorflow_models:__subpackages__",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/py/cleverhans:__subpackages__",
-        "//third_party/py/neural_structured_learning:__subpackages__",
-        "//third_party/py/reverb:__subpackages__",
-        "//third_party/py/tensorflow_examples:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
-    ],
-)
-
 # Description:
 
 py_library(
@@ -305,7 +285,14 @@ tf_py_test(
     name = "resource_loader_test",
     size = "small",
     srcs = ["platform/resource_loader_test.py"],
+    data = [
+        "platform/resource_loader.py",
+    ],
     python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":platform",
         ":platform_test",
@@ -364,6 +351,40 @@ cc_library(
     ] + tf_protos_grappler(),
 )
 
+# Necessary for the pywrap inclusion below. Combining targets does not work
+# properly.
+tf_pybind_cc_library_wrapper(
+    name = "cost_analyzer_headers",
+    deps = [
+        ":cost_analyzer_lib",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_cost_analyzer",
+    srcs = ["grappler/cost_analyzer_wrapper.cc"],
+    hdrs = [
+        "grappler/cost_analyzer.h",
+        "//tensorflow/cc:pywrap_required_hdrs",
+        "//tensorflow/core/grappler:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
+        "//tensorflow/core/public:session.h",
+        "//tensorflow/core/public:session_options.h",
+    ],
+    module_name = "_pywrap_cost_analyzer",
+    deps = [
+        ":cost_analyzer_headers",
+        ":pybind11_status",
+        "//tensorflow/core:core_cpu_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_id",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@pybind11",
+    ],
+)
+
 cc_library(
     name = "model_analyzer_lib",
     srcs = ["grappler/model_analyzer.cc"],
@@ -380,14 +401,16 @@ cc_library(
 tf_python_pybind_extension(
     name = "_pywrap_model_analyzer",
     srcs = ["grappler/model_analyzer_wrapper.cc"],
-    hdrs = ["grappler/model_analyzer.h"],
+    hdrs = [
+        "grappler/model_analyzer.h",
+        "//tensorflow/core/grappler:pywrap_required_hdrs",
+    ],
     module_name = "_pywrap_model_analyzer",
     deps = [
-        ":model_analyzer_lib",
         ":pybind11_status",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:grappler_item_builder",
         "@pybind11",
     ],
 )
@@ -4091,7 +4114,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/stateful_random_ops_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":client_testlib",
@@ -5648,17 +5670,11 @@ py_library(
     deps = [":pywrap_tensorflow_internal"],
 )
 
+# TODO(b/137885063): This macro should be cleaned up to be just
+# a py_binary/library shared object. We have removed the source
+# SWIG file to prevent people from adding SWIG code.
 tf_py_wrap_cc(
     name = "pywrap_tensorflow_internal",
-    srcs = ["tensorflow.i"],
-    swig_includes = [
-        "grappler/cluster.i",
-        "grappler/cost_analyzer.i",
-        "grappler/item.i",
-        "grappler/tf_optimizer.i",
-        "lib/core/strings.i",
-        "platform/base.i",
-    ],
     # add win_def_file for pywrap_tensorflow
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
@@ -5700,6 +5716,7 @@ tf_py_wrap_cc(
         "//tensorflow/core:reader_base",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
@@ -5717,39 +5734,65 @@ tf_py_wrap_cc(
 # ** Targets for Windows build (start) **
 # We need the following targets to expose symbols from _pywrap_tensorflow.dll
 
-WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS = [
-    ":cpp_python_util",  # util
-    ":py_func_lib",  # py_func
-    ":model_analyzer_lib",  # model_analyzer
-    "//tensorflow/core/util:port",  # util_port
-    "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
-    "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
-    "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-    "//tensorflow/core:framework_internal_impl",  # op_def_registry
-    "//tensorflow/core:lib_internal_impl",  # device_lib
-    "//tensorflow/core:core_cpu_impl",  # device_lib
-    ":py_exception_registry",  # py_exception_registry
-    ":kernel_registry",  # kernel_registry
-    "//tensorflow/lite/toco/python:toco_python_api",  # toco
-    "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
-    "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
-    ":ndarray_tensor",  # checkpoint_reader
-    ":numpy_lib",  # checkpoint_reader
-    ":safe_ptr",  # checkpoint_reader
-    ":python_op_gen",  # python_op_gen
-    ":bfloat16_lib",  # bfloat16
-    "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
-    "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
-    "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
-    "//tensorflow/core/common_runtime/eager:context",  # tfe
-    "//tensorflow/core/profiler/lib:profiler_session",  # tfe
-    "//tensorflow/c:tf_status_helper",  # tfe
-    "//tensorflow/compiler/mlir/python:mlir",  # mlir
-    "//tensorflow/core:op_gen_lib",  # tf_session
-    "//tensorflow/core:core_cpu_base_no_ops",  # tf_session
-    "//tensorflow/c:python_api",  # tf_session
-    "//tensorflow/python:tf_session_helper",  # tf_session
-]
+filegroup(
+    name = "win_lib_files_for_exported_symbols",
+    srcs = [
+        ":bfloat16_lib",  # bfloat16
+        ":cost_analyzer_lib",  # cost_analyzer
+        ":cpp_python_util",  # util
+        ":kernel_registry",  # kernel_registry
+        ":model_analyzer_lib",  # model_analyzer
+        ":ndarray_tensor",  # checkpoint_reader
+        ":numpy_lib",  # checkpoint_reader
+        ":py_exception_registry",  # py_exception_registry
+        ":py_func_lib",  # py_func
+        ":python_op_gen",  # python_op_gen
+        ":safe_ptr",  # checkpoint_reader
+        "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
+        "//tensorflow/c:python_api",  # tf_session
+        "//tensorflow/c:tf_status_helper",  # tfe
+        "//tensorflow/compiler/mlir/python:mlir",  # mlir
+        "//tensorflow/core:core_cpu_base_no_ops",  # tf_session
+        "//tensorflow/core:core_cpu_impl",  # device_lib
+        "//tensorflow/core:framework_internal_impl",  # op_def_registry
+        "//tensorflow/core:lib_internal_impl",  # device_lib
+        "//tensorflow/core:op_gen_lib",  # tf_session
+        "//tensorflow/core/common_runtime/eager:context",  # tfe
+        "//tensorflow/core/common_runtime/eager:eager_executor",  # tfe
+        "//tensorflow/core/grappler:devices",  # tf_cluster
+        "//tensorflow/core/grappler:grappler_item",  # tf_item
+        "//tensorflow/core/grappler:grappler_item_builder",  # tf_item
+        "//tensorflow/core/grappler/clusters:cluster",  # tf_cluster
+        "//tensorflow/core/grappler/clusters:single_machine",  # tf_cluster
+        "//tensorflow/core/grappler/clusters:utils",  # tf_optimizer
+        "//tensorflow/core/grappler/clusters:virtual_cluster",  # tf_cluster
+        "//tensorflow/core/grappler/costs:analytical_cost_estimator",  # cost analyzer
+        "//tensorflow/core/grappler/costs:graph_memory",  # tf_cluster
+        "//tensorflow/core/grappler/costs:graph_properties",  # tf_item
+        "//tensorflow/core/grappler/costs:measuring_cost_estimator",  # tf_cluster
+        "//tensorflow/core/grappler/costs:op_level_cost_estimator",  # tf_cluster
+        "//tensorflow/core/grappler/costs:utils",  # tf_cluster
+        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
+        "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
+        "//tensorflow/core/profiler/internal:annotation_stack_impl",  # profiler
+        "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
+        "//tensorflow/core/profiler/internal:traceme_recorder_impl",  # profiler
+        "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
+        "//tensorflow/core/util:port",  # util_port
+        "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
+        "//tensorflow/lite/toco/python:toco_python_api",  # toco
+        "//tensorflow/python:tf_session_helper",  # tf_session
+        "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
+        "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
+        "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
+    ] + if_xla_available([
+        "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
+        "//tensorflow/compiler/xla:status_macros",  # tfcompile
+        "//tensorflow/compiler/xla/service:hlo",  # tfcompile
+    ]),
+    visibility = ["//visibility:private"],
+)
 
 # Filter the DEF file to reduce the number of symbols to 64K or less.
 # Note that we also write the name of the pyd file into DEF file so that
@@ -5758,10 +5801,11 @@ genrule(
     name = "pywrap_tensorflow_filtered_def_file",
     srcs = select({
         "//tensorflow:windows": [
-            "//tensorflow:tensorflow_def_file",
             ":pybind_symbol_target_libs_file",
+            ":win_lib_files_for_exported_symbols",
+            "//tensorflow:tensorflow_def_file",
             "//tensorflow/tools/def_file_filter:symbols_pybind",
-        ] + WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS,
+        ],
         "//conditions:default": [],
     }),
     outs = ["pywrap_tensorflow_filtered_def_file.def"],
@@ -5783,7 +5827,7 @@ genrule(
 # Write to a file a list of all cc_library targets that we need for exporting symbols on Windows.
 genrule(
     name = "pybind_symbol_target_libs_file",
-    srcs = WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS,
+    srcs = [":win_lib_files_for_exported_symbols"],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({
         "//tensorflow:windows": """
@@ -7360,9 +7404,30 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":pywrap_tensorflow_internal",
+        ":_pywrap_tf_item",
         "//tensorflow/core/grappler/costs:op_performance_data_py",
     ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_tf_item",
+    srcs = ["grappler/item_wrapper.cc"],
+    hdrs = [
+        "//tensorflow/cc:pywrap_required_hdrs",
+        "//tensorflow/core/grappler:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
+    ],
+    module_name = "_pywrap_tf_item",
+    deps = [
+        ":pybind11_status",
+        "@pybind11",
+        "//tensorflow/core:core_cpu_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_id",
+        "//tensorflow/core:protos_all_cc",
+    ] + if_not_windows(["//tensorflow/core/grappler/costs:graph_properties"]),  # b/148556093,
 )
 
 tf_py_test(
@@ -7415,8 +7480,31 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":pywrap_tensorflow_internal",
+        ":_pywrap_tf_cluster",
         "//tensorflow/core/grappler/costs:op_performance_data_py",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_tf_cluster",
+    srcs = ["grappler/cluster_wrapper.cc"],
+    hdrs = [
+        "//tensorflow/cc:pywrap_required_hdrs",
+        "//tensorflow/core/grappler:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
+    ],
+    module_name = "_pywrap_tf_cluster",
+    deps = [
+        ":pybind11_status",
+        "//tensorflow/core:core_cpu_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_id",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
     ],
 )
 
@@ -7452,8 +7540,31 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":pywrap_tensorflow_internal",
+        ":_pywrap_tf_optimizer",
         ":tf_cluster",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_tf_optimizer",
+    srcs = ["grappler/tf_optimizer_wrapper.cc"],
+    hdrs = [
+        "//tensorflow/cc:pywrap_required_hdrs",
+        "//tensorflow/core/grappler:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/optimizers:pywrap_required_hdrs",
+        "//tensorflow/core/grappler/verifiers:pywrap_required_hdrs",
+    ],
+    module_name = "_pywrap_tf_optimizer",
+    deps = [
+        ":pybind11_status",
+        "//tensorflow/core:core_cpu_headers_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_id",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@pybind11",
     ],
 )
 
@@ -7620,7 +7731,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":pywrap_tensorflow_internal",
+        ":_pywrap_cost_analyzer",
         ":tf_cluster",
         ":tf_item",
     ],
@@ -7852,8 +7963,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/framework:pywrap_required_hdrs",
-        "//tensorflow/core/profiler/internal:pywrap_required_hdrs",
-        "//tensorflow/core/profiler/lib:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
     ],
     module_name = "_pywrap_tfe",
@@ -7873,7 +7982,6 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:platform",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ] + if_static(
         extra_deps = [
             "//tensorflow/compiler/jit:flags",

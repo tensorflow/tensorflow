@@ -97,7 +97,7 @@ TfLiteStatus Pool2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     auto* output_max_const = graph_builder_->AddConstNodeWithData(
         quant_bound_shape.data(), (char*)&output_max_, sizeof(output_max_));
 
-    auto* requantize_op = graph_builder_->AddNode();
+    auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
     requantize_op->SetOpType(OP_Requantize_8to8);
     requantize_op->AddInput(pool_out);
     requantize_op->AddInput(pool_out_min);

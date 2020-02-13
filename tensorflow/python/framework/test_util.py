@@ -1147,7 +1147,7 @@ def run_in_graph_and_eager_modes(func=None,
 def py_func_if_in_function(f):
 
   def decorated(*args, **kwds):
-    if not ops.get_default_graph()._building_function:
+    if not ops.inside_function():
       return f(*args, **kwds)
 
     tensor_args = []

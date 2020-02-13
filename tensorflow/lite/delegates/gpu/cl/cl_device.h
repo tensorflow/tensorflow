@@ -28,7 +28,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-enum class Vendor { QUALCOMM, MALI, POWERVR, NVIDIA, UNKNOWN };
+enum class Vendor { QUALCOMM, MALI, POWERVR, NVIDIA, AMD, UNKNOWN };
 std::string VendorToString(Vendor v);
 
 enum class OpenCLVersion { CL_1_0, CL_1_1, CL_1_2, CL_2_0 };
@@ -138,6 +138,7 @@ class CLDevice {
   bool IsPowerVR() const;
   bool IsNvidia() const;
   bool IsMali() const;
+  bool IsAMD() const;
 
   // To track bug on some Adreno. b/131099086
   bool SupportsOneLayerTextureArray() const;

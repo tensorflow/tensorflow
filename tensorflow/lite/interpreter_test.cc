@@ -369,15 +369,14 @@ TEST(BasicInterpreter, CheckArenaAllocation) {
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
   ASSERT_LT(interpreter.tensor(0)->data.raw, interpreter.tensor(1)->data.raw);
-  ASSERT_LT(interpreter.tensor(1)->data.raw, interpreter.tensor(2)->data.raw);
-  ASSERT_LT(interpreter.tensor(2)->data.raw, interpreter.tensor(3)->data.raw);
-  ASSERT_LT(interpreter.tensor(3)->data.raw, interpreter.tensor(4)->data.raw);
-  ASSERT_LT(interpreter.tensor(4)->data.raw, interpreter.tensor(5)->data.raw);
-  ASSERT_LT(interpreter.tensor(5)->data.raw, interpreter.tensor(7)->data.raw);
-  ASSERT_EQ(interpreter.tensor(6)->data.raw, interpreter.tensor(2)->data.raw);
-  // #7 is the one with the largest pointer.
+  ASSERT_LT(interpreter.tensor(1)->data.raw, interpreter.tensor(3)->data.raw);
+  ASSERT_EQ(interpreter.tensor(3)->data.raw, interpreter.tensor(9)->data.raw);
+  ASSERT_LT(interpreter.tensor(3)->data.raw, interpreter.tensor(5)->data.raw);
+  ASSERT_LT(interpreter.tensor(5)->data.raw, interpreter.tensor(2)->data.raw);
+  ASSERT_EQ(interpreter.tensor(2)->data.raw, interpreter.tensor(7)->data.raw);
+  ASSERT_LT(interpreter.tensor(2)->data.raw, interpreter.tensor(4)->data.raw);
+  // #4 is the one with the largest pointer.
   ASSERT_EQ(interpreter.tensor(8)->data.raw, nullptr);
-  ASSERT_EQ(interpreter.tensor(9)->data.raw, interpreter.tensor(5)->data.raw);
 }
 
 TEST(BasicInterpreter, BufferAccess) {
@@ -1067,6 +1066,15 @@ TEST_F(InterpreterTest, GetSetResetExternalContexts) {
   interpreter_.SetNumThreads(4);
   interpreter_.SetNumThreads(5);
   EXPECT_EQ(external_context.num_refreshes, 2);
+
+  // Reset refresh count to 0
+  external_context.num_refreshes = 0;
+  // Below should not call external context refresh
+  interpreter_.SetNumThreads(-2);
+  EXPECT_EQ(external_context.num_refreshes, 0);
+
+  interpreter_.SetNumThreads(-1);
+  EXPECT_EQ(external_context.num_refreshes, 1);
 
   TestExternalContext::Set(context, nullptr);
   EXPECT_EQ(TestExternalContext::Get(context), nullptr);

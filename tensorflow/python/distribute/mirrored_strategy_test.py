@@ -1055,7 +1055,7 @@ class MirroredStrategyDefunTest(test.TestCase):
       with backprop.GradientTape(persistent=True) as gtape:
         result = fn2(mock_model)
       grads = gtape.gradient(result,
-                             [v.get() for v in mock_model.variables])
+                             [v._get() for v in mock_model.variables])
       return grads
 
     self._call_and_check(distribution, model_fn, [], [2.0, 1.0], [fn1, fn2],
@@ -1341,7 +1341,7 @@ class FunctionTest(test.TestCase):
       def replica_fn():
         with backprop.GradientTape() as t:
           x = constant_op.constant([1.0], name="x")
-          loss = concrete_forward(x, w.get(), b.get()) - [1.0]
+          loss = concrete_forward(x, w._get(), b._get()) - [1.0]
           return t.gradient(loss, [w, b])
 
       def step_fn():

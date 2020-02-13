@@ -402,6 +402,20 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
             $slice_sizes)]>;
 
 //===----------------------------------------------------------------------===//
+// PartitionedCall op patterns.
+//===----------------------------------------------------------------------===//
+
+def ArgTypesMatchCallee : Constraint<
+    CPred<"ArgTypesMatchCallee($0[0].getOwner(), $1, $2)">>;
+
+foreach callOp = [TF_PartitionedCallOp, TF_StatefulPartitionedCallOp] in {
+  def : Pat<(callOp:$op $args, FlatSymbolRefAttr:$f,
+             $config, $config_proto, $executor_type),
+            (CallOp $f, $args),
+          [(ArgTypesMatchCallee $op, $args, $f)]>;
+}
+
+//===----------------------------------------------------------------------===//
 // Ternary op patterns.
 //===----------------------------------------------------------------------===//
 

@@ -407,6 +407,16 @@ func @bad_num_replicas() {
   return
 }
 
+// -----
+
+// Test that functions without TPUReplicateMetadata op are skipped without
+// error
+// CHECK-LABEL: func @missing_metadata_op
+func @missing_metadata_op() {
+  // expected-warning@+1 {{TPUReplicateMetadata for associated '_tpu_replicate' attribute 'replicate' is missing}}
+  %0 = "tf.opA"() {_tpu_replicate = "replicate"} : () -> tensor<i1>
+  return
+}
 
 // -----
 

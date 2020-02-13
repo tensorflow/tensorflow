@@ -5,6 +5,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["tflite_convert.py"])
+
 flatbuffer_py_library(
     name = "schema_py",
     srcs = ["//tensorflow/lite/schema:schema.fbs"],

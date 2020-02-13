@@ -33,6 +33,10 @@ class BufferAssignment;
 class HloExecutionProfile;
 class HloSnapshot;
 
+// Get a timestamp which we can use as a filename prefix specific to this
+// module.
+string TimestampFor(const HloModule& module);
+
 // Create the filename we will use to dump in DumpToFileInDir.
 string FilenameFor(const HloModule& module, absl::string_view prefix,
                    absl::string_view suffix);
@@ -65,7 +69,7 @@ void DumpExecutionOptions(const ExecutionOptions& execution_options,
 void DumpHloModuleIfEnabled(const HloModule& module, absl::string_view name);
 void DumpHloModuleIfEnabled(const HloModule& module,
                             const BufferAssignment& buffer_assn,
-                            absl::string_view prefix, absl::string_view name);
+                            absl::string_view name);
 void DumpHloModuleIfEnabled(const HloModule& module,
                             const HloExecutionProfile& profile,
                             absl::string_view name);

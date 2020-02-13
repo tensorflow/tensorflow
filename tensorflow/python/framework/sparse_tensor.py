@@ -121,6 +121,10 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
       indices: A 2-D int64 tensor of shape `[N, ndims]`.
       values: A 1-D tensor of any type and shape `[N]`.
       dense_shape: A 1-D int64 tensor of shape `[ndims]`.
+
+    Raises:
+      ValueError: When building an eager SparseTensor if `dense_shape` is
+        unknown or contains unknown elements (None or -1).
     """
     with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
       indices = ops.convert_to_tensor(
@@ -128,11 +132,44 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
       # TODO(touts): Consider adding mutable_values() when 'values'
       # is a VariableOp and updating users of SparseTensor.
       values = ops.convert_to_tensor(values, name="values")
-      dense_shape = ops.convert_to_tensor(
-          dense_shape, name="dense_shape", dtype=dtypes.int64)
+
+      # Can't check `if context.executing_eagerly()` here because sparse
+      # placeholders can still be used in eager context, when building a
+      # functional model.
+      if isinstance(indices, ops.EagerTensor):
+        try:
+          dense_shape = ops.convert_to_tensor(
+              dense_shape, name="dense_shape", dtype=dtypes.int64)
+          dense_shape_default = tensor_shape.TensorShape(dense_shape)
+        except ValueError:
+          raise ValueError("Unable to create eager SparseTensor. Check that "
+                           "your shape is correctly defined. Eager "
+                           "SparseTensors don't support unknown dimesions.\n"
+                           "got shape:\n    {}".format(dense_shape))
+      else:
+        if isinstance(dense_shape, ops.Tensor):
+          dense_shape_default = tensor_util.constant_value_as_shape(dense_shape)
+        else:
+          dense_shape_default = []
+          for dim in dense_shape:
+            if isinstance(dim, ops.Tensor):
+              # There is code passing lists of constant tensors.
+              dim = tensor_util.constant_value(dim)
+            if dim == -1:
+              # -1 may be passed for unknown shapes.
+              dim = None
+
+            dense_shape_default.append(dim)
+
+        dense_shape_default = tensor_shape.TensorShape(dense_shape_default)
+
+        dense_shape = ops.convert_to_tensor(
+            dense_shape, name="dense_shape", dtype=dtypes.int64)
+
     self._indices = indices
     self._values = values
     self._dense_shape = dense_shape
+    self._dense_shape_default = dense_shape_default
 
     indices_shape = indices.shape.with_rank(2)
     values_shape = values.shape.with_rank(1)
@@ -150,7 +187,7 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
     Returns:
       A `TensorShape` object.
     """
-    return tensor_util.constant_value_as_shape(self._dense_shape)
+    return self._dense_shape_default
 
   @property
   def indices(self):
@@ -193,7 +230,7 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
     Returns:
       A `TensorShape` object.
     """
-    return tensor_util.constant_value_as_shape(self._dense_shape)
+    return self._dense_shape_default
 
   @property
   def graph(self):

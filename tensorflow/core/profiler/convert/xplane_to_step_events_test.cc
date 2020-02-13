@@ -34,8 +34,6 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   XSpace space;
   XPlane* host_plane = space.add_planes();
   XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.GetOrCreateStatMetadata(
-      GetStatTypeStr(StatType::kGroupId));
   host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(2);
 
@@ -54,17 +52,15 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
                HostEventType::kExecutorStateProcess, 20, 20,
                {{StatType::kStepId, 0}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
-               {{StatType::kCorrelationId, 100}, {StatType::kDeviceId, 1}});
+               {{StatType::kCorrelationId, 100}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 320, 20,
                {{StatType::kStepId, 1}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 330, 10,
-               {{StatType::kCorrelationId, 200}, {StatType::kDeviceId, 1}});
+               {{StatType::kCorrelationId, 200}});
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);
-  device_plane_builder.GetOrCreateStatMetadata(
-      GetStatTypeStr(StatType::kGroupId));
   device_plane_builder.ReserveLines(1);
 
   auto stream = device_plane_builder.GetOrCreateLine(0);

@@ -153,14 +153,6 @@ class ReductionCodegenInfo {
     return mapping_scheme_;
   }
 
-  void SetCurrentOutputInboundAddress(llvm::AllocaInst* a) {
-    current_output_inbound_address_ = a;
-  }
-
-  llvm::AllocaInst* GetCurrentOutputInboundAddress() const {
-    return current_output_inbound_address_;
-  }
-
   // Gets writeable pointer to the address (or addresses) used to store
   // reduction accumulators.
   AddressVector* GetMutablePartialResultAddresses() {
@@ -185,11 +177,21 @@ class ReductionCodegenInfo {
 
   bool IsRowReduction() const { return is_row_reduction_; }
 
+  // Gets a pointer to a mutable shared cache used by reduction.
+  std::vector<llvm::GlobalVariable*>* GetMutableSharedCache() {
+    return &shared_cache_;
+  }
+
+  // Shared cache used for reduction.
+  absl::Span<llvm::GlobalVariable* const> GetSharedCache() const {
+    return shared_cache_;
+  }
+
  private:
+  std::vector<llvm::GlobalVariable*> shared_cache_;
   const KernelMappingScheme mapping_scheme_;
   AddressVector partial_result_addresses_;
   AddressVector reduction_input_addresses_;
-  llvm::AllocaInst* current_output_inbound_address_ = nullptr;
   bool is_row_reduction_;
 };
 

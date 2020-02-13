@@ -82,16 +82,16 @@ struct RngSkip_Philox;
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-using GPUDevice = Eigen::GpuDevice;
-
 struct UpdateVariableAndFill_Philox_Arg {
   int64 output_size;
   int64 alg_tag_skip;
   ScopedUnlockUnrefVar* not_used;
   Tensor* state_tensor;
 };
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+using GPUDevice = Eigen::GpuDevice;
 
 // Declares the partially GPU-specialized functor structs.
 // must be kept at <=6 arguments because of a gcc/clang ABI incompatibility bug

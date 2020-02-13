@@ -192,6 +192,27 @@ class TestSaveModel(test.TestCase):
             'b': inputs_b
         }, steps=1), batch_size)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_saving_h5_for_rnn_layers(self):
+    # See https://github.com/tensorflow/tensorflow/issues/35731 for details.
+    inputs = keras.Input([10, 91], name='train_input')
+    rnn_layers = [
+        keras.layers.LSTMCell(size, recurrent_dropout=0, name='rnn_cell%d' % i)
+        for i, size in enumerate([512, 512])
+    ]
+    rnn_output = keras.layers.RNN(
+        rnn_layers, return_sequences=True, name='rnn_layer')(inputs)
+    pred_feat = keras.layers.Dense(91, name='prediction_features')(rnn_output)
+    pred = keras.layers.Softmax()(pred_feat)
+    model = keras.Model(inputs=[inputs], outputs=[pred, pred_feat])
+    path = os.path.join(self.get_temp_dir(), 'model_path.h5')
+    model.save(path)
+
+    # Make sure the variable name is unique.
+    self.assertNotEqual(rnn_layers[0].kernel.name,
+                        rnn_layers[1].kernel.name)
+    self.assertIn('rnn_cell1', rnn_layers[1].kernel.name)
+
 
 if __name__ == '__main__':
   test.main()

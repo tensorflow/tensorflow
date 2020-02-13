@@ -90,6 +90,11 @@ inline bool SerializeToTString(const protobuf::MessageLite& proto,
   return proto.SerializeToArray(output->data(), static_cast<int>(size));
 }
 
+inline bool ParseFromTString(const tstring& input,
+                             protobuf::MessageLite* proto) {
+  return proto->ParseFromArray(input.data(), static_cast<int>(input.size()));
+}
+
 // Analogue to StringOutputStream for tstring.
 class TStringOutputStream : public protobuf::io::ZeroCopyOutputStream {
  public:
