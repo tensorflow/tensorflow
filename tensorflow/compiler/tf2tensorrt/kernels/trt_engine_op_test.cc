@@ -234,7 +234,7 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   // in https://github.com/tensorflow/tensorflow/pull/34919. This is irrelevant
   // for the current test, here we want to just check wether TRT engine creation
   // has failed.
-  OpsTestBase::RunOpKernel();
+  TF_ASSERT_OK(OpsTestBase::RunOpKernel());
 
   // Get the engine cache.
   TRTEngineCacheResource* cache_resource = nullptr;
