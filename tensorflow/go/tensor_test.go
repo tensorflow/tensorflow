@@ -315,12 +315,28 @@ func BenchmarkTensor(b *testing.B) {
 		l3[i] = l2[i*100 : (i+1)*100]
 	}
 
+	s1 := make([]string, 100*100*100)
+	s2 := make([][]string, 100*100)
+	s3 := make([][][]string, 100)
+	for i := range s1 {
+		s1[i] = "cheesit"
+	}
+	for i := range s2 {
+		s2[i] = s1[i*100 : (i+1)*100]
+	}
+	for i := range s3 {
+		s3[i] = s2[i*100 : (i+1)*100]
+	}
+
 	tests := []interface{}{
 		vector,
 		arrays,
 		l1,
 		l2,
 		l3,
+		s1,
+		s2,
+		s3,
 	}
 	b.Run("New", func(b *testing.B) {
 		for _, test := range tests {
