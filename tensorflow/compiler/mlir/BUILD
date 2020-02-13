@@ -106,7 +106,9 @@ tf_cc_binary(
     name = "tf-opt",
     deps = [
         ":tf_mlir_opt_main",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
     ],
 )
@@ -116,8 +118,10 @@ tf_cc_binary(
     srcs = ["tf_mlir_translate_main.cc"],
     deps = [
         ":init_mlir",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow:translate_registration",

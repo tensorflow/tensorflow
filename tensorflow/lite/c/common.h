@@ -143,25 +143,37 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 // error macros while avoiding names that have pre-conceived meanings like
 // assert and check.
 
+// Try to make all reporting calls through TF_LITE_KERNEL_LOG rather than
+// calling the context->ReportError function directly, so that message strings
+// can be stripped out if the binary size needs to be severely optimized.
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+#define TF_LITE_KERNEL_LOG(context, ...)            \
+  do {                                              \
+    (context)->ReportError((context), __VA_ARGS__); \
+  } while (false)
+#else  // TF_LITE_STRIP_ERROR_STRINGS
+#define TF_LITE_KERNEL_LOG(context, ...)
+#endif  // TF_LITE_STRIP_ERROR_STRINGS
+
 // Check whether value is true, and if not return kTfLiteError from
 // the current function (and report the error string msg).
-#define TF_LITE_ENSURE_MSG(context, value, msg)            \
-  do {                                                     \
-    if (!(value)) {                                        \
-      (context)->ReportError((context), __FILE__ " " msg); \
-      return kTfLiteError;                                 \
-    }                                                      \
+#define TF_LITE_ENSURE_MSG(context, value, msg)        \
+  do {                                                 \
+    if (!(value)) {                                    \
+      TF_LITE_KERNEL_LOG((context), __FILE__ " " msg); \
+      return kTfLiteError;                             \
+    }                                                  \
   } while (0)
 
 // Check whether the value `a` is true, and if not return kTfLiteError from
 // the current function, while also reporting the location of the error.
-#define TF_LITE_ENSURE(context, a)                                          \
-  do {                                                                      \
-    if (!(a)) {                                                             \
-      (context)->ReportError((context), "%s:%d %s was not true.", __FILE__, \
-                             __LINE__, #a);                                 \
-      return kTfLiteError;                                                  \
-    }                                                                       \
+#define TF_LITE_ENSURE(context, a)                                      \
+  do {                                                                  \
+    if (!(a)) {                                                         \
+      TF_LITE_KERNEL_LOG((context), "%s:%d %s was not true.", __FILE__, \
+                         __LINE__, #a);                                 \
+      return kTfLiteError;                                              \
+    }                                                                   \
   } while (0)
 
 #define TF_LITE_ENSURE_STATUS(a) \
@@ -175,23 +187,23 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 // the current function, while also reporting the location of the error.
 // `a` and `b` may be evaluated more than once, so no side effects or
 // extremely expensive computations should be done.
-#define TF_LITE_ENSURE_EQ(context, a, b)                                       \
-  do {                                                                         \
-    if ((a) != (b)) {                                                          \
-      (context)->ReportError((context), "%s:%d %s != %s (%d != %d)", __FILE__, \
-                             __LINE__, #a, #b, (a), (b));                      \
-      return kTfLiteError;                                                     \
-    }                                                                          \
+#define TF_LITE_ENSURE_EQ(context, a, b)                                   \
+  do {                                                                     \
+    if ((a) != (b)) {                                                      \
+      TF_LITE_KERNEL_LOG((context), "%s:%d %s != %s (%d != %d)", __FILE__, \
+                         __LINE__, #a, #b, (a), (b));                      \
+      return kTfLiteError;                                                 \
+    }                                                                      \
   } while (0)
 
-#define TF_LITE_ENSURE_TYPES_EQ(context, a, b)                                 \
-  do {                                                                         \
-    if ((a) != (b)) {                                                          \
-      (context)->ReportError((context), "%s:%d %s != %s (%s != %s)", __FILE__, \
-                             __LINE__, #a, #b, TfLiteTypeGetName(a),           \
-                             TfLiteTypeGetName(b));                            \
-      return kTfLiteError;                                                     \
-    }                                                                          \
+#define TF_LITE_ENSURE_TYPES_EQ(context, a, b)                             \
+  do {                                                                     \
+    if ((a) != (b)) {                                                      \
+      TF_LITE_KERNEL_LOG((context), "%s:%d %s != %s (%s != %s)", __FILE__, \
+                         __LINE__, #a, #b, TfLiteTypeGetName(a),           \
+                         TfLiteTypeGetName(b));                            \
+      return kTfLiteError;                                                 \
+    }                                                                      \
   } while (0)
 
 #define TF_LITE_ENSURE_OK(context, status) \

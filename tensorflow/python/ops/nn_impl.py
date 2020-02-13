@@ -934,7 +934,7 @@ def separable_conv2d(input,
       rate = [1, 1]
 
     # The layout of the ops in the graph are expected to be as follows:
-    # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
+    # depthwise_conv2d  // Conv2D op corresponding to native depthwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
 
     def op(input_converted, _, padding):
@@ -1295,7 +1295,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     # The shape of the weights isn't necessarily the same as x's
     # shape, just broadcast-compatible with it -- so this expression
     # performs broadcasting to give a per-item weight, with the same
-    # shape as (freqency_weights * x). This avoids having to reason
+    # shape as (frequency_weights * x). This avoids having to reason
     # through all the broadcast logic to compute a correct
     # sum_of_weights.
     broadcasted_weights = frequency_weights + array_ops.zeros_like(x)

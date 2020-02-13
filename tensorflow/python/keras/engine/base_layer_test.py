@@ -32,7 +32,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
@@ -206,8 +205,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
           return self.layer2(inputs)
 
       def compute_output_shape(self, input_shape):
-        return tensor_shape.TensorShape(
-            tuple(input_shape[:-1].as_list()) + (3,))
+        return tuple(input_shape[:-1].as_list()) + (3,)
 
     model = MyModel()
     self.assertEqual(model.dynamic, True)
@@ -629,6 +627,25 @@ class BaseLayerTest(keras_parameterized.TestCase):
     layer = TFFunctionLayer()
     out = self.evaluate(layer(x=x, y=y))
     self.assertAllClose(out, 2 * np.ones((10, 1)))
+
+  def test_build_input_shape(self):
+    class CustomLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.add_weight('w', shape=input_shape[1:])
+        super(CustomLayer, self).build(input_shape)
+
+    layer = CustomLayer()
+    self.assertFalse(layer.built)
+
+    layer.build([None, 1, 2, 3])
+    self.assertTrue(layer.built)
+    self.assertEqual([None, 1, 2, 3], layer._build_input_shape)
+
+    layer = CustomLayer()
+    layer(keras.Input((3,)))
+    self.assertTrue(layer.built)
+    self.assertEqual([None, 3], layer._build_input_shape.as_list())
 
 
 class SymbolicSupportTest(test.TestCase):

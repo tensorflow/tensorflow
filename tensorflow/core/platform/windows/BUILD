@@ -58,6 +58,7 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",

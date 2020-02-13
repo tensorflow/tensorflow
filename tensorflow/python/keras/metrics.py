@@ -1848,7 +1848,7 @@ class AUC(Metric):
           summation_method)
     super(AUC, self).__init__(name=name, dtype=dtype)
 
-    # Handle multilable arguments.
+    # Handle multilabel arguments.
     self.multi_label = multi_label
     if label_weights is not None:
       label_weights = constant_op.constant(label_weights, dtype=self.dtype)
@@ -1941,7 +1941,7 @@ class AUC(Metric):
                        (self.false_positives, ('T', 'L')),
                        (self.false_negatives, ('T', 'L'))])
       if self.label_weights is not None:
-        # label_weights should be of lenght equal to the number of labels.
+        # label_weights should be of length equal to the number of labels.
         shapes.append((self.label_weights, ('L',)))
       deps = [
           check_ops.assert_shapes(

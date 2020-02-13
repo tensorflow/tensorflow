@@ -353,11 +353,9 @@ class MemorySpaceAssignment {
   //   - CopyAllocation(memory_space=kAlternate, start_time=22, end_time=25)
   class Allocation {
    public:
-    Allocation(HloInstruction* instruction, HloPosition defining_position,
-               MemorySpace memory_space, Chunk chunk, int64 start_time,
-               int64 end_time)
-        : instruction_(instruction),
-          defining_position_(defining_position),
+    Allocation(HloPosition defining_position, MemorySpace memory_space,
+               Chunk chunk, int64 start_time, int64 end_time)
+        : defining_position_(defining_position),
           memory_space_(memory_space),
           chunk_(chunk),
           start_time_(start_time),
@@ -376,11 +374,6 @@ class MemorySpaceAssignment {
     // Process morphs the instructions affected to assign the memory spaces and
     // insert asynchronous copy instructions if necessary.
     virtual Status Process(MemorySpaceAssignment* memory_space_assignment);
-
-    // Returns the instruction that produces this allocation. It might be
-    // different than the instruction in defining_position (e.g., a
-    // GetTupleElement instruction does not define the buffer).
-    virtual HloInstruction* instruction() const { return instruction_; }
 
     // Returns the defining position for this allocation.
     virtual HloPosition defining_position() const { return defining_position_; }
@@ -403,7 +396,6 @@ class MemorySpaceAssignment {
                                                HloInstruction* tuple,
                                                ShapeIndex shape_index);
 
-    HloInstruction* instruction_;
     HloPosition defining_position_;
     std::vector<HloUse> uses_;
     MemorySpace memory_space_;
@@ -418,8 +410,7 @@ class MemorySpaceAssignment {
     CopyAllocation(const Allocation& prev_allocation, MemorySpace memory_space,
                    Chunk chunk, int64 start_time, int64 end_time,
                    int64 copy_done_schedule_before_time)
-        : Allocation(/*instruction=*/nullptr,
-                     /*defining_position=*/{nullptr, {}}, memory_space, chunk,
+        : Allocation(/*defining_position=*/{nullptr, {}}, memory_space, chunk,
                      start_time, end_time),
           prev_allocation_(prev_allocation),
           copy_start_schedule_after_(start_time),
@@ -428,16 +419,6 @@ class MemorySpaceAssignment {
     bool is_copy_allocation() const override { return true; }
 
     Status Process(MemorySpaceAssignment* memory_space_assignment) override;
-
-    HloInstruction* instruction() const override {
-      // Unless explicitly set, the instruction of a copy allocation in
-      // retrieved from the previous allocation.
-      if (instruction_ != nullptr) {
-        return instruction_;
-      } else {
-        return prev_allocation_.instruction();
-      }
-    }
 
     HloPosition defining_position() const override {
       // Unless explicitly set, the defining position of a copy allocation in
@@ -672,7 +653,6 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       int64 start_time, int64 end_time, int64 last_use_time,
       HloPosition defining_position, HloUse use,
       BufferInterval alternate_mem_interval,
-      HloInstruction* non_bitcast_operand,
       MemorySpaceAssignment::AllocationSequence* allocations);
 
   // For a no-copy allocation, find the best possible chunk candidate, where it

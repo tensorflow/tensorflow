@@ -247,6 +247,29 @@ ParallelInterleaveDatasetParams ParallelInterleaveDatasetParams5() {
       /*node_name=*/kNodeName);
 }
 
+ParallelInterleaveDatasetParams EmptyInputParams() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/{Tensor{}},
+      /*node_name=*/"tensor_slice");
+  return ParallelInterleaveDatasetParams(
+      tensor_slice_dataset_params,
+      /*other_arguments=*/{},
+      /*cycle_length=*/2,
+      /*block_length=*/2,
+      /*sloppy=*/true,
+      /*buffer_output_elements=*/2,
+      /*prefetch_input_elements=*/2,
+      /*func=*/
+      MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_FLOAT}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib=*/{test::function::MakeTensorSliceDataset()},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_FLOAT},
+      /*output_shapes=*/{PartialTensorShape({1})},
+      /*node_name=*/kNodeName);
+}
+
 ParallelInterleaveDatasetParams InvalidCycleLengthParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
@@ -370,7 +393,11 @@ GetNextTestCases() {
            CreateTensors<tstring>(
                TensorShape{1},
                {{"a"}, {"b"}, {"d"}, {"e"}, {"c"}, {"f"}, {"g"}, {"h"}, {"i"}}),
-           /*compare_order=*/false}};
+           /*compare_order=*/false},
+          {/*dataset_params=*/EmptyInputParams(),
+           /*expected_outputs=*/
+           CreateTensors<tstring>(TensorShape{1}, {}),
+           /*compare_order=*/true}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(ParallelInterleaveDatasetOpTest,

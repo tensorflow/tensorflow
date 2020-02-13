@@ -429,13 +429,9 @@ struct ConvertTFStridedSlice : public RewritePattern {
   explicit ConvertTFStridedSlice(MLIRContext *context)
       : RewritePattern(TF::StridedSliceOp::getOperationName(), 2, context) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op,
-                                     PatternRewriter &rewriter) const override {
-    // TODO(renjieliu): Consider expand the transformation for ellipsis & shrink
-    // mask as well.
+  PatternMatchResult RewriteNewAxisMask(Operation *op, uint64_t new_axis_mask,
+                                        PatternRewriter &rewriter) const {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
-    uint64_t new_axis_mask = strided_slice_op.new_axis_mask().getZExtValue();
-    if (new_axis_mask == 0) return matchFailure();
 
     // Insert a new reshape op.
     Value original_input = strided_slice_op.input();
@@ -490,6 +486,138 @@ struct ConvertTFStridedSlice : public RewritePattern {
         rewriter.getIntegerAttr(attribute_type,
                                 strided_slice_op.shrink_axis_mask()));
     return matchSuccess();
+  }
+
+  PatternMatchResult RewriteEllipsisMask(Operation *op, uint64_t ellipsis_mask,
+                                         PatternRewriter &rewriter) const {
+    TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
+
+    DenseIntElementsAttr begin_dense_elem_attr;
+    Value begin = strided_slice_op.begin();
+    auto begin_ranked_attr_type = begin.getType().dyn_cast<RankedTensorType>();
+    if (!begin_ranked_attr_type ||
+        !matchPattern(begin, m_Constant(&begin_dense_elem_attr))) {
+      return matchFailure();
+    }
+
+    DenseIntElementsAttr end_dense_elem_attr;
+    Value end = strided_slice_op.end();
+    auto end_ranked_attr_type = end.getType().dyn_cast<RankedTensorType>();
+    if (!end_ranked_attr_type ||
+        !matchPattern(end, m_Constant(&end_dense_elem_attr))) {
+      return matchFailure();
+    }
+
+    DenseIntElementsAttr stride_dense_elem_attr;
+    Value stride = strided_slice_op.strides();
+    auto stride_ranked_attr_type =
+        stride.getType().dyn_cast<RankedTensorType>();
+    if (!stride_ranked_attr_type ||
+        !matchPattern(stride, m_Constant(&stride_dense_elem_attr))) {
+      return matchFailure();
+    }
+
+    Value input = strided_slice_op.input();
+    RankedTensorType input_type = input.getType().cast<RankedTensorType>();
+    const ArrayRef<int64_t> input_shape = input_type.getShape();
+
+    const int input_size = input_shape.size();
+
+    RankedTensorType begin_type = begin.getType().cast<RankedTensorType>();
+    const ArrayRef<int64_t> begin_shape = begin_type.getShape();
+    const int begin_dim = begin_shape.size();
+
+    if (begin_dim != 1) return matchFailure();
+
+    const int ellipsis_filled_dim_size = input_size - begin_shape[0] + 1;
+
+    llvm::APInt new_begin_mask = strided_slice_op.begin_mask();
+    llvm::APInt new_end_mask = strided_slice_op.end_mask();
+
+    SmallVector<int32_t, 4> padded_begin;
+    SmallVector<int32_t, 4> padded_end;
+    SmallVector<int32_t, 4> padded_stride;
+
+    // Before the ellipsis.
+    uint64_t index = 1;
+    int count = 0;
+
+    while (index < ellipsis_mask) {
+      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(count));
+      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(count));
+      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(count));
+      index <<= 1;
+      count++;
+    }
+
+    // Ellipsis.
+    for (int i = 0; i < ellipsis_filled_dim_size; ++i) {
+      new_begin_mask |= ellipsis_mask;
+      new_end_mask |= ellipsis_mask;
+
+      // Mimic the begin/end/strides mask behavior.
+      padded_begin.push_back(0);
+      padded_end.push_back(0);
+      padded_stride.push_back(1);
+
+      ellipsis_mask <<= 1;
+    }
+
+    // Account for ellipsis mask.
+    count++;
+
+    // After the ellipsis.
+    for (; count < begin_shape[0]; ++count) {
+      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(count));
+      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(count));
+      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(count));
+    }
+
+    auto attribute_type = rewriter.getIntegerType(64);
+
+    int full_dim_count = padded_begin.size();
+    auto type =
+        RankedTensorType::get({full_dim_count}, rewriter.getIntegerType(32));
+
+    auto begin_attr = DenseElementsAttr::get<int32_t>(type, padded_begin);
+    auto begin_op = rewriter.create<ConstantOp>(op->getLoc(), type, begin_attr);
+    auto end_attr = DenseElementsAttr::get<int32_t>(type, padded_end);
+    auto end_op = rewriter.create<ConstantOp>(op->getLoc(), type, end_attr);
+    auto stride_attr = DenseElementsAttr::get<int32_t>(type, padded_stride);
+    auto stride_op =
+        rewriter.create<ConstantOp>(op->getLoc(), type, stride_attr);
+
+    rewriter.replaceOpWithNewOp<TF::StridedSliceOp>(
+        op, strided_slice_op.getType(), input, begin_op.getResult(),
+        end_op.getResult(), stride_op.getResult(),
+        rewriter.getIntegerAttr(attribute_type, new_begin_mask),
+        rewriter.getIntegerAttr(attribute_type, new_end_mask),
+        rewriter.getI64IntegerAttr(0),
+        rewriter.getIntegerAttr(attribute_type,
+                                strided_slice_op.new_axis_mask()),
+        rewriter.getIntegerAttr(attribute_type,
+                                strided_slice_op.shrink_axis_mask()));
+    return matchSuccess();
+  }
+
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override {
+    // TODO(renjieliu): Consider expand the transformation for shrink
+    // mask as well.
+    TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
+
+    // Handle new axis mask.
+    uint64_t new_axis_mask = strided_slice_op.new_axis_mask().getZExtValue();
+    if (new_axis_mask != 0) {
+      return RewriteNewAxisMask(strided_slice_op, new_axis_mask, rewriter);
+    }
+
+    // Handle ellipsis mask.
+    uint64_t ellipsis_mask = strided_slice_op.ellipsis_mask().getZExtValue();
+    if (ellipsis_mask != 0) {
+      return RewriteEllipsisMask(strided_slice_op, ellipsis_mask, rewriter);
+    }
+    return matchFailure();
   }
 };
 

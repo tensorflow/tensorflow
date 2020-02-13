@@ -6,6 +6,10 @@
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
+# cuda_py_test and cuda_py_tests enable XLA tests by default. We can't
+# combine XLA with TensorRT currently and should set
+# xla_enable_strict_auto_jit to False to disable XLA tests.
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -93,6 +97,7 @@ cuda_py_test(
         "no_windows",
         "nomac",
     ],
+    xla_enable_strict_auto_jit = False,
     deps = [
         ":trt_convert_py",
         "//tensorflow/python:client_testlib",
@@ -142,6 +147,7 @@ cuda_py_tests(
         "no_windows",
         "nomac",
     ],
+    xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base",
         "//tensorflow/python:client_testlib",
@@ -162,6 +168,7 @@ cuda_py_tests(
         "nomac",
         "notap",  # b/140261407
     ],
+    xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base",
         "//tensorflow/python:client_testlib",
@@ -187,6 +194,7 @@ cuda_py_test(
         "no_windows",
         "nomac",
     ],
+    xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base",
         "//tensorflow/python:client_testlib",

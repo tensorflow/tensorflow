@@ -226,7 +226,8 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
       flr->graph_def_version(), &s);
 
   *kernel = absl::make_unique<XlaLocalLaunchBase>(
-      &construction, constant_arg_indices, resource_arg_indices, function);
+      &construction, constant_arg_indices, resource_arg_indices, function,
+      /*has_ref_vars=*/false);
   return s;
 }
 }  // namespace tensorflow

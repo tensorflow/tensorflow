@@ -64,13 +64,15 @@ TfLiteStatus FlatBufferIntVectorToArray(
     int max_size_of_buffer, const flatbuffers::Vector<int32_t>* flat_vector,
     int* buffer, ErrorReporter* error_reporter, const char* op_name) {
   if (!flat_vector) {
-    error_reporter->Report("Input array not provided for operation '%s'.\n",
-                           op_name);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Input array not provided for operation '%s'.\n",
+                         op_name);
     return kTfLiteError;
   } else {
     size_t num_dimensions = flat_vector->size();
     if (num_dimensions > max_size_of_buffer / sizeof(int)) {
-      error_reporter->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
           "Found too many dimensions in the input array of operation '%s'.\n",
           op_name);
       return kTfLiteError;
@@ -121,7 +123,8 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
       break;
   }
   if (*type == kTfLiteNoType) {
-    error_reporter->Report("Unsupported data type %d in tensor\n", tensor_type);
+    TF_LITE_REPORT_ERROR(error_reporter, "Unsupported data type %d in tensor\n",
+                         tensor_type);
     return kTfLiteError;
   }
   return kTfLiteOk;
@@ -329,7 +332,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
                 kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8;
             break;
           default:
-            error_reporter->Report("Unhandled fully-connected weights format.");
+            TF_LITE_REPORT_ERROR(error_reporter,
+                                 "Unhandled fully-connected weights format.");
             return kTfLiteError;
         }
       }
@@ -431,12 +435,14 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             params->kernel_type = kTfLiteLSTMBasicKernel;
             break;
           default:
-            error_reporter->Report("Unhandled LSTM kernel type: %d",
-                                   lstm_params->kernel_type());
+            TF_LITE_REPORT_ERROR(error_reporter,
+                                 "Unhandled LSTM kernel type: %d",
+                                 lstm_params->kernel_type());
             return kTfLiteError;
         }
       } else {
-        error_reporter->Report("No valid LSTM builtin options exist");
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "No valid LSTM builtin options exist");
         return kTfLiteError;
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
@@ -669,7 +675,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
-      error_reporter->Report("DELEGATE op shouldn't exist in model.");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "DELEGATE op shouldn't exist in model.");
       return kTfLiteError;
     }
     case BuiltinOperator_FAKE_QUANT: {

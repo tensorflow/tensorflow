@@ -80,7 +80,6 @@ exports_files(
         "example_proto_fast_parsing_test.proto",
         "memmapped_file_system.proto",
         "saved_tensor_slice.proto",
-        "test_log.proto",
     ],
     visibility = [
         "//tensorflow:internal",

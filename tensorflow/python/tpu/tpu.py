@@ -672,6 +672,9 @@ def outside_compilation(computation, *args, **kwargs):
   ops on CPU's. Below usage of outside compilation will place ops in
   `computation_with_string_ops` on CPU.
 
+  Example usage:
+
+  ```python
   def computation_with_string_ops(x):
     # strings types are not supported on TPU's and below ops must
     # run on CPU instead.
@@ -681,6 +684,7 @@ def outside_compilation(computation, *args, **kwargs):
   def tpu_computation():
     # Expected output is 11.
     output = tf.tpu.outside_compilation(computation_with_string_ops, 1)
+  ```
 
   Outside compilation should be called inside TPUReplicateContext. That is,
   `tf.tpu.outside_compilation()` should be called inside a function that is
@@ -1699,7 +1703,7 @@ def rewrite(computation,
     inputs: A list of input tensors or `None` (equivalent to an empty list).
       Each input can be a nested structure containing values that are
       convertible to tensors. Note that passing an N-dimension list of
-      compatible values will result in a N-dimention list of scalar tensors
+      compatible values will result in a N-dimension list of scalar tensors
       rather than a single Rank-N tensors. If you need different behavior,
       convert part of inputs to tensors with `tf.convert_to_tensor`.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple

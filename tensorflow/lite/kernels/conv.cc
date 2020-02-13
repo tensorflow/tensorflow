@@ -499,12 +499,13 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
         GetTemporary(context, node, data->accum_scratch_index);
     accum_scratch->type = kTfLiteInt32;
     accum_scratch->allocation_type = kTfLiteArenaRw;
-    int accum_scratch_dims[2] = {channels_out, batches};
+    const int scratch_width = batches * out_height * out_width;
+    int accum_scratch_dims[2] = {channels_out, scratch_width};
     if (!TfLiteIntArrayEqualsArray(accum_scratch->dims, 2,
                                    accum_scratch_dims)) {
       TfLiteIntArray* accum_scratch_size = TfLiteIntArrayCreate(2);
       accum_scratch_size->data[0] = channels_out;
-      accum_scratch_size->data[1] = batches;
+      accum_scratch_size->data[1] = scratch_width;
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, accum_scratch,
                                                        accum_scratch_size));
     }

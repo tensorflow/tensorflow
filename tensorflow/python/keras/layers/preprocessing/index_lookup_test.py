@@ -322,6 +322,12 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
+  def test_output_shape(self):
+    input_data = keras.Input(shape=(4,), dtype=dtypes.string)
+    layer = get_layer_class()()
+    int_data = layer(input_data)
+    self.assertAllEqual(int_data.shape[1:], input_data.shape[1:])
+
   def test_int_output_no_reserved_zero(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "fire"],

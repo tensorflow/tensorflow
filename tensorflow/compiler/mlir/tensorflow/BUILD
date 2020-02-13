@@ -13,7 +13,6 @@ package_group(
         "//tensorflow/compiler/...",
         "//tensorflow/lite/experimental/tf_runtime/...",
         "//tensorflow/python/...",
-        "//third_party/tf_runtime_google/...",
     ],
 )
 
@@ -159,6 +158,21 @@ gentbl(
 )
 
 cc_library(
+    name = "tensorflow_types",
+    srcs = [
+        "ir/tf_types.cc",
+    ],
+    hdrs = [
+        "ir/tf_types.def",
+        "ir/tf_types.h",
+    ],
+    deps = [
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "tensorflow",
     srcs = [
         "ir/control_flow_ops.cc",
@@ -172,7 +186,6 @@ cc_library(
         "ir/tf_ops.cc.inc",
         "ir/tf_ops.h.inc",
         "ir/tf_saved_model.cc",
-        "ir/tf_types.cc",
         "ir/tf_verifiers.cc",
     ],
     hdrs = [
@@ -182,8 +195,6 @@ cc_library(
         "ir/tf_ops.h",
         "ir/tf_saved_model.h",
         "ir/tf_traits.h",
-        "ir/tf_types.def",
-        "ir/tf_types.h",
         "ir/tf_verifiers.h",
         "transforms/bridge.h",
         "transforms/passes.h",
@@ -198,6 +209,7 @@ cc_library(
         ":tensorflow_executor_inc_gen",
         ":tensorflow_op_interfaces_inc_gen",
         ":tensorflow_ops_inc_gen",
+        ":tensorflow_types",
         ":tf_saved_model_inc_gen",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/core:framework",
@@ -246,6 +258,7 @@ cc_library(
     deps = [
         ":decompose_resource_ops_inc_gen",
         ":tensorflow",
+        ":tensorflow_types",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -260,6 +273,9 @@ cc_library(
         "transforms/cluster_outlining.cc",
         "transforms/decompose_resource_ops_pass.cc",
         "transforms/executor_island_coarsening.cc",
+        "transforms/executor_tpuv1_inline_tpu_island.cc",
+        "transforms/executor_tpuv1_island_coarsening.cc",
+        "transforms/executor_tpuv1_outline_tpu_island.cc",
         "transforms/fold_switch.cc",
         "transforms/functional_control_flow_to_cfg.cc",
         "transforms/generated_canonicalize.inc",
@@ -312,6 +328,7 @@ cc_library(
         ":side_effect_analysis",
         ":tensorflow",
         ":tensorflow_optimize_inc_gen",
+        ":tensorflow_types",
         ":tpu_rewrite_device_util",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -381,6 +398,7 @@ cc_library(
         ":mlir_roundtrip_flags",
         ":tensorflow",
         ":tensorflow_passes",
+        ":tensorflow_types",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:loader_lite",
         "//tensorflow/compiler/jit:shape_inference_helpers",
@@ -442,8 +460,6 @@ cc_library(
         "utils/export_utils.cc",
     ],
     hdrs = [
-        "ir/tf_types.def",
-        "ir/tf_types.h",
         "utils/export_utils.h",
     ],
     deps = [
@@ -451,6 +467,7 @@ cc_library(
         ":convert_type",
         ":mangling_util",
         ":tensorflow",
+        ":tensorflow_types",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -566,8 +583,7 @@ cc_library(
     srcs = ["utils/convert_type.cc"],
     hdrs = ["utils/convert_type.h"],
     deps = [
-        ":tensorflow",
-        ":tensorflow_dialect_registration",
+        ":tensorflow_types",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -602,7 +618,7 @@ cc_library(
     deps = [
         ":convert_type",
         ":mangling_util",
-        ":tensorflow",
+        ":tensorflow_types",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -669,6 +685,7 @@ cc_library(
         ":convert_tensor",
         ":eval_util",
         ":tensorflow",
+        ":tensorflow_types",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:framework",
@@ -881,6 +898,7 @@ cc_library(
         ":convert_type",
         ":dump_mlir_util",
         ":error_util",
+        ":tensorflow_dialect_registration",
         ":tensorflow_passes",
         ":tf_dialect_passes",
         "//tensorflow/compiler/mlir/xla:hlo",
@@ -968,6 +986,7 @@ cc_library(
     deps = [
         ":lower_tf_inc_gen",
         ":tensorflow",
+        ":tensorflow_types",
         "//tensorflow/core:framework",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
@@ -1076,12 +1095,12 @@ cc_library(
     hdrs = ["analysis/side_effect_analysis.h"],
     deps = [
         ":tensorflow",
+        ":tensorflow_types",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
 )

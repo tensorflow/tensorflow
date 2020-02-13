@@ -534,7 +534,7 @@ class TextVectorizationPreprocessingTest(
   def test_splitting_with_invalid_split_arg(self):
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
     layer = get_layer_class()()
-    layer._split = "unsuppported"
+    layer._split = "unsupported"
     with self.assertRaisesRegex(ValueError, ".*is not a supported splitting.*"):
       _ = layer(input_data)
 

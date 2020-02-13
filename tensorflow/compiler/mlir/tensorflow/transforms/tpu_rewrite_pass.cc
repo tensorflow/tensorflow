@@ -344,6 +344,99 @@ Operation* BuildExecuteOp(Operation* compile_op,
       llvm::ArrayRef<NamedAttribute>{});
 }
 
+// Creates a tf_device.parallel_execute op that wraps TPUExecute op to
+// represent execution of TPU program in multiple logical cores.
+Operation* BuildParallelExecuteOp(int num_logical_cores, Operation* compile_op,
+                                  tf_device::LaunchFuncOp launch_func,
+                                  OpBuilder* builder) {
+  // parallel_execute op returns concatenated list of return values of
+  // all its regions.
+  //
+  // TODO(b/149102702): Correctly map inputs to parallel_execute op via
+  // identifying xla_sharding op in the launch_func function.
+  const auto& launch_result_types = launch_func.getResultTypes();
+  llvm::SmallVector<Type, 8> concatenated_output_types;
+  concatenated_output_types.reserve(launch_result_types.size() *
+                                    num_logical_cores);
+
+  for (int core_id = 0; core_id < num_logical_cores; ++core_id)
+    for (Type t : launch_result_types)
+      concatenated_output_types.emplace_back(t);
+
+  auto parallel_execute_op = builder->create<tf_device::ParallelExecuteOp>(
+      launch_func.getLoc(), num_logical_cores, concatenated_output_types);
+
+  // For each logical core, create a region with TPUExecute op.
+  for (int core_id = 0; core_id < num_logical_cores; ++core_id) {
+    auto& region = parallel_execute_op.GetRegionBlockWithIndex(core_id);
+
+    // Create Execute op.
+    //
+    // TODO(b/148913294): Identify inputs/return values specific to each
+    // logical core TPU execution by parsing xla_sharding op in
+    // launch_func.
+    auto execute = BuildExecuteOp(compile_op, launch_func, builder);
+
+    // Create a launch op for each region of parallel_execute.
+    //
+    // TODO(b/149102679): Add device attribute to launch op once device
+    // topology for multiple logical cores can be correctly parsed.
+    builder->setInsertionPointToStart(&region);
+    auto region_launch_op = builder->create<tf_device::LaunchOp>(
+        region.getParent()->getLoc(), builder->getStringAttr(""),
+        launch_func.results().getTypes());
+    region_launch_op.body().push_back(new Block);
+
+    builder->setInsertionPointToEnd(&region_launch_op.GetBody());
+    builder->create<tf_device::ReturnOp>(region_launch_op.getLoc(),
+                                         execute->getResults());
+
+    // Move execute inside the launch op.
+    execute->moveBefore(&region_launch_op.GetBody().back());
+
+    builder->setInsertionPointToEnd(&region);
+    builder->create<tf_device::ReturnOp>(region.getParent()->getLoc(),
+                                         region_launch_op.getResults());
+  }
+
+  return parallel_execute_op;
+}
+
+// As tf_device.parallel_execute wraps # logical cores number of TPUExecute
+// ops, the number of return values of parallel_execute op exceeds that of
+// launch_func op. As so, each return value of parallel_execute op must be
+// mapped with corresponding return value usages of launch_func.
+//
+// TODO(b/148913294): Once argument and return value sharding of tpu computation
+// is determined, correctly map outputs of parallel_execute op.
+void RemapOutputsOfParallelExecute(tf_device::LaunchFuncOp launch_func,
+                                   Operation* op) {
+  for (auto outputs : llvm::zip(launch_func.getResults(), op->getResults()))
+    std::get<0>(outputs).replaceAllUsesWith(std::get<1>(outputs));
+}
+
+void AssignDevicesToReplicatedExecute(
+    const llvm::SmallVector<std::string, 8>& execution_devices,
+    tf_device::ReplicateOp replicate, Operation* execute_op,
+    OpBuilder* builder) {
+  // If computation is replicated, execution devices are assigned to the
+  // replicate. Otherwise there is only one execution device and the device is
+  // assigned to the execute op.
+  if (replicate) {
+    // Model parallelism is not support for now. Therefore, assign all ops
+    // in replicate op with virtual device alias specifying that ops will be
+    // executed on the zeroth core.
+    auto device_attr = builder->getNamedAttr(
+        tensorflow::GetDeviceAliasForLogicalCore(0),
+        builder->getStrArrayAttr(llvm::SmallVector<llvm::StringRef, 4>{
+            execution_devices.begin(), execution_devices.end()}));
+    replicate.setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attr));
+  } else {
+    execute_op->setAttr(kDeviceAttr,
+                        builder->getStringAttr(execution_devices.front()));
+  }
+}
+
 // Creates a `tf.TPUCompileSucceededAssert` operation that parses compilation
 // status of `compile_op` to check whether compilation is successful.
 void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
@@ -460,27 +553,25 @@ LogicalResult Rewrite(
 
   BuildTPUCompileSucceededAssertOp(compile_op, builder);
 
-  // Create execute op.
-  Operation* execute_op = BuildExecuteOp(compile_op, launch_func, builder);
-  launch_func.replaceAllUsesWith(execute_op);
-  launch_func.erase();
+  Operation* execute_op;
+  if (num_cores_per_replica > 1) {
+    // For model parallelism, tf_device.parallel_execute is used to express
+    // concurrent device execution across multiple logical devices.
+    execute_op = BuildParallelExecuteOp(num_cores_per_replica, compile_op,
+                                        launch_func, builder);
 
-  // If computation is replicated, execution devices are assigned to the
-  // replicate. Otherwise there is only one execution device and the device is
-  // assigned to the execute op.
-  if (replicate) {
-    // Model parallelism is not support for now. Therefore, assign all ops
-    // in replicate op with virtual device alias specifying that ops will be
-    // executed on the zeroth core.
-    auto device_attr = builder->getNamedAttr(
-        tensorflow::GetDeviceAliasForLogicalCore(0),
-        builder->getStrArrayAttr(llvm::SmallVector<llvm::StringRef, 4>{
-            execution_devices.begin(), execution_devices.end()}));
-    replicate.setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attr));
+    RemapOutputsOfParallelExecute(launch_func, execute_op);
+
+    // TODO(hongjunchoi): Correctly parse TPU topology and assign logical device
+    // attributes to launch_op's within parallel_execute op.
   } else {
-    execute_op->setAttr(kDeviceAttr,
-                        builder->getStringAttr(execution_devices.front()));
+    execute_op = BuildExecuteOp(compile_op, launch_func, builder);
+    AssignDevicesToReplicatedExecute(execution_devices, replicate, execute_op,
+                                     builder);
+    launch_func.replaceAllUsesWith(execute_op);
   }
+
+  launch_func.erase();
 
   return success();
 }

@@ -28,7 +28,7 @@ class BackendConfigTest(test.TestCase):
   def test_backend(self):
     self.assertEqual(keras.backend.backend(), 'tensorflow')
 
-  def test_espilon(self):
+  def test_epsilon(self):
     epsilon = 1e-2
     keras.backend_config.set_epsilon(epsilon)
     self.assertEqual(keras.backend_config.epsilon(), epsilon)

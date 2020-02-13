@@ -680,8 +680,6 @@ class CustomCallSignatureTests(test.TestCase):
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def test_training_no_default(self):
-    if not context.executing_eagerly():
-      self.skipTest('b/138307499')
     model = model_util.TrainingNoDefaultModel()
     arg = array_ops.ones([1, 1])
     model(arg, True)

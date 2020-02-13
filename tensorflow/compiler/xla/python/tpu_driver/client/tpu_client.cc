@@ -745,7 +745,8 @@ PyTpuExecutable::CompileForDevices(
           device_assignment[replica].size(), replica,
           device_assignment[0].size());
     }
-    for (int partition = 0; partition < device_assignment.size(); ++partition) {
+    for (int partition = 0; partition < device_assignment[replica].size();
+         ++partition) {
       if (device_assignment[0][0]->platform_name() !=
           device_assignment[replica][partition]->platform_name()) {
         return InvalidArgument(

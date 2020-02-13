@@ -1319,11 +1319,22 @@ Status MasterSession::CreateWorkerSessions(
     workers[i].name = &worker_names[i];
     workers[i].worker = worker_cache->GetOrCreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
-    if (session_opts_.config.experimental()
+    if (session_opts_.config.share_cluster_devices_in_session() ||
+        session_opts_.config.experimental()
             .share_cluster_devices_in_session()) {
       for (const auto& remote_dev : devices_->devices()) {
         *workers[i].request.add_cluster_device_attributes() =
             remote_dev->attributes();
+      }
+
+      if (!session_opts_.config.share_cluster_devices_in_session() &&
+          session_opts_.config.experimental()
+              .share_cluster_devices_in_session()) {
+        LOG(WARNING)
+            << "ConfigProto.Experimental.share_cluster_devices_in_session has "
+               "been promoted to a non-experimental API. Please use "
+               "ConfigProto.share_cluster_devices_in_session instead. The "
+               "experimental option will be removed in the future.";
       }
     }
 

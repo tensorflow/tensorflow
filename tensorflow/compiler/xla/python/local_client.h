@@ -71,7 +71,7 @@ class Device {
 
   const std::string& platform_name() const { return platform_name_; }
 
-  virtual std::string DebugString() const = 0;
+  virtual std::string DebugString() const;
 
  private:
   const int id_;
@@ -80,47 +80,9 @@ class Device {
   const std::string platform_name_;
 };
 
-class CpuDevice : public Device {
- public:
-  using Device::Device;
-  std::string DebugString() const override;
-};
-
-class GpuDevice : public Device {
- public:
-  using Device::Device;
-  std::string DebugString() const override;
-};
-
-struct AllocatorConfig {
-  enum class Kind {
-    kDefault,   // Client picks the best option for the platform.
-    kPlatform,  // The platform's default.
-    kBFC,  // Allocator using a "Best-Fit with Coalescing" algorithm. Currently
-           // only available for GPU.
-  };
-  Kind kind = Kind::kDefault;
-
-  // Only used if kind == kBFC. The maximum fraction of available memory to
-  // allocate.
-  double memory_fraction = 0.9;
-
-  // Only used if kind == kBFC. If true, the allocator will immediately allocate
-  // the maximum amount allowed by `memory_fraction`. This reduces
-  // fragmentation, allowing more of the total memory to be used. If false, the
-  // allocator will allocate more memory as allocations are requested.
-  bool preallocate = true;
-};
-
 // Encapsulates the state of Python session with XLA.
 class PyLocalClient {
  public:
-  // Initializes a local XLA client for `platform_name`. Returns an error if no
-  // such platform exists, or if the platform has no visible devices.
-  static StatusOr<std::shared_ptr<PyLocalClient>> Get(
-      const std::string& platform_name, const std::string& xla_platform_name,
-      bool asynchronous, const AllocatorConfig& allocator_config);
-
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PyLocalClient(
       std::string platform_name, LocalClient* client,

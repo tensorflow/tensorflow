@@ -48,9 +48,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteOk;
       }
       default:
-        context->ReportError(context, "Input %s, output %s not supported.",
-                             TfLiteTypeGetName(input->type),
-                             TfLiteTypeGetName(output->type));
+        TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
+                           TfLiteTypeGetName(input->type),
+                           TfLiteTypeGetName(output->type));
         return kTfLiteError;
     }
   } else if (input->type == kTfLiteInt8) {
@@ -64,17 +64,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteOk;
       }
       default:
-        context->ReportError(context, "Input %s, output %s not supported.",
-                             TfLiteTypeGetName(input->type),
-                             TfLiteTypeGetName(output->type));
+        TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
+                           TfLiteTypeGetName(input->type),
+                           TfLiteTypeGetName(output->type));
         return kTfLiteError;
     }
   } else {
     // TODO(b/141211002): Also support other data types once we have supported
     // temporary tensors in TFLM.
-    context->ReportError(context, "Input %s, output %s not supported.",
-                         TfLiteTypeGetName(input->type),
-                         TfLiteTypeGetName(output->type));
+    TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
+                       TfLiteTypeGetName(input->type),
+                       TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
   return kTfLiteOk;

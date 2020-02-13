@@ -24,7 +24,7 @@ from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 
-# TODO(mdan): Properly extrack boolean ops according to lazy eval rules.
+# TODO(mdan): Properly extract boolean ops according to lazy eval rules.
 # Note that this isn't completely safe either, because tensors may have control
 # dependencies.
 # Note that for loops that should be done after the loop was converted to

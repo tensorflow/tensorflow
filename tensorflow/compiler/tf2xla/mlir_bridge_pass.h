@@ -17,11 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_MLIR_BRIDGE_PASS_H_
 
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 
 namespace tensorflow {
 
 // This pass uses MLIR to implement all the conversion steps to target XLA from
-// a TensorFlow Graph. It is meant to expose a very limited set of
+// a TensorFlow Function Graph. It is meant to expose a very limited set of
 // functionalities during the bring-up of MLIR-based bridge.
 class MlirBridgePass : public FunctionOptimizationPass {
  public:
@@ -29,6 +30,14 @@ class MlirBridgePass : public FunctionOptimizationPass {
              std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
              std::vector<std::string>* control_ret_node_names,
              bool* control_rets_updated) override;
+};
+
+// This pass uses MLIR to implement all the conversion steps to target XLA from
+// a TensorFlow V1 Graph. It is meant to expose a very limited set of
+// functionalities during the bring-up of MLIR-based bridge.
+class MlirBridgeV1CompatPass : public GraphOptimizationPass {
+ public:
+  Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 }  // namespace tensorflow

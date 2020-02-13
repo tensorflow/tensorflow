@@ -77,6 +77,7 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/distributed_runtime:worker_session",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
+            "//tensorflow/core/profiler/rpc:profiler_server",
         ],
     }),
 )

@@ -62,11 +62,11 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       there is no cap on the size of the vocabulary. Note that the vocabulary
       does include OOV buckets, so the effective number of unique values in the
       vocabulary is `(max_tokens - num_oov_tokens)` when this value is set.
-    vocabulary: An optional list of vocabulary terms.
     num_oov_tokens: The number of out-of-vocabulary tokens to use; defaults to
       1. If this value is more than 1, OOV inputs are hashed to determine their
       OOV value; if this value is 0, passing an OOV input will result in a
       runtime error.
+    vocabulary: An optional list of vocabulary terms.
     reserve_zero: Whether to reserve the index 0, which indicates pad values in
       the Keras masking system. If True, the output of this layer will be in the
       range `[1...max_tokens+1)`; if False, the output will be in the range
@@ -371,6 +371,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                                                 inputs.dense_shape)
     else:
       indexed_data = table.lookup(inputs)
+      # (b/149446477): output does not preserve input shape.
+      indexed_data.set_shape(inputs.shape)
 
     # Composite tensors can pass tensor values through, which will cause
     # errors if this is the only layer in the model. To fix this, pass

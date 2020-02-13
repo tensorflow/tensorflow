@@ -1076,7 +1076,7 @@ def make_model():
                           | Dense |
                           ---------
 
-  This topology is chosen because it excercises both dense and sparse update
+  This topology is chosen because it exercises both dense and sparse update
   paths.
 
   Returns:

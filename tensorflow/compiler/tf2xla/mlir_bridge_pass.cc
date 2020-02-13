@@ -105,7 +105,6 @@ Status MlirBridgePass::Run(const DeviceSet& device_set,
   GraphImportConfig import_config;
   import_config.graph_as_function = true;
   import_config.control_outputs = *control_ret_node_names;
-
   TF_ASSIGN_OR_RETURN(auto module_ref,
                       ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                          import_config, &context));
@@ -134,6 +133,46 @@ Status MlirBridgePass::Run(const DeviceSet& device_set,
     control_ret_node_names->push_back(node->name());
 
   *control_rets_updated = true;
+
+  return Status::OK();
+}
+
+Status MlirBridgeV1CompatPass::Run(
+    const GraphOptimizationPassOptions& options) {
+  // Skip function graphs as MlirBridgePass will be used instead.
+  if (options.is_function_graph) return Status::OK();
+
+  if (!options.session_options->config.experimental().enable_mlir_bridge()) {
+    VLOG(1) << "Skipping MLIR Bridge V1 Compat Pass, session flag not enabled";
+    return Status::OK();
+  }
+
+  VLOG(1) << "Running MLIR Bridge V1 Compat Pass";
+
+  GraphDebugInfo debug_info;
+  mlir::MLIRContext context;
+  GraphImportConfig import_config;
+  import_config.upgrade_legacy = true;
+  TF_ASSIGN_OR_RETURN(
+      auto module_ref,
+      ConvertGraphToMlir(**options.graph, debug_info, *options.flib_def,
+                         import_config, &context));
+
+  AddDevicesToOp(*module_ref, options.device_set);
+
+  if (VLOG_IS_ON(1)) DumpModule(*module_ref, "mlir_bridge_v1_compat_before_");
+
+  // Run the bridge now
+  TF_RETURN_IF_ERROR(mlir::TFTPU::TPUBridgeV1Compat(
+      *module_ref, /*enable_logging=*/VLOG_IS_ON(1)));
+
+  if (VLOG_IS_ON(1)) DumpModule(*module_ref, "mlir_bridge_v1_compat_after_");
+
+  GraphExportConfig export_config;
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      ConvertMlirToGraph(*module_ref, export_config, options.graph,
+                         options.flib_def),
+      "Error converting MLIR module back to graph");
 
   return Status::OK();
 }

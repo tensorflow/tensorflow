@@ -178,7 +178,7 @@ class RandomCrop(Layer):
 
   This layer will crop all the images in the same batch to the same cropping
   location.
-  By default, random croppping is only applied during training. At inference
+  By default, random cropping is only applied during training. At inference
   time, the images will be first rescaled to preserve the shorter side, and
   center cropped. If you need to apply random cropping at inference time,
   set `training` to True when calling the layer.

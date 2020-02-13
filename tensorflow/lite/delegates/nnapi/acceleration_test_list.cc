@@ -144,6 +144,11 @@ ConvolutionOpTest/ConvolutionOpTest/.+/\d+
 # dequantize_test
 DequantizeOpTest/Uint8
 
+# depth_to_space_test
+DepthToSpaceOpModel/Float32
+DepthToSpaceOpModel/UInt8
+DepthToSpaceOpModel/int8
+
 # div_test
 FloatDivOpTest/.+
 

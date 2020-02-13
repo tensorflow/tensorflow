@@ -2211,6 +2211,7 @@ cc_library(
         ":bit_writer",
         ":config",
         ":core",
+        ":frontend_open_mp",
         ":inst_combine",
         ":instrumentation",
         ":ir_reader",

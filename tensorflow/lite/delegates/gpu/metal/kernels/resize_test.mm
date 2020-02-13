@@ -120,6 +120,57 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
+- (void)testResizeBilinear2x2x1To3x3x1WithoutHalfPixel {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 1;
+  output.shape = BHWC(1, 3, 3, 1);
+
+  Resize2DAttributes attr;
+  attr.align_corners = false;
+  attr.half_pixel_centers = false;
+  attr.new_shape = HW(3, 3);
+  attr.type = SamplingType::BILINEAR;
+
+  SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0, 3.0, 4.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = CompareVectors({1.0, 1.666666, 2.0, 2.333333, 3.0, 3.333333, 3.0, 3.666666, 4.0},
+                          model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
+- (void)testResizeBilinear2x2x1To3x3x1WithHalfPixel {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 1;
+  output.shape = BHWC(1, 3, 3, 1);
+
+  Resize2DAttributes attr;
+  attr.align_corners = false;
+  attr.half_pixel_centers = true;
+  attr.new_shape = HW(3, 3);
+  attr.type = SamplingType::BILINEAR;
+
+  SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0, 3.0, 4.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = CompareVectors({1.0, 1.5, 2.0, 2.0, 2.5, 3.0, 3.0, 3.5, 4.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
 - (void)testResizeNearest1x2x1To2x4x1 {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;

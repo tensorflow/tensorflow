@@ -20,7 +20,9 @@ limitations under the License.
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#if !defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_WINDOWS)
+#include <windows.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -251,8 +253,25 @@ int64 UniqueId() {
 }
 
 string GetTempFilename(const string& extension) {
-#if defined(PLATFORM_WINDOWS) || defined(__ANDROID__)
+#if defined(__ANDROID__)
   LOG(FATAL) << "GetTempFilename is not implemented in this platform.";
+#elif defined(PLATFORM_WINDOWS)
+  char temp_dir[_MAX_PATH];
+  DWORD retval;
+  retval = GetTempPath(_MAX_PATH, temp_dir);
+  if (retval > _MAX_PATH || retval == 0) {
+    LOG(FATAL) << "Cannot get the directory for temporary files.";
+  }
+
+  char temp_file_name[_MAX_PATH];
+  retval = GetTempFileName(temp_dir, "", UniqueId(), temp_file_name);
+  if (retval > _MAX_PATH || retval == 0) {
+    LOG(FATAL) << "Cannot get a temporary file in: " << temp_dir;
+  }
+
+  string full_tmp_file_name(temp_file_name);
+  full_tmp_file_name.append(extension);
+  return full_tmp_file_name;
 #else
   for (const char* dir : std::vector<const char*>(
            {getenv("TEST_TMPDIR"), getenv("TMPDIR"), getenv("TMP"), "/tmp"})) {
