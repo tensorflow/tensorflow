@@ -405,6 +405,7 @@ tf_cc_test(
     deps = [
         ":eager_op_rewrite_registry",
         "//tensorflow/core:lib",
+        "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
