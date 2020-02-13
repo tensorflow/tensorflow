@@ -19,14 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-
-import numpy as np
 import time
 
-from PIL import Image
-
+import numpy as np
 import tensorflow as tf # TF2
-
+from PIL import Image
 
 def load_labels(filename):
   with open(filename, 'r') as f:
@@ -59,8 +56,8 @@ if __name__ == '__main__':
       default=127.5, type=float,
       help='input standard deviation')
   parser.add_argument(
-      '--num_threads', 
-      default=1, 
+      '--num_threads',
+      default=1,
       help='number of threads')
   args = parser.parse_args()
 
@@ -86,6 +83,7 @@ if __name__ == '__main__':
 
   interpreter.set_num_threads(int(args.num_threads))
   interpreter.set_tensor(input_details[0]['index'], input_data)
+
   start_time = time.time()
   interpreter.invoke()
   stop_time = time.time()

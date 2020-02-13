@@ -630,10 +630,10 @@ PyObject* InterpreterWrapper::ResetVariableTensors() {
 
 PyObject* InterpreterWrapper::SetNumThreads(int i) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_CHECK(interpreter_->SetNumThreads(i));
+  interpreter_->SetNumThreads(i);
   Py_RETURN_NONE;
 }
-  
+
 PyObject* InterpreterWrapper::ModifyGraphWithDelegate(
     TfLiteDelegate* delegate) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
