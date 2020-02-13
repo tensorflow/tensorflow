@@ -89,11 +89,10 @@ static void ValidateMklInputs(OpKernelContext* context, bool* is_identity,
   const int input_dims = input_tf_shape.dims();
 
   OP_REQUIRES(
-      context,
-      TensorShapeUtils::IsVector(begin_tensor.shape()) &&
-          TensorShapeUtils::IsVector(size_tensor.shape()) &&
-          begin_tensor.NumElements() == input_dims &&
-          size_tensor.NumElements() == input_dims,
+      context, TensorShapeUtils::IsVector(begin_tensor.shape()) &&
+                   TensorShapeUtils::IsVector(size_tensor.shape()) &&
+                   begin_tensor.NumElements() == input_dims &&
+                   size_tensor.NumElements() == input_dims,
       errors::InvalidArgument(
           "Expected begin and size arguments to be 1-D tensors of size ",
           input_dims, ", but got shapes ", begin_tensor.shape().DebugString(),
@@ -193,12 +192,8 @@ class MklSlicePrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(sliceParams.to->get_data_handle());
 
 #ifdef ENABLE_MKLDNN_V1
-    DCHECK_EQ(context_.slice_primitives.size(),
-              context_.slice_primitives_args.size());
-    for (size_t i = 0; i < context_.slice_primitives.size(); ++i) {
-      context_.slice_primitives.at(i).execute(
-          *context_.slice_stream, context_.slice_primitives_args.at(i));
-    }
+    ExecutePrimitives(context_.slice_primitives, context_.slice_stream,
+                      context_.slice_primitives_args);
 #else
     context_.slice_stream->submit(context_.slice_primitives);
 #endif
@@ -237,18 +232,10 @@ class MklSlicePrimitive : public MklPrimitive {
   void Setup(const MklSliceParams& sliceParams) {
     // Actually, DummyData will not be used in computation,
     // because the real data will be filled before execution.
-#ifndef ENABLE_MKLDNN_V1
-    context_.src_mem.reset(
-        new memory({sliceParams.from->get_primitive_desc().desc(), cpu_engine_},
-                   DummyData));
-    context_.dst_mem.reset(new memory(
-        {sliceParams.to->get_primitive_desc().desc(), cpu_engine_}, DummyData));
-#else
-    context_.src_mem.reset(new MEMORY_CONSTRUCTOR(sliceParams.from->GET_DESC,
-                                                  cpu_engine_, DummyData));
-    context_.dst_mem.reset(new MEMORY_CONSTRUCTOR(sliceParams.to->GET_DESC,
-                                                  cpu_engine_, DummyData));
-#endif // ENABLE_MKLDNN_V1
+    context_.src_mem.reset(new MEMORY_CONSTRUCTOR_WITH_MEM_PD(
+        sliceParams.from, cpu_engine_, DummyData));
+    context_.dst_mem.reset(new MEMORY_CONSTRUCTOR_WITH_MEM_PD(
+        sliceParams.to, cpu_engine_, DummyData));
     auto src_pd = context_.src_mem->GET_DESC;
     auto dst_pd = context_.dst_mem->GET_DESC;
 #ifdef ENABLE_MKLDNN_V1
@@ -306,48 +293,35 @@ class MklSlicePrimitiveFactory : public MklPrimitiveFactory<T> {
   static string CreateKey(const MklSliceParams& sliceParams) {
     string prefix = "reorder";
     FactoryKeyCreator key_creator;
-#ifdef ENABLE_MKLDNN_V1
-    auto const& from_desc = sliceParams.from->get_desc().data;
-    auto const& to_desc = sliceParams.to->get_desc().data;
-#else
-    auto const& from_desc = sliceParams.from->get_primitive_desc().desc().data;
-    auto const& to_desc = sliceParams.to->get_primitive_desc().desc().data;
-#endif
+    auto const& from_desc = GET_MEMORY_DESC_FROM_MEM_PTR(sliceParams.from).data;
+    auto const& to_desc = GET_MEMORY_DESC_FROM_MEM_PTR(sliceParams.to).data;
     const int kIdxFirstStride = 0;
     memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
     memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
 
-#ifdef ENABLE_MKLDNN_V1
     // MKL-DNN removes "struct view". Submemory has similar capability.
-    memory::dims from_strides(
-        from_desc.MEMORY_FORMAT_DESC.blocking.strides,
-        &from_desc.MEMORY_FORMAT_DESC.blocking.strides[from_desc.ndims]);
-    memory::dims to_strides(
-        to_desc.MEMORY_FORMAT_DESC.blocking.strides,
-        &to_desc.MEMORY_FORMAT_DESC.blocking.strides[to_desc.ndims]);
-#else
-    memory::dims from_strides(
-        from_desc.MEMORY_FORMAT_DESC.blocking.strides[kIdxFirstStride],
-        &from_desc.MEMORY_FORMAT_DESC.blocking
-             .strides[kIdxFirstStride][from_desc.ndims]);
-    memory::dims to_strides(
-        to_desc.MEMORY_FORMAT_DESC.blocking.strides[kIdxFirstStride],
-        &to_desc.MEMORY_FORMAT_DESC.blocking
-             .strides[kIdxFirstStride][to_desc.ndims]);
-#endif
+    auto from_strides = from_desc.MEMORY_FORMAT_DESC.blocking.strides;
+    auto to_strides = to_desc.MEMORY_FORMAT_DESC.blocking.strides;
+    memory::dims from_strides_outer_blocks(
+        GET_BLOCK_STRIDES(from_strides, kIdxFirstStride),
+        &GET_BLOCK_STRIDES(from_strides, kIdxFirstStride)[from_desc.ndims]);
+    memory::dims to_strides_outer_blocks(
+        GET_BLOCK_STRIDES(to_strides, kIdxFirstStride),
+        &GET_BLOCK_STRIDES(to_strides, kIdxFirstStride)[to_desc.ndims]);
+
     key_creator.AddAsKey(prefix);
 #ifndef ENABLE_MKLDNN_V1
     key_creator.AddAsKey(static_cast<int>(from_desc.format));
 #endif
     key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
     key_creator.AddAsKey(from_dims);
-    key_creator.AddAsKey(from_strides);
+    key_creator.AddAsKey(from_strides_outer_blocks);
 #ifndef ENABLE_MKLDNN_V1
     key_creator.AddAsKey(static_cast<int>(to_desc.format));
 #endif
     key_creator.AddAsKey(static_cast<int>(to_desc.data_type));
     key_creator.AddAsKey(to_dims);
-    key_creator.AddAsKey(to_strides);
+    key_creator.AddAsKey(to_strides_outer_blocks);
     key_creator.AddAsKey(sliceParams.begin_dims);
     key_creator.AddAsKey(sliceParams.size_dims);
     return key_creator.GetKey();

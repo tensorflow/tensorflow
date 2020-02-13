@@ -54,11 +54,7 @@ class MklReshapeOp : public OpKernel {
     // blocking_desc_is_equal() for checking all the stride arrays in
     // mkl-dnn/blob/master/src/common/type_helpers.hpp
     auto input_mkl_md = mkl_shape_input.GetMklLayout();
-    if (SKIP_INPUT_REORDER(mkl_shape_input, input_mkl_md)) {
-      return true;
-    }
-
-    return false;
+    return SKIP_INPUT_REORDER(mkl_shape_input, input_mkl_md);
   }
 
  public:
@@ -287,7 +283,6 @@ TF_CALL_float(REGISTER_MKL_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_CPU);
 
 #undef REGISTER_MKL_CPU
-#undef SKIP_INPUT_REORDER
 
 }  // namespace tensorflow
 
