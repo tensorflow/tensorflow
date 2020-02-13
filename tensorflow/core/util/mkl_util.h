@@ -730,7 +730,7 @@ inline Status ConvertMklToTF(OpKernelContext* context,
   } catch (mkldnn::error& e) {
     string error_msg = "Status: " + std::to_string(e.status) +
                        ", message: " + string(e.message) + ", in file " +
-                       string(__FILE__) + ":" + std::to_string(__LINE__);    
+                       string(__FILE__) + ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
 }
@@ -2159,7 +2159,7 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 void execute_primitives(
     std::vector<mkldnn::primitive>& primitives, std::shared_ptr<stream> stream,
     std::vector<std::unordered_map<int, memory>>& net_args) {
-  DCHECK_EQ(primitives.size(), net_args.size();
+  DCHECK_EQ(primitives.size(), net_args.size());
   for (size_t i = 0; i < primitives.size(); ++i) {
     primitives.at(i).execute(*stream, net_args.at(i));
   }
