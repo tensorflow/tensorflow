@@ -677,15 +677,16 @@ PYBIND11_MODULE(xla_extension, m) {
             GlobalPyRefManager()->CollectGarbage();
             PyLocalBuffer* buffer = buffer_obj.cast<PyLocalBuffer*>();
             LocalDeviceState* state = buffer->device()->local_device_state();
-            if (state->executor()->platform_kind() == se::PlatformKind::kHost &&
-                buffer->on_device_shape().IsArray() &&
-                buffer->on_device_shape().element_type() != BF16) {
-              py::object out = py::reinterpret_steal<py::object>(
-                  PyArray_FROM_O(buffer_obj.ptr()));
-              CHECK(out.ptr() != nullptr)
-                  << buffer->on_host_shape().ToString(/*print_layout=*/true);
-              return out;
-            }
+            // TODO(phawkins): fix occasional segfaults
+            // if (state->executor()->platform_kind() == se::PlatformKind::kHost
+            //     && buffer->on_device_shape().IsArray() &&
+            //     buffer->on_device_shape().element_type() != BF16) {
+            //   py::object out = py::reinterpret_steal<py::object>(
+            //       PyArray_FROM_O(buffer_obj.ptr()));
+            //   CHECK(out.ptr() != nullptr)
+            //       << buffer->on_host_shape().ToString(/*print_layout=*/true);
+            //   return out;
+            // }
             std::shared_ptr<Literal> literal;
             {
               py::gil_scoped_release gil_release;
