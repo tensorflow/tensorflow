@@ -89,10 +89,11 @@ static void ValidateMklInputs(OpKernelContext* context, bool* is_identity,
   const int input_dims = input_tf_shape.dims();
 
   OP_REQUIRES(
-      context, TensorShapeUtils::IsVector(begin_tensor.shape()) &&
-                   TensorShapeUtils::IsVector(size_tensor.shape()) &&
-                   begin_tensor.NumElements() == input_dims &&
-                   size_tensor.NumElements() == input_dims,
+      context,
+      TensorShapeUtils::IsVector(begin_tensor.shape()) &&
+          TensorShapeUtils::IsVector(size_tensor.shape()) &&
+          begin_tensor.NumElements() == input_dims &&
+          size_tensor.NumElements() == input_dims,
       errors::InvalidArgument(
           "Expected begin and size arguments to be 1-D tensors of size ",
           input_dims, ", but got shapes ", begin_tensor.shape().DebugString(),
@@ -193,7 +194,7 @@ class MklSlicePrimitive : public MklPrimitive {
 
 #ifdef ENABLE_MKLDNN_V1
     execute_primitives(context_.slice_primitives, context_.slice_stream,
-                      context_.slice_primitives_args);
+                       context_.slice_primitives_args);
 #else
     context_.slice_stream->submit(context_.slice_primitives);
 #endif
@@ -493,9 +494,9 @@ class MklSliceOp : public OpKernel {
       // Execute slice reorder.
       reorder_prim->Execute(sliceParams);
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
-                         string(e.message) + ", in file " + string(__FILE__) +
-                         ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) +
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
