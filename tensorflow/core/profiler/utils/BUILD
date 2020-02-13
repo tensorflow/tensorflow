@@ -270,6 +270,7 @@ cc_library(
     hdrs = ["derived_timeline.h"],
     deps = [
         ":group_events",
+        ":tf_op_utils",
         ":tf_xplane_visitor",
         ":trace_utils",
         ":xplane_builder",
