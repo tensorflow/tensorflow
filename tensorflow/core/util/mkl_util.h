@@ -2155,6 +2155,17 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
           ((strides[0] != 1) || (strides[1] != 1)));
 }
 
+#ifdef ENABLE_MKLDNN_V1
+void execute_primitives(
+    std::vector<mkldnn::primitive>& primitives, std::shared_ptr<stream> stream,
+    std::vector<std::unordered_map<int, memory>>& net_args) {
+  DCHECK_EQ(primitives.size(), net_args.size());
+  for (size_t i = 0; i < primitives.size(); ++i) {
+    primitives.at(i).execute(*stream, net_args.at(i));
+  }
+}
+#endif  // ENABLE_MKLDNN_V1
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL
 #endif  // TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
