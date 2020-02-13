@@ -26,9 +26,11 @@ limitations under the License.
 //    <possible subsets of dimensions in chosen rank>
 
 #include <stdlib.h>
+
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -97,11 +99,12 @@ class ReduceTest : public ClientLibraryTestBase {
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto zero = ConstantR0<float>(&builder, 0.0);
     Reduce(input, zero, add_f32, /*dimensions_to_reduce=*/{0});
+    std::minstd_rand rng(seed_);
 
     std::vector<float> input_data(element_count);
     for (int64 i = 0; i < element_count; ++i) {
-      input_data[i] = rand_r(&seed_) % 3;
-      if (rand_r(&seed_) % 2 == 0) {
+      input_data[i] = rng() % 3;
+      if (rng() % 2 == 0) {
         input_data[i] *= -1;
       }
     }
