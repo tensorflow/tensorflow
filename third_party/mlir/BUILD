@@ -682,7 +682,7 @@ cc_library(
         ":Support",
         ":TargetNVVMIR",
         "@llvm-project//llvm:core",
-        "@llvm-project//llvm:nvptx_target",  # buildcleaner: keep
+        "@llvm-project//llvm:nvptx_code_gen",  # buildcleaner: keep
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:target",
     ],
@@ -1660,7 +1660,6 @@ cc_library(
         "@llvm-project//mlir/test:TestIR",
         "@llvm-project//mlir/test:TestPass",
         "@llvm-project//mlir/test:TestTransforms",
-        "@llvm-project//mlir/test/Dialect/SPIRV:TestPasses",
     ],
 )
 
@@ -1784,7 +1783,6 @@ cc_binary(
         "@llvm-project//mlir/test:TestIR",
         "@llvm-project//mlir/test:TestPass",
         "@llvm-project//mlir/test:TestTransforms",
-        "@llvm-project//mlir/test/Dialect/SPIRV:TestPasses",
     ],
 )
 
