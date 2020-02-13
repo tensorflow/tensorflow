@@ -927,7 +927,7 @@ def _create_local_cuda_repository(repository_ctx):
     cuda_lib_outs = []
     for path in cuda_libs.values():
         cuda_lib_srcs.append(path)
-        cuda_lib_outs.append("cuda/lib/" + _basename(repository_ctx, path.basename))
+        cuda_lib_outs.append("cuda/lib/" + _basename(repository_ctx, path))
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "cuda-lib",
