@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-std::vector<TensorShape> dimvec2shapevec(std::vector<nvinfer1::Dims3> dimvec) {
+std::vector<TensorShape> DimVecToShapeVec(std::vector<nvinfer1::Dims3> dimvec) {
   std::vector<TensorShape> shapevec(dimvec.size());
   for (int i = 0; i < dimvec.size(); i++) {
     TensorShape shape;
@@ -43,7 +43,7 @@ std::vector<TensorShape> dimvec2shapevec(std::vector<nvinfer1::Dims3> dimvec) {
   return shapevec;
 }
 
-bool dimsContained(const nvinfer1::Dims& dim, const nvinfer1::Dims& min,
+bool DimsContained(const nvinfer1::Dims& dim, const nvinfer1::Dims& min,
                    const nvinfer1::Dims& max) {
   if (dim.nbDims != min.nbDims || dim.nbDims != max.nbDims) {
     return false;
@@ -56,7 +56,7 @@ bool dimsContained(const nvinfer1::Dims& dim, const nvinfer1::Dims& min,
   return true;
 }
 
-bool dimsEqual(const nvinfer1::Dims& a, const nvinfer1::Dims& b) {
+bool DimsEqual(const nvinfer1::Dims& a, const nvinfer1::Dims& b) {
   if (a.nbDims != b.nbDims) {
     return false;
   }
@@ -86,7 +86,7 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
 #endif
   }
 
-  // define a simple network: output = input1 + input2
+  // Define a simple network: output = input1 + input2.
   void DefineNetwork(nvinfer1::INetworkDefinition* network,
                      nvinfer1::Dims3& dims) {
     nvinfer1::ITensor* input1 =
@@ -147,7 +147,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Static) {
   EXPECT_NE(nullptr, exec_context_[0]);
 
   std::vector<nvinfer1::Dims3> dim_vec(2, dims);
-  std::vector<TensorShape> shape_vec = dimvec2shapevec(dim_vec);
+  std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec);
   EXPECT_EQ(-1, profile.GetProfileNumber(shape_vec));
 }
 
@@ -166,7 +166,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
 
   // Simulate a profile collection phase
   for (auto dim_vec : input_profiles) {
-    std::vector<TensorShape> shape_vec = dimvec2shapevec(dim_vec);
+    std::vector<TensorShape> shape_vec = DimVecToShapeVec(dim_vec);
     profile.AddShape(shape_vec);
   }
   profile.InitProfiles();
@@ -180,14 +180,12 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
 
   profile.CreateExecutionContexts(engine.get(), exec_context_);
 
-  // Each profile has an associated execution context
-  // This test depends on the profile creation strategy:
-  // e.g. if we would introduce a default context, then the sizes will not match
+  // Each profile has an associated execution context.
   EXPECT_EQ(exec_context_.size(), input_profiles.size());
 
-  // Check if the profiles are assigned correctly
+  // Check if the profiles are assigned correctly.
   for (auto dimvec : input_profiles) {
-    std::vector<TensorShape> shape_vec = dimvec2shapevec(dimvec);
+    std::vector<TensorShape> shape_vec = DimVecToShapeVec(dimvec);
     int idx = profile.GetProfileNumber(shape_vec);
     int prof_idx = exec_context_[idx]->getOptimizationProfile();
     ASSERT_GE(prof_idx, 0);
@@ -200,8 +198,13 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
       nvinfer1::Dims opt = engine->getProfileDimensions(
           j, prof_idx, nvinfer1::OptProfileSelector::kOPT);
 
-      EXPECT_TRUE(dimsContained(dimvec[j], min, max));
-      EXPECT_TRUE(dimsEqual(dimvec[j], opt));
+      // This should always hold.
+      EXPECT_TRUE(DimsContained(dimvec[j], min, max));
+
+      // The following test depends on the profile creation strategy, and needs
+      // to be updated (disabled) if the default trategy (defined by
+      // InitProfiles) changes.
+      EXPECT_TRUE(DimsEqual(dimvec[j], opt));
     }
   }
 }
