@@ -1,6 +1,7 @@
----
-name: Build/Installation Issue
-about: Use this template for build/installation issues
+--------------------------------------------------------------------------------
+
+name: Build/Installation Issue about: Use this template for build/installation
+issues labels: 'type:build/install'
 
 ---
 

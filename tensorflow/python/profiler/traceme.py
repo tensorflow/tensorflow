@@ -50,7 +50,10 @@ class TraceMe(object):
 
 
 def traceme_wrapper(func):
-  name = func.__qualname__
+  name = getattr(func, '__qualname__', None)
+  if not name:
+    name = func.__name__
+
   def wrapper(*args, **kwargs):
     with TraceMe(name):
       return func(*args, **kwargs)

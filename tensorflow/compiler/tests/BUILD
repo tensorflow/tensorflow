@@ -167,6 +167,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
+        "no_oss",  # TODO(b/148108508): Re-enable this test in OSS.
         "optonly",  # Times out frequently in fastbuild mode.
     ],
     deps = [
@@ -1081,7 +1082,10 @@ tf_xla_py_test(
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
     python_version = "PY3",
-    tags = ["config-cuda-only"],
+    tags = [
+        "config-cuda-only",
+        "v1only",
+    ],
     use_xla_device = False,
     deps = [
         ":xla_test",
@@ -1382,16 +1386,17 @@ tf_cuda_cc_test(
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:xla_kernel_creator",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_testutil",
-        "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -1516,7 +1521,10 @@ tf_xla_py_test(
     srcs = ["conv_node_name_test.py"],
     python_version = "PY3",
     shard_count = 5,
-    tags = ["no_rocm"],
+    tags = [
+        "no_oss",  # TODO(b/148108508): Re-enable this test in OSS.
+        "no_rocm",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1548,5 +1556,19 @@ tf_xla_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:standard_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "special_math_test",
+    size = "medium",
+    srcs = ["special_math_test.py"],
+    shard_count = 5,
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -125,7 +125,11 @@ StatusOr<std::unique_ptr<LocalExecutable>> CompileExecutable(
   }
   ExecutableBuildOptions exec_build_options;
   *exec_build_options.mutable_debug_options() = GetDebugOptionsFromFlags();
-  return client->Compile(computation, argument_layout_ptrs, exec_build_options);
+  TF_ASSIGN_OR_RETURN(
+      auto executables,
+      client->Compile(computation, argument_layout_ptrs, exec_build_options));
+  TF_RET_CHECK(executables.size() == 1);
+  return std::move(executables[0]);
 }
 
 absl::optional<Shape> GetXfeedShape(bool is_infeed,

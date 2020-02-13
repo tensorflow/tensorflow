@@ -46,8 +46,8 @@ import sys
 import numpy as np
 import tensorflow as tf
 
-import input_data
-import models
+import tensorflow.examples.speech_commands.input_data as input_data
+import tensorflow.examples.speech_commands.models as models
 
 FLAGS = None
 

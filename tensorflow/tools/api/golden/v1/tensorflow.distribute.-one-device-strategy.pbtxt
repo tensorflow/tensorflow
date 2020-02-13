@@ -2,7 +2,7 @@ path: "tensorflow.distribute.OneDeviceStrategy"
 tf_class {
   is_instance: "<class \'tensorflow.python.distribute.one_device_strategy.OneDeviceStrategyV1\'>"
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.StrategyV1\'>"
-  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.Strategy\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.StrategyBase\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "extended"

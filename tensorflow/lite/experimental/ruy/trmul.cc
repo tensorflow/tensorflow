@@ -259,13 +259,16 @@ int GetThreadCount(Context* context, int rows, int cols, int depth) {
 }
 
 LoopStructure GetLoopStructure(int tentative_thread_count, int rows, int cols,
-                               int depth,
-                               int cache_friendly_traversal_threshold) {
+                               int depth, int lhs_scalar_size,
+                               int rhs_scalar_size, int local_data_cache_size,
+                               int shared_data_cache_size) {
   if (tentative_thread_count == 1) {
-    // If we are in the GEMV case or the size is below the
-    // threshold, stay with the simple loop structure.
-    if ((cols == 1) ||
-        (rows + cols) * depth < cache_friendly_traversal_threshold) {
+    const BlockMapTraversalOrder traversal_order =
+        GetTraversalOrder(rows, cols, depth, lhs_scalar_size, rhs_scalar_size,
+                          local_data_cache_size, shared_data_cache_size);
+    // If we are in the GEMV case or the block_map would be using linear
+    // traversal anyway, use the simple loop.
+    if ((cols == 1) || traversal_order == BlockMapTraversalOrder::kLinear) {
       return LoopStructure::kSimple;
     }
   }
@@ -290,9 +293,10 @@ void TrMul(TrMulParams* params, Context* context) {
   const int depth = lhs.layout.rows;
 
   const int tentative_thread_count = GetThreadCount(context, rows, cols, depth);
-  const auto loop_structure =
-      GetLoopStructure(tentative_thread_count, rows, cols, depth,
-                       params->cache_friendly_traversal_threshold);
+  const auto loop_structure = GetLoopStructure(
+      tentative_thread_count, rows, cols, depth, lhs.data_type.size,
+      rhs.data_type.size, params->local_data_cache_size,
+      params->shared_data_cache_size);
   Allocator* allocator = context->GetMainAllocator();
 
   // Allocate packed matrices
@@ -335,7 +339,8 @@ void TrMul(TrMulParams* params, Context* context) {
                packed_lhs.layout.kernel.cols, packed_rhs.layout.kernel.cols,
                packed_lhs.data_type.size, packed_rhs.data_type.size,
                tentative_thread_count, params->path,
-               params->cache_friendly_traversal_threshold, &block_map);
+               params->local_data_cache_size, params->shared_data_cache_size,
+               &block_map);
 
   // Initialize per-thread state.
   const int thread_count = block_map.thread_count;

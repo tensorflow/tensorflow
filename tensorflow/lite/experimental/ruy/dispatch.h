@@ -197,8 +197,8 @@ void PopulateTrMulParams(TrMulParams* params) {
 
   params->path = ThePath;
 
-  params->cache_friendly_traversal_threshold =
-      Spec::cache_friendly_traversal_threshold();
+  params->local_data_cache_size = Spec::local_data_cache_size();
+  params->shared_data_cache_size = Spec::shared_data_cache_size();
 
   CreatePackedMatrix<LhsScalar, PackedLhsScalar>(
       Side::kLhs, ToKernelLayout<LhsKernelLayout>(), params);
@@ -390,8 +390,9 @@ inline void HandlePrepackedCaching(TrMulParams* params,
     return;
   }
 
-  if (context->cache_policy == CachePolicy::kCacheLHSOnGemV) {
-    if (!cacheable[Side::kLhs] || params->dst.layout.cols != 1) {
+  if (context->cache_policy == CachePolicy::kCacheLHSOnNarrowMul) {
+    // TODO(b/149304278) Cache on dst.cols <= selected kernel width.
+    if (!cacheable[Side::kLhs] || params->dst.layout.cols > 4) {
       return;
     }
     PrepackedCache* prepacked_cache = context->GetPrepackedCache();

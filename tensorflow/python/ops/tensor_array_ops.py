@@ -950,7 +950,8 @@ class TensorArray(object):
   `while_loop` and `map_fn`.  It supports gradient back-propagation via special
   "flow" control flow dependencies.
 
-  Example 1: plain reading and writing.
+  Example 1: Plain reading and writing.
+
   >>> ta = tf.TensorArray(tf.float32, size=0, dynamic_size=True, clear_after_read=False)
   >>> ta = ta.write(0, 10)
   >>> ta = ta.write(1, 20)
@@ -967,6 +968,7 @@ class TensorArray(object):
   dtype=float32)>
 
   Example 2: Fibonacci sequence algorithm that writes in a loop then returns.
+
   >>> @tf.function
   ... def fibonacci(n):
   ...   ta = tf.TensorArray(tf.float32, size=0, dynamic_size=True)
@@ -981,7 +983,8 @@ class TensorArray(object):
   <tf.Tensor: shape=(7,), dtype=float32,
   numpy=array([0., 1., 1., 2., 3., 5., 8.], dtype=float32)>
 
-  Example 3: A simple loop interacting with a tf.Variable.
+  Example 3: A simple loop interacting with a `tf.Variable`.
+
   >>> v = tf.Variable(1)
   >>>
   >>> @tf.function

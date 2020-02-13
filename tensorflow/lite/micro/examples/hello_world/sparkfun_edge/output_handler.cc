@@ -75,5 +75,6 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
     }
   }
   // Log the current X and Y values
-  error_reporter->Report("x_value: %f, y_value: %f\n", x_value, y_value);
+  TF_LITE_REPORT_ERROR(error_reporter, "x_value: %f, y_value: %f\n", x_value,
+                       y_value);
 }

@@ -103,7 +103,8 @@ AllocationInfo* AllocateAndCalculateAllocationInfo(
       allocator->AllocateFromTail(sizeof(AllocationInfo) * allocation_info_size,
                                   alignof(AllocationInfo)));
   if (allocation_info == nullptr) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "Failed to allocate memory for allocation_info, %d bytes required",
         sizeof(TfLiteTensor) * allocation_info_size);
     return nullptr;
@@ -140,14 +141,14 @@ AllocationInfo* AllocateAndCalculateAllocationInfo(
     for (size_t n = 0; n < op->inputs()->size(); ++n) {
       const int tensor_index = op->inputs()->Get(n);
       AllocationInfo* current = &allocation_info[tensor_index];
-      if (((current->last_used == -1) || (current->last_used > i))) {
+      if (((current->last_used == -1) || (current->last_used < i))) {
         current->last_used = i;
       }
     }
     for (size_t n = 0; n < op->outputs()->size(); ++n) {
       const int tensor_index = op->outputs()->Get(n);
       AllocationInfo* current = &allocation_info[tensor_index];
-      if ((current->first_created == -1) || (current->first_created < i)) {
+      if ((current->first_created == -1) || (current->first_created > i)) {
         current->first_created = i;
       }
     }
@@ -165,7 +166,8 @@ AllocationInfo* AllocateAndCalculateAllocationInfo(
         !is_read_only &&
         ((current->first_created == -1) || (current->last_used == -1));
     if (has_partial_lifetime && current->needs_allocating) {
-      error_reporter->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
           "Logic error in memory planner, tensor %d has an invalid lifetime: "
           "first_created: %d, last_used: %d",
           i, current->first_created, current->last_used);
@@ -280,15 +282,14 @@ TfLiteStatus InitializeRuntimeTensor(
       (src_quantization->scale()->size() > 0) &&
       src_quantization->zero_point() &&
       (src_quantization->zero_point()->size() > 0)) {
+    // Always populate the TfLiteTensor.params field, even if there are
+    // per-channel quantization parameters.
     result->params.scale = src_quantization->scale()->Get(0);
-    // This magic handles issues with little-endianness.
-    for (unsigned int b = 0; b < sizeof(result->params.zero_point); ++b)
-      *(reinterpret_cast<char*>(&result->params.zero_point) + b) =
-          *(reinterpret_cast<const char*>(
-                src_quantization->zero_point()->Data()) +
-            b);
+    // Note that the zero_point field in the FlatBuffers schema is a 64-bit
+    // integer, but the zero_point field in the TfLiteQuantizationParams struct
+    // is a 32-bit integer.
     result->params.zero_point =
-        flatbuffers::EndianScalar(result->params.zero_point);
+        static_cast<int32_t>(src_quantization->zero_point()->Get(0));
 
     // Populate per-channel quantization params.
     int channels = src_quantization->scale()->size();
@@ -316,12 +317,7 @@ TfLiteStatus InitializeRuntimeTensor(
 
     result->quantization = {kTfLiteAffineQuantization, quantization};
   }
-  // Copy the name, if there is one.
-  if (flatbuffer_tensor.name()->c_str() != nullptr) {
-    result->name = flatbuffer_tensor.name()->c_str();
-  } else {
-    result->name = "<No name>";
-  }
+  result->name = flatbuffer_tensor.name()->c_str();
   return kTfLiteOk;
 }
 }  // namespace internal
@@ -503,12 +499,8 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
     // the tensor info array, which will be released.
     size_t actual_available_arena_size =
         arena_size - memory_allocator_->GetDataSize();
-    // Make sure we have enough room.
-    // TODO(b/147871342): make GetMaximumMemorySize return size_t.
-    // int is more than enough to hold arena_size since we're only dealing with
-    // at most several megabytes memory.
-    if (planner.GetMaximumMemorySize() >
-        static_cast<int>(actual_available_arena_size)) {
+    // Make sure we have enough arena size.
+    if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
       error_reporter_->Report(
           "Arena size is too small for activation buffers. Needed %d but only "
           "%d was available.",

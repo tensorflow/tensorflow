@@ -67,8 +67,7 @@ TfLiteStatus ImageClassificationStage::Init() {
   // ImagePreprocessingStage
   tflite::evaluation::ImagePreprocessingConfigBuilder builder(
       "image_preprocessing", input_type);
-  builder.AddSquareCroppingStep();
-  builder.AddCroppingStep(kCroppingFraction);
+  builder.AddCroppingStep(kCroppingFraction, true /*square*/);
   builder.AddResizingStep(input_shape->data[2], input_shape->data[1], false);
   builder.AddDefaultNormalizationStep();
   preprocessing_stage_.reset(new ImagePreprocessingStage(builder.build()));

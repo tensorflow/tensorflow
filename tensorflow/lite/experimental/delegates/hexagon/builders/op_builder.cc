@@ -190,17 +190,20 @@ const OpNode* OpBuilder::Build() {
   return &op_node_;
 }
 
-OpBuilder* GraphBuilder::AddNode() {
+OpBuilder* GraphBuilder::AddNode(int tflite_node_index) {
   OpBuilder* op = new OpBuilder(this, OP_Nop);
   builders_.emplace_back(op);
   op->SetNodeId(builders_.size());
+  op->SetTFLiteNodeId(tflite_node_index);
   return op;
 }
 
-OpBuilder* GraphBuilder::AddNodeFromTfLiteOp(int op_type, TfLiteNode* node) {
+OpBuilder* GraphBuilder::AddNodeFromTfLiteOp(int op_type, TfLiteNode* node,
+                                             int tflite_node_index) {
   OpBuilder* op = CreateOpBuilderFromTfLiteOp(op_type);
   builders_.emplace_back(op);
   op->SetNodeId(builders_.size());
+  op->SetTFLiteNodeId(tflite_node_index);
   op->SetBuiltinData(node->builtin_data);
   op->SetTfLiteNode(node);
   return op;

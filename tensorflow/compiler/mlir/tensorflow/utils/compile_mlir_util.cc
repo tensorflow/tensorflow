@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -210,6 +211,11 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    bool use_tuple_args, bool return_tuple) {
   mlir::PassManager tf2xla(module_op.getContext());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  tf2xla.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
+  tf2xla.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
+  // LegalizeTFControlFlow encapsulates arguments for control flow operations
+  // with a tuple argument which break the assumption of resource lifting
+  // inside PromoteResourcesToArgs.
   tf2xla.addPass(mlir::xla_hlo::createLegalizeTFControlFlowPass());
   // We need to run LegalizeTFPass 2 times because first
   // LegalizeTFPass(allow_partial_conversion=true) can expose more graph pruning
@@ -221,17 +227,17 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
   tf2xla.addNestedPass<mlir::FuncOp>(
       mlir::xla_hlo::createLegalizeTFPass(false));
 
-  {
-    // Make sure we catch any error reported by MLIR and forward it to the TF
-    // error reporting system. Report a generic error if pass manager failed
-    // without emitting a diagnostic.
-    mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
+  if (VLOG_IS_ON(1))
+    tf2xla.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>());
 
-    mlir::LogicalResult result = tf2xla.run(module_op);
-    if (failed(result)) {
-      return error_handler.Combine(
-          errors::Internal("MLIR TF to XLA legalization failed"));
-    }
+  // Make sure we catch any error reported by MLIR and forward it to the TF
+  // error reporting system. Report a generic error if pass manager failed
+  // without emitting a diagnostic.
+  mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
+
+  if (failed(tf2xla.run(module_op))) {
+    return error_handler.Combine(
+        errors::Internal("MLIR TF to XLA legalization failed"));
   }
 
   if (VLOG_IS_ON(1))

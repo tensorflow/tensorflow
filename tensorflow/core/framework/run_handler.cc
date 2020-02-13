@@ -36,7 +36,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+// LINT.IfChange
 static constexpr int32 kMaxConcurrentHandlers = 128;
+// LINT.ThenChange(//tensorflow/core/framework/run_handler_test.cc)
 
 // TODO(azaks): Refactor with thread:ThreadPool
 class RunHandlerEnvironment {
@@ -156,7 +158,9 @@ class ThreadWorkSource {
         non_blocking_work_queues_(non_blocking_work_sharding_factor_),
         blocking_inflight_(0),
         non_blocking_inflight_(0),
-        traceme_id_(0) {
+        traceme_id_(0),
+        version_(0),
+        sub_thread_pool_waiter_(nullptr) {
     queue_waiters_.next = &queue_waiters_;
     queue_waiters_.prev = &queue_waiters_;
     for (int i = 0; i < NonBlockingWorkShardingFactor(); ++i) {
@@ -295,10 +299,24 @@ class ThreadWorkSource {
   void SetTracemeId(int64 value) { traceme_id_ = value; }
   void SetRank(int64 value) { rank_ = value; }
 
-  void SetWaiter(Waiter* waiter, mutex* mutex) {
+  void SetWaiter(uint64 version, Waiter* waiter, mutex* mutex) {
+    {
+      tf_shared_lock lock(run_handler_waiter_mu_);
+      // Most of the request won't change sub pool for recomputation.
+      // Optimization for avoiding holding exclusive lock to reduce contention.
+      if (sub_thread_pool_waiter_ == waiter) {
+        return;
+      }
+      // If the current version is a newer version, no need to update.
+      if (version_ > version) {
+        return;
+      }
+    }
+
     mutex_lock l(run_handler_waiter_mu_);
     sub_thread_pool_waiter_ = waiter;
     sub_thread_pool_waiter_mu_ = mutex;
+    version_ = version;
   }
 
   int64 GetInflightTaskCount(bool is_blocking) {
@@ -353,6 +371,7 @@ class ThreadWorkSource {
   std::atomic<int64> rank_;
 
   mutex run_handler_waiter_mu_;
+  uint64 version_ GUARDED_BY(run_handler_waiter_mu_);
   mutex* sub_thread_pool_waiter_mu_ GUARDED_BY(run_handler_waiter_mu_);
   Waiter* sub_thread_pool_waiter_ GUARDED_BY(run_handler_waiter_mu_);
 };
@@ -453,21 +472,21 @@ class RunHandlerThreadPool {
       int tid, int start_request_idx, uint64 version,
       const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources) {
     mutex_lock l(thread_data_[tid].mu);
-    if (version > thread_data_[tid].version) {
-      thread_data_[tid].version = version;
+    if (version > thread_data_[tid].new_version) {
+      thread_data_[tid].new_version = version;
     } else {
       // A newer version is already updated. No need to update.
       return;
     }
-    thread_data_[tid].thread_work_sources.resize(0);
+    thread_data_[tid].new_thread_work_sources->resize(0);
 
     if (use_sub_thread_pool_) {
       for (int i = 0; i < thread_work_sources.size(); ++i) {
-        thread_data_[tid].thread_work_sources.emplace_back(
+        thread_data_[tid].new_thread_work_sources->emplace_back(
             thread_work_sources[i]);
       }
     } else {
-      thread_data_[tid].thread_work_sources.emplace_back(
+      thread_data_[tid].new_thread_work_sources->emplace_back(
           thread_work_sources[start_request_idx]);
       // The number of shards for the queue. Threads in each shard will
       // prioritize different thread_work_sources. Increase the number of shards
@@ -483,7 +502,7 @@ class RunHandlerThreadPool {
       for (int i = 0; i < num_shards; ++i) {
         for (int j = token; j < thread_work_sources.size(); j += num_shards) {
           if (j != start_request_idx) {
-            thread_data_[tid].thread_work_sources.emplace_back(
+            thread_data_[tid].new_thread_work_sources->emplace_back(
                 thread_work_sources[j]);
           }
         }
@@ -535,17 +554,31 @@ class RunHandlerThreadPool {
  private:
   struct ThreadData {
     ThreadData()
-        : version(0),
+        : new_version(0),
           current_index(0),
-          thread_work_sources(static_cast<int32>(
-              ParamFromEnvWithDefault("TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
-                                      kMaxConcurrentHandlers))) {}
+          new_thread_work_sources(new Eigen::MaxSizeVector<ThreadWorkSource*>(
+              static_cast<int32>(ParamFromEnvWithDefault(
+                  "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
+                  kMaxConcurrentHandlers)))),
+          current_version(0),
+          current_thread_work_sources(
+              new Eigen::MaxSizeVector<ThreadWorkSource*>(
+                  static_cast<int32>(ParamFromEnvWithDefault(
+                      "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
+                      kMaxConcurrentHandlers)))) {}
     mutex mu;
-    uint64 version;
+    uint64 new_version;
     condition_variable sources_not_empty;
     std::unique_ptr<Thread> thread;
     int current_index;
-    Eigen::MaxSizeVector<ThreadWorkSource*> thread_work_sources GUARDED_BY(mu);
+    std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
+        new_thread_work_sources GUARDED_BY(mu);
+
+    uint64 current_version;
+    // Should only be accessed by one thread.
+    std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
+        current_thread_work_sources;
+
     int sub_thread_pool_id;
   };
 
@@ -620,26 +653,40 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
     Task t;
     ThreadWorkSource* tws = nullptr;
     bool task_from_blocking_queue = true;
-    Eigen::MaxSizeVector<ThreadWorkSource*>* thread_work_sources =
-        &thread_data_[thread_id].thread_work_sources;
     int sub_thread_pool_id;
-    if (use_sub_thread_pool_) {
-      // The mutex is not hot since its per thread and can only be held
-      // by some other thread when a session run starts/finishes.
+    // Get the current thread work sources.
+    {
       mutex_lock l(thread_data_[thread_id].mu);
+      if (thread_data_[thread_id].current_version <
+          thread_data_[thread_id].new_version) {
+        thread_data_[thread_id].current_version =
+            thread_data_[thread_id].new_version;
+        thread_data_[thread_id].current_thread_work_sources.swap(
+            thread_data_[thread_id].new_thread_work_sources);
+      }
+    }
+    Eigen::MaxSizeVector<ThreadWorkSource*>* thread_work_sources =
+        thread_data_[thread_id].current_thread_work_sources.get();
+    if (use_sub_thread_pool_) {
       sub_thread_pool_id = thread_data_[thread_id].sub_thread_pool_id;
       int active_requests = thread_work_sources->size();
       if (may_steal_blocking_work) {
         // Each thread will first look for tasks from requests that belongs to
         // its sub thread pool.
-        t = FindTask(
+        int search_range_start =
             active_requests *
-                sub_thread_pool_start_request_percentage_[sub_thread_pool_id],
+            sub_thread_pool_start_request_percentage_[sub_thread_pool_id];
+        int search_range_end =
             active_requests *
-                sub_thread_pool_end_request_percentage_[sub_thread_pool_id],
-            thread_id, sub_thread_pool_id, kMaxBlockingInflight,
-            /*may_steal_blocking_work=*/true, *thread_work_sources,
-            &task_from_blocking_queue, &tws);
+            sub_thread_pool_end_request_percentage_[sub_thread_pool_id];
+        search_range_end =
+            std::min(active_requests,
+                     std::max(search_range_end, search_range_start + 1));
+
+        t = FindTask(search_range_start, search_range_end, thread_id,
+                     sub_thread_pool_id, kMaxBlockingInflight,
+                     /*may_steal_blocking_work=*/true, *thread_work_sources,
+                     &task_from_blocking_queue, &tws);
         if (!t.f) {
           // Search from all requests if the thread cannot find tasks from
           // requests that belong to its own sub thread pool.
@@ -657,10 +704,6 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
                      &task_from_blocking_queue, &tws);
       }
     } else {
-      // The mutex is not hot since its per thread and can only be held
-      // by some other thread when a session run starts/finishes.
-      mutex_lock l(thread_data_[thread_id].mu);
-
       // TODO(chaox): Refactor the following code to share the logic with
       // FindTask.
       for (int i = 0; i < thread_work_sources->size(); ++i) {
@@ -716,7 +759,6 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
           },
           profiler::TraceMeLevel::kInfo);
       if (VLOG_IS_ON(4)) {
-        mutex_lock l(thread_data_[thread_id].mu);
         for (int i = 0; i < thread_work_sources->size(); ++i) {
           VLOG(4) << "source id " << i << " "
                   << (*thread_work_sources)[i]->ToString();
@@ -758,12 +800,28 @@ void RunHandlerThreadPool::WaitForWork(bool is_blocking, int thread_id,
 
   ThreadWorkSource* tws = nullptr;
   {
-    Eigen::MaxSizeVector<ThreadWorkSource*>* thread_work_sources =
-        &thread_data_[thread_id].thread_work_sources;
     mutex_lock l(thread_data_[thread_id].mu);
+    if (thread_data_[thread_id].new_version >
+        thread_data_[thread_id].current_version) {
+      thread_data_[thread_id].current_thread_work_sources.swap(
+          thread_data_[thread_id].new_thread_work_sources);
+      thread_data_[thread_id].current_version =
+          thread_data_[thread_id].new_version;
+    }
+    Eigen::MaxSizeVector<ThreadWorkSource*>* thread_work_sources =
+        thread_data_[thread_id].current_thread_work_sources.get();
     while (!cancelled_ && thread_work_sources->empty()) {
       // Wait until there is new request
       thread_data_[thread_id].sources_not_empty.wait(l);
+      if (thread_data_[thread_id].new_version >
+          thread_data_[thread_id].current_version) {
+        thread_data_[thread_id].current_thread_work_sources.swap(
+            thread_data_[thread_id].new_thread_work_sources);
+        thread_data_[thread_id].current_version =
+            thread_data_[thread_id].new_version;
+        thread_work_sources =
+            thread_data_[thread_id].current_thread_work_sources.get();
+      }
     }
     if (cancelled_) {
       return;
@@ -892,16 +950,18 @@ class RunHandlerPool::Impl {
     RunHandler::Impl* handler_impl;
     {
       mutex_lock l(mu_);
-      if (free_handlers_.empty()) {
+      if (!has_free_handler()) {
         profiler::TraceMe activity(
             [&] {
               return strings::StrCat("WaitingForHandler#step_id=", step_id,
                                      "#");
             },
             profiler::TraceMeLevel::kInfo);
-        if (!mu_.AwaitWithDeadline(
-                Condition(this, &Impl::has_free_handler),
-                EnvTime::NowNanos() + timeout_in_ms * 1000 * 1000)) {
+        if (timeout_in_ms == 0) {
+          mu_.Await(Condition(this, &Impl::has_free_handler));
+        } else if (!mu_.AwaitWithDeadline(
+                       Condition(this, &Impl::has_free_handler),
+                       EnvTime::NowNanos() + timeout_in_ms * 1000 * 1000)) {
           return nullptr;
         }
       }
@@ -923,19 +983,6 @@ class RunHandlerPool::Impl {
       for (int i = 0; i < num_active_requests; ++i) {
         (*thread_work_sources)[i] = sorted_active_handlers_[i]->tws();
         (*thread_work_sources)[i]->SetRank(i);
-        int sub_thread_pool_id =
-            sub_thread_pool_end_request_percentage_.size() - 1;
-        for (int j = 0; j < sub_thread_pool_end_request_percentage_.size();
-             ++j) {
-          if (i < num_active_requests *
-                      sub_thread_pool_end_request_percentage_[j]) {
-            sub_thread_pool_id = j;
-            break;
-          }
-        }
-        (*thread_work_sources)[i]->SetWaiter(
-            &queue_waiters_[sub_thread_pool_id],
-            &waiters_mu_[sub_thread_pool_id]);
       }
       version = ++version_;
     }
@@ -944,61 +991,34 @@ class RunHandlerPool::Impl {
   }
 
   void ReleaseHandler(RunHandler::Impl* handler) LOCKS_EXCLUDED(mu_) {
-    std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
-        thread_work_sources;
-    uint64 version;
-    int num_active_requests;
-    {
-      mutex_lock l(mu_);
-      DCHECK_GT(sorted_active_handlers_.size(), 0);
+    mutex_lock l(mu_);
+    DCHECK_GT(sorted_active_handlers_.size(), 0);
 
-      CHECK_EQ(handler->tws()->TaskQueueSize(true), 0);
-      CHECK_EQ(handler->tws()->TaskQueueSize(false), 0);
+    CHECK_EQ(handler->tws()->TaskQueueSize(true), 0);   // Crash OK.
+    CHECK_EQ(handler->tws()->TaskQueueSize(false), 0);  // Crash OK.
 
-      uint64 now = tensorflow::EnvTime::NowMicros();
-      double elapsed = (now - handler->start_time_us()) / 1000.0;
-      time_hist_.Add(elapsed);
+    uint64 now = tensorflow::EnvTime::NowMicros();
+    double elapsed = (now - handler->start_time_us()) / 1000.0;
+    time_hist_.Add(elapsed);
 
-      // Erase from and update sorted_active_handlers_. Add it to the end of
-      // free_handlers_.
-      auto iter = std::find(sorted_active_handlers_.begin(),
-                            sorted_active_handlers_.end(), handler);
-      DCHECK(iter != sorted_active_handlers_.end())
-          << "Unexpected handler: " << handler
-          << " is being requested for release";
+    // Erase from and update sorted_active_handlers_. Add it to the end of
+    // free_handlers_.
+    auto iter = std::find(sorted_active_handlers_.begin(),
+                          sorted_active_handlers_.end(), handler);
+    DCHECK(iter != sorted_active_handlers_.end())
+        << "Unexpected handler: " << handler
+        << " is being requested for release";
 
-      // Remove this handler from this list and add it to the list of free
-      // handlers.
-      sorted_active_handlers_.erase(iter);
-      free_handlers_.push_back(handler);
-      DCHECK_LE(free_handlers_.size(), max_handlers_);
+    // Remove this handler from this list and add it to the list of free
+    // handlers.
+    sorted_active_handlers_.erase(iter);
+    free_handlers_.push_back(handler);
+    DCHECK_LE(free_handlers_.size(), max_handlers_);
+    LogInfo();
 
-      num_active_requests = sorted_active_handlers_.size();
-      thread_work_sources =
-          std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>(
-              new Eigen::MaxSizeVector<ThreadWorkSource*>(num_active_requests));
-      thread_work_sources->resize(num_active_requests);
-      for (int i = 0; i < num_active_requests; ++i) {
-        (*thread_work_sources)[i] = sorted_active_handlers_[i]->tws();
-        (*thread_work_sources)[i]->SetRank(i);
-        int sub_thread_pool_id =
-            sub_thread_pool_end_request_percentage_.size() - 1;
-        for (int j = 0; j < sub_thread_pool_end_request_percentage_.size();
-             ++j) {
-          if (i < num_active_requests *
-                      sub_thread_pool_end_request_percentage_[j]) {
-            sub_thread_pool_id = j;
-            break;
-          }
-        }
-        (*thread_work_sources)[i]->SetWaiter(
-            &queue_waiters_[sub_thread_pool_id],
-            &waiters_mu_[sub_thread_pool_id]);
-      }
-      version = ++version_;
-      LogInfo();
-    }
-    RecomputePoolStats(num_active_requests, version, *thread_work_sources);
+    // We do not recompute pool stats during release. The side effect is that
+    // there may be empty thread work sources in the queue. However, any new
+    // requests will trigger recomputation.
   }
 
  private:
@@ -1037,6 +1057,20 @@ void RunHandlerPool::Impl::RecomputePoolStats(
     int num_active_requests, uint64 version,
     const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources) {
   if (num_active_requests == 0) return;
+
+  int sub_thread_pool_id = 0;
+  for (int i = 0; i < num_active_requests; ++i) {
+    while (
+        sub_thread_pool_id <
+            sub_thread_pool_end_request_percentage_.size() - 1 &&
+        i >= num_active_requests *
+                 sub_thread_pool_end_request_percentage_[sub_thread_pool_id]) {
+      sub_thread_pool_id++;
+    }
+    thread_work_sources[i]->SetWaiter(version,
+                                      &queue_waiters_[sub_thread_pool_id],
+                                      &waiters_mu_[sub_thread_pool_id]);
+  }
 
   int num_threads = run_handler_thread_pool()->NumThreads();
   int num_blocking_threads = run_handler_thread_pool()->NumBlockingThreads();

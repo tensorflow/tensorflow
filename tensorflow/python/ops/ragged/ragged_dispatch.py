@@ -131,6 +131,10 @@ class UnaryRaggedElementwiseDispatcher(dispatch.OpDispatcher):
         elif not _is_convertible_to_tensor(elt):
           return self.NOT_SUPPORTED
       if found_ragged:
+        x = [
+            ragged_tensor.convert_to_tensor_or_ragged_tensor(elt)
+            if ragged_tensor.is_ragged(elt) else elt for elt in x
+        ]
         x = ragged_tensor.match_row_splits_dtypes(*x)
         nested_splits_lists = [
             elt.nested_row_splits for elt in x if ragged_tensor.is_ragged(elt)
@@ -149,6 +153,7 @@ class UnaryRaggedElementwiseDispatcher(dispatch.OpDispatcher):
     else:
       found_ragged = ragged_tensor.is_ragged(x)
       if found_ragged:
+        x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name=self._x)
         mapped_values = self._original_op(x.flat_values, *args, **kwargs)
         return x.with_flat_values(mapped_values)
       else:
@@ -196,10 +201,10 @@ class BinaryRaggedElementwiseDispatcher(dispatch.OpDispatcher):
 
     # Convert args to tensors.  Bail if conversion fails.
     try:
-      if not x_is_ragged:
-        x = ops.convert_to_tensor(x, name=self._x, preferred_dtype=y.dtype)
-      if not y_is_ragged:
-        y = ops.convert_to_tensor(y, name=self._y, preferred_dtype=x.dtype)
+      x = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+          x, name=self._x, preferred_dtype=(y.dtype if y_is_ragged else None))
+      y = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+          y, name=self._y, preferred_dtype=(x.dtype if x_is_ragged else None))
     except (TypeError, ValueError):
       return self.NOT_SUPPORTED
 

@@ -85,10 +85,11 @@ void RealMain(absl::Span<char* const> args) {
     ExecutableBuildOptions build_options;
     build_options.set_device_ordinal(0);
     build_options.set_result_layout(program_shape->result());
-    StatusOr<std::unique_ptr<Executable>> executable =
-        local_service->CompileExecutable(computation, layouts, build_options);
-
-    const HloModule& module = executable.ValueOrDie()->module();
+    auto executables =
+        local_service->CompileExecutables(computation, layouts, build_options)
+            .ConsumeValueOrDie();
+    CHECK_EQ(executables.size(), 1);
+    const HloModule& module = executables[0]->module();
 
     OperationDumper dumper(arg);
     for (auto* computation : module.computations()) {

@@ -68,6 +68,24 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceDeviceInferencePass();
 // The pass also annotates the input arguments for resources with the indices
 // of their aliasing output arguments.
 std::unique_ptr<OpPassBase<ModuleOp>> CreatePromoteResourcesToArgsPass();
+
+// Marks function visibility using tf.entry_function specification. That is,
+// functions with tf.entry_function attributes are marked with public
+// visibility while the other functions are marked with private visibility.
+LogicalResult MarkFunctionVisibilityUsingEntryFunctionSpecification(
+    ModuleOp module);
+// Creates a pass that uses tf.entry_function specification to mark function
+// visibility.
+std::unique_ptr<OpPassBase<ModuleOp>>
+CreateMarkFunctionVisibilityUsingEntryFunctionSpecificationPass();
+
+// Creates a simple device assignment pass on TF dialect for CoreRT use case.
+std::unique_ptr<OpPassBase<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
+    llvm::StringRef default_device);
+
+// Performs resource lifting on the function body to hoist resource variable
+// accesses outside all control flow statements.
+LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function);
 }  // namespace TF
 
 namespace TFControlFlow {
@@ -83,10 +101,25 @@ class GraphOp;
 // Returns a pass that folds switch nodes with constant predicates.
 std::unique_ptr<OpPassBase<FuncOp>> CreateSwitchFoldPass();
 
-// Create a pass to merge IslandOps from TFExecutor dialect.
+// Creates a pass to merge IslandOps from TFExecutor dialect.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass();
 
-// Create a pass to prune tf_executor.graph from dead nodes.
+// Creates a pass to merge IslandOps for operation marked for execution on TPU.
+// This is a V1 backward compatibility.
+std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorTPUV1IslandCoarseningPass();
+
+// Creates a pass to outlining TPU clusters from single IslandOp into a nested
+// module suitable for being processed as-if it was a V2 module.
+// This is a V1 backward compatibility.
+std::unique_ptr<OpPassBase<ModuleOp>>
+CreateTFExecutorTPUV1IslandOutliningPass();
+
+// Creates a pass to inline calls to the nested TPU module, this reverses the
+// effect of the `TFExecutorTPUV1IslandOutlining` pass above.
+// This is a V1 backward compatibility.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTFExecutorTPUV1IslandInliningPass();
+
+// Creates a pass to prune tf_executor.graph from dead nodes.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass();
 
 // Prunes unreachable operations of a tf_executor.graph operation.
@@ -117,7 +150,7 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateDecomposeResourceOpsPass();
 // variable load operations are all before device computation while resource
 // variable store operations are all after device computation. After this pass,
 // device computation no longer interacts with external resource variables.
-std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass();
+std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceOpLiftingPass();
 
 // Lifts resource operations from tf_device.launch_func ops nested in `op`
 // outside. Returns a failure if there are remaining resource-type values that
@@ -142,6 +175,10 @@ namespace TFTPU {
 // `_tpu_replicate` attribute.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTPUClusterFormationPass();
 
+// Creates a pass that allows TPU program inputs to have layouts determined at
+// run time.
+std::unique_ptr<OpPassBase<FuncOp>> CreateTPUDynamicLayoutPass();
+
 // Creates a pass that remaps and assigns padding map from a
 // `tf_device.launch_func` `padding_map` attribute to its encapsulated function.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
@@ -160,16 +197,15 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUVariableReformattingPass();
 
 // Populates the supplied passmanager with the passes required to run the
-// bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
-void CreateTPUBridge(OpPassManager& pm);
+void CreateTPUBridgePipeline(OpPassManager& pm);
+
+// Populates the supplied passmanager with the passes required to run the
+// bridge in V1 mode.
+void CreateTPUBridgePipelineV1(OpPassManager& pm);
 
 }  // namespace TFTPU
 
 namespace tf_saved_model {
-
-// Creates a pass that uses tf_saved_model dialect linkage information
-// to delete unused func's.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateDeleteUnusedFuncsPass();
 
 // Creates a pass that optimizes tf_saved_model.global_tensor ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass();
@@ -177,6 +213,13 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass();
 // Creates a pass that inlines global tensors as tf.Const ops in the function
 // body.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateInlineGlobalTensorsPass();
+
+// Creates a pass that uses tf_saved_model dialect linkage information
+// to mark function visibility. That is, exported functions are marked with
+// public visibility while the other functions are marked with private
+// visibility.
+std::unique_ptr<OpPassBase<ModuleOp>>
+CreateMarkFunctionVisibilityUsingSavedModelLinkagePass();
 
 }  // namespace tf_saved_model
 

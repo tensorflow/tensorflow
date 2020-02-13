@@ -115,7 +115,8 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
               cancelled_ = true;
             },
             &deregister_fn_));
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,

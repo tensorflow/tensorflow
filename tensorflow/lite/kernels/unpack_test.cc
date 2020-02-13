@@ -142,6 +142,16 @@ TYPED_TEST(UnpackOpTest, ThreeDimensionsOutputs) {
       TestFixture::TENSOR_TYPE);
 }
 
+TYPED_TEST(UnpackOpTest, FiveDimensionsOutputs) {
+  Check<typename TestFixture::TypeToTest>(
+      /*axis=*/2, /*input_shape=*/{2, 2, 2, 2, 1},
+      /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+      /*exp_output_shape=*/{{2, 2, 2, 1}, {2, 2, 2, 1}},
+      /*exp_output_data=*/
+      {{1, 2, 5, 6, 9, 10, 13, 14}, {3, 4, 7, 8, 11, 12, 15, 16}},
+      /*type=*/TestFixture::TENSOR_TYPE);
+}
+  
 TYPED_TEST(UnpackOpTest, VectorToScalar) {
   Check<typename TestFixture::TypeToTest>(
       /*axis=*/0, /*input_shape=*/{5},
@@ -203,6 +213,19 @@ TEST(UnpackOpTestBool, BoolThreeDimensionsOutputs) {
       /*exp_output_shape=*/{{2, 2}, {2, 2}},
       /*exp_output_data=*/
       {{true, true, true, true}, {false, false, false, false}},
+      /*type=*/TensorType_BOOL);
+}
+
+TEST(UnpackOpTest, BoolFiveDimensionsOutputs) {
+  Check<bool>(
+      /*axis=*/2, /*input_shape=*/{2, 2, 2, 2, 1},
+      /*input_data=*/
+      {true, false, true, false, true, false, true, false, true, true, true,
+       true, true, true, true, true},
+      /*exp_output_shape=*/{{2, 2, 2, 1}, {2, 2, 2, 1}},
+      /*exp_output_data=*/
+      {{true, false, true, false, true, true, true, true},
+       {true, false, true, false, true, true, true, true}},
       /*type=*/TensorType_BOOL);
 }
 

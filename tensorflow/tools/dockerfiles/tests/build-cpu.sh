@@ -35,4 +35,4 @@ yes "" | /usr/local/bin/python configure.py
 bazel build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" --config=opt --config=v2 tensorflow/tools/pip_package:build_pip_package
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip_pkg --cpu --nightly_flag
 ls -al /tmp/pip_pkg
-pip --no-cache-dir install --upgrade /tmp/pip_pkg/tensorflow*.whl
+pip --no-cache-dir install --upgrade /tmp/pip_pkg/*.whl

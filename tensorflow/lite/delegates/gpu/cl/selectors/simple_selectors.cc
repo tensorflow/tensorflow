@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,14 +16,15 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/simple_selectors.h"
 
 #include <memory>
+#include <set>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/add.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/apply_mask.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/lstm.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/max_unpooling.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/mean.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/multiply_add.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/pooling.h"
@@ -31,22 +32,16 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/reshapex4.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax1x1.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/strided_slice.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/transpose.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/upsample.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
-                     const BHWC& mask_shape,
-                     std::unique_ptr<GPUOperation>* ptr) {
-  ApplyMask operation = CreateApplyMask(op_def, src_shape, mask_shape);
-  *ptr = absl::make_unique<ApplyMask>(std::move(operation));
-}
 
 void SelectLSTM(const OperationDef& op_def,
                 std::unique_ptr<GPUOperation>* ptr) {
@@ -90,14 +85,10 @@ void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
   *ptr = absl::make_unique<Add>(std::move(operation));
 }
 
-Status SelectUpsampling(const Upsample2DAttributes& attr,
-                        const OperationDef& op_def,
-                        std::unique_ptr<GPUOperation>* ptr) {
-  if (attr.type != UpsamplingType::BILINEAR) {
-    return UnimplementedError("Upsample2D supports only bilinear type.");
-  }
-  Upsample operation = CreateUpsample(op_def, attr);
-  *ptr = absl::make_unique<Upsample>(std::move(operation));
+Status SelectResize(const Resize2DAttributes& attr, const OperationDef& op_def,
+                    std::unique_ptr<GPUOperation>* ptr) {
+  Resize operation = CreateResize(op_def, attr);
+  *ptr = absl::make_unique<Resize>(std::move(operation));
   return OkStatus();
 }
 
@@ -146,7 +137,17 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
   *ptr = absl::make_unique<StridedSlice>(std::move(operation));
 }
 
-Status SelectMultiplyScalar(const MultiplyScalarAttributes& attr,
+Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
+                  std::unique_ptr<GPUOperation>* ptr) {
+  if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
+    return UnimplementedError("Mean operation supports only HW plane");
+  }
+  Mean operation = CreateMean(op_def);
+  *ptr = absl::make_unique<Mean>(std::move(operation));
+  return OkStatus();
+}
+
+Status SelectMultiplyScalar(const MultiplyAttributes& attr,
                             const CreationContext& creation_context,
                             const OperationDef& op_def,
                             std::unique_ptr<GPUOperation>* ptr) {

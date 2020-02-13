@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/python/eager/pywrap_gradient_exclusions.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
@@ -2894,153 +2895,6 @@ tensorflow::DataType MaybeGetDTypeForAttr(const string& attr,
   return tensorflow::DT_INVALID;
 }
 
-// TODO(agarwal): use an automatic mechanism for handling None arguments to
-// gradient functions.
-
-// Returns a pair where the first value of the pair indicates whether or not all
-// outputs are unused. If the first value is false, the second value is a
-// set that identifies which of the output indices are unused.
-bool OpGradientDoesntRequireOutputIndices(
-    const string& op_name,
-    std::pair<bool, tensorflow::gtl::FlatSet<int>>** output) {
-  static tensorflow::gtl::FlatMap<
-      string, std::pair<bool, tensorflow::gtl::FlatSet<int>>>* m =
-      new tensorflow::gtl::FlatMap<
-          string, std::pair<bool, tensorflow::gtl::FlatSet<int>>>({
-          // Ops that don't require any outputs.
-          {"Identity", {true, {}}},
-          {"MatMul", {true, {}}},
-          {"Conv2DBackpropInput", {true, {}}},
-          {"Conv2DBackpropFilter", {true, {}}},
-          {"Conv3D", {true, {}}},
-          {"Conv3DBackpropInputV2", {true, {}}},
-          {"AvgPool3D", {true, {}}},
-          {"AvgPool3DGrad", {true, {}}},
-          {"MaxPool3D", {false, {}}},
-          {"MaxPool3DGrad", {true, {}}},
-          {"MaxPool3DGradGrad", {true, {}}},
-          {"BiasAdd", {true, {}}},
-          {"BiasAddV1", {true, {}}},
-          {"BiasAddGrad", {true, {}}},
-          {"Softplus", {true, {}}},
-          {"SoftplusGrad", {true, {}}},
-          {"Softsign", {true, {}}},
-          {"ReluGrad", {true, {}}},
-          {"LeakyRelu", {true, {}}},
-          {"LeakyReluGrad", {true, {}}},
-          {"Conv2D", {true, {}}},
-          {"DepthwiseConv2dNative", {true, {}}},
-          {"Dilation2D", {true, {}}},
-          {"AvgPool", {true, {}}},
-          {"AvgPoolGrad", {true, {}}},
-          {"BatchNormWithGlobalNormalization", {true, {}}},
-          {"L2Loss", {true, {}}},
-          {"Sum", {true, {}}},
-          {"Prod", {true, {}}},
-          {"SegmentSum", {true, {}}},
-          {"SegmentMean", {true, {}}},
-          {"SparseSegmentSum", {true, {}}},
-          {"SparseSegmentMean", {true, {}}},
-          {"SparseSegmentSqrtN", {true, {}}},
-          {"UnsortedSegmentSum", {true, {}}},
-          {"Abs", {true, {}}},
-          {"Neg", {true, {}}},
-          {"ReciprocalGrad", {true, {}}},
-          {"Square", {true, {}}},
-          {"Expm1", {true, {}}},
-          {"Log", {true, {}}},
-          {"Log1p", {true, {}}},
-          {"TanhGrad", {true, {}}},
-          {"SigmoidGrad", {true, {}}},
-          {"Sign", {true, {}}},
-          {"Sin", {true, {}}},
-          {"Cos", {true, {}}},
-          {"Tan", {true, {}}},
-          {"Add", {true, {}}},
-          {"Sub", {true, {}}},
-          {"Mul", {true, {}}},
-          {"Div", {true, {}}},
-          {"RealDiv", {true, {}}},
-          {"Maximum", {true, {}}},
-          {"Minimum", {true, {}}},
-          {"SquaredDifference", {true, {}}},
-          {"Select", {true, {}}},
-          {"SparseMatMul", {true, {}}},
-          {"BatchMatMul", {true, {}}},
-          {"Complex", {true, {}}},
-          {"Real", {true, {}}},
-          {"Imag", {true, {}}},
-          {"Angle", {true, {}}},
-          {"Conj", {true, {}}},
-          {"Cast", {true, {}}},
-          {"Cross", {true, {}}},
-          {"Cumsum", {true, {}}},
-          {"Cumprod", {true, {}}},
-          {"ReadVariableOp", {true, {}}},
-          {"VarHandleOp", {true, {}}},
-          {"Shape", {true, {}}},
-          {"StridedSlice", {true, {}}},
-          {"Fill", {true, {}}},
-
-          // Ops that don't require a subset of outputs.
-          {"FusedBatchNorm", {false, {0, 1, 2}}},
-      });
-
-  auto it = m->find(op_name);
-
-  if (it == m->end()) return false;
-
-  *output = &it->second;
-  return true;
-}
-
-// Returns a pair where the first value of the pair indicates whether or not all
-// inputs are unused. If the first value is false, the second value is a
-// set that identifies which of the input indices are unused.
-bool OpGradientDoesntRequireInputIndices(
-    const string& op_name,
-    std::pair<bool, tensorflow::gtl::FlatSet<int>>** output) {
-  static tensorflow::gtl::FlatMap<
-      string, std::pair<bool, tensorflow::gtl::FlatSet<int>>>* m =
-      new tensorflow::gtl::FlatMap<
-          string, std::pair<bool, tensorflow::gtl::FlatSet<int>>>({
-          // Ops that don't require any inputs.
-          {"Identity", {true, {}}},
-          {"Softmax", {true, {}}},
-          {"LogSoftmax", {true, {}}},
-          {"BiasAdd", {true, {}}},
-          {"Relu", {true, {}}},
-          {"Relu6", {true, {}}},
-          {"Elu", {true, {}}},
-          {"Selu", {true, {}}},
-          {"SparseSoftmaxCrossEntropyWithLogits", {true, {}}},
-          {"Neg", {true, {}}},
-          {"Inv", {true, {}}},
-          {"Reciprocal", {true, {}}},
-          {"Sqrt", {true, {}}},
-          {"Exp", {true, {}}},
-          {"Tanh", {true, {}}},
-          {"Sigmoid", {true, {}}},
-          {"Real", {true, {}}},
-          {"Imag", {true, {}}},
-          {"Conj", {true, {}}},
-          {"ReadVariableOp", {true, {}}},
-          {"VarHandleOp", {true, {}}},
-          {"Shape", {true, {}}},
-          {"Fill", {true, {}}},
-
-          // Ops that don't require a subset of inputs.
-          {"FusedBatchNorm", {false, {2}}},
-      });
-
-  auto it = m->find(op_name);
-
-  if (it == m->end()) return false;
-
-  *output = &it->second;
-  return true;
-}
-
 PyObject* CopySequenceSettingIndicesToNull(
     PyObject* seq, const tensorflow::gtl::FlatSet<int>& indices) {
   tensorflow::Safe_PyObjectPtr fast_seq(
@@ -3062,7 +2916,8 @@ PyObject* CopySequenceSettingIndicesToNull(
 }
 
 PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
-                         PyObject* results) {
+                         PyObject* results,
+                         PyObject* forward_pass_name_scope = nullptr) {
   std::vector<tensorflow::int64> input_ids = MakeTensorIDList(inputs);
   if (PyErr_Occurred()) return nullptr;
   std::vector<tensorflow::DataType> input_dtypes = MakeTensorDtypeList(inputs);
@@ -3143,16 +2998,21 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
 
   PyObject* num_inputs = PyLong_FromLong(PySequence_Size(inputs));
 
+  if (!forward_pass_name_scope) forward_pass_name_scope = Py_None;
+
   TapeSetRecordOperation(
       op_name, inputs, results, input_ids, input_dtypes,
-      [op_name, attrs, num_inputs, op_inputs, op_outputs]() {
+      [op_name, attrs, num_inputs, op_inputs, op_outputs,
+       forward_pass_name_scope]() {
         Py_INCREF(op_name);
         Py_INCREF(attrs);
         Py_INCREF(num_inputs);
         Py_INCREF(op_inputs);
         Py_INCREF(op_outputs);
+        Py_INCREF(forward_pass_name_scope);
         PyBackwardFunction* function = new PyBackwardFunction(
-            [op_name, attrs, num_inputs, op_inputs, op_outputs](
+            [op_name, attrs, num_inputs, op_inputs, op_outputs,
+             forward_pass_name_scope](
                 PyObject* output_grads,
                 const std::vector<tensorflow::int64>& unneeded_gradients) {
               if (PyErr_Occurred()) {
@@ -3172,8 +3032,9 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
                 skip_input_indices.reset(Py_None);
               }
               tensorflow::Safe_PyObjectPtr callback_args(Py_BuildValue(
-                  "OOOOOOO", op_name, attrs, num_inputs, op_inputs, op_outputs,
-                  output_grads, skip_input_indices.get()));
+                  "OOOOOOOO", op_name, attrs, num_inputs, op_inputs, op_outputs,
+                  output_grads, skip_input_indices.get(),
+                  forward_pass_name_scope));
 
               tensorflow::Safe_PyObjectPtr result(
                   PyObject_CallObject(gradient_function, callback_args.get()));
@@ -3184,13 +3045,14 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
             });
         return function;
       },
-      [op_name, attrs, num_inputs, op_inputs,
-       op_outputs](PyBackwardFunction* backward_function) {
+      [op_name, attrs, num_inputs, op_inputs, op_outputs,
+       forward_pass_name_scope](PyBackwardFunction* backward_function) {
         Py_DECREF(op_name);
         Py_DECREF(attrs);
         Py_DECREF(num_inputs);
         Py_DECREF(op_inputs);
         Py_DECREF(op_outputs);
+        Py_DECREF(forward_pass_name_scope);
 
         delete backward_function;
       },
@@ -3467,7 +3329,7 @@ bool RunCallbacks(
 
 }  // namespace
 
-PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
+PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   tensorflow::profiler::TraceMe activity(
       "TFE_Py_FastPathExecute_C", tensorflow::profiler::TraceMeLevel::kInfo);
   Py_ssize_t args_size = PyTuple_GET_SIZE(args);
@@ -3814,12 +3676,14 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args) {
 }
 
 PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
-                                PyObject* attrs, PyObject* results) {
+                                PyObject* attrs, PyObject* results,
+                                PyObject* forward_pass_name_scope) {
   if (*ThreadTapeIsStopped() || !HasAccumulatorOrTape()) {
     Py_RETURN_NONE;
   }
 
-  return RecordGradient(op_name, inputs, attrs, results);
+  return RecordGradient(op_name, inputs, attrs, results,
+                        forward_pass_name_scope);
 }
 
 namespace {

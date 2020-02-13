@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTPU_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_LIBTPU_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #define TPUDRIVER_CAPI_EXPORT __attribute__((visibility("default")))
@@ -23,6 +24,8 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// ------------------- TPU Driver Support -----------------------
 
 struct TpuDriverFn;
 
@@ -86,9 +89,11 @@ typedef struct TpuSystemInfo {
   int32_t size;
 } TpuSystemInfo;
 
-typedef void(PrototypeTpuDriver_Initialize)(struct TpuDriverFn* driver_fn);
+typedef void(PrototypeTpuDriver_Initialize)(struct TpuDriverFn* driver_fn,
+                                            bool initialize);
 typedef struct TpuDriver*(PrototypeTpuDriver_Open)(const char* worker);
 typedef void(PrototypeTpuDriver_Close)(struct TpuDriver* driver);
+typedef struct TpuStatus*(PrototypeTpuDriver_Reset)(struct TpuDriver* driver);
 
 typedef struct TpuSystemInfo*(PrototypeTpuDriver_QuerySystemInfo)(
     struct TpuDriver* driver);
@@ -119,6 +124,13 @@ typedef struct TpuCompiledProgramHandle*(
                                                int32_t num_replicas,
                                                int32_t eventc,
                                                struct TpuEvent** eventv);
+
+/* Note: We are not responsible for freeing the event within the
+ * TpuCompiledProgramHandle. You have to call FreeEvent separately to ensure
+ * that memory does not leak.
+ */
+typedef void(PrototypeTpuDriver_FreeCompiledProgramHandle)(
+    struct TpuCompiledProgramHandle* handle);
 
 typedef struct TpuLoadedProgramHandle*(PrototypeTpuDriver_LoadProgram)(
     struct TpuDriver* driver, int32_t core_id,
@@ -199,6 +211,7 @@ typedef const char*(PrototypeTpuDriver_Version)();
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Initialize TpuDriver_Initialize;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Open TpuDriver_Open;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Close TpuDriver_Close;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Reset TpuDriver_Reset;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_QuerySystemInfo
     TpuDriver_QuerySystemInfo;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_FreeSystemInfo
@@ -213,6 +226,8 @@ TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_CompileProgram
     TpuDriver_CompileProgram;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_CompileProgramFromText
     TpuDriver_CompileProgramFromText;
+TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_FreeCompiledProgramHandle
+    TpuDriver_FreeCompiledProgramHandle;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_LoadProgram
     TpuDriver_LoadProgram;
 TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_UnloadProgram
@@ -249,6 +264,7 @@ TPUDRIVER_CAPI_EXPORT extern PrototypeTpuDriver_Version TpuDriver_Version;
 struct TpuDriverFn {
   PrototypeTpuDriver_Open* TpuDriver_Open;                          // NOLINT
   PrototypeTpuDriver_Close* TpuDriver_Close;                        // NOLINT
+  PrototypeTpuDriver_Reset* TpuDriver_Reset;                        // NOLINT
   PrototypeTpuDriver_ComputeLinearizedBytesFromShape*
       TpuDriver_ComputeLinearizedBytesFromShape;                    // NOLINT
   PrototypeTpuDriver_QuerySystemInfo* TpuDriver_QuerySystemInfo;    // NOLINT
@@ -258,6 +274,8 @@ struct TpuDriverFn {
   PrototypeTpuDriver_CompileProgram* TpuDriver_CompileProgram;      // NOLINT
   PrototypeTpuDriver_CompileProgramFromText*
       TpuDriver_CompileProgramFromText;                             // NOLINT
+  PrototypeTpuDriver_FreeCompiledProgramHandle*
+      TpuDriver_FreeCompiledProgramHandle;                          // NOLINT
   PrototypeTpuDriver_LoadProgram* TpuDriver_LoadProgram;            // NOLINT
   PrototypeTpuDriver_UnloadProgram* TpuDriver_UnloadProgram;        // NOLINT
   PrototypeTpuDriver_ExecuteProgram* TpuDriver_ExecuteProgram;      // NOLINT

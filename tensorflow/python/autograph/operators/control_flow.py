@@ -60,6 +60,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import traceback
 
 import numpy as np
 
@@ -92,7 +93,6 @@ input_lib = lazy_loader.LazyLoader(
     'input_lib', globals(),
     'tensorflow.python.distribute.input_lib')
 
-LIMIT_PYTHON_ITERATIONS = True
 PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
 WARN_INEFFICIENT_UNROLL = True
 INEFFICIENT_UNROLL_MIN_ITERATIONS = 3000
@@ -110,8 +110,8 @@ def _disallow_undefs_into_loop(*values):
   undefined = tuple(filter(special_values.is_undefined, values))
   if undefined:
     raise ValueError(
-        'TensorFlow requires that the following symbols must be defined'
-        ' before the loop: {}'.format(tuple(s.symbol_name for s in undefined)))
+        '{} must be defined before the loop.'.format(
+            ','.join(s.symbol_name for s in undefined)))
 
   for value in values:
     if special_values.is_undefined_return(value):
@@ -188,7 +188,7 @@ def _verify_single_loop_var(
                                               shape_invariant))
       if not _is_subshape(exit_shape, shape_invariant):
         raise ValueError(
-            '"{}" has shape {} after the loop, which does not conform with'
+            '"{}" has shape {} after one iteration, which does not conform with'
             ' the shape invariant {}.'.format(
                 name, exit_shape, shape_invariant))
 
@@ -368,6 +368,19 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
 def _py_for_stmt(iter_, extra_test, body, get_state, set_state):
   """Overload of for_stmt that executes a Python for loop."""
   del get_state, set_state
+
+  if __debug__:
+    checker = _PythonLoopChecker()
+    before_iteration = checker.before_iteration
+    after_iteration = checker.after_iteration
+    before_iteration()
+
+    original_body = body
+    def protected_body(protected_iter):
+      original_body(protected_iter)
+      after_iteration()
+      before_iteration()
+    body = protected_body
 
   if extra_test is not None:
     if extra_test():
@@ -734,8 +747,15 @@ def while_stmt(test, body, get_state, set_state, symbol_names, opts):
 class _PythonLoopChecker(object):
   """Verifies Python loops for TF-specific limits."""
 
+  __slots__ = (
+      'iterations',
+      'check_inefficient_unroll',
+      'check_op_count_after_iteration',
+      'ops_before_iteration',
+      )
+
   def __init__(self):
-    self.iterations = 0
+    self.iterations = 1
     self.check_inefficient_unroll = WARN_INEFFICIENT_UNROLL
 
     # Triggered when we decided to test the op counts.
@@ -745,14 +765,15 @@ class _PythonLoopChecker(object):
     return ops.get_default_graph().get_operations()
 
   def _check_unroll_limits(self):
-    if LIMIT_PYTHON_ITERATIONS and self.iterations > PYTHON_MAX_ITERATIONS:
+    if self.iterations > PYTHON_MAX_ITERATIONS:
       raise ValueError('iteration limit exceeded')
 
   def _stop_checking_inefficient_unroll(self):
     self.check_inefficient_unroll = False
+    self.check_op_count_after_iteration = False
     self.ops_before_iteration = None
 
-  def _verify_ineffcient_unroll(self):
+  def _verify_inefficient_unroll(self):
     """Checks for possibly-inefficient creation of ops in a Python loop."""
     assert self.ops_before_iteration is not None
     ops_after_iteration = self._get_ops()
@@ -762,13 +783,17 @@ class _PythonLoopChecker(object):
     if len(new_ops) < INEFFICIENT_UNROLL_MIN_OPS:
       return False
 
-    # TODO(mdan): Add location information.
     ag_logging.warn(
-        'TensorFlow ops are being created in a Python loop with large number'
-        ' of iterations. This can lead to slow startup. Did you mean to use a'
-        ' TensorFlow loop? For example, `while True:` is a Python loop, and'
-        ' `while tf.constant(True):` is a TensorFlow loop. The following'
-        ' ops were created after iteration %s: %s', self.iterations, new_ops)
+        'Large unrolled loop detected. Did you mean to use a TF loop?'
+        ' The following ops were created after iteration %s: %s'
+        '\nSee'
+        ' https://github.com/tensorflow/tensorflow/blob/master/'
+        'tensorflow/python/autograph/g3doc/reference/common_errors.md'
+        '#warning-large-unrolled-loop-detected'
+        '\n'
+        'Location:'
+        '\n%s'
+        '', self.iterations, new_ops, '\n'.join(traceback.format_stack()))
     return True
 
   def before_iteration(self):
@@ -784,8 +809,8 @@ class _PythonLoopChecker(object):
 
     self._check_unroll_limits()
 
-    if self.check_inefficient_unroll and self.check_op_count_after_iteration:
-      did_warn = self._verify_ineffcient_unroll()
+    if self.check_op_count_after_iteration:
+      did_warn = self._verify_inefficient_unroll()
       if did_warn:
         self._stop_checking_inefficient_unroll()  # Only warn once.
       elif self.iterations > INEFFICIENT_UNROLL_MIN_ITERATIONS + 3:
@@ -799,13 +824,19 @@ def _py_while_stmt(test, body, get_state, set_state, opts):
 
   if __debug__:
     checker = _PythonLoopChecker()
+    before_iteration = checker.before_iteration
+    after_iteration = checker.after_iteration
+    before_iteration()
+
+    original_body = body
+    def protected_body():
+      original_body()
+      after_iteration()
+      before_iteration()
+    body = protected_body
 
   while test():
-    if __debug__:
-      checker.before_iteration()
     body()
-    if __debug__:
-      checker.after_iteration()
 
 
 def _shape_invariants_mapping_to_positional_list(mapping, keys):

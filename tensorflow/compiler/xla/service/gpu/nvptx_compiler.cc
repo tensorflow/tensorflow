@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <fstream>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
@@ -247,8 +248,8 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
 //
 // Only prints a warning the first time it's called.
 void WarnIfBadDriverJITVersion() {
-  static std::once_flag run_once;
-  std::call_once(run_once, [] {
+  static absl::once_flag run_once;
+  absl::call_once(run_once, [] {
     auto version_or_status = se::cuda::Diagnostician::FindKernelDriverVersion();
     if (!version_or_status.ok()) {
       LOG(WARNING) << "Couldn't read CUDA driver version.";
@@ -283,7 +284,7 @@ void WarnIfBadDriverJITVersion() {
 bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
   // If the xla_gpu_ptx_file options is set, be explicit when a file is used
   // and warn when a file is not used to ease catching typo in filename.
-  std::string prefix = xla::FilenameFor(*module, *ptx);
+  std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
   for (const string filename :
        module->config().debug_options().xla_gpu_ptx_file()) {
@@ -373,7 +374,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
   }
   // Write PTX to IR dump directory, if IR dumping was requested.
   if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "ptx", ptx);
+    DumpToFileInDirOrStdout(*module, "", "ptx", ptx);
   }
 
   std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(

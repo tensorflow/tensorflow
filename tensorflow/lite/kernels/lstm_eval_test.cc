@@ -184,10 +184,10 @@ class QuantizedLstmParam {
     integer_lstm_param_.quantized_cell_clip = 20480;
     integer_lstm_param_.quantized_proj_clip = 0;
     integer_lstm_param_.cell_scale = -11;
-    integer_lstm_param_.inv_large_value[0] = 1;
-    integer_lstm_param_.inv_large_value[1] = 2;
-    integer_lstm_param_.inv_large_value[2] = 2;
-    integer_lstm_param_.inv_large_value[3] = 1;
+    integer_lstm_param_.input_variance_guard = 1;
+    integer_lstm_param_.forget_variance_guard = 2;
+    integer_lstm_param_.cell_variance_guard = 2;
+    integer_lstm_param_.output_variance_guard = 1;
     integer_lstm_param_.hidden_zp = 0;
     integer_lstm_param_.input_to_forget_effective_bias.reset(
         new int32_t[n_cell_]);
@@ -574,7 +574,7 @@ void TestOneFullyQuantizedLSTM() {
   auto output = one_parameter.GetOutput();
   auto cell = one_parameter.GetCell();
   auto param = one_parameter.GetQuantParam();
-  ops::builtin::lstm_eval::EvalInteger(
+  ops::builtin::lstm_eval::EvalInteger8x8_16(
       one_parameter.GetInput(), one_parameter.Geti2i(), one_parameter.Geti2f(),
       one_parameter.Geti2c(), one_parameter.Geti2o(), one_parameter.Getr2i(),
       one_parameter.Getr2f(), one_parameter.Getr2c(), one_parameter.Getr2o(),

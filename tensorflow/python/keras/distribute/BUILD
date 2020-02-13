@@ -213,7 +213,7 @@ distribute_py_test(
     srcs = ["keras_image_model_correctness_test.py"],
     full_precision = True,
     main = "keras_image_model_correctness_test.py",
-    shard_count = 8,
+    shard_count = 16,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
@@ -374,9 +374,11 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "multi_worker_callback_tf2_test",
     srcs = ["multi_worker_callback_tf2_test.py"],
+    python_version = "PY3",
+    shard_count = 10,
     deps = [
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",

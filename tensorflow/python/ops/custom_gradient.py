@@ -17,7 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape as tape_lib
@@ -66,7 +66,7 @@ def copy_handle_data(source_t, target_t):
         and handle_data.is_set
         and handle_data.shape_and_type):
       # pylint: disable=protected-access
-      pywrap_tensorflow.SetHandleShapeAndType(target_t.graph._c_graph,
+      pywrap_tf_session.SetHandleShapeAndType(target_t.graph._c_graph,
                                               target_t._as_tf_output(),
                                               handle_data.SerializeToString())
       # pylint: enable=protected-access
@@ -76,10 +76,12 @@ def copy_handle_data(source_t, target_t):
       ranks = [len(s.dim) if not s.unknown_rank else -1 for s in shapes]
       shapes = [[d.size for d in s.dim]  # pylint: disable=g-complex-comprehension
                 if not s.unknown_rank else None for s in shapes]
-      pywrap_tensorflow.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+      pywrap_tf_session.TF_GraphSetOutputHandleShapesAndTypes_wrapper(
           target_t._op._graph._c_graph,  # pylint: disable=protected-access
           target_t._as_tf_output(),  # pylint: disable=protected-access
-          shapes, ranks, types)
+          shapes,
+          ranks,
+          types)
 
 
 @tf_export("custom_gradient")
@@ -309,14 +311,16 @@ def _graph_mode_decorator(f, args, kwargs):
   # Checking global and local variables attempts to ensure that no non-resource
   # Variables are added to the graph.
   current_var_scope = variable_scope.get_variable_scope()
-  before_vars = set(
-      [v.experimental_ref() for v in current_var_scope.global_variables() +
-       current_var_scope.local_variables()])
+  before_vars = set([
+      v.ref() for v in current_var_scope.global_variables() +
+      current_var_scope.local_variables()
+  ])
   with backprop.GradientTape() as tape:
     result, grad_fn = f(*args)
-  after_vars = set(
-      [v.experimental_ref() for v in current_var_scope.global_variables() +
-       current_var_scope.local_variables()])
+  after_vars = set([
+      v.ref() for v in current_var_scope.global_variables() +
+      current_var_scope.local_variables()
+  ])
   new_vars = after_vars - before_vars
   new_vars_list = [v.deref() for v in new_vars]
   for v in new_vars_list:
@@ -328,11 +332,10 @@ def _graph_mode_decorator(f, args, kwargs):
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   inputs = args
-  variables_in_tape = frozenset([
-      v.experimental_ref() for v in tape.watched_variables()
-  ]) - frozenset(v.experimental_ref() for v in inputs)
+  variables_in_tape = frozenset([v.ref() for v in tape.watched_variables()
+                                ]) - frozenset(v.ref() for v in inputs)
   variables_in_subgraph = frozenset([
-      v.experimental_ref()
+      v.ref()
       for v in get_dependent_variables(input_ops=inputs, output_ops=result)
   ])
   variables = list(
@@ -409,7 +412,7 @@ def _eager_mode_decorator(f, args, kwargs):
   # variables used that are *not* part of the inputs.
   variables = [
       v.deref()  # pylint: disable=g-complex-comprehension
-      for v in set(v.experimental_ref() for v in tape.watched_variables())
+      for v in set(v.ref() for v in tape.watched_variables())
       if all(v.deref() is not i for i in all_inputs)
   ]
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
@@ -477,6 +480,8 @@ def recompute_grad(f):
   @custom_gradient
   def inner(*args, **kwargs):
     """Inner function closure for calculating gradients."""
+    current_var_scope = variable_scope.get_variable_scope()
+
     result = f(*args, **kwargs)
 
     def grad(*dresult, **grad_kwargs):
@@ -488,7 +493,8 @@ def recompute_grad(f):
         if variables is not None:
           t.watch(variables)
         with ops.control_dependencies(dresult):
-          result = f(*id_args, **kwargs)
+          with variable_scope.variable_scope(current_var_scope):
+            result = f(*id_args, **kwargs)
       kw_vars = []
       if variables is not None:
         kw_vars = list(variables)

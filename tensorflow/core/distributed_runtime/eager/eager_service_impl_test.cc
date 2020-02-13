@@ -685,7 +685,7 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
       context_id, RemoteTensorHandleInternal(2, 0), &tensor_handle));
   TF_ASSERT_OK(tensor_handle->Tensor(&t));
 
-  Device* device = tensor_handle->device();
+  Device* device = absl::get<Device*>(tensor_handle->device());
   EXPECT_EQ(device, nullptr);
 
   auto actual = t->flat<float>();

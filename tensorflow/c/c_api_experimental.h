@@ -188,31 +188,6 @@ TF_CAPI_EXPORT extern void TFE_EnqueueVariantTensor(TF_Session* session,
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
     TF_Session* session, int tensor_id, TF_Status* status);
 
-// Prints `handle` in a human readable format to standard output for debugging.
-TF_CAPI_EXPORT extern void TFE_TensorHandlePrintDebugString(
-    TFE_TensorHandle* handle);
-
-TF_CAPI_EXPORT extern void TFE_OpPrintDebugString(TFE_Op* op);
-
-typedef struct TFE_ExecuteOpNotification TFE_ExecuteOpNotification;
-
-// Allows invoking a kernel asynchronously, and explicitly returns a
-// notification that can be waited upon. This always executes the kernel in a
-// new thread.
-// 1. `retvals` and `num_retvals` can only be consumed after
-// `TFE_ExecuteOp` returns successfully. They shouldn't be used
-// if the return is unsuccessful
-// 2. These new APIs cannot be used together with the TFE context level async
-// support.
-TF_CAPI_EXPORT extern TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(
-    TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
-    TF_Status* status);
-
-// Waits to complete the op execution, and cleans up the notification.
-// Errors reported by op execution are set in `status`.
-TF_CAPI_EXPORT extern void TFE_ExecuteOpNotificationWaitAndDelete(
-    TFE_ExecuteOpNotification* notification, TF_Status* status);
-
 TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
                                                       const char* errMsg);
 
@@ -295,20 +270,6 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromScalar(
 TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    const void* proto,
                                                    size_t proto_len,
-                                                   TF_Status* status);
-
-// Runs operations necessary to initialize TPU devices associated with `job`
-// (e.g. "localhost" for local TPUs), returning a serialized TopologyProto (same
-// result as the "ConfigureDistributedTPU" operation) if TPUs were
-// available. Sets a NotFound status if no TPUs were found associated with
-// the job specified.
-//
-// TFE_InitializeTPUSystem should only be run once for a given TPU system;
-// running it multiple times will invalidate tensors/variables placed on the
-// affected TPUs.
-TF_CAPI_EXPORT extern void TFE_InitializeTPUSystem(TFE_Context* ctx,
-                                                   const char* job,
-                                                   TF_Buffer* tpu_topology,
                                                    TF_Status* status);
 
 // Information about the shape of a Tensor and its type.

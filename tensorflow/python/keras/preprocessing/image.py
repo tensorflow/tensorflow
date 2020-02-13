@@ -48,13 +48,24 @@ load_img = image.load_img
 def array_to_img(x, data_format=None, scale=True, dtype=None):
   """Converts a 3D Numpy array to a PIL Image instance.
 
+  Usage:
+
+  >>> img = np.random.random(size=(100, 100, 3))
+  >>> try:
+  ...   from PIL import Image
+  ...   pil_img = tf.keras.preprocessing.image.array_to_img(img)
+  ... except ImportError:
+  ...   pass
+
   Arguments:
       x: Input Numpy array.
-      data_format: Image data format.
-          either "channels_first" or "channels_last".
-      scale: Whether to rescale image values
-          to be within `[0, 255]`.
-      dtype: Dtype to use.
+      data_format: Image data format, can be either "channels_first" or
+        "channels_last". Defaults to `None`, which gets data format from Keras
+        backend.
+      scale: Whether to rescale image values to be within `[0, 255]`. Defaults
+        to `True`.
+      dtype: Dtype to use. Default to `None`, which gets float type from Keras
+        backend.
 
   Returns:
       A PIL Image instance.

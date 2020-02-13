@@ -519,7 +519,7 @@ def _build_recursive_hd_gather(input_tensors, devices, red_op):
 
 
 def _build_recursive_hd_scatter(input_tensors, devices):
-  """Construct the scatter phase of recursive halving-doublng all-reduce.
+  """Construct the scatter phase of recursive halving-doubling all-reduce.
 
   Args:
     input_tensors: list of T `tf.Tensor` that are fully-reduced shards.

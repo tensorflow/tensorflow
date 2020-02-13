@@ -818,7 +818,7 @@ def get_next_as_optional(iterator):
   will have no value.
 
   Args:
-    iterator: A `tf.compat.v1.data.Iterator` object.
+    iterator: An iterator for an instance of `tf.data.Dataset`.
 
   Returns:
     An `Optional` object representing the next value from the iterator (if it

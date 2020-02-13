@@ -856,6 +856,7 @@ class DistributedIteratorMultiWorkerTest(
           required_gpus=0))
   def testUnevenDatasetBatchesBetweenGraph(self, input_type, api_type,
                                            iteration_type, strategy_cls):
+    self.skipTest("broken test to be fixed")
     if api_type == "wrap_into_dataset" and input_type == "input_fn":
       self.skipTest("unsupported test combination.")
     if tf2.enabled():

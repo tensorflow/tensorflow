@@ -55,6 +55,10 @@ message TPUCompileMetadataProto {
 
     // Whether this argument is placed on fast memory or not.
     bool fast_mem = 7;
+
+    // Whether to let XLA to decide the layout during compilation, as opposed to
+    // using a fixed layout determined by the shape.
+    bool unrestricted_layout = 9;
   }
   repeated Arg args = 1;
 

@@ -936,7 +936,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   # NOTE: assert_no_new_pyobjects_executing_eagerly fails flakily on this
   # test... could be something wrong with the test decorator, or some sort of
-  # nondeterminstic caching.
+  # nondeterministic caching.
   def testMirroredVariableWatched(self):
 
     def _replicated(input_tangent):

@@ -42,7 +42,6 @@ tf_proto_library(
     cc_api_version = 2,
     cc_grpc_version = 1,
     protodeps = [
-        ":op_profile_proto",
         ":profiler_service_monitor_result_proto",
     ] + tf_additional_all_protos(),
     use_grpc_namespace = True,
@@ -71,6 +70,18 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
     visibility = [":friends"],
+)
+
+cc_library(
+    name = "profiler_impl",
+    visibility = ["//tensorflow:__pkg__"],
+    deps = [
+        "//tensorflow/core/profiler/internal:annotation_stack_impl",
+        "//tensorflow/core/profiler/internal:profiler_factory_impl",
+        "//tensorflow/core/profiler/internal:traceme_recorder_impl",
+        "//tensorflow/core/profiler/lib:profiler_session_impl",
+    ],
+    alwayslink = True,
 )
 
 # Libraries and binaries of TensorFlow profiler 1.x.

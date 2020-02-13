@@ -377,8 +377,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* weights_time =
       GetInput(context, node, kWeightsTimeTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
-  TfLiteTensor* activation_state =
-      &context->tensors[node->inputs->data[kInputActivationStateTensor]];
+  const TfLiteTensor* activation_state =
+      GetInput(context, node, kInputActivationStateTensor);
 
   // Define input constants based on input tensor definition above:
   const int rank = params->rank;
@@ -491,7 +491,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetInput(context, node, kWeightsTimeTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* activation_state =
-      &context->tensors[node->inputs->data[kInputActivationStateTensor]];
+      GetVariableInput(context, node, kInputActivationStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   const bool is_full_integer = input->type == kTfLiteInt8;
@@ -526,12 +526,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
             output->quantization.params);
         const double effective_scale_1 =
-            input_params->scale->data[0] *
-            weights_feature_params->scale->data[0] /
-            state_params->scale->data[0];
-        const double effective_scale_2 = state_params->scale->data[0] *
-                                         weight_time_params->scale->data[0] /
-                                         output_params->scale->data[0];
+            static_cast<double>(input_params->scale->data[0] *
+                                weights_feature_params->scale->data[0] /
+                                state_params->scale->data[0]);
+        const double effective_scale_2 = static_cast<double>(
+            state_params->scale->data[0] * weight_time_params->scale->data[0] /
+            output_params->scale->data[0]);
         QuantizeMultiplier(effective_scale_1, &op_data.effective_scale_1_a,
                            &op_data.effective_scale_1_b);
         QuantizeMultiplier(effective_scale_2, &op_data.effective_scale_2_a,
@@ -550,8 +550,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     default:
-      context->ReportError(context, "Type %s not currently supported.",
-                           TfLiteTypeGetName(weights_feature->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
+                         TfLiteTypeGetName(weights_feature->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -560,8 +560,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace svdf
 
 TfLiteRegistration* Register_SVDF() {
-  static TfLiteRegistration r = {svdf::Init, svdf::Free, svdf::Prepare,
-                                 svdf::Eval};
+  static TfLiteRegistration r = {};
+  r.init = svdf::Init;
+  r.free = svdf::Free;
+  r.prepare = svdf::Prepare;
+  r.invoke = svdf::Eval;
   return &r;
 }
 
