@@ -1915,7 +1915,6 @@ py_library(
         ":errors",
         ":framework_for_generated_wrappers",
         ":gpu_util",
-        ":memory_checker",
         ":platform",
         ":platform_test",
         ":pywrap_tf_session",
@@ -2551,10 +2550,15 @@ tf_py_test(
     shard_count = 8,
     tags = [
         "no_oss_py2",
+        "no_pip",
         "no_windows",
     ],
     deps = [
         ":framework_test_lib",
+        # TODO(kkb): Find more appropriate place to add `memory_checker` as deps
+        # Adding directly to `framework_test_lib` caused a Colab binary size
+        # regression b/149433910 .
+        ":memory_checker",
     ],
 )
 
