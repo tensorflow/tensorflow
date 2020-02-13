@@ -35,7 +35,6 @@ class ProfilerServer {
 
  private:
   std::unique_ptr<::grpc::Server> server_;
-  std::unique_ptr<Thread> server_thread_;
 };
 
 }  // namespace tensorflow
