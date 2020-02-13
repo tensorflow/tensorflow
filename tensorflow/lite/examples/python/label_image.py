@@ -61,7 +61,9 @@ if __name__ == '__main__':
       help='number of threads')
   args = parser.parse_args()
 
-  interpreter = tf.lite.Interpreter(model_path=args.model_file)
+  interpreter = tf.lite.Interpreter(
+      model_path=args.model_file,
+      num_threads=int(args.num_threads))
   interpreter.allocate_tensors()
 
   input_details = interpreter.get_input_details()
@@ -81,7 +83,6 @@ if __name__ == '__main__':
   if floating_model:
     input_data = (np.float32(input_data) - args.input_mean) / args.input_std
 
-  interpreter.set_num_threads(int(args.num_threads))
   interpreter.set_tensor(input_details[0]['index'], input_data)
 
   start_time = time.time()

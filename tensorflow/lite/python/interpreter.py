@@ -183,7 +183,8 @@ class Interpreter(object):
   def __init__(self,
                model_path=None,
                model_content=None,
-               experimental_delegates=None):
+               experimental_delegates=None,
+               num_threads=1):
     """Constructor.
 
     Args:
@@ -192,6 +193,9 @@ class Interpreter(object):
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
         objects returned by lite.load_delegate().
+      num_threads: Set the number of threads used by TFLite kernels.
+        If not set, kernels are running single-threaded. Note that currently,
+        only some kernels, such as conv, are multithreaded.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -227,6 +231,8 @@ class Interpreter(object):
       for delegate in self._delegates:
         self._interpreter.ModifyGraphWithDelegate(
             delegate._get_native_delegate_pointer())  # pylint: disable=protected-access
+
+    self._interpreter.SetNumThreads(num_threads)
 
   def __del__(self):
     # Must make sure the interpreter is destroyed before things that
@@ -509,17 +515,6 @@ class Interpreter(object):
 
   def reset_all_variables(self):
     return self._interpreter.ResetVariableTensors()
-
-  def set_num_threads(self, i):
-    """Set number of threads used by TFLite kernels.
-
-    If not set, kernels are running single-threaded. Note that currently,
-    only some kernels, such as conv, are multithreaded.
-
-    Args:
-      i: number of threads.
-    """
-    return self._interpreter.SetNumThreads(i)
 
 class InterpreterWithCustomOps(Interpreter):
   """Interpreter interface for TensorFlow Lite Models that accepts custom ops.
