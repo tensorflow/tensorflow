@@ -178,7 +178,7 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
     search_hints: Bool. Include meta-data search hints at the top of each file.
   """
   # The custom page will be used for raw_ops.md not the one generated above.
-  doc_controls.custom_page_content(tf.raw_ops, generate_raw_ops_doc())
+  doc_controls.set_custom_page_content(tf.raw_ops, generate_raw_ops_doc())
 
   _hide_layer_and_module_methods()
 
