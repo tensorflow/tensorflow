@@ -1780,8 +1780,12 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   }
 
   TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
-      *module, [this](const Shape& shape) {
-        return target_metadata_->ShapeSize(shape);
+      *module, [this](const Shape& shape) -> int64 {
+        if (target_metadata_->IsLayoutSensitive()) {
+          return target_metadata_->ShapeSize(shape);
+        } else {
+          return 0;
+        }
       }));
 
   TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
