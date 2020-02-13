@@ -51,6 +51,13 @@ class HashingTest(keras_parameterized.TestCase):
     # Assert equal for hashed output that should be true on all platforms.
     self.assertAllClose([[0], [0], [1], [0], [0]], output)
 
+  def test_hash_dense_int_input_farmhash(self):
+    layer = hashing.Hashing(num_bins=3)
+    inp = np.asarray([[0], [1], [2], [3], [4]])
+    output = layer(inp)
+    # Assert equal for hashed output that should be true on all platforms.
+    self.assertAllClose([[1], [0], [1], [0], [2]], output)
+
   def test_hash_dense_input_siphash(self):
     layer = hashing.Hashing(num_bins=2, salt=[133, 137])
     inp = np.asarray([['omar'], ['stringer'], ['marlo'], ['wire'],
@@ -65,6 +72,13 @@ class HashingTest(keras_parameterized.TestCase):
     # Note the result is different from (133, 137).
     self.assertAllClose([[1], [0], [1], [0], [1]], output_2)
 
+  def test_hash_dense_int_input_siphash(self):
+    layer = hashing.Hashing(num_bins=3, salt=[133, 137])
+    inp = np.asarray([[0], [1], [2], [3], [4]])
+    output = layer(inp)
+    # Assert equal for hashed output that should be true on all platforms.
+    self.assertAllClose([[1], [1], [2], [0], [1]], output)
+
   def test_hash_sparse_input_farmhash(self):
     layer = hashing.Hashing(num_bins=2)
     indices = [[0, 0], [1, 0], [1, 1], [2, 0], [2, 1]]
@@ -75,6 +89,15 @@ class HashingTest(keras_parameterized.TestCase):
     output = layer(inp)
     self.assertAllClose(indices, output.indices)
     self.assertAllClose([0, 0, 1, 0, 0], output.values)
+
+  def test_hash_sparse_int_input_farmhash(self):
+    layer = hashing.Hashing(num_bins=3)
+    indices = [[0, 0], [1, 0], [1, 1], [2, 0], [2, 1]]
+    inp = sparse_tensor.SparseTensor(
+        indices=indices, values=[0, 1, 2, 3, 4], dense_shape=[3, 2])
+    output = layer(inp)
+    self.assertAllClose(indices, output.indices)
+    self.assertAllClose([1, 0, 1, 0, 2], output.values)
 
   def test_hash_sparse_input_siphash(self):
     layer = hashing.Hashing(num_bins=2, salt=[133, 137])
@@ -93,6 +116,15 @@ class HashingTest(keras_parameterized.TestCase):
     # The result should be same with test_hash_dense_input_siphash.
     self.assertAllClose([1, 0, 1, 0, 1], output.values)
 
+  def test_hash_sparse_int_input_siphash(self):
+    layer = hashing.Hashing(num_bins=3, salt=[133, 137])
+    indices = [[0, 0], [1, 0], [1, 1], [2, 0], [2, 1]]
+    inp = sparse_tensor.SparseTensor(
+        indices=indices, values=[0, 1, 2, 3, 4], dense_shape=[3, 2])
+    output = layer(inp)
+    self.assertAllClose(indices, output.indices)
+    self.assertAllClose([1, 1, 2, 0, 1], output.values)
+
   def test_hash_ragged_string_input_farmhash(self):
     layer = hashing.Hashing(num_bins=2)
     inp_data = ragged_factory_ops.constant(
@@ -104,6 +136,20 @@ class HashingTest(keras_parameterized.TestCase):
     self.assertAllEqual(expected_output, out_data)
 
     inp_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    out_t = layer(inp_t)
+    model = training.Model(inputs=inp_t, outputs=out_t)
+    self.assertAllClose(out_data, model.predict(inp_data))
+
+  def test_hash_ragged_int_input_farmhash(self):
+    layer = hashing.Hashing(num_bins=3)
+    inp_data = ragged_factory_ops.constant([[0, 1, 3, 4], [2, 1, 0]],
+                                           dtype=dtypes.int64)
+    out_data = layer(inp_data)
+    # Same hashed output as test_hash_sparse_input_farmhash
+    expected_output = [[1, 0, 0, 2], [1, 0, 1]]
+    self.assertAllEqual(expected_output, out_data)
+
+    inp_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.int64)
     out_t = layer(inp_t)
     model = training.Model(inputs=inp_t, outputs=out_t)
     self.assertAllClose(out_data, model.predict(inp_data))
@@ -129,6 +175,20 @@ class HashingTest(keras_parameterized.TestCase):
     self.assertAllEqual(expected_output, out_data)
 
     out_t = layer_2(inp_t)
+    model = training.Model(inputs=inp_t, outputs=out_t)
+    self.assertAllClose(out_data, model.predict(inp_data))
+
+  def test_hash_ragged_int_input_siphash(self):
+    layer = hashing.Hashing(num_bins=3, salt=[133, 137])
+    inp_data = ragged_factory_ops.constant([[0, 1, 3, 4], [2, 1, 0]],
+                                           dtype=dtypes.int64)
+    out_data = layer(inp_data)
+    # Same hashed output as test_hash_sparse_input_farmhash
+    expected_output = [[1, 1, 0, 1], [2, 1, 1]]
+    self.assertAllEqual(expected_output, out_data)
+
+    inp_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.int64)
+    out_t = layer(inp_t)
     model = training.Model(inputs=inp_t, outputs=out_t)
     self.assertAllClose(out_data, model.predict(inp_data))
 

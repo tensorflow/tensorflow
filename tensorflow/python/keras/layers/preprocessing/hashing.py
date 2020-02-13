@@ -93,7 +93,15 @@ class Hashing(Layer):
     self._supports_ragged_inputs = True
 
   def call(self, inputs):
-    # TODO(tanzheny): Add int support.
+    # Converts integer inputs to string.
+    if inputs.dtype.is_integer:
+      if isinstance(inputs, sparse_tensor.SparseTensor):
+        inputs = sparse_tensor.SparseTensor(
+            indices=inputs.indices,
+            values=string_ops.as_string(inputs.values),
+            dense_shape=inputs.dense_shape)
+      else:
+        inputs = string_ops.as_string(inputs)
     str_to_hash_bucket = self._get_string_to_hash_bucket_fn()
     if ragged_tensor.is_ragged(inputs):
       return ragged_functional_ops.map_flat_values(
