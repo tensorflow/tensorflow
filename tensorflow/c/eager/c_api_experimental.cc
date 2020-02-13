@@ -47,31 +47,12 @@ void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
           ->Handle());
 }
 
-TFE_Profiler* TFE_NewProfiler() { return new TFE_Profiler(); }
-
-bool TFE_ProfilerIsOk(TFE_Profiler* profiler) {
-  return profiler->profiler->Status().ok();
-}
-
-void TFE_DeleteProfiler(TFE_Profiler* profiler) { delete profiler; }
-
-void TFE_ProfilerSerializeToString(TFE_Profiler* profiler, TF_Buffer* buf,
-                                   TF_Status* status) {
-  string content;
-  status->status = profiler->profiler->SerializeToString(&content);
-  void* data = tensorflow::port::Malloc(content.length());
-  content.copy(static_cast<char*>(data), content.length(), 0);
-  buf->data = data;
-  buf->length = content.length();
-  buf->data_deallocator = [](void* data, size_t length) {
-    tensorflow::port::Free(data);
-  };
-}
-
 void TFE_StartProfilerServer(int port) {
-  // Release child thread intentionally. The child thread can be terminated by
-  // terminating the main thread.
-  tensorflow::StartProfilerServer(port).release();
+  auto profiler_server = absl::make_unique<tensorflow::ProfilerServer>();
+  profiler_server->StartProfilerServer(port);
+  // Release child server thread intentionally. The child thread can be
+  // terminated when the main program exits.
+  profiler_server.release();
 }
 
 void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
@@ -631,4 +612,10 @@ void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
+}
+
+void TFE_TensorHandleEnableImplicitMirroring(TFE_TensorHandle* h,
+                                             TF_Status* status) {
+  h->handle->EnableImplicitMirroring();
+  status->status = tensorflow::Status::OK();
 }

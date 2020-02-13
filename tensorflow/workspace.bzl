@@ -144,11 +144,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "8afdbfd2e71c14dc3251b55e0cd0c799079bb747ac0fe08462d8d009c912cb42",
-        strip_prefix = "XNNPACK-7278a95e3cfae6eac73f363c4fda5db53e1b2a87",
+        sha256 = "2894f92427a8b1314a3db5ac7087feb9097144f29ed726c885c1a87be3b08968",
+        strip_prefix = "XNNPACK-d6f77a69c28d9c99ae5226e3327ec87e1994e81d",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/7278a95e3cfae6eac73f363c4fda5db53e1b2a87.zip",
-            "https://github.com/google/XNNPACK/archive/7278a95e3cfae6eac73f363c4fda5db53e1b2a87.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/d6f77a69c28d9c99ae5226e3327ec87e1994e81d.zip",
+            "https://github.com/google/XNNPACK/archive/d6f77a69c28d9c99ae5226e3327ec87e1994e81d.zip",
         ],
     )
 
@@ -595,8 +595,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "7b6e49a2f022288f010bc600323f1d0aafca6241"
-    LLVM_SHA256 = "2a87423459f1f28421b81c713baf30dd3361c6cd1f0ca35d6479fb5609e2cf97"
+    LLVM_COMMIT = "a349c09162a8260bdf691c4f7ab72a16c33975f6"
+    LLVM_SHA256 = "1c8a48ef5b7bfce1655177e12aba20ed3232eb94801571886ffc3500cf6b63b1"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -901,6 +901,15 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_cc/archive/01d4a48911d5e7591ecb1c06d3b8af47fe872371.zip",
             "https://github.com/bazelbuild/rules_cc/archive/01d4a48911d5e7591ecb1c06d3b8af47fe872371.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "rules_python",
+        sha256 = "aa96a691d3a8177f3215b14b0edc9641787abaaa30363a080165d06ab65e1161",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_python/releases/download/0.0.1/rules_python-0.0.1.tar.gz",
+            "https://github.com/bazelbuild/rules_python/releases/download/0.0.1/rules_python-0.0.1.tar.gz",
         ],
     )
 

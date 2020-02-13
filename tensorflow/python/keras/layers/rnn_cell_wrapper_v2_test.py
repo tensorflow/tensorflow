@@ -222,7 +222,7 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
     reconstructed_wrapper = wrapper_cls.from_config(config)
     self.assertFalse(reconstructed_wrapper._dropout_state_filter(None))
 
-  def testDroputWrapperWithKerasLSTMCell(self):
+  def testDropoutWrapperWithKerasLSTMCell(self):
     wrapper_cls = rnn_cell_wrapper_v2.DropoutWrapper
     cell = layers.LSTMCell(10)
 

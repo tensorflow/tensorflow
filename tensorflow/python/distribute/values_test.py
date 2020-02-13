@@ -38,7 +38,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -59,34 +58,18 @@ class DistributedValuesTest(test.TestCase):
     one = constant_op.constant(1)
     two = constant_op.constant(2)
     v = values.DistributedValues((one, two))
-    self.assertEqual(one, v.get())
+    self.assertEqual(one, v._get())
     with distribute_lib.ReplicaContext(None, 1):
-      self.assertEqual(two, v.get())
+      self.assertEqual(two, v._get())
 
   def testGetGraph(self):
     with context.graph_mode(), ops.Graph().as_default():
       one = constant_op.constant(1)
       two = constant_op.constant(2)
       v = values.DistributedValues((one, two))
-      self.assertEqual(one, v.get())
+      self.assertEqual(one, v._get())
       with distribute_lib.ReplicaContext(None, 1):
-        self.assertEqual(two, v.get())
-
-  def testIsTensorLike(self):
-    with context.graph_mode(), ops.Graph().as_default():
-      one = constant_op.constant(1)
-      two = constant_op.constant(2)
-      v = values.DistributedValues((one, two))
-      self.assertTrue(v.is_tensor_like)
-      self.assertTrue(tensor_util.is_tensor(v))
-
-  def testIsTensorLikeWithAConstant(self):
-    with context.graph_mode(), ops.Graph().as_default():
-      one = constant_op.constant(1)
-      two = 2.0
-      v = values.DistributedValues((one, two))
-      self.assertFalse(v.is_tensor_like)
-      self.assertFalse(tensor_util.is_tensor(v))
+        self.assertEqual(two, v._get())
 
 
 class DistributedDelegateTest(test.TestCase):
@@ -860,24 +843,12 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
     v, replica_local = _make_replica_local(
         variable_scope.VariableAggregation.SUM)
 
+    self.assertEqual(v[0].constraint, replica_local.constraint)
     self.assertEqual(v[0].name, replica_local.name)
     self.assertEqual(v[0].dtype, replica_local.dtype)
     self.assertEqual(v[0].shape, replica_local.shape)
     self.assertEqual(variable_scope.VariableAggregation.SUM,
                      replica_local.aggregation)
-
-  def testTensorConversion(self):
-    with context.graph_mode():
-      _, replica_local = _make_replica_local(
-          variable_scope.VariableAggregation.SUM)
-      converted = ops.convert_to_tensor(replica_local, as_ref=False)
-      self.assertIsInstance(converted, ops.Tensor)
-      self.assertEqual(converted.dtype, replica_local.dtype)
-
-      converted = ops.convert_to_tensor(replica_local, as_ref=True)
-      # Resources variable are converted to tensors as well when as_ref is True.
-      self.assertIsInstance(converted, ops.Tensor)
-      self.assertEqual(converted.dtype, replica_local.dtype)
 
   @test_util.run_v2_only
   def testCanPassToDefFun(self):
@@ -935,6 +906,20 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
   def _save(self, sess, var):
     save_path, _ = self._save_return_saver(sess, var)
     return save_path
+
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testTensorConversion(self, distribution):
+    with context.graph_mode():
+      _, replica_local = _make_replica_local(
+          variable_scope.VariableAggregation.SUM, distribution)
+      converted = ops.convert_to_tensor(replica_local, as_ref=False)
+      self.assertIsInstance(converted, ops.Tensor)
+      self.assertEqual(converted.dtype, replica_local.dtype)
+
+      converted = ops.convert_to_tensor(replica_local, as_ref=True)
+      # Resources variable are converted to tensors as well when as_ref is True.
+      self.assertIsInstance(converted, ops.Tensor)
+      self.assertEqual(converted.dtype, replica_local.dtype)
 
   @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveAndRestoreReplicaLocalSumOneGraph(self, distribution):
@@ -1239,7 +1224,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
     ]
     for aggregation in aggregations:
       if isinstance(distribution, _TPU_STRATEGIES):
-        resolver = tpu_cluster_resolver.TPUClusterResolver('')
+        resolver = tpu_cluster_resolver.TPUClusterResolver("")
         tpu_strategy_util.initialize_tpu_system(resolver)
       with distribution.scope():
         v = variable_scope.variable(
@@ -1268,6 +1253,9 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         expected = 0
       self.assertEqual(expected, self.evaluate(v.read_value()), aggregation)
       self.assertEqual(expected, self.evaluate(v.value()), aggregation)
+      self.assertEqual(expected, self.evaluate(v), aggregation)
+      self.assertEqual(expected, self.evaluate(array_ops.identity(v)),
+                       aggregation)
 
   # TODO(b/145574622): Re-enable this test once ReduceOp argument is
   # respected on GPUs.
@@ -1404,7 +1392,7 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
     vals = (constant_op.constant(1.), constant_op.constant([5., 6.0]),)
     per_replica = values.PerReplica(vals)
 
-    # Note: nest.map_structutre exercises nest.flatten and
+    # Note: nest.map_structure exercises nest.flatten and
     # nest.pack_sequence_as.
     result = nest.map_structure(
         lambda t: t + 10, per_replica, expand_composites=True)

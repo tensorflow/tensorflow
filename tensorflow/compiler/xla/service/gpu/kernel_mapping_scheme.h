@@ -177,7 +177,18 @@ class ReductionCodegenInfo {
 
   bool IsRowReduction() const { return is_row_reduction_; }
 
+  // Gets a pointer to a mutable shared cache used by reduction.
+  std::vector<llvm::GlobalVariable*>* GetMutableSharedCache() {
+    return &shared_cache_;
+  }
+
+  // Shared cache used for reduction.
+  absl::Span<llvm::GlobalVariable* const> GetSharedCache() const {
+    return shared_cache_;
+  }
+
  private:
+  std::vector<llvm::GlobalVariable*> shared_cache_;
   const KernelMappingScheme mapping_scheme_;
   AddressVector partial_result_addresses_;
   AddressVector reduction_input_addresses_;

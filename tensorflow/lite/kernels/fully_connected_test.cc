@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/fully_connected.h"
 
+#include <initializer_list>
 #include <iomanip>
 #include <random>
 #include <vector>
@@ -354,6 +355,11 @@ class FloatFullyConnectedOpTest : public SingleOpTest {
 const auto kKernelMapNoPie = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
     {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
+});
+
+const auto kKernelMapSparse = new std::map<string, TfLiteRegistration*>({
+    {"SparseReference", ops::builtin::Register_FULLY_CONNECTED_SPARSE_REF()},
+    {"SparseOptimized", ops::builtin::Register_FULLY_CONNECTED_SPARSE_OPT()},
 });
 
 class QuantizedFullyConnectedOpTest : public SingleOpTest {
@@ -1060,6 +1066,114 @@ TEST_P(FloatFullyConnectedOpTest, BlackBoxTest) {
     EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(expected)));
   }
 }
+
+template <typename T>
+class SparseFullyConnectedOpModel : public SingleOpModel {
+ public:
+  SparseFullyConnectedOpModel(TfLiteRegistration* registration, int units,
+                              int batches, const TensorData& input,
+                              std::initializer_list<int> weights_shape,
+                              std::initializer_list<T> weights_data)
+      : batches_(batches), units_(units) {
+    int total_input_size = 1;
+    for (size_t i = 0; i < input.shape.size(); ++i) {
+      total_input_size *= input.shape[i];
+    }
+    input_size_ = total_input_size / batches_;
+
+    input_ = AddInput(input);
+    weights_ = AddConstSparseInput(input.type, weights_shape, weights_data);
+
+    TensorData bias{input.type, {units_}};
+    bias_ = AddInput(bias);
+
+    output_ = AddOutput({input.type});
+
+    SetBuiltinOp(
+        BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
+        CreateFullyConnectedOptions(builder_, ActivationFunctionType_RELU)
+            .Union());
+    resolver_ = absl::make_unique<SingleOpResolver>(
+        BuiltinOperator_FULLY_CONNECTED, registration);
+    BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)});
+  }
+  void SetBias(const std::vector<T>& data) { PopulateTensor(bias_, data); }
+  void SetInput(const std::vector<T>& data) { PopulateTensor(input_, data); }
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+  int input_size() { return input_size_; }
+  int num_units() { return units_; }
+  int num_batches() { return batches_; }
+
+ protected:
+  int input_;
+  int weights_;
+  int bias_;
+  int output_;
+
+  int batches_;
+  int units_;
+  int input_size_;
+};
+
+class SparseFullyConnectedOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kKernelMapSparse;
+  }
+};
+
+TEST_P(SparseFullyConnectedOpTest, SimpleTest) {
+  std::initializer_list<int> weight_shape = {3, 10};
+  std::initializer_list<float> weight_data = {
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  };
+  SparseFullyConnectedOpModel<float> m(
+      GetRegistration(), /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 10}}, weight_shape, weight_data);
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 3));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(24, 25, 26, 58, 59, 60));
+}
+
+TEST_P(SparseFullyConnectedOpTest, SimpleTest2) {
+  std::initializer_list<int> weight_shape = {1, 2};
+  std::initializer_list<float> weight_data = {
+      2, 4  // u = 0
+  };
+  SparseFullyConnectedOpModel<float> m(
+      GetRegistration(), /*units=*/1, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 2}}, weight_shape, weight_data);
+  m.SetBias({1});
+
+  m.SetInput({
+      1, 2,  // b = 0
+      2, 1   // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutputShape(), ElementsAre(2, 1));
+  EXPECT_THAT(m.GetOutput(), ElementsAre(11, 9));
+}
+
+// TODO(b/148391360): Add tests for unsupported sparsity format.
+// TEST_P(SparseFullyConnectedOpTest, TestUnsupportedSparsityFormat)
+
+INSTANTIATE_TEST_SUITE_P(
+    SparseFullyConnectedOpTest, SparseFullyConnectedOpTest,
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMapSparse)));
 
 }  // namespace
 }  // namespace tflite

@@ -443,10 +443,14 @@ class OptimizerV2(trackable.Trackable):
           args=(grads_and_vars,),
           kwargs={"name": name})
 
+  def _aggregate_gradients(self, distribution, grads_and_vars):
+    """Returns all-reduced gradients."""
+    return distribution.extended.batch_reduce_to(
+        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
+
   def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
-    reduced_grads = distribution.extended.batch_reduce_to(
-        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
+    reduced_grads = self._aggregate_gradients(distribution, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
 
@@ -689,7 +693,7 @@ class OptimizerV2(trackable.Trackable):
 
   @abc.abstractmethod
   def get_config(self):
-    """Returns the config of the optimimizer.
+    """Returns the config of the optimizer.
 
     An optimizer config is a Python dictionary (serializable)
     containing the configuration of an optimizer.
@@ -1145,7 +1149,7 @@ class RestoredOptimizer(OptimizerV2):
   def get_config(self):
     # TODO(allenl): Save and restore the Optimizer's config
     raise NotImplementedError(
-        "Restoring functional Optimzers from SavedModels is not currently "
+        "Restoring functional Optimizers from SavedModels is not currently "
         "supported. Please file a feature request if this limitation bothers "
         "you.")
 

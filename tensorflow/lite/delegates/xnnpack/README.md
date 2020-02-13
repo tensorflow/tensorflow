@@ -54,6 +54,15 @@ benefit from XNNPACK delegate.
 
 Below is the list of current operators and limitations:
 
+### `ADD`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Only addition with two inputs is supported.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
 ### `CONV_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -73,6 +82,60 @@ Below is the list of current operators and limitations:
   but fused `TANH` and `SIGN_BIT` activations are not.
 * Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
   are not supported.
+
+### `HARD_SWISH`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `LOGISTIC`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `MUL`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `PRELU`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Slope must be static (use `kTfLiteMmapRo` allocation type).
+* Slope must be either a 1D tensor, or have all its non-channel dimensions equal
+  1.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
+  are not supported.
+
+### `RELU`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `RELU6`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `RELU_N1_TO_1`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `SOFTMAX`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Only `beta = 1.0` is supported.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
 
 ### Other limitations
 

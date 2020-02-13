@@ -341,7 +341,7 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
     #   while/Less:0           4
     #   while/LoopCond:0       4
     #   while/Switch:0         1
-    #   while/Swtich:1         3
+    #   while/Switch:1         3
     #   while/Identity:0       3
     #   while/Add/y:0          3
     #   while/Add:0            3

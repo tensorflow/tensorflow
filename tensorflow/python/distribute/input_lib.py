@@ -176,7 +176,7 @@ def _get_next_as_optional(iterator, strategy, name=None):
     with ops.device(worker):
       worker_has_value, next_element = (
           iterator._iterators[i].get_next_as_list(new_name))  # pylint: disable=protected-access
-      # Collective all-reduce requires explict devices for inputs.
+      # Collective all-reduce requires explicit devices for inputs.
       with ops.device("/cpu:0"):
         # Converting to integers for all-reduce.
         worker_has_value = math_ops.cast(worker_has_value, dtypes.int32)
@@ -1205,4 +1205,3 @@ def _create_distributed_tensor_spec(strategy, tensor_spec):
     return values.PerReplicaSpec(*value_specs)
 
   return nest.map_structure(_get_value_per_replica, tensor_spec)
-

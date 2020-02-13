@@ -494,10 +494,8 @@ class _FetchHandler(object):
       if (isinstance(fetch, ops.Tensor) and
           (fetch.op.type == 'GetSessionHandle' or
            fetch.op.type == 'GetSessionHandleV2')):
-        self._fetch_handles[fetch.experimental_ref()] = fetch.op.inputs[0].dtype
-    self._final_fetches = [
-        x for x in self._fetches if x.experimental_ref() not in feeds
-    ]
+        self._fetch_handles[fetch.ref()] = fetch.op.inputs[0].dtype
+    self._final_fetches = [x for x in self._fetches if x.ref() not in feeds]
 
   def _assert_fetchable(self, graph, op):
     if not graph.is_fetchable(op):
@@ -553,16 +551,16 @@ class _FetchHandler(object):
       else:
         # If the fetch was in the feeds, use the fed value, otherwise
         # use the returned value.
-        if self._fetches[i].experimental_ref() in self._feed_handles:
+        if self._fetches[i].ref() in self._feed_handles:
           # A fetch had a corresponding direct TensorHandle feed. Call eval()
           # to obtain the Tensor value from the TensorHandle.
-          value = self._feed_handles[self._fetches[i].experimental_ref()].eval()
+          value = self._feed_handles[self._fetches[i].ref()].eval()
         else:
-          value = self._feeds.get(self._fetches[i].experimental_ref())
+          value = self._feeds.get(self._fetches[i].ref())
         if value is None:
           value = tensor_values[j]
           j += 1
-        dtype = self._fetch_handles.get(self._fetches[i].experimental_ref())
+        dtype = self._fetch_handles.get(self._fetches[i].ref())
         if dtype:
           full_values.append(session_ops.TensorHandle(value, dtype, session))
         else:
@@ -1147,7 +1145,7 @@ class BaseSession(SessionInterface):
                                              session_ops.TensorHandle)
           if is_tensor_handle_feed:
             np_val = subfeed_val.to_numpy_array()
-            feed_handles[subfeed_t.experimental_ref()] = subfeed_val
+            feed_handles[subfeed_t.ref()] = subfeed_val
           else:
             np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
 
@@ -1160,7 +1158,7 @@ class BaseSession(SessionInterface):
           if not self.graph.is_feedable(subfeed_t):
             raise ValueError('Tensor %s may not be fed.' % subfeed_t)
 
-          feed_dict_tensor[subfeed_t.experimental_ref()] = np_val
+          feed_dict_tensor[subfeed_t.ref()] = np_val
           feed_map[compat.as_bytes(subfeed_t.name)] = (subfeed_t, subfeed_val)
 
     # Create a fetch handler to take care of the structure of fetches.
@@ -1435,7 +1433,7 @@ class BaseSession(SessionInterface):
         np_val = np.array(handle.handle, dtype=np.object)
         feed_name = handle_mover[0]
         feed_tensor = feed_map[feed_name][0]
-        feed_dict[feed_tensor.experimental_ref()] = np_val
+        feed_dict[feed_tensor.ref()] = np_val
       return handles
 
   def _call_tf_sessionrun(self, options, feed_dict, fetch_list, target_list,

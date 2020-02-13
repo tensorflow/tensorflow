@@ -601,6 +601,7 @@ class Tensor {
   ///
   /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
   StringPiece tensor_data() const;
+  void* data() const;
 
   /// Copy the other tensor into this tensor, reshape it and reinterpret the
   /// buffer's datatype. If Status::OK() is returned, the two tensors now share

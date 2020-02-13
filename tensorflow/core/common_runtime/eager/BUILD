@@ -77,6 +77,7 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/distributed_runtime:worker_session",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
+            "//tensorflow/core/profiler/rpc:profiler_server",
         ],
     }),
 )
@@ -157,6 +158,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/types:variant",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -176,6 +178,7 @@ tf_cc_test(
     srcs = ["tensor_handle_test.cc"],
     deps = [
         ":tensor_handle",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",

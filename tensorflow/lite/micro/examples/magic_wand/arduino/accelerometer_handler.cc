@@ -38,7 +38,7 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
 
   // Switch on the IMU
   if (!IMU.begin()) {
-    error_reporter->Report("Failed to initialize IMU");
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to initialize IMU");
     return kTfLiteError;
   }
 
@@ -47,7 +47,7 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
   float sample_rate = IMU.accelerationSampleRate();
   sample_every_n = static_cast<int>(roundf(sample_rate / kTargetHz));
 
-  error_reporter->Report("Magic starts!");
+  TF_LITE_REPORT_ERROR(error_reporter, "Magic starts!");
 
   return kTfLiteOk;
 }
@@ -67,7 +67,7 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
     float x, y, z;
     // Read each sample, removing it from the device's FIFO buffer
     if (!IMU.readAcceleration(x, y, z)) {
-      error_reporter->Report("Failed to read data");
+      TF_LITE_REPORT_ERROR(error_reporter, "Failed to read data");
       break;
     }
     // Throw away this sample unless it's the nth

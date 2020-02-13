@@ -496,6 +496,7 @@ xla_test(
         "//tensorflow/compiler/xla/service/cpu:target_machine_features",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
@@ -2414,6 +2415,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
         "@com_google_absl//absl/strings",
@@ -2426,6 +2428,7 @@ tf_cc_test(
     deps = [
         ":dynamic_dimension_inference",
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_matchers",
         ":hlo_runner",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -3648,6 +3651,7 @@ xla_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
@@ -4144,7 +4148,6 @@ cc_library(
 tf_cc_test(
     name = "indexed_array_analysis_test",
     srcs = ["indexed_array_analysis_test.cc"],
-    extra_copts = ["-Wno-string-plus-int"],
     deps = [
         ":hlo_matchers",
         ":hlo_parser",
@@ -4266,7 +4269,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -4490,6 +4492,25 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:prng",
+    ],
+)
+
+cc_library(
+    name = "rng_bit_generator_expander",
+    srcs = ["rng_bit_generator_expander.cc"],
+    hdrs = ["rng_bit_generator_expander.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:prng",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

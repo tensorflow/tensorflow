@@ -60,7 +60,7 @@ class BatchNormalizationBase(Layer):
 
   3) When performing inference using a model containing batch normalization, it
   is generally (though not always) desirable to use accumulated statistics
-  rather than mini-batch statistics. This is acomplished by passing
+  rather than mini-batch statistics. This is accomplished by passing
   `training=False` when calling the model, or using `model.predict`.
 
   Arguments:
@@ -1078,6 +1078,12 @@ class LayerNormalization(Layer):
       return v
 
     if not self._fused:
+      input_dtype = inputs.dtype
+      if input_dtype in ('float16', 'bfloat16') and self.dtype == 'float32':
+        # If mixed precision is used, cast inputs to float32 so that this is at
+        # least as numerically stable as the fused version.
+        inputs = math_ops.cast(inputs, 'float32')
+
       # Calculate the moments on the last axis (layer activations).
       mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
 
@@ -1091,6 +1097,7 @@ class LayerNormalization(Layer):
           offset=offset,
           scale=scale,
           variance_epsilon=self.epsilon)
+      outputs = math_ops.cast(outputs, input_dtype)
     else:
       # Collapse dims before self.axis, and dims in self.axis
       pre_dim, in_dim = (1, 1)
@@ -1116,7 +1123,7 @@ class LayerNormalization(Layer):
       # self.gamma and self.beta have the wrong shape for fused_batch_norm, so
       # we cannot pass them as the scale and offset parameters. Therefore, we
       # create two constant tensors in correct shapes for fused_batch_norm and
-      # later constuct a separate calculation on the scale and offset.
+      # later construct a separate calculation on the scale and offset.
       scale = _set_const_tensor(1.0, self.dtype, [pre_dim])
       offset = _set_const_tensor(0.0, self.dtype, [pre_dim])
 

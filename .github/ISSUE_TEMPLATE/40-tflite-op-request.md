@@ -1,6 +1,7 @@
----
-name: TensorFlow Lite Op Request
-about: Use this template for reporting ops you are using or missing.
+--------------------------------------------------------------------------------
+
+name: TensorFlow Lite Op Request about: Use this template for reporting ops you
+are using or missing. labels: 'comp:lite'
 
 ---
 

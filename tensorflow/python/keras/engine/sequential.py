@@ -110,7 +110,6 @@ class Sequential(training.Model):
     """
     super(Sequential, self).__init__(name=name, autocast=False)
     self.supports_masking = True
-    self._build_input_shape = None
     self._compute_output_and_mask_jointly = True
 
     self._layer_call_argspecs = {}

@@ -588,6 +588,11 @@ Status DatasetOpsTestBase::CheckIteratorGetNext(
     TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &next, &end_of_sequence));
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
+  // Call GetNext one more time to make sure it still reports
+  // end_of_sequence = True.
+  std::vector<Tensor> unused;
+  TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &unused, &end_of_sequence));
+  EXPECT_TRUE(end_of_sequence);
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, expected_outputs,
                            /*compare_order=*/compare_order));

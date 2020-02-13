@@ -548,6 +548,7 @@ tf_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
+    tags = ["notsan"],  # b/149031034
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
@@ -646,12 +647,14 @@ tf_cuda_cc_test(
     deps = [
         ":c_api",
         ":kernels",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/kernels:ops_testutil",
+        "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",
     ],
 )

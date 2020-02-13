@@ -427,7 +427,7 @@ class Translator {
       const std::vector<int32_t>& results);
 
   // Build while operator where cond & body are regions.
-  BufferOffset<tflite::Operator> BuildWhileOperator(
+  Optional<BufferOffset<tflite::Operator>> BuildWhileOperator(
       mlir::TFL::WhileOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
@@ -503,12 +503,6 @@ class Translator {
   // Returns a unique name for `val`.
   std::string UniqueName(mlir::Value val);
 
-  // Returns the names of the subgraphs corresponding the regions of the op. The
-  // names are supposed to be unique as the op name is unique and the suffix is
-  // not a valid name.
-  std::string GetWhileBodyName(mlir::TFL::WhileOp while_op);
-  std::string GetWhileCondName(mlir::TFL::WhileOp while_op);
-
   ModuleOp module_;
 
   tensorflow::OpOrArgNameMapper& name_mapper_;
@@ -554,9 +548,14 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     attr = cst.value();
   } else if (auto cst = dyn_cast<tfl::QConstOp>(inst)) {
     attr = cst.value();
+  } else if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
+    attr = cst.value();
+  } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
+    attr = cst.value();
   } else {
     return empty_buffer_;
   }
+
   tensorflow::Tensor tensor;
   auto status = tensorflow::ConvertToTensor(attr, &tensor);
   if (!status.ok()) {
@@ -637,6 +636,14 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
       shape.push_back(dim == -1 ? 1 : dim);
     }
     shape_signature = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
+  }
+
+  if (auto* inst = value.getDefiningOp()) {
+    if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
+      // CreateSparsityParameters(cst.s_param());
+    } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
+      // CreateSparsityParameters(cst.s_param());
+    }
   }
 
   Type element_type = type.getElementType();
@@ -722,23 +729,25 @@ BufferOffset<tflite::Operator> Translator::BuildWhileOperator(
                                 builtin_options);
 }
 
-std::string Translator::GetWhileBodyName(mlir::TFL::WhileOp while_op) {
-  return (name_mapper_.GetUniqueName(while_op.getOperation()) + "$body").str();
-}
-
-std::string Translator::GetWhileCondName(mlir::TFL::WhileOp while_op) {
-  return (name_mapper_.GetUniqueName(while_op.getOperation()) + "$cond").str();
-}
-
-BufferOffset<tflite::Operator> Translator::BuildWhileOperator(
+Optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
     mlir::TFL::WhileOp op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
   auto opcode_index = GetOpcodeIndex("while", tflite::BuiltinOperator_WHILE);
-  int body_subgraph_index = subgraph_index_map_.at(GetWhileBodyName(op));
-  int cond_subgraph_index = subgraph_index_map_.at(GetWhileCondName(op));
-  auto builtin_options = tflite::CreateWhileOptions(
-                             builder_, cond_subgraph_index, body_subgraph_index)
-                             .Union();
+  auto get_call_index = [&](mlir::Block& b) -> Optional<int> {
+    if (b.getOperations().size() != 2) return llvm::None;
+    if (auto call_op = dyn_cast<mlir::CallOp>(b.front()))
+      return subgraph_index_map_.at(call_op.callee().str());
+    return llvm::None;
+  };
+  auto body_subgraph_index = get_call_index(op.body().front());
+  auto cond_subgraph_index = get_call_index(op.cond().front());
+  if (!body_subgraph_index || !cond_subgraph_index)
+    return op.emitOpError("only single call cond/body while export supported"),
+           llvm::None;
+  auto builtin_options =
+      tflite::CreateWhileOptions(builder_, *cond_subgraph_index,
+                                 *body_subgraph_index)
+          .Union();
   auto inputs = builder_.CreateVector(operands);
   auto outputs = builder_.CreateVector(results);
   return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
@@ -1267,19 +1276,10 @@ Optional<std::string> Translator::TranslateInternal() {
   subgraph_index_map_[main_fn.getName().str()] = subgraph_idx++;
   named_regions.emplace_back("main", &main_fn.getBody());
   // Walk over the module collection ops with functions and while ops.
-  module_.walk([&](Operation* op) {
-    if (auto fn = dyn_cast<FuncOp>(op)) {
-      if (fn != main_fn) {
-        subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
-        named_regions.emplace_back(fn.getName().str(), &fn.getBody());
-      }
-    } else if (auto wo = dyn_cast<mlir::TFL::WhileOp>(op)) {
-      std::string name = GetWhileCondName(wo);
-      subgraph_index_map_[name] = subgraph_idx++;
-      named_regions.emplace_back(GetWhileCondName(wo), &wo.cond());
-      name = GetWhileBodyName(wo);
-      subgraph_index_map_[name] = subgraph_idx++;
-      named_regions.emplace_back(name, &wo.body());
+  module_.walk([&](FuncOp fn) {
+    if (fn != main_fn) {
+      subgraph_index_map_[fn.getName().str()] = subgraph_idx++;
+      named_regions.emplace_back(fn.getName().str(), &fn.getBody());
     }
   });
 

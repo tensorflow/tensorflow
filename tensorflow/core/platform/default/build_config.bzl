@@ -762,6 +762,7 @@ def tf_portable_deps_no_runtime(use_lite_protos = False):
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/core:mobile_additional_lib_deps",
         "//tensorflow/core:protos_all_cc_impl",
+        "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
     ] + tf_protobuf_deps(use_lite_protos)
 

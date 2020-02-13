@@ -1357,10 +1357,10 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
     self.assertEqual(output.shape, (1, 3))
 
   @test_util.run_in_graph_and_eager_modes()
-  def testNoneInShapeWithFunctinalAPI(self):
+  def testNoneInShapeWithFunctionalAPI(self):
 
     class BasicBlock(keras.Model):
-      # Inherting from keras.layers.Layer since we are calling this layer
+      # Inheriting from keras.layers.Layer since we are calling this layer
       # inside a model created using functional API.
 
       def __init__(self):

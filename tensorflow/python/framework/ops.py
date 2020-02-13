@@ -77,7 +77,6 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import kwarg_only
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.tools.docs.doc_controls import do_not_generate_docs
 
 ag_ctx = LazyLoader(
     "ag_ctx", globals(),
@@ -569,8 +568,7 @@ class Tensor(_TensorLike):
     if shape[0] is None:
       raise TypeError(
           "Cannot iterate over a tensor with unknown first dimension.")
-    for i in xrange(shape[0]):
-      yield self[i]
+    return _TensorIterator(self, shape[0])
 
   def _shape_as_list(self):
     if self.shape.ndims is not None:
@@ -724,9 +722,9 @@ class Tensor(_TensorLike):
   def __hash__(self):
     g = getattr(self, "graph", None)
     if (Tensor._USE_EQUALITY and executing_eagerly_outside_functions() and
-        (g is None or g._building_function)):  # pylint: disable=protected-access
-      raise TypeError("Tensor is unhashable if Tensor equality is enabled. "
-                      "Instead, use tensor.experimental_ref() as the key.")
+        (g is None or g.building_function)):
+      raise TypeError("Tensor is unhashable. "
+                      "Instead, use tensor.ref() as the key.")
     else:
       return id(self)
 
@@ -815,56 +813,48 @@ class Tensor(_TensorLike):
     """
     return _eval_using_default_session(self, feed_dict, self.graph, session)
 
+  @deprecation.deprecated(None, "Use ref() instead.")
   def experimental_ref(self):
-    # tf.Variable also has the same experimental_ref() API.  If you update the
-    # documenation here, please update tf.Variable.experimental_ref() as well.
+    return self.ref()
+
+  def ref(self):
+    # tf.Variable also has the same ref() API.  If you update the
+    # documentation here, please update tf.Variable.ref() as well.
     """Returns a hashable reference object to this Tensor.
 
-    Warning: Experimental API that could be changed or removed.
-
-    The primary usecase for this API is to put tensors in a set/dictionary.
+    The primary use case for this API is to put tensors in a set/dictionary.
     We can't put tensors in a set/dictionary as `tensor.__hash__()` is no longer
     available starting Tensorflow 2.0.
 
-    ```python
-    import tensorflow as tf
+    The following will raise an exception starting 2.0
 
-    x = tf.constant(5)
-    y = tf.constant(10)
-    z = tf.constant(10)
+    >>> x = tf.constant(5)
+    >>> y = tf.constant(10)
+    >>> z = tf.constant(10)
+    >>> tensor_set = {x, y, z}
+    Traceback (most recent call last):
+      ...
+    TypeError: Tensor is unhashable. Instead, use tensor.ref() as the key.
+    >>> tensor_dict = {x: 'five', y: 'ten'}
+    Traceback (most recent call last):
+      ...
+    TypeError: Tensor is unhashable. Instead, use tensor.ref() as the key.
 
-    # The followings will raise an exception starting 2.0
-    # TypeError: Tensor is unhashable if Tensor equality is enabled.
-    tensor_set = {x, y, z}
-    tensor_dict = {x: 'five', y: 'ten', z: 'ten'}
-    ```
+    Instead, we can use `tensor.ref()`.
 
-    Instead, we can use `tensor.experimental_ref()`.
-
-    ```python
-    tensor_set = {x.experimental_ref(),
-                  y.experimental_ref(),
-                  z.experimental_ref()}
-
-    print(x.experimental_ref() in tensor_set)
-    ==> True
-
-    tensor_dict = {x.experimental_ref(): 'five',
-                   y.experimental_ref(): 'ten',
-                   z.experimental_ref(): 'ten'}
-
-    print(tensor_dict[y.experimental_ref()])
-    ==> ten
-    ```
+    >>> tensor_set = {x.ref(), y.ref(), z.ref()}
+    >>> x.ref() in tensor_set
+    True
+    >>> tensor_dict = {x.ref(): 'five', y.ref(): 'ten', z.ref(): 'ten'}
+    >>> tensor_dict[y.ref()]
+    'ten'
 
     Also, the reference object provides `.deref()` function that returns the
     original Tensor.
 
-    ```python
-    x = tf.constant(5)
-    print(x.experimental_ref().deref())
-    ==> tf.Tensor(5, shape=(), dtype=int32)
-    ```
+    >>> x = tf.constant(5)
+    >>> x.ref().deref()
+    <tf.Tensor: shape=(), dtype=int32, numpy=5>
     """
     return object_identity.Reference(self)
 
@@ -3649,7 +3639,7 @@ class Graph(object):
     """Returns the `Operation` with the given `name`.
 
     This is a internal unsafe version of get_operation_by_name. It skips many
-    checks and does not have user friedly error messages but runs considerably
+    checks and does not have user friendly error messages but runs considerably
     faster. This method may be called concurrently from multiple threads.
 
     Args:
@@ -4426,12 +4416,12 @@ class Graph(object):
 
     def add_op(self, op):
       if isinstance(op, Tensor):
-        op = op.experimental_ref()
+        op = op.ref()
       self._seen_nodes.add(op)
 
     def op_in_group(self, op):
       if isinstance(op, Tensor):
-        op = op.experimental_ref()
+        op = op.ref()
       return op in self._seen_nodes
 
   def _push_control_dependencies_controller(self, controller):
@@ -5170,7 +5160,7 @@ def control_dependencies(control_inputs):
   """
   if context.executing_eagerly():
     if control_inputs:
-      # Excute any pending callables.
+      # Execute any pending callables.
       for control in control_inputs:
         if callable(control):
           control()
@@ -6187,8 +6177,8 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
     values: The list of `Tensor` arguments that are passed to the op function.
     skip_on_eager: Indicates to return NullContextmanager if executing eagerly.
       By default this is True since naming tensors and operations in eager mode
-      have little use and cause unecessary performance overhead. However, it is
-      important to preseve variable names since they are often useful for
+      have little use and cause unnecessary performance overhead. However, it is
+      important to preserve variable names since they are often useful for
       debugging and saved models.
 
   Returns:
@@ -6615,8 +6605,7 @@ register_tensor_conversion_function = \
 def to_raw_op(f):
   """Make a given op wrapper function `f` raw.
 
-  Raw op wrappers are not included in the docs, and can only be called
-  with keyword arguments.
+  Raw op wrappers can only be called with keyword arguments.
 
   Args:
     f: An op wrapper function to make raw.
@@ -6628,7 +6617,7 @@ def to_raw_op(f):
   # due to double-registration.
   f = types.FunctionType(f.__code__, f.__globals__, f.__name__, f.__defaults__,
                          f.__closure__)
-  return kwarg_only(do_not_generate_docs(f))
+  return kwarg_only(f)
 
 
 def raise_from_not_ok_status(e, name):
@@ -6659,7 +6648,7 @@ def add_exit_callback_to_default_func_graph(fn):
       To be executed when exiting func graph scope.
 
   Raises:
-    RuntimeError: If executed when the current defualt graph is not a FuncGraph,
+    RuntimeError: If executed when the current default graph is not a FuncGraph,
       or not currently executing in function creation mode (e.g., if inside
       an init_scope).
   """
@@ -6705,3 +6694,24 @@ def _reconstruct_sequence_inputs(op_def, inputs, attrs):
 
   assert i == len(inputs)
   return grouped_inputs
+
+
+class _TensorIterator(object):
+  """Iterates over the leading dim of a Tensor. Performs no error checks."""
+
+  def __init__(self, tensor, dim0):
+    self._tensor = tensor
+    self._index = 0
+    self._limit = dim0
+
+  def __iter__(self):
+    return self
+
+  def __next__(self):
+    if self._index == self._limit:
+      raise StopIteration
+    result = self._tensor[self._index]
+    self._index += 1
+    return result
+
+  next = __next__  # python2.x compatibility.

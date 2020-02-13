@@ -57,10 +57,10 @@ class ElementwiseOneArgument : public NodeShader {
       case OperationType::RSQRT:
         source = R"(
             const float nan = normalize(vec4(0, 0, 0, 0)).x;
-            value_0.x = value_0.x >= 0.0 ? 1.0 / sqrt(value_0.x) : nan;
-            value_0.y = value_0.y >= 0.0 ? 1.0 / sqrt(value_0.y) : nan;
-            value_0.z = value_0.z >= 0.0 ? 1.0 / sqrt(value_0.z) : nan;
-            value_0.w = value_0.w >= 0.0 ? 1.0 / sqrt(value_0.w) : nan;
+            value_0.x = value_0.x > 0.0 ? 1.0 / sqrt(value_0.x) : nan;
+            value_0.y = value_0.y > 0.0 ? 1.0 / sqrt(value_0.y) : nan;
+            value_0.z = value_0.z > 0.0 ? 1.0 / sqrt(value_0.z) : nan;
+            value_0.w = value_0.w > 0.0 ? 1.0 / sqrt(value_0.w) : nan;
         )";
         break;
       case OperationType::SIGMOID:

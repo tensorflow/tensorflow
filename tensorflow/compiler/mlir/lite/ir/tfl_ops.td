@@ -550,14 +550,14 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let arguments = (
     ins Variadic<TensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, TFL_Uint8]>>:$values,
+      [F32, I64, I32, I16, I8, QI8, QUI8, QI16, TFL_Uint8]>>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
     TensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, TFL_Uint8]>:$output
+      [F32, I64, I32, I16, I8, QI8, QUI8, QI16, TFL_Uint8]>:$output
   );
 
   let hasOptions = 1;
@@ -590,6 +590,57 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
     [{
       state.addAttribute("value", value);
       state.addTypes(value.getType());
+    }]>
+  ];
+}
+
+// Attributes used for encoding sparse tensors.
+// Please find detailed explanation of these parameters in the TFLite schema.
+def TFL_DT_Dense : StrEnumAttrCase<"DENSE", 0>;
+def TFL_DT_SparseCSR : StrEnumAttrCase<"SPARSE_CSR", 1>;
+
+def TFL_DimensionTypeAttr : StrEnumAttr<
+    "DimensionType", "dimension type", [TFL_DT_Dense, TFL_DT_SparseCSR]>;
+
+def DimensionMetadataAttr : StructAttr<"DimensionMetadataAttr", TFL_Dialect, [
+                            StructFieldAttr<"format", TFL_DimensionTypeAttr>,
+                            StructFieldAttr<"dense_size", I32Attr>,
+                            StructFieldAttr<"segments", I32ArrayAttr>,
+                            StructFieldAttr<"indices", I32ArrayAttr>] > {
+  let description = "Dimension metadata.";
+}
+
+def DimensionMetadataArrayAttr : TypedArrayAttrBase<DimensionMetadataAttr,
+    "Array of DimensionMetadata">{}
+
+def SparsityParameterAttr : StructAttr<"SparsityParameterAttr", TFL_Dialect, [
+                            StructFieldAttr<"traversal_order", I32ArrayAttr>,
+                            StructFieldAttr<"block_map", I32ArrayAttr>,
+                            StructFieldAttr<"dim_metadata", DimensionMetadataArrayAttr>]> {
+  let description = "Sparsity parameter.";
+  let storageType = [{ TFL::SparsityParameterAttr }];
+}
+
+def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [NoSideEffect,
+    FirstAttrDerivedResultType]> {
+  let summary = "Sparse constant pseudo op.";
+
+  let description = [{
+    Represents a sparse constant value in TensorFlow Lite dialect. This is not
+    an actual operation and it will be lowered to buffer instead.
+  }];
+
+  let arguments = (ins ElementsAttr:$value, SparsityParameterAttr:$s_param);
+
+  let results = (outs AnyTensor:$output);
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, Attribute value, "
+    "SparsityParameterAttr s_param",
+    [{
+      state.addTypes(value.getType());
+      state.addAttribute("value", value);
+      state.addAttribute("s_param", s_param);
     }]>
   ];
 }
@@ -652,7 +703,8 @@ def TFL_FullyConnectedOptionsWeightFormatAttr :
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
     TFL_ChannelDimIndexInterface,
-    AffineOpCoefficient<-1, 1>]> {
+    AffineOpCoefficient<-1, 1>,
+    TFL_SparseOp]> {
   let summary = "Fully connected op";
 
   let arguments = (ins
@@ -677,6 +729,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let extraClassDeclaration = [{
     // ChannelDimIndexInterface:
     int GetChannelDimIndex() { return 0; }
+    // SparseOpInterface:
+    std::vector<int> GetSparseOperands() { return {1}; }
   }];
 }
 
@@ -2604,12 +2658,12 @@ def TFL_SplitOp : TFL_Op<"split", [
 
   let arguments = (ins
     TensorOf<[I32]>:$split_dim,
-    TensorOf<[F32, I16, I32, I64, QI8, QUI8]>:$value,
+    TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$value,
     PositiveI32Attr:$num_splits
   );
 
   let results = (outs
-    Variadic<TensorOf<[F32, I16, I32, I64, QI8, QUI8]>>:$outputs
+    Variadic<TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>>:$outputs
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -2627,14 +2681,14 @@ def TFL_SplitVOp : TFL_Op<"split_v", [NoSideEffect, SameOperandsAndResultsScale]
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I16, I32, I64, QI8, QUI8]>:$value,
+    TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$value,
     1DTensorOf<[I32]>:$size_splits,
     0DTensorOf<[I32]>:$split_dim,
     PositiveI32Attr:$num_splits
   );
 
   let results = (outs
-    Variadic<TensorOf<[F32, I16, I32, I64, QI8, QUI8]>>:$outputs
+    Variadic<TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>>:$outputs
   );
 
   let verifier = [{ return Verify(*this); }];
@@ -2907,6 +2961,36 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
       state.addAttribute("qtype", qtype);
       state.addAttribute("value", value);
       state.addTypes(qtype.getValue());
+    }]>
+  ];
+}
+
+def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
+    NoSideEffect, FirstAttrDerivedResultType, NoQuantizableResult]> {
+  let summary = "Sparse quantized constant pseudo op";
+
+  let description = [{
+    Represents a sparse quantized constant value in TensorFlow Lite dialect.
+    This is not an actual operation and it will be lowered to buffer instead.
+    The quantization parameters are stored as a type attribute in this constant.
+  }];
+
+  let arguments = (
+    ins TensorTypeAttr:$qtype,
+    ElementsAttr:$value,
+    SparsityParameterAttr:$s_param
+  );
+
+  let results = (outs AnyTensor:$output);
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, TypeAttr qtype, "
+    "Attribute value, SparsityParameterAttr s_param",
+    [{
+      state.addTypes(qtype.getValue());
+      state.addAttribute("qtype", qtype);
+      state.addAttribute("value", value);
+      state.addAttribute("s_param", s_param);
     }]>
   ];
 }
@@ -3385,16 +3469,13 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield", [Terminator]> {
 
 def TFL_WhileOp : Op<TFL_Dialect, "while", [
        DeclareOpInterfaceMethods<LoopLikeOpInterface>,
-       SingleBlockImplicitTerminator<"YieldOp">,
-       // Make isolated from above to force values through operands to simplify
-       // exporting to subgraphs.
-       IsolatedFromAbove]> {
+       SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = [{While loop}];
 
   let description = [{
     output = input; while (cond(output)) { output = body(output) }
 
-    While loop where all values are passes through arguments with no implicit
+    While loop where all values are passes through arguments with implicit
     capture.
 
     input: A list of input tensors whose types are T.
@@ -3414,6 +3495,8 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
   let results = (outs Variadic<AnyTensor>:$output);
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
+
+  let verifier = [{ return Verify(*this); }];
 
   let hasCanonicalizer = 1;
 }

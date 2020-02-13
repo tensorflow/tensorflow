@@ -109,7 +109,19 @@ func @verifier_replicate_n_device() {
 // expected-error@-1 {{'tf_device.replicate' op expects number of devices (2) to be equal to 'n' (3)}}
   ^entry:
     tf_device.return
-  }) {n = 3 : i32, devices = ["/DEVICE:0", "/DEVICE:1"]} : () -> ()
+  }) {n = 3 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/DEVICE:0", "/DEVICE:1"]}} : () -> ()
+}
+
+// -----
+
+// Check that replicate op's `devices` attribute must consist of dictionary
+// with values as list with size equal to 'n' attribute.
+func @verifier_replicate_n_device_multiple_alias() {
+  "tf_device.replicate" () ({
+// expected-error@-1 {{'tf_device.replicate' op expects number of devices (2) to be equal to 'n' (3)}}
+  ^entry:
+    tf_device.return
+  }) {n = 3 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/DEVICE:0", "/DEVICE:1"], TPU_REPLICATED_CORE_1 = ["/DEVICE:2"]}} : () -> ()
 }
 
 // -----

@@ -46,6 +46,14 @@ gentbl(
             "ir/tfl_ops.cc.inc",
         ),
         (
+            "-gen-struct-attr-decls",
+            "ir/tfl_structs.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "ir/tfl_structs.cc.inc",
+        ),
+        (
             "-gen-op-doc",
             "g3doc/tfl_ops.md",
         ),
@@ -223,6 +231,7 @@ cc_library(
         # TODO(jpienaar): Move this out after splitting out LoopLikeOpInterface.
         "@llvm-project//mlir:Transforms",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/lite/schema:schema_fbs",
     ],
     alwayslink = 1,
@@ -289,6 +298,7 @@ cc_library(
         "transforms/generated_prepare_tf.inc",
         "transforms/legalize_ophint_func_op.cc",
         "transforms/legalize_tf.cc",
+        "transforms/legalize_tf_while.cc",
         "transforms/lower_static_tensor_list.cc",
         "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",
@@ -296,6 +306,7 @@ cc_library(
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
         "transforms/unroll_batch_matmul.cc",
+        "transforms/while_loop_outline.cc",
     ],
     hdrs = [
         "transforms/dilated_conv.h",
@@ -308,10 +319,12 @@ cc_library(
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":validators",
+        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
@@ -387,6 +400,24 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tensorflow_lite_d2s",
+    srcs = [
+        "transforms/dense_to_sparse.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    deps = [
+        ":tensorflow_lite",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,
 )
@@ -532,6 +563,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -651,6 +683,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":tensorflow_lite_d2s",
         ":tensorflow_lite_legalize_tf",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_quantize",

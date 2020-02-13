@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_algorithm_blacklist.h"
@@ -37,7 +36,11 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -197,6 +200,7 @@ void PrintPlatformInfo(const se::Stream* stream) {
   }
 }
 
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 // Returns true if the redzones in `allocator`'s allocations are unmodified.
 //
 // If the redzones are modified, logs an error, sets the appropriate failure
@@ -240,6 +244,7 @@ StatusOr<bool> CheckRedzones(const se::RedzoneAllocator& allocator,
   PrintPlatformInfo(stream);
   return false;
 }
+#endif
 
 using ConvCacheKey =
     std::tuple<se::StreamExecutor*,
@@ -323,7 +328,9 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithm(
   if (stream_exec_->platform_kind() == se::PlatformKind::kROCm) {
     result_or = PickBestAlgorithmNoCacheRocm(instr, allocator, stream);
   } else if (stream_exec_->platform_kind() == se::PlatformKind::kCuda) {
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
     result_or = PickBestAlgorithmNoCacheCuda(instr, allocator, stream);
+#endif
   }
 
   if (result_or.ok()) {
@@ -362,6 +369,7 @@ static bool RequireCudnnDeterminism() {
   return require_cudnn_determinism;
 }
 
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 StatusOr<tensorflow::AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     const HloCustomCallInstruction* instr, se::DeviceMemoryAllocator* allocator,
@@ -634,6 +642,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
 
   return *selected_result;
 }
+#endif
 
 StatusOr<tensorflow::AutotuneResult>
 GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(

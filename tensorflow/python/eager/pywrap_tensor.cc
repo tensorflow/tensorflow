@@ -359,7 +359,7 @@ typedef struct EagerTensor {
   TFE_TensorHandle* handle;
   int64_t id;
   // This mirrors tensorflow.core.framework.ops.Tensor._handle_data Which will
-  // be None for tensors of type other than DT_REOSURCE. For DT_RESOURCE
+  // be None for tensors of type other than DT_RESOURCE. For DT_RESOURCE
   // tensors, this will contain a serialized HandleData proto with shape
   // inference metadata about shapes and dtypes of resources accessible from
   // this handle.
@@ -660,7 +660,7 @@ static PyObject* EagerTensor_backing_device(EagerTensor* self) {
 #endif
 }
 
-static PyGetSetDef EagerTensor_getseters[] = {
+static PyGetSetDef EagerTensor_getsetters[] = {
     {const_cast<char*>("_id"), (getter)EagerTensor_getid, nullptr,
      const_cast<char*>("Tensor ID."), nullptr},
     {const_cast<char*>("device"), (getter)EagerTensor_device, nullptr,
@@ -758,7 +758,7 @@ PyTypeObject* EagerTensorType = nullptr;
 static PyType_Slot EagerTensor_Type_slots[] = {
     {Py_tp_dealloc, reinterpret_cast<void*>(EagerTensor_dealloc)},
     {Py_tp_methods, reinterpret_cast<void*>(EagerTensor_methods)},
-    {Py_tp_getset, reinterpret_cast<void*>(EagerTensor_getseters)},
+    {Py_tp_getset, reinterpret_cast<void*>(EagerTensor_getsetters)},
     {Py_tp_init, reinterpret_cast<void*>(EagerTensor_init)},
     {0, nullptr},
 };
@@ -799,7 +799,7 @@ static PyTypeObject _EagerTensorType = {
     nullptr,                            /* tp_iternext */
     EagerTensor_methods,                /* tp_methods */
     EagerTensor_members,                /* tp_members */
-    EagerTensor_getseters,              /* tp_getset */
+    EagerTensor_getsetters,             /* tp_getset */
     nullptr,                            /* tp_base */
     nullptr,                            /* tp_dict */
     nullptr,                            /* tp_descr_get */

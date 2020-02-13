@@ -301,7 +301,7 @@ def compare_results(results_with_ds,
     default_tolerance = 1e-2
     relaxed_tolerance = 1e-2
   elif partial_last_batch == 'train_and_eval':
-    # We relax the tolerence a lot in the partial last batch case as
+    # We relax the tolerance a lot in the partial last batch case as
     #   1. the examples in uneven batches may have different weights when
     #      applying the gradients in the distributed case.
     #   2. TF Keras and TF Keras DS have different ways to handle the case when
@@ -418,7 +418,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
       **kwargs: key word arguments about how to create the input dictionaries
 
     Returns:
-      Three dictionaries representing the input for fit(), evalutate() and
+      Three dictionaries representing the input for fit(), evaluate() and
       predict()
     """
 
@@ -530,7 +530,7 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
       **kwargs: key word arguments about how to create the input dictionaries
 
     Returns:
-      Three dictionaries representing the input for fit(), evalutate() and
+      Three dictionaries representing the input for fit(), evaluate() and
       predict()
     """
 

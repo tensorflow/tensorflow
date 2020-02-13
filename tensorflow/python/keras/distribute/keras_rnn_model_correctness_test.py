@@ -87,6 +87,7 @@ class DistributionStrategyGruModelCorrectnessTest(
   def test_gru_model_correctness(self, distribution, use_numpy,
                                  use_validation_data,
                                  experimental_run_tf_function):
+    self.skipTest('Test is sensitive to TF random seed, b/TBD')
     self.run_correctness_test(distribution, use_numpy, use_validation_data,
                               experimental_run_tf_function)
 

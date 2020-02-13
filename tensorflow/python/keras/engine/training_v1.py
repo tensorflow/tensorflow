@@ -1995,7 +1995,7 @@ class Model(training_lib.Model):
                        'optimizer.')
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # train function even if one exists already. This is because
-    # `_feed_sample_weights` list has been updated on re-copmpile.
+    # `_feed_sample_weights` list has been updated on re-compile.
     if getattr(self, 'train_function', None) is None or has_recompiled:
       # Restore the compiled trainable state.
       current_trainable_state = self._get_trainable_state()
@@ -2038,7 +2038,7 @@ class Model(training_lib.Model):
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # test function even if one exists already. This is because
-    # `_feed_sample_weights` list has been updated on re-copmpile.
+    # `_feed_sample_weights` list has been updated on re-compile.
     if getattr(self, 'test_function', None) is None or has_recompiled:
       inputs = (self._feed_inputs +
                 self._feed_targets +
@@ -2853,7 +2853,7 @@ class DistributedCallbackModel(Model):
         orig_model_weights)
 
   def __getattr__(self, item):
-    # Whitelisted atttributes of the model that can be accessed by the user
+    # Whitelisted attributes of the model that can be accessed by the user
     # during a callback.
     if item not in ('_setattr_tracking', '_layers'):
       logging.warning('You are accessing attribute ' + item + ' of the '

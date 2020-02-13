@@ -80,7 +80,7 @@ def _make_train_step_fn(model, mode, strategy, output_labels):
     # When input feature is a dictionary of tensors, dictionary is flattended
     # to an array and passed as a model input. This results in input mismatch
     # when model input layer names are not sorted in alphabetical order as
-    # `nest.flatten()`sorts dictioary elements by keys. As so, transform input
+    # `nest.flatten()`sorts dictionary elements by keys. As so, transform input
     # tensors into an array and order it along `model._feed_input_names`.
     if isinstance(inputs, dict):
       inputs = [inputs[input_name] for input_name in model._feed_input_names]
