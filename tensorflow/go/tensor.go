@@ -26,6 +26,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/bits"
 	"reflect"
 	"runtime"
 	"unsafe"
@@ -80,7 +81,7 @@ func NewTensor(value interface{}) (*Tensor, error) {
 	if dataType == String {
 		// TF_STRING tensors are encoded as an array of 8-byte offsets
 		// followed by string data. See c_api.h.
-		nbytes = uintptr(nflattened*8) + byteSizeOfEncodedStrings(value)
+		nbytes = uintptr(nflattened*8 + int64(byteSizeOfEncodedStrings(val)))
 	}
 	var shapePtr *C.int64_t
 	if len(shape) > 0 {
@@ -406,17 +407,31 @@ func numElements(shape []int64) int64 {
 
 // byteSizeOfEncodedStrings returns the size of the encoded strings in val.
 // val MUST be a string, or a container (array/slice etc.) of strings.
-func byteSizeOfEncodedStrings(val interface{}) uintptr {
-	if s, ok := val.(string); ok {
-		return uintptr(C.TF_StringEncodedSize(C.size_t(len(s))))
+// Tensorflow encodes strings as the varint encoded length followed by the
+// string bytes. We could call into the C library to do this but cgo has a heavy
+// overhead. So we just do that calculation in Go
+func byteSizeOfEncodedStrings(val reflect.Value) int {
+	if val.Kind() == reflect.String {
+		return sizeVarUint(uint64(val.Len())) + val.Len()
+	}
+	if val.Kind() != reflect.Slice && val.Kind() != reflect.Array {
+		panic(fmt.Sprintf("unexpected type %s", val.Type()))
 	}
 	// Otherwise must be an array or slice.
-	var size uintptr
-	v := reflect.ValueOf(val)
-	for i := 0; i < v.Len(); i++ {
-		size += byteSizeOfEncodedStrings(v.Index(i).Interface())
+	var size int
+	for i := 0; i < val.Len(); i++ {
+		size += byteSizeOfEncodedStrings(val.Index(i))
 	}
 	return size
+}
+
+// sizeVarUint determines how many bytes it would take to encode the int v
+func sizeVarUint(v uint64) int {
+	if v < 0x80 {
+		return 1
+	}
+	bits := bits.Len64(v)
+	return (bits + 6) / 7
 }
 
 // encodeTensorWithSlices writes v to the specified buffer using the format specified in
@@ -479,7 +494,7 @@ func copyPtr(w *bytes.Buffer, ptr unsafe.Pointer, l int) error {
 }
 
 type stringEncoder struct {
-	offsets io.Writer
+	offsets *bytes.Buffer
 	data    []byte
 	offset  uint64
 	status  *status
@@ -487,19 +502,18 @@ type stringEncoder struct {
 
 func (e *stringEncoder) encode(v reflect.Value, shape []int64) error {
 	if v.Kind() == reflect.String {
-		if err := binary.Write(e.offsets, nativeEndian, e.offset); err != nil {
+		if err := copyPtr(e.offsets, unsafe.Pointer(&e.offset), int(unsafe.Sizeof(e.offset))); err != nil {
 			return err
 		}
-		var (
-			s      = v.Interface().(string)
-			src    = C.CString(s)
-			srcLen = C.size_t(len(s))
-			dst    = (*C.char)(unsafe.Pointer(&e.data[e.offset]))
-			dstLen = C.size_t(uint64(len(e.data)) - e.offset)
-		)
-		e.offset += uint64(C.TF_StringEncode(src, srcLen, dst, dstLen, e.status.c))
-		C.free(unsafe.Pointer(src))
-		return e.status.Err()
+		// A string is encoded as the varint length followed by the string bytes.
+		// We do this in Go to avoid the considerable overhead of a cgo call into
+		// the tensorflow library
+		s := v.String()
+		n := binary.PutUvarint(e.data[e.offset:], uint64(len(s)))
+		e.offset += uint64(n)
+		n = copy(e.data[e.offset:], s)
+		e.offset += uint64(n)
+		return nil
 	}
 
 	if v.Kind() == reflect.Slice {
