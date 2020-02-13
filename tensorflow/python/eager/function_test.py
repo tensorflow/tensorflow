@@ -3508,7 +3508,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(r2.numpy(), 34000.0 + 13.0 * 7.0)
 
   @test_util.run_gpu_only
-  def testArgumentPrunning(self):
+  def testArgumentPruning(self):
     """Tests functions taking unnecessary arguments."""
     with ops.device('/device:CPU:0'):
       c1 = constant_op.constant(5.0)

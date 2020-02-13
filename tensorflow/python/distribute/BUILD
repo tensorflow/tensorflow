@@ -925,9 +925,66 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "custom_training_loop_test",
-    srcs = ["custom_training_loop_test.py"],
-    main = "custom_training_loop_test.py",
+    name = "custom_training_loop_gradient_test",
+    srcs = ["custom_training_loop_gradient_test.py"],
+    main = "custom_training_loop_gradient_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "custom_training_loop_input_test",
+    srcs = ["custom_training_loop_input_test.py"],
+    main = "custom_training_loop_input_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "custom_training_loop_metrics_test",
+    srcs = ["custom_training_loop_metrics_test.py"],
+    main = "custom_training_loop_metrics_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "custom_training_loop_models_test",
+    srcs = ["custom_training_loop_models_test.py"],
+    main = "custom_training_loop_models_test.py",
     tags = [
         "multi_and_single_gpu",
     ],

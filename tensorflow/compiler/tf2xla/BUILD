@@ -78,7 +78,7 @@ tf_portable_proto_library(
     name = "portable_tf2xla_proto",
     config_string = "allow_all:true",
     header_outs = ["//tensorflow/compiler/tf2xla/tf2xla.proto.h"],
-    portable_deps = ["//tensorflow/core:android_proto_lib"],
+    portable_deps = ["//tensorflow/core:portable_proto_lib_full_runtime"],
     proto_deps = [
         ":tf2xla_proto",
         "//tensorflow/core:protos_all",

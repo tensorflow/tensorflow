@@ -993,7 +993,7 @@ class PartitionedCallTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
 
     config = config_pb2.ConfigProto()
-    config.experimental.share_cluster_devices_in_session = True
+    config.share_cluster_devices_in_session = True
 
     with session.Session(workers[0].target, config=config) as sess:
       res = sess.run(f(a, b))

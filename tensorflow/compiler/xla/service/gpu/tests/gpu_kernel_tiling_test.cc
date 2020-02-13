@@ -374,12 +374,12 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ;
-; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{[0-9]*}}.atomic_op_loop_body{{[0-9]*}}_crit_edge:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
 ;
-; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{[0-9]*}}.atomic_op_loop_body{{[0-9]*}}_crit_edge:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
@@ -498,22 +498,22 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ;
-; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{[0-9]*}}.atomic_op_loop_body{{[0-9]*}}_crit_edge:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
 ;
-; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{[0-9]*}}.atomic_op_loop_body{{[0-9]*}}_crit_edge:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
 ;
-; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{[0-9]*}}.atomic_op_loop_body{{[0-9]*}}_crit_edge:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
 ;
-; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{[0-9]*}}.atomic_op_loop_body{{[0-9]*}}_crit_edge:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]

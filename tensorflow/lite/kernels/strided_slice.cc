@@ -145,7 +145,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_MSG(context, op_context.dims <= 4,
                      "StridedSlice op only supports 1D-4D input arrays.");
 
-  // TODO(soroosh): add the following missing functionalities
+  // TODO(b/138098220): Remove when bug is resolved.
+  // Currently, working on using the compiler to cannonize strided_slice,
+  // so ellipis_mask will become part of begin/end mask, new_axis_mask will
+  // involve in a reshape to pad the dimensions.
   TF_LITE_ENSURE_MSG(context, op_context.params->ellipsis_mask == 0,
                      "ellipsis_mask is not implemented yet.");
   TF_LITE_ENSURE_MSG(context, op_context.params->new_axis_mask == 0,

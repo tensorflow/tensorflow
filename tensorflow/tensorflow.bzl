@@ -122,6 +122,15 @@ def tf_portable_proto_library(name, proto_deps, deps = [], **kwargs):
     _ignore = [kwargs]
     cc_library(name = name, deps = deps + [dep + "_cc" for dep in proto_deps])
 
+def tf_portable_full_lite_protos(full, lite):
+    return select({
+        "//tensorflow:mobile_lite_protos": lite,
+        "//tensorflow:mobile_full_protos": full,
+        # The default should probably be lite runtime, but since most clients
+        # seem to use the non-lite version, let's make that the default for now.
+        "//conditions:default": full,
+    })
+
 def if_android_x86(a):
     return select({
         clean_dep("//tensorflow:android_x86"): a,
@@ -198,19 +207,13 @@ def if_ios_x86_64(a):
 
 def if_mobile(a):
     return select({
-        clean_dep("//tensorflow:android"): a,
-        clean_dep("//tensorflow:chromiumos"): a,
-        clean_dep("//tensorflow:emscripten"): a,
-        clean_dep("//tensorflow:ios"): a,
+        clean_dep("//tensorflow:mobile"): a,
         "//conditions:default": [],
     })
 
 def if_not_mobile(a):
     return select({
-        clean_dep("//tensorflow:android"): [],
-        clean_dep("//tensorflow:chromiumos"): [],
-        clean_dep("//tensorflow:emscripten"): [],
-        clean_dep("//tensorflow:ios"): [],
+        clean_dep("//tensorflow:mobile"): [],
         "//conditions:default": a,
     })
 
@@ -341,21 +344,45 @@ def tfe_xla_copts():
         "//conditions:default": [],
     })
 
-def tf_opts_nortti_if_android():
-    return if_android([
+def tf_opts_nortti():
+    return [
         "-fno-rtti",
         "-DGOOGLE_PROTOBUF_NO_RTTI",
         "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
-    ])
+    ]
 
-def tf_defines_nortti_if_android():
-    return if_android([
+def tf_opts_nortti_if_android():
+    return if_android(tf_opts_nortti())
+
+def tf_opts_nortti_if_mobile():
+    return if_mobile(tf_opts_nortti())
+
+def tf_defines_nortti():
+    return [
         "GOOGLE_PROTOBUF_NO_RTTI",
         "GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
-    ])
+    ]
+
+def tf_defines_nortti_if_android():
+    return if_android(tf_defines_nortti())
 
 def tf_features_nomodules_if_android():
     return if_android(["-use_header_modules"])
+
+def tf_features_nomodules_if_mobile():
+    return if_mobile(["-use_header_modules"])
+
+def tf_opts_nortti_if_lite_protos():
+    return tf_portable_full_lite_protos(
+        full = [],
+        lite = tf_opts_nortti(),
+    )
+
+def tf_defines_nortti_if_lite_protos():
+    return tf_portable_full_lite_protos(
+        full = [],
+        lite = tf_defines_nortti(),
+    )
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.

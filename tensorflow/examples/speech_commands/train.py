@@ -482,23 +482,23 @@ if __name__ == '__main__':
       ArgumentTypeError: Not an expected value.
     """
     value = value.upper()
-    if value == 'INFO':
-      return tf.compat.v1.logging.INFO
-    elif value == 'DEBUG':
+    if value == 'DEBUG':
       return tf.compat.v1.logging.DEBUG
+    elif value == 'INFO':
+      return tf.compat.v1.logging.INFO
+    elif value == 'WARN':
+      return tf.compat.v1.logging.WARN
     elif value == 'ERROR':
       return tf.compat.v1.logging.ERROR
     elif value == 'FATAL':
       return tf.compat.v1.logging.FATAL
-    elif value == 'WARN':
-      return tf.compat.v1.logging.WARN
     else:
       raise argparse.ArgumentTypeError('Not an expected value')
   parser.add_argument(
       '--verbosity',
       type=verbosity_arg,
       default=tf.compat.v1.logging.INFO,
-      help='Log verbosity. Can be "INFO", "DEBUG", "ERROR", "FATAL", or "WARN"')
+      help='Log verbosity. Can be "DEBUG", "INFO", "WARN", "ERROR", or "FATAL"')
   parser.add_argument(
       '--optimizer',
       type=str,

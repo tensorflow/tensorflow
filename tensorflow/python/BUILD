@@ -1915,6 +1915,7 @@ py_library(
         ":errors",
         ":framework_for_generated_wrappers",
         ":gpu_util",
+        ":memory_checker",
         ":platform",
         ":platform_test",
         ":pywrap_tf_session",
@@ -1998,6 +1999,25 @@ py_library(
         ":platform_test",
         ":util",
         ":while_v2",
+    ],
+)
+
+py_library(
+    name = "memory_checker",
+    srcs = [
+        "framework/memory_checker.py",
+        "framework/python_memory_checker.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [":_python_memory_checker_helper"],
+)
+
+tf_python_pybind_extension(
+    name = "_python_memory_checker_helper",
+    srcs = ["framework/python_memory_checker_helper.cc"],
+    module_name = "_python_memory_checker_helper",
+    deps = [
+        "@pybind11",
     ],
 )
 
@@ -2519,6 +2539,22 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "framework_memory_checker_test",
+    size = "medium",
+    srcs = ["framework/memory_checker_test.py"],
+    main = "framework/memory_checker_test.py",
+    python_version = "PY3",
+    shard_count = 8,
+    tags = [
+        "no_oss_py2",
+        "no_windows",
+    ],
+    deps = [
+        ":framework_test_lib",
     ],
 )
 

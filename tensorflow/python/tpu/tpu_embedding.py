@@ -1080,13 +1080,13 @@ class TPUEmbedding(object):
             enqueue_data.embedding_indices.device):
           raise ValueError(
               'Device of sample_indices does not agree with '
-              'that of emebdding_indices for feature {}.'.format(feature))
+              'that of embedding_indices for feature {}.'.format(feature))
         if (enqueue_data.aggregation_weights is not None and
             enqueue_data.aggregation_weights.device !=
             enqueue_data.embedding_indices.device):
           raise ValueError(
               'Device of aggregation_weights does not agree with '
-              'that of emebdding_indices for feature {}.'.format(feature))
+              'that of embedding_indices for feature {}.'.format(feature))
         # Check all features are on the same device.
         if device is None:
           device = enqueue_data.embedding_indices.device
@@ -1279,7 +1279,7 @@ def _validate_batch_size(batch_size, num_cores):
 def _validate_optimization_parameters(optimization_parameters):
   if not isinstance(optimization_parameters, _OptimizationParameters):
     raise ValueError('`optimization_parameters` must inherit from '
-                     '`_OptimizationPramaters`. '
+                     '`_OptimizationParameters`. '
                      '`type(optimization_parameters)`={}'.format(
                          type(optimization_parameters)))
 
@@ -1727,7 +1727,7 @@ def _create_partitioned_variables(name,
                                   embedding_dimension,
                                   initializer,
                                   collections=None):  # pylint: disable=redefined-outer-name
-  """Creates ParitionedVariables based on `num_hosts` for `table`."""
+  """Creates PartitionedVariables based on `num_hosts` for `table`."""
 
   num_slices = min(vocabulary_size, num_hosts)
 

@@ -46,12 +46,12 @@ void AddOrUpdateIntStat(int64 metadata_id, int64 value,
 void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
                         tensorflow::profiler::XEvent* event);
 
-void CreateXEvent(
+XEventBuilder CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
     absl::string_view event_name, int64 offset_ps, int64 duration_ps,
     const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats);
 
-void CreateXEvent(
+XEventBuilder CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
     HostEventType event_type, int64 offset_ps, int64 duration_ps,
     const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats);

@@ -44,6 +44,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_parsing_ops
@@ -351,7 +352,7 @@ class WhileOp(object):
     return inp, stacked
 
   def _maybe_stacked(self, cache, inp):
-    """Heuristic to figue out if the coverting inp leads to a stacked value.
+    """Heuristic to figue out if the converting inp leads to a stacked value.
 
 
     Args:
@@ -609,7 +610,7 @@ class WhileOp(object):
       return not_all_done
 
     def body(not_all_done, indices, *args):
-      # See documentatin for __call__ for the structure of *args.
+      # See documentation for __call__ for the structure of *args.
       num_enters = len(self._enters)
       inputs = args[:num_enters]
       output_tas = args[num_enters:]
@@ -1433,7 +1434,7 @@ class PFor(object):
           else:
             new_outputs = [wrap(x, False) for x in y_op.outputs]
         elif not (is_stateful or is_while_loop or some_input_stacked):
-          # All inputs are unstacked or uncoverted but some control inputs are
+          # All inputs are unstacked or unconverted but some control inputs are
           # converted.
           # TODO(rachelim): Handle the case where some inputs are sparsely
           # stacked (i.e. any(x.is_sparse_stacked for x in converted_inputs))
@@ -1544,6 +1545,31 @@ class PFor(object):
 # The code below defines converters for different operations. Please see comment
 # for RegisterPFor to see how converters should be defined.
 
+
+# image_ops
+
+
+@RegisterPFor("AdjustContrastv2")
+def _convert_adjust_contrastv2(pfor_input):
+  images = pfor_input.stacked_input(0)
+  contrast_factor = pfor_input.unstacked_input(1)
+  return wrap(gen_image_ops.adjust_contrastv2(images, contrast_factor), True)
+
+
+@RegisterPFor("AdjustHue")
+def _convert_adjust_hue(pfor_input):
+  images = pfor_input.stacked_input(0)
+  delta = pfor_input.unstacked_input(1)
+  return wrap(gen_image_ops.adjust_hue(images, delta), True)
+
+
+@RegisterPFor("AdjustSaturation")
+def _convert_adjust_saturation(pfor_input):
+  images = pfor_input.stacked_input(0)
+  scale = pfor_input.unstacked_input(1)
+  return wrap(gen_image_ops.adjust_saturation(images, scale), True)
+
+
 # nn_ops
 
 
@@ -1580,12 +1606,16 @@ def _inputs_with_flattening(pfor_input, input_indices):
 @RegisterPForWithArgs("Conv2D", dims=[0])
 @RegisterPForWithArgs("DepthToSpace", dims=[0])
 @RegisterPForWithArgs("AvgPool", dims=[0])
+@RegisterPForWithArgs("AvgPool3D", dims=[0])
 @RegisterPForWithArgs("MaxPool", dims=[0])
+@RegisterPForWithArgs("MaxPoolV2", dims=[0])
 @RegisterPForWithArgs("MaxPool3D", dims=[0])
 @RegisterPForWithArgs("MaxPool3DGrad", dims=[0, 1, 2])
 @RegisterPForWithArgs("MaxPoolGrad", dims=[0, 1, 2])
+@RegisterPForWithArgs("MaxPoolGradV2", dims=[0, 1, 2])
 @RegisterPForWithArgs("MaxPool3DGradGrad", dims=[0, 1, 2])
 @RegisterPForWithArgs("MaxPoolGradGrad", dims=[0, 1, 2])
+@RegisterPForWithArgs("MaxPoolGradGradV2", dims=[0, 1, 2])
 @RegisterPForWithArgs("SoftmaxCrossEntropyWithLogits", dims=[0, 1])
 @RegisterPForWithArgs("SpaceToDepth", dims=[0])
 def _convert_flatten_batch(pfor_input, op_type, dims):
@@ -1601,6 +1631,53 @@ def _convert_flatten_batch(pfor_input, op_type, dims):
 
 
 _channel_flatten_input_cache = {}
+
+
+@RegisterPFor("BatchToSpaceND")
+def _convert_batch_to_space_nd(pfor_input):
+  inp = pfor_input.stacked_input(0)
+  block_shape = pfor_input.unstacked_input(1)
+  crops = pfor_input.unstacked_input(2)
+
+  inp_shape = array_ops.shape(inp)
+  n = pfor_input.pfor.loop_len_vector
+
+  # Reshape and transpose to move the vectorization axis inside the axes that
+  # will move to space.
+  # Reshape to 4D and transpose
+  block_size = math_ops.reduce_prod(block_shape)
+  new_shape = [n[0], block_size, inp_shape[1] // block_size, -1]
+  inp = array_ops.reshape(inp, new_shape)
+  inp = array_ops.transpose(inp, [1, 0, 2, 3])
+  # Reshape back to merge the block, vectorization and batch dimension, and
+  # restore the other dimensions.
+  new_shape = array_ops.concat([n * inp_shape[1], inp_shape[2:]], axis=0)
+  inp = array_ops.reshape(inp, new_shape)
+  # Call batch_to_space and then split the new batch axis.
+  output = gen_array_ops.batch_to_space_nd(inp, block_shape, crops)
+  output = _unflatten_first_dim(output, n)
+  return wrap(output, True)
+
+
+@RegisterPFor("SpaceToBatchND")
+def _convert_space_to_batch_nd(pfor_input):
+  inp = pfor_input.stacked_input(0)
+  block_shape = pfor_input.unstacked_input(1)
+  paddings = pfor_input.unstacked_input(2)
+
+  n = pfor_input.pfor.loop_len_vector
+  inp_shape = array_ops.shape(inp)
+  inp = _flatten_first_two_dims(inp)
+  output = gen_array_ops.space_to_batch_nd(inp, block_shape, paddings)
+  output_shape = array_ops.shape(output)
+  block_size = math_ops.reduce_prod(block_shape)
+  new_shape = [block_size, n[0], -1]
+  output = array_ops.reshape(output, new_shape)
+  output = array_ops.transpose(output, [1, 0, 2])
+  new_shape = array_ops.concat(
+      [n, block_size * inp_shape[1:2], output_shape[1:]], axis=0)
+  output = array_ops.reshape(output, new_shape)
+  return wrap(output, True)
 
 
 def _channel_flatten_input(x, data_format):
@@ -1734,6 +1811,7 @@ def _convert_fused_batch_norm_grad(pfor_input):
 
 @RegisterPForWithArgs("Conv2DBackpropInput", flatten_dims=[2], shape_dim=0)
 @RegisterPForWithArgs("AvgPoolGrad", flatten_dims=[1], shape_dim=0)
+@RegisterPForWithArgs("AvgPool3DGrad", flatten_dims=[1], shape_dim=0)
 def _convert_flatten_batch_shape_input(pfor_input, op_type, flatten_dims,
                                        shape_dim):
   del op_type
@@ -1843,6 +1921,21 @@ def _convert_reshape(pfor_input):
   shape = pfor_input.unstacked_input(1)
   new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
   return wrap(array_ops.reshape(t, new_shape), True)
+
+
+@RegisterPFor("Fill")
+def _convert_fill(pfor_input):
+  dims = pfor_input.unstacked_input(0)
+  value = pfor_input.stacked_input(1)
+  # Expand the rank of `value`
+  new_shape = array_ops.concat(
+      [[-1], array_ops.ones([array_ops.size(dims)], dtype=dtypes.int32)],
+      axis=0)
+  value = array_ops.reshape(value, new_shape)
+  # Compute the new output shape
+  new_dims = array_ops.concat([pfor_input.pfor.loop_len_vector, dims], axis=0)
+  # Broadcast
+  return wrap(array_ops.broadcast_to(value, new_dims), True)
 
 
 @RegisterPFor("BroadcastTo")
@@ -2399,8 +2492,11 @@ def _convert_biasadd(pfor_input):
     return wrap(nn_ops.bias_add(t, bias, data_format=data_format), True)
 
 
-@RegisterPFor("UnsortedSegmentSum")
-def _convert_unsortedsegmentsum(pfor_input):
+@RegisterPForWithArgs("UnsortedSegmentSum", math_ops.unsorted_segment_sum)
+@RegisterPForWithArgs("UnsortedSegmentMax", math_ops.unsorted_segment_max)
+@RegisterPForWithArgs("UnsortedSegmentMin", math_ops.unsorted_segment_min)
+@RegisterPForWithArgs("UnsortedSegmentProd", math_ops.unsorted_segment_prod)
+def _convert_unsortedsegmentsum(pfor_input, _, op_func):
   pfor_input.stack_inputs([0, 1])
   data = pfor_input.stacked_input(0)
   segment_ids = pfor_input.stacked_input(1)
@@ -2419,7 +2515,7 @@ def _convert_unsortedsegmentsum(pfor_input):
   segment_ids += segment_offset
   num_segments = math_ops.cast(num_segments, dtypes.int64) * math_ops.cast(
       n, dtypes.int64)
-  output = math_ops.unsorted_segment_sum(data, segment_ids, num_segments)
+  output = op_func(data, segment_ids, num_segments)
   new_output_shape = array_ops.concat(
       [[n, -1], array_ops.shape(output)[1:]], axis=0)
   output = array_ops.reshape(output, new_output_shape)
@@ -2857,6 +2953,24 @@ def _convert_multinomial(pfor_input):
         array_ops.reshape(samples, [-1, n, num_samples]), [1, 0, 2])
 
   return wrap(stacked_samples, True)
+
+
+@RegisterPFor("StatelessMultinomial")
+@RegisterPFor("StatelessRandomBinomial")
+@RegisterPFor("StatelessRandomGammaV2")
+@RegisterPFor("StatelessRandomNormal")
+@RegisterPFor("StatelessRandomPoisson")
+@RegisterPFor("StatelessRandomUniform")
+@RegisterPFor("StatelessRandomUniformInt")
+@RegisterPFor("StatelessTruncatedNormal")
+def _convert_stateless_multinomial(pfor_input):
+  # Unlike stateful random ops, for stateless ones we want better
+  # reproducibility based on seed. Hence we don't want to use a similar strategy
+  # as used for stateful ones where we generate a possibly different set of
+  # random numbers under vectorization.
+  # Unfortunately, the kernels currently are not necessarily setup to do this
+  # efficiently and hence we fallback to a sequential loop for vectorization.
+  return _fallback_converter(pfor_input)
 
 
 # linalg_ops
@@ -3378,7 +3492,7 @@ def _convert_stack_pop_v2(pfor_input):
   stack_cache_key = _stack_cache_key(pfor_input)
   stacked = _stack_cache.get(stack_cache_key, None)
   # If a StackPushV2 has not been converted yet, we default to unstacked since
-  # the push could be outside of pfor, or the covertor may not be called if the
+  # the push could be outside of pfor, or the convertor may not be called if the
   # inputs are unconverted.
   if stacked is None:
     stacked = False

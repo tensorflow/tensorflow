@@ -22,8 +22,10 @@ from __future__ import print_function
 import logging
 import os
 import time
+from concurrent import futures
 
 from six.moves.urllib import request
+from six.moves.urllib.error import HTTPError
 
 _GOOGLE_API_CLIENT_INSTALLED = True
 try:
@@ -277,3 +279,37 @@ class Client(object):
       time.sleep(interval)
 
     logging.warning('TPU "%s" is healthy.', self.name())
+
+  def configure_tpu_version(self, version):
+    """Configure TPU software version."""
+
+    def configure_worker(worker):
+      """Configure individual TPU worker.
+
+      Args:
+        worker: A dict with the field ipAddress where the configure request will
+          be sent.
+      """
+      ip_address = worker['ipAddress']
+      url = 'http://{}:8475/requestversion/{}'.format(ip_address, version)
+      req = request.Request(url, data=b'')
+      try:
+        request.urlopen(req)
+      except HTTPError as e:
+        status_code = e.code
+        if status_code == 404:
+          raise Exception(
+              'Tensorflow version {} is not available on Cloud TPU, '
+              'try a previous nightly version or refer to '
+              'https://cloud.google.com/tpu/docs/release-notes for '
+              'the latest official version.'.format(version))
+        else:
+          raise Exception('Failed to configure worker {}'.format(ip_address))
+
+    workers = self.network_endpoints()
+
+    with futures.ThreadPoolExecutor(max_workers=len(workers)) as executor:
+      results = executor.map(configure_worker, workers)
+      for result in results:
+        if result:
+          result.result()

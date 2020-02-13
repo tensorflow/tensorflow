@@ -1,6 +1,6 @@
 /* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the "License");;
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
@@ -13,22 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_RESOURCE_H_
-#define TENSORFLOW_CORE_PLATFORM_RESOURCE_H_
+#include "include/pybind11/pybind11.h"
 
-#include "tensorflow/core/platform/platform.h"
+namespace py = pybind11;
 
-namespace tensorflow {
-
-// Tracks resource usage for tagged code paths.
-class ResourceTagger;
-
-}  // namespace tensorflow
-
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/resource.h"
-#else
-#include "tensorflow/core/platform/default/resource.h"
-#endif
-
-#endif  // TENSORFLOW_CORE_PLATFORM_RESOURCE_H_
+PYBIND11_MODULE(_python_memory_checker_helper, m) {
+  m.def("mark_stack_trace_and_call", [](py::function func) { func(); });
+};

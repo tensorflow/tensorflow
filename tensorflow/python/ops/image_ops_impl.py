@@ -3547,7 +3547,7 @@ def _ssim_per_channel(img1,
 
   # TODO(sjhwang): Try FFT.
   # TODO(sjhwang): Gaussian kernel is separable in space. Consider applying
-  #   1-by-n and n-by-1 Gaussain filters instead of an n-by-n filter.
+  #   1-by-n and n-by-1 Gaussian filters instead of an n-by-n filter.
   def reducer(x):
     shape = array_ops.shape(x)
     x = array_ops.reshape(x, shape=array_ops.concat([[-1], shape[-3:]], 0))

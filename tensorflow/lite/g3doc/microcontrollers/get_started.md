@@ -171,7 +171,7 @@ model to ensure its schema version is compatible with the version we are using:
 ```C++
 const tflite::Model* model = ::tflite::GetModel(g_sine_model_data);
 if (model->version() != TFLITE_SCHEMA_VERSION) {
-  error_reporter->Report(
+  TF_LITE_REPORT_ERROR(error_reporter,
       "Model provided is schema version %d not equal "
       "to supported version %d.\n",
       model->version(), TFLITE_SCHEMA_VERSION);
@@ -284,7 +284,7 @@ instance:
 ```C++
 TfLiteStatus invoke_status = interpreter.Invoke();
 if (invoke_status != kTfLiteOk) {
-  error_reporter->Report("Invoke failed\n");
+  TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
 }
 ```
 

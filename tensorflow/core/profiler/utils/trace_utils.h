@@ -28,7 +28,7 @@ constexpr int kThreadIdHloModule = kThreadIdDerivedMin + 2;
 constexpr int kThreadIdHloOp = kThreadIdDerivedMin + 3;
 constexpr int kThreadIdOverhead = kThreadIdDerivedMin + 4;
 // Last derived stream/thread id.
-constexpr int kThreadIdDerivedMax = kThreadIdHloModule;
+constexpr int kThreadIdDerivedMax = kThreadIdOverhead;
 
 static inline bool IsDerivedThreadId(int thread_id) {
   return thread_id >= kThreadIdDerivedMin && thread_id <= kThreadIdDerivedMax;

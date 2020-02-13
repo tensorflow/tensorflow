@@ -167,6 +167,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
+        "no_oss",  # TODO(b/148108508): Re-enable this test in OSS.
         "optonly",  # Times out frequently in fastbuild mode.
     ],
     deps = [
@@ -1520,7 +1521,10 @@ tf_xla_py_test(
     srcs = ["conv_node_name_test.py"],
     python_version = "PY3",
     shard_count = 5,
-    tags = ["no_rocm"],
+    tags = [
+        "no_oss",  # TODO(b/148108508): Re-enable this test in OSS.
+        "no_rocm",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
