@@ -112,12 +112,8 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
         static_cast<T*>(const_cast<T*>(diff_dst_data)));
 
 #ifdef ENABLE_MKLDNN_V1
-    DCHECK_EQ(context_.bwd_input_primitives.size(),
-              context_.bwd_input_primitives_args.size());
-    for (size_t i = 0; i < context_.bwd_input_primitives.size(); ++i) {
-      context_.bwd_input_primitives.at(i).execute(
-          *context_.bwd_input_stream, context_.bwd_input_primitives_args.at(i));
-    }
+    execute_primitives(context_.bwd_input_primitives, context_.bwd_input_stream,
+              context_.bwd_input_primitives_args); 
 #else
     context_.bwd_input_stream->submit(context_.bwd_input_primitives);
 #endif  // ENABLE_MKLDNN_V1
