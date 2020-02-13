@@ -103,12 +103,11 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
     memory::dims weight_dims = memory::dims({channel, k});
     memory::dims bias_dims = memory::dims({channel});
     memory::dims dst_dims = memory::dims({batch, channel});
-    memory::format weight_format =
-        transpose_b_ ? memory::format::oi : memory::format::io;
+    MEMORY_FORMAT weight_format =
+        transpose_b_ ? MEMORY_FORMAT::oi : MEMORY_FORMAT::io;
 
     MklDnnMatMulFwdParams matmul_params(src_dims, weight_dims, bias_dims,
                                         dst_dims, weight_format);
-
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
@@ -120,8 +119,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
         matmul_prim->GetPrimitiveDesc();
 
     if (src_mkl_shape.IsMklTensor() && weight_mkl_shape.IsMklTensor()) {
-      this->AllocateOutputTensor(ctx, *matmul_pd, dst_dims, memory::format::nc,
-                                 &dst_tensor);
+      this->AllocateOutputTensor(ctx, *matmul_pd, dst_dims,
+                                 MKL_TENSOR_FORMAT_NC, &dst_tensor);
     } else {
       TensorShape dst_tensor_shape({batch, channel});
       MklDnnShape dst_mkl_shape;
@@ -148,26 +147,34 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
 
       if (src_mkl_shape.IsMklTensor()) {
         memory::desc input_md = src_mkl_shape.GetMklLayout();
-
-        if (input_md.data.format != memory::format::nc) {
+#ifdef ENABLE_MKLDNN_V1
+        if (input_md != matmul_pd->src_desc()) {
+#else
+        if (input_md.data.format != MKL_TENSOR_FORMAT_NC) {
+#endif
           src_mkl.SetUsrMem(input_md, src_data);
-          src_mkl.CheckReorderToOpMem(matmul_pd.get()->src_primitive_desc());
+          src_mkl.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
+              matmul_pd.get()->PRIMITIVE_DESC_SRC, this->cpu_engine_));
           src_data = reinterpret_cast<T*>(src_mkl.GetOpMem().get_data_handle());
         }
       }
 
       if (weight_mkl_shape.IsMklTensor()) {
         memory::desc input_md = weight_mkl_shape.GetMklLayout();
-
+#ifdef ENABLE_MKLDNN_V1
+        if (input_md != matmul_pd->weight_desc()) {
+#else
         if (input_md.data.format != weight_format) {
+#endif
           weight_mkl.SetUsrMem(input_md, weight_data);
-          weight_mkl.CheckReorderToOpMem(
-              matmul_pd.get()->weights_primitive_desc());
+          weight_mkl.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
+              matmul_pd.get()->PRIMITIVE_DESC_WEIGHTS, this->cpu_engine_));
           weight_data =
               reinterpret_cast<T*>(weight_mkl.GetOpMem().get_data_handle());
         }
       }
 
+      // Execute fused matmul op.
       matmul_prim->Execute(src_data, weight_data, bias_data, dst_data);
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
@@ -180,21 +187,23 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
 
   void ExtendMklDnnMatMulFwdParams(OpKernelContext* ctx,
                                    MklDnnMatMulFwdParams& params) {
+#ifndef ENABLE_MKL_DNN_V1
     if (fused_ops_.size() == 2) {
       string post_op = fused_ops_[1];
 
       if (post_op == "Relu") {
-        params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+        params.post_op_params.push_back({"relu", { 1.0, 0.0, 0.0 }});
       } else if (post_op == "Relu6") {
-        params.post_op_params.push_back({"relu6", {1.0, 6.0, 0.0}});
+        params.post_op_params.push_back({"relu6", { 1.0, 6.0, 0.0 }});
       } else if (post_op == "Elu") {
-        params.post_op_params.push_back({"elu", {1.0, 1.0, 0.0}});
+        params.post_op_params.push_back({"elu", { 1.0, 1.0, 0.0 }});
       } else {
         OP_REQUIRES_OK(
             ctx, errors::InvalidArgument(
                      "Unsupported post-argument in MklFusedMatMul: ", post_op));
       }
     }
+#endif
   }
 
  private:
