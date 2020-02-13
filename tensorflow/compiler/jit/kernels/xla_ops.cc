@@ -208,12 +208,14 @@ se::DeviceMemoryAllocator* GetAllocator(
 XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
                                        const std::vector<int>& constants,
                                        const std::vector<int>& resources,
-                                       const NameAttrList& function)
+                                       const NameAttrList& function,
+                                       bool has_ref_vars)
     : OpKernel(ctx),
       constants_(constants),
       resources_(resources),
       function_(function),
-      platform_info_(PlatformInfoFromContext(ctx)) {}
+      platform_info_(PlatformInfoFromContext(ctx)),
+      has_ref_vars_(has_ref_vars) {}
 
 static Status BuildCompilationCache(OpKernelContext* ctx,
                                     const XlaPlatformInfo& platform_info,
@@ -352,8 +354,9 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   {
     Status s = CompileToLocalExecutable(
-        ctx, function_, /*has_ref_vars=*/true, platform_info_, resources_,
-        constants_, /*lazy=*/false, &client, &variables, &kernel, &executable);
+        ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_,
+        resources_, constants_, /*lazy=*/false, &client, &variables, &kernel,
+        &executable);
     if (!s.ok() && (platform_info_.device_type().type_string() == DEVICE_CPU ||
                     platform_info_.device_type().type_string() == DEVICE_GPU)) {
       // Suggest auto jit if the failure was with GPU or CPU.
@@ -476,7 +479,7 @@ bool HasRefVars(OpKernelConstruction* ctx) {
 
 XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
     : XlaLocalLaunchBase(ctx, ConstantsVector(ctx), ResourcesVector(ctx),
-                         FunctionAttr(ctx)) {}
+                         FunctionAttr(ctx), /*has_ref_vars=*/true) {}
 
 XlaLocalLaunchOp::~XlaLocalLaunchOp() {
   VLOG(1) << "XlaLocalLaunchOp destroyed";
