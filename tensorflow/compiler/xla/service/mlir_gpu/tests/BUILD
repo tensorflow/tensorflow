@@ -28,7 +28,7 @@ tf_cc_test(
     tags = tf_cuda_tests_tags() + ["no_rocm"],
     deps = [
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:test",
+        "//tensorflow/core:test",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/service:gpu_plugin_mlir",
         "//tensorflow/compiler/xla/service/mlir_gpu:mlir_irgen_test_base",
