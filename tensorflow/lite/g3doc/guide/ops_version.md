@@ -209,7 +209,7 @@ is supported for every node in Delegation code.
 ```
 const int kMinVersion = 1;
 TfLiteNode* node;
-TfLiteRegistration;
+TfLiteRegistration registration = nullptr;
 context->GetNodeAndRegistration(context, node_index, &node, &registration);
 
 if (registration->version > kMinVersion) {
