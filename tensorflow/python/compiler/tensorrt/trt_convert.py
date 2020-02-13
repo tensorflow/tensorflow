@@ -22,6 +22,7 @@ import collections
 import os
 import platform
 import tempfile
+from functools import partial
 
 import six as _six
 
@@ -972,6 +973,8 @@ class TrtGraphConverterV2(object):
     self._input_saved_model_signature_key = (
         input_saved_model_signature_key or
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
+    self._rewriter_config = get_tensorrt_rewriter_config(
+        conversion_params=self._conversion_params, is_v2=True)
 
     self._need_calibration = (
         conversion_params.precision_mode == TrtPrecisionMode.INT8 and
@@ -979,6 +982,15 @@ class TrtGraphConverterV2(object):
     if (self._need_calibration and not conversion_params.is_dynamic_op):
       raise ValueError("INT8 precision mode with calibration is not supported "
                        "with static TensorRT ops. Set is_dynamic_op to True.")
+
+    # rewriter_config is already validated
+    self._need_trt_profiles = None
+    for optimizer in self._rewriter_config.custom_optimizers:
+      if optimizer.name == "TensorRTOptimizer":
+        self._need_trt_profiles = not optimizer.parameter_map[
+            "use_implicit_batch"].b \
+            if "use_implicit_batch" in optimizer.parameter_map else False
+    assert self._need_trt_profiles != None
 
     self._converted = False
     self._build_called_once = False
@@ -992,11 +1004,9 @@ class TrtGraphConverterV2(object):
     Returns:
       The optimized GraphDef.
     """
-    rewriter_config = get_tensorrt_rewriter_config(
-        conversion_params=self._conversion_params, is_v2=True)
     grappler_session_config = config_pb2.ConfigProto()
     grappler_session_config.graph_options.rewrite_options.CopyFrom(
-        rewriter_config)
+        self._rewriter_config)
     return tf_optimizer.OptimizeGraph(
         grappler_session_config, meta_graph_def, graph_id=b"tf_graph")
 
@@ -1112,8 +1122,50 @@ class TrtGraphConverterV2(object):
       raise RuntimeError("input_fn is None. Method build() needs input_fn "
                          "to be specified in order to build TensorRT engines")
 
+    def _rebuild_func():
+      # Rebuild function from graph_def.
+      reset_converted_func = wrap_function.function_from_graph_def(
+          self._converted_graph_def,
+          [tensor.name for tensor in self._converted_func.inputs],
+          [tensor.name for tensor in self._converted_func.outputs])
+      reset_converted_func.graph.structured_outputs = nest.pack_sequence_as(
+          self._converted_func.graph.structured_outputs,
+          reset_converted_func.graph.structured_outputs)
+      self._converted_func = reset_converted_func
+
+    def _set_profile_generation_mode(value, node):
+      node.attr["_profile_generation_mode"].b = value
+
+    if self._need_trt_profiles:
+      # Enable profile generation.
+      self._for_each_trt_node(self._converted_graph_def,
+                              partial(_set_profile_generation_mode, True))
+      # Profile generation is enabled using the _profile_generation_mode
+      # attribute of the TRTEngineOps. We need to rebuild the function to
+      # change this attribute.
+      _rebuild_func()
+
+    # Use the first input in explicit batch mode to build TensorRT engines
+    # after generating all the profiles. The first input is used but any of
+    # the inputs can be used because the shape of this input does not
+    # determine the engine and instead the shapes collected in profiles
+    # determine the engine.
+    first_input = None
+    # Run inference:
+    #   Builds TRT engines if self._need_trt_profiles is False.
+    #   Builds TRT optimization profiles if self._need_trt_profiles is True.
     for inp in input_fn():
+      if not first_input:
+        first_input = inp
       self._converted_func(*map(ops.convert_to_tensor, inp))
+    if self._need_trt_profiles:
+      # Disable profile generation.
+      self._for_each_trt_node(self._converted_graph_def,
+                              partial(_set_profile_generation_mode, False))
+      _rebuild_func()
+      # Run inference to build TensorRT engines out of generated optimization
+      # profiles.
+      self._converted_func(*map(ops.convert_to_tensor, first_input))
 
     self._build_called_once = True
 
@@ -1124,6 +1176,12 @@ class TrtGraphConverterV2(object):
       output_saved_model_dir: directory to saved the converted SavedModel.
     """
     assert self._converted
+
+    if self._need_trt_profiles and not self._build_called_once:
+      raise NotImplementedError(
+          "build() is not called . Explicit batch mode "
+          "(use_implicit_batch=False) requires generating TensorRT optimization"
+          " profiles which is done by calling build().")
 
     # Serialize the TRT engines in the cache if any, and create trackable
     # resource to track them.

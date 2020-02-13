@@ -153,6 +153,10 @@ class TRTEngineOp : public AsyncOpKernel {
   // Whether to use implicit batch dimension for TensorRT.
   bool use_implicit_batch_;
 
+  // Whether to collect optimization profiles for TensorRT, only used when
+  // use_implicit_batch_=false.
+  bool profile_generation_mode_;
+
   // Maximum number of cached engines.
   int max_cached_engines_;
 
@@ -311,7 +315,19 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     use_implicit_batch_ = true;
   }
 #endif
+  status =
+      context->GetAttr("_profile_generation_mode", profile_generation_mode_);
+  if (status.code() == tensorflow::error::NOT_FOUND) {
+    VLOG(2) << "Not found _profile_generation_mode in "
+            << context->device()->name()
+            << ", thus setting _profile_generation_mode=false";
+    profile_generation_mode_ = false;
+  }
   if (use_implicit_batch_) {
+    OP_REQUIRES(context, !profile_generation_mode_,
+                errors::InvalidArgument(
+                    "profile_generation_mode_=true is only supported if "
+                    "use_implicit_batch=false"));
     if (input_partial_shapes_.empty()) {
       VLOG(1) << "Attribute input_shapes is not set. This happens probably "
               << "because you are using a model that is already converted "
@@ -536,12 +552,22 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_concrete_shapes), *helper);
 
   if (!use_implicit_batch_) {
-    if (cache_res->profiles_.GetNumProfiles() == 0) {
-      // Create a single profile from the current input shape.
-      // In the future we will collect a set of input shapes during build mode
-      // and create profiles for each of them.
-      cache_res->profiles_.AddShape(input_concrete_shapes);
-      cache_res->profiles_.InitProfiles();
+    if (profile_generation_mode_) {
+      // Collecting new shapes for profiles can be only done once. After
+      // the shapes are converted to TRT profiles, no shapes can be collected
+      // anymore.
+      OP_REQUIRES(ctx, cache_res->profiles_.GetNumProfiles() == 0,
+                  errors::Unimplemented("Cannot collect new shapes when "
+                                        "profiles are already created."));
+      // Just collect the input shape info and return. The shapes are used to
+      // generate optimization profiles during engine creation.
+      cache_res->profiles_.addShape(input_concrete_shapes);
+      VLOG(1) << "Native segment is used during collecting shapes for profiles";
+      ExecuteNativeSegment(ctx, helper);
+      return;
+    } else if (cache_res->profiles_.GetNumProfiles() == 0) {
+      // Create profiles out of collected shapes during profile generation.
+      cache_res->profiles_.initProfiles();
     }
   }
   StatusOr<std::pair<EngineContext*, int>> status =
