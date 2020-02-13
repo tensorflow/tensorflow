@@ -855,7 +855,7 @@ def _basename(repository_ctx, path_str):
     is_win = is_windows(repository_ctx)
     for i in range(num_chars):
         r_i = num_chars - 1 - i
-        if (is_win and path_str[r_i] == "/") or path_str[r_i] == "\\":
+        if (is_win and path_str[r_i] == "\\") or path_str[r_i] == "/":
             return path_str[r_i + 1:]
     return path_str
 
