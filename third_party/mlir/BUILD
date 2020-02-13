@@ -681,8 +681,8 @@ cc_library(
         ":Pass",
         ":Support",
         ":TargetNVVMIR",
+        "//third_party/llvm/llvm-project/llvm:all_targets",
         "@llvm-project//llvm:core",
-        "@llvm-project//llvm:nvptx_code_gen",  # buildcleaner: keep
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:target",
     ],
@@ -1778,6 +1778,7 @@ cc_binary(
         ":OpenMPDialect",
         ":QuantOps",
         ":Transforms",
+        "//third_party/llvm/llvm-project/llvm:all_targets",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir/test:TestDialect",
         "@llvm-project//mlir/test:TestIR",
