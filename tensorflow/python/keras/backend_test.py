@@ -482,7 +482,7 @@ class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
                                      input_shape_b=(4, 7))
 
   def test_relu(self):
-    x = ops.convert_to_tensor([[-4, 0], [2, 7]], 'float32')
+    x = ops.convert_to_tensor_v2([[-4, 0], [2, 7]], 'float32')
 
     # standard relu
     relu_op = keras.backend.relu(x)
@@ -1311,7 +1311,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     inputs = keras.backend.variable(input_val)
     initial_states = [
         keras.backend.variable(init_state_val),
-        ops.convert_to_tensor(
+        ops.convert_to_tensor_v2(
             np.concatenate([init_state_val, init_state_val], axis=-1))
     ]
     mask = keras.backend.variable(np_mask)
@@ -1624,9 +1624,9 @@ class BackendCrossEntropyLossesTest(test.TestCase):
     p = keras.backend.placeholder()
     o = keras.backend.categorical_crossentropy(t, p)
 
-    t_val = ops.convert_to_tensor([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
-    p_val = ops.convert_to_tensor([[.9, .05, .05], [.05, .89, .06],
-                                   [.05, .01, .94]])
+    t_val = ops.convert_to_tensor_v2([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
+    p_val = ops.convert_to_tensor_v2([[.9, .05, .05], [.05, .89, .06],
+                                      [.05, .01, .94]])
     f = keras.backend.function([t, p], o)
 
     result = f([t_val, p_val])
@@ -1640,7 +1640,7 @@ class BackendCrossEntropyLossesTest(test.TestCase):
     self.assertArrayNear(result, [.105, .065, .111], 1e-3)
 
     # from logits
-    p_val = ops.convert_to_tensor([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p_val = ops.convert_to_tensor_v2([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
     o = keras.backend.categorical_crossentropy(t, p, from_logits=True)
     f = keras.backend.function([t, p], o)
 
@@ -1693,9 +1693,9 @@ class BackendCrossEntropyLossesTest(test.TestCase):
     p = keras.backend.placeholder()
     o = keras.backend.sparse_categorical_crossentropy(t, p)
 
-    t_val = ops.convert_to_tensor([0, 1, 2])
-    p_val = ops.convert_to_tensor([[.9, .05, .05], [.05, .89, .06],
-                                   [.05, .01, .94]])
+    t_val = ops.convert_to_tensor_v2([0, 1, 2])
+    p_val = ops.convert_to_tensor_v2([[.9, .05, .05], [.05, .89, .06],
+                                      [.05, .01, .94]])
     f = keras.backend.function([t, p], o)
 
     result = f([t_val, p_val])
@@ -1711,7 +1711,7 @@ class BackendCrossEntropyLossesTest(test.TestCase):
       _ = f([t_val, p_val])
 
     # from logits
-    p_val = ops.convert_to_tensor([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p_val = ops.convert_to_tensor_v2([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
     o = keras.backend.sparse_categorical_crossentropy(t, p, from_logits=True)
     f = keras.backend.function([t, p], o)
 
@@ -2134,8 +2134,9 @@ class ControlOpsTests(test.TestCase):
     self.assertEqual(keras.backend.eval(tensor), [9.0])
 
   def test_unequal_rank(self):
-    x = ops.convert_to_tensor(np.array([[1, 2, 3], [4, 5, 6]]), dtype='float32')
-    y = ops.convert_to_tensor(np.array([1, 2, 3]), dtype='float32')
+    x = ops.convert_to_tensor_v2(
+        np.array([[1, 2, 3], [4, 5, 6]]), dtype='float32')
+    y = ops.convert_to_tensor_v2(np.array([1, 2, 3]), dtype='float32')
 
     def true_func():
       return x

@@ -254,7 +254,7 @@ class OptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testComputeGradientsWithTensors(self):
     with test_util.use_gpu():
-      x = ops.convert_to_tensor(1.0)
+      x = ops.convert_to_tensor_v2(1.0)
 
       def f():
         return x * x

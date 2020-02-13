@@ -106,11 +106,11 @@ class Adagrad(optimizer_v2.OptimizerV2):
 
   def _prepare_local(self, var_device, var_dtype, apply_state):
     super(Adagrad, self)._prepare_local(var_device, var_dtype, apply_state)
-    apply_state[(var_device, var_dtype)].update(dict(
-        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
-        neg_lr_t=-apply_state[(var_device, var_dtype)]['lr_t'],
-        zero=array_ops.zeros((), dtype=dtypes.int64)
-    ))
+    apply_state[(var_device, var_dtype)].update(
+        dict(
+            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            neg_lr_t=-apply_state[(var_device, var_dtype)]['lr_t'],
+            zero=array_ops.zeros((), dtype=dtypes.int64)))
 
   def set_weights(self, weights):
     params = self.weights
