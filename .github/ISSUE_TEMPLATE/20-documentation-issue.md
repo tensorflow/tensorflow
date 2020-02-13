@@ -1,6 +1,6 @@
 ---
 name: Documentation Issue
-about: Use this template for documentation related
+about: Use this template for documentation related issues
 labels: 'type:docs'
 
 ---
