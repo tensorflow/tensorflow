@@ -222,35 +222,39 @@ func (t *Tensor) Value() interface{} {
 	raw := tensorData(t.c)
 	shape := t.Shape()
 	dt := t.DataType()
-	if dt != String {
-		return decodeTensor(raw, shape, dt).Interface()
-	}
-
-	typ := typeOf(dt, shape)
-	val := reflect.New(typ)
-	nflattened := numElements(shape)
-	d := stringDecoder{offsets: bytes.NewReader(raw[0 : 8*nflattened]), data: raw[8*nflattened:], status: newStatus()}
-	if err := d.decode(val, shape); err != nil {
-		panic(bug("unable to decode String tensor with shape %v - %v", shape, err))
-	}
-	return reflect.Indirect(val).Interface()
+	return decodeTensor(raw, shape, dt).Interface()
 }
 
 func decodeTensor(raw []byte, shape []int64, dt DataType) reflect.Value {
-	typ := typeForDataType(dt)
 	// Create a 1-dimensional slice of the base large enough for the data and
 	// copy the data in.
 	n := int(numElements(shape))
-	l := n * int(typ.Size())
-	typ = reflect.SliceOf(typ)
-	slice := reflect.MakeSlice(typ, n, n)
-	h := sliceHeader{
-		Data: unsafe.Pointer(slice.Pointer()),
-		Len:  l,
-		Cap:  l,
+
+	var (
+		slice reflect.Value
+		typ   reflect.Type
+	)
+	if dt == String {
+		strs, err := decodeOneDimString(raw, n)
+		if err != nil {
+			panic(bug("unable to decode string with shape %v: %v", shape, err))
+		}
+		slice = reflect.ValueOf(strs)
+		typ = slice.Type()
+	} else {
+		typ = typeForDataType(dt)
+		l := n * int(typ.Size())
+		typ = reflect.SliceOf(typ)
+		slice = reflect.MakeSlice(typ, n, n)
+		h := sliceHeader{
+			Data: unsafe.Pointer(slice.Pointer()),
+			Len:  l,
+			Cap:  l,
+		}
+		baseBytes := *(*[]byte)(unsafe.Pointer(&h))
+		copy(baseBytes, raw)
 	}
-	baseBytes := *(*[]byte)(unsafe.Pointer(&h))
-	copy(baseBytes, raw)
+
 	// Now we have the data in place in the base slice we can add the
 	// dimensions. We want to walk backwards through the shape. If the shape is
 	// length 1 or 0 then we're already done.
@@ -301,6 +305,63 @@ func decodeTensor(raw []byte, shape []int64, dt DataType) reflect.Value {
 		slice = nextSlice
 	}
 	return slice
+}
+
+// decodeOneDimString decodes a string tensor into a one-dimensional []string.
+func decodeOneDimString(raw []byte, nStrings int) ([]string, error) {
+	// Start by making an array of all the strings
+	strs := make([]string, nStrings)
+	// The first nStrings * 8 bytes of raw are offsets into the second half of
+	// the raw data. This second half is where the strings are encoded.
+	offsets := (*(*[]int64)(unsafe.Pointer(&raw)))[:nStrings]
+
+	// Reset raw after the offsets. Now the offsets will work relative to raw
+	raw = raw[nStrings*8:]
+	// Next we work out the final length of the string data so we can copy the
+	// good data out of raw (which is owned by the C tensor and won't be safe
+	// to access if the tensor is freed)
+	r := bytes.NewReader(raw)
+	var totalLength int
+	for _, offset := range offsets {
+		// At each offset we should find a varint length of a string.
+		// Errors here should mean the tensor is corrupt.
+		if _, err := r.Seek(offset, io.SeekStart); err != nil {
+			return nil, err
+		}
+		l, err := binary.ReadUvarint(r)
+		if err != nil {
+			return nil, err
+		}
+		totalLength += int(l)
+	}
+
+	// Lets allocate a big buffer to carry our string data.
+	stringData := make([]byte, 0, totalLength)
+	// Now copy the string data across into our new buffer, keeping track of the
+	// location of each string in the strs slice.
+	var cursor int
+	for i, offset := range offsets {
+		// At each offset we should find a varint length. Read it
+		if _, err := r.Seek(offset, io.SeekStart); err != nil {
+			return nil, err
+		}
+		l, err := binary.ReadUvarint(r)
+		if err != nil {
+			return nil, err
+		}
+
+		// Then copy the actual string into our large buffer
+		target := stringData[cursor : cursor+int(l)]
+		if _, err := r.Read(target); err != nil {
+			return nil, err
+		}
+		// Track where this string data is.
+		strs[i] = *(*string)(unsafe.Pointer(&target))
+		cursor += int(l)
+	}
+
+	// So now we have a big slice of strings
+	return strs, nil
 }
 
 // WriteContentsTo writes the serialized contents of t to w.
@@ -425,7 +486,8 @@ func byteSizeOfEncodedStrings(val reflect.Value) int {
 	return size
 }
 
-// sizeVarUint determines how many bytes it would take to encode the int v
+// sizeVarUint determines how many bytes it would take to encode the int v as
+// an unsigned varint
 func sizeVarUint(v uint64) int {
 	if v < 0x80 {
 		return 1
@@ -532,45 +594,6 @@ func (e *stringEncoder) encode(v reflect.Value, shape []int64) error {
 	return nil
 }
 
-type stringDecoder struct {
-	offsets io.Reader
-	data    []byte
-	status  *status
-}
-
-func (d *stringDecoder) decode(ptr reflect.Value, shape []int64) error {
-	if len(shape) == 0 {
-		var offset uint64
-		if err := binary.Read(d.offsets, nativeEndian, &offset); err != nil {
-			return err
-		}
-		var (
-			src    = (*C.char)(unsafe.Pointer(&d.data[offset]))
-			srcLen = C.size_t(len(d.data)) - C.size_t(offset)
-			dst    *C.char
-			dstLen C.size_t
-		)
-		if offset > uint64(len(d.data)) {
-			return fmt.Errorf("invalid offsets in String Tensor")
-		}
-		C.TF_StringDecode(src, srcLen, &dst, &dstLen, d.status.c)
-		if err := d.status.Err(); err != nil {
-			return err
-		}
-		s := ptr.Interface().(*string)
-		*s = C.GoStringN(dst, C.int(dstLen))
-		return nil
-	}
-	val := reflect.Indirect(ptr)
-	val.Set(reflect.MakeSlice(typeOf(String, shape), int(shape[0]), int(shape[0])))
-	for i := 0; i < val.Len(); i++ {
-		if err := d.decode(val.Index(i).Addr(), shape[1:]); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func bug(format string, args ...interface{}) error {
 	return fmt.Errorf("BUG: Please report at https://github.com/tensorflow/tensorflow/issues with the note: Go TensorFlow %v: %v", Version(), fmt.Sprintf(format, args...))
 }
@@ -589,24 +612,5 @@ func isTensorSerializable(dataType DataType) error {
 		return nil
 	default:
 		return fmt.Errorf("serialization of tensors with the DataType %d is not yet supported, see https://github.com/tensorflow/tensorflow/issues/6003", dataType)
-	}
-}
-
-// nativeEndian is the byte order for the local platform. Used to send back and
-// forth Tensors with the C API. We test for endianness at runtime because
-// some architectures can be booted into different endian modes.
-var nativeEndian binary.ByteOrder
-
-func init() {
-	buf := [2]byte{}
-	*(*uint16)(unsafe.Pointer(&buf[0])) = uint16(0xABCD)
-
-	switch buf {
-	case [2]byte{0xCD, 0xAB}:
-		nativeEndian = binary.LittleEndian
-	case [2]byte{0xAB, 0xCD}:
-		nativeEndian = binary.BigEndian
-	default:
-		panic("Could not determine native endianness.")
 	}
 }
