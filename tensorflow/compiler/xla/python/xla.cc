@@ -307,7 +307,17 @@ StatusOr<py::dict> PyLocalBufferCudaArrayInterface(
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
-  if (!InitializeNumpyAPIForTypes()) {
+  // Caution: import_array1 works by initializing a static variable
+  // (PyArray_API) which is *defined* in a NumPy header. import_array1() must
+  // therefore be called from the *same translation unit* as any users of
+  // NumPy C APIs.
+  auto init_numpy = []() -> bool {
+    // import_array1 might look like a function. It's not. It's a macro that
+    // calls `return`, which is why we wrap it in this strange-looking lambda.
+    import_array1(false);
+    return true;
+  };
+  if (!init_numpy() || !InitializeNumpyAPIForTypes()) {
     throw std::runtime_error("Unable to initialize Numpy API");
   }
 
@@ -677,16 +687,15 @@ PYBIND11_MODULE(xla_extension, m) {
             GlobalPyRefManager()->CollectGarbage();
             PyLocalBuffer* buffer = buffer_obj.cast<PyLocalBuffer*>();
             LocalDeviceState* state = buffer->device()->local_device_state();
-            // TODO(phawkins): fix occasional segfaults
-            // if (state->executor()->platform_kind() == se::PlatformKind::kHost
-            //     && buffer->on_device_shape().IsArray() &&
-            //     buffer->on_device_shape().element_type() != BF16) {
-            //   py::object out = py::reinterpret_steal<py::object>(
-            //       PyArray_FROM_O(buffer_obj.ptr()));
-            //   CHECK(out.ptr() != nullptr)
-            //       << buffer->on_host_shape().ToString(/*print_layout=*/true);
-            //   return out;
-            // }
+            if (state->executor()->platform_kind() == se::PlatformKind::kHost &&
+                buffer->on_device_shape().IsArray() &&
+                buffer->on_device_shape().element_type() != BF16) {
+              py::object out = py::reinterpret_steal<py::object>(
+                  PyArray_FROM_O(buffer_obj.ptr()));
+              CHECK(out.ptr() != nullptr)
+                  << buffer->on_host_shape().ToString(/*print_layout=*/true);
+              return out;
+            }
             std::shared_ptr<Literal> literal;
             {
               py::gil_scoped_release gil_release;
