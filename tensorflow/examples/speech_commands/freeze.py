@@ -45,8 +45,8 @@ import sys
 import tensorflow as tf
 
 from tensorflow.python.ops import gen_audio_ops as audio_ops
-import tensorflow.examples.speech_commands.input_data as input_data
-import tensorflow.examples.speech_commands.models as models
+import input_data
+import models
 from tensorflow.python.framework import graph_util
 
 # If it's available, load the specialized feature generator. If this doesn't
