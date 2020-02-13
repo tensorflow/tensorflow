@@ -371,6 +371,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                                                 inputs.dense_shape)
     else:
       indexed_data = table.lookup(inputs)
+      # (b/149446477): output does not preserve input shape.
+      indexed_data.set_shape(inputs.shape)
 
     # Composite tensors can pass tensor values through, which will cause
     # errors if this is the only layer in the model. To fix this, pass
