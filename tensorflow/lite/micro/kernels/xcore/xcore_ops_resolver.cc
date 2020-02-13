@@ -62,8 +62,9 @@ XcoreOpsResolver::XcoreOpsResolver() {
     AddBuiltin(BuiltinOperator_RELU6, Register_RELU6());
 
     AddCustom("XC_argmax_16", Register_ArgMax_16());
-    AddCustom("XC_maxpool2d_deep", Register_MaxPool());
-    AddCustom("XC_avgpool2d_deep", Register_AvgPool());
+    AddCustom("XC_maxpool2d_deep", Register_MaxPool2D());
+    AddCustom("XC_avgpool2d", Register_AvgPool2D());
+    AddCustom("XC_avgpool2d_global", Register_AvgPool2D_Global());
     AddCustom("XC_fc_deepin_anyout", Register_FullyConnected_16());
     AddCustom("XC_conv2d_shallowin_deepout_relu", Register_Conv2D_SIDO());
     AddCustom("XC_conv2d_deepin_deepout_relu", Register_Conv2D_DIDO());

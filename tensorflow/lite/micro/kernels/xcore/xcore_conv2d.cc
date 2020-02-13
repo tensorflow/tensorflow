@@ -7,7 +7,7 @@ namespace tflite {
 namespace ops {
 namespace micro {
 namespace xcore {
-namespace conv2d {
+namespace conv {
 
     typedef union ParamsPtrUnion {
         nn_conv2d_sido_params_t *sido;
@@ -79,7 +79,7 @@ namespace conv2d {
     //**************************************
     //**************************************
     //**************************************
-    void* Init_SIDO(TfLiteContext* context, const char* buffer, size_t length) 
+    void* Init2D_SIDO(TfLiteContext* context, const char* buffer, size_t length) 
     {
         auto* user_data = new UserData();
         user_data->params.sido = new nn_conv2d_sido_params_t();
@@ -90,7 +90,7 @@ namespace conv2d {
         return user_data;
     }
 
-    void Free_SIDO(TfLiteContext* context, void* buffer) {
+    void Free2D_SIDO(TfLiteContext* context, void* buffer) {
         auto* user_data = reinterpret_cast<UserData*>(buffer);
 
         conv2d_shallowin_deepout_deinit(user_data->params.sido);
@@ -98,7 +98,7 @@ namespace conv2d {
     }
 
 
-    TfLiteStatus Prepare_SIDO(TfLiteContext* context, TfLiteNode* node) {
+    TfLiteStatus Prepare2D_SIDO(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
         TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -146,7 +146,7 @@ namespace conv2d {
     }
 
 
-    TfLiteStatus Eval_SIDO(TfLiteContext* context, TfLiteNode* node) {
+    TfLiteStatus Eval2D_SIDO(TfLiteContext* context, TfLiteNode* node) {
         const TfLiteTensor* input = GetInput(context, node, 0);
         const TfLiteTensor* weights = GetInput(context, node, 1);
         const TfLiteTensor* shift_scale = GetInput(context, node, 3);
@@ -173,7 +173,7 @@ namespace conv2d {
     //**************************************
     //**************************************
 
-    void* Init_DIDO(TfLiteContext* context, const char* buffer, size_t length) 
+    void* Init2D_DIDO(TfLiteContext* context, const char* buffer, size_t length) 
     {
         auto* user_data = new UserData();
         user_data->params.dido = new nn_conv2d_dido_params_t();
@@ -184,14 +184,14 @@ namespace conv2d {
         return user_data;
     }
 
-    void Free_DIDO(TfLiteContext* context, void* buffer) {
+    void Free2D_DIDO(TfLiteContext* context, void* buffer) {
         auto* user_data = reinterpret_cast<UserData*>(buffer);
 
         conv2d_deepin_deepout_deinit(user_data->params.dido);
         delete user_data;
     }
 
-    TfLiteStatus Prepare_DIDO(TfLiteContext* context, TfLiteNode* node) {
+    TfLiteStatus Prepare2D_DIDO(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
         TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -244,7 +244,7 @@ namespace conv2d {
         return kTfLiteOk;
     }
 
-    TfLiteStatus Eval_DIDO(TfLiteContext* context, TfLiteNode* node) {
+    TfLiteStatus Eval2D_DIDO(TfLiteContext* context, TfLiteNode* node) {
         const TfLiteTensor* input = GetInput(context, node, 0);
         const TfLiteTensor* weights = GetInput(context, node, 1);
         const TfLiteTensor* shift_scale = GetInput(context, node, 3);
@@ -263,25 +263,25 @@ namespace conv2d {
         return kTfLiteOk;
     }
 
-}  // conv2d
+}  // conv
 
 
 TfLiteRegistration* Register_Conv2D_DIDO() {
     static TfLiteRegistration r = {
-        conv2d::Init_DIDO,
-        conv2d::Free_DIDO,
-        conv2d::Prepare_DIDO,
-        conv2d::Eval_DIDO
+        conv::Init2D_DIDO,
+        conv::Free2D_DIDO,
+        conv::Prepare2D_DIDO,
+        conv::Eval2D_DIDO
     };
     return &r;
 }
 
 TfLiteRegistration* Register_Conv2D_SIDO() {
     static TfLiteRegistration r = {
-        conv2d::Init_SIDO,
-        conv2d::Free_SIDO,
-        conv2d::Prepare_SIDO,
-        conv2d::Eval_SIDO
+        conv::Init2D_SIDO,
+        conv::Free2D_SIDO,
+        conv::Prepare2D_SIDO,
+        conv::Eval2D_SIDO
     };
     return &r;
 }
