@@ -41,7 +41,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradients as gradient_ops
+from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
@@ -338,6 +340,37 @@ class BitwiseTest(PForTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class ImageTest(PForTestCase):
+
+  def test_adjust_contrast(self):
+    images = random_ops.random_uniform([3, 2, 4, 4, 3])
+
+    def loop_fn(i):
+      image = array_ops.gather(images, i)
+      return image_ops.adjust_contrast(image, 2.0)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_adjust_hue(self):
+    images = random_ops.random_uniform([3, 2, 4, 4, 3])
+
+    def loop_fn(i):
+      image = array_ops.gather(images, i)
+      return image_ops.adjust_hue(image, .25)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_adjust_saturation(self):
+    images = random_ops.random_uniform([3, 2, 4, 4, 3])
+
+    def loop_fn(i):
+      image = array_ops.gather(images, i)
+      return image_ops.adjust_saturation(image, 0.1)
+
+    self._test_loop_fn(loop_fn, 3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class NNTest(PForTestCase):
 
   def test_conv2d(self):
@@ -409,6 +442,27 @@ class NNTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_avg_pool3d(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = random_ops.random_uniform([5, 3, 7, 6, 6, 5])
+      g.watch(x)
+      ksize = [1, 2, 2, 2, 1]
+      strides = [1, 2, 2, 2, 1]
+
+    def loop_fn(i):
+      with g:
+        x1 = array_ops.gather(x, i)
+        output = nn.avg_pool3d(
+            x1,
+            ksize,
+            strides=strides,
+            padding="VALID",
+            data_format="NDHWC")
+        loss = nn.l2_loss(output)
+      return output, g.gradient(loss, x1)
+
+    self._test_loop_fn(loop_fn, 3)
+
   def test_max_pool(self):
     with backprop.GradientTape(persistent=True) as g:
       x = random_ops.random_uniform([3, 2, 12, 12, 3])
@@ -420,6 +474,27 @@ class NNTest(PForTestCase):
       with g:
         x1 = array_ops.gather(x, i)
         output = nn.max_pool(
+            x1, ksize, strides=strides, padding="VALID", data_format="NHWC")
+        loss = nn.l2_loss(output)
+        ones = array_ops.ones_like(output)
+        g.watch(ones)
+        grad = g.gradient(loss, x1, output_gradients=ones)
+      grad_grad = g.gradient(grad, ones)
+      return output, grad, grad_grad
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_max_pool_v2(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = random_ops.random_uniform([3, 2, 12, 12, 3])
+      g.watch(x)
+      ksize = [1, 3, 3, 1]
+      strides = [1, 2, 2, 1]
+
+    def loop_fn(i):
+      with g:
+        x1 = array_ops.gather(x, i)
+        output = gen_nn_ops.max_pool_v2(
             x1, ksize, strides=strides, padding="VALID", data_format="NHWC")
         loss = nn.l2_loss(output)
         ones = array_ops.ones_like(output)
