@@ -242,6 +242,7 @@ tf_py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "notsan",  # b/149100891
     ],
     deps = [
         ":applications",

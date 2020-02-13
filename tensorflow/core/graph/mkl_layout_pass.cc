@@ -359,13 +359,13 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mul = "Mul";
     csinfo_.squared_difference = "SquaredDifference";
     csinfo_.sub = "Sub";
-// End - element-wise ops. See note above.
+    // End - element-wise ops. See note above.
 
-// NOTE: names are alphabetically sorted.
-#ifndef ENABLE_MKLDNN_V1
+    // NOTE: names are alphabetically sorted.
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
@@ -654,6 +654,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       mkl_op_registry::GetMklOpName(csinfo_.quantize_v2),
                       CopyAttrsAll, QuantizeOpRewrite,
                       kRewriteForLayoutPropagation});
+#endif  // !ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
@@ -666,6 +667,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.relu6_grad, mkl_op_registry::GetMklOpName(csinfo_.relu6_grad),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back(
         {csinfo_.requantize, mkl_op_registry::GetMklOpName(csinfo_.requantize),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});

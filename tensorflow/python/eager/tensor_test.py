@@ -272,6 +272,12 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     for list_element, tensor_element in zip(l, t):
       self.assertAllEqual(list_element, tensor_element.numpy())
 
+  def testIterateOverScalarTensorRaises(self):
+    t = _create_tensor(1)
+    with self.assertRaisesRegexp(TypeError,
+                                 "Cannot iterate over a scalar tensor"):
+      iter(t)
+
   @test_util.run_gpu_only
   def testStringTensorOnGPU(self):
     with ops.device("/device:GPU:0"):
@@ -521,7 +527,7 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testTensorDir(self):
-    t = array_ops.zeros(1)
+    t = array_ops.ones(1)
     t.test_attr = "Test"
 
     instance_dir = dir(t)

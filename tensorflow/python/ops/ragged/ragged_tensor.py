@@ -1224,7 +1224,11 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     if self._cached_nrows is not None:
       return math_ops.cast(self._cached_nrows, out_type)
     with ops.name_scope(name, "RaggedNRows", [self]):
-      return array_ops.shape(self.row_splits, out_type=out_type)[0] - 1
+      nsplits = tensor_shape.dimension_at_index(self.row_splits.shape, 0)
+      if nsplits.value is None:
+        return array_ops.shape(self.row_splits, out_type=out_type)[0] - 1
+      else:
+        return constant_op.constant(nsplits.value - 1, dtype=out_type)
 
   def row_starts(self, name=None):
     """Returns the start indices for rows in this ragged tensor.
@@ -1996,6 +2000,46 @@ class RaggedTensor(composite_tensor.CompositeTensor):
   #=============================================================================
   # Eager Execution Mode
   #=============================================================================
+
+  def numpy(self):
+    """Returns a numpy `array` with the values for this `RaggedTensor`.
+
+    Requires that this `RaggedTensor` was constructed in eager execution mode.
+
+    Ragged dimensions are encoded using numpy `arrays` with `dtype=object` and
+    `rank=1`, where each element is a single row.
+
+    #### Examples
+
+    In the following example, the value returned by `RaggedTensor.numpy()`
+    contains three numpy `array` objects: one for each row (with `rank=1` and
+    `dtype=int64`), and one to combine them (with `rank=1` and `dtype=object`):
+
+    >>> tf.ragged.constant([[1, 2, 3], [4, 5]], dtype=tf.int64).numpy()
+    array([array([1, 2, 3]), array([4, 5])], dtype=object)
+
+    Uniform dimensions are encoded using multidimensional numpy `array`s.  In
+    the following example, the value returned by `RaggedTensor.numpy()` contains
+    a single numpy `array` object, with `rank=2` and `dtype=int64`:
+
+    >>> tf.ragged.constant([[1, 2, 3], [4, 5, 6]], dtype=tf.int64).numpy()
+    array([[1, 2, 3], [4, 5, 6]])
+
+    Returns:
+      A numpy `array`.
+    """
+    if not self._is_eager():
+      raise ValueError("RaggedTensor.numpy() is only supported in eager mode.")
+    values = self._values.numpy()
+    splits = self._row_splits.numpy()
+    rows = [values[splits[i]:splits[i + 1]] for i in range(len(splits) - 1)]
+    if not rows:
+      return np.zeros((0, 0) + values.shape[1:], dtype=values.dtype)
+    # Note: if `rows` have ragged lengths, then they will be stored in a
+    # np.ndarray with dtype=object and rank=1.  If they have uniform lengths,
+    # they will be combined into a single np.ndarray with dtype=row.dtype and
+    # rank=row.rank+1.
+    return np.array(rows)
 
   def to_list(self):
     """Returns a nested Python `list` with the values for this `RaggedTensor`.

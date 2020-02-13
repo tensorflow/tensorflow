@@ -35,7 +35,7 @@ Status ConvertGraphDefToXla(GraphDef graph_def, const tf2xla::Config& config,
                             xla::XlaComputation* computation);
 
 // Similar to ConvertGraphDefToXla, but uses MLIR.
-Status ConvertGraphDefToXlaViaMlir(const GraphDef& graph_def,
+Status ConvertGraphDefToXlaViaMlir(GraphDef graph_def,
                                    const tf2xla::Config& config,
                                    xla::XlaComputation* computation);
 

@@ -18,6 +18,7 @@ cc_library(
     name = "xnnpack_delegate",
     srcs = ["xnnpack_delegate.cc"],
     hdrs = ["xnnpack_delegate.h"],
+    linkstatic = True,
     deps = [
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",

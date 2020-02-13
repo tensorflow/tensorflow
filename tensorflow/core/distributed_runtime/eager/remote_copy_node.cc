@@ -77,7 +77,7 @@ RemoteCopyNode::RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor,
       src_(src),
       ctx_(ctx),
       executor_(executor),
-      send_device_(src->DeviceOrHostCPU(*ctx)),
+      send_device_(absl::get<Device*>(src->DeviceOrHostCPU(*ctx))),
       recv_device_(recv_device),
       wire_id_(GetUniqueWireID()),
       recv_op_id_(recv_op_id),
@@ -102,7 +102,8 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
   gtl::InlinedVector<TensorValue, 4> input_vector(1);
-  TF_RETURN_IF_ERROR(src_->TensorValue(&input_vector[0]));
+  TF_RETURN_IF_ERROR(
+      src_->TensorValue(&input_vector[0], ctx_->CanonicalDevice(op->Device())));
 
   EagerKernelArgs args(std::move(input_vector));
   return kernel->Run(args, /*outputs=*/nullptr,
@@ -145,8 +146,8 @@ void RemoteCopyNode::StartSend() {
     request.set_context_id(ctx_->GetContextId());
     auto* remote_op = request.add_queue()->mutable_operation();
     status = ctx_->RemoteMgr()->SerializeRemoteTensorHandle(
-        src_, remote_op->add_inputs(), src_->device(),
-        src_->DeviceOrHostCPU(*ctx_)->name());
+        src_, remote_op->add_inputs(), absl::get<Device*>(src_->device()),
+        absl::get<Device*>(src_->DeviceOrHostCPU(*ctx_))->name());
     if (!status.ok()) {
       captured_state_->SetSendStatus(status);
       return;
@@ -275,7 +276,8 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
       done(status);
       return;
     }
-    status = captured_state_->dst()->SetTensor(std::move(outputs[0]));
+    status = captured_state_->dst()->SetTensor(
+        std::move(outputs[0]), ctx_->CanonicalDevice(recv_device_));
     done(status);
   } else {
     // Handles captured_state_->dst_ internally.

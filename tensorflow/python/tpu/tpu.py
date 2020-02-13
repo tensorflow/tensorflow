@@ -672,6 +672,9 @@ def outside_compilation(computation, *args, **kwargs):
   ops on CPU's. Below usage of outside compilation will place ops in
   `computation_with_string_ops` on CPU.
 
+  Example usage:
+
+  ```python
   def computation_with_string_ops(x):
     # strings types are not supported on TPU's and below ops must
     # run on CPU instead.
@@ -681,6 +684,7 @@ def outside_compilation(computation, *args, **kwargs):
   def tpu_computation():
     # Expected output is 11.
     output = tf.tpu.outside_compilation(computation_with_string_ops, 1)
+  ```
 
   Outside compilation should be called inside TPUReplicateContext. That is,
   `tf.tpu.outside_compilation()` should be called inside a function that is

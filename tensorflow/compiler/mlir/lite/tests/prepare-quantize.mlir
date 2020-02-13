@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-whitelist="quantize_float_placeholder_only" | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-whitelist="quantize_float_placeholder_only,not_reset_input" | FileCheck %s
 
 // CHECK-LABEL: quantize_float_placeholder_only
 func @quantize_float_placeholder_only(%arg0: tensor<f32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xf32>) -> (tensor<f32>, tensor<2x3xi32>, tensor<2x3xf32>) {
@@ -9,6 +9,15 @@ func @quantize_float_placeholder_only(%arg0: tensor<f32>, %arg1: tensor<2x3xi32>
 // CHECK-NEXT: %[[q_0:.*]] = "tfl.quantize"(%arg2)
 // CHECK-NEXT: %[[dq_0:.*]] = "tfl.dequantize"(%[[q_0]])
 // CHECK-NEXT: %[[dq]], %arg1, %[[dq_0]]
+}
+
+// CHECK-LABEL: not_reset_input
+func @not_reset_input(%arg0: tensor<f32>) -> (tensor<!quant.uniform<i16:f32, 1.0>>) {
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<!quant.uniform<i16:f32, 1.0>>} : (tensor<f32>) -> tensor<!quant.uniform<i16:f32, 1.0>>
+  return %0: tensor<!quant.uniform<i16:f32, 1.0>>
+
+// CHECK-NEXT: %[[q:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<!quant.uniform<i16:f32, 1.000000e+00>>}
+// CHECK-NEXT: return %[[q]]
 }
 
 // CHECK-LABEL: DequantizeAndQuantize

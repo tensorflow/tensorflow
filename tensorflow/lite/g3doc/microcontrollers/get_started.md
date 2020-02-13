@@ -22,6 +22,10 @@ application we'll be using has been tested on the following devices:
     (using Arduino IDE)
 *   [Adafruit Circuit Playground Bluefruit](https://learn.adafruit.com/tensorflow-lite-for-circuit-playground-bluefruit-quickstart?view=all)
     (using Arduino IDE)
+*   [Espressif ESP32-DevKitC](https://www.espressif.com/en/products/hardware/esp32-devkitc/overview)
+    (using ESP IDF)
+*   [Espressif ESP-EYE](https://www.espressif.com/en/products/hardware/esp-eye/overview)
+    (using ESP IDF)
 
 Learn more about supported platforms in
 [TensorFlow Lite for Microcontrollers](index.md).

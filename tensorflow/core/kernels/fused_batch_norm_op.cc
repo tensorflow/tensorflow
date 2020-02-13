@@ -827,33 +827,6 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     auto saved_inv_var_ptr =
         StreamExecutorUtil::AsDeviceMemory<U>(*saved_inv_var);
 
-    GPUDevice d = context->eigen_device<GPUDevice>();
-    using se::DeviceMemory;
-    Tensor inv_var;
-    OP_REQUIRES_OK(
-        context, context->allocate_temp(DataTypeToEnum<U>::value,
-                                        estimated_variance.shape(), &inv_var));
-    auto inv_var_ptr = StreamExecutorUtil::AsDeviceMemory<U>(inv_var);
-    std::function<const DeviceMemory<U>&()> var_to_inv_var =
-        [d, epsilon, estimated_variance,
-         &inv_var_ptr]() -> const DeviceMemory<U>& {
-      auto estimated_variance_ptr =
-          StreamExecutorUtil::AsDeviceMemory<U>(estimated_variance);
-      const U* variance =
-          static_cast<const U*>(estimated_variance_ptr.opaque());
-      U* inv_variance = static_cast<U*>(inv_var_ptr.opaque());
-      int channels = inv_var_ptr.ElementCount();
-      VarianceToInvVariance<U>()(d, variance, epsilon, channels, inv_variance);
-      return inv_var_ptr;
-    };
-    const int64 sample_size = batch_size * height * width;
-    std::function<void()> inv_var_to_var = [d, &batch_var_ptr, epsilon,
-                                            sample_size]() {
-      U* variance = static_cast<U*>(batch_var_ptr.opaque());
-      int channels = batch_var_ptr.ElementCount();
-      InvVarianceToVariance<U>()(d, epsilon, sample_size, channels, variance);
-    };
-
     std::unique_ptr<functor::CudnnBatchNormAllocatorInOutput<U>>
         reserve_space_allocator;
     std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8>>
@@ -875,8 +848,7 @@ struct FusedBatchNorm<GPUDevice, T, U> {
                 exponential_average_factor,
                 AsDnnActivationMode(activation_mode), &y_ptr, &batch_mean_ptr,
                 &batch_var_ptr, &saved_mean_ptr, &saved_inv_var_ptr,
-                is_training, std::move(var_to_inv_var),
-                std::move(inv_var_to_var), reserve_space_allocator.get(),
+                is_training, reserve_space_allocator.get(),
                 workspace_allocator.get())
             .ok();
 
@@ -1335,12 +1307,12 @@ class FusedBatchNormGradOpBase : public OpKernel {
     // They are filled with zeros so as to avoid NaN outputs.
     Tensor* placeholder_1 = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(3, TensorShape({}), &placeholder_1));
+        context, context->allocate_output(3, TensorShape({0}), &placeholder_1));
     functor::SetZeroFunctor<Device, float> f;
     f(context->eigen_device<Device>(), placeholder_1->flat<U>());
     Tensor* placeholder_2 = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(4, TensorShape({}), &placeholder_2));
+        context, context->allocate_output(4, TensorShape({0}), &placeholder_2));
     f(context->eigen_device<Device>(), placeholder_2->flat<U>());
 
     // If input is empty, set gradients w.r.t scale/offset to zero.

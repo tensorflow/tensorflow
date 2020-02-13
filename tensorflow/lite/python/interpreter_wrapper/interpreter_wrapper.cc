@@ -90,13 +90,17 @@ std::unique_ptr<tflite_api_dispatcher::Interpreter> CreateInterpreter(
 PyObject* PyArrayFromFloatVector(const float* data, npy_intp size) {
   void* pydata = malloc(size * sizeof(float));
   memcpy(pydata, data, size * sizeof(float));
-  return PyArray_SimpleNewFromData(1, &size, NPY_FLOAT32, pydata);
+  PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_FLOAT32, pydata);
+  PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
+  return obj;
 }
 
 PyObject* PyArrayFromIntVector(const int* data, npy_intp size) {
   void* pydata = malloc(size * sizeof(int));
   memcpy(pydata, data, size * sizeof(int));
-  return PyArray_SimpleNewFromData(1, &size, NPY_INT32, pydata);
+  PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_INT32, pydata);
+  PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
+  return obj;
 }
 
 PyObject* PyTupleFromQuantizationParam(const TfLiteQuantizationParams& param) {

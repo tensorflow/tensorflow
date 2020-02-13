@@ -146,6 +146,13 @@ class FileSystem {
   virtual tensorflow::Status GetMatchingPaths(const string& pattern,
                                               std::vector<string>* results) = 0;
 
+  /// \brief Checks if the given filename matches the pattern.
+  ///
+  /// This function provides the equivalent of posix fnmatch, however it is
+  /// implemented without fnmatch to ensure that this can be used for cloud
+  /// filesystems on windows. For windows filesystems, it uses PathMatchSpec.
+  virtual bool Match(const string& filename, const string& pattern);
+
   /// \brief Obtains statistics for the given path.
   virtual tensorflow::Status Stat(const string& fname,
                                   FileStatistics* stat) = 0;

@@ -838,7 +838,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     if isinstance(replica_local_var, values.SyncOnReadVariable):
       return replica_local_var._get_cross_replica()  # pylint: disable=protected-access
     assert isinstance(replica_local_var, values.Mirrored)
-    return array_ops.identity(replica_local_var.get())
+    return array_ops.identity(replica_local_var._get())  # pylint: disable=protected-access
 
   def _local_results(self, val):
     if isinstance(val, values.DistributedValues):

@@ -86,6 +86,7 @@ exports_files(
         "net.h",
         "numa.h",
         "resource_loader.h",
+        "resource.h",
         "snappy.h",
         "stacktrace_handler.h",
         "subprocess.h",
@@ -513,6 +514,14 @@ cc_library(
 )
 
 cc_library(
+    name = "resource",
+    hdrs = ["resource.h"],
+    deps = [
+        ":platform",
+    ] + tf_platform_deps("resource"),
+)
+
+cc_library(
     name = "resource_loader",
     testonly = 1,
     textual_hdrs = ["resource_loader.h"],
@@ -842,10 +851,12 @@ cc_library(
     }),
     visibility = ["//tensorflow/core:__pkg__"],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",  # buildcleaner: keep
+        ":platform",
+        ":stacktrace_handler",
+        ":test",
+        ":test_benchmark",
         "//tensorflow/core/platform/default/build_config:test_main",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -1179,6 +1190,7 @@ filegroup(
         "profile_utils/cpu_utils.h",
         "profile_utils/i_cpu_utils_helper.h",
         "protobuf.h",
+        "resource.h",
         "stacktrace.h",
         "stacktrace_handler.h",
         "status.h",
@@ -1213,6 +1225,7 @@ filegroup(
 
 filegroup(
     name = "test_hdrs",
+    testonly = 1,
     srcs = [
         "test.h",
         "test_benchmark.h",
@@ -1222,6 +1235,7 @@ filegroup(
 
 filegroup(
     name = "android_test_srcs",
+    testonly = 1,
     srcs = [
         "test.h",
     ],
@@ -1392,6 +1406,8 @@ filegroup(
         "protobuf_util.cc",
         "raw_coding.h",
         "refcount.h",
+        "regexp.h",
+        "resource.h",
         "scanner.cc",
         "scanner.h",
         "setround.cc",

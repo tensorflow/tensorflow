@@ -105,8 +105,7 @@ class DatasetTestBase(test.TestCase):
 
     # Create an anonymous iterator if we are in eager-mode or are graph inside
     # of a tf.function.
-    building_function = ops.get_default_graph()._building_function  # pylint: disable=protected-access
-    if context.executing_eagerly() or building_function:
+    if context.executing_eagerly() or ops.inside_function():
       iterator = iter(dataset)
       return ta_wrapper(iterator._next_internal)  # pylint: disable=protected-access
     else:

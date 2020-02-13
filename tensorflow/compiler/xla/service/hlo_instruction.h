@@ -83,6 +83,7 @@ class HloPrintOptions {
         print_backend_config_(true),
         compact_operands_(false),
         include_layout_in_shapes_(true),
+        print_result_shape_(true),
         print_operand_shape_(true),
         print_operand_names_(true),
         print_program_shape_(true),
@@ -92,7 +93,8 @@ class HloPrintOptions {
         indent_amount_(0),
         is_in_nested_computation_(false),
         print_ids_(true),
-        canonicalize_computations_(false) {}
+        canonicalize_computations_(false),
+        print_extra_attributes_(true) {}
 
   static HloPrintOptions ShortParsable() {
     return HloPrintOptions()
@@ -163,6 +165,12 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, result shapes will be printed.
+  HloPrintOptions& set_print_result_shape(bool value) {
+    print_result_shape_ = value;
+    return *this;
+  }
+
   // If true, operands' shapes will be printed.
   HloPrintOptions& set_print_operand_shape(bool value) {
     print_operand_shape_ = value;
@@ -178,6 +186,12 @@ class HloPrintOptions {
   // If true, all printed names include unique identifiers.
   HloPrintOptions& set_print_ids(bool value) {
     print_ids_ = value;
+    return *this;
+  }
+
+  // If true, the HLO includes its attributes.
+  HloPrintOptions& set_print_extra_attributes(bool value) {
+    print_extra_attributes_ = value;
     return *this;
   }
 
@@ -286,6 +300,7 @@ class HloPrintOptions {
   bool print_backend_config() const { return print_backend_config_; }
   bool compact_operands() const { return compact_operands_; }
   bool include_layout_in_shapes() const { return include_layout_in_shapes_; }
+  bool print_result_shape() const { return print_result_shape_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_operand_names() const { return print_operand_names_; }
   bool print_ids() const { return print_ids_; }
@@ -294,6 +309,7 @@ class HloPrintOptions {
   bool print_control_dependencies() const {
     return print_control_dependencies_;
   }
+  bool print_extra_attributes() const { return print_extra_attributes_; }
   bool canonicalize_instruction_names() const {
     return canonicalize_instruction_names_;
   }
@@ -322,6 +338,7 @@ class HloPrintOptions {
   bool print_backend_config_;
   bool compact_operands_;
   bool include_layout_in_shapes_;
+  bool print_result_shape_;
   bool print_operand_shape_;
   bool print_operand_names_;
   bool print_program_shape_;
@@ -332,6 +349,7 @@ class HloPrintOptions {
   bool is_in_nested_computation_;
   bool print_ids_;
   bool canonicalize_computations_;
+  bool print_extra_attributes_;
   int leading_and_trailing_instructions_number_ = 3;
   FormatInstructionFunc format_instruction_ = [](const HloInstruction* instr,
                                                  const string& instr_name,
@@ -511,6 +529,11 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateRng(
       const Shape& shape, RandomDistribution distribution,
       absl::Span<HloInstruction* const> parameters);
+
+  // Creates a stateless random bit generator instruction that fills a shape
+  // with random bits.
+  static std::unique_ptr<HloInstruction> CreateRngBitGenerator(
+      const Shape& shape, HloInstruction* state, RandomAlgorithm algorithm);
 
   // Creates an instruction to update the random number generator state to
   // reflect the new state after `delta` units of 32 random bits are generated
@@ -913,6 +936,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::string_view custom_call_target, string opaque = "");
+
+  // Overload with a to_apply computation
+  static std::unique_ptr<HloInstruction> CreateCustomCall(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* to_apply, absl::string_view custom_call_target,
+      string opaque = "");
 
   // Overload which constrains the layouts of the operand and result. 'shape'
   // and 'operand_shapes_with_layout' must have layouts.
@@ -2025,12 +2054,14 @@ string PaddingConfigToString(const PaddingConfig& padding);
 string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
 string OpMetadataToString(const OpMetadata& metadata);
+string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
 string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups);
 
+StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const string& name);
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);
 

@@ -18,12 +18,25 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_TFLITE_API_DISPATCHER_TFLITE_API_DISPATCHER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_TFLITE_API_DISPATCHER_TFLITE_API_DISPATCHER_H_
 
-#ifndef TFLITE_EXPERIMENTAL_RUNTIME
-#define TFLITE_EXPERIMENTAL_RUNTIME (0)
+#ifndef TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+#define TFLITE_EXPERIMENTAL_RUNTIME_EAGER (0)
+#endif
+
+#ifndef TFLITE_EXPERIMENTAL_RUNTIME_NON_EAGER
+#define TFLITE_EXPERIMENTAL_RUNTIME_NON_EAGER (0)
+#endif
+
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER && TFLITE_EXPERIMENTAL_RUNTIME_NON_EAGER
+#error \
+    "TFLITE_EXPERIMENTAL_RUNTIME_EAGER and " \
+    "TFLITE_EXPERIMENTAL_RUNTIME_NON_EAGER should not both be true."
 #endif
 
 // Import the relevant interpreter and model files.
-#if TFLITE_EXPERIMENTAL_RUNTIME
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+#include "tensorflow/lite/experimental/tf_runtime/lib/eager_model.h"
+#include "tensorflow/lite/experimental/tf_runtime/public/eager_interpreter.h"
+#elif TFLITE_EXPERIMENTAL_RUNTIME_NON_EAGER
 #include "tensorflow/lite/experimental/tf_runtime/lib/model.h"
 #include "tensorflow/lite/experimental/tf_runtime/public/interpreter.h"
 #else
@@ -34,7 +47,12 @@ limitations under the License.
 namespace tflite_api_dispatcher {
 
 // Use the correct interpreter.
-#if TFLITE_EXPERIMENTAL_RUNTIME
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+using Interpreter = tflrt::EagerInterpreter;
+using InterpreterBuilder = tflrt::EagerTfLiteInterpreterBuilderAPI;
+using TfLiteModel = tflite::FlatBufferModel;
+using TfLiteVerifier = tflite::TfLiteVerifier;
+#elif TFLITE_EXPERIMENTAL_RUNTIME_NON_EAGER
 using Interpreter = tflrt::TfLiteInterpreterAPI;
 using InterpreterBuilder = tflrt::TfLiteInterpreterBuilderAPI;
 using TfLiteModel = tflrt::BEFModel;

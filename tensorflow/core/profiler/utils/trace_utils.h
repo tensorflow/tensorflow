@@ -24,9 +24,9 @@ namespace profiler {
 constexpr int kThreadIdDerivedMin = 0xdeadbeef;
 constexpr int kThreadIdStepInfo = kThreadIdDerivedMin;
 constexpr int kThreadIdTfOp = kThreadIdDerivedMin + 1;
-constexpr int kThreadIdHloOp = kThreadIdDerivedMin + 2;
-constexpr int kThreadIdOverhead = kThreadIdDerivedMin + 3;
-constexpr int kThreadIdHloModule = kThreadIdDerivedMin + 4;
+constexpr int kThreadIdHloModule = kThreadIdDerivedMin + 2;
+constexpr int kThreadIdHloOp = kThreadIdDerivedMin + 3;
+constexpr int kThreadIdOverhead = kThreadIdDerivedMin + 4;
 // Last derived stream/thread id.
 constexpr int kThreadIdDerivedMax = kThreadIdHloModule;
 

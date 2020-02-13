@@ -813,9 +813,9 @@ class _FuncGraph(ops.Graph):
 
   def capture(self, tensor, name=None):
     """Adds the given tensor to this graph and returns the captured tensor."""
-    if tensor.experimental_ref() in self._captured:
+    if tensor.ref() in self._captured:
       # Captured already.
-      return self._captured[tensor.experimental_ref()]
+      return self._captured[tensor.ref()]
     elif self._capture_by_value:
       return self._add_tensor_and_parents(tensor)
     else:
@@ -848,7 +848,7 @@ class _FuncGraph(ops.Graph):
                                   compat.as_bytes(handle_data))
     # pylint: enable=protected-access
     self.inputs.append(ph)
-    self._captured[tensor.experimental_ref()] = ph
+    self._captured[tensor.ref()] = ph
     self.extra_args.append(ph)
     if _is_guaranteed_const(tensor):
       with ops.control_dependencies(None):
@@ -881,7 +881,7 @@ class _FuncGraph(ops.Graph):
         op_def=op_def)
 
     for t, captured_t in zip(op.outputs, captured_op.outputs):
-      self._captured[t.experimental_ref()] = captured_t
+      self._captured[t.ref()] = captured_t
 
     return captured_op
 

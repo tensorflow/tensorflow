@@ -89,6 +89,18 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "choose_fastest_dataset_op",
+    srcs = ["choose_fastest_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/data:dataset",
+    ],
+)
+
+tf_kernel_library(
     name = "csv_dataset_op",
     srcs = ["csv_dataset_op.cc"],
     deps = [
@@ -212,18 +224,6 @@ tf_cc_test(
 tf_kernel_library(
     name = "matching_files_dataset_op",
     srcs = ["matching_files_dataset_op.cc"],
-    deps = [
-        "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels/data:dataset",
-    ],
-)
-
-tf_kernel_library(
-    name = "choose_fastest_dataset_op",
-    srcs = ["choose_fastest_dataset_op.cc"],
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -430,7 +430,6 @@ tf_kernel_library(
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
     ],
 )

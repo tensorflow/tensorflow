@@ -14,8 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -26,6 +31,47 @@ namespace {
 Timespan XEventTimespan(const XEvent& event) {
   return Timespan(event.offset_ps(), event.duration_ps());
 }
+
+// Creates a Timespan from a non-empty XLine.
+Timespan XLineTimespan(const XLine& line) {
+  uint64 begin_ps = kuint64max, end_ps = 0;
+  for (const XEvent& event : line.events()) {
+    // Don't use XEventTimespan. We need the absolute event start time as lines
+    // might have different timestamps.
+    Timespan span(line.timestamp_ns() * 1000 + event.offset_ps(),
+                  event.duration_ps());
+    begin_ps = std::min(span.begin_ps(), begin_ps);
+    end_ps = std::max(span.end_ps(), end_ps);
+  }
+  return Timespan::FromEndPoints(begin_ps, end_ps);
+}
+
+// Functor that compares XEvents of the same XLine for sorting by timespan.
+struct XEventsComparator {
+  bool operator()(const XEvent* a, const XEvent* b) const {
+    return XEventTimespan(*a) < XEventTimespan(*b);
+  }
+};
+
+// Functor that compares XLines of the same XPlane for sorting by timespan.
+class XLinesComparator {
+ public:
+  bool operator()(const XLine* a, const XLine* b) const {
+    return CachedXLineTimespan(a) < CachedXLineTimespan(b);
+  }
+
+ private:
+  Timespan CachedXLineTimespan(const XLine* line) const {
+    DCHECK_GT(line->events_size(), 0);
+    Timespan& line_timespan = line_timespan_[line];
+    if (line_timespan.Instant()) {
+      line_timespan = XLineTimespan(*line);
+    }
+    return line_timespan;
+  }
+
+  mutable absl::flat_hash_map<const XLine*, Timespan> line_timespan_;
+};
 
 }  // namespace
 
@@ -129,6 +175,105 @@ void RemoveEmptyLines(XPlane* plane) {
                    lines->begin(), lines->end(),
                    [&](const XLine& line) { return line.events_size() == 0; }),
                lines->end());
+}
+
+XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name) {
+  for (XPlane& plane : *space->mutable_planes()) {
+    if (plane.name() == name) return &plane;
+  }
+  return nullptr;
+}
+
+XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name) {
+  XPlane* plane = FindMutablePlaneWithName(space, name);
+  if (plane == nullptr) {
+    plane = space->add_planes();
+    plane->set_name(std::string(name));
+  }
+  return plane;
+}
+
+void SortXPlane(XPlane* plane) {
+  for (XLine& line : *plane->mutable_lines()) {
+    auto& events = *line.mutable_events();
+    std::sort(events.pointer_begin(), events.pointer_end(),
+              XEventsComparator());
+  }
+  std::sort(plane->mutable_lines()->pointer_begin(),
+            plane->mutable_lines()->pointer_end(), XLinesComparator());
+}
+
+void SortXSpace(XSpace* space) {
+  for (XPlane& plane : *space->mutable_planes()) SortXPlane(&plane);
+}
+
+void NormalizeTimeLine(XSpace* space, uint64 start_time_ns) {
+  for (XPlane& plane : *space->mutable_planes()) {
+    for (XLine& line : *plane.mutable_lines()) {
+      DCHECK_GE(line.timestamp_ns(), start_time_ns);
+      line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
+    }
+  }
+}
+
+void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
+  XPlaneVisitor src(&src_plane);
+  XPlaneBuilder dst(dst_plane);
+  RemoveEmptyLines(dst_plane);
+  src.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
+    XStatMetadata* stat_metadata = dst.GetOrCreateStatMetadata(stat.Name());
+    XStat* new_stat = dst.FindOrAddMutableStat(stat_metadata->id());
+    // Add or override the existing stat value except the metadata id.
+    *new_stat = stat.RawStat();
+    new_stat->set_metadata_id(stat_metadata->id());
+  });
+  src.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
+    XLineBuilder dst_line = dst.GetOrCreateLine(line.Id());
+    int64 time_offset_ps = 0LL;
+    if (dst_line.NumEvents() == 0) {
+      // Since we RemoveEmptyLines above, this could only mean that current
+      // line only exist in src plane.
+      dst_line.SetTimestampNs(line.TimestampNs());
+      dst_line.SetName(line.Name());
+      dst_line.SetDisplayNameIfEmpty(line.DisplayName());
+    } else {
+      if (line.TimestampNs() <= dst_line.TimestampNs()) {
+        dst_line.SetTimestampNsAndAdjustEventOffsets(line.TimestampNs());
+      } else {
+        time_offset_ps = (line.TimestampNs() - dst_line.TimestampNs()) *
+                         EnvTime::kNanosToPicos;
+      }
+      dst_line.SetNameIfEmpty(line.Name());
+      if (!line.DisplayName().empty()) {
+        dst_line.SetDisplayNameIfEmpty(line.DisplayName());
+      }
+    }
+
+    line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
+      const XEventMetadata* src_event_metadata = event.metadata();
+      XEventMetadata* dst_event_metadata =
+          dst.GetOrCreateEventMetadata(event.Name());
+      if (dst_event_metadata->display_name().empty() &&
+          !src_event_metadata->display_name().empty()) {
+        dst_event_metadata->set_display_name(
+            src_event_metadata->display_name());
+      }
+      if (dst_event_metadata->metadata().empty() &&
+          !src_event_metadata->metadata().empty()) {
+        dst_event_metadata->set_metadata(src_event_metadata->metadata());
+      }
+      XEventBuilder dst_event = dst_line.AddEvent(*dst_event_metadata);
+      dst_event.SetOffsetPs(event.OffsetPs() + time_offset_ps);
+      dst_event.SetDurationPs(event.DurationPs());
+      if (event.NumOccurrences()) {
+        dst_event.SetNumOccurrences(event.NumOccurrences());
+      }
+      event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
+        dst_event.AddStat(*dst.GetOrCreateStatMetadata(stat.Name()),
+                          stat.RawStat());
+      });
+    });
+  });
 }
 
 }  // namespace profiler

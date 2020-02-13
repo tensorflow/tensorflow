@@ -186,19 +186,37 @@ void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::VModuleKeyT key) {
 }
 
 llvm::JITSymbol SimpleOrcJIT::FindCompiledSymbol(const std::string& name) {
+#ifdef _WIN32
+  // The symbol lookup of ObjectLinkingLayer uses the SymbolRef::SF_Exported
+  // flag to decide whether a symbol will be visible or not, when we call
+  // IRCompileLayer::findSymbolIn with ExportedSymbolsOnly set to true.
+  //
+  // But for Windows COFF objects, this flag is currently never set.
+  // For a potential solution see: https://reviews.llvm.org/rL258665
+  // For now, we allow non-exported symbols on Windows as a workaround.
+  const bool exported_symbols_only = false;
+#else
+  const bool exported_symbols_only = true;
+#endif
+
   // Resolve symbol from last module to first, allowing later redefinitions of
   // symbols shadow earlier ones.
   for (auto& key :
        llvm::make_range(module_keys_.rbegin(), module_keys_.rend())) {
     if (auto symbol =
-            compile_layer_.findSymbolIn(key, name,
-                                        /*ExportedSymbolsOnly=*/true)) {
+            compile_layer_.findSymbolIn(key, name, exported_symbols_only)) {
       return symbol;
     }
   }
 
   return nullptr;
 }
+
+#if defined(PLATFORM_WINDOWS)
+// This function is used by compiler-generated code on windows, but it's not
+// declared anywhere. The signature does not matter, we just need the address.
+extern "C" void __chkstk(size_t);
+#endif
 
 namespace {
 // Register some known symbols with the CustomCallTargetRegistry.
@@ -350,6 +368,10 @@ bool RegisterKnownJITSymbols() {
 #ifdef MEMORY_SANITIZER
   registry->Register("__msan_unpoison",
                      reinterpret_cast<void*>(__msan_unpoison), "Host");
+#endif
+
+#if defined(PLATFORM_WINDOWS)
+  registry->Register("__chkstk", reinterpret_cast<void*>(__chkstk), "Host");
 #endif
 
   return true;

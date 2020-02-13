@@ -974,6 +974,7 @@ tf_cuda_library(
         "common_runtime/device.h",
         "common_runtime/device_factory.h",
         "common_runtime/function.h",
+        "common_runtime/function_optimization_registry.h",
         "common_runtime/optimization_registry.h",
         "common_runtime/shape_refiner.h",
         "//tensorflow/core/graph:core_cpu_headers",
@@ -1273,6 +1274,7 @@ filegroup(
         "//tensorflow/core/platform:mobile_srcs_no_runtime",
         "//tensorflow/core/public:mobile_srcs_no_runtime",
         "//tensorflow/core/util:mobile_srcs_no_runtime",
+        "//tensorflow/core/util/ctc:android_srcs",
     ] + glob(
         [
             "client/**/*.cc",
@@ -1304,7 +1306,6 @@ filegroup(
         "//tensorflow/core/lib/io:mobile_srcs_only_runtime",
         "//tensorflow/core/profiler:mobile_srcs",
         "//tensorflow/core/public:mobile_srcs_only_runtime",
-        "//tensorflow/core/util/ctc:android_srcs",
         "//tensorflow/core/util/sparse:mobile_srcs_only_runtime",
         "//tensorflow/core/util/tensor_bundle:android_srcs",
         "//tensorflow/core/util:mobile_srcs_only_runtime",
@@ -1502,6 +1503,7 @@ filegroup(
 
 filegroup(
     name = "android_test_srcs",
+    testonly = 1,
     # TODO(andrewharp/nhua):
     # make more test-related sources portable e.g. "//tensorflow/core/platform:test.cc",
     srcs = [
@@ -1516,6 +1518,7 @@ filegroup(
 # This is like android_test_srcs, minus the things that are already in mobile_srcs.
 filegroup(
     name = "android_test_srcs_no_core",
+    testonly = 1,
     srcs = [
         "//tensorflow/core/framework:android_test_hdrs",
         "//tensorflow/core/framework:android_test_srcs_no_core",
@@ -1930,6 +1933,7 @@ cc_library(
         "//tensorflow/core/platform:prefetch",
         "//tensorflow/core/platform:protobuf_internal",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:resource",
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:stacktrace",
@@ -2290,8 +2294,6 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
-        "//tensorflow/core/profiler/internal:annotation_stack_impl",
-        "//tensorflow/core/profiler/internal:traceme_recorder_impl",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/util:einsum_op_util",
@@ -2471,6 +2473,7 @@ filegroup(
         "common_runtime/dma_helper.h",
         "common_runtime/executor.h",
         "common_runtime/executor_factory.h",
+        "common_runtime/function_optimization_registry.h",
         "common_runtime/graph_optimizer.h",
         "common_runtime/input_colocation_exemption_registry.h",
         "common_runtime/isolate_placer_inspection_required_ops_pass.h",
@@ -2531,6 +2534,7 @@ tf_cuda_library(
         "common_runtime/executor.cc",
         "common_runtime/executor_factory.cc",
         "common_runtime/function.cc",
+        "common_runtime/function_optimization_registry.cc",
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
         "common_runtime/hierarchical_tree_broadcaster.cc",
@@ -2715,7 +2719,7 @@ tf_cuda_library(
         ":protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
-        "//tensorflow/core/profiler/lib:profiler_lib",
+        "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -3147,6 +3151,10 @@ tf_cc_tests(
         "common_runtime/device_resolver_local_test.cc",
         "common_runtime/device_set_test.cc",
         "common_runtime/dynamic_device_mgr_test.cc",
+        "common_runtime/function_optimization_registration_test.cc",
+        "common_runtime/function_optimization_registry_no_pass_test.cc",
+        "common_runtime/function_optimization_registry_pass_failure_test.cc",
+        "common_runtime/function_optimization_registry_test.cc",
         "common_runtime/isolate_placer_inspection_required_ops_pass_test.cc",
         "common_runtime/optimization_registry_test.cc",
         "common_runtime/pending_counts_test.cc",

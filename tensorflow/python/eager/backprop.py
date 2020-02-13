@@ -652,7 +652,7 @@ def _zeros(shape, dtype):
   device = ctx.device_name
 
   if tensor_util.is_tensor(shape):
-    shape_key = shape.experimental_ref()
+    shape_key = shape.ref()
   else:
     shape_key = shape
   cache_key = shape_key, dtype, device

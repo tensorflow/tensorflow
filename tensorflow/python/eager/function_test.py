@@ -361,11 +361,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     cf = f.get_concrete_function()
     c = cc[0]
 
-    captured_variables = {v.experimental_ref() for v in (a, b, c)}
-    trainable_variables = {v.experimental_ref() for v in (b, c)}
-    self.assertEqual({v.experimental_ref() for v in cf.variables},
-                     captured_variables)
-    self.assertEqual({v.experimental_ref() for v in cf.trainable_variables},
+    captured_variables = {v.ref() for v in (a, b, c)}
+    trainable_variables = {v.ref() for v in (b, c)}
+    self.assertEqual({v.ref() for v in cf.variables}, captured_variables)
+    self.assertEqual({v.ref() for v in cf.trainable_variables},
                      trainable_variables)
     self.assertEqual(cf.variables, cf.graph.variables)
     self.assertEqual(cf.trainable_variables, cf.graph.trainable_variables)
@@ -2889,7 +2888,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testDecoratedMethodVariableCleanup(self):
     m = DefunnedMiniModel()
     m(array_ops.ones([1, 2]))
-    variable_refs = list({v.experimental_ref() for v in m.variables})
+    variable_refs = list({v.ref() for v in m.variables})
     self.assertLen(variable_refs, 2)
     del m
 

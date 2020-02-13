@@ -1510,7 +1510,7 @@ class MultiAUCTest(test.TestCase):
     self.assertAllClose(self.evaluate(good_result), (0.939 + 1.0) / 2.0,
                         1e-1)
 
-  def test_keras_model(self):
+  def test_keras_model_compiles(self):
     inputs = layers.Input(shape=(10,))
     output = layers.Dense(3, activation='sigmoid')(inputs)
     model = models.Model(inputs=inputs, outputs=output)
@@ -1518,6 +1518,14 @@ class MultiAUCTest(test.TestCase):
         loss='binary_crossentropy',
         metrics=[metrics.AUC(multi_label=True)]
     )
+
+  def test_reset_states(self):
+    self.setup()
+    auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, multi_label=True)
+    self.evaluate(variables.variables_initializer(auc_obj.variables))
+    auc_obj(self.y_true_good, self.y_pred)
+    auc_obj.reset_states()
+    self.assertAllEqual(auc_obj.true_positives, np.zeros((5, 2)))
 
 
 if __name__ == '__main__':

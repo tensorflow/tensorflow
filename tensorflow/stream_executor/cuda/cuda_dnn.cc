@@ -3468,17 +3468,14 @@ bool CudnnSupport::DoBatchNormalizationForward(
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator,
-    std::function<const DeviceMemory<float>&()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    ScratchAllocator* workspace_allocator) {
   return IsStatusOk(
       DoBatchNormalizationForwardImpl<float, float>(
           stream, dnn::DataType::kFloat, dnn::DataType::kFloat, x, scale,
           offset, estimated_mean, estimated_variance, side_input, x_desc,
           scale_offset_desc, epsilon, exponential_average_factor,
           activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
-          is_training, reserve_space_allocator, workspace_allocator,
-          std::move(var_to_inv_var), std::move(inv_var_to_var)),
+          is_training, reserve_space_allocator, workspace_allocator),
       /*report_error=*/true);
 }
 
@@ -3494,17 +3491,14 @@ bool CudnnSupport::DoBatchNormalizationForward(
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator,
-    std::function<const DeviceMemory<float>&()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    ScratchAllocator* workspace_allocator) {
   return IsStatusOk(
       DoBatchNormalizationForwardImpl<Eigen::half, float>(
           stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
           estimated_mean, estimated_variance, side_input, x_desc,
           scale_offset_desc, epsilon, exponential_average_factor,
           activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
-          is_training, reserve_space_allocator, workspace_allocator,
-          std::move(var_to_inv_var), std::move(inv_var_to_var)),
+          is_training, reserve_space_allocator, workspace_allocator),
       /*report_error=*/true);
 }
 
@@ -3522,9 +3516,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
     DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator,
-    std::function<const DeviceMemory<U>&()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    ScratchAllocator* workspace_allocator) {
   CudnnTensorDescriptor x_descriptor(x_desc, ToCudnnDataType(input_data_type));
   CudnnTensorDescriptor scale_offset_descriptor(
       scale_offset_desc, ToCudnnDataType(scale_data_type));

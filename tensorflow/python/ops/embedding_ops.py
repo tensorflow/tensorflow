@@ -312,7 +312,10 @@ def embedding_lookup(
     ValueError: If `params` is empty.
   """
   if isinstance(ids, ragged_tensor.RaggedTensor):
-    return embedding_lookup_ragged(params, ids)
+    return embedding_lookup_ragged(params, ids,
+                                   partition_strategy=partition_strategy,
+                                   max_norm=max_norm,
+                                   name=name)
 
   return _embedding_lookup_and_transform(
       params=params,
@@ -823,7 +826,11 @@ def safe_embedding_lookup_sparse(embedding_weights,
     return final_result
 
 
-def embedding_lookup_ragged(embedding_weights, ragged_ids, name=None):
+def embedding_lookup_ragged(embedding_weights,
+                            ragged_ids,
+                            partition_strategy="mod",
+                            max_norm=None,
+                            name=None):
   """Look up the ragged ids in a list of embedding tensors.
 
   Args:
@@ -832,6 +839,9 @@ def embedding_lookup_ragged(embedding_weights, ragged_ids, name=None):
     ragged_ids: A 'RaggedTensor' with type 'int32' or 'int64' containing the ids
       to be looked up in 'embedding_weights' of shape [r0, ..rN]. Values must be
       in the range '[0, embedding_weights.shape[0]]'.
+    partition_strategy: A string specifying the partitioning strategy.
+    max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
+      than this value.
     name: A name for the operation (optional)
 
   Returns:
@@ -853,7 +863,11 @@ def embedding_lookup_ragged(embedding_weights, ragged_ids, name=None):
 
   with ops.name_scope(name, "embedding_lookup_ragged") as name:
     looked_up_ragged = ragged_functional_ops.map_flat_values(
-        array_ops.gather, embedding_weights, ragged_ids)
+        embedding_lookup,
+        params=embedding_weights,
+        ids=ragged_ids,
+        partition_strategy=partition_strategy,
+        max_norm=max_norm)
 
     return looked_up_ragged
 

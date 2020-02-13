@@ -23,10 +23,12 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/optimized/sparse_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/sparse_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -38,11 +40,24 @@ namespace ops {
 namespace builtin {
 namespace fully_connected {
 
+namespace {
+bool SupportedSparsityFormat(const TfLiteSparsity& sparsity) {
+  if (sparsity.dim_metadata[0].format == kTfLiteDimSparseCSR &&
+      sparsity.dim_metadata[1].format == kTfLiteDimSparseCSR) {
+    return true;
+  }
+
+  return false;
+}
+}  // namespace
+
 // This file has four implementations of FullyConnected
 enum KernelType {
   kReference,
   kGenericOptimized,
   kLegacyPie,  // Legacy path used by the PIE team and related clients.
+  kSparseReference,
+  kSparseOptimized,
 };
 
 struct OpData {
@@ -574,8 +589,38 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
     FullyConnectedParams op_params;
     op_params.float_activation_min = output_activation_min;
     op_params.float_activation_max = output_activation_max;
+
     reference_ops::FullyConnected(
         op_params, GetTensorShape(input), GetTensorData<float>(input),
+        GetTensorShape(filter), GetTensorData<float>(filter),
+        GetTensorShape(bias), GetTensorData<float>(bias),
+        GetTensorShape(output), GetTensorData<float>(output));
+  } else if (kernel_type == kSparseReference) {
+    FullyConnectedParams op_params;
+    op_params.float_activation_min = output_activation_min;
+    op_params.float_activation_max = output_activation_max;
+    TF_LITE_ENSURE(context, filter->sparsity != nullptr);
+
+    const auto& sparsity = *filter->sparsity;
+    reference_ops::FullyConnectedSparseWeight(
+        sparsity, op_params, GetTensorShape(input), GetTensorData<float>(input),
+        GetTensorShape(filter), GetTensorData<float>(filter),
+        GetTensorShape(bias), GetTensorData<float>(bias),
+        GetTensorShape(output), GetTensorData<float>(output));
+  } else if (kernel_type == kSparseOptimized) {
+    FullyConnectedParams op_params;
+    op_params.float_activation_min = output_activation_min;
+    op_params.float_activation_max = output_activation_max;
+    TF_LITE_ENSURE(context, filter->sparsity != nullptr);
+
+    const auto& sparsity = *filter->sparsity;
+    if (!SupportedSparsityFormat(sparsity)) {
+      context->ReportError(context,
+                           "Unsupported sparse fully-connected weight format.");
+      return kTfLiteError;
+    }
+    optimized_ops::FullyConnectedSparseWeight(
+        sparsity, op_params, GetTensorShape(input), GetTensorData<float>(input),
         GetTensorShape(filter), GetTensorData<float>(filter),
         GetTensorShape(bias), GetTensorData<float>(bias),
         GetTensorShape(output), GetTensorData<float>(output));
@@ -652,6 +697,23 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 }  // namespace fully_connected
+
+// TODO(b/147449640): Clean up sparse registrations after conversion is done.
+TfLiteRegistration* Register_FULLY_CONNECTED_SPARSE_REF() {
+  static TfLiteRegistration r = {
+      fully_connected::Init, fully_connected::Free,
+      fully_connected::Prepare<fully_connected::kSparseReference>,
+      fully_connected::Eval<fully_connected::kSparseReference>};
+  return &r;
+}
+
+TfLiteRegistration* Register_FULLY_CONNECTED_SPARSE_OPT() {
+  static TfLiteRegistration r = {
+      fully_connected::Init, fully_connected::Free,
+      fully_connected::Prepare<fully_connected::kSparseOptimized>,
+      fully_connected::Eval<fully_connected::kSparseOptimized>};
+  return &r;
+}
 
 TfLiteRegistration* Register_FULLY_CONNECTED_REF() {
   static TfLiteRegistration r = {

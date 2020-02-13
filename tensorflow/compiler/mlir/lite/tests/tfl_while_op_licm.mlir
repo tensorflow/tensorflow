@@ -1,15 +1,10 @@
 // RUN: tf-opt -loop-invariant-code-motion %s -o - | FileCheck %s --dump-input-on-failure
-// RUN: tf-opt -loop-invariant-code-motion -canonicalize %s -o - | FileCheck %s --check-prefix=CANON --dump-input-on-failure
 
 // CHECK: while_1([[ARG0:%[^ :]*]]: tensor<i32>, [[ARG1:%[^ :]*]]: tensor<1xf32>)
-// CANON: while_1([[ARG0:%[^ :]*]]: tensor<i32>, [[ARG1:%[^ :]*]]: tensor<1xf32>)
 func @while_1(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   // CHECK: [[CST:%[^ ]*]] = constant dense<1> : tensor<i32>
-  // CHECK: "tfl.while"([[ARG0]], [[ARG1]], [[CST]])
-  // CHECK: (tensor<i32>, tensor<1xf32>, tensor<i32>) -> (tensor<i32>, tensor<1xf32>)
-  // CANON: [[CST:%[^ ]*]] = constant dense<1> : tensor<i32>
-  // CANON: "tfl.while"([[ARG0]], [[ARG1]], [[CST]])
-  // CANON: (tensor<i32>, tensor<1xf32>, tensor<i32>) -> (tensor<i32>, tensor<1xf32>, tensor<i32>)
+  // CHECK: "tfl.while"([[ARG0]], [[ARG1]])
+  // CHECK: (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>)
   %0:2 = "tfl.while"(%arg0, %arg1) (
     // cond
     {

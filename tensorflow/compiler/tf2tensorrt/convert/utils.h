@@ -74,6 +74,9 @@ string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::DataType trt_dtype);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const nvinfer1::ITensor& tensor);
+string DebugString(const std::vector<nvinfer1::Dims>& dimvec);
+string DebugString(const std::vector<TensorShape>& shapes);
+string DebugString(const std::vector<PartialTensorShape>& shapes);
 
 inline bool HasStaticShape(const nvinfer1::Dims& dims) {
   if (dims.nbDims < 0) return false;

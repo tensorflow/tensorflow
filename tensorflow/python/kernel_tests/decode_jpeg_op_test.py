@@ -33,9 +33,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 
-prefix_path = resource_loader.get_path_to_datafile(
-    '../../core/lib/jpeg/testdata')
-
 
 class DecodeJpegBenchmark(test.Benchmark):
   """Evaluate tensorflow DecodeJpegOp performance."""
@@ -66,7 +63,8 @@ class DecodeJpegBenchmark(test.Benchmark):
     """
     ops.reset_default_graph()
 
-    image_file_path = os.path.join(prefix_path, image_name)
+    image_file_path = resource_loader.get_path_to_datafile(
+        os.path.join('core', 'lib', 'jpeg', 'testdata', image_name))
 
     if tile is None:
       image_content = variable_scope.get_variable(

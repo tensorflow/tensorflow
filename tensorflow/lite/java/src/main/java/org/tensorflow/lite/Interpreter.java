@@ -73,6 +73,8 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  *
  * <p><b>WARNING:</b>Instances of a {@code Interpreter} is <b>not</b> thread-safe. A {@code
  * Interpreter} owns resources that <b>must</b> be explicitly freed by invoking {@link #close()}
+ *
+ * <p>The minimum Android API Level ({@code minSdkVersion}) required for this library is 19.
  */
 public final class Interpreter implements AutoCloseable {
 

@@ -1,13 +1,15 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "CostGraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-import "tensorflow/core/framework/tensor_shape.proto";
-import "tensorflow/core/framework/types.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/cost_graph_go_proto";
 
 message CostGraphDef {
   message Node {

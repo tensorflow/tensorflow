@@ -59,6 +59,10 @@ cc_binary(
     ],
 )
 
+# As with most target binaries that use flex, this should be built with the
+# `--config=monolithic` build flag, e.g.,
+#    bazel build --config=monolithic --config=android_arm64 \
+#        -c opt --cxxopt='--std=c++14' :benchmark_model_plus_flex
 tf_cc_binary(
     name = "benchmark_model_plus_flex",
     srcs = [
@@ -124,6 +128,8 @@ cc_library(
         ":hexagon_delegate_provider",
         ":logging",
         ":nnapi_delegate_provider",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/ruy/profiler",
@@ -132,9 +138,13 @@ cc_library(
         "//tensorflow/lite/profiling:profile_summarizer",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + select({
+        "//tensorflow:fuchsia": [],
+        "//tensorflow:ios": [],
+        "//conditions:default": [
+            ":xnnpack_delegate_provider",
+        ],
+    }),
 )
 
 cc_library(
@@ -256,6 +266,21 @@ cc_library(
         ":delegate_provider_hdr",
         ":logging",
         "//tensorflow/lite/tools/evaluation:utils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xnnpack_delegate_provider",
+    srcs = ["xnnpack_delegate_provider.cc"],
+    copts = tflite_copts(),
+    linkstatic = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":benchmark_model_lib",
+        ":delegate_provider_hdr",
+        ":logging",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
     alwayslink = 1,
 )

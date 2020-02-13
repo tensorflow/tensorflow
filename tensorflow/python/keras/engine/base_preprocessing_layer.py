@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -221,7 +222,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
         self.state_variables[var_name].assign(value)
 
 
-def convert_to_list(values, sparse_default_value=-1):
+def convert_to_list(values, sparse_default_value=None):
   """Convert a TensorLike, CompositeTensor, or ndarray into a Python list."""
   if ragged_tensor.is_ragged(values):
     # There is a corner case when dealing with ragged tensors: if you get an
@@ -240,6 +241,11 @@ def convert_to_list(values, sparse_default_value=-1):
   # check.
   if isinstance(values,
                 (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
+    if sparse_default_value is None:
+      if dtypes.as_dtype(values.values.dtype) == dtypes.string:
+        sparse_default_value = ''
+      else:
+        sparse_default_value = -1
     dense_tensor = sparse_ops.sparse_tensor_to_dense(
         values, default_value=sparse_default_value)
     values = K.get_value(dense_tensor)
