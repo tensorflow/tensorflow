@@ -30,7 +30,6 @@ cc_library(
         "//tensorflow:grpc++",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
         "@com_google_absl//absl/strings",
     ],
