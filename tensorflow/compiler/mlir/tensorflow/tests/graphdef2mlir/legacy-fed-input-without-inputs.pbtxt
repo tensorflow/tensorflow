@@ -1,11 +1,15 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input -tf-input-data-types=DT_FLOAT -tf-input-shapes='' -tf-output-arrays=input -tf-convert-legacy-fed-inputs -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input -tf-input-shapes='' -tf-output-arrays=input -tf-convert-legacy-fed-inputs -o - | FileCheck --check-prefix=NODATATYPE %s
 
 # Verify that invalid LegacyFedInput ops without any inputs are replaced with
 # Placeholder ops.
 
+# CHECK: func @main(%arg0: tensor<f32>)
 # CHECK-NOT: LegacyFedInput
-# CHECK: tf.Placeholder.input{{.*}}(tensor<f32>) -> tensor<f32>
-# CHECK-NOT: LegacyFedInput
+
+# If input data type isn't specified, uses the one in the graph
+# NODATATYPE: func @main(%arg0: tensor<f32>)
+# NODATATYPE-NOT: LegacyFedInput
 
 node {
   name: "input"

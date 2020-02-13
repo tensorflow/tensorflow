@@ -34,6 +34,9 @@ config.name = 'MLIR ' + os.path.basename(config.mlir_test_dir)
 
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
 
+# suffixes: A list of file extensions to treat as test files.
+config.suffixes = ['.cc', '.hlo', '.hlotxt', '.mlir', '.pbtxt', '.py']
+
 # test_source_root: The root path where tests are located.
 config.test_source_root = config.mlir_test_dir
 
@@ -50,7 +53,8 @@ tool_dirs = config.mlir_tf_tools_dirs + [
 ]
 tool_names = [
     'mlir-opt', 'mlir-translate', 'tf-opt', 'tf_tfl_translate',
-    'flatbuffer_to_string', 'flatbuffer_translate', 'tf-mlir-translate'
+    'flatbuffer_to_string', 'flatbuffer_translate', 'tf-mlir-translate',
+    'mlir-tflite-runner'
 ]
 tools = [ToolSubst(s, unresolved='ignore') for s in tool_names]
 llvm_config.add_tool_substitutions(tools, tool_dirs)

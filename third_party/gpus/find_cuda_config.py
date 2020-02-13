@@ -163,8 +163,8 @@ def _get_default_cuda_paths(cuda_version):
             "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v%s\\" %
             cuda_version)
     ]
-  return ["/usr/local/cuda-%s" % cuda_version, "/usr/local/cuda", "/usr"
-         ] + _get_ld_config_paths()
+  return ["/usr/local/cuda-%s" % cuda_version, "/usr/local/cuda", "/usr",
+         "/usr/local/cudnn"] + _get_ld_config_paths()
 
 
 def _header_paths():

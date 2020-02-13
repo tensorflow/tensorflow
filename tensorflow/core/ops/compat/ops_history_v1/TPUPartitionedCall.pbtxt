@@ -27,3 +27,39 @@ op {
     type: "func"
   }
 }
+op {
+  name: "TPUPartitionedCall"
+  input_arg {
+    name: "args"
+    type_list_attr: "Tin"
+  }
+  input_arg {
+    name: "device_ordinal"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "autotuner_thresh"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+}

@@ -109,6 +109,10 @@ tf_module {
     argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "generate_bounding_box_proposals"
+    argspec: "args=[\'scores\', \'bbox_deltas\', \'image_info\', \'anchors\', \'nms_threshold\', \'pre_nms_topn\', \'min_size\', \'post_nms_topn\', \'name\'], varargs=None, keywords=None, defaults=[\'0.7\', \'6000\', \'16\', \'300\', \'None\'], "
+  }
+  member_method {
     name: "grayscale_to_rgb"
     argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

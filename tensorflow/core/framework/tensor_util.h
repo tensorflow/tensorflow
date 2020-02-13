@@ -213,11 +213,11 @@ class TensorProtoHelper : public std::true_type {
   }
 
   static T GetValue(size_t index, const TensorProto& proto) {
+    const size_t stride = is_complex<T>::value ? 2 : 1;
     T val;
-    if (is_complex<T>::value) index *= 2;
-    CopyHelper<T>::ToArray(FieldHelper::GetField(proto).begin() + index,
-                           FieldHelper::GetField(proto).begin() + index + 1,
-                           &val);
+    CopyHelper<T>::ToArray(
+        FieldHelper::GetField(proto).begin() + stride * index,
+        FieldHelper::GetField(proto).begin() + stride * (index + 1), &val);
     return val;
   }
 
@@ -324,6 +324,10 @@ inline bool CompressTensorProtoInPlace(TensorProto* tensor) {
   return CompressTensorProtoInPlace(kDefaultMinNumElements,
                                     kDefaultMinCompressionRatio, tensor);
 }
+
+// Make a TensorShape from the contents of shape_t. Shape_t must be a
+// 1-dimensional tensor of type int32 or int64.
+Status MakeShape(const Tensor& shape_t, TensorShape* out);
 
 }  // namespace tensor
 }  // namespace tensorflow

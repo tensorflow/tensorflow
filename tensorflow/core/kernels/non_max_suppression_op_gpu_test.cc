@@ -13,18 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/allocator.h"
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/strings/match.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb.h"  // NOLINT
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -418,6 +424,67 @@ TEST_F(NonMaxSuppressionV3GPUOpTest, TestEmptyInput) {
   Tensor expected(allocator(), DT_INT32, TensorShape({0}));
   test::FillValues<int>(&expected, {});
   test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+}
+
+//
+// NonMaxSuppressionV4GPUOp Tests
+//
+
+class NonMaxSuppressionV4GPUOpTest : public OpsTestBase {
+ protected:
+  void MakeOp() {
+    // TODO(b/143610288): reenable this once the bug is fixed.
+    // SetDevice(DEVICE_GPU,
+    //           std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
+    //               "GPU", {}, "/job:a/replica:0/task:0")));
+
+    TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_op", "NonMaxSuppressionV4")
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_INT32))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DT_FLOAT))
+                     .Attr("pad_to_max_output_size", true)
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
+  }
+};
+
+TEST_F(NonMaxSuppressionV4GPUOpTest, TestSelectFromThreeClustersPadFive) {
+  MakeOp();
+  AddInputFromArray<float>(
+      TensorShape({6, 4}),
+      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
+  AddInputFromArray<int>(TensorShape({}), {5});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const auto expected_indices = test::AsTensor<int>({3, 0, 5, 0, 0});
+  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(0));
+  Tensor expected_num_valid = test::AsScalar<int>(3);
+  test::ExpectTensorEqual<int>(expected_num_valid, *GetOutput(1));
+}
+
+TEST_F(NonMaxSuppressionV4GPUOpTest,
+       TestSelectFromThreeClustersPadFiveScoreThr) {
+  MakeOp();
+  AddInputFromArray<float>(
+      TensorShape({6, 4}),
+      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
+  AddInputFromArray<int>(TensorShape({}), {6});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  AddInputFromArray<float>(TensorShape({}), {0.4f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const auto expected_indices = test::AsTensor<int>({3, 0, 0, 0, 0, 0});
+  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(0));
+  Tensor expected_num_valid = test::AsScalar<int>(2);
+  test::ExpectTensorEqual<int>(expected_num_valid, *GetOutput(1));
 }
 
 #endif

@@ -204,12 +204,15 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
     with ops.name_scope(name, values=graph_parents):
       super(LinearOperatorBlockDiag, self).__init__(
           dtype=dtype,
-          graph_parents=graph_parents,
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=True,
           name=name)
+
+    # TODO(b/143910018) Remove graph_parents in V3.
+    self._set_graph_parents(graph_parents)
 
   @property
   def operators(self):
@@ -348,6 +351,15 @@ class LinearOperatorBlockDiag(linear_operator.LinearOperator):
   def _assert_positive_definite(self):
     return control_flow_ops.group([
         operator.assert_positive_definite() for operator in self.operators])
+
+  def _eigvals(self):
+    eig_list = []
+    for operator in self.operators:
+      # Extend the axis for broadcasting.
+      eig_list += [operator.eigvals()[..., array_ops.newaxis]]
+    eig_list = linear_operator_util.broadcast_matrix_batch_dims(eig_list)
+    eigs = array_ops.concat(eig_list, axis=-2)
+    return array_ops.squeeze(eigs, axis=-1)
 
   def _split_input_into_blocks(self, x, axis=-1):
     """Split `x` into blocks matching `operators`'s `domain_dimension`.

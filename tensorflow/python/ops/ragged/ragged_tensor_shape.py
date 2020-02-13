@@ -38,7 +38,7 @@ class RaggedTensorDynamicShape(object):
   Each `RaggedTensorDynamicShape` consists of an ordered list of dimension
   sizes.  There are two dimension types:
 
-    * "Uniform dimensions" are dimenisons where all slices have the same
+    * "Uniform dimensions" are dimensions where all slices have the same
       length.  `RaggedTensorDynamicShape` records the size of each uniform
       dimension using a single scalar integer.
 
@@ -60,7 +60,7 @@ class RaggedTensorDynamicShape(object):
   The sizes of partitioned dimensions are recorded using `partitioned_dim_sizes`
   and `inner_dim_sizes`:
 
-    * `paritioned_dim_sizes` is a list of tensors (one for each partitioned
+    * `partitioned_dim_sizes` is a list of tensors (one for each partitioned
       dimension).
 
       * For uniform dimensions, the tensor is an integer scalar specifying the
@@ -126,8 +126,8 @@ class RaggedTensorDynamicShape(object):
 
       # Convert dimension size tensors to a single dtype.
       if dim_size_dtype is None:
-        dim_size_dtypes = set([p.dtype for p in partitioned_dim_sizes
-                               if p.shape.ndims == 1])
+        dim_size_dtypes = set(
+            p.dtype for p in partitioned_dim_sizes if p.shape.ndims == 1)
         if not dim_size_dtypes:
           dim_size_dtype = dtypes.int64
         elif len(dim_size_dtypes) == 1:
@@ -517,7 +517,7 @@ def _broadcast_to_ragged_shape(rt_input, dst_shape, broadcast_inner_dimensions):
   """Broadcasts rt_input to the ragged shape `dst_shape`."""
   # Check that rt_input and dst_shape have the same row_splits dtype.
   if (isinstance(rt_input, ragged_tensor.RaggedTensor) and
-      rt_input.row_splits_dtype != dst_shape.dim_size_dtype):
+      rt_input.row_splits.dtype != dst_shape.dim_size_dtype):
     if not ragged_config.auto_cast_partition_dtype():
       raise ValueError('rt_input and dst_shape have different row_split '
                        'dtypes; use RaggedTensor.with_row_splits_dtype() or '

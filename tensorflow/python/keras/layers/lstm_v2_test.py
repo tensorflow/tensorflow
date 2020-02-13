@@ -39,9 +39,11 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -76,7 +78,15 @@ class LSTMV2Test(keras_parameterized.TestCase):
         recurrent_dropout=recurrent_dropout,
         unroll=unroll,
         use_bias=use_bias)
-    self.assertFalse(layer.could_use_cudnn)
+    self.assertFalse(layer._could_use_gpu_kernel)
+
+  @test_util.run_v2_only
+  def test_use_on_default_activation_with_gpu_kernel(self):
+    layer = rnn.LSTM(1, activation=nn.tanh)
+    self.assertTrue(layer._could_use_gpu_kernel)
+
+    layer = rnn.LSTM(1, recurrent_activation=nn.sigmoid)
+    self.assertTrue(layer._could_use_gpu_kernel)
 
   def test_static_shape_inference_LSTM(self):
     # Github issue: 15165
@@ -323,7 +333,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
         input_shape=(timestep, input_shape),
         num_classes=rnn_state_size,
         random_seed=random_seed.DEFAULT_GRAPH_SEED)
-    y_train = keras.utils.to_categorical(y_train, rnn_state_size)
+    y_train = np_utils.to_categorical(y_train, rnn_state_size)
     # For the last batch item of the test data, we filter out the last
     # timestep to simulate the variable length sequence and masking test.
     x_train[-2:, -1, :] = 0.0
@@ -465,7 +475,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
         test_samples=0,
         input_shape=(timestep, input_shape),
         num_classes=output_shape)
-    y_train = keras.utils.to_categorical(y_train, output_shape)
+    y_train = np_utils.to_categorical(y_train, output_shape)
 
     layer = rnn.LSTM(rnn_state_size)
 
@@ -569,6 +579,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
         },
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  @test_util.run_v2_only
   def test_float64_LSTM(self):
     num_samples = 2
     timesteps = 3
@@ -799,7 +810,7 @@ class LSTMGraphRewriteTest(keras_parameterized.TestCase):
         test_samples=0,
         input_shape=(self.timestep, self.input_shape),
         num_classes=self.output_shape)
-    y_train = keras.utils.to_categorical(y_train, self.output_shape)
+    y_train = np_utils.to_categorical(y_train, self.output_shape)
 
     model.compile(
         optimizer='sgd',
@@ -860,7 +871,7 @@ class LSTMGraphRewriteTest(keras_parameterized.TestCase):
         test_samples=0,
         input_shape=(self.timestep, self.input_shape),
         num_classes=self.output_shape)
-    y_train = keras.utils.to_categorical(y_train, self.output_shape)
+    y_train = np_utils.to_categorical(y_train, self.output_shape)
 
     model.compile(
         optimizer='sgd',
@@ -1020,7 +1031,7 @@ class LSTMPerformanceTest(test.Benchmark):
         test_samples=0,
         input_shape=(test_config['timestep'], test_config['input_shape']),
         num_classes=test_config['output_shape'])
-    y_train = keras.utils.to_categorical(y_train, test_config['output_shape'])
+    y_train = np_utils.to_categorical(y_train, test_config['output_shape'])
 
     cudnn_sec_per_epoch = self._time_performance_run_cudnn_lstm(
         test_config, x_train, y_train)

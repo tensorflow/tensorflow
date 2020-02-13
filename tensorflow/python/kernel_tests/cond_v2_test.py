@@ -105,6 +105,43 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  def testReturnsIndexedSlicesAndNones(self):
+    @def_function.function
+    def build_cond_with_indexed_slices():
+      pred = constant_op.constant(True)
+      def true_fn():
+        return math_ops._as_indexed_slices(constant_op.constant([1.])), None
+      def false_fn():
+        return math_ops._as_indexed_slices(constant_op.constant([2.])), None
+      result = cond_v2.cond_v2(pred, true_fn, false_fn)
+      self.assertIsNone(result[1])
+      return ops.convert_to_tensor(result[0])
+    output = build_cond_with_indexed_slices()
+    self.assertAllEqual(output, [1.])
+
+  def testReturnsNonesAndIndexedSlices(self):
+
+    @def_function.function
+    def build_cond_with_indexed_slices():
+      pred = constant_op.constant(True)
+
+      def true_fn():
+        return (None, None, None,
+                math_ops._as_indexed_slices(constant_op.constant([1.])))
+
+      def false_fn():
+        return (None, None, None,
+                math_ops._as_indexed_slices(constant_op.constant([2.])))
+
+      result = cond_v2.cond_v2(pred, true_fn, false_fn)
+      self.assertIsNone(result[0])
+      self.assertIsNone(result[1])
+      self.assertIsNone(result[2])
+      return ops.convert_to_tensor(result[3])
+
+    output = build_cond_with_indexed_slices()
+    self.assertAllEqual(output, [1.])
+
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.0)
@@ -922,11 +959,27 @@ class CondV2Test(test.TestCase):
           _has_node_with_op(run_metadata, "Switch"),
           "A `Switch` op exists, but the graph should not be lowered.")
 
-      # Lowering disabled in XLA, there should still be an `If` node
-      self.assertTrue(
-          _has_node_with_op(run_metadata, "StatelessIf"),
-          "An `If` op was not found, but the graph should not be lowered.")
-      # pylint: enable=g-complex-comprehension
+      if test_util.is_xla_enabled():
+        # If XLA is actually enabled then we expect the StatelessIf to have been
+        # put inside an XLA cluster.
+        self.assertFalse(
+            _has_node_with_op(run_metadata, "StatelessIf"),
+            ("A `StatelessIf` op was found, but the node should have been " +
+             "clustered."))
+        self.assertTrue(
+            _has_node_with_op(run_metadata, "_XlaCompile"),
+            ("An `_XlaCompile` op was not found, but the `StatelessIf` (at " +
+             "least) op should have been clustered."))
+        self.assertTrue(
+            _has_node_with_op(run_metadata, "_XlaRun"),
+            ("An `_XlaRun` op was not found, but the `StatelessIf` (at " +
+             "least) op should have been clustered."))
+      else:
+        # Lowering disabled in XLA, there should still be an `If` node
+        self.assertTrue(
+            _has_node_with_op(run_metadata, "StatelessIf"),
+            ("A `StatelessIf` op was not found, but the graph should not be " +
+             "lowered."))
 
   @test_util.run_deprecated_v1
   def testNestedLoweringDisabledInXLA(self):
@@ -1098,21 +1151,46 @@ class CondV2Test(test.TestCase):
   @test_util.run_deprecated_v1
   def testForwardPassRewrite(self):
     x = constant_op.constant(1.0, name="x")
-    output = cond_v2.cond_v2(constant_op.constant(True),
-                             lambda: x * 2.0,
-                             lambda: x)
+    y = constant_op.constant(1.0, name="y")
+
+    def true_fn():
+      y_plus_one = y + 1.
+      return x * y_plus_one
+
+    output = cond_v2.cond_v2(constant_op.constant(True), true_fn, lambda: x)
     if_op = output.op.inputs[0].op
     self.assertEqual(if_op.type, "StatelessIf")
     # pylint: disable=g-deprecated-assert
     self.assertEqual(len(if_op.outputs), 1)
 
     gradients_impl.gradients(output, x)
-    # if_op should have been rewritten to output 2.0 intermediate.
+    # if_op should have been rewritten to output `y_plus_one`.
     self.assertEqual(len(if_op.outputs), 2)
 
     gradients_impl.gradients(output, x)
     # Computing the gradient again shouldn't rewrite if_op again.
     self.assertEqual(len(if_op.outputs), 2)
+    # pylint: enable=g-deprecated-assert
+
+  @test_util.run_deprecated_v1
+  def testDoNotAccumulateConstants(self):
+    x = constant_op.constant(1.0, name="x")
+    output = cond_v2.cond_v2(
+        constant_op.constant(True), lambda: x * 2.0, lambda: x)
+    if_op = output.op.inputs[0].op
+    self.assertEqual(if_op.type, "StatelessIf")
+    # pylint: disable=g-deprecated-assert
+    self.assertEqual(len(if_op.outputs), 1)
+
+    gradients_impl.gradients(output, x)
+    # Number of outputs does change because
+    # 1. `x` is a loop input so does not need to be accumulated.
+    # 2. 2.0 is a constant so it is not accumulated.
+    self.assertEqual(len(if_op.outputs), 1)
+
+    gradients_impl.gradients(output, x)
+    # Computing the gradient again shouldn't rewrite if_op again.
+    self.assertEqual(len(if_op.outputs), 1)
     # pylint: enable=g-deprecated-assert
 
 

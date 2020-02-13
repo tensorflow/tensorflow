@@ -40,7 +40,7 @@ class HloGetDimensionSizeRewriterTest : public HloTestBase {
 };
 
 TEST_F(HloGetDimensionSizeRewriterTest, Ok) {
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule _
 ENTRY gds {
   p = s32[3,4] parameter(0)

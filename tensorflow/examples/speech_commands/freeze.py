@@ -45,8 +45,8 @@ import sys
 import tensorflow as tf
 
 from tensorflow.python.ops import gen_audio_ops as audio_ops
-import input_data
-import models
+import tensorflow.examples.speech_commands.input_data as input_data
+import tensorflow.examples.speech_commands.models as models
 from tensorflow.python.framework import graph_util
 
 # If it's available, load the specialized feature generator. If this doesn't
@@ -154,6 +154,16 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
 
 
 def main(_):
+  if FLAGS.quantize:
+    try:
+      _ = tf.contrib
+    except AttributeError as e:
+      msg = e.args[0]
+      msg += ('\n\n The --quantize option still requires contrib, which is not '
+              'part of TensorFlow 2.0. Please install a previous version:'
+              '\n    `pip install tensorflow<=1.15`')
+      e.args = (msg,)
+      raise e
 
   # Create the model and load its weights.
   sess = tf.compat.v1.InteractiveSession()

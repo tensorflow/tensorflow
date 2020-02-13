@@ -42,11 +42,11 @@ from tensorflow.python.training.tracking import util as trackable_utils
 class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def tearDown(self):
-    super(CheckpointTest, self).tearDown()
     prefix = self._iterator_checkpoint_prefix()
     pattern = prefix + "*"
     files = gfile.Glob(pattern)
     map(gfile.Remove, files)
+    super(CheckpointTest, self).tearDown()
 
   def _iterator_checkpoint_prefix(self):
     return os.path.join(self.get_temp_dir(), "iterator")
@@ -66,8 +66,7 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
                                                       iterator_state_variant)
     return restore_op
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode="graph"))
+  @combinations.generate(test_base.graph_only_combinations())
   def testSaveRestore(self):
 
     def _build_graph(start, stop):
@@ -118,8 +117,7 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode="graph"))
+  @combinations.generate(test_base.graph_only_combinations())
   def testInitThenRestore(self):
     # Note: Calling init_op before restore_op is redundant. This test just makes
     # sure we do not fail if restore is called on an already initialized
@@ -157,8 +155,7 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode="graph"))
+  @combinations.generate(test_base.graph_only_combinations())
   def testMultipleSaves(self):
 
     def _build_graph(start, stop):
@@ -204,8 +201,7 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode="graph"))
+  @combinations.generate(test_base.graph_only_combinations())
   def testSaveRestoreWithRepeat(self):
 
     def _build_graph(start, stop, num_epochs):
@@ -253,8 +249,7 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode="graph"))
+  @combinations.generate(test_base.graph_only_combinations())
   def testSaveRestoreExhaustedIterator(self):
 
     def _build_graph(start, stop, num_epochs):
@@ -295,17 +290,12 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode="eager"))
+  @combinations.generate(test_base.eager_only_combinations())
   def testSaveRestoreOneShotIterator(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6]).map(
         math_ops.square).batch(2)
-    # TODO(b/138399725): Re-enable default optimizations.
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    dataset = dataset.with_options(options)
     iterator = iter(dataset)
     get_next = iterator.get_next
     checkpoint = trackable_utils.Checkpoint(iterator=iterator)
@@ -319,18 +309,13 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       get_next()
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode="eager"))
+  @combinations.generate(test_base.eager_only_combinations())
   def testSaveRestoreMultipleIterator(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     dataset = dataset_ops.Dataset.from_tensor_slices(
         [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
     dataset = dataset.map(math_ops.square).batch(2)
-    # TODO(b/138399725): Re-enable default optimizations.
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    dataset = dataset.with_options(options)
     iterator_1 = iter(dataset)
     get_next_1 = iterator_1.get_next
     iterator_2 = iter(dataset)
@@ -353,8 +338,7 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertAllEqual([1, 4], get_next_2())
     self.assertAllEqual(3, get_next_3())
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode="eager"))
+  @combinations.generate(test_base.eager_only_combinations())
   def testRestoreExhaustedIterator(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
@@ -373,8 +357,7 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       get_next()
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode="eager"))
+  @combinations.generate(test_base.eager_only_combinations())
   def testRestoreInReconstructedIteratorInitializable(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")

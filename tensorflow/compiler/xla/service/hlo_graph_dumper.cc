@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
 #include <unistd.h>
+
 #include <algorithm>
 #include <atomic>
 #include <deque>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -386,7 +388,7 @@ class HloDotDumper {
   const HloExecutionProfile* profile_;  // may be null
   const NodeFilter filter_;
 
-  // Each HloInstruction dumped gets a monotically-increasing node ID.  This
+  // Each HloInstruction dumped gets a monotonically-increasing node ID.  This
   // must start at 1, because that's where graphviz's accounting starts.
   int64 next_node_id_ = 1;
   absl::flat_hash_map<const HloInstruction*, int64> node_ids_;
@@ -966,6 +968,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
+    case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
@@ -1051,6 +1054,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kFusion:
     case HloOpcode::kMap:
     case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kSetDimensionSize:
       return kGray;
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:

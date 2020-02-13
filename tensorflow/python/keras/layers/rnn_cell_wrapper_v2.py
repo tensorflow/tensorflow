@@ -25,12 +25,12 @@ from __future__ import division
 from __future__ import print_function
 
 
-from tensorflow.python.keras.layers import AbstractRNNCell
+from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.ops import rnn_cell_wrapper_impl
 from tensorflow.python.util.tf_export import tf_export
 
 
-class _RNNCellWrapperV2(AbstractRNNCell):
+class _RNNCellWrapperV2(recurrent.AbstractRNNCell):
   """Base class for cells wrappers V2 compatibility.
 
   This class along with `rnn_cell_impl._RNNCellWrapperV1` allows to define
@@ -84,7 +84,7 @@ class _RNNCellWrapperV2(AbstractRNNCell):
   @classmethod
   def from_config(cls, config, custom_objects=None):
     config = config.copy()
-    from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.keras.layers.serialization import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
     cell = deserialize_layer(config.pop("cell"), custom_objects=custom_objects)
     return cls(cell, **config)
 
@@ -96,6 +96,10 @@ class DropoutWrapper(rnn_cell_wrapper_impl.DropoutWrapperBase,
 
   def __init__(self, *args, **kwargs):  # pylint: disable=useless-super-delegation
     super(DropoutWrapper, self).__init__(*args, **kwargs)
+    if isinstance(self.cell, recurrent.LSTMCell):
+      raise ValueError("keras LSTM cell does not work with DropoutWrapper. "
+                       "Please use LSTMCell(dropout=x, recurrent_dropout=y) "
+                       "instead.")
 
   __init__.__doc__ = rnn_cell_wrapper_impl.DropoutWrapperBase.__init__.__doc__
 

@@ -67,7 +67,6 @@ EXTRA_TEST_FLAGS=""
 # --release_build        Build for release, compilation time will be longer to
 #                        ensure performance
 # --test_core_only       Use tensorflow/python/... as test target
-# --test_contrib_only    Use tensorflow/contrib/... as test target
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tf_nightly) TF_NIGHTLY=1 ;;
@@ -75,7 +74,6 @@ while [[ $# -gt 0 ]]; do
     --enable_remote_cache) set_remote_cache_options ;;
     --release_build) RELEASE_BUILD=1 ;;
     --test_core_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..." ;;
-    --test_contrib_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/contrib/..." ;;
     --extra_build_flags)
       shift
       if [[ -z "$1" ]]; then
@@ -190,14 +188,11 @@ N_JOBS="${NUMBER_OF_PROCESSORS}"
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
-# TODO(pcloudy): remove --experimental_windows_native_test_wrapper once
-# native test wrapper is enabled by default.
-# https://github.com/bazelbuild/bazel/issues/6622
 bazel test --announce_rc --config=opt -k --test_output=errors \
   ${EXTRA_TEST_FLAGS} \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu \
-  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu --build_tests_only \
+  --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu \
+  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu,-tpu --build_tests_only \
   --test_size_filters=small,medium \
   --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
   --flaky_test_attempts=3 \

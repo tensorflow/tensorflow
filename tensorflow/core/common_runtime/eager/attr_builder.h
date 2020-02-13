@@ -85,6 +85,7 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // trigger a NodeDef creation).
 class AttrBuilder {
  public:
+  AttrBuilder() {}
   explicit AttrBuilder(const char* op) { Reset(op); }
 
   void Reset(const char* op) {
@@ -132,6 +133,13 @@ class AttrBuilder {
   // well as any default attr-value pairs from the associated op_def, if there
   // is one.
   void FillAttrValueMap(AttrValueMap* m) const;
+
+  // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far except
+  // when the value matches the default for this attr.
+  // More precisely, if the global op registry contains an OpDef for this op
+  // and if an attribute value is the same as the default (according to the
+  // OpDef), this attr-value pair is not added to `m`.
+  void FillAttrValueMapWithoutDefaults(AttrValueMap* m) const;
   const NodeDef& BuildNodeDef();
 
  private:

@@ -18,10 +18,11 @@ limitations under the License.
 #define TENSORFLOW_PLATFORM_TENSOR_CODING_H_
 
 #include <string>
-#include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

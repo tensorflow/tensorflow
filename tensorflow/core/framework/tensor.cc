@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -134,7 +133,6 @@ class Buffer : public BufferBase {
   size_t size() const override { return sizeof(T) * elem_; }
 
  private:
-  T* data_;
   int64 elem_;
 
   ~Buffer() override;
@@ -144,6 +142,11 @@ class Buffer : public BufferBase {
 
 void LogUnexpectedSize(int64 actual, int64 expected) {
   LOG(ERROR) << "Input size was " << actual << " and expected " << expected;
+}
+
+bool MemoryLoggingEnabled() {
+  static bool memory_logging_enabled = LogMemory::IsEnabled();
+  return memory_logging_enabled;
 }
 
 // A set of helper functions depending on T.
@@ -478,7 +481,7 @@ Buffer<T>::Buffer(Allocator* a, int64 n,
 template <typename T>
 Buffer<T>::~Buffer() {
   if (data()) {
-    if (LogMemory::IsEnabled()) {
+    if (MemoryLoggingEnabled()) {
       RecordDeallocation();
     }
     TypedAllocator::Deallocate<T>(alloc_, static_cast<T*>(data()), elem_);
@@ -639,7 +642,7 @@ void UnrefIfNonNull(core::RefCounted* buf) {
 
 Tensor::Tensor() : Tensor(DT_FLOAT) {}
 
-Tensor::Tensor(DataType type) : shape_({0}), buf_(nullptr) { set_dtype(type); }
+Tensor::Tensor(DataType type) : shape_(type), buf_(nullptr) {}
 
 Tensor::Tensor(DataType type, const TensorShape& shape, TensorBuffer* buf)
     : shape_(shape), buf_(buf) {
@@ -772,7 +775,7 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
   if (shape_.num_elements() > 0 || a->AllocatesOpaqueHandle()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements()));
   }
-  if (buf_ != nullptr && buf_->data() != nullptr && LogMemory::IsEnabled()) {
+  if (MemoryLoggingEnabled() && buf_ != nullptr && buf_->data() != nullptr) {
     LogMemory::RecordTensorAllocation("Unknown", LogMemory::UNKNOWN_STEP_ID,
                                       *this);
   }
@@ -786,8 +789,8 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
   if (shape_.num_elements() > 0 || a->AllocatesOpaqueHandle()) {
     CASES(type, buf_ = new Buffer<T>(a, shape.num_elements(), allocation_attr));
   }
-  if (!allocation_attr.allocation_will_be_logged && buf_ != nullptr &&
-      buf_->data() != nullptr && LogMemory::IsEnabled()) {
+  if (MemoryLoggingEnabled() && !allocation_attr.allocation_will_be_logged &&
+      buf_ != nullptr && buf_->data() != nullptr) {
     LogMemory::RecordTensorAllocation("Unknown (with attributes)",
                                       LogMemory::UNKNOWN_STEP_ID, *this);
   }
@@ -853,7 +856,6 @@ class SubBuffer : public TensorBuffer {
 
  private:
   TensorBuffer* root_;
-  T* data_;
   int64 elem_;
 
   ~SubBuffer() override { root_->Unref(); }
@@ -939,7 +941,7 @@ bool Tensor::FromProto(Allocator* a, const TensorProto& proto) {
   buf_ = p;
   // TODO(misard) add tracking of which kernels and steps are calling
   // FromProto.
-  if (buf_ != nullptr && buf_->data() != nullptr && LogMemory::IsEnabled()) {
+  if (MemoryLoggingEnabled() && buf_ != nullptr && buf_->data() != nullptr) {
     LogMemory::RecordTensorAllocation("Unknown (from Proto)",
                                       LogMemory::UNKNOWN_STEP_ID, *this);
   }
@@ -1011,6 +1013,10 @@ inline string PrintOneElement(const tstring& a, bool print_v2) {
 }
 inline float PrintOneElement(const Eigen::half& h, bool print_v2) {
   return static_cast<float>(h);
+}
+
+inline float PrintOneElement(bfloat16 f, bool print_v2) {
+  return static_cast<float>(f);
 }
 
 // Print from left dim to right dim recursively.
@@ -1154,6 +1160,9 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
   }
   const char* data = limit > 0 ? tensor_data().data() : nullptr;
   switch (dtype()) {
+    case DT_BFLOAT16:
+      return SummarizeArray<bfloat16>(limit, num_elts, shape_, data, print_v2);
+      break;
     case DT_HALF:
       return SummarizeArray<Eigen::half>(limit, num_elts, shape_, data,
                                          print_v2);
@@ -1233,6 +1242,11 @@ string Tensor::SummarizeValue(int64 max_entries, bool print_v2) const {
 StringPiece Tensor::tensor_data() const {
   if (buf_ == nullptr) return StringPiece();  // Don't die for empty tensors
   return StringPiece(static_cast<char*>(buf_->data()), TotalBytes());
+}
+
+void* Tensor::data() const {
+  if (buf_ == nullptr) return nullptr;  // Don't die for empty tensors
+  return static_cast<void*>(buf_->data());
 }
 
 bool Tensor::SharesBufferWith(const Tensor& b) const {

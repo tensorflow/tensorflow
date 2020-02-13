@@ -88,7 +88,7 @@ class Executor {
 
   struct Args {
     int64 step_id = 0;
-    Rendezvous* rendezvous = nullptr;
+    RendezvousInterface* rendezvous = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
     CallFrameInterface* call_frame = nullptr;
     CancellationManager* cancellation_manager = nullptr;
@@ -106,12 +106,16 @@ class Executor {
     typedef std::function<void()> Closure;
     typedef std::function<void(Closure)> Runner;
     Runner runner = nullptr;
+
+    // If true, all kernels will be treated as "inexpensive", and hence executed
+    // on the scheduling thread.
+    bool run_all_kernels_inline = false;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
 
   // Synchronous wrapper for RunAsync().
-  Status Run(const Args& args) {
+  virtual Status Run(const Args& args) {
     Status ret;
     Notification n;
     RunAsync(args, [&ret, &n](const Status& s) {
@@ -147,8 +151,7 @@ struct LocalExecutorParams {
   Executor::RendezvousFactory rendezvous_factory;
 };
 ::tensorflow::Status NewLocalExecutor(const LocalExecutorParams& params,
-                                      std::unique_ptr<const Graph> graph,
-                                      Executor** executor);
+                                      const Graph& graph, Executor** executor);
 
 // A class to help run multiple executors in parallel and wait until
 // all of them are complete.

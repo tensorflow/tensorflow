@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
@@ -51,7 +52,11 @@ def _create_or_validate_filenames_dataset(filenames):
           "`filenames` must be a `tf.data.Dataset` of scalar `tf.string` "
           "elements.")
   else:
-    filenames = ops.convert_to_tensor(filenames, dtype=dtypes.string)
+    filenames = ops.convert_to_tensor(filenames, dtype_hint=dtypes.string)
+    if filenames.dtype != dtypes.string:
+      raise TypeError(
+          "`filenames` must be a `tf.Tensor` of dtype `tf.string` dtype."
+          " Got {}".format(filenames.dtype))
     filenames = array_ops.reshape(filenames, [-1], name="flat_filenames")
     filenames = dataset_ops.DatasetV2.from_tensor_slices(filenames)
 
@@ -512,8 +517,11 @@ class FixedLengthRecordDatasetV1(dataset_ops.DatasetV1Adapter):
     self._dataset._filenames = value  # pylint: disable=protected-access
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# these aliases in place.
-FixedLengthRecordDataset = FixedLengthRecordDatasetV1
-TFRecordDataset = TFRecordDatasetV1
-TextLineDataset = TextLineDatasetV1
+if tf2.enabled():
+  FixedLengthRecordDataset = FixedLengthRecordDatasetV2
+  TFRecordDataset = TFRecordDatasetV2
+  TextLineDataset = TextLineDatasetV2
+else:
+  FixedLengthRecordDataset = FixedLengthRecordDatasetV1
+  TFRecordDataset = TFRecordDatasetV1
+  TextLineDataset = TextLineDatasetV1

@@ -22,7 +22,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -112,6 +114,9 @@ class DfsHloVisitorWithDefaultBase
     return DefaultAction(hlo);
   }
   Status HandleRng(HloInstructionPtr random) override {
+    return DefaultAction(random);
+  }
+  Status HandleRngBitGenerator(HloInstructionPtr random) override {
     return DefaultAction(random);
   }
   Status HandleRngGetAndUpdateState(HloInstructionPtr random) override {
@@ -226,6 +231,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleGetDimensionSize(HloInstructionPtr get_size) override {
     return DefaultAction(get_size);
   }
+  Status HandleSetDimensionSize(HloInstructionPtr get_size) override {
+    return DefaultAction(get_size);
+  }
   Status HandleAddDependency(HloInstructionPtr add_dependency) override {
     return DefaultAction(add_dependency);
   }
@@ -251,6 +259,16 @@ using ConstDfsHloVisitorWithDefault =
 // visiting.
 class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
  public:
+  // Runs a visitor on the module and returns whether the module has changed.
+  StatusOr<bool> RunOnModule(HloModule* module) {
+    bool is_changed = false;
+    for (const auto& computation : module->computations()) {
+      TF_RETURN_IF_ERROR(computation->Accept(this));
+      is_changed |= changed();
+    }
+    return is_changed;
+  }
+
   // Default visitor action is to do nothing and return OK.
   Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
     return Status::OK();

@@ -46,7 +46,7 @@ class RaggedTensorValue(object):
     if not isinstance(values, (np.ndarray, np.generic, RaggedTensorValue)):
       raise TypeError("values must be a numpy array or a RaggedTensorValue")
     if (isinstance(values, RaggedTensorValue) and
-        row_splits.dtype != values.row_splits_dtype):
+        row_splits.dtype != values.row_splits.dtype):
       raise ValueError("row_splits and values.row_splits must have "
                        "the same dtype")
     self._values = values
@@ -61,9 +61,6 @@ class RaggedTensorValue(object):
   dtype = property(
       lambda self: self._values.dtype,
       doc="""The numpy dtype of values in this tensor.""")
-  row_splits_dtype = property(
-      lambda self: self._row_splits.dtype,
-      doc="""The numpy dtype of row_splits in this tensor.""")
 
   @property
   def flat_values(self):

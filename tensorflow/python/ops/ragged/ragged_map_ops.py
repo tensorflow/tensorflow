@@ -443,12 +443,12 @@ def _convert_declared_ragged(current, declared):
         "The declared dtype (%s) mismatches the result (%s)" %
         (declared.dtype, current.dtype))
   if (isinstance(current, ragged_tensor.RaggedTensor) and
-      declared.row_splits_dtype != current.row_splits_dtype):
+      declared.row_splits_dtype != current.row_splits.dtype):
     if not ragged_config.auto_cast_partition_dtype():
       raise ValueError(
           "The declared row_splits dtype (%s) mismatches the result (%s)."
           "  Use RaggedTensor.with_row_splits_dtype to convert it."
-          % (declared.row_splits_dtype, current.row_splits_dtype))
+          % (declared.row_splits_dtype, current.row_splits.dtype))
     current = current.with_row_splits_dtype(declared.row_splits_dtype)
 
   if isinstance(current, ragged_tensor.RaggedTensor):

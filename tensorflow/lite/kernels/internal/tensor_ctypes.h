@@ -15,95 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_CTYPES_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_CTYPES_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 
 template <typename T>
-inline T* GetTensorData(TfLiteTensor* tensor);
-
-template <>
-inline float* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.f : nullptr;
-}
-
-template <>
-inline TfLiteFloat16* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.f16 : nullptr;
-}
-
-template <>
-inline uint8_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.uint8 : nullptr;
-}
-
-template <>
-inline int16_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i16 : nullptr;
-}
-
-template <>
-inline int32_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i32 : nullptr;
-}
-
-template <>
-inline int64_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i64 : nullptr;
-}
-
-template <>
-inline bool* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.b : nullptr;
-}
-
-template <>
-inline int8_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.int8 : nullptr;
+inline T* GetTensorData(TfLiteTensor* tensor) {
+  return tensor != nullptr ? reinterpret_cast<T*>(tensor->data.raw) : nullptr;
 }
 
 template <typename T>
-inline const T* GetTensorData(const TfLiteTensor* tensor);
-
-template <>
-inline const float* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.f : nullptr;
-}
-
-template <>
-inline const TfLiteFloat16* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.f16 : nullptr;
-}
-
-template <>
-inline const uint8_t* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.uint8 : nullptr;
-}
-
-template <>
-inline const int8_t* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.int8 : nullptr;
-}
-
-template <>
-inline const int16_t* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i16 : nullptr;
-}
-
-template <>
-inline const int32_t* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i32 : nullptr;
-}
-
-template <>
-inline const int64_t* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.i64 : nullptr;
-}
-
-template <>
-inline const bool* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr ? tensor->data.b : nullptr;
+inline const T* GetTensorData(const TfLiteTensor* tensor) {
+  return tensor != nullptr ? reinterpret_cast<const T*>(tensor->data.raw)
+                           : nullptr;
 }
 
 inline RuntimeShape GetTensorShape(const TfLiteTensor* tensor) {
@@ -113,8 +38,7 @@ inline RuntimeShape GetTensorShape(const TfLiteTensor* tensor) {
 
   TfLiteIntArray* dims = tensor->dims;
   const int dims_size = dims->size;
-  // C-style cast so this can be included in pure C code.
-  const int32_t* dims_data = (const int32_t*)(dims->data);
+  const int32_t* dims_data = reinterpret_cast<const int32_t*>(dims->data);
   return RuntimeShape(dims_size, dims_data);
 }
 

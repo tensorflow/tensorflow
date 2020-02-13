@@ -108,7 +108,7 @@ def boolean_mask(data, mask, name=None):
       if not ragged_tensor.is_ragged(data):
         data = ragged_tensor.RaggedTensor.from_tensor(
             data, ragged_rank=mask.ragged_rank,
-            row_splits_dtype=mask.row_splits_dtype)
+            row_splits_dtype=mask.row_splits.dtype)
       # Check that mask.nested_row_splits is a prefix of
       # data.nested_row_splits.
       splits_list = [
@@ -169,7 +169,7 @@ def boolean_mask(data, mask, name=None):
     if ragged_tensor.is_ragged(data):
       mask = ragged_tensor.RaggedTensor.from_tensor(
           mask, ragged_rank=min(data.ragged_rank, mask.shape.ndims - 1),
-          row_splits_dtype=data.row_splits_dtype)
+          row_splits_dtype=data.row_splits.dtype)
       return boolean_mask(data, mask)
 
     # Otherwise, data and mask are both `Tensor`s.
@@ -233,7 +233,7 @@ def tile(input, multiples, name=None):  # pylint: disable=redefined-builtin
     if not ragged_tensor.is_ragged(input):
       return array_ops.tile(input, multiples, name)
     multiples = ragged_util.convert_to_int_tensor(
-        multiples, name='multiples', dtype=input.row_splits_dtype)
+        multiples, name='multiples', dtype=input.row_splits.dtype)
     multiples.shape.assert_has_rank(1)
 
     # If the constant value of `multiples` is available, then we can use it
@@ -326,7 +326,8 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
 
   >>> rt = tf.ragged.constant([[1, 2], [3]])
   >>> _tile_ragged_splits(rt, [3, 2])
-  [<tf.Tensor: ..., numpy=array([ 0,  4,  6, 10, 12, 16, 18])>]
+  [<tf.Tensor: shape=(7,), dtype=int64,
+  numpy=array([ 0,  4,  6, 10, 12, 16, 18])>]
   """
   ragged_rank = rt_input.ragged_rank
   nested_splits = rt_input.nested_row_splits
@@ -383,15 +384,6 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
   Given a potentially ragged tenor `input`, this operation inserts a
   dimension with size 1 at the dimension `axis` of `input`'s shape.
 
-  * If `input` is a `Tensor`, then this is equivalent to
-    `tf.expand_dims`.
-  * If `input` is ragged, and `axis=0`, then the new dimension will be
-    uniform; but the previously outermost dimension will become ragged.
-  * If `input` is ragged, and `0 < axis < input.ragged_rank`, then the
-    new dimension will be ragged.
-  * If `input` is ragged, and axis >= input.ragged_rank`, then the new
-    dimension will be uniform.
-
   The following table gives some examples showing how `ragged.expand_dims`
   impacts the shapes of different input tensors.  Ragged dimensions are
   indicated by enclosing them in parentheses.
@@ -401,9 +393,9 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
   `[D1, D2]`              |  `0` | `[1, D1, D2]`
   `[D1, D2]`              |  `1` | `[D1, 1, D2]`
   `[D1, D2]`              |  `2` | `[D1, D2, 1]`
-  `[D1, (D2), (D3), D4]`  |  `0` | `[1, (D1), (D2), (D3), D4]`
-  `[D1, (D2), (D3), D4]`  |  `1` | `[D1, (1), (D2), (D3), D4]`
-  `[D1, (D2), (D3), D4]`  |  `2` | `[D1, (D2), (1), (D3), D4]`
+  `[D1, (D2), (D3), D4]`  |  `0` | `[1, D1, (D2), (D3), D4]`
+  `[D1, (D2), (D3), D4]`  |  `1` | `[D1, 1, (D2), (D3), D4]`
+  `[D1, (D2), (D3), D4]`  |  `2` | `[D1, (D2), 1, (D3), D4]`
   `[D1, (D2), (D3), D4]`  |  `3` | `[D1, (D2), (D3), 1, D4]`
   `[D1, (D2), (D3), D4]`  |  `4` | `[D1, (D2), (D3), D4, 1]`
 
@@ -426,11 +418,11 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
 
   >>> expanded = tf.expand_dims(rt, axis=0)
   >>> print(expanded.shape, expanded)
-  (1, None, None) <tf.RaggedTensor [[[1, 2], [3]]]>
+  (1, 2, None) <tf.RaggedTensor [[[1, 2], [3]]]>
 
   >>> expanded = tf.expand_dims(rt, axis=1)
   >>> print(expanded.shape, expanded)
-  (2, None, None) <tf.RaggedTensor [[[1, 2]], [[3]]]>
+  (2, 1, None) <tf.RaggedTensor [[[1, 2]], [[3]]]>
 
   >>> expanded = tf.expand_dims(rt, axis=2)
   >>> print(expanded.shape, expanded)
@@ -445,18 +437,15 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
 
     ndims = None if input.shape.ndims is None else input.shape.ndims + 1
     axis = ragged_util.get_positive_axis(axis, ndims)
-    if axis == 0:
-      values = input
-      splits = array_ops.stack([0, input.nrows()])
-    elif axis == 1:
-      values = input
-      splits = math_ops.range(input.nrows() + 1)
-    else:
-      values = expand_dims(input.values, axis - 1)
-      splits = input.row_splits
 
-    return ragged_tensor.RaggedTensor.from_row_splits(values, splits,
-                                                      validate=False)
+    if axis == 0:
+      return ragged_tensor.RaggedTensor.from_uniform_row_length(
+          input, uniform_row_length=input.nrows(), nrows=1, validate=False)
+    elif axis == 1:
+      return ragged_tensor.RaggedTensor.from_uniform_row_length(
+          input, uniform_row_length=1, nrows=input.nrows(), validate=False)
+    else:
+      return input.with_values(expand_dims(input.values, axis - 1))
 
 
 #===============================================================================
@@ -585,7 +574,7 @@ def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
     # Convert inputs to tensors.
     data = ragged_tensor.convert_to_tensor_or_ragged_tensor(data, name='data')
     row_splits_dtype = (
-        data.row_splits_dtype
+        data.row_splits.dtype
         if isinstance(data, ragged_tensor.RaggedTensor) else None)
     partitions = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         partitions, name='partitions', preferred_dtype=row_splits_dtype)
@@ -623,9 +612,8 @@ def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
           num_partitions,
           message='partitions must be less than num_partitions')
       with ops.control_dependencies([check]):
-        values = array_ops.identity(values)
-      return ragged_tensor.RaggedTensor.from_value_rowids(
-          values, value_rowids, nrows=num_partitions, validate=False)
+        return ragged_tensor.RaggedTensor.from_value_rowids(
+            values, value_rowids, nrows=num_partitions, validate=False)
 
     else:
       # Handle higher-dimensional partitions via recursion.
@@ -644,3 +632,54 @@ def stack_dynamic_partitions(data, partitions, num_partitions, name=None):
       with ops.control_dependencies([check]):
         return stack_dynamic_partitions(data.values, partitions.values,
                                         num_partitions)
+
+
+#===============================================================================
+# Reverse
+#===============================================================================
+def reverse(tensor, axis, name=None):
+  """Reverses a RaggedTensor along the specified axes.
+
+  #### Example:
+
+  >>> data = tf.ragged.constant([
+  ...   [[1, 2], [3, 4]], [[5, 6]], [[7, 8], [9, 10], [11, 12]]])
+  >>> tf.reverse(data, axis=[0, 2])
+  <tf.RaggedTensor [[[8, 7], [10, 9], [12, 11]], [[6, 5]], [[2, 1], [4, 3]]]>
+
+  Args:
+    tensor: A 'RaggedTensor' to reverse.
+    axis: A list or tuple of 'int' or a constant 1D 'tf.Tensor'. The indices
+      of the axes to reverse.
+    name: A name prefix for the returned tensor (optional).
+
+  Returns:
+    A 'RaggedTensor'.
+  """
+  type_error_msg = ('`axis` must be a list of int or a constant tensor'
+                    'when reversing axes in a ragged tensor')
+
+  with ops.name_scope(name, 'Reverse', [tensor, axis]):
+    if isinstance(axis, ops.Tensor):
+      axis = tensor_util.constant_value(axis)
+      if axis is None:
+        raise TypeError(type_error_msg)
+    elif not (isinstance(axis, (list, tuple)) and
+              all(isinstance(dim, int) for dim in axis)):
+      raise TypeError(type_error_msg)
+
+    tensor = ragged_tensor.convert_to_tensor_or_ragged_tensor(
+        tensor, name='tensor')
+
+    # Allow usage of negative values to specify innermost axes.
+    axis = [ragged_util.get_positive_axis(dim, tensor.shape.rank)
+            for dim in axis]
+
+    # We only need to slice up to the max axis. If the axis list
+    # is empty, it should be 0.
+    slices = [slice(None)] * (max(axis) + 1 if axis else 0)
+
+    for dim in axis:
+      slices[dim] = slice(None, None, -1)
+
+    return tensor[tuple(slices)]

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_BLOCK_MAP_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_BLOCK_MAP_H_
 
+#include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/side_pair.h"
 
 namespace ruy {
@@ -26,9 +27,9 @@ enum class BlockMapTraversalOrder {
   // Fractal Z-order curve, https://en.wikipedia.org/wiki/Z-order_curve
   kFractalZ,
   // Variant of Z-order doing a U instead of a Z.
-  kFractalU
-  // TODO(benoitjacob) add Hilbert curve order. More complex decoding might be
-  // worth it.
+  kFractalU,
+  // Hilbert curve, https://en.wikipedia.org/wiki/Hilbert_curve
+  kFractalHilbert
 };
 
 // A BlockMap describes a tiling of a matrix, typically the destination matrix
@@ -51,11 +52,11 @@ enum class BlockMapTraversalOrder {
 // GetBlockByIndex to get the corresponding block, then GetBlockMatrixCoords
 // to find the actual row and column numbers of this block.
 //
-// There are two nested levels of subdivision. On a high level, the matrix is
-// tiled into a square NxN grid where N is a power of to, specifically:
+// There are two nested levels of subdivision. On a local level, the matrix is
+// tiled into a square NxN grid where N is a power of two, specifically:
 //   N = 2^num_blocks_base_log2.
 //
-// At a smaller scale, within each of these blocks, there may be one further
+// At a larger scale, around these blocks, there may be one further
 // level of subdivision, in only one dimension: either along rows or along
 // columns. That is used to handle arbitrarily rectangular matrices. The
 // aforementioned high-level block grid is square, so it does not readily fit
@@ -79,6 +80,8 @@ enum class BlockMapTraversalOrder {
 // will only allow that to happen in the last position along each axis, so
 // as to minimize the overhead incurred onto the matrix multiplication kernels.
 struct BlockMap {
+  // The number of threads to use (to distribute the blocks to).
+  int thread_count;
   // The order in which to traverse the matrix of which this BlockMap represents
   // a tiling (hereafter "the matrix").
   BlockMapTraversalOrder traversal_order;
@@ -100,11 +103,21 @@ struct BlockMap {
   SidePair<int> large_blocks;
 };
 
+// Returns the traversal order to be used for the given matrix multiplication
+// parameters.
+BlockMapTraversalOrder GetTraversalOrder(int rows, int cols, int depth,
+                                         int lhs_scalar_size,
+                                         int rhs_scalar_size,
+                                         int local_data_cache_size,
+                                         int shared_data_cache_size);
+
 // Create a BlockMap suitable for tiling the destination matrix in a
 // matrix multiplication with the given parameters.
 void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int kernel_cols, int lhs_scalar_size, int rhs_scalar_size,
-                  int cache_friendly_traversal_threshold, BlockMap* block_map);
+                  int tentative_thread_count, Path path,
+                  int local_data_cache_size, int shared_data_cache_size,
+                  BlockMap* block_map);
 
 // Maps an integer index to a block position in the grid.
 void GetBlockByIndex(const BlockMap& block_map, int index,

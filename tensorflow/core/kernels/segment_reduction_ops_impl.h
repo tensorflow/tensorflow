@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -45,7 +46,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/cuda_solvers.h"
-#include "tensorflow/core/platform/cuda.h"
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
@@ -780,7 +781,7 @@ class SparseSegmentGradOpBase : public OpKernel {
                 errors::InvalidArgument("indices should be a vector."));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(segment_ids.shape()),
                 errors::InvalidArgument("segment_ids should be a vector."));
-    OP_REQUIRES(context, IsLegacyScalar(output_dim0.shape()),
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(output_dim0.shape()),
                 errors::InvalidArgument("output_dim0 should be a scalar."));
 
     const int64 N = indices.NumElements();

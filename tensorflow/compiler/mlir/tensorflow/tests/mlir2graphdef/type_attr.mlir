@@ -18,14 +18,24 @@
 // CHECK-NEXT:        type: DT_INT32
 // CHECK-NEXT:        type: DT_FLOAT
 
+// CHECK-LABEL: function
+// CHECK: name: "plain"
+// CHECK: Placeholder
+// CHECK: key: "type"
+// CHECK: type: DT_INT8
 
 func @main(%arg0 : tensor<16xf32>) {
   tf_executor.graph {
-    %0 = tf_executor.island {
-      %0 = "tf.Placeholder.input"(%arg0) : (tensor<16xf32>) -> tensor<16xf32>
-      %2 = "tf.MlirPassthroughOp"(%0) {extra_type_attr = [tensor<5xi32>, tensor<16xf32>], Tinputs = [tensor<16xf32>], Toutputs = [tensor<16xf32>], mlir_module = ""} : (tensor<16xf32>) -> tensor<16xf32>
-      tf_executor.yield
-    }
+    %0:2 = tf_executor.island wraps "tf.Placeholder.input"(%arg0) : (tensor<16xf32>) -> tensor<16xf32>
+    %1:2 = tf_executor.island wraps "tf.MlirPassthroughOp"(%0#0) {extra_type_attr = [tensor<5xi32>, tensor<16xf32>], Tinputs = [tensor<16xf32>], Toutputs = [tensor<16xf32>], mlir_module = ""} : (tensor<16xf32>) -> tensor<16xf32>
+    tf_executor.fetch
+  }
+  return
+}
+
+func @plain() {
+  tf_executor.graph {
+    %0:2 = tf_executor.island wraps "tf.Placeholder"() {type = i8} : () -> tensor<16xi8>
     tf_executor.fetch
   }
   return

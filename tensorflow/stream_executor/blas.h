@@ -92,7 +92,7 @@ string SideString(Side s);
 // Type with which intermediate computations of a blas routine are performed.
 //
 // Some blas calls can perform computations with a type that's different than
-// the type of their inputs/outputs.  This lets you e.g. multiply two matricies
+// the type of their inputs/outputs.  This lets you e.g. multiply two matrices
 // of int8s using float32s to store the matmul's intermediate values.
 enum class ComputationType {
   kF16,         // 16-bit floating-point

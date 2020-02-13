@@ -17,7 +17,9 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/error.h"
 
+using ::tensorflow::IOError;
 using ::tensorflow::Status;
 using ::tensorflow::error::Code;
 
@@ -31,6 +33,12 @@ void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
     return;
   }
   s->status = Status(static_cast<Code>(code), tensorflow::StringPiece(msg));
+}
+
+void TF_SetStatusFromIOError(TF_Status* s, int error_code,
+                             const char* context) {
+  // TODO(mihaimaruseac): Handle windows when changing its filesystem
+  s->status = IOError(context, error_code);
 }
 
 TF_Code TF_GetCode(const TF_Status* s) {

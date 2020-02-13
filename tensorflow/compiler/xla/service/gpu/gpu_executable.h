@@ -82,9 +82,9 @@ class GpuExecutable : public Executable {
 
   // ExecuteAsyncOnStream will fail if the compute capability of the stream
   // doesn't match the compute capability passed to this object's constructor.
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
+      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   std::shared_ptr<const BufferAssignment> GetBufferAssignment() const {
@@ -92,11 +92,6 @@ class GpuExecutable : public Executable {
   }
 
  private:
-  StatusOr<ScopedShapedBuffer> Execute(
-      const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile, bool block_host_until_done);
-
   // If `block_host_until_done` is false, execution will not block the host
   // until the kernels have completed. This is used as an optimization for
   // clients, such as Tensorflow, that use a single stream of execution for
@@ -118,12 +113,12 @@ class GpuExecutable : public Executable {
   // globals corresponding to constant buffers.  Returns a map mapping buffer
   // allocation indices to GPU pointers.
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
-      stream_executor::StreamExecutor* executor);
+      stream_executor::Stream* stream);
 
   // Computes annotations for each thunk and store them in thunk_annotations_.
   void ComputeThunkAnnotations();
 
-  // GpuExecutable check with either AMD's ISA version, or Nvdia's major minor
+  // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
   Status CheckCompatibilityWithServiceExecutableRunOptions(
       const ServiceExecutableRunOptions* run_options);

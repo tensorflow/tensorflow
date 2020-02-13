@@ -120,6 +120,21 @@ StatusOr<HloInstruction*> MakeReshapeHlo(
 }
 
 StatusOr<HloInstruction*> MakeDynamicSliceHlo(
+    HloInstruction* operand, absl::Span<HloInstruction* const> start_indices,
+    absl::Span<const int64> slice_sizes) {
+  HloComputation* computation = operand->parent();
+  std::vector<Shape> scalar_start_indices_shapes(
+      start_indices.size(),
+      ShapeUtil::MakeShape(start_indices[0]->shape().element_type(), {}));
+  TF_ASSIGN_OR_RETURN(
+      Shape dynamic_slice_shape,
+      ShapeInference::InferDynamicSliceShape(
+          operand->shape(), scalar_start_indices_shapes, slice_sizes));
+  return computation->AddInstruction(HloInstruction::CreateDynamicSlice(
+      dynamic_slice_shape, operand, start_indices, slice_sizes));
+}
+
+StatusOr<HloInstruction*> MakeDynamicSliceHlo(
     HloInstruction* operand, HloInstruction* start_indices,
     absl::Span<const int64> slice_sizes) {
   HloComputation* computation = operand->parent();
@@ -277,6 +292,31 @@ StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
           operand_shapes, map_computation->ComputeProgramShape(), map_dims));
   return computation->AddInstruction(
       HloInstruction::CreateMap(map_shape, operands, map_computation));
+}
+
+StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
+                                        HloInstruction* init_value,
+                                        absl::Span<const int64> dimensions,
+                                        HloOpcode binary_opcode) {
+  auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
+  auto result_shape = ShapeUtil::FilterDimensions(
+      [&](const int64 dim) { return !absl::c_linear_search(dimensions, dim); },
+      operand->shape());
+  HloComputation* reduce_computation;
+  {
+    HloComputation::Builder b(operand->name() + ".reduce_sub_computation");
+    auto lhs = b.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+    auto rhs = b.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+    b.AddInstruction(
+        HloInstruction::CreateBinary(scalar_shape, binary_opcode, lhs, rhs));
+    reduce_computation =
+        operand->parent()->parent()->AddEmbeddedComputation(b.Build());
+  }
+
+  return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
+      result_shape, operand, init_value, dimensions, reduce_computation));
 }
 
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
@@ -481,6 +521,22 @@ HloInstruction* BroadcastZeros(HloComputation* computation,
                           /*result_shape_bounds=*/broadcast_dimensions);
 }
 
+// Recursively creates a dummy op given a shape. Leaf nodes are broadcasted zero
+// while internal nodes are tuples.
+HloInstruction* CreateDummyOp(HloComputation::Builder* b, const Shape& shape) {
+  if (shape.IsArray()) {
+    auto zero = b->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::Zero(shape.element_type())));
+    return b->AddInstruction(HloInstruction::CreateBroadcast(shape, zero, {}));
+  }
+  CHECK(shape.IsTuple());
+  std::vector<HloInstruction*> sub_instructions;
+  for (const Shape& subshape : shape.tuple_shapes()) {
+    sub_instructions.push_back(CreateDummyOp(b, subshape));
+  }
+  return b->AddInstruction(HloInstruction::CreateTuple(sub_instructions));
+}
+
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
     absl::Span<const Shape* const> domain, const Shape& range,
     absl::string_view name) {
@@ -493,12 +549,9 @@ StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
   }
 
   // We can't change the root type of a computation once it is created so create
-  // a dummy root instruction to give the computation the right root shape.  In
-  // the future we may want to use a (recursive) broadcast here to avoid
-  // creating large constants.
-  b.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateFromShape(range)));
-
+  // a dummy root instruction to give the computation the right root shape.  Use
+  // a (recursive) broadcast here to avoid creating large constants.
+  CreateDummyOp(&b, range);
   return b.Build();
 }
 

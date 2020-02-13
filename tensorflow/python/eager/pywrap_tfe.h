@@ -98,7 +98,7 @@ PyObject* TFE_Py_RegisterGradientFunction(PyObject* e);
 // or functional ops.
 //
 // This function is not thread-safe.
-PyObject* TFE_Py_RegisterForwardGradientFunction(PyObject* e);
+PyObject* TFE_Py_RegisterJVPFunction(PyObject* e);
 
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
@@ -197,6 +197,8 @@ PyObject* TFE_Py_TapeSetIsStopped();
 //    forwardprop to, given the gradients of the output tensors, produce the
 //    gradients of the input tensors. This function is automatically transposed
 //    during forwardprop.
+//  - forward_function is an optional special-case for forwardprop, taking input
+//    jvps and returning output jvps.
 //
 // Records an operation both for backprop (gradient tape) and forwardprop
 // (forward accumulator). Equivalent to calling both
@@ -205,7 +207,8 @@ PyObject* TFE_Py_TapeSetIsStopped();
 PyObject* TFE_Py_TapeSetRecordOperation(PyObject* op_type,
                                         PyObject* output_tensors,
                                         PyObject* input_tensors,
-                                        PyObject* backward_function);
+                                        PyObject* backward_function,
+                                        PyObject* forward_function);
 
 // Records an operation only for backprop (gradient tapes).
 //
@@ -226,7 +229,7 @@ PyObject* TFE_Py_TapeSetRecordOperationBackprop(PyObject* op_type,
 //    function is automatically transposed to produce output gradients given
 //    input gradients.
 //  - forwardprop_output_indices indicates any output_tensors which contain
-//    JVPs. Typically these will have come from TFE_Py_PackForwardGradients. May
+//    JVPs. Typically these will have come from TFE_Py_PackJVPs. May
 //    be None or an empty sequence if there are no JVP outputs from the
 //    operation.
 PyObject* TFE_Py_TapeSetRecordOperationForwardprop(
@@ -254,7 +257,6 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
 // correctly formatted (i.e. EagerTensors). If it doesn't find EagerTensors,
 // it will simply fail with a NotImplementedError.
 //
-// The first PyObject* is unused.
 // The "args" PyObject* is meant to be a tuple with the following structure:
 //  Item 1: The TFE Context
 //  Item 2: device_name: Name of the device on which to execute the operation,
@@ -269,20 +271,23 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
 // This is named _C since there doesn't seem to be any way to make it visible
 // in the SWIG interface without renaming due to the use of the %native
 // directive.
-PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args);
+PyObject* TFE_Py_FastPathExecute_C(PyObject* args);
 
 // Record the gradient for a given op.
 PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
                                 PyObject* attrs, PyObject* results,
-                                PyObject* name);
+                                PyObject* forward_pass_name_scope);
 
 // Returns all variables watched by the given tape in the order those variables
 // were created.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);
 
-// Creates a new forward accumulator and adds it to the active set.
+// Creates a new forward accumulator. Does not add it to the active set.
 PyObject* TFE_Py_ForwardAccumulatorNew();
 
+// Adds a ForwardAccumulator to the active set, meaning it will watch executed
+// operations. It must not already be in the active set.
+PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator);
 // Removes a forward accumulator from the active set, meaning it will no longer
 // be watching operations.
 void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator);
@@ -302,7 +307,7 @@ PyObject* TFE_Py_ForwardAccumulatorJVP(PyObject* accumulator, PyObject* tensor);
 // temporarily reset its state. This is useful when building forwardprop
 // versions of functions, where an accumulator will trigger function building
 // and then must process captured symbolic tensors while building it. Without
-// pushing and poping, accumulators ignore operations executed as a direct
+// pushing and popping, accumulators ignore operations executed as a direct
 // result of their own jvp computations.
 PyObject* TFE_Py_ForwardAccumulatorPushState();
 PyObject* TFE_Py_ForwardAccumulatorPopState();
@@ -324,7 +329,7 @@ PyObject* TFE_Py_ForwardAccumulatorPopState();
 //       array.
 //   jvps: A flat list of Tensors. Best interpreted as a sequence to be
 //       appended to `tensors`.
-PyObject* TFE_Py_PackForwardGradients(PyObject* tensors);
+PyObject* TFE_Py_PackJVPs(PyObject* tensors);
 
 // Returns an EagerTensor of dimension [len(`tensors`)] containing
 // the `slice_dim`'th dimension of each tensor in `tensors`. In other words,
@@ -367,4 +372,9 @@ PyObject* TFE_Py_SetEagerContext(PyObject* python_context);
 // some point.
 PyObject* GetPyEagerContext();
 
+// These are exposed since there is SWIG code that calls these.
+// Returns a pre-allocated status if it exists.
+TF_Status* GetStatus();
+// Returns the pre-allocated status to the code.
+void ReturnStatus(TF_Status* status);
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

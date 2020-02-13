@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -883,13 +882,14 @@ void BM_ParallelFusion(int num_iters) {
           .ConsumeValueOrDie();
 
   // Build executable.
-  std::unique_ptr<LocalExecutable> executable =
+  auto executables =
       client
           ->Compile(computation,
                     {&buffer0.on_host_shape(), &buffer1.on_host_shape(),
                      &buffer2.on_host_shape()},
                     ExecutableBuildOptions())
           .ConsumeValueOrDie();
+  auto executable = std::move(executables[0]);
 
   se::Stream stream(executors[device_ordinal]);
   stream.Init();

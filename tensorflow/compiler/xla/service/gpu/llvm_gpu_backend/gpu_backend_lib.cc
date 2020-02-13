@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/call_once.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/PassRegistry.h"
 #include "llvm/Support/CommandLine.h"
@@ -73,27 +75,23 @@ const int kAMDGPUInlineThreshold = 0x100000;
 // Default inline threshold value to use in llvm.
 const int kDefaultInlineThreshold = 1100;
 
-// Gets the GPU name as it's known to LLVM for a given compute capability.  If
-// we see an unrecognized compute capability, we return "sm_35".
+// Gets the GPU name as it's known to LLVM for a given compute
+// capability.  If we see an unrecognized compute capability, we
+// return the highest one that is known and below the selected device.
 static string GetSmName(std::pair<int, int> compute_capability) {
-  static auto* m = new std::map<std::pair<int, int>, int>({
-      {{3, 5}, 35},
-      {{3, 7}, 37},
-      {{5, 0}, 50},
-      {{5, 2}, 52},
-      {{5, 3}, 53},
-      {{6, 0}, 60},
-      {{6, 1}, 61},
-      {{6, 2}, 62},
-      {{7, 0}, 70},
-      {{7, 2}, 72},
-      {{7, 5}, 75},
-  });
+  int compute_capability_version =
+      compute_capability.first * 10 + compute_capability.second;
   int sm_version = 35;
-  auto it = m->find(compute_capability);
-  if (it != m->end()) {
-    sm_version = it->second;
-  } else {
+  // If the current compute capability isn't known, fallback to the
+  // most recent version before it.
+  for (int v : {75, 72, 70, 62, 61, 60, 53, 52, 50, 37, 35}) {
+    if (v <= compute_capability_version) {
+      sm_version = v;
+      break;
+    }
+  }
+
+  if (sm_version != compute_capability_version) {
     LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
                  << ", " << compute_capability.second << ") ."
                  << "Defaulting to telling LLVM that we're compiling for sm_"
@@ -225,7 +223,7 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
         llvm::Triple(module->getTargetTriple())));
 
     target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
-                                        llvm::TargetMachine::CGFT_AssemblyFile);
+                                        llvm::CGFT_AssemblyFile);
     codegen_passes.run(*module);
   }
 
@@ -334,7 +332,7 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
   // If ftz is enabled, set it as an attribute on every function in the module.
   if (hlo_module_config.debug_options().xla_gpu_ftz()) {
     for (llvm::Function& fn : *module) {
-      fn.addFnAttr("nvptx-f32ftz", "true");
+      fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
     }
   }
 
@@ -491,8 +489,8 @@ namespace nvptx {
 StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
-  static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
+  static absl::once_flag backend_init_flag;
+  absl::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
 
   string ptx;
   std::unique_ptr<llvm::TargetMachine> target_machine;
@@ -521,7 +519,7 @@ StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
     std::unique_ptr<llvm::TargetMachine> target_machine = NVPTXGetTargetMachine(
         default_target_triple, *compute_capability, hlo_module_config);
 
-    // Link with libdeivce, and optimize the LLVM module.
+    // Link with libdevice, and optimize the LLVM module.
     TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
         module, gpu_version, hlo_module_config, libdevice_dir_path,
         NVPTXTargetModuleLinker, default_target_triple, target_machine.get(),
@@ -545,7 +543,7 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
       {"hc.amdgcn.bc", "opencl.amdgcn.bc", "ocml.amdgcn.bc", "ockl.amdgcn.bc",
        "oclc_finite_only_off.amdgcn.bc", "oclc_daz_opt_off.amdgcn.bc",
        "oclc_correctly_rounded_sqrt_on.amdgcn.bc",
-       "oclc_unsafe_math_off.amdgcn.bc"});
+       "oclc_unsafe_math_off.amdgcn.bc", "oclc_wavefrontsize64_on.amdgcn.bc"});
 
   // Construct full path to ROCDL bitcode libraries.
   std::vector<string> result;
@@ -613,7 +611,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
       new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::F_Text));
   module->setDataLayout(target_machine->createDataLayout());
   target_machine->addPassesToEmitFile(codegen_passes, *isabin_fs, nullptr,
-                                      llvm::TargetMachine::CGFT_ObjectFile);
+                                      llvm::CGFT_ObjectFile);
   codegen_passes.run(*module);
   isabin_fs->flush();
 
@@ -711,8 +709,8 @@ namespace amdgpu {
 StatusOr<std::vector<uint8>> CompileToHsaco(
     llvm::Module* module, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config, const string& rocdl_dir_path) {
-  static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, AMDGPUBackendInit, hlo_module_config);
+  static absl::once_flag backend_init_flag;
+  absl::call_once(backend_init_flag, AMDGPUBackendInit, hlo_module_config);
 
   std::vector<uint8> hsaco;
   std::unique_ptr<llvm::TargetMachine> target_machine;

@@ -225,10 +225,10 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
   }
   WorkerSession* sess = session();
   // The worker will be released in a subsequent call to
-  // `sess->worker_cache->ReleaseWorker()` (if the call has not yet been
+  // `sess->worker_cache()->ReleaseWorker()` (if the call has not yet been
   // initialized) or `call->ReleaseWorker()` (if it has been initialized).
   WorkerInterface* rwi =
-      sess->worker_cache->GetOrCreateWorker(call->src_worker_);
+      sess->worker_cache()->GetOrCreateWorker(call->src_worker_);
   if (s.ok() && rwi == nullptr) {
     s = errors::Internal("No worker known as ", call->src_worker_);
   }
@@ -239,7 +239,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
   }
   if (!s.ok()) {
     if (rwi != nullptr) {
-      sess->worker_cache->ReleaseWorker(call->src_worker_, rwi);
+      sess->worker_cache()->ReleaseWorker(call->src_worker_, rwi);
     }
     get_call_freelist()->Release(call);
     done(s, Args(), recv_args, Tensor{}, false);
@@ -257,7 +257,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     // NOTE: `*sess` can potentially be deleted before we return from
     // `call->done()(...)`, so we must release the worker before calling the
     // callback.
-    call->ReleaseWorker(sess->worker_cache.get());
+    call->ReleaseWorker(sess->worker_cache());
     call->done()(call->status(), Args(), Args(), Tensor(), false);
     get_call_freelist()->Release(call);
     return;
@@ -274,7 +274,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     // NOTE: `*session()` can potentially be deleted before we return from
     // `call->done()(...)`, so we must release the worker before calling the
     // callback.
-    call->ReleaseWorker(session()->worker_cache.get());
+    call->ReleaseWorker(session()->worker_cache());
     call->done()(s, Args(), call->recv_args(), call->tensor(), call->is_dead());
     get_call_freelist()->Release(call);
     Unref();

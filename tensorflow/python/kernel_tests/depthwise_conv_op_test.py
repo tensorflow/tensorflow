@@ -187,6 +187,26 @@ class DepthwiseConv2DTest(test.TestCase):
     self.assertShapeEqual(native_result, conv_interface)
 
   @test_util.run_v1_only("b/120545219")
+  @test_util.run_cuda_only
+  def testDepthwiseConv2DCudnn(self):
+    for index, (input_size, filter_size, _, stride,
+                padding) in enumerate(ConfigsToTest()):
+      # The CuDNN depthwise conv is turned on only when input/output is NCHW and
+      # float16(half). See cudnn release note 7.6.3.
+      tf_logging.info(
+          "Testing DepthwiseConv2DCudnn, %dth config: %r * %r, stride: %d, "
+          "padding: %s", index, input_size, filter_size, stride, padding)
+      data_type = dtypes.float16
+      self._VerifyValues(
+          input_size,
+          filter_size,
+          stride,
+          padding,
+          data_type,
+          use_gpu=True,
+          data_format="NCHW")
+
+  @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2D(self):
     for index, (input_size, filter_size, _, stride,
                 padding) in enumerate(ConfigsToTest()):
@@ -439,6 +459,32 @@ class DepthwiseConv2DTest(test.TestCase):
       self.assertLess(err, tolerance)
 
   @test_util.run_v1_only("b/120545219")
+  @test_util.run_cuda_only
+  def testDepthwiseConv2DInputGradCudnn(self):
+    for index, (input_size, filter_size, output_size, stride,
+                padding) in enumerate(CheckGradConfigsToTest()):
+      # The CuDNN depthwise conv (input gradient) is turned on only when
+      # stride = 1, input/output is NCHW and float16(half). See cudnn release
+      # note 7.6.3.
+      if stride != 1:
+        continue
+      tf_logging.info(
+          "Testing DepthwiseConv2DInputGradCudnn, %dth config: %r * %r, "
+          "stride: %d, padding: %s", index, input_size, filter_size, stride,
+          padding)
+      data_type = dtypes.float16
+      self._ConstructAndTestGradient(
+          input_size,
+          filter_size,
+          output_size,
+          stride,
+          padding,
+          data_type,
+          test_input=True,
+          use_gpu=True,
+          data_format="NCHW")
+
+  @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DInputGrad(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding) in enumerate(CheckGradConfigsToTest()):
@@ -494,6 +540,39 @@ class DepthwiseConv2DTest(test.TestCase):
             test_input=True,
             use_gpu=True,
             data_format="NCHW")
+
+  @test_util.run_v1_only("b/120545219")
+  @test_util.run_cuda_only
+  def testDepthwiseConv2DFilterGradCudnn(self):
+    for index, (input_size, filter_size, output_size, stride,
+                padding) in enumerate(CheckGradConfigsToTest()):
+      # The CuDNN depthwise conv (filter gradient) is turned on only when
+      # input/output is float16(half). See cudnn release note 7.6.3.
+      tf_logging.info(
+          "Testing DepthwiseConv2DFilterGradCudnn, %dth config: %r * %r, "
+          "stride: %d, padding: %s", index, input_size, filter_size, stride,
+          padding)
+      data_type = dtypes.float16
+      self._ConstructAndTestGradient(
+          input_size,
+          filter_size,
+          output_size,
+          stride,
+          padding,
+          data_type,
+          test_input=False,
+          use_gpu=True,
+          data_format="NCHW")
+      self._ConstructAndTestGradient(
+          input_size,
+          filter_size,
+          output_size,
+          stride,
+          padding,
+          data_type,
+          test_input=False,
+          use_gpu=True,
+          data_format="NHWC")
 
   @test_util.run_v1_only("b/120545219")
   def testDepthwiseConv2DFilterGrad(self):

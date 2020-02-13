@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -302,7 +303,7 @@ class TridiagonalSolveOpTest(test.TestCase):
     self._testWithLists(
         diags=_sample_diags,
         rhs=np.array([_sample_rhs, 2 * _sample_rhs]),
-        expected=np.array([_sample_result, 2 * _sample_result]),
+        expected=np.array([_sample_result, 2 * _sample_result]).T,
         transpose_rhs=True)
 
   def testConjugateRhs(self):
@@ -318,7 +319,7 @@ class TridiagonalSolveOpTest(test.TestCase):
         diags=_sample_diags,
         rhs=np.array([_sample_rhs * (1 + 1j), _sample_rhs * (1 - 2j)]),
         expected=np.array(
-            [_sample_result * (1 - 1j), _sample_result * (1 + 2j)]),
+            [_sample_result * (1 - 1j), _sample_result * (1 + 2j)]).T,
         transpose_rhs=True,
         conjugate_rhs=True)
 
@@ -328,7 +329,8 @@ class TridiagonalSolveOpTest(test.TestCase):
         rhs=np.array([[_sample_rhs, 2 * _sample_rhs],
                       [3 * _sample_rhs, 4 * _sample_rhs]]),
         expected=np.array([[_sample_result, 2 * _sample_result],
-                           [-3 * _sample_result, -4 * _sample_result]]),
+                           [-3 * _sample_result,
+                            -4 * _sample_result]]).transpose(0, 2, 1),
         transpose_rhs=True)
 
   def testTransposeRhsWithRhsAsVector(self):
@@ -571,24 +573,29 @@ class TridiagonalSolveOpTest(test.TestCase):
     if context.executing_eagerly():
       return
 
-    def test_with_matrix_shapes(matrix_shape):
+    def test_with_matrix_shapes(matrix_shape, rhs_shape=None):
       matrix = np.array([[1, 2, 0, 0], [1, 3, 1, 0], [0, -1, 2, 4],
                          [0, 0, 1, 2]])
       rhs = np.array([1, 2, 3, 4])
       x = np.array([-9, 5, -4, 4])
       self._testWithPlaceholders(
           diags_shape=matrix_shape,
-          rhs_shape=[None, None],
+          rhs_shape=rhs_shape,
           diags_feed=matrix,
           rhs_feed=np.transpose([rhs, 2 * rhs]),
           expected=np.transpose([x, 2 * x]),
           diags_format="matrix")
 
+    test_with_matrix_shapes(matrix_shape=[4, 4], rhs_shape=[None, None])
+    test_with_matrix_shapes(matrix_shape=[None, 4], rhs_shape=[None, None])
+    test_with_matrix_shapes(matrix_shape=[4, None], rhs_shape=[None, None])
+    test_with_matrix_shapes(matrix_shape=[None, None], rhs_shape=[None, None])
     test_with_matrix_shapes(matrix_shape=[4, 4])
     test_with_matrix_shapes(matrix_shape=[None, 4])
     test_with_matrix_shapes(matrix_shape=[4, None])
-    with self.assertRaises(ValueError):
-      test_with_matrix_shapes(matrix_shape=[None, None])
+    test_with_matrix_shapes(matrix_shape=[None, None])
+    test_with_matrix_shapes(matrix_shape=None, rhs_shape=[None, None])
+    test_with_matrix_shapes(matrix_shape=None)
 
   @test_util.run_deprecated_v1
   def testSequenceFormatWithUnknownDims(self):
@@ -630,7 +637,19 @@ class TridiagonalSolveOpTest(test.TestCase):
       return (variables.Variable(diags, dtype=dtypes.float64),
               variables.Variable(rhs, dtype=dtypes.float64))
 
-    def benchmarkTridiagonalSolveOp(self):
+    def _generateMatrixData(self, matrix_size, batch_size, num_rhs, seed=42):
+      np.random.seed(seed)
+      import scipy.sparse as sparse  # pylint:disable=g-import-not-at-top
+      # By being strictly diagonally dominant, we guarantee invertibility.d
+      diag = 2* np.abs(np.random.randn(matrix_size)) + 4.1
+      subdiag = 2* np.abs(np.random.randn(matrix_size-1))
+      superdiag = 2* np.abs(np.random.randn(matrix_size-1))
+      matrix = sparse.diags([superdiag, diag, subdiag], [1, 0, -1]).toarray()
+      vector = np.random.randn(batch_size, matrix_size, num_rhs)
+      return (variables.Variable(np.tile(matrix, (batch_size, 1, 1))),
+              variables.Variable(vector))
+
+    def _benchmark(self, generate_data_fn, test_name_format_string):
       devices = [("/cpu:0", "cpu")]
       if test.is_gpu_available(cuda_only=True):
         devices += [("/gpu:0", "gpu")]
@@ -645,7 +664,7 @@ class TridiagonalSolveOpTest(test.TestCase):
         with ops.Graph().as_default(), \
             session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device(device_id):
-          diags, rhs = self._generateData(matrix_size, batch_size, num_rhs)
+          diags, rhs = generate_data_fn(matrix_size, batch_size, num_rhs)
           x = linalg_impl.tridiagonal_solve(
               diags, rhs, partial_pivoting=pivoting)
           variables.global_variables_initializer().run()
@@ -654,9 +673,23 @@ class TridiagonalSolveOpTest(test.TestCase):
               control_flow_ops.group(x),
               min_iters=10,
               store_memory_usage=False,
-              name=("tridiagonal_solve_{}_matrix_size_{}_batch_size_{}_"
-                    "num_rhs_{}_{}").format(device_name, matrix_size,
-                                            batch_size, num_rhs, pivoting_name))
+              name=test_name_format_string.format(
+                  device_name, matrix_size, batch_size, num_rhs,
+                  pivoting_name))
+
+    def benchmarkTridiagonalSolveOp_WithMatrixInput(self):
+      self._benchmark(
+          self._generateMatrixData,
+          test_name_format_string=(
+              "tridiagonal_solve_matrix_format_{}_matrix_size_{}_"
+              "batch_size_{}_num_rhs_{}_{}"))
+
+    def benchmarkTridiagonalSolveOp(self):
+      self._benchmark(
+          self._generateMatrixData,
+          test_name_format_string=(
+              "tridiagonal_solve_{}_matrix_size_{}_"
+              "batch_size_{}_num_rhs_{}_{}"))
 
 
 if __name__ == "__main__":

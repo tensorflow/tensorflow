@@ -38,7 +38,6 @@ limitations under the License.
 #include <limits>  // IWYU pragma: keep
 #include <type_traits>
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/pack.h"
 #include "tensorflow/lite/experimental/ruy/pack_common.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/side_pair.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
@@ -109,17 +109,18 @@ void EnforceZeroPointSupport(LhsScalar lhs_zero_point, RhsScalar rhs_zero_point,
 
 template <typename Spec, typename DstScalar>
 void EnforceDstSpecSupport(const Spec& spec, DstScalar dst_zero_point) {
+  static_assert(std::is_same<typename Spec::DstScalar, DstScalar>::value, "");
   if (!std::is_same<typename Spec::DstScalar, std::int32_t>::value) return;
 
   // If user is looking for the raw accumulator, zero_point and all the other
   // dequantize fields don't make sense and should not be set.
-  RUY_DCHECK(dst_zero_point == 0);
-  RUY_DCHECK(spec.clamp_max == std::numeric_limits<std::int32_t>::max());
-  RUY_DCHECK(spec.clamp_min == std::numeric_limits<std::int32_t>::min());
-  RUY_DCHECK(spec.multiplier_fixedpoint == 0);
-  RUY_DCHECK(spec.multiplier_exponent == 0);
-  RUY_DCHECK(spec.multiplier_fixedpoint_perchannel == nullptr);
-  RUY_DCHECK(spec.multiplier_exponent_perchannel == nullptr);
+  RUY_DCHECK_EQ(dst_zero_point, 0);
+  RUY_DCHECK_EQ(spec.clamp_max, std::numeric_limits<std::int32_t>::max());
+  RUY_DCHECK_EQ(spec.clamp_min, std::numeric_limits<std::int32_t>::min());
+  RUY_DCHECK_EQ(spec.multiplier_fixedpoint, 0);
+  RUY_DCHECK_EQ(spec.multiplier_exponent, 0);
+  RUY_DCHECK_EQ(spec.multiplier_fixedpoint_perchannel, nullptr);
+  RUY_DCHECK_EQ(spec.multiplier_exponent_perchannel, nullptr);
 }
 
 inline bool IsColMajorTrMul(const TrMulParams& params) {
@@ -194,6 +195,11 @@ void PopulateTrMulParams(TrMulParams* params) {
   using LhsKernelLayout = typename Kernel::LhsLayout;
   using RhsKernelLayout = typename Kernel::RhsLayout;
 
+  params->path = ThePath;
+
+  params->local_data_cache_size = Spec::local_data_cache_size();
+  params->shared_data_cache_size = Spec::shared_data_cache_size();
+
   CreatePackedMatrix<LhsScalar, PackedLhsScalar>(
       Side::kLhs, ToKernelLayout<LhsKernelLayout>(), params);
   CreatePackedMatrix<RhsScalar, PackedRhsScalar>(
@@ -205,8 +211,6 @@ void PopulateTrMulParams(TrMulParams* params) {
   params->run_kernel =
       &RunKernel<ThePath, PackedLhsScalar, PackedRhsScalar, DstScalar, Spec>;
 
-  params->cache_friendly_traversal_threshold =
-      Spec::cache_friendly_traversal_threshold();
   return;
 }
 
@@ -333,7 +337,7 @@ template <typename LhsScalar, typename RhsScalar, typename DstScalar,
           typename Spec>
 void ReferenceMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
                   const Spec& spec, Matrix<DstScalar>* dst) {
-  gemmlowp::ScopedProfilingLabel label("ReferenceMul");
+  profiler::ScopeLabel label("ReferenceMul");
   for (int i = 0; i < lhs.layout.rows; i++) {
     for (int j = 0; j < rhs.layout.cols; j++) {
       using AccumScalar = typename Spec::AccumScalar;
@@ -379,6 +383,45 @@ struct CompileTimeEnabledReferenceMul</*ReferenceMulIsEnabled=*/false> {
   }
 };
 
+inline void HandlePrepackedCaching(TrMulParams* params,
+                                   const SidePair<bool>& cacheable,
+                                   Context* context) {
+  if (context->cache_policy == CachePolicy::kNoCache) {
+    return;
+  }
+
+  if (context->cache_policy == CachePolicy::kCacheLHSOnNarrowMul) {
+    // TODO(b/149304278) Cache on dst.cols <= selected kernel width.
+    if (!cacheable[Side::kLhs] || params->dst.layout.cols > 4) {
+      return;
+    }
+    PrepackedCache* prepacked_cache = context->GetPrepackedCache();
+    auto cache_key = std::make_pair(reinterpret_cast<void*>(params->run_kernel),
+                                    params->src[Side::kLhs].data);
+    auto it = prepacked_cache->FindAndUpdate(cache_key);
+    if (it != prepacked_cache->cend()) {
+      params->packed[Side::kLhs].data = it->second.first.data;
+      params->packed[Side::kLhs].sums = it->second.first.sums;
+      params->is_prepacked[Side::kLhs] = true;
+      return;
+    }
+
+    // Allocate the prepacked matrix.
+    PrepackedMatrix prepacked_lhs;
+    prepacked_lhs.data_size = DataSize(params->packed[Side::kLhs]);
+    prepacked_lhs.sums_size = SumsSize(params->packed[Side::kLhs]);
+    prepacked_cache->AllocatePrepackedMatrix(&prepacked_lhs);
+    params->packed[Side::kLhs].data = prepacked_lhs.data;
+    params->packed[Side::kLhs].sums = prepacked_lhs.sums;
+    params->is_prepacked[Side::kLhs] = true;
+    Tuning tuning = context->GetMainThreadTuning();
+    params->RunPack(Side::kLhs, tuning, 0,
+                    params->packed[Side::kLhs].layout.cols);
+    prepacked_cache->Insert(cache_key, prepacked_lhs);
+    return;
+  }
+}
+
 template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
           typename DstScalar, typename Spec>
 void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
@@ -387,7 +430,10 @@ void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
   static_assert((CompiledPaths & ~kAllPaths) == Path::kNone,
                 "CompiledPaths must be a subset of ruy::kAllPaths");
 
-  gemmlowp::ScopedProfilingLabel label("Mul");
+  profiler::ScopeLabel mul_label("Mul");
+  profiler::ScopeLabel shape_specific_label("matmul shape: %dx%dx%d",
+                                            lhs.layout.rows, lhs.layout.cols,
+                                            rhs.layout.cols);
 
   EnforceLayoutSupport<Spec>(lhs.layout, rhs.layout, dst->layout);
   EnforceZeroPointSupport<Spec>(lhs.zero_point, rhs.zero_point,
@@ -426,6 +472,8 @@ void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
   TrMulParams params;
   CreateTrMulParams<TrMulCompiledPaths>(transposed_lhs, rhs, spec, context, dst,
                                         the_path, &params);
+  SidePair<bool> cacheable(lhs.cacheable, rhs.cacheable);
+  HandlePrepackedCaching(&params, cacheable, context);
   TrMul(&params, context);
 }
 

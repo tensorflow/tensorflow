@@ -321,8 +321,8 @@ class Asset(base.Trackable):
     # initialization graph, since it is transient and should not end up in a
     # serialized function body.
     with ops.init_scope(), ops.device("CPU"):
-      self._path = ops.internal_convert_to_tensor(path, dtype=dtypes.string,
-                                                  name="asset_path")
+      self._path = ops.convert_to_tensor(
+          path, dtype=dtypes.string, name="asset_path")
 
   @property
   def asset_path(self):
@@ -426,5 +426,4 @@ def cached_per_instance(f):
 
 
 ops.register_tensor_conversion_function(
-    Asset,
-    lambda asset, **kw: ops.internal_convert_to_tensor(asset.asset_path, **kw))
+    Asset, lambda asset, **kw: ops.convert_to_tensor(asset.asset_path, **kw))

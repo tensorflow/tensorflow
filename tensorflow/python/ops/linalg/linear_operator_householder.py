@@ -146,12 +146,14 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
       super(LinearOperatorHouseholder, self).__init__(
           dtype=self._reflection_axis.dtype,
-          graph_parents=[self._reflection_axis],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      # TODO(b/143910018) Remove graph_parents in V3.
+      self._set_graph_parents([self._reflection_axis])
 
   def _check_reflection_axis(self, reflection_axis):
     """Static check of reflection_axis."""
@@ -206,9 +208,11 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
   def _trace(self):
     # We have (n - 1) +1 eigenvalues and a single -1 eigenvalue.
+    shape = self.shape_tensor()
     return math_ops.cast(
-        self.domain_dimension_tensor() - 2, self.dtype) * array_ops.ones(
-            shape=self.batch_shape_tensor(), dtype=self.dtype)
+        self._domain_dimension_tensor(shape=shape) - 2,
+        self.dtype) * array_ops.ones(
+            shape=self._batch_shape_tensor(shape=shape), dtype=self.dtype)
 
   def _determinant(self):
     # For householder transformations, the determinant is -1.
@@ -224,17 +228,34 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     return self._matmul(rhs, adjoint, adjoint_arg)
 
   def _to_dense(self):
-    normalized_axis = self.reflection_axis / linalg.norm(
-        self.reflection_axis, axis=-1, keepdims=True)
+    reflection_axis = ops.convert_to_tensor(self.reflection_axis)
+    normalized_axis = reflection_axis / linalg.norm(
+        reflection_axis, axis=-1, keepdims=True)
     mat = normalized_axis[..., array_ops.newaxis]
     matrix = -2 * math_ops.matmul(mat, mat, adjoint_b=True)
     return array_ops.matrix_set_diag(
         matrix, 1. + array_ops.matrix_diag_part(matrix))
 
   def _diag_part(self):
-    normalized_axis = self.reflection_axis / linalg.norm(
-        self.reflection_axis, axis=-1, keepdims=True)
+    reflection_axis = ops.convert_to_tensor(self.reflection_axis)
+    normalized_axis = reflection_axis / linalg.norm(
+        reflection_axis, axis=-1, keepdims=True)
     return 1. - 2 * normalized_axis * math_ops.conj(normalized_axis)
+
+  def _eigvals(self):
+    # We have (n - 1) +1 eigenvalues and a single -1 eigenvalue.
+    result_shape = array_ops.shape(self.reflection_axis)
+    n = result_shape[-1]
+    ones_shape = array_ops.concat([result_shape[:-1], [n - 1]], axis=-1)
+    neg_shape = array_ops.concat([result_shape[:-1], [1]], axis=-1)
+    eigvals = array_ops.ones(shape=ones_shape, dtype=self.dtype)
+    eigvals = array_ops.concat(
+        [-array_ops.ones(shape=neg_shape, dtype=self.dtype), eigvals], axis=-1)
+    return eigvals
+
+  def _cond(self):
+    # Householder matrices are rotations which have condition number 1.
+    return array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)
 
   @property
   def reflection_axis(self):

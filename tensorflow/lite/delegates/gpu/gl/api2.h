@@ -29,9 +29,7 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 
-struct InferenceOptions {
-  // Runtime options + CompileOptions
-};
+struct InferenceOptions : public tflite::gpu::InferenceOptions {};
 
 struct InferenceEnvironmentProperties {
   bool is_opengl_available = false;

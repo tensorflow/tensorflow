@@ -386,7 +386,7 @@ class PolynomialDecay(LearningRateSchedule):
       else:
         # Make sure that the global_step used is not bigger than decay_steps.
         global_step_recomp = math_ops.minimum(global_step_recomp,
-                                              self.decay_steps)
+                                              decay_steps_recomp)
 
       p = math_ops.divide(global_step_recomp, decay_steps_recomp)
       return math_ops.add(

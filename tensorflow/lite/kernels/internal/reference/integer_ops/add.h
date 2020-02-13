@@ -64,7 +64,7 @@ inline void Add(const ArithmeticParams& params,
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   const int32_t int8_max_value = std::numeric_limits<int8_t>::max();
   TFLITE_DCHECK_GE(params.input1_offset, -1 * int8_max_value);

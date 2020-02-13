@@ -217,27 +217,13 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
     if not tf2.enabled():
       e.testBody_v1_session()
     e.testBody_v2_eager()
-    e.testBody_v2_funcgraph()
     e.testBody_v2_function()
 
     if not tf2.enabled():
-      self.assertLen(l, 4)
+      self.assertLen(l, 3)
       self.assertAllEqual(l, [
           ("graph", False, False),
           ("eager", True, True),
-          ("eager", False, False),
-          ("eager", False, True),
-      ])
-
-      ts = unittest.makeSuite(ExampleTest)
-      res = unittest.TestResult()
-      ts.run(res)
-      self.assertLen(l, 8)
-    else:
-      self.assertLen(l, 3)
-      self.assertAllEqual(l, [
-          ("eager", True, True),
-          ("eager", False, False),
           ("eager", False, True),
       ])
 
@@ -245,6 +231,17 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       res = unittest.TestResult()
       ts.run(res)
       self.assertLen(l, 6)
+    else:
+      self.assertLen(l, 2)
+      self.assertAllEqual(l, [
+          ("eager", True, True),
+          ("eager", False, True),
+      ])
+
+      ts = unittest.makeSuite(ExampleTest)
+      res = unittest.TestResult()
+      ts.run(res)
+      self.assertLen(l, 4)
 
   def test_run_all_keras_modes_extra_params(self):
     l = []
@@ -272,18 +269,14 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       e.testBody_1_v1_session()
 
     e.testBody_0_v2_eager()
-    e.testBody_0_v2_funcgraph()
     e.testBody_0_v2_function()
     e.testBody_1_v2_eager()
-    e.testBody_1_v2_funcgraph()
     e.testBody_1_v2_function()
 
     expected_combinations = {
         ("with_brackets", "eager", True, True),
-        ("with_brackets", "eager", False, False),
         ("with_brackets", "eager", False, True),
         ("without_brackets", "eager", True, True),
-        ("without_brackets", "eager", False, False),
         ("without_brackets", "eager", False, True),
     }
 
@@ -322,16 +315,13 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
       e.testBody_v1_session()
     if hasattr(e, "testBody_v2_eager"):
       e.testBody_v2_eager()
-    if hasattr(e, "testBody_v2_funcgraph"):
-      e.testBody_v2_funcgraph()
     if hasattr(e, "testBody_v2_function"):
       e.testBody_v2_function()
 
-    self.assertLen(l, 3)
+    self.assertLen(l, 2)
     self.assertEqual(
         set(l), {
             ("eager", True, True),
-            ("eager", False, False),
             ("eager", False, True),
         })
 
@@ -354,13 +344,10 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
 
     e = ExampleTest()
     e.testBody_v2_eager_functional()
-    e.testBody_v2_funcgraph_functional()
     e.testBody_v2_function_functional()
     e.testBody_v2_eager_sequential()
-    e.testBody_v2_funcgraph_sequential()
     e.testBody_v2_function_sequential()
     e.testBody_v2_eager_subclass()
-    e.testBody_v2_funcgraph_subclass()
     e.testBody_v2_function_subclass()
 
     if not tf2.enabled():
@@ -370,13 +357,10 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
 
     expected_combinations = {
         ("eager", True, True, "functional"),
-        ("eager", False, False, "functional"),
         ("eager", False, True, "functional"),
         ("eager", True, True, "sequential"),
-        ("eager", False, False, "sequential"),
         ("eager", False, True, "sequential"),
         ("eager", True, True, "subclass"),
-        ("eager", False, False, "subclass"),
         ("eager", False, True, "subclass"),
     }
 
@@ -415,13 +399,10 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
 
     e = ExampleTest()
     e.testBody_functional_v2_eager()
-    e.testBody_functional_v2_funcgraph()
     e.testBody_functional_v2_function()
     e.testBody_sequential_v2_eager()
-    e.testBody_sequential_v2_funcgraph()
     e.testBody_sequential_v2_function()
     e.testBody_subclass_v2_eager()
-    e.testBody_subclass_v2_funcgraph()
     e.testBody_subclass_v2_function()
 
     if not tf2.enabled():
@@ -431,13 +412,10 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
 
     expected_combinations = {
         ("eager", True, True, "functional"),
-        ("eager", False, False, "functional"),
         ("eager", False, True, "functional"),
         ("eager", True, True, "sequential"),
-        ("eager", False, False, "sequential"),
         ("eager", False, True, "sequential"),
         ("eager", True, True, "subclass"),
-        ("eager", False, False, "subclass"),
         ("eager", False, True, "subclass"),
     }
 
@@ -478,13 +456,10 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
 
     e = ExampleTest()
     e.testBody_arg_v2_eager_functional()
-    e.testBody_arg_v2_funcgraph_functional()
     e.testBody_arg_v2_function_functional()
     e.testBody_arg_v2_eager_sequential()
-    e.testBody_arg_v2_funcgraph_sequential()
     e.testBody_arg_v2_function_sequential()
     e.testBody_arg_v2_eager_subclass()
-    e.testBody_arg_v2_funcgraph_subclass()
     e.testBody_arg_v2_function_subclass()
 
     if not tf2.enabled():
@@ -494,13 +469,10 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
 
     expected_combinations = {
         ("eager", True, True, "functional"),
-        ("eager", False, False, "functional"),
         ("eager", False, True, "functional"),
         ("eager", True, True, "sequential"),
-        ("eager", False, False, "sequential"),
         ("eager", False, True, "sequential"),
         ("eager", True, True, "subclass"),
-        ("eager", False, False, "subclass"),
         ("eager", False, True, "subclass"),
     }
 
@@ -541,13 +513,10 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
 
     e = ExampleTest()
     e.testBody_arg_v2_eager_functional()
-    e.testBody_arg_v2_funcgraph_functional()
     e.testBody_arg_v2_function_functional()
     e.testBody_arg_v2_eager_sequential()
-    e.testBody_arg_v2_funcgraph_sequential()
     e.testBody_arg_v2_function_sequential()
     e.testBody_arg_v2_eager_subclass()
-    e.testBody_arg_v2_funcgraph_subclass()
     e.testBody_arg_v2_function_subclass()
 
     if not tf2.enabled():
@@ -557,13 +526,10 @@ class KerasParameterizedTest(keras_parameterized.TestCase):
 
     expected_combinations = {
         ("eager", True, True, "functional"),
-        ("eager", False, False, "functional"),
         ("eager", False, True, "functional"),
         ("eager", True, True, "sequential"),
-        ("eager", False, False, "sequential"),
         ("eager", False, True, "sequential"),
         ("eager", True, True, "subclass"),
-        ("eager", False, False, "subclass"),
         ("eager", False, True, "subclass"),
     }
 

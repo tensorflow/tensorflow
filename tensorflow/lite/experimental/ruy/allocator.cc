@@ -26,19 +26,19 @@ namespace ruy {
 
 namespace detail {
 
-void *AlignedAllocator::SystemAlignedAlloc(std::ptrdiff_t num_bytes) {
+void *SystemAlignedAlloc(std::ptrdiff_t num_bytes) {
 #ifdef _WIN32
-  return _aligned_malloc(num_bytes, kAlignment);
+  return _aligned_malloc(num_bytes, kMinimumBlockAlignment);
 #else
   void *ptr;
-  if (posix_memalign(&ptr, kAlignment, num_bytes)) {
+  if (posix_memalign(&ptr, kMinimumBlockAlignment, num_bytes)) {
     return nullptr;
   }
   return ptr;
 #endif
 }
 
-void AlignedAllocator::SystemAlignedFree(void *ptr) {
+void SystemAlignedFree(void *ptr) {
 #ifdef _WIN32
   _aligned_free(ptr);
 #else

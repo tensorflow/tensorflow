@@ -153,18 +153,14 @@ class XlaComputationLaunchContext {
   Status PopulateOutputs(
       OpKernelContext* ctx, const XlaCompiler::CompilationResult* kernel,
       xla::ScopedShapedBuffer output, int missing_ctx_input_prefix,
-      const xla::HloInputOutputAliasConfig& input_output_alias);
+      const xla::HloInputOutputAliasConfig& input_output_alias,
+      const std::map<int, OptionalTensor>& resource_var_snapshots);
 
   // Return the argument list. Only valid after PopulateInputs() has been
   // called.
   const std::vector<xla::ShapedBuffer*>& arguments() const { return arg_ptrs_; }
 
  private:
-  Tensor MakeOutputTensor(
-      DataType type, const TensorShape& shape, se::DeviceMemoryBase buffer,
-      int output_num, const xla::HloInputOutputAliasConfig& input_output_alias,
-      Allocator* allocator);
-
   xla::LocalClient* client_;
   se::DeviceMemoryAllocator* xla_allocator_;
   bool allocate_xla_tensors_;
@@ -196,19 +192,6 @@ class XlaTensorBuffer : public TensorBuffer {
 
   void FillAllocationDescription(AllocationDescription* proto) const override {
     proto->set_allocated_bytes(actual_size_);
-  }
-
-  static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
-                           bool unref_buffer, se::DeviceMemoryBase buffer,
-                           Allocator* allocator) {
-    size_t expected_size = shape.num_elements() * DataTypeSize(dtype);
-    auto* tensor_buffer = new XlaTensorBuffer(buffer.opaque(), expected_size,
-                                              buffer.size(), allocator);
-    Tensor t(dtype, shape, tensor_buffer);
-    if (unref_buffer) {
-      tensor_buffer->Unref();
-    }
-    return t;
   }
 
  private:

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/interpreter/executor.h"
+#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -39,24 +40,39 @@ namespace interpreter {
 InterpreterExecutable::InterpreterExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<HloEvaluator> evaluator)
-    : Executable(std::move(hlo_module), /*hlo_profile_printer=*/nullptr,
+    : Executable(std::move(hlo_module), /*hlo_profile_printer_data=*/nullptr,
                  /*hlo_profile_index_map=*/nullptr),
       evaluator_(std::move(evaluator)) {}
 
 InterpreterExecutable::~InterpreterExecutable() {}
 
-StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
+StatusOr<ExecutionOutput> InterpreterExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments,
+    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
   const se::Platform* platform = executor->platform();
 
+  // Convert the ShapeTree to a ShapedBuffer. We do this so we can call
+  // TransferManager methods below.
+  std::vector<ShapedBuffer> argument_buffers;
+  argument_buffers.reserve(arguments.size());
+  for (const ShapeTree<MaybeOwningDeviceMemory>& arg : arguments) {
+    argument_buffers.push_back(ShapedBuffer(arg.shape(), arg.shape(),
+                                            /*platform=*/nullptr,
+                                            /*device_ordinal=*/0));
+    auto in_it = arg.begin();
+    auto out_it = argument_buffers.back().buffers().begin();
+    for (; in_it != arg.end(); ++in_it, ++out_it) {
+      out_it->second = in_it->second.AsDeviceMemoryBase();
+    }
+  }
+
   VLOG(1) << "Execute " << module().name();
   if (VLOG_IS_ON(2)) {
-    for (const auto& a : arguments) {
-      VLOG(2) << "-- argument " << *a;
+    for (const auto& a : argument_buffers) {
+      VLOG(2) << "-- argument " << a;
     }
   }
 
@@ -71,7 +87,7 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
   // Check that the args have the right shape.
   for (int64 i = 0; i < computation->num_parameters(); ++i) {
     const auto& expected_shape = computation->parameter_instruction(i)->shape();
-    const auto& actual_shape = arguments[i]->on_device_shape();
+    const auto& actual_shape = argument_buffers[i].on_device_shape();
     if (!Shape::Equal().MinorToMajorOnlyInLayout()(expected_shape,
                                                    actual_shape)) {
       return InvalidArgument(
@@ -90,7 +106,7 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
   for (int64 p = 0; p < computation->num_parameters(); ++p) {
     TF_ASSIGN_OR_RETURN(Literal arg_literal,
                         transfer_manager->TransferLiteralFromDevice(
-                            run_options->stream(), *arguments[p]));
+                            run_options->stream(), argument_buffers[p]));
     arg_literals.push_back(std::move(arg_literal));
   }
 
@@ -119,7 +135,16 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
     profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
 
-  return std::move(result);
+  std::vector<se::OwningDeviceMemory> buffers_to_free;
+  for (ShapeTree<MaybeOwningDeviceMemory>& argument : arguments) {
+    for (std::pair<ShapeIndex, MaybeOwningDeviceMemory>& buffer : argument) {
+      auto maybe_owning_buffer = buffer.second.Release();
+      if (maybe_owning_buffer) {
+        buffers_to_free.push_back(std::move(*maybe_owning_buffer));
+      }
+    }
+  }
+  return ExecutionOutput(std::move(result), std::move(buffers_to_free), {}, {});
 }
 
 /*static*/ int64 InterpreterExecutable::ShapeSizeBytes(const Shape& shape) {

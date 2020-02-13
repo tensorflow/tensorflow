@@ -125,7 +125,7 @@ the following steps:
 ILSVRC_2012_DEVKIT_DIR=[set to path to ILSVRC 2012 devkit]
 VALIDATION_LABELS=[set to  path to output]
 
-python tensorflow/lite/tools/accuracy/ilsvrc/generate_validation_labels.py \
+python third_party/tensorflow/lite/tools/accuracy/ilsvrc/generate_validation_labels.py \
 --ilsvrc_devkit_dir=${ILSVRC_2012_DEVKIT_DIR} \
 --validation_labels_output=${VALIDATION_LABELS}
 ```
@@ -142,10 +142,8 @@ for configuring NDK and SDK.
 
 ```
 bazel build -c opt \
-  --config=android_arm \
-  --cxxopt='--std=c++11' \
-  --copt=-D__ANDROID_TYPES_FULL__ \
-  --copt=-DSUPPORT_SELECTIVE_REGISTRATION \
+  --config=android_arm64 \
+  --cxxopt='--std=c++17' \
   //tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification:run_eval
 ```
 
@@ -153,7 +151,7 @@ bazel build -c opt \
 directory if required):
 
 ```
-adb push bazel-bin/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/run_eval /data/local/tmp
+adb push bazel-bin/third_party/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/run_eval /data/local/tmp
 ```
 
 (3) Make the binary executable.

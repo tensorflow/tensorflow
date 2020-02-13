@@ -132,6 +132,9 @@ bool ParseModelFlagsFromCommandLineFlags(
            parsed_flags.dump_graphviz_video.default_value(),
            "If true, will dump graphviz at each "
            "graph transformation, which may be used to generate a video."),
+      Flag("conversion_summary_dir", parsed_flags.conversion_summary_dir.bind(),
+           parsed_flags.conversion_summary_dir.default_value(),
+           "Local file directory to store the conversion logs."),
       Flag("allow_nonexistent_arrays",
            parsed_flags.allow_nonexistent_arrays.bind(),
            parsed_flags.allow_nonexistent_arrays.default_value(),

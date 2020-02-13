@@ -452,12 +452,62 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::AllReduce(op::Convert(op::Parameter())),
                         op::AllReduce(op::Convert(op::Constant()))));
+  auto crs_after =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_after = crs_after->replica_groups();
+  CompareReplicaGroups(replica_groups_before, replica_groups_after);
+}
+
+TEST_F(ArCrsCombinerTest, RewriteArConvertCrsSPMD) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum.bf16 (a: bf16[], b: bf16[]) -> bf16[] {
+  %a = bf16[] parameter(0)
+  %b = bf16[] parameter(1)
+  ROOT %add = bf16[] add(%a, %b)
+}
+
+%sum.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
+  %p = bf16[] parameter(0)
+  %all-reduce.ar.1 = bf16[]
+      all-reduce(%p),
+      replica_groups={{0},{1}},
+      channel_id=1,
+      to_apply=%sum.bf16
+  %convert.1 = f32[] convert(%all-reduce.ar.1)
+  %all-reduce.1 = f32[]
+      all-reduce(%convert.1),
+      replica_groups={{0,1}},
+      to_apply=%sum.f32
+  ROOT %tuple = (f32[]) tuple(%all-reduce.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto crs_before =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_before = crs_before->replica_groups();
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         true);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::AllReduce(op::Convert(op::Parameter()))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -520,7 +570,8 @@ ENTRY %entrycomp (p: f32[2,1]) -> (f32[2], f32[2]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -587,13 +638,55 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       op::Tuple(op::AllReduce(op::Multiply(op::Parameter(), op::Constant())),
                 op::AllReduce(op::Multiply(op::Parameter(), op::Constant()))));
+  auto crs_after =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_after = crs_after->replica_groups();
+  CompareReplicaGroups(replica_groups_before, replica_groups_after);
+}
+
+TEST_F(ArCrsCombinerTest, RewriteArMultiplyCrsSPMD) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: f32[]) -> (f32[]) {
+  %p = f32[] parameter(0)
+  %constant.f32 = f32[] constant(123)
+
+  %all-reduce.ar.1 = f32[] all-reduce(%p), replica_groups={{0},{1}},
+      channel_id=1, to_apply=%sum.f32
+  %multiply.1 = f32[] multiply(%all-reduce.ar.1, %constant.f32)
+  %all-reduce.1 = f32[] all-reduce(%multiply.1), replica_groups={{0,1}},
+      to_apply=%sum.f32, sharding={maximal device=0}
+  ROOT %tuple = (f32[]) tuple(%all-reduce.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto crs_before =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_before = crs_before->replica_groups();
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/true);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(op::AllReduce(op::Multiply(op::Parameter(), op::Constant()))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -668,7 +761,8 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -678,6 +772,55 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
                                 op::Convert())),
           op::AllReduce(op::Add(op::Divide(op::Constant(), op::Constant()),
                                 op::Convert()))));
+  auto crs_after =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_after = crs_after->replica_groups();
+  CompareReplicaGroups(replica_groups_before, replica_groups_after);
+}
+
+TEST_F(ArCrsCombinerTest, RewriteArConvertAddCrsSPMD) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum.bf16 (a: bf16[], b: bf16[]) -> bf16[] {
+  %a = bf16[] parameter(0)
+  %b = bf16[] parameter(1)
+  ROOT %add = bf16[] add(%a, %b)
+}
+
+%sum.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: f32[]) -> (f32[]) {
+  %p = f32[] parameter(0)
+  %constant.bf16 = bf16[] constant(1)
+  %constant.f32 = f32[] constant(2)
+
+  %all-reduce.ar.1 = bf16[] all-reduce(%constant.bf16), replica_groups={{0},{1}},
+      channel_id=1, to_apply=%sum.bf16
+  %convert.1 = f32[] convert(%all-reduce.ar.1), sharding={maximal device=0}
+  %add.1 = f32[] add(%constant.f32, %convert.1)
+  %all-reduce.1 = f32[] all-reduce(%add.1), replica_groups={{0,1}},
+      to_apply=%sum.f32
+  ROOT %tuple = (f32[]) tuple(%all-reduce.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto crs_before =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_before = crs_before->replica_groups();
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/true);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::AllReduce(op::Add(
+                  op::Divide(op::Constant(), op::Constant()), op::Convert()))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -750,7 +893,46 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_str));
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/false);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(ArCrsCombinerTest, OtherSummandNotTheSameDontRewriteSPMD) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum.bf16 (a: bf16[], b: bf16[]) -> bf16[] {
+  %a = bf16[] parameter(0)
+  %b = bf16[] parameter(1)
+  ROOT %add = bf16[] add(%a, %b)
+}
+
+%sum.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: f32[]) -> (f32[]) {
+  %p = f32[] parameter(0)
+  %constant.bf16 = bf16[] constant(1)
+  %constant.f32.1 = f32[] constant(2)
+
+  %all-reduce.ar.1 = bf16[] all-reduce(%constant.bf16), replica_groups={{0},{1}},
+      channel_id=1, to_apply=%sum.bf16
+  %convert.1 = f32[] convert(%all-reduce.ar.1)
+  %add.1 = f32[] add(%p, %convert.1)
+  %all-reduce.1 = f32[] all-reduce(%add.1), replica_groups={{0,1}}, to_apply=%sum.f32
+  ROOT %tuple = (f32[]) tuple(%all-reduce.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
 }
@@ -810,7 +992,8 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -884,7 +1067,8 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -896,6 +1080,50 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
                             op::Divide(op::Constant(), op::Constant()),
                             op::Add(op::Divide(op::Constant(), op::Constant()),
                                     op::Parameter())))));
+  auto crs_after =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_after = crs_after->replica_groups();
+  CompareReplicaGroups(replica_groups_before, replica_groups_after);
+}
+
+TEST_F(ArCrsCombinerTest, RewriteMultipleAddsSPMD) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: f32[]) -> (f32[]) {
+  %p = f32[] parameter(0)
+  %constant.1 = f32[] constant(1)
+  %constant.2 = f32[] constant(2)
+
+  %all-reduce.ar.1 = f32[] all-reduce(%p), replica_groups={{0},{1}},
+      channel_id=1, to_apply=%sum
+  %add.11 = f32[] add(%constant.1, %all-reduce.ar.1)
+  %add.12 = f32[] add(%constant.2, %add.11)
+  %all-reduce.1 = f32[] all-reduce(%add.12), replica_groups={{0,1}}, to_apply=%sum
+  ROOT %tuple = (f32[]) tuple(%all-reduce.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto crs_before =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_before = crs_before->replica_groups();
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/true);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::AllReduce(
+                  op::Add(op::Divide(op::Constant(), op::Constant()),
+                          op::Add(op::Divide(op::Constant(), op::Constant()),
+                                  op::Parameter())))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -957,7 +1185,8 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -967,6 +1196,47 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
                                      op::Parameter())),
           op::AllReduce(op::Subtract(op::Divide(op::Constant(), op::Constant()),
                                      op::Parameter()))));
+  auto crs_after =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_after = crs_after->replica_groups();
+  CompareReplicaGroups(replica_groups_before, replica_groups_after);
+}
+
+TEST_F(ArCrsCombinerTest, RewriteArSubtractCrsSPMD) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: f32[]) -> (f32[]) {
+  %p = f32[] parameter(0)
+  %constant.f32 = f32[] constant(123)
+  %all-reduce.ar.1 = f32[] all-reduce(%p), replica_groups={{0},{1}},
+      channel_id=1, to_apply=%sum.f32
+  %sub.1 = f32[] subtract(%constant.f32, %all-reduce.ar.1)
+  %all-reduce.1 = f32[] all-reduce(%sub.1), replica_groups={{0,1}},
+      to_apply=%sum.f32
+  ROOT %tuple = (f32[]) tuple(%all-reduce.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto crs_before =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_before = crs_before->replica_groups();
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/true);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(op::AllReduce(op::Subtract(
+          op::Divide(op::Constant(), op::Constant()), op::Parameter()))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -1047,7 +1317,8 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -1059,6 +1330,53 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
                             op::Add(op::Parameter(),
                                     op::Divide(op::Constant(), op::Constant())),
                             op::Parameter()))));
+  auto crs_after =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_after = crs_after->replica_groups();
+  CompareReplicaGroups(replica_groups_before, replica_groups_after);
+}
+
+TEST_F(ArCrsCombinerTest, RewriteMultipleARsLeftSPMD) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: f32[]) -> (f32[]) {
+  %p = f32[] parameter(0)
+  %const1 = f32[] constant(1)
+  %const2 = f32[] constant(2)
+
+  %ar11 = f32[] all-reduce(%p), replica_groups={{0},{1}}, channel_id=1,
+      to_apply=%sum
+  %add11 = f32[] add(%ar11, %const1)
+  %ar12 = f32[] all-reduce(%p), replica_groups={{0},{1}}, channel_id=2,
+      to_apply=%sum
+  %add12 = f32[] add(%add11, %ar12)
+  %crs1 = f32[] all-reduce(%add12), replica_groups={{0,1}},
+      to_apply=%sum
+  ROOT %tuple = (f32[]) tuple(%crs1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto crs_before =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_before = crs_before->replica_groups();
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/true);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(op::AllReduce(op::Add(
+          op::Add(op::Parameter(), op::Divide(op::Constant(), op::Constant())),
+          op::Parameter()))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -1139,7 +1457,8 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   auto crs_before =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_before = crs_before->replica_groups();
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/false);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(
@@ -1152,6 +1471,51 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
                     op::Parameter(),
                     op::Add(op::Parameter(),
                             op::Divide(op::Constant(), op::Constant()))))));
+
+  auto crs_after =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_after = crs_after->replica_groups();
+  CompareReplicaGroups(replica_groups_before, replica_groups_after);
+}
+
+TEST_F(ArCrsCombinerTest, RewriteMultipleARsRightSPMD) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: f32[]) -> (f32[]) {
+  %p = f32[] parameter(0)
+  %const1 = f32[] constant(1)
+  %const2 = f32[] constant(2)
+
+  %ar11 = f32[] all-reduce(%p), replica_groups={{0},{1}}, channel_id=1, to_apply=%sum
+  %ar12 = f32[] all-reduce(%p), replica_groups={{0},{1}}, channel_id=2, to_apply=%sum
+  %add11 = f32[] add(%ar12, %const1)
+  %add12 = f32[] add(%ar11, %add11)
+  %crs1 = f32[] all-reduce(%add12), replica_groups={{0,1}}, to_apply=%sum
+  ROOT %tuple = (f32[]) tuple(%crs1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto crs_before =
+      module->entry_computation()->root_instruction()->operands()[0];
+  auto replica_groups_before = crs_before->replica_groups();
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/true);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::AllReduce(op::Add(
+                  op::Parameter(),
+                  op::Add(op::Parameter(),
+                          op::Divide(op::Constant(), op::Constant()))))));
 
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
@@ -1217,7 +1581,45 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_str));
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/1,
+                         /*spmd_partition=*/false);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(ArCrsCombinerTest, OneReplicaDontRewriteSPMD) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum.bf16 (a: bf16[], b: bf16[]) -> bf16[] {
+  %a = bf16[] parameter(0)
+  %b = bf16[] parameter(1)
+  ROOT %add = bf16[] add(%a, %b)
+}
+
+%sum.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
+  %p = bf16[] parameter(0)
+  %constant.bf16 = bf16[] constant(1)
+
+  %all-reduce.ar.1 = bf16[] all-reduce(%p), replica_groups={{0}},
+      channel_id=1, to_apply=%sum.bf16
+  %convert.1 = f32[] convert(%all-reduce.ar.1)
+  %all-reduce.1 = f32[] all-reduce(%convert.1),
+      replica_groups={{0}}, to_apply=%sum.f32
+  ROOT %tuple = (f32[]) tuple(%all-reduce.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/1,
+                         /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
 }
@@ -1291,7 +1693,36 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_str));
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/false);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(ArCrsCombinerTest, AllReduceWithReplicasSPMD) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
+  %p = bf16[] parameter(0)
+  %all-reduce.0 = f32[] all-reduce(%p), channel_id=1, replica_groups={{0,1}},
+    to_apply=%sum.f32
+  %all-reduce.2 = f32[] all-reduce(%all-reduce.0), replica_groups={{0,1}},
+    to_apply=%sum.f32
+  ROOT %tuple = (f32[]) tuple(%all-reduce.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/2,
+                         /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
 }

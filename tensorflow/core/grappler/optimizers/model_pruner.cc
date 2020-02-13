@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/transitive_fanin.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -406,29 +407,6 @@ Status SplitIdentityNInputs(GraphDef* graph,
     TF_RETURN_IF_ERROR(RewriteIdentityNAndInputsOutputs(
         node, num_non_control_inputs, terminal.second, graph, &node_map));
     *updated_graph = true;
-  }
-
-  return Status::OK();
-}
-
-Status SetTransitiveFaninGraph(const GraphDef& input_graph,
-                               GraphDef* output_graph,
-                               const std::vector<string>& terminal_nodes) {
-  // Determines transitive fanin nodes from terminal nodes and add them to the
-  // output graph.
-  bool ill_formed = false;
-  std::vector<const NodeDef*> keep =
-      ComputeTransitiveFanin(input_graph, terminal_nodes, &ill_formed);
-  if (ill_formed) {
-    // Some graph edges are invalid, or some of the feeds/fetch don't exist:
-    // let's be conservative and preserve the graph as is.
-    return errors::InvalidArgument("Invalid input graph.");
-  }
-  // Try to keep the nodes ordered somewhat topologically since this helps
-  // further optimizations perform better.
-  output_graph->mutable_node()->Reserve(keep.size());
-  for (int i = keep.size() - 1; i >= 0; --i) {
-    *output_graph->add_node() = *keep[i];
   }
 
   return Status::OK();

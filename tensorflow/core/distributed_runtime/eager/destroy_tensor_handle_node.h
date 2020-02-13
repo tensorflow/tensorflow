@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_DESTROY_TENSOR_HANDLE_NODE_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_DESTROY_TENSOR_HANDLE_NODE_H_
 
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 
 namespace tensorflow {
@@ -32,7 +34,11 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
       : tensorflow::AsyncEagerNode(),
         request_(std::move(request)),
         eager_client_(eager_client),
-        ready_(ready) {}
+        ready_(ready) {
+    eager_client_->Ref();
+  }
+
+  ~DestroyTensorHandleNode() override { eager_client_->Unref(); }
 
   void RunAsync(StatusCallback done) override {
     EnqueueResponse* response = new EnqueueResponse;
@@ -44,10 +50,15 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
     eager_client_->EnqueueAsync(
         request_.get(), response,
         [response, ready, done](const tensorflow::Status& s) {
-          if (!s.ok() && ready) {
-            LOG(WARNING) << "Ignoring an error encountered when deleting "
-                            "remote tensors handles: "
-                         << s.ToString();
+          // Omit the warning if:
+          // 1. The remote tensor isn't ready.
+          // 2. Lost connection to remote worker. In this case client will
+          //    crash. We don't want to spam user with redundant warning logs.
+          if (!s.ok() && ready && s.code() != errors::Code::UNAVAILABLE) {
+            LOG_EVERY_N_SEC(WARNING, 60)
+                << "Ignoring an error encountered when deleting "
+                   "remote tensors handles: "
+                << s.ToString();
           }
           done(Status::OK());
           delete response;
@@ -64,7 +75,8 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
 
  private:
   std::unique_ptr<EnqueueRequest> request_;
-  EagerClient* eager_client_;  // Not owned, and must outlive this node.
+  EagerClient* eager_client_;
+  const string remote_task_;
   bool ready_;
 };
 

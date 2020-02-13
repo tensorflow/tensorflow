@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -202,9 +201,9 @@ ENTRY main {
   ROOT result = (f32[20, 40]) conditional(p,t,t), false_computation=on_false, true_computation=on_true
 }
 )";
-  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
-  HloVerifier v(false, false);
+  HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
   EXPECT_TRUE(
       ConditionalSimplifier().Run(status.ValueOrDie().get()).ValueOrDie());
@@ -268,10 +267,10 @@ TEST_F(ConditionalSimplifierTest,
         param.1), true_computation=computation.1,
         false_computation=computation.2
     })";
-  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
   std::unique_ptr<HloModule> module = status.ConsumeValueOrDie();
-  HloVerifier v(false, false);
+  HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(module.get()).status());
 
   // Replace conditional_1 with a clone that is created after conditional_2.
@@ -315,9 +314,9 @@ ENTRY main {
   ROOT result = () tuple()
 }
 )";
-  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
-  HloVerifier v(false, false);
+  HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
   EXPECT_TRUE(
       ConditionalSimplifier().Run(status.ValueOrDie().get()).ValueOrDie());
@@ -359,9 +358,9 @@ ENTRY main {
   ROOT result = (f32[10,10]{1,0}) tuple(get-first-index)
 }
 )";
-  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
-  HloVerifier v(false, false);
+  HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
   EXPECT_TRUE(
       ConditionalSimplifier().Run(status.ValueOrDie().get()).ValueOrDie());
@@ -405,9 +404,9 @@ ENTRY main {
   ROOT result = (f32[10,10]{1,0}) tuple(get-second-index)
 }
 )";
-  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
-  HloVerifier v(false, false);
+  HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
   EXPECT_TRUE(
       ConditionalSimplifier().Run(status.ValueOrDie().get()).ValueOrDie());
@@ -418,6 +417,75 @@ ENTRY main {
   // should be removed since it is not referenced by any GTE instructions (see
   // "get-second-index" instruction in hlo_string).
   EXPECT_EQ(ShapeUtil::TupleElementCount(conditional->shape()), 1);
+}
+
+// Before:
+//       gte          rng
+//      /   \        /   \
+//      |   |        |   |
+//     on_true      on_false
+//    (f32, f32)   (f32, f32)
+//         |           |
+//          \         /
+//          conditional
+//          (f32, f32)
+//
+// After:
+//       gte          rng
+//        |            |
+//     on_true      on_false
+//      (f32)        (f32)
+//         |           |
+//          \         /
+//          conditional
+//             (f32)
+//
+// The 'rng' in on_false is to add side-effect so that conditional is not being
+// simplified and replaced with 'select' instruction by TryRemoveConditional.
+TEST_F(ConditionalSimplifierTest, MergeDuplicateTupleElements) {
+  absl::string_view hlo_string =
+      R"(
+HloModule MergeDuplicateTupleElements
+
+on_true {
+  param-true = (f32[]) parameter(0)
+  gte-true = f32[] get-tuple-element(param-true), index=0
+  ROOT tuple-true = (f32[], f32[]) tuple(gte-true, gte-true)
+}
+
+on_false {
+  param-false = (f32[]) parameter(0)
+  constant.0 = f32[] constant(0)
+  constant.1 = f32[] constant(1)
+  rng = f32[] rng(constant.0, constant.1), distribution=rng_uniform
+  ROOT tuple-false = (f32[], f32[]) tuple(rng, rng)
+}
+
+ENTRY main {
+  comp = pred[] parameter(0)
+  arg = (f32[]) parameter(1)
+  conditional = (f32[], f32[]) conditional(comp, arg, arg), true_computation=on_true, false_computation=on_false
+  gte.0 = f32[] get-tuple-element(conditional), index=0
+  gte.1 = f32[] get-tuple-element(conditional), index=1
+  ROOT add = f32[] add(gte.0, gte.1)
+}
+)";
+  auto status = ParseAndReturnVerifiedModule(hlo_string);
+  TF_ASSERT_OK(status.status());
+  HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  EXPECT_TRUE(
+      ConditionalSimplifier().Run(status.ValueOrDie().get()).ValueOrDie());
+  TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
+  const HloInstruction* conditional =
+      FindInstruction(status.ValueOrDie().get(), "conditional");
+  EXPECT_EQ(ShapeUtil::TupleElementCount(conditional->shape()), 1);
+  const HloInstruction* gte_0 =
+      FindInstruction(status.ValueOrDie().get(), "gte.0");
+  const HloInstruction* gte_1 =
+      FindInstruction(status.ValueOrDie().get(), "gte.1");
+  EXPECT_EQ(gte_0->tuple_index(), 0);
+  EXPECT_EQ(gte_1->tuple_index(), 0);
 }
 
 }  // namespace

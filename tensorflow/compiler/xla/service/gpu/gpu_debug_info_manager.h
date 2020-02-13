@@ -53,7 +53,7 @@ class GpuDebugInfoManager {
 
   // Register an active module to GpuDebugInfoManager. We will keep track all
   // existing HloModules within the process.
-  // Modules with same module id can be registered and tracked seperately.
+  // Modules with same module id can be registered and tracked separately.
   void RegisterModule(
       const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
       std::shared_ptr<const BufferAssignment> buffer_assignment);

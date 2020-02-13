@@ -184,7 +184,7 @@ class ShardingPolicy(object):
       raise ValueError("shape %s cannot be sharded %d ways along dimension %d" %
                        (shape.as_list(), self._number_of_shards,
                         self._shard_dimension))
-    dims[self._shard_dimension] /= self._number_of_shards
+    dims[self._shard_dimension] //= self._number_of_shards
     return tensor_shape.as_shape(dims)
 
   def _unshard_shape(self, shape):

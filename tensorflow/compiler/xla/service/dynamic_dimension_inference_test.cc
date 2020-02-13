@@ -17,8 +17,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -42,9 +44,10 @@ class DynamicDimensionInferenceTest : public HloTestBase {
     module_ = CreateNewVerifiedModule();
   }
 
-  Status RunInference() {
+  Status RunInference(
+      DynamicDimensionInference::CustomCallInferenceHandler handler = nullptr) {
     TF_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
-                        DynamicDimensionInference::Run(module_.get()));
+                        DynamicDimensionInference::Run(module_.get(), handler));
 
     inference_ = absl::make_unique<DynamicDimensionInference>(inference);
     return Status::OK();
@@ -555,9 +558,6 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTestMajorDimension) {
   SCOPED_TRACE(module_->ToString());
   Status status = RunInference();
   EXPECT_NE(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
-  const Literal& multiplier =
-      inference_->GetDynamicSize(reshape, {}, 0)->operand(1)->literal();
-  LiteralTestUtil::ExpectR0Equal<int32>(10, multiplier);
 }
 
 TEST_F(DynamicDimensionInferenceTest, GatherTest) {
@@ -568,7 +568,7 @@ ENTRY main {
   operand = s32[20,10]{1,0} parameter(0)
   indices = s32[32,20] parameter(1)
   dynamic_size = s32[] parameter(2)
-  ROOT gather = f32[32,10,10]{2,1,0} gather(%operand, %indices),
+  ROOT gather = s32[32,20,10]{2,1,0} gather(%operand, %indices),
                  offset_dims={2},
                  collapsed_slice_dims={0},
                  start_index_map={0},
@@ -577,7 +577,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnUnverifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
   TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
       DynamicParameterBinding::DynamicParameter{2, {}},
       DynamicParameterBinding::DynamicDimension{1, {}, 0}));
@@ -586,31 +586,6 @@ ENTRY main {
   EXPECT_EQ(inference_->GetDynamicSize(
                 module_->entry_computation()->root_instruction(), {}, 0),
             module_->entry_computation()->parameter_instruction(2));
-}
-
-TEST_F(DynamicDimensionInferenceTest, ReshapeTestUnimplemented) {
-  // Test the ability to trace unmodified reshape dimensions.
-  auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5, 6});
-  auto output_shape = ShapeUtil::MakeShape(F32, {6, 4, 1, 5, 2, 3});
-
-  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, input_shape, "A"));
-
-  builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, scalar_shape_, "size_param"));
-
-  builder.AddInstruction(HloInstruction::CreateReshape(output_shape, a_param));
-
-  module_->AddEntryComputation(builder.Build());
-
-  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{1, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
-
-  SCOPED_TRACE(module_->ToString());
-  Status status = RunInference();
-  EXPECT_EQ(status.code(), tensorflow::error::UNIMPLEMENTED);
 }
 
 TEST_F(DynamicDimensionInferenceTest, BroadcastTest) {
@@ -1012,6 +987,37 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceSingleElementTest) {
 
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(slice, {}, 0), nullptr);
+}
+
+TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
+  auto builder = HloComputation::Builder(TestName());
+
+  auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param"));
+  builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeShape(F32, {1, 1}), {data_param}, "MyCustomOp", ""));
+
+  module_->AddEntryComputation(builder.Build());
+
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  bool handler_called = false;
+  auto handler = [&](HloInstruction* hlo,
+                     DynamicDimensionInference* inference) {
+    CHECK(inference != nullptr);
+    CHECK(Cast<HloCustomCallInstruction>(hlo) != nullptr);
+    handler_called = true;
+    return Status::OK();
+  };
+  TF_ASSERT_OK(RunInference(handler));
+
+  EXPECT_TRUE(handler_called);
 }
 
 }  // namespace

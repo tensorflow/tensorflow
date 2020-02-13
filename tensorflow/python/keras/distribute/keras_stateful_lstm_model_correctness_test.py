@@ -104,8 +104,8 @@ class DistributionStrategyStatefulLstmModelCorrectnessTest(
       experimental_run_tf_function):
     with self.assertRaisesRegexp(
         ValueError,
-        'Single core must be used for computation on stateful models. Consider '
-        'adding `device_assignment` parameter to TPUStrategy'):
+        'RNNs with stateful=True not yet supported with '
+        'tf.distribute.Strategy.'):
       self.run_correctness_test(
           distribution,
           use_numpy,

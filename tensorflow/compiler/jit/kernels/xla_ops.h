@@ -95,12 +95,15 @@ class XlaPlatformInfo {
 // in the GraphDef.
 // Currently, it is used by eager runtime. FunctionLibraryRuntime creates
 // this kernel when asked to create a kernel for an XLA-compiled function.
+//
+// `has_ref_vars`: whether the input computation can have reference variables.
+// TODO(cheshire): instead derive this information from the input graph.
 class XlaLocalLaunchBase : public OpKernel {
  public:
   XlaLocalLaunchBase(OpKernelConstruction* ctx,
                      const std::vector<int>& constants,
                      const std::vector<int>& resources,
-                     const NameAttrList& function);
+                     const NameAttrList& function, bool has_ref_vars);
   XlaLocalLaunchBase(const XlaLocalLaunchBase&) = delete;
   XlaLocalLaunchBase& operator=(const XlaLocalLaunchBase&) = delete;
   ~XlaLocalLaunchBase() override = default;
@@ -115,6 +118,8 @@ class XlaLocalLaunchBase : public OpKernel {
 
   const NameAttrList function_;
   const XlaPlatformInfo platform_info_;
+
+  bool has_ref_vars_;
 };
 
 // XlaLocalLaunchOp is used to replace a region of the TensorFlow graph
@@ -153,6 +158,9 @@ class XlaCompileOp : public OpKernel {
 
   const bool must_compile_;
 
+  // Whether the graph has TF reference variables.
+  const bool has_ref_vars_;
+
   // cannot_compile_cluster_ is set to true if XLA returns an Unimplemented
   // error when compiling the cluster this _XlaCompile is supposed to compile.
   // If `cannot_compile_cluster_` is true then we avoid compiling this cluster
@@ -170,6 +178,13 @@ class XlaRunOp : public OpKernel {
 
  private:
   const XlaPlatformInfo platform_info_;
+};
+
+class XlaMergeOp : public OpKernel {
+ public:
+  explicit XlaMergeOp(OpKernelConstruction* ctx);
+
+  void Compute(OpKernelContext* ctx) override;
 };
 
 }  // namespace tensorflow

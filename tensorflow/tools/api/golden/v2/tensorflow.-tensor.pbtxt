@@ -56,6 +56,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "ref"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "set_shape"
     argspec: "args=[\'self\', \'shape\'], varargs=None, keywords=None, defaults=None"
   }

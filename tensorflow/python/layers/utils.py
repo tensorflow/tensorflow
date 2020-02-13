@@ -13,8 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-"""Contains layer utilies for input validation and format conversion.
-"""
+"""Contains layer utilities for input validation and format conversion."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -214,7 +213,7 @@ def constant_value(pred):
 
     Raises:
       TypeError: If `pred` is not a Variable, Tensor or bool, or Python
-        interger 1 or 0.
+        integer 1 or 0.
     """
   # Allow integer booleans.
   if isinstance(pred, int):
@@ -231,7 +230,7 @@ def constant_value(pred):
 def object_list_uid(object_list):
   """Creates a single string from object ids."""
   object_list = nest.flatten(object_list)
-  return ', '.join([str(abs(id(x))) for x in object_list])
+  return ', '.join(str(abs(id(x))) for x in object_list)
 
 
 def static_shape(x):

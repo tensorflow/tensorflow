@@ -134,6 +134,47 @@ Status TestMultipleWrites(size_t compress_input_buf_size,
   return Status::OK();
 }
 
+void TestTell(size_t compress_input_buf_size, size_t compress_output_buf_size,
+              size_t uncompress_input_buf_size,
+              size_t uncompress_output_buf_size, int num_copies = 1) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/snappy_buffers_test";
+  string data = GenTestString(num_copies);
+
+  // Write the compressed file.
+  std::unique_ptr<WritableFile> file_writer;
+  TF_CHECK_OK(env->NewWritableFile(fname, &file_writer));
+  io::SnappyOutputBuffer out(file_writer.get(), compress_input_buf_size,
+                             compress_output_buf_size);
+  TF_CHECK_OK(out.Write(StringPiece(data)));
+  TF_CHECK_OK(out.Flush());
+  TF_CHECK_OK(file_writer->Flush());
+  TF_CHECK_OK(file_writer->Close());
+
+  tstring first_half(string(data, 0, data.size() / 2));
+  tstring bytes_read;
+  std::unique_ptr<RandomAccessFile> file_reader;
+  TF_CHECK_OK(env->NewRandomAccessFile(fname, &file_reader));
+  io::SnappyInputBuffer in(file_reader.get(), uncompress_input_buf_size,
+                           uncompress_output_buf_size);
+
+  // Read the first half of the uncompressed file and expect that Tell()
+  // returns half the uncompressed length of the file.
+  TF_CHECK_OK(in.ReadNBytes(first_half.size(), &bytes_read));
+  EXPECT_EQ(in.Tell(), first_half.size());
+  EXPECT_EQ(bytes_read, first_half);
+
+  // Read the remaining half of the uncompressed file and expect that
+  // Tell() points past the end of file.
+  tstring second_half;
+  TF_CHECK_OK(in.ReadNBytes(data.size() - first_half.size(), &second_half));
+  EXPECT_EQ(in.Tell(), data.size());
+  bytes_read.append(second_half);
+
+  // Expect that the file is correctly read.
+  EXPECT_EQ(bytes_read, data);
+}
+
 static bool SnappyCompressionSupported() {
   string out;
   StringPiece in = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -184,6 +225,14 @@ TEST(SnappyBuffers, CorruptBlockLargeInputBuffer) {
   }
   CHECK_EQ(TestMultipleWrites(10000, 10000, 2000, 10000, 2, true, 1, true),
            errors::OutOfRange("EOF reached"));
+}
+
+TEST(SnappyBuffers, Tell) {
+  if (!SnappyCompressionSupported()) {
+    fprintf(stderr, "skipping compression tests\n");
+    return;
+  }
+  TestTell(10000, 10000, 2000, 10000, 2);
 }
 
 }  // namespace tensorflow

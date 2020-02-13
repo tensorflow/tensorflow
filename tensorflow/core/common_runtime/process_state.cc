@@ -18,12 +18,12 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -34,8 +34,8 @@ namespace tensorflow {
 
 /*static*/ ProcessState* ProcessState::singleton() {
   static ProcessState* instance = new ProcessState;
-  static std::once_flag f;
-  std::call_once(f, []() {
+  static absl::once_flag f;
+  absl::call_once(f, []() {
     AllocatorFactoryRegistry::singleton()->process_state_ = instance;
   });
 
@@ -148,7 +148,10 @@ void ProcessState::TestOnlyReset() {
     if (a != default_cpu_allocator) delete a;
   }
   cpu_allocators_.clear();
-  gtl::STLDeleteElements(&cpu_al_);
+  for (Allocator* a : cpu_al_) {
+    delete a;
+  }
+  cpu_al_.clear();
 }
 
 }  // namespace tensorflow

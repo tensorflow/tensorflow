@@ -20,7 +20,9 @@ from __future__ import print_function
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as dtypes_module
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import registry
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -88,7 +90,9 @@ LEGACY_RANDOM_OPS = [
 ]
 
 _ORDER_INSENSITIVE_STATEFUL_OPS = [
-    "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3"
+    "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
+    "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
+    "EnqueueTPUEmbeddingSparseTensorBatch"
 ]
 # LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
 
@@ -299,8 +303,7 @@ class AutomaticControlDependencies(object):
         continue
       control_inputs = set()
       # Ensure stateful ops run
-      if (op.type not in self._graph._registered_ops  # pylint: disable=protected-access
-          or op_is_stateful(op)):
+      if op_def_registry.get(op.type) is None or op_is_stateful(op):
         ops_which_must_run.add(op)
       # Ignore switches (they're handled separately)
       if op.type == "Switch" and op.inputs[0].dtype == dtypes_module.resource:
@@ -319,10 +322,7 @@ class AutomaticControlDependencies(object):
       resource_inputs = set()
       # Check for any resource inputs. If we find any, we update control_inputs
       # and last_op_using_resource_tensor.
-      for inp in op.inputs:
-        if inp.dtype != dtypes_module.resource:
-          continue
-
+      for inp in _get_resource_inputs(op):
         input_id = ops.tensor_id(inp)
 
         # If the op receives the same resource tensor twice as an input, we skip
@@ -336,9 +336,11 @@ class AutomaticControlDependencies(object):
           self._process_switch(inp.op, ops_which_must_run,
                                last_op_using_resource_tensor,
                                merge_for_resource)
+        is_building_function = op.graph.building_function
         # Ensure uses of resources are serialized
         if input_id in last_op_using_resource_tensor:
-          if (last_op_using_resource_tensor[input_id]._control_flow_context  # pylint: disable=protected-access
+          if is_building_function or (
+              last_op_using_resource_tensor[input_id]._control_flow_context  # pylint: disable=protected-access
               is op._control_flow_context):  # pylint: disable=protected-access
             control_inputs.add(last_op_using_resource_tensor[input_id])
         # Ensure merges happen after the closing of a cond block
@@ -351,8 +353,9 @@ class AutomaticControlDependencies(object):
         if None in last_op_using_resource_tensor:
           op._add_control_input(last_op_using_resource_tensor[None])  # pylint: disable=protected-access
         last_op_using_resource_tensor[None] = op
-      control_inputs = [c for c in control_inputs
-                        if c._control_flow_context is op._control_flow_context]  # pylint: disable=protected-access
+      control_inputs = [
+          c for c in control_inputs if is_building_function or
+          (c._control_flow_context is op._control_flow_context)]  # pylint: disable=protected-access
       op._add_control_inputs(control_inputs)  # pylint: disable=protected-access
 
     # Ensure all ops which must run do run
@@ -360,8 +363,65 @@ class AutomaticControlDependencies(object):
     for r in nest.flatten(list(self._returned_tensors), expand_composites=True):
       if self.ops_which_must_run:
         r.op._add_control_inputs(  # pylint: disable=protected-access
-            [o for o in self.ops_which_must_run
-             if o._control_flow_context is r.op._control_flow_context])  # pylint: disable=protected-access
+            [
+                o for o in self.ops_which_must_run
+                if r.graph.building_function or
+                (o._control_flow_context is r.op._control_flow_context)  # pylint: disable=protected-access
+            ])
+
+
+_acd_resource_resolvers_registry = registry.Registry("acd_resouce_resolvers")
+
+
+def register_acd_resource_resolver(f):
+  """Register a function for resolving resources touched by an op.
+
+  Example:
+  @register_acd_resource_resolver
+  def ResolveIdentity(op, resource_inputs):
+    # op: The `Operation` being processed by ACD currently.
+    # resource_inputs: An `ObjectIdentitySet` that can be updated in-place.
+    if not resource_inputs:
+      return False
+    to_add = []
+    to_remove = []
+    for t in resource_inputs:
+      if t.op.type == "Identity":
+        to_remove.append(t)
+        to_add.append(t.op.inputs[0])
+    if not to_add and not to_remove:
+      return False
+    for t in to_remove:
+      resource_inputs.discard(t)
+    resource_inputs.update(to_add)
+    return True  # `resource_inputs` was updated.
+
+  Args:
+    f: Python function
+
+  Returns:
+    The function `f` after adding it to the registry.
+  """
+  _acd_resource_resolvers_registry.register(f)
+  return f
+
+
+def _get_resource_inputs(op):
+  """Returns an iterable of resources touched by this `op`."""
+  resource_inputs = object_identity.ObjectIdentitySet(
+      t for t in op.inputs if t.dtype == dtypes_module.resource)
+  saturated = False
+  while not saturated:
+    saturated = True
+    for key in _acd_resource_resolvers_registry.list():
+      # Resolvers should return true if they are updating the list of
+      # resource_inputs.
+      # TODO(srbs): An alternate would be to just compare the old and new set
+      # but that may not be as fast.
+      updated = _acd_resource_resolvers_registry.lookup(key)(op,
+                                                             resource_inputs)
+      saturated = saturated and not updated
+  return resource_inputs
 
 
 def automatic_control_dependencies(f):

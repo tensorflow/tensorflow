@@ -30,7 +30,7 @@ func @sink_const(%arg0 : tensor<16xf32>) -> (tensor<16xf32>, tensor<f32>) {
         %4 = "tf.Mul"(%3, %0) : (tensor<16xf32>, tensor<f32>) -> tensor<16xf32>
         %5 = "tf.Mul"(%4, %1) : (tensor<16xf32>, tensor<f32>) -> tensor<16xf32>
         %6 = "tf.Mul"(%5, %2) : (tensor<16xf32>, tensor<f32>) -> tensor<16xf32>
-       "tf_device.return"(%6) : (tensor<16xf32>) -> ()
+        tf_device.return %6 : tensor<16xf32>
       }) {device = "tpu0"} : () -> tensor<16xf32>
       tf_executor.yield %3 : tensor<16xf32>
     }

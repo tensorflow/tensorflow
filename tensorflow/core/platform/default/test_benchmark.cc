@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/test_benchmark.h"
-
-#include <cstdio>
-#include <cstdlib>
+#include "tensorflow/core/platform/default/test_benchmark.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <vector>
-#include "tensorflow/core/lib/strings/str_util.h"
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/util/reporter.h"
 
 namespace tensorflow {

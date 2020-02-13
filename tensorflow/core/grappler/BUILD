@@ -4,6 +4,18 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "devices.h",
+        "grappler_item.h",
+        "grappler_item_builder.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "op_types",
     srcs = ["op_types.cc"],
@@ -47,10 +59,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/lib/bfloat16",
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform:notification",
-        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -146,6 +154,7 @@ cc_library(
         ":utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler/utils:transitive_fanin",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],

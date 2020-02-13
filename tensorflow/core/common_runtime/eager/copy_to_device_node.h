@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -26,7 +27,7 @@ namespace tensorflow {
 class CopyToDeviceNode : public EagerNode {
  public:
   CopyToDeviceNode(TensorHandle* src, TensorHandle* dst, Device* dstd,
-                   EagerContext* ctx)
+                   const EagerContext& ctx)
       : EagerNode(), src_(src), dst_(dst), dstd_(dstd), ctx_(ctx) {
     src_->Ref();
     dst_->Ref();
@@ -39,8 +40,10 @@ class CopyToDeviceNode : public EagerNode {
 
   Status Run() override {
     tensorflow::Tensor tensor;
+    MEMDEBUG_CACHE_OP(MEMDEBUG_CACHE_VAL ? MEMDEBUG_CACHE_VAL
+                                         : "eager::CopyToDeviceNode");
     TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &tensor));
-    return dst_->SetTensor(tensor);
+    return dst_->SetTensor(std::move(tensor), ctx_.CanonicalDevice(dstd_));
   }
 
   void Abort(Status status) override { dst_->Poison(status); }
@@ -59,7 +62,7 @@ class CopyToDeviceNode : public EagerNode {
   TensorHandle* src_;
   TensorHandle* dst_;
   Device* dstd_;
-  EagerContext* ctx_;
+  const EagerContext& ctx_;
 };
 
 }  // namespace tensorflow

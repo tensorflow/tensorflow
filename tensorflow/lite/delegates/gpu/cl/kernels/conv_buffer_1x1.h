@@ -51,15 +51,22 @@ class ConvBuffer1x1 : public GPUOperation {
   Status Compile(const CreationContext& creation_context) override;
 
  private:
+  ConvBuffer1x1(const OperationDef& definition, int flt4_x_count,
+                int flt4_y_count, int flt8_x_count, int flt8_y_count);
   friend Status CreateConvBuffer1x1(const CreationContext& creation_context,
                                     const OperationDef& definition,
                                     const Convolution2DAttributes& attr,
                                     ConvBuffer1x1* result);
-  ConvBuffer1x1(const OperationDef& definition,
-                const Convolution2DAttributes& attr, int flt4_x_count,
-                int flt4_y_count, int flt8_x_count, int flt8_y_count);
-  template <DataType T>
+  friend Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                                    const OperationDef& definition,
+                                    const FullyConnectedAttributes& attr,
+                                    ConvBuffer1x1* result);
 
+  template <DataType T>
+  Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                    const ::tflite::gpu::Tensor<Linear, T>& biases,
+                    CLContext* context);
+  template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
 
@@ -83,6 +90,19 @@ class ConvBuffer1x1 : public GPUOperation {
 };
 
 template <DataType T>
+Status ConvBuffer1x1::UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                                 const ::tflite::gpu::Tensor<Linear, T>& biases,
+                                 CLContext* context) {
+  RETURN_IF_ERROR(UploadWeights(weights, context));
+  LinearStorageCreateInfo create_info;
+  create_info.storage_type = LinearStorageType::BUFFER;
+  create_info.data_type = definition_.GetDataType();
+  create_info.aligned_size = weights.shape.o;
+  RETURN_IF_ERROR(CreateLinearStorage(create_info, biases, context, &biases_));
+  return OkStatus();
+}
+
+template <DataType T>
 Status ConvBuffer1x1::UploadWeights(
     const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
@@ -97,12 +117,14 @@ Status ConvBuffer1x1::UploadWeights(
 
   if (definition_.GetDataType() == DataType::FLOAT32) {
     std::vector<float4> gpu_data(elements_count);
-    RearrangeWeightsToOHWI4I4O(weights, absl::MakeSpan(gpu_data));
+    RearrangeWeightsToOHWIOGroupI4O4(weights, /*out_group_size*/ 1,
+                                     absl::MakeSpan(gpu_data));
     return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
                                 context, &weights_);
   } else {
     std::vector<half4> gpu_data(elements_count);
-    RearrangeWeightsToOHWI4I4O(weights, absl::MakeSpan(gpu_data));
+    RearrangeWeightsToOHWIOGroupI4O4(weights, /*out_group_size*/ 1,
+                                     absl::MakeSpan(gpu_data));
     return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
                                 context, &weights_);
   }
@@ -114,6 +136,11 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
 Status CreateConvBuffer1x1(const CreationContext& creation_context,
                            const OperationDef& definition,
                            const Convolution2DAttributes& attr,
+                           ConvBuffer1x1* result);
+
+Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                           const OperationDef& definition,
+                           const FullyConnectedAttributes& attr,
                            ConvBuffer1x1* result);
 
 }  // namespace cl

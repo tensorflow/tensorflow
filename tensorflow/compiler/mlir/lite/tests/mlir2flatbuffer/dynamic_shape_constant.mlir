@@ -2,9 +2,8 @@
 
 func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   %cst = "tfl.pseudo_const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<?xi32>
-  %0 = "tfl.pseudo_input" (%arg0) : (tensor<2xi32>) -> tensor<2xi32>
-  %1 = "tfl.add"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<2xi32>, tensor<?xi32>) -> tensor<2xi32>
-  return %1 : tensor<2xi32>
+  %0 = "tfl.add"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<2xi32>, tensor<?xi32>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
 }
 
 
@@ -22,4 +21,3 @@ func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // CHECK-NEXT:   }, {
 // CHECK-NEXT:     data: [ 1, 0, 0, 0, 2, 0, 0, 0 ]
 // CHECK-NEXT:   }, {
-

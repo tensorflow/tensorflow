@@ -100,6 +100,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      out_tensors->reserve(1);
       mutex_lock l(mu_);
       do {
         // We are currently processing a file, so try to read the next record.

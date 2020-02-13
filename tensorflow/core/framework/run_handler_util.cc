@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/str_util.h"
 
 namespace tensorflow {
 
@@ -27,6 +28,54 @@ double ParamFromEnvWithDefault(const std::string& var_name,
   const char* val = std::getenv(var_name.c_str());
   double num;
   return (val && strings::safe_strtod(val, &num)) ? num : default_value;
+}
+
+std::vector<double> ParamFromEnvWithDefault(const std::string& var_name,
+                                            std::vector<double> default_value) {
+  const char* val = std::getenv(var_name.c_str());
+  if (!val) {
+    return default_value;
+  }
+  std::vector<string> splits = str_util::Split(val, ",");
+  std::vector<double> result;
+  result.reserve(splits.size());
+  for (auto& split : splits) {
+    double num;
+    if (strings::safe_strtod(split, &num)) {
+      result.push_back(num);
+    } else {
+      LOG(ERROR) << "Wrong format for " << var_name << ". Use default value.";
+      return default_value;
+    }
+  }
+  return result;
+}
+
+std::vector<int> ParamFromEnvWithDefault(const std::string& var_name,
+                                         std::vector<int> default_value) {
+  const char* val = std::getenv(var_name.c_str());
+  if (!val) {
+    return default_value;
+  }
+  std::vector<string> splits = str_util::Split(val, ",");
+  std::vector<int> result;
+  result.reserve(splits.size());
+  for (auto& split : splits) {
+    int num;
+    if (strings::safe_strto32(split, &num)) {
+      result.push_back(num);
+    } else {
+      LOG(ERROR) << "Wrong format for " << var_name << ". Use default value.";
+      return default_value;
+    }
+  }
+  return result;
+}
+
+bool ParamFromEnvBoolWithDefault(const std::string& var_name,
+                                 bool default_value) {
+  const char* val = std::getenv(var_name.c_str());
+  return (val) ? str_util::Lowercase(val) == "true" : default_value;
 }
 
 void ComputeInterOpSchedulingRanges(int num_active_requests, int num_threads,

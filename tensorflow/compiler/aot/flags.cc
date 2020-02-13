@@ -68,6 +68,8 @@ void AppendMainFlags(std::vector<Flag>* flag_list, MainFlags* flags) {
        "function."},
       {"out_session_module", &flags->out_session_module,
        "Output session module proto."},
+      {"mlir_components", &flags->mlir_components,
+       "The MLIR components to enable. Currently only Bridge is supported."},
       {"gen_name_to_index", &flags->gen_name_to_index,
        "Generate name-to-index data for Lookup{Arg,Result}Index methods."},
       {"gen_program_shape", &flags->gen_program_shape,

@@ -28,13 +28,13 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::ReLUAttributes;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
+using ::tflite::gpu::OperationType;
+using ::tflite::gpu::ReLUAttributes;
+using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
-using ::tflite::gpu::TensorRef;
-using ::tflite::gpu::OperationType;
 
 @interface SliceTest : XCTestCase
 @end
@@ -60,9 +60,9 @@ TensorRef<BHWC> GetTensorRef(int ref) {
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)}, {GetTensorRef(1)});
   XCTAssertTrue(model.PopulateTensor(0, {-6.0, 0.0, 2.0, 8.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({0.0, 0.0, 2.0, 8.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testReluClipOnly {
@@ -73,9 +73,9 @@ TensorRef<BHWC> GetTensorRef(int ref) {
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)}, {GetTensorRef(1)});
   XCTAssertTrue(model.PopulateTensor(0, {-6.0, 0.0, 2.0, 8.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({0.0, 0.0, 2.0, 6.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testReluAlphaOnly {
@@ -86,9 +86,9 @@ TensorRef<BHWC> GetTensorRef(int ref) {
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)}, {GetTensorRef(1)});
   XCTAssertTrue(model.PopulateTensor(0, {-6.0, 0.0, 2.0, 8.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({-3.0, 0.0, 2.0, 8.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testReluClipAndAlpha {
@@ -99,9 +99,9 @@ TensorRef<BHWC> GetTensorRef(int ref) {
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)}, {GetTensorRef(1)});
   XCTAssertTrue(model.PopulateTensor(0, {-6.0, 0.0, 2.0, 8.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({-3.0, 0.0, 2.0, 6.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.ToString().c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 @end

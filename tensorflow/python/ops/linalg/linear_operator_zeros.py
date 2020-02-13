@@ -454,3 +454,6 @@ class LinearOperatorZeros(linear_operator.LinearOperator):
            [self._min_matrix_dim_tensor()]], axis=0)
 
     return array_ops.zeros(shape=d_shape, dtype=self.dtype)
+
+  def _eigvals(self):
+    return self._zeros_diag()

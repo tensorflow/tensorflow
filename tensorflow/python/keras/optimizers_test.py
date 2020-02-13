@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.platform import test
 from tensorflow.python.training.adam import AdamOptimizer
 
@@ -54,7 +55,7 @@ class KerasOptimizersTest(keras_parameterized.TestCase):
     np.random.seed(1337)
     (x_train, y_train), _ = testing_utils.get_test_data(
         train_samples=1000, test_samples=200, input_shape=(10,), num_classes=2)
-    y_train = keras.utils.to_categorical(y_train)
+    y_train = np_utils.to_categorical(y_train)
     model = _get_model(x_train.shape[1], 20, y_train.shape[1])
     model.compile(
         loss='categorical_crossentropy',

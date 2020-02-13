@@ -983,4 +983,60 @@ REGISTER_OP("CombinedNonMaxSuppression")
     .Attr("clip_boxes: bool = true")
     .SetShapeFn(CombinedNMSShapeFn);
 
+REGISTER_OP("GenerateBoundingBoxProposals")
+    .Input("scores: float")
+    .Input("bbox_deltas: float")
+    .Input("image_info: float")
+    .Input("anchors: float")
+    .Input("nms_threshold: float")
+    .Input("pre_nms_topn: int32")
+    .Input("min_size: float")
+    .Output("rois: float")
+    .Output("roi_probabilities: float")
+    .Attr("post_nms_topn: int = 300")
+    .SetShapeFn([](InferenceContext* c) -> Status {
+      // make sure input tensors have are correct rank
+      ShapeHandle scores, images, bounding_boxes, anchors, nms_threshold,
+          n_pre_nms, min_box_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &scores));  //(N, H, W, A)
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(1), 4, &bounding_boxes));         //(N,H,W,A4)
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &images));  // (N,5)
+      auto im_info = c->Dim(images, 1);
+      TF_RETURN_IF_ERROR(c->WithValue(im_info, 5, &im_info));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 3, &anchors));  // (A4)
+      // check scalar tensors
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &nms_threshold));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &n_pre_nms));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &min_box_size));
+
+      // TODO(skama): verify that the inputs are compatible
+      int post_nms_top_n;
+      TF_RETURN_IF_ERROR(c->GetAttr("post_nms_topn", &post_nms_top_n));
+      auto roi_shape = c->MakeShape(
+          {c->Dim(scores, 0), post_nms_top_n, 4});  //(N,post_nms_top_n,4)
+      auto prob_shape = c->MakeShape(
+          {c->Dim(scores, 0), post_nms_top_n});  // (N,post_nms_top_n)
+      c->set_output(0, roi_shape);
+      c->set_output(1, prob_shape);
+      return Status::OK();
+    });
+
+// TODO(ringwalt): Add a "fill_mode" attr with "constant", "mirror", etc.
+// TODO(ringwalt): Add a "fill_constant" argument for constant mode (default 0).
+// V2 op supports output_shape. V1 op is in contrib.
+REGISTER_OP("ImageProjectiveTransformV2")
+    .Input("images: dtype")
+    .Input("transforms: float32")
+    .Input("output_shape: int32")
+    .Attr("dtype: {uint8, int32, int64, float16, float32, float64}")
+    .Attr("interpolation: string")
+    .Output("transformed_images: dtype")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+      return SetOutputToSizedImage(c, c->Dim(input, 0), 2 /* size_input_idx */,
+                                   c->Dim(input, 3));
+    });
+
 }  // namespace tensorflow

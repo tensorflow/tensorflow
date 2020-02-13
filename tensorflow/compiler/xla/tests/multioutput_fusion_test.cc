@@ -62,7 +62,7 @@ class MultiOutputFusionTest : public HloTestBase {
 
   void RunTest2D(bool manual_fusion, int64 size) {
     auto builder = HloComputation::Builder(TestName());
-    auto hlo_module = CreateNewUnverifiedModule();
+    auto hlo_module = CreateNewVerifiedModule();
 
     const Shape elem_shape0 = ShapeUtil::MakeShapeWithLayout(F32, {}, {});
     const Shape elem_shape2 =
@@ -122,7 +122,7 @@ class MultiOutputFusionTest : public HloTestBase {
 
   void RunTest1D(bool manual_fusion, int size) {
     auto builder = HloComputation::Builder(TestName());
-    auto hlo_module = CreateNewUnverifiedModule();
+    auto hlo_module = CreateNewVerifiedModule();
 
     const Shape elem_shape_F32 =
         ShapeUtil::MakeShapeWithDescendingLayout(F32, {size});
@@ -187,8 +187,10 @@ class MultiOutputFusionTest : public HloTestBase {
 XLA_TEST_F(MultiOutputFusionTest, 2DNofusion) { RunTest2D(false, 5); }
 XLA_TEST_F(MultiOutputFusionTest, 2DFusion) { RunTest2D(true, 5); }
 XLA_TEST_F(MultiOutputFusionTest, 2DFusionSize129) { RunTest2D(true, 129); }
-XLA_TEST_F(MultiOutputFusionTest, DiffentTypesNoFusion) { RunTest1D(false, 8); }
-XLA_TEST_F(MultiOutputFusionTest, DiffentTypesFusion) { RunTest1D(true, 8); }
+XLA_TEST_F(MultiOutputFusionTest, DifferentTypesNoFusion) {
+  RunTest1D(false, 8);
+}
+XLA_TEST_F(MultiOutputFusionTest, DifferentTypesFusion) { RunTest1D(true, 8); }
 
 XLA_TEST_F(MultiOutputFusionTest, FusionNodeIsRoot) {
   const char* testcase = R"(

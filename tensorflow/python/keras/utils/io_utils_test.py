@@ -51,8 +51,7 @@ def create_dataset(h5_path='test.h5'):
 
 class TestIOUtils(keras_parameterized.TestCase):
 
-  # TODO(b/137965102): eventually support this in eager + the v2 loops
-  @keras_parameterized.run_all_keras_modes(always_skip_eager=True)
+  @keras_parameterized.run_all_keras_modes
   def test_HDF5Matrix(self):
     if h5py is None:
       return
@@ -92,7 +91,7 @@ class TestIOUtils(keras_parameterized.TestCase):
 
     # Note: you have to use shuffle='batch' or False with HDF5Matrix
     model.fit(x_train, y_train, batch_size=32, shuffle='batch', verbose=False)
-    # test that evalutation and prediction
+    # test that evaluation and prediction
     # don't crash and return reasonable results
     out_pred = model.predict(x_test, batch_size=32, verbose=False)
     out_eval = model.evaluate(x_test, y_test, batch_size=32, verbose=False)

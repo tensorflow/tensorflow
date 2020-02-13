@@ -1,14 +1,30 @@
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = [
-        "//tensorflow:__subpackages__",
+        "//tensorflow/core:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
 
-# Todo(bmzhao): Remaining targets to add to this BUILD file are:
-# arena, threadpool + all tests.
+# Todo(bmzhao): Remaining targets to add to this BUILD file are all tests.
+
+cc_library(
+    name = "arena",
+    srcs = ["arena.cc"],
+    hdrs = ["arena.h"],
+    deps = [
+        "//tensorflow/core/lib/math:math_util",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:types",
+    ],
+)
 
 cc_library(
     name = "bitmap",
@@ -18,14 +34,14 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
     name = "blocking_counter",
     hdrs = ["blocking_counter.h"],
     deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:blocking_counter",
     ],
 )
 
@@ -40,13 +56,9 @@ cc_library(
 
 cc_library(
     name = "coding",
-    srcs = ["coding.cc"],
     hdrs = ["coding.h"],
     deps = [
-        "//tensorflow/core/lib/core:raw_coding",
-        "//tensorflow/core/lib/core:stringpiece",
-        "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:coding",
     ],
 )
 
@@ -54,11 +66,7 @@ cc_library(
     name = "errors",
     hdrs = ["errors.h"],
     deps = [
-        ":status",
-        "//tensorflow/core/lib/strings:string_utils",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/core/platform:errors",
     ],
 )
 
@@ -74,31 +82,21 @@ cc_library(
     name = "raw_coding",
     hdrs = ["raw_coding.h"],
     deps = [
-        "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:raw_coding",
     ],
 )
 
 cc_library(
     name = "refcount",
     hdrs = ["refcount.h"],
-    deps = ["//tensorflow/core/platform:logging"],
+    deps = ["//tensorflow/core/platform:refcount"],
 )
 
 cc_library(
     name = "status",
-    srcs = ["status.cc"],
     hdrs = ["status.h"],
     deps = [
-        ":error_codes_proto_cc",
-        "//tensorflow/core/lib/strings:string_utils",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform:stringprintf",
-        "//tensorflow/core/platform:types",
-        "@com_google_absl//absl/base",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -107,6 +105,14 @@ cc_library(
     hdrs = ["stringpiece.h"],
     deps = [
         "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+cc_library(
+    name = "threadpool",
+    hdrs = ["threadpool.h"],
+    deps = [
+        "//tensorflow/core/platform:env",
     ],
 )
 
@@ -131,7 +137,40 @@ tf_proto_library(
     srcs = ["error_codes.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    provide_cc_alias = True,
+    protodeps = [
+        "//tensorflow/core:error_codes_proto_impl",
+    ],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    exports = ["//tensorflow/core:error_codes_proto_impl"],
+)
+
+# Export source files needed for mobile builds, which do not use granular targets.
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "blocking_counter.h",
+        "coding.h",
+        "errors.h",
+        "refcount.h",
+        "status.h",
+        "stringpiece.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "arena.cc",
+        "arena.h",
+        "bitmap.h",
+        "bits.h",
+        "notification.h",
+        "threadpool.h",
+        "threadpool_interface.h",
+        "threadpool_options.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
 )
 
 filegroup(
@@ -152,17 +191,6 @@ filegroup(
         "threadpool.h",
         "threadpool_interface.h",
         "threadpool_options.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_lib_core_all_srcs",
-    srcs = [
-        "arena.cc",
-        "bitmap.cc",
-        "coding.cc",
-        "status.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

@@ -74,7 +74,7 @@ class MklReshapeOp : public OpKernel {
                                              : input_tensor.NumElements();
 
     // Preliminary validation of sizes.
-    OP_REQUIRES(context, IsLegacyVector(sizes.shape()),
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(sizes.shape()),
                 errors::InvalidArgument("sizes input must be 1-D, not shape ",
                                         sizes.shape().DebugString()));
 

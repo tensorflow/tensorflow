@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
@@ -627,14 +628,17 @@ def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redef
   with ops.name_scope(name, "StringSplit", [input]):
     input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         input, dtype=dtypes.string, name="input")
-    if result_type == "SparseTensor" and input.shape.rank == 1:
-      return string_ops.string_split_v2(input, sep=sep, maxsplit=maxsplit)
 
-    ragged_result = string_split_v2(input, sep=sep, maxsplit=maxsplit)
+    if input.shape.rank == 0:
+      input = gen_array_ops.expand_dims(input, 0)
+
     if result_type == "SparseTensor":
-      return ragged_result.to_sparse()
+      if input.shape.rank == 1:
+        return string_ops.string_split_v2(input, sep=sep, maxsplit=maxsplit)
+      else:
+        return string_split_v2(input, sep=sep, maxsplit=maxsplit).to_sparse()
     elif result_type == "RaggedTensor":
-      return ragged_result
+      return string_split_v2(input, sep=sep, maxsplit=maxsplit)
     else:
       raise ValueError("result_type must be 'RaggedTensor' or 'SparseTensor'.")
 
@@ -674,6 +678,13 @@ def ngrams(data,
   width. In that case, no ngrams will be generated for that sequence. This can
   be prevented by setting `preserve_short_sequences`, which will cause the op
   to always generate at least one ngram per non-empty sequence.
+
+  Examples:
+
+  >>> tf.strings.ngrams(["A", "B", "C", "D"], 2).numpy()
+  array([b'A B', b'B C', b'C D'], dtype=object)
+  >>> tf.strings.ngrams(["TF", "and", "keras"], 1).numpy()
+  array([b'TF', b'and', b'keras'], dtype=object)
 
   Args:
     data: A Tensor or RaggedTensor containing the source data for the ngrams.

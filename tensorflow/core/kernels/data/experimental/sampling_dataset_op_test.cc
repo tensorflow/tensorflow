@@ -19,7 +19,6 @@ namespace experimental {
 namespace {
 
 constexpr char kNodeName[] = "sampling_dataset";
-constexpr char kIteratorPrefix[] = "Iterator";
 constexpr int64 kRandomSeed = 42;
 constexpr int64 kRandomSeed2 = 7;
 
@@ -32,36 +31,23 @@ class SamplingDatasetParams : public DatasetParams {
                         string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
-        rate_(CreateTensor<float>(TensorShape({}), {rate})) {
-    auto input_dataset_params_ptr =
-        std::make_shared<T>(std::move(input_dataset_params));
-    input_dataset_params_group_.emplace_back(
-        std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+        rate_(rate) {
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    inputs->reserve(input_dataset_params_group_.size() + 3);
-    for (auto& pair : input_dataset_params_group_) {
-      if (!IsDatasetTensor(pair.second)) {
-        inputs->clear();
-        return errors::Internal(
-            "The input dataset is not populated as the dataset tensor yet.");
-      } else {
-        inputs->emplace_back(TensorValue(&pair.second));
-      }
-    }
-    inputs->emplace_back(TensorValue(&rate_));
-    inputs->emplace_back(TensorValue(&seed_tensor_));
-    inputs->emplace_back(TensorValue(&seed2_tensor_));
-
-    return Status::OK();
+  std::vector<Tensor> GetInputTensors() const override {
+    Tensor rate = CreateTensor<float>(TensorShape({}), {rate_});
+    Tensor seed_tensor = CreateTensor<int64>(TensorShape({}), {seed_tensor_});
+    Tensor seed2_tensor = CreateTensor<int64>(TensorShape({}), {seed2_tensor_});
+    return {rate, seed_tensor, seed2_tensor};
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {SamplingDatasetOp::kInputDataset,
-                          SamplingDatasetOp::kRate, SamplingDatasetOp::kSeed,
-                          SamplingDatasetOp::kSeed2};
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    *input_names = {SamplingDatasetOp::kInputDataset, SamplingDatasetOp::kRate,
+                    SamplingDatasetOp::kSeed, SamplingDatasetOp::kSeed2};
 
     return Status::OK();
   }
@@ -72,17 +58,19 @@ class SamplingDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  string op_name() const override { return SamplingDatasetOp::kDatasetType; }
+  string dataset_type() const override {
+    return SamplingDatasetOp::kDatasetType;
+  }
 
  private:
   // Target sample rate, range (0,1], wrapped in a scalar Tensor
-  Tensor rate_;
+  float rate_;
   // Boxed versions of kRandomSeed and kRandomSeed2.
-  Tensor seed_tensor_ = CreateTensor<int64>(TensorShape({}), {kRandomSeed});
-  Tensor seed2_tensor_ = CreateTensor<int64>(TensorShape({}), {kRandomSeed2});
+  int64 seed_tensor_ = kRandomSeed;
+  int64 seed2_tensor_ = kRandomSeed2;
 };
 
-class SamplingDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class SamplingDatasetOpTest : public DatasetOpsTestBase {};
 
 SamplingDatasetParams OneHundredPercentSampleParams() {
   return SamplingDatasetParams(RangeDatasetParams(0, 3, 1),
@@ -199,7 +187,8 @@ std::vector<IteratorPrefixTestCase<SamplingDatasetParams>>
 IteratorOutputPrefixTestCases() {
   return {{/*dataset_params=*/TenPercentSampleParams(),
            /*expected_iterator_prefix=*/name_utils::IteratorPrefix(
-               SamplingDatasetOp::kDatasetType, kIteratorPrefix)}};
+               SamplingDatasetOp::kDatasetType,
+               TenPercentSampleParams().iterator_prefix())}};
 }
 
 ITERATOR_PREFIX_TEST_P(SamplingDatasetOpTest, SamplingDatasetParams,

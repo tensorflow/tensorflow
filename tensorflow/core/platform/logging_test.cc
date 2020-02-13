@@ -24,6 +24,8 @@ TEST(Logging, Log) {
   LOG(ERROR) << "Error message";
   VLOG(1) << "A VLOG message";
   VLOG(2) << "A higher VLOG message";
+  DVLOG(1) << "A DVLOG message";
+  DVLOG(2) << "A higher DVLOG message";
 }
 
 TEST(Logging, CheckChecks) {

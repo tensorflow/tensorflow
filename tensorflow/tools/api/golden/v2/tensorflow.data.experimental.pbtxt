@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "AutoShardPolicy"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "CheckpointInputPipelineHook"
     mtype: "<type \'type\'>"
   }
@@ -89,6 +93,10 @@ tf_module {
     argspec: "args=[\'target_device\', \'source_device\'], varargs=None, keywords=None, defaults=[\'/cpu:0\'], "
   }
   member_method {
+    name: "dense_to_ragged_batch"
+    argspec: "args=[\'batch_size\', \'drop_remainder\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'False\', \"<dtype: \'int64\'>\"], "
+  }
+  member_method {
     name: "dense_to_sparse_batch"
     argspec: "args=[\'batch_size\', \'row_shape\'], varargs=None, keywords=None, defaults=None"
   }
@@ -130,7 +138,7 @@ tf_module {
   }
   member_method {
     name: "make_batched_features_dataset"
-    argspec: "args=[\'file_pattern\', \'batch_size\', \'features\', \'reader\', \'label_key\', \'reader_args\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'reader_num_threads\', \'parser_num_threads\', \'sloppy_ordering\', \'drop_final_batch\'], varargs=None, keywords=None, defaults=[\"<class \'tensorflow.python.data.ops.readers.TFRecordDatasetV1\'>\", \'None\', \'None\', \'None\', \'True\', \'10000\', \'None\', \'None\', \'None\', \'None\', \'False\', \'False\'], "
+    argspec: "args=[\'file_pattern\', \'batch_size\', \'features\', \'reader\', \'label_key\', \'reader_args\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'reader_num_threads\', \'parser_num_threads\', \'sloppy_ordering\', \'drop_final_batch\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'True\', \'10000\', \'None\', \'None\', \'None\', \'None\', \'False\', \'False\'], "
   }
   member_method {
     name: "make_csv_dataset"
@@ -138,7 +146,7 @@ tf_module {
   }
   member_method {
     name: "make_saveable_from_iterator"
-    argspec: "args=[\'iterator\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'iterator\', \'external_state_policy\'], varargs=None, keywords=None, defaults=[\'fail\'], "
   }
   member_method {
     name: "map_and_batch"

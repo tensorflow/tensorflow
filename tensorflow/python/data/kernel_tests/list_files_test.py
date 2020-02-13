@@ -22,33 +22,44 @@ from os import path
 import shutil
 import tempfile
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class ListFilesTest(test_base.DatasetTestBase):
+class ListFilesTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def setUp(self):
+    super(ListFilesTest, self).setUp()
     self.tmp_dir = tempfile.mkdtemp()
 
   def tearDown(self):
     shutil.rmtree(self.tmp_dir, ignore_errors=True)
+    super(ListFilesTest, self).tearDown()
 
   def _touchTempFiles(self, filenames):
     for filename in filenames:
       open(path.join(self.tmp_dir, filename), 'a').close()
 
-  # Note: eager mode fails in assertion error same as initializer in graph mode.
-  @test_util.run_deprecated_v1
-  def testSkipEagerEmptyDirectory(self):
-    dataset = dataset_ops.Dataset.list_files(path.join(self.tmp_dir, '*'))
-    self.assertDatasetProduces(dataset, expected_output=[])
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyDirectory(self):
+    with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError,
+                                             'No files matched'):
+      dataset = dataset_ops.Dataset.list_files(path.join(self.tmp_dir, '*'))
+      # We need requires_initialization=True so that getNext uses
+      # make_initializable_iterator instead of make_one_shot_iterator.
+      # make_one_shot_iterator has an issue where it fails to capture control
+      # dependencies when capturing the dataset, so it loses the assertion that
+      # list_files matches at least one file.
+      # TODO(b/140837601): Make this work with make_one_shot_iterator.
+      self.getNext(dataset, requires_initialization=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSimpleDirectory(self):
     filenames = ['a', 'b', 'c']
     self._touchTempFiles(filenames)
@@ -62,6 +73,7 @@ class ListFilesTest(test_base.DatasetTestBase):
         ],
         assert_items_equal=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSimpleDirectoryNotShuffled(self):
     filenames = ['b', 'c', 'a']
     self._touchTempFiles(filenames)
@@ -107,6 +119,7 @@ class ListFilesTest(test_base.DatasetTestBase):
     self.assertEqual(all_actual_filenames[0], all_actual_filenames[1])
     self.assertEqual(all_actual_filenames[0], all_actual_filenames[2])
 
+  @combinations.generate(test_base.default_test_combinations())
   def tesEmptyDirectoryInitializer(self):
 
     def dataset_fn():
@@ -118,6 +131,7 @@ class ListFilesTest(test_base.DatasetTestBase):
                         'No files matched pattern'),
         requires_initialization=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSimpleDirectoryInitializer(self):
     filenames = ['a', 'b', 'c']
     self._touchTempFiles(filenames)
@@ -131,6 +145,7 @@ class ListFilesTest(test_base.DatasetTestBase):
         ],
         assert_items_equal=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFileSuffixes(self):
     filenames = ['a.txt', 'b.py', 'c.py', 'd.pyc']
     self._touchTempFiles(filenames)
@@ -144,6 +159,7 @@ class ListFilesTest(test_base.DatasetTestBase):
         ],
         assert_items_equal=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFileMiddles(self):
     filenames = ['a.txt', 'b.py', 'c.pyc']
     self._touchTempFiles(filenames)
@@ -157,6 +173,7 @@ class ListFilesTest(test_base.DatasetTestBase):
         ],
         assert_items_equal=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNoShuffle(self):
     filenames = ['a', 'b', 'c']
     self._touchTempFiles(filenames)
@@ -186,6 +203,7 @@ class ListFilesTest(test_base.DatasetTestBase):
     self.assertEqual(actual_filenames[:len(filenames)],
                      actual_filenames[len(filenames):])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMultiplePatternsAsList(self):
     filenames = ['a.txt', 'b.py', 'c.py', 'd.pyc']
     self._touchTempFiles(filenames)
@@ -200,6 +218,7 @@ class ListFilesTest(test_base.DatasetTestBase):
         ],
         assert_items_equal=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMultiplePatternsAsTensor(self):
     filenames = ['a.txt', 'b.py', 'c.py', 'd.pyc']
     self._touchTempFiles(filenames)

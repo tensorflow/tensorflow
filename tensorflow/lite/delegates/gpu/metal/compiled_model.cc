@@ -107,22 +107,36 @@ bool Contains(
   return true;
 }
 
+uint32_t BufferUseCount(ValueId id,
+                        const std::list<ComputeTaskDescriptorPtr>& descriptors,
+                        std::list<FusionSequence>* chains) {
+  uint32_t use_count = 0;
+  // Buffer may be read by both processed and not processed operations.
+  for (auto& desc : descriptors) {
+    if (Contains(desc->input_buffers, id)) {
+      use_count++;
+    }
+  }
+
+  for (auto& chain : *chains) {
+    if (Contains(chain.begin()->get()->input_buffers, id)) {
+      use_count++;
+    }
+  }
+  return use_count;
+}
+
 // Examines if the second operation can be linked to the first one. Linking may
 // be skipped in the situation when conflic may happen: if first operation's
 // output is used by more than 1 other operation.
 bool CanFuseOperations(const ComputeTaskDescriptorPtr first,
                        const ComputeTaskDescriptorPtr second,
                        const std::vector<ValueId>& output_ids,
-                       const std::list<ComputeTaskDescriptorPtr>& descriptors) {
-  int use_count = 0;
-  if (second->is_linkable && !Contains(output_ids, first->output_buffer.id)) {
-    for (auto& desc : descriptors) {
-      if (Contains(desc->input_buffers, first->output_buffer.id)) {
-        use_count++;
-      }
-    }
-  }
-  return (use_count == 1);
+                       const std::list<ComputeTaskDescriptorPtr>& descriptors,
+                       std::list<FusionSequence>* chains) {
+  return second->is_linkable &&
+         !Contains(output_ids, first->output_buffer.id) &&
+         BufferUseCount(first->output_buffer.id, descriptors, chains) == 1;
 }
 
 // Takes an unsorted list of task descriptors, builds a list of chains. Each
@@ -166,7 +180,7 @@ void BuildFusableChains(const std::vector<ValueId>& input_ids,
           if (Contains(task_descriptor->input_buffers,
                        chain.back()->output_buffer.id)) {
             if (CanFuseOperations(chain.back(), task_descriptor, output_ids,
-                                  *descriptors)) {
+                                  *descriptors, chains)) {
               chain.push_back(task_descriptor);
             } else {
               // Start new chain.
@@ -410,16 +424,16 @@ ComputeTaskDescriptorPtr NonLinkableStub(int operation_id, ValueId input_id,
       {"constant int2& size",
        [input_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_id)->second;
-         return VectorToUint8Vector(std::vector<int>{dimension.w, dimension.h});
+         return GetByteBuffer(std::vector<int>{dimension.w, dimension.h});
        }},
   };
 
   desc->resize_function = [input_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& dimension = buffers.find(input_id)->second;
     uint3 groups_size{16, 16, 1};
-    uint3 groups_count{AlignByN(dimension.w, groups_size.x),
-                       AlignByN(dimension.h, groups_size.y),
-                       AlignByN(dimension.c, 4)};
+    uint3 groups_count{IntegralDivideRoundUp(dimension.w, groups_size.x),
+                       IntegralDivideRoundUp(dimension.h, groups_size.y),
+                       IntegralDivideRoundUp(dimension.c, 4)};
     return std::make_pair(groups_size, groups_count);
   };
 

@@ -21,7 +21,7 @@ import static org.junit.Assert.fail;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.FloatBuffer;
+import java.nio.DoubleBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
@@ -242,10 +242,10 @@ public final class InterpreterTest {
 
   @Test
   public void testRunWithUnsupportedInputType() {
-    FloatBuffer floatBuffer = FloatBuffer.allocate(10);
+    DoubleBuffer doubleBuffer = DoubleBuffer.allocate(10);
     float[][][][] parsedOutputs = new float[2][8][8][3];
     try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
-      interpreter.run(floatBuffer, parsedOutputs);
+      interpreter.run(doubleBuffer, parsedOutputs);
       fail();
     } catch (IllegalArgumentException e) {
       assertThat(e).hasMessageThat().contains("DataType error: cannot resolve DataType of");

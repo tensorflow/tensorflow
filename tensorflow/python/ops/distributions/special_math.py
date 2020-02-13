@@ -479,7 +479,7 @@ def log_cdf_laplace(x, name="log_cdf_laplace"):
     #   exp{-x} --> inf, for x << -1
     safe_exp_neg_x = math_ops.exp(-math_ops.abs(x))
 
-    # log1p(z) = log(1 + z) approx z for |z| << 1. This approxmation is used
+    # log1p(z) = log(1 + z) approx z for |z| << 1. This approximation is used
     # internally by log1p, rather than being done explicitly here.
     upper_solution = math_ops.log1p(-0.5 * safe_exp_neg_x)
 

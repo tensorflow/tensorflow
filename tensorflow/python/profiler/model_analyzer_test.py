@@ -229,14 +229,14 @@ class PrintModelAnalysisTest(test.TestCase):
         with gfile.Open(outfile, 'r') as f:
           lines = f.read().split('\n')
           self.assertGreater(len(lines), 5)
-          result = '\n'.join([l[:min(len(l), 80)] for l in lines])
+          result = '\n'.join(l[:min(len(l), 80)] for l in lines)
           self.assertTrue(
               compat.as_text(lib.CheckAndRemoveDoc(result))
               .startswith('node name | # parameters | # float_ops'))
 
         self.assertLess(0, tfprof_node.total_exec_micros)
         self.assertEqual(2844, tfprof_node.total_parameters)
-        #The graph is modifed when MKL is enabled,total_float_ops will
+        #The graph is modified when MKL is enabled,total_float_ops will
         #be different
         if test_util.IsMklEnabled():
           self.assertLess(101600, tfprof_node.total_float_ops)

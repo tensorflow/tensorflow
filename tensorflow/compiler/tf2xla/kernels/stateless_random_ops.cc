@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -41,11 +42,23 @@ xla::BitGeneratorTy GetBitGeneratorForDevice(
   // Turn on the Philox algorithm for the CPU and GPU backends only.
   if (device_type_string == DEVICE_GPU_XLA_JIT ||
       device_type_string == DEVICE_CPU_XLA_JIT) {
-    return [](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
-      return xla::PhiloxBitGenerator(key, state, shape, /*scramble=*/true);
+    return [=](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
+      std::tie(state, key) = xla::ScramblePhiloxKey(key);
+      xla::XlaOp philox_state =
+          xla::ConcatInDim(key.builder(), {xla::Reshape(key, {1}), state}, 0);
+      xla::XlaOp result = xla::RngBitGenerator(xla::RandomAlgorithm::RNG_PHILOX,
+                                               philox_state, shape);
+      return xla::RngOutput{/*value=*/xla::GetTupleElement(result, 1),
+                            /*state=*/xla::GetTupleElement(result, 0)};
     };
   }
-  return xla::ThreeFryBitGenerator;
+  return [=](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
+    state = xla::ConcatScalars(key.builder(), {key, state});
+    xla::XlaOp result =
+        xla::RngBitGenerator(xla::RandomAlgorithm::RNG_DEFAULT, state, shape);
+    return xla::RngOutput{/*value=*/xla::GetTupleElement(result, 1),
+                          /*state=*/xla::GetTupleElement(result, 0)};
+  };
 }
 
 }  // namespace

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops import distribute
+from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import traverse
 from tensorflow.python.framework import op_def_registry
@@ -42,7 +43,8 @@ def auto_shard_dataset(dataset, num_shards, index):
     files. The input dataset will be returned if we cannot automatically
     determine a good way to shard the input dataset.
   """
-  if dataset.options().experimental_distribute.auto_shard:
+  if (dataset.options().experimental_distribute.auto_shard_policy !=
+      AutoShardPolicy.OFF):
     if isinstance(dataset, dataset_ops.DatasetV1):
       return distribute._AutoShardDatasetV1(dataset, num_shards, index)
     else:
@@ -60,7 +62,7 @@ def _clone_dataset(dataset):
 
 
 def _get_op_def(op):
-  return op.op_def or op_def_registry.get_registered_ops()[op.type]
+  return op.op_def or op_def_registry.get(op.type)
 
 
 def _clone_helper(op_to_clone, variant_tensor_ops):

@@ -15,16 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 
+#include <memory>
+
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 
 namespace xla {
 namespace {
 
 namespace op = ::xla::testing::opcode_matchers;
 
-StatusOr<std::unique_ptr<HloModule>> GetParsedModule(
+StatusOr<std::unique_ptr<VerifiedHloModule>> GetParsedModule(
     HloComputation** entry_computation, HloInstruction** param0,
     HloInstruction** param1) {
   const char* const hlo_string = R"(
@@ -36,8 +42,11 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseAndReturnUnverifiedModule(hlo_string));
+  auto module = absl::make_unique<VerifiedHloModule>(
+      "TupleUtilTest", HloModuleConfig(), /*verifier_layout_sensitive=*/true,
+      /*allow_mixed_precision_in_hlo_verifier=*/false,
+      ShapeUtil::ByteSizeOfElements);
+  TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_string));
 
   *entry_computation = module->entry_computation();
   *param0 = (*entry_computation)->parameter_instruction(0);
@@ -51,8 +60,7 @@ TEST(TupleUtilTest, ExtractPrefix) {
   HloComputation* entry_computation;
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
-      GetParsedModule(&entry_computation, &param0, &param1));
+      auto module, GetParsedModule(&entry_computation, &param0, &param1));
 
   HloInstruction* prefix = TupleUtil::ExtractPrefix(param0, 2);
 
@@ -65,8 +73,7 @@ TEST(TupleUtilTest, AppendSuffix) {
   HloComputation* entry_computation;
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
-      GetParsedModule(&entry_computation, &param0, &param1));
+      auto module, GetParsedModule(&entry_computation, &param0, &param1));
 
   HloInstruction* with_suffix =
       TupleUtil::AppendSuffix(param0, {param1, param1});

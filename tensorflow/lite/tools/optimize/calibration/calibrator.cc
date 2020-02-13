@@ -22,17 +22,21 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_common.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
+#include "tensorflow/lite/tools/optimize/calibration/logging_op.h"
 #include "tensorflow/lite/tools/optimize/calibration/logging_op_resolver.h"
 #include "tensorflow/lite/tools/optimize/calibration/node_info_delegate.h"
 
@@ -53,9 +57,11 @@ class Calibrator {
  public:
   Calibrator(const std::unordered_map<const TfLiteNode*, OperatorInfo>&
                  node_ptr_opinfo_map,
-             std::unique_ptr<LoggingOpResolver> logging_op_resolver)
+             std::unique_ptr<LoggingOpResolver> logging_op_resolver,
+             ErrorReporter* error_reporter)
       : node_ptr_opinfo_map_(node_ptr_opinfo_map),
-        logging_op_resolver_(std::move(logging_op_resolver)) {
+        logging_op_resolver_(std::move(logging_op_resolver)),
+        error_reporter_(error_reporter) {
     logger_ = absl::make_unique<Logger>();
   }
 
@@ -64,6 +70,9 @@ class Calibrator {
 
   // Gets the instance of logger associated with the current context.
   Logger* GetLogger() const { return logger_.get(); }
+
+  // Gets the error reporter.
+  ErrorReporter* GetErrorReporter() const { return error_reporter_; }
 
   // Gets the operator information about the given TfLiteNode.
   const OperatorInfo& GetOpInfo(const TfLiteNode* node) const {
@@ -75,6 +84,7 @@ class Calibrator {
   std::unique_ptr<LoggingOpResolver> logging_op_resolver_;
   const std::unordered_map<int, OperatorInfo> index_opinfo_;
   std::unique_ptr<Logger> logger_;
+  ErrorReporter* error_reporter_;
 };
 
 KernelEvalFuncPtr Calibrator::GetKernelInvoke(const TfLiteNode* node) const {
@@ -142,8 +152,8 @@ class GlobalCalibratorRegistry {
           "Failed to create calibrator, context already registered.");
       return kTfLiteError;
     }
-    std::unique_ptr<Calibrator> calibrator = absl::make_unique<Calibrator>(
-        node_to_opinfo, std::move(logging_op_resolver));
+    auto calibrator = absl::make_unique<Calibrator>(
+        node_to_opinfo, std::move(logging_op_resolver), reporter);
     calibrator_registry_[context] = std::move(calibrator);
     *calibrator_ptr = calibrator_registry_.at(context).get();
     return kTfLiteOk;
@@ -159,6 +169,19 @@ GlobalCalibratorRegistry* GetCalibratorRegistry() {
   return registry;
 }
 
+// Get the logging kernel if there are any.
+// TODO(jianlijianli): extend this to support multiple recipe for the same
+// model.
+logging_kernel_func_ptr GetLoggingEvalFunc(TfLiteContext* context,
+                                           TfLiteNode* node) {
+  const int lstm_number_input = 24;
+  if (node->inputs->size == lstm_number_input) {
+    // LSTM Op.
+    return tflite::optimize::calibration::builtin::lstm_logging_kernel;
+  }
+  return nullptr;
+}
+
 // A wrapper implementation for |TfLiteRegistration.invoke| that logs inputs,
 // invokes the wrapped implementation and then logs the outputs.
 TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
@@ -172,23 +195,39 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
   auto kernel_invoke = calibrator->GetKernelInvoke(node);
   auto logger = calibrator->GetLogger();
   auto op_info = calibrator->GetOpInfo(node);
+  auto error_reporter = calibrator->GetErrorReporter();
 
   for (int i : op_info.loggable_inputs) {
     auto tensor = context->tensors[i];
-    TF_LITE_ENSURE_STATUS(
-        logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float)));
+    TF_LITE_ENSURE_STATUS(logger->LogTensorValue(
+        i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
+  }
+  auto kernel_invoke_intermediate = GetLoggingEvalFunc(context, node);
+  TfLiteStatus status;
+  if (kernel_invoke_intermediate == nullptr) {
+    status = kernel_invoke(context, node);
+  } else {
+    status = kernel_invoke_intermediate(context, node, calibrator->GetLogger(),
+                                        error_reporter);
   }
 
-  auto status = kernel_invoke(context, node);
   // TODO(shashishekhar): An intermediate tensor in graph will get logged twice
   // once as an input and second time as output. This doesn't change the min max
   // values but is inefficient.
   // Using moving average will also break this.
 
+  // Log input again to make sure the state tensors are captured after lstm
+  // cell.
+  for (int i : op_info.loggable_inputs) {
+    auto tensor = context->tensors[i];
+    TF_LITE_ENSURE_STATUS(logger->LogTensorValue(
+        i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
+  }
+
   for (int i : op_info.loggable_outputs) {
     auto tensor = context->tensors[i];
-    TF_LITE_ENSURE_STATUS(
-        logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float)));
+    TF_LITE_ENSURE_STATUS(logger->LogTensorValue(
+        i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
   }
 
   return status;
@@ -203,7 +242,7 @@ std::vector<int> GetLoggableTensorIndices(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* tensor_buffers) {
   std::vector<int> loggable;
   for (auto tensor_index : tensor_indices) {
-    if (tensor_index == kOptionalTensor) {
+    if (tensor_index == kTfLiteOptionalTensor) {
       continue;
     }
     auto tensor = tensors->Get(tensor_index);

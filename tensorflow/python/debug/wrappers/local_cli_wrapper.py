@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import argparse
 import os
-import shutil
 import sys
 import tempfile
 
@@ -34,6 +33,7 @@ from tensorflow.python.debug.cli import ui_factory
 from tensorflow.python.debug.lib import common
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
+from tensorflow.python.lib.io import file_io
 
 
 _DUMP_ROOT_PREFIX = "tfdbg_"
@@ -375,7 +375,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
   def _remove_dump_root(self):
     if os.path.isdir(self._dump_root):
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
 
   def _prep_debug_cli_for_run_end(self,
                                   debug_dump,
@@ -393,7 +393,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         and caused the preparation of this run-end CLI (if any).
       passed_filter_exclude_node_names: (None or str) Regular expression used
         with the tensor filter to exclude ops with names matching the regular
-        expresssion.
+        expression.
     """
 
     if tf_error:

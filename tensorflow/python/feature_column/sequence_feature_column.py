@@ -30,7 +30,6 @@ from tensorflow.python.feature_column import utils as fc_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import parsing_ops
@@ -582,20 +581,17 @@ class SequenceNumericColumn(
     """See 'FeatureColumn` base class."""
     return [self.key]
 
-  def _get_config(self):
+  def get_config(self):
     """See 'FeatureColumn` base class."""
     config = dict(zip(self._fields, self))
-    config['normalizer_fn'] = utils.serialize_keras_object(self.normalizer_fn)
     config['dtype'] = self.dtype.name
     return config
 
   @classmethod
-  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+  def from_config(cls, config, custom_objects=None, columns_by_name=None):
     """See 'FeatureColumn` base class."""
     fc._check_config_keys(config, cls._fields)
     kwargs = fc._standardize_and_copy_config(config)
-    kwargs['normalizer_fn'] = utils.deserialize_keras_object(
-        config['normalizer_fn'], custom_objects=custom_objects)
     kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
     return cls(**kwargs)
 

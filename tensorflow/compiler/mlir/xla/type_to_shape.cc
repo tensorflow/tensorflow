@@ -17,13 +17,14 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/IR/AffineMap.h"  // TF:local_config_mlir
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Support/DebugStringHelper.h"  // TF:local_config_mlir
+#include "mlir/IR/AffineMap.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -156,6 +157,17 @@ Shape TypeToShape(mlir::Type type) {
         return ShapeUtil::MakeShape(primitive_type, span);
       break;
     }
+    case mlir::StandardTypes::Tuple: {
+      const auto t = type.cast<mlir::TupleType>();
+      llvm::SmallVector<Shape, 4> shapes;
+      shapes.reserve(t.size());
+      for (mlir::Type sub_type : t.getTypes()) {
+        shapes.push_back(TypeToShape(sub_type));
+      }
+      return ShapeUtil::MakeTupleShape(shapes);
+    }
+    case mlir::xla_hlo::HLOTypes::Token:
+      return ShapeUtil::MakeTokenShape();
     default:
       break;
   }

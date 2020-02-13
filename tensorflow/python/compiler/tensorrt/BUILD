@@ -3,16 +3,12 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_copts",
-)
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load(
-    "@local_config_tensorrt//:build_defs.bzl",
-    "if_tensorrt",
-)
+
+# cuda_py_test and cuda_py_tests enable XLA tests by default. We can't
+# combine XLA with TensorRT currently and should set
+# xla_enable_strict_auto_jit to False to disable XLA tests.
 
 package(
     default_visibility = ["//visibility:public"],
@@ -59,6 +55,15 @@ py_library(
 )
 
 py_library(
+    name = "trt_convert_windows",
+    srcs = ["trt_convert_windows.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "tf_trt_integration_test_base",
     srcs = ["test/tf_trt_integration_test_base.py"],
     deps = [
@@ -78,9 +83,23 @@ py_library(
 cuda_py_test(
     name = "trt_convert_test",
     srcs = ["trt_convert_test.py"],
-    additional_deps = [
+    data = [
+        "test/testdata/tftrt_2.0_saved_model/saved_model.pb",
+        "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00000-of-00002",
+        "test/testdata/tftrt_2.0_saved_model/variables/variables.data-00001-of-00002",
+        "test/testdata/tftrt_2.0_saved_model/variables/variables.index",
+    ],
+    python_version = "PY3",
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_pip",
+        "no_rocm",
+        "no_windows",
+        "nomac",
+    ],
+    xla_enable_strict_auto_jit = False,
+    deps = [
         ":trt_convert_py",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:graph_util",
@@ -92,14 +111,8 @@ cuda_py_test(
         "//tensorflow/python/saved_model:utils",
         "//tensorflow/python/tools:freeze_graph_lib",
         "//tensorflow/python/tools:saved_model_utils",
+        "@absl_py//absl/testing:parameterized",
     ],
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_rocm",
-        "no_windows",
-        "nomac",
-    ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -122,22 +135,24 @@ cuda_py_tests(
         "test/rank_two_test.py",
         "test/reshape_transpose_test.py",
         "test/topk_test.py",
+        "test/trt_mode_test.py",
         "test/unary_test.py",
         "test/vgg_block_nchw_test.py",
         "test/vgg_block_test.py",
     ],
-    additional_deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_rocm",
         "no_windows",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
 )
 
 cuda_py_tests(
@@ -146,35 +161,30 @@ cuda_py_tests(
         "test/biasadd_matmul_test.py",
         "test/concatenation_test.py",
     ],
-    additional_deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "no_windows",
         "nomac",
         "notap",  # b/140261407
     ],
-    xla_enable_strict_auto_jit = True,
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
 )
 
 cuda_py_test(
     name = "quantization_mnist_test",
     srcs = ["test/quantization_mnist_test.py"],
-    additional_deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/keras:keras",
-        "//tensorflow/python/estimator:estimator",
-    ],
     data = [
-        "test/testdata/checkpoint",
-        "test/testdata/model.ckpt-46900.data-00000-of-00001",
-        "test/testdata/model.ckpt-46900.index",
+        "test/testdata/mnist/checkpoint",
+        "test/testdata/mnist/model.ckpt-46900.data-00000-of-00001",
+        "test/testdata/mnist/model.ckpt-46900.index",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
@@ -184,5 +194,12 @@ cuda_py_test(
         "no_windows",
         "nomac",
     ],
-    xla_enable_strict_auto_jit = True,
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/keras",
+    ],
 )

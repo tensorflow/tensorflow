@@ -65,6 +65,8 @@ class RemoteCopyNode : public AsyncEagerNode {
 
   ~RemoteCopyNode() override;
 
+  Status Prepare() override;
+
   void RunAsync(StatusCallback done) override;
 
   void Abort(Status status) override;
@@ -164,6 +166,7 @@ class RemoteCopyNode : public AsyncEagerNode {
   const uint64 recv_op_id_;
 
   std::shared_ptr<CapturedSharedState> captured_state_;
+  bool started_;
 };
 
 }  // namespace eager

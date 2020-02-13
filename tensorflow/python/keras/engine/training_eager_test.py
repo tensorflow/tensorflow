@@ -280,18 +280,6 @@ class CorrectnessTest(keras_parameterized.TestCase):
     history = model.fit(dataset, epochs=1, steps_per_epoch=10)
     self.assertAlmostEqual(history.history['loss'][-1], 0.5836, 4)
 
-  def test_loss_in_call(self):
-
-    class HasLoss(keras.layers.Layer):
-
-      def call(self, x):
-        self.add_loss(x)
-        return x
-
-    layer = HasLoss()
-    layer(1.)  # Plain-value inputs are only valid in eager mode.
-    self.assertEqual(1, len(layer.losses))
-
   @parameterized.named_parameters([
       ('_None', contextlib.contextmanager(lambda: iter([None])), 0., 4.),
       ('_0', lambda: keras.backend.learning_phase_scope(0), 4., 4.),

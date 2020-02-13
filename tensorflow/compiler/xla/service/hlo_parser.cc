@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
+#include <memory>
+#include <string>
 #include <type_traits>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -31,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -67,23 +73,19 @@ HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
   return schedule;
 }
 
-// Some functions accept either a linear index or a multi-dimensional index
-// (used for indexing into sparse literals).
-using LinearOrMultiIndex = absl::variant<int64, absl::Span<const int64>>;
-
 // Parser for the HloModule::ToString() format text.
-class HloParser {
+class HloParserImpl : public HloParser {
  public:
   using LocTy = HloLexer::LocTy;
 
-  explicit HloParser(absl::string_view str) : lexer_(str) {}
+  explicit HloParserImpl(absl::string_view str) : lexer_(str) {}
 
   // Runs the parser and constructs the resulting HLO in the given (empty)
-  // HloModule. Returns false if an error occurred.
-  Status Run(HloModule* module);
+  // HloModule. Returns the error status in case an error occurred.
+  Status Run(HloModule* module) override;
 
   // Returns the error information.
-  string GetError() const { return StrJoin(error_, "\n"); }
+  std::string GetError() const { return StrJoin(error_, "\n"); }
 
   // Stand alone parsing utils for various aggregate data types.
   StatusOr<Shape> ParseShapeOnly();
@@ -97,7 +99,7 @@ class HloParser {
 
  private:
   using InstrNameTable =
-      std::unordered_map<string, std::pair<HloInstruction*, LocTy>>;
+      absl::flat_hash_map<std::string, std::pair<HloInstruction*, LocTy>>;
 
   // Returns the map from the instruction name to the instruction itself and its
   // location in the current scope.
@@ -111,7 +113,7 @@ class HloParser {
   // create an instruction. This is useful when we reify parameters as they're
   // resolved; i.e. for ParseSingleInstruction.
   std::pair<HloInstruction*, LocTy>* FindInstruction(
-      const string& name, const optional<Shape>& shape = nullopt);
+      const std::string& name, const optional<Shape>& shape = nullopt);
 
   // Parse a single instruction worth of text.
   bool ParseSingleInstruction(HloModule* module);
@@ -122,33 +124,31 @@ class HloParser {
   bool ParseComputations(HloModule* module);
   bool ParseComputation(HloComputation** entry_computation);
   bool ParseInstructionList(HloComputation** computation,
-                            const string& computation_name);
-  bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
-  bool ParseInstructionRhs(HloComputation::Builder* builder, const string& name,
-                           LocTy name_loc);
+                            const std::string& computation_name);
+  bool ParseInstruction(HloComputation::Builder* builder,
+                        std::string* root_name);
+  bool ParseInstructionRhs(HloComputation::Builder* builder,
+                           const std::string& name, LocTy name_loc);
   bool ParseControlPredecessors(HloInstruction* instruction);
   bool ParseLiteral(Literal* literal, const Shape& shape);
   bool ParseTupleLiteral(Literal* literal, const Shape& shape);
   bool ParseNonTupleLiteral(Literal* literal, const Shape& shape);
   bool ParseDenseLiteral(Literal* literal, const Shape& shape);
-  bool ParseSparseLiteral(Literal* literal, const Shape& shape);
 
-  // Sets the sub-value of literal at the given linear or sparse index to the
-  // given value. If the literal is dense, it myst have the default layout.
+  // Sets the sub-value of literal at the given linear index to the
+  // given value. If the literal is dense, it must have the default layout.
   //
   // `loc` should be the source location of the value.
-  bool SetValueInLiteral(LocTy loc, int64 value, LinearOrMultiIndex index,
+  bool SetValueInLiteral(LocTy loc, int64 value, int64 index, Literal* literal);
+  bool SetValueInLiteral(LocTy loc, double value, int64 index,
                          Literal* literal);
-  bool SetValueInLiteral(LocTy loc, double value, LinearOrMultiIndex index,
+  bool SetValueInLiteral(LocTy loc, bool value, int64 index, Literal* literal);
+  bool SetValueInLiteral(LocTy loc, std::complex<double> value, int64 index,
                          Literal* literal);
-  bool SetValueInLiteral(LocTy loc, bool value, LinearOrMultiIndex index,
-                         Literal* literal);
-  bool SetValueInLiteral(LocTy loc, std::complex<double> value,
-                         LinearOrMultiIndex index, Literal* literal);
   // `loc` should be the source location of the value.
   template <typename LiteralNativeT, typename ParsedElemT>
-  bool SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
-                               LinearOrMultiIndex index, Literal* literal);
+  bool SetValueInLiteralHelper(LocTy loc, ParsedElemT value, int64 index,
+                               Literal* literal);
 
   // Checks whether the given value is within the range of LiteralNativeT.
   // `loc` should be the source location of the value.
@@ -203,7 +203,9 @@ class HloParser {
     kDistribution,
     kDomain,
     kPrecisionList,
-    kShapeList
+    kShapeList,
+    kEnum,
+    kRandomAlgorithm,
   };
 
   struct AttrConfig {
@@ -222,7 +224,7 @@ class HloParser {
   //
   // Example usage:
   //
-  //  std::unordered_map<string, AttrConfig> attrs;
+  //  absl::flat_hash_map<std::string, AttrConfig> attrs;
   //  optional<int64> foo;
   //  attrs["foo"] = {/*required=*/false, AttrTy::kInt64, &foo};
   //  optional<Window> bar;
@@ -233,34 +235,38 @@ class HloParser {
   //  // Do something with 'bar'.
   //  if (foo) { // If attr foo is seen, do something with 'foo'. }
   //
-  bool ParseAttributes(const std::unordered_map<string, AttrConfig>& attrs);
+  bool ParseAttributes(
+      const absl::flat_hash_map<std::string, AttrConfig>& attrs);
 
   // sub_attributes ::= '{' (','? attribute)* '}'
   //
   // Usage is the same as ParseAttributes. See immediately above.
-  bool ParseSubAttributes(const std::unordered_map<string, AttrConfig>& attrs);
+  bool ParseSubAttributes(
+      const absl::flat_hash_map<std::string, AttrConfig>& attrs);
 
   // Parses one attribute. If it has already been seen, return error. Returns
   // true and adds to seen_attrs on success.
   //
   // Do not call this except in ParseAttributes or ParseSubAttributes.
-  bool ParseAttributeHelper(const std::unordered_map<string, AttrConfig>& attrs,
-                            std::unordered_set<string>* seen_attrs);
+  bool ParseAttributeHelper(
+      const absl::flat_hash_map<std::string, AttrConfig>& attrs,
+      absl::flat_hash_set<std::string>* seen_attrs);
+
+  // Copy attributes from `attrs` to `message`, unless the attribute name is in
+  // `non_proto_attrs`.
+  bool CopyAttributeToProtoMessage(
+      absl::flat_hash_set<std::string> non_proto_attrs,
+      const absl::flat_hash_map<std::string, AttrConfig>& attrs,
+      tensorflow::protobuf::Message* message);
 
   // Parses an attribute string into a protocol buffer `message`.
   // Since proto3 has no notion of mandatory fields, `required_attrs` gives the
   // set of mandatory attributes.
+  // `non_proto_attrs` specifies attributes that are not written to the proto,
+  // but added to the HloInstruction.
   bool ParseAttributesAsProtoMessage(
-      const std::unordered_set<string>& required_attrs,
+      const absl::flat_hash_map<std::string, AttrConfig>& non_proto_attrs,
       tensorflow::protobuf::Message* message);
-
-  // Parses one attribute. If it has already been seen, return error. Returns
-  // true and adds to seen_attrs on success.
-  //
-  // Do not call this except in ParseAttributesAsProtoMessage.
-  bool ParseAttributeAsProtoMessageHelper(
-      tensorflow::protobuf::Message* message,
-      std::unordered_set<string>* seen_attrs);
 
   // Parses a name and finds the corresponding hlo computation.
   bool ParseComputationName(HloComputation** value);
@@ -282,8 +288,8 @@ class HloParser {
   bool ParseDomain(DomainData* domain);
 
   // Parses a sub-attribute of the window attribute, e.g.,size=1x2x3.
-  bool ParseDxD(const string& name, std::vector<int64>* result);
-  // Parses window's pad sub-attriute, e.g., pad=0_0x3x3.
+  bool ParseDxD(const std::string& name, std::vector<int64>* result);
+  // Parses window's pad sub-attribute, e.g., pad=0_0x3x3.
   bool ParseWindowPad(std::vector<std::vector<int64>>* pad);
 
   bool ParseSliceRanges(SliceRanges* result);
@@ -303,9 +309,9 @@ class HloParser {
 
   bool ParseParamListToShape(Shape* shape, LocTy* shape_loc);
   bool ParseParamList();
-  bool ParseName(string* result);
-  bool ParseAttributeName(string* result);
-  bool ParseString(string* result);
+  bool ParseName(std::string* result);
+  bool ParseAttributeName(std::string* result);
+  bool ParseString(std::string* result);
   bool ParseDimensionSizes(std::vector<int64>* dimension_sizes,
                            std::vector<bool>* dynamic_dimensions);
   bool ParseShape(Shape* result);
@@ -318,12 +324,13 @@ class HloParser {
   bool ParseComparisonDirection(ComparisonDirection* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
+  bool ParseRandomAlgorithm(RandomAlgorithm* result);
   bool ParsePrecision(PrecisionConfig::Precision* result);
   bool ParseInt64(int64* result);
   bool ParseDouble(double* result);
   bool ParseComplex(std::complex<double>* result);
   bool ParseBool(bool* result);
-  bool ParseToken(TokKind kind, const string& msg);
+  bool ParseToken(TokKind kind, const std::string& msg);
 
   // Returns true if the current token is the beginning of a shape.
   bool CanBeShape();
@@ -341,11 +348,11 @@ class HloParser {
 
   // Adds the instruction to the pool. Returns false and emits an error if the
   // instruction already exists.
-  bool AddInstruction(const string& name, HloInstruction* instruction,
+  bool AddInstruction(const std::string& name, HloInstruction* instruction,
                       LocTy name_loc);
   // Adds the computation to the pool. Returns false and emits an error if the
   // computation already exists.
-  bool AddComputation(const string& name, HloComputation* computation,
+  bool AddComputation(const std::string& name, HloComputation* computation,
                       LocTy name_loc);
 
   HloLexer lexer_;
@@ -374,11 +381,11 @@ class HloParser {
   };
 
   // Map from the computation name to the computation itself and its location.
-  std::unordered_map<string, std::pair<HloComputation*, LocTy>>
+  absl::flat_hash_map<std::string, std::pair<HloComputation*, LocTy>>
       computation_pool_;
 
   std::vector<std::unique_ptr<HloComputation>> computations_;
-  std::vector<string> error_;
+  std::vector<std::string> error_;
 
   // When an operand name cannot be resolved, this function is called to create
   // a parameter instruction with the given name and shape. It registers the
@@ -386,7 +393,7 @@ class HloParser {
   // the newly-created instruction and the placeholder location. If `name` is
   // empty, this should create the parameter with a generated name. This is
   // supposed to be set and used only in ParseSingleInstruction.
-  std::function<std::pair<HloInstruction*, LocTy>*(const string& name,
+  std::function<std::pair<HloInstruction*, LocTy>*(const std::string& name,
                                                    const Shape& shape)>
       create_missing_instruction_;
 };
@@ -416,26 +423,26 @@ std::vector<ReplicaGroup> CreateReplicaGroups(
   return replica_groups;
 }
 
-bool HloParser::Error(LocTy loc, absl::string_view msg) {
+bool HloParserImpl::Error(LocTy loc, absl::string_view msg) {
   auto line_col = lexer_.GetLineAndColumn(loc);
   const unsigned line = line_col.first;
   const unsigned col = line_col.second;
-  std::vector<string> error_lines;
+  std::vector<std::string> error_lines;
   error_lines.push_back(
       StrCat("was parsing ", line, ":", col, ": error: ", msg));
   error_lines.emplace_back(lexer_.GetLine(loc));
-  error_lines.push_back(col == 0 ? "" : StrCat(string(col - 1, ' '), "^"));
+  error_lines.push_back(col == 0 ? "" : StrCat(std::string(col - 1, ' '), "^"));
 
   error_.push_back(StrJoin(error_lines, "\n"));
   VLOG(1) << "Error: " << error_.back();
   return false;
 }
 
-bool HloParser::TokenError(absl::string_view msg) {
+bool HloParserImpl::TokenError(absl::string_view msg) {
   return Error(lexer_.GetLoc(), msg);
 }
 
-Status HloParser::Run(HloModule* module) {
+Status HloParserImpl::Run(HloModule* module) {
   lexer_.Lex();
   if (lexer_.GetKind() == TokKind::kw_HloModule) {
     // This means that the text contains a full HLO module.
@@ -456,8 +463,9 @@ Status HloParser::Run(HloModule* module) {
   return Status::OK();
 }
 
-std::pair<HloInstruction*, HloParser::LocTy>* HloParser::FindInstruction(
-    const string& name, const optional<Shape>& shape) {
+std::pair<HloInstruction*, HloParserImpl::LocTy>*
+HloParserImpl::FindInstruction(const std::string& name,
+                               const optional<Shape>& shape) {
   std::pair<HloInstruction*, LocTy>* instr = nullptr;
   if (!name.empty()) {
     instr = tensorflow::gtl::FindOrNull(current_name_table(), name);
@@ -490,20 +498,20 @@ std::pair<HloInstruction*, HloParser::LocTy>* HloParser::FindInstruction(
 }
 
 // ::= 'HloModule' name computations
-bool HloParser::ParseHloModule(HloModule* module) {
+bool HloParserImpl::ParseHloModule(HloModule* module) {
   if (lexer_.GetKind() != TokKind::kw_HloModule) {
     return TokenError("expects HloModule");
   }
   // Eat 'HloModule'
   lexer_.Lex();
 
-  string name;
+  std::string name;
   if (!ParseName(&name)) {
     return false;
   }
 
   absl::optional<bool> is_scheduled;
-  std::unordered_map<string, AttrConfig> attrs;
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   if (!ParseAttributes(attrs)) {
     return false;
@@ -522,7 +530,7 @@ bool HloParser::ParseHloModule(HloModule* module) {
 }
 
 // computations ::= (computation)+
-bool HloParser::ParseComputations(HloModule* module) {
+bool HloParserImpl::ParseComputations(HloModule* module) {
   HloComputation* entry_computation = nullptr;
   do {
     if (!ParseComputation(&entry_computation)) {
@@ -559,11 +567,11 @@ bool HloParser::ParseComputations(HloModule* module) {
 }
 
 // computation ::= ('ENTRY')? name (param_list_to_shape)? instruction_list
-bool HloParser::ParseComputation(HloComputation** entry_computation) {
+bool HloParserImpl::ParseComputation(HloComputation** entry_computation) {
   LocTy maybe_entry_loc = lexer_.GetLoc();
   const bool is_entry_computation = EatIfPresent(TokKind::kw_ENTRY);
 
-  string name;
+  std::string name;
   LocTy name_loc = lexer_.GetLoc();
   if (!ParseName(&name)) {
     return false;
@@ -604,15 +612,15 @@ bool HloParser::ParseComputation(HloComputation** entry_computation) {
 
 // instruction_list ::= '{' instruction_list1 '}'
 // instruction_list1 ::= (instruction)+
-bool HloParser::ParseInstructionList(HloComputation** computation,
-                                     const string& computation_name) {
+bool HloParserImpl::ParseInstructionList(HloComputation** computation,
+                                         const std::string& computation_name) {
   Scope scope(&scoped_name_tables_);
   HloComputation::Builder builder(computation_name);
   if (!ParseToken(TokKind::kLbrace,
                   "expects '{' at the beginning of instruction list.")) {
     return false;
   }
-  string root_name;
+  std::string root_name;
   do {
     if (!ParseInstruction(&builder, &root_name)) {
       return false;
@@ -630,6 +638,7 @@ bool HloParser::ParseInstructionList(HloComputation** computation,
     // This means some instruction was marked as ROOT but we didn't find it in
     // the pool, which should not happen.
     if (root_node == nullptr) {
+      // LOG(FATAL) crashes the program by calling abort().
       LOG(FATAL) << "instruction " << root_name
                  << " was marked as ROOT but the parser has not seen it before";
     }
@@ -645,9 +654,9 @@ bool HloParser::ParseInstructionList(HloComputation** computation,
 }
 
 // instruction ::= ('ROOT')? name '=' shape opcode operands (attribute)*
-bool HloParser::ParseInstruction(HloComputation::Builder* builder,
-                                 string* root_name) {
-  string name;
+bool HloParserImpl::ParseInstruction(HloComputation::Builder* builder,
+                                     std::string* root_name) {
+  std::string name;
   LocTy maybe_root_loc = lexer_.GetLoc();
   bool is_root = EatIfPresent(TokKind::kw_ROOT);
 
@@ -667,8 +676,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
   return ParseInstructionRhs(builder, name, name_loc);
 }
 
-bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
-                                    const string& name, LocTy name_loc) {
+bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
+                                        const std::string& name,
+                                        LocTy name_loc) {
   Shape shape;
   HloOpcode opcode;
   std::vector<HloInstruction*> operands;
@@ -677,8 +687,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     return false;
   }
 
-  // Add optional attributes.
-  std::unordered_map<string, AttrConfig> attrs;
+  // Add optional attributes. These are added to any HloInstruction type if
+  // present.
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
   optional<OpSharding> sharding;
   optional<FrontendAttributes> frontend_attributes;
   attrs["sharding"] = {/*required=*/false, AttrTy::kSharding, &sharding};
@@ -694,7 +705,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
   optional<OpMetadata> metadata;
   attrs["metadata"] = {/*required=*/false, AttrTy::kMetadata, &metadata};
 
-  optional<string> backend_config;
+  optional<std::string> backend_config;
   attrs["backend_config"] = {/*required=*/false, AttrTy::kString,
                              &backend_config};
   optional<std::vector<int64>> outer_dimension_partitions;
@@ -843,11 +854,14 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<HloComputation*> to_apply;
       optional<std::vector<int64>> replica_group_ids;
       optional<int64> channel_id;
+      optional<bool> constrain_layout;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       attrs["replica_groups"] = {/*required=*/false,
                                  AttrTy::kBracedInt64ListList, &tmp_groups};
       attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
+      attrs["constrain_layout"] = {/*required=*/false, AttrTy::kBool,
+                                   &constrain_layout};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -856,22 +870,33 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
       instruction = builder->AddInstruction(HloInstruction::CreateAllReduce(
-          shape, operands, *to_apply, replica_groups, channel_id));
+          shape, operands, *to_apply, replica_groups,
+          constrain_layout ? *constrain_layout : false, channel_id));
       break;
     }
     case HloOpcode::kAllToAll: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
       attrs["replica_groups"] = {/*required=*/false,
                                  AttrTy::kBracedInt64ListList, &tmp_groups};
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+      optional<int64> channel_id;
+      attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
+      optional<std::vector<int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
+                             &dimensions};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
+          (dimensions && dimensions->size() != 1)) {
         return false;
       }
       std::vector<ReplicaGroup> replica_groups;
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateAllToAll(shape, operands, replica_groups));
+      optional<int64> split_dimension;
+      if (dimensions) {
+        split_dimension = dimensions->at(0);
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateAllToAll(
+          shape, operands, replica_groups, channel_id, split_dimension));
       break;
     }
     case HloOpcode::kCollectivePermute: {
@@ -1015,6 +1040,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
           !ParseAttributes(attrs)) {
         return false;
       }
+      if (dynamic_cast<const HloChannelInstruction*>(operands[0]) == nullptr) {
+        return false;
+      }
       if (channel_id != operands[0]->channel_id()) {
         return false;
       }
@@ -1046,6 +1074,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
                                    &is_host_transfer};
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (dynamic_cast<const HloChannelInstruction*>(operands[0]) == nullptr) {
         return false;
       }
       if (channel_id != operands[0]->channel_id()) {
@@ -1155,7 +1186,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       TriangularSolveOptions options;
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributesAsProtoMessage(
-              /*required_attrs=*/std::unordered_set<string>(), &options)) {
+              /*non_proto_attrs=*/attrs, &options)) {
         return false;
       }
       instruction =
@@ -1179,7 +1210,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       CholeskyOptions options;
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributesAsProtoMessage(
-              /*required_attrs=*/std::unordered_set<string>(), &options)) {
+              /*non_proto_attrs=*/attrs, &options)) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -1419,7 +1450,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kInfeed: {
-      optional<string> config;
+      optional<std::string> config;
       attrs["infeed_config"] = {/*required=*/false, AttrTy::kString, &config};
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
@@ -1440,7 +1471,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kOutfeed: {
-      optional<string> config;
+      optional<std::string> config;
       attrs["outfeed_config"] = {/*required=*/false, AttrTy::kString, &config};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
@@ -1465,11 +1496,24 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kRngGetAndUpdateState: {
       optional<int64> delta;
       attrs["delta"] = {/*required=*/true, AttrTy::kInt64, &delta};
-      if (!ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
         return false;
       }
       instruction = builder->AddInstruction(
           HloInstruction::CreateRngGetAndUpdateState(shape, *delta));
+      break;
+    }
+    case HloOpcode::kRngBitGenerator: {
+      optional<RandomAlgorithm> algorithm;
+      attrs["algorithm"] = {/*required=*/true, AttrTy::kRandomAlgorithm,
+                            &algorithm};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateRngBitGenerator(
+              shape, operands[0], *algorithm));
       break;
     }
     case HloOpcode::kReducePrecision: {
@@ -1532,13 +1576,14 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kCustomCall: {
-      optional<string> custom_call_target;
+      optional<std::string> custom_call_target;
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64> feature_group_count;
       optional<int64> batch_group_count;
       optional<std::vector<Shape>> operand_layout_constraints;
       optional<bool> custom_call_has_side_effect;
+      optional<HloComputation*> to_apply;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
@@ -1552,6 +1597,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
           /*required=*/false, AttrTy::kShapeList, &operand_layout_constraints};
       attrs["custom_call_has_side_effect"] = {/*required=*/false, AttrTy::kBool,
                                               &custom_call_has_side_effect};
+      attrs["to_apply"] = {/*required=*/false, AttrTy::kHloComputation,
+                           &to_apply};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -1592,9 +1639,17 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
             shape, operands, *custom_call_target, *operand_layout_constraints,
             backend_config ? *backend_config : ""));
       } else {
-        instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
-            shape, operands, *custom_call_target,
-            backend_config ? *backend_config : ""));
+        if (to_apply.has_value()) {
+          instruction =
+              builder->AddInstruction(HloInstruction::CreateCustomCall(
+                  shape, operands, *to_apply, *custom_call_target,
+                  backend_config ? *backend_config : ""));
+        } else {
+          instruction =
+              builder->AddInstruction(HloInstruction::CreateCustomCall(
+                  shape, operands, *custom_call_target,
+                  backend_config ? *backend_config : ""));
+        }
       }
       auto custom_call_instr = Cast<HloCustomCallInstruction>(instruction);
       if (window.has_value()) {
@@ -1763,7 +1818,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));
-    case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kGetDimensionSize: {
       optional<std::vector<int64>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
@@ -1775,6 +1830,20 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
           builder->AddInstruction(HloInstruction::CreateGetDimensionSize(
               shape, operands[0], (*dimensions)[0]));
       break;
+    }
+    case HloOpcode::kSetDimensionSize: {
+      optional<std::vector<int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateSetDimensionSize(
+              shape, operands[0], operands[1], (*dimensions)[0]));
+      break;
+    }
   }
 
   instruction->SetAndSanitizeName(name);
@@ -1825,7 +1894,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
 // ::= '{' (single_sharding | tuple_sharding) '}'
 //
 // tuple_sharding ::= single_sharding* (',' single_sharding)*
-bool HloParser::ParseSharding(OpSharding* sharding) {
+bool HloParserImpl::ParseSharding(OpSharding* sharding) {
   // A single sharding starts with '{' and is not followed by '{'.
   // A tuple sharding starts with '{' and is followed by '{', or is '{''}' for
   // an empty tuple.
@@ -1858,7 +1927,7 @@ bool HloParser::ParseSharding(OpSharding* sharding) {
 // attributes
 //   ::= /*empty*/
 //   ::= attribute '=' value (',' attribute '=' value)*
-bool HloParser::ParseFrontendAttributes(
+bool HloParserImpl::ParseFrontendAttributes(
     FrontendAttributes* frontend_attributes) {
   CHECK(frontend_attributes != nullptr);
   if (!ParseToken(TokKind::kLbrace,
@@ -1869,7 +1938,7 @@ bool HloParser::ParseFrontendAttributes(
     // empty
   } else {
     do {
-      string attribute;
+      std::string attribute;
       if (!ParseAttributeName(&attribute)) {
         return false;
       }
@@ -1887,8 +1956,8 @@ bool HloParser::ParseFrontendAttributes(
 //  ::= '{' 'replicated'? 'maximal'? ('device=' int)? shape?
 //          ('devices=' ('[' dims ']')* device_list)? '}'
 // dims ::= int_list device_list ::= int_list
-bool HloParser::ParseSingleSharding(OpSharding* sharding,
-                                    bool lbrace_pre_lexed) {
+bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
+                                        bool lbrace_pre_lexed) {
   if (!lbrace_pre_lexed &&
       !ParseToken(TokKind::kLbrace,
                   "expected '{' to start sharding attribute")) {
@@ -1995,7 +2064,7 @@ bool HloParser::ParseSingleSharding(OpSharding* sharding,
 
 // parameter_replication ::=
 //   '{' ('true' | 'false')* (',' ('true' | 'false'))*  '}'
-bool HloParser::ParseParameterReplication(
+bool HloParserImpl::ParseParameterReplication(
     ParameterReplication* parameter_replication) {
   if (!ParseToken(TokKind::kLbrace,
                   "expected '{' to start parameter_replication attribute")) {
@@ -2027,7 +2096,7 @@ bool HloParser::ParseParameterReplication(
 // int64_elements
 //   ::= /*empty*/
 //   ::= int64_val (',' int64_val)*
-bool HloParser::ParseReplicaGroupsOnly(
+bool HloParserImpl::ParseReplicaGroupsOnly(
     std::vector<ReplicaGroup>* replica_groups) {
   std::vector<std::vector<int64>> result;
   if (!ParseInt64ListList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
@@ -2040,9 +2109,9 @@ bool HloParser::ParseReplicaGroupsOnly(
 
 // domain ::= '{' 'kind=' domain_kind ',' 'entry=' entry_sharding ','
 //            'exit=' exit_sharding '}'
-bool HloParser::ParseDomain(DomainData* domain) {
-  std::unordered_map<string, AttrConfig> attrs;
-  optional<string> kind;
+bool HloParserImpl::ParseDomain(DomainData* domain) {
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
+  optional<std::string> kind;
   optional<OpSharding> entry_sharding;
   optional<OpSharding> exit_sharding;
   attrs["kind"] = {/*required=*/true, AttrTy::kString, &kind};
@@ -2067,7 +2136,7 @@ bool HloParser::ParseDomain(DomainData* domain) {
 }
 
 // '{' name+ '}'
-bool HloParser::ParseInstructionNames(
+bool HloParserImpl::ParseInstructionNames(
     std::vector<HloInstruction*>* instructions) {
   if (!ParseToken(TokKind::kLbrace,
                   "expects '{' at the beginning of instruction name list")) {
@@ -2075,7 +2144,7 @@ bool HloParser::ParseInstructionNames(
   }
   LocTy loc = lexer_.GetLoc();
   do {
-    string name;
+    std::string name;
     if (!ParseName(&name)) {
       return Error(loc, "expects a instruction name");
     }
@@ -2090,8 +2159,8 @@ bool HloParser::ParseInstructionNames(
                     "expects '}' at the end of instruction name list");
 }
 
-bool HloParser::SetValueInLiteral(LocTy loc, int64 value,
-                                  LinearOrMultiIndex index, Literal* literal) {
+bool HloParserImpl::SetValueInLiteral(LocTy loc, int64 value, int64 index,
+                                      Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
     case S8:
@@ -2124,8 +2193,8 @@ bool HloParser::SetValueInLiteral(LocTy loc, int64 value,
   }
 }
 
-bool HloParser::SetValueInLiteral(LocTy loc, double value,
-                                  LinearOrMultiIndex index, Literal* literal) {
+bool HloParserImpl::SetValueInLiteral(LocTy loc, double value, int64 index,
+                                      Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
     case F16:
@@ -2143,8 +2212,8 @@ bool HloParser::SetValueInLiteral(LocTy loc, double value,
   }
 }
 
-bool HloParser::SetValueInLiteral(LocTy loc, bool value,
-                                  LinearOrMultiIndex index, Literal* literal) {
+bool HloParserImpl::SetValueInLiteral(LocTy loc, bool value, int64 index,
+                                      Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
     case PRED:
@@ -2155,8 +2224,8 @@ bool HloParser::SetValueInLiteral(LocTy loc, bool value,
   }
 }
 
-bool HloParser::SetValueInLiteral(LocTy loc, std::complex<double> value,
-                                  LinearOrMultiIndex index, Literal* literal) {
+bool HloParserImpl::SetValueInLiteral(LocTy loc, std::complex<double> value,
+                                      int64 index, Literal* literal) {
   const Shape& shape = literal->shape();
   switch (shape.element_type()) {
     case C64:
@@ -2172,71 +2241,38 @@ bool HloParser::SetValueInLiteral(LocTy loc, std::complex<double> value,
 }
 
 template <typename T>
-string StringifyValue(T val) {
+std::string StringifyValue(T val) {
   return StrCat(val);
 }
 template <>
-string StringifyValue(std::complex<double> val) {
+std::string StringifyValue(std::complex<double> val) {
   return StrFormat("(%f, %f)", std::real(val), std::imag(val));
 }
 
 template <typename LiteralNativeT, typename ParsedElemT>
-bool HloParser::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
-                                        LinearOrMultiIndex index,
-                                        Literal* literal) {
+bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
+                                            int64 index, Literal* literal) {
   if (!CheckParsedValueIsInRange<LiteralNativeT>(loc, value)) {
     return false;
   }
 
   // Check that the index is in range and assign into the literal
-  if (auto* linear_index = absl::get_if<int64>(&index)) {
-    if (*linear_index >= ShapeUtil::ElementsIn(literal->shape())) {
-      return Error(loc, StrCat("trys to set value ", StringifyValue(value),
-                               " to a literal in shape ",
-                               ShapeUtil::HumanString(literal->shape()),
-                               " at linear index ", *linear_index,
-                               ", but the index is out of range"));
-    }
-    literal->data<LiteralNativeT>().at(*linear_index) =
-        static_cast<LiteralNativeT>(value);
-  } else {
-    auto* multi_index = absl::get_if<absl::Span<const int64>>(&index);
-    CHECK(multi_index != nullptr);
-
-    auto invalid_idx = [&](string msg) {
-      return Error(loc, StrFormat("Invalid sparse index [%s]. %s",
-                                  absl::StrJoin(*multi_index, ", "), msg));
-    };
-
-    const auto& shape = literal->shape();
-    if (shape.rank() != multi_index->size()) {
-      return invalid_idx(
-          StrFormat("Has rank %d, but constant has shape %s, which has rank %d",
-                    multi_index->size(), shape.ToString(), shape.rank()));
-    }
-    for (int64 i = 0; i < shape.rank(); ++i) {
-      auto idx = (*multi_index)[i];
-      if (idx < 0) {
-        return invalid_idx(StrFormat(
-            "Sub-index value at %d, namely %d, cannot be negative.", i, idx));
-      }
-      if (idx >= shape.dimensions(i)) {
-        return invalid_idx(
-            StrFormat("Sub-index at %d, namely %d, doesn't fit within shape "
-                      "dimension %d in %s",
-                      i, idx, shape.dimensions(i), shape.ToString()));
-      }
-    }
-    literal->AppendSparseElement(*multi_index,
-                                 static_cast<LiteralNativeT>(value));
+  if (index >= ShapeUtil::ElementsIn(literal->shape())) {
+    return Error(loc, StrCat("trys to set value ", StringifyValue(value),
+                             " to a literal in shape ",
+                             ShapeUtil::HumanString(literal->shape()),
+                             " at linear index ", index,
+                             ", but the index is out of range"));
   }
+  literal->data<LiteralNativeT>().at(index) =
+      static_cast<LiteralNativeT>(value);
   return true;
 }
 
 // literal
 //  ::= tuple
 //  ::= non_tuple
-bool HloParser::ParseLiteral(Literal* literal, const Shape& shape) {
+bool HloParserImpl::ParseLiteral(Literal* literal, const Shape& shape) {
   return shape.IsTuple() ? ParseTupleLiteral(literal, shape)
                          : ParseNonTupleLiteral(literal, shape);
 }
@@ -2246,7 +2282,7 @@ bool HloParser::ParseLiteral(Literal* literal, const Shape& shape) {
 // literal_list
 //  ::= /*empty*/
 //  ::= literal (',' literal)*
-bool HloParser::ParseTupleLiteral(Literal* literal, const Shape& shape) {
+bool HloParserImpl::ParseTupleLiteral(Literal* literal, const Shape& shape) {
   if (!ParseToken(TokKind::kLparen, "expects '(' in front of tuple elements")) {
     return false;
   }
@@ -2258,7 +2294,7 @@ bool HloParser::ParseTupleLiteral(Literal* literal, const Shape& shape) {
     // literal, (',' literal)*
     for (int i = 0; i < elements.size(); i++) {
       if (i > 0) {
-        ParseToken(TokKind::kComma, "exepcts ',' to separate tuple elements");
+        ParseToken(TokKind::kComma, "expects ',' to separate tuple elements");
       }
       if (!ParseLiteral(&elements[i],
                         ShapeUtil::GetTupleElementShape(shape, i))) {
@@ -2275,17 +2311,13 @@ bool HloParser::ParseTupleLiteral(Literal* literal, const Shape& shape) {
 // non_tuple
 //   ::= rank01
 //   ::= rank2345
-// rank2345 ::= shape sparse_or_nested_array
-bool HloParser::ParseNonTupleLiteral(Literal* literal, const Shape& shape) {
-  if (LayoutUtil::IsSparseArray(shape)) {
-    return ParseSparseLiteral(literal, shape);
-  }
-
+// rank2345 ::= shape nested_array
+bool HloParserImpl::ParseNonTupleLiteral(Literal* literal, const Shape& shape) {
   CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ToString(true);
   return ParseDenseLiteral(literal, shape);
 }
 
-bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
+bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
   // Cast `rank` to int because we call shape.dimensions(int rank) below, and if
   // `rank` is an int64, that's an implicit narrowing conversion, which is
   // implementation-defined behavior.
@@ -2304,12 +2336,12 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
   // sub-array is supposed to contain exactly 3 elements, so check if
   // elems_seen_per_dim[1] is 3.
   std::vector<int64> elems_seen_per_dim(rank);
-  auto get_index_str = [&elems_seen_per_dim](int dim) -> string {
+  auto get_index_str = [&elems_seen_per_dim](int dim) -> std::string {
     std::vector<int64> elems_seen_until_dim(elems_seen_per_dim.begin(),
                                             elems_seen_per_dim.begin() + dim);
     return StrCat("[",
                   StrJoin(elems_seen_until_dim, ",",
-                          [](string* out, const int64& num_elems) {
+                          [](std::string* out, const int64 num_elems) {
                             StrAppend(out, num_elems - 1);
                           }),
                   "]");
@@ -2461,100 +2493,8 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
   return true;
 }
 
-bool HloParser::ParseSparseLiteral(Literal* literal, const Shape& shape) {
-  *literal = Literal(shape);
-  if (!ParseToken(TokKind::kLbrace,
-                  "expects '{' at the beginning of a sparse literal")) {
-    return false;
-  }
-
-  for (;;) {
-    if (lexer_.GetKind() == TokKind::kRbrace) {
-      lexer_.Lex();
-      break;
-    }
-
-    std::vector<int64> index;
-    if (lexer_.GetKind() == TokKind::kInt) {
-      int64 single_index = lexer_.GetInt64Val();
-      lexer_.Lex();
-      index.push_back(single_index);
-    } else {
-      if (!ParseInt64List(TokKind::kLsquare, TokKind::kRsquare, TokKind::kComma,
-                          &index)) {
-        return false;
-      }
-    }
-    if (!ParseToken(TokKind::kColon,
-                    "expects ':' after after the sparse array index and before "
-                    "the sparse array value")) {
-      return false;
-    }
-
-    LocTy value_loc = lexer_.GetLoc();
-    if (lexer_.GetKind() == TokKind::kw_true ||
-        lexer_.GetKind() == TokKind::kw_false) {
-      bool value = lexer_.GetKind() == TokKind::kw_true;
-      if (!SetValueInLiteral(lexer_.GetLoc(), value, index, literal)) {
-        return false;
-      }
-      lexer_.Lex();
-    } else if (primitive_util::IsIntegralType(shape.element_type())) {
-      int64 value;
-      if (!ParseInt64(&value)) {
-        return Error(value_loc,
-                     StrCat("expects integer for primitive type: ",
-                            PrimitiveType_Name(shape.element_type())));
-      }
-      if (!SetValueInLiteral(value_loc, value, index, literal)) {
-        return false;
-      }
-    } else if (primitive_util::IsFloatingPointType(shape.element_type())) {
-      double value;
-      if (!ParseDouble(&value)) {
-        return Error(value_loc,
-                     StrCat("expects floating point value for primitive type: ",
-                            PrimitiveType_Name(shape.element_type())));
-      }
-      if (!SetValueInLiteral(value_loc, value, index, literal)) {
-        return false;
-      }
-    } else if (primitive_util::IsComplexType(shape.element_type())) {
-      std::complex<double> value;
-      if (!ParseComplex(&value)) {
-        return Error(value_loc,
-                     StrCat("expects complex value for primitive type: ",
-                            PrimitiveType_Name(shape.element_type())));
-      }
-      if (!SetValueInLiteral(value_loc, value, index, literal)) {
-        return false;
-      }
-    } else {
-      LOG(FATAL) << "Unexpected element type: "
-                 << PrimitiveType_Name(shape.element_type());
-    }
-
-    if (lexer_.GetKind() != TokKind::kRbrace &&
-        !ParseToken(TokKind::kComma,
-                    "expects ',' separator between sparse array elements")) {
-      return false;
-    }
-
-    if (literal->sparse_element_count() + 1 ==
-        LayoutUtil::MaxSparseElements(shape.layout())) {
-      return Error(
-          lexer_.GetLoc(),
-          StrCat("number of sparse elements exceeds maximum for layout: ",
-                 ShapeUtil::HumanStringWithLayout(shape)));
-    }
-  }
-
-  literal->SortSparseElements();
-  return true;
-}
-
 // MaxFiniteValue is a type-traits helper used by
-// HloParser::CheckParsedValueIsInRange.
+// HloParserImpl::CheckParsedValueIsInRange.
 template <typename T>
 struct MinMaxFiniteValue {
   static T max() { return std::numeric_limits<T>::max(); }
@@ -2576,11 +2516,37 @@ struct MinMaxFiniteValue<bfloat16> {
   static double min() { return -max(); }
 };
 
+// MSVC's standard C++ library does not define isnan/isfinite for integer types.
+// To work around that we will need to provide our own.
+template <typename T>
+std::enable_if_t<std::is_floating_point<T>::value, bool> IsFinite(T val) {
+  return std::isfinite(val);
+}
+template <typename T>
+std::enable_if_t<std::is_floating_point<T>::value, bool> IsNaN(T val) {
+  return std::isnan(val);
+}
+template <typename T>
+std::enable_if_t<std::is_integral<T>::value, bool> IsFinite(T val) {
+  return std::isfinite(static_cast<double>(val));
+}
+template <typename T>
+std::enable_if_t<std::is_integral<T>::value, bool> IsNaN(T val) {
+  return std::isnan(static_cast<double>(val));
+}
+
 template <typename LiteralNativeT, typename ParsedElemT>
-bool HloParser::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
+bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
+  if (std::is_floating_point<ParsedElemT>::value) {
+    auto value_as_native_t = static_cast<LiteralNativeT>(value);
+    auto value_double_converted = static_cast<ParsedElemT>(value_as_native_t);
+    if (!IsFinite(value) || IsFinite(value_double_converted)) {
+      value = value_double_converted;
+    }
+  }
   PrimitiveType literal_ty =
       primitive_util::NativeToPrimitiveType<LiteralNativeT>();
-  if (std::isnan(value) ||
+  if (IsNaN(value) ||
       (std::numeric_limits<ParsedElemT>::has_infinity &&
        (std::numeric_limits<ParsedElemT>::infinity() == value ||
         -std::numeric_limits<ParsedElemT>::infinity() == value))) {
@@ -2617,8 +2583,8 @@ bool HloParser::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
 }
 
 template <typename LiteralNativeT>
-bool HloParser::CheckParsedValueIsInRange(LocTy loc,
-                                          std::complex<double> value) {
+bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc,
+                                              std::complex<double> value) {
   // e.g. `float` for std::complex<float>
   using LiteralComplexComponentT =
       decltype(std::real(std::declval<LiteralNativeT>()));
@@ -2660,7 +2626,7 @@ bool HloParser::CheckParsedValueIsInRange(LocTy loc,
 //   ::= /*empty*/
 //   ::= operand (, operand)*
 // operand ::= (shape)? name
-bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands) {
+bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands) {
   CHECK(operands != nullptr);
   if (!ParseToken(TokKind::kLparen,
                   "expects '(' at the beginning of operands")) {
@@ -2671,7 +2637,7 @@ bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands) {
   } else {
     do {
       LocTy loc = lexer_.GetLoc();
-      string name;
+      std::string name;
       optional<Shape> shape;
       if (CanBeShape()) {
         shape.emplace();
@@ -2706,8 +2672,8 @@ bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands) {
   return ParseToken(TokKind::kRparen, "expects ')' at the end of operands");
 }
 
-bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands,
-                              const int expected_size) {
+bool HloParserImpl::ParseOperands(std::vector<HloInstruction*>* operands,
+                                  const int expected_size) {
   CHECK(operands != nullptr);
   LocTy loc = lexer_.GetLoc();
   if (!ParseOperands(operands)) {
@@ -2721,13 +2687,13 @@ bool HloParser::ParseOperands(std::vector<HloInstruction*>* operands,
 }
 
 // sub_attributes ::= '{' (','? attribute)* '}'
-bool HloParser::ParseSubAttributes(
-    const std::unordered_map<string, AttrConfig>& attrs) {
+bool HloParserImpl::ParseSubAttributes(
+    const absl::flat_hash_map<std::string, AttrConfig>& attrs) {
   LocTy loc = lexer_.GetLoc();
   if (!ParseToken(TokKind::kLbrace, "expects '{' to start sub attributes")) {
     return false;
   }
-  std::unordered_set<string> seen_attrs;
+  absl::flat_hash_set<std::string> seen_attrs;
   if (lexer_.GetKind() == TokKind::kRbrace) {
     // empty
   } else {
@@ -2750,10 +2716,10 @@ bool HloParser::ParseSubAttributes(
 }
 
 // attributes ::= (',' attribute)*
-bool HloParser::ParseAttributes(
-    const std::unordered_map<string, AttrConfig>& attrs) {
+bool HloParserImpl::ParseAttributes(
+    const absl::flat_hash_map<std::string, AttrConfig>& attrs) {
   LocTy loc = lexer_.GetLoc();
-  std::unordered_set<string> seen_attrs;
+  absl::flat_hash_set<std::string> seen_attrs;
   while (EatIfPresent(TokKind::kComma)) {
     if (!ParseAttributeHelper(attrs, &seen_attrs)) {
       return false;
@@ -2770,11 +2736,11 @@ bool HloParser::ParseAttributes(
   return true;
 }
 
-bool HloParser::ParseAttributeHelper(
-    const std::unordered_map<string, AttrConfig>& attrs,
-    std::unordered_set<string>* seen_attrs) {
+bool HloParserImpl::ParseAttributeHelper(
+    const absl::flat_hash_map<std::string, AttrConfig>& attrs,
+    absl::flat_hash_set<std::string>* seen_attrs) {
   LocTy loc = lexer_.GetLoc();
-  string name;
+  std::string name;
   if (!ParseAttributeName(&name)) {
     return Error(loc, "error parsing attributes");
   }
@@ -2784,16 +2750,17 @@ bool HloParser::ParseAttributeHelper(
   }
   auto attr_it = attrs.find(name);
   if (attr_it == attrs.end()) {
-    string allowed_attrs;
+    std::string allowed_attrs;
     if (attrs.empty()) {
       allowed_attrs = "No attributes are allowed here.";
     } else {
-      allowed_attrs = StrCat(
-          "Allowed attributes: ",
-          StrJoin(attrs, ", ",
-                  [&](string* out, const std::pair<string, AttrConfig>& kv) {
-                    StrAppend(out, kv.first);
-                  }));
+      allowed_attrs =
+          StrCat("Allowed attributes: ",
+                 StrJoin(attrs, ", ",
+                         [&](std::string* out,
+                             const std::pair<std::string, AttrConfig>& kv) {
+                           StrAppend(out, kv.first);
+                         }));
     }
     return Error(loc, StrFormat("unexpected attribute \"%s\".  %s", name,
                                 allowed_attrs));
@@ -2876,6 +2843,15 @@ bool HloParser::ParseAttributeHelper(
         }
         static_cast<optional<ComparisonDirection>*>(attr_out_ptr)
             ->emplace(result);
+        return true;
+      }
+      case AttrTy::kEnum: {
+        if (lexer_.GetKind() != TokKind::kIdent) {
+          return TokenError("expects an enumeration value");
+        }
+        std::string result = lexer_.GetStrVal();
+        lexer_.Lex();
+        static_cast<optional<std::string>*>(attr_out_ptr)->emplace(result);
         return true;
       }
       case AttrTy::kWindow: {
@@ -2976,11 +2952,11 @@ bool HloParser::ParseAttributeHelper(
         return true;
       }
       case AttrTy::kString: {
-        string result;
+        std::string result;
         if (!ParseString(&result)) {
           return false;
         }
-        static_cast<optional<string>*>(attr_out_ptr)->emplace(result);
+        static_cast<optional<std::string>*>(attr_out_ptr)->emplace(result);
         return true;
       }
       case AttrTy::kMetadata: {
@@ -3022,105 +2998,144 @@ bool HloParser::ParseAttributeHelper(
             ->emplace(result);
         return true;
       }
+      case AttrTy::kRandomAlgorithm: {
+        RandomAlgorithm result;
+        if (!ParseRandomAlgorithm(&result)) {
+          return false;
+        }
+        static_cast<optional<RandomAlgorithm>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
     }
   }();
   if (!success) {
     return Error(loc, StrFormat("error parsing attribute %s", name));
   }
+  return true;
+}
+
+bool HloParserImpl::CopyAttributeToProtoMessage(
+    absl::flat_hash_set<std::string> non_proto_attrs,
+    const absl::flat_hash_map<std::string, AttrConfig>& attrs,
+    tensorflow::protobuf::Message* message) {
+  const tensorflow::protobuf::Descriptor* descriptor = message->GetDescriptor();
+  const tensorflow::protobuf::Reflection* reflection = message->GetReflection();
+
+  for (const auto& p : attrs) {
+    const std::string& name = p.first;
+    if (non_proto_attrs.find(name) != non_proto_attrs.end()) {
+      continue;
+    }
+    const tensorflow::protobuf::FieldDescriptor* fd =
+        descriptor->FindFieldByName(name);
+    if (!fd) {
+      std::string allowed_attrs = "Allowed attributes: ";
+
+      for (int i = 0; i < descriptor->field_count(); ++i) {
+        if (i == 0) {
+          absl::StrAppend(&allowed_attrs, descriptor->field(i)->name());
+        } else {
+          absl::StrAppend(&allowed_attrs, ", ", descriptor->field(i)->name());
+        }
+      }
+      return TokenError(
+          StrFormat("unexpected attribute \"%s\".  %s", name, allowed_attrs));
+    }
+
+    CHECK(!fd->is_repeated());  // Repeated fields not implemented.
+    bool success = [&] {
+      switch (fd->type()) {
+        case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
+          auto attr_value = static_cast<optional<bool>*>(p.second.result);
+          if (attr_value->has_value()) {
+            reflection->SetBool(message, fd, **attr_value);
+          }
+          return true;
+        }
+        case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
+          auto attr_value =
+              static_cast<optional<std::string>*>(p.second.result);
+          if (attr_value->has_value()) {
+            const tensorflow::protobuf::EnumValueDescriptor* evd =
+                fd->enum_type()->FindValueByName(**attr_value);
+            reflection->SetEnum(message, fd, evd);
+          }
+          return true;
+        }
+        default:
+          return false;
+      }
+    }();
+
+    if (!success) {
+      return TokenError(StrFormat("error parsing attribute %s", name));
+    }
+  }
+
   return true;
 }
 
 // attributes ::= (',' attribute)*
-bool HloParser::ParseAttributesAsProtoMessage(
-    const std::unordered_set<string>& required_attrs,
+bool HloParserImpl::ParseAttributesAsProtoMessage(
+    const absl::flat_hash_map<std::string, AttrConfig>& non_proto_attrs,
     tensorflow::protobuf::Message* message) {
-  LocTy loc = lexer_.GetLoc();
-  std::unordered_set<string> seen_attrs;
-  while (EatIfPresent(TokKind::kComma)) {
-    if (!ParseAttributeAsProtoMessageHelper(message, &seen_attrs)) {
-      return false;
-    }
-  }
-  // Check that all required attrs were seen.
-  for (const string& attr : required_attrs) {
-    if (seen_attrs.find(attr) == seen_attrs.end()) {
-      return Error(loc,
-                   StrFormat("attribute %s is expected but not seen", attr));
-    }
-  }
-  return true;
-}
-
-bool HloParser::ParseAttributeAsProtoMessageHelper(
-    tensorflow::protobuf::Message* message,
-    std::unordered_set<string>* seen_attrs) {
-  LocTy loc = lexer_.GetLoc();
-  string name;
-  if (!ParseAttributeName(&name)) {
-    return Error(loc, "error parsing attributes");
-  }
-  VLOG(3) << "Parsing attribute " << name;
-  if (!seen_attrs->insert(name).second) {
-    return Error(loc, StrFormat("attribute %s already exists", name));
-  }
   const tensorflow::protobuf::Descriptor* descriptor = message->GetDescriptor();
-  const tensorflow::protobuf::FieldDescriptor* fd =
-      descriptor->FindFieldByName(name);
-  if (!fd) {
-    string allowed_attrs = "Allowed attributes: ";
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
 
-    for (int i = 0; i < descriptor->field_count(); ++i) {
-      if (i == 0) {
-        absl::StrAppend(&allowed_attrs, descriptor->field(i)->name());
-      } else {
-        absl::StrAppend(&allowed_attrs, ", ", descriptor->field(i)->name());
-      }
-    }
-    return Error(loc, StrFormat("unexpected attribute \"%s\".  %s", name,
-                                allowed_attrs));
-  }
-  const tensorflow::protobuf::Reflection* reflection = message->GetReflection();
-  CHECK(!fd->is_repeated());  // Repeated fields not implemented.
-  bool success = [&] {
+  // Storage for attributes.
+  std::vector<optional<bool>> bool_params;
+  std::vector<optional<std::string>> string_params;
+  // Reserve enough capacity to make sure that the vector is not growing, so we
+  // can rely on the pointers to stay valid.
+  bool_params.reserve(descriptor->field_count());
+  string_params.reserve(descriptor->field_count());
+
+  // Populate the storage of expected attributes from the protobuf description.
+  for (int field_idx = 0; field_idx < descriptor->field_count(); field_idx++) {
+    const tensorflow::protobuf::FieldDescriptor* fd =
+        descriptor->field(field_idx);
+    const std::string& field_name = fd->name();
     switch (fd->type()) {
       case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
-        bool result;
-        if (!ParseBool(&result)) {
-          return false;
-        }
-        reflection->SetBool(message, fd, result);
-        return true;
+        bool_params.emplace_back(absl::nullopt);
+        attrs[field_name] = {/*is_required*/ false, AttrTy::kBool,
+                             &bool_params.back()};
+        break;
       }
       case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
-        if (lexer_.GetKind() != TokKind::kIdent) {
-          return TokenError(
-              StrFormat("expects %s type", fd->enum_type()->name()));
-        }
-        string val = lexer_.GetStrVal();
-        const tensorflow::protobuf::EnumValueDescriptor* evd =
-            fd->enum_type()->FindValueByName(val);
-        if (evd == nullptr) {
-          return TokenError(StrFormat("expects %s type but sees: %s",
-                                      fd->enum_type()->name(), val));
-        }
-        reflection->SetEnum(message, fd, evd);
-        lexer_.Lex();
-        return true;
+        string_params.emplace_back(absl::nullopt);
+        attrs[field_name] = {/*is_required*/ false, AttrTy::kEnum,
+                             &string_params.back()};
+        break;
       }
       default:
-        LOG(ERROR) << "Unimplemented protocol buffer type "
-                   << fd->DebugString();
-        return false;
+        return TokenError(absl::StrFormat(
+            "Unexpected protocol buffer type: %s ", fd->DebugString()));
     }
-  }();
-  if (!success) {
-    return Error(loc, StrFormat("error parsing attribute %s", name));
   }
-  return true;
+
+  absl::flat_hash_set<std::string> non_proto_attrs_names;
+  non_proto_attrs_names.reserve(non_proto_attrs.size());
+  for (const auto& p : non_proto_attrs) {
+    const std::string& attr_name = p.first;
+    // If an attribute is both specified within 'non_proto_attrs' and an
+    // attribute of the proto message, we prefer the attribute of the proto
+    // message.
+    if (attrs.find(attr_name) == attrs.end()) {
+      non_proto_attrs_names.insert(attr_name);
+      attrs[attr_name] = p.second;
+    }
+  }
+
+  if (!ParseAttributes(attrs)) {
+    return false;
+  }
+
+  return CopyAttributeToProtoMessage(non_proto_attrs_names, attrs, message);
 }
 
-bool HloParser::ParseComputationName(HloComputation** value) {
-  string name;
+bool HloParserImpl::ParseComputationName(HloComputation** value) {
+  std::string name;
   LocTy loc = lexer_.GetLoc();
   if (!ParseName(&name)) {
     return Error(loc, "expects computation name");
@@ -3137,7 +3152,7 @@ bool HloParser::ParseComputationName(HloComputation** value) {
 // ::= '{' size stride? pad? lhs_dilate? rhs_dilate? '}'
 // The subattributes can appear in any order. 'size=' is required, others are
 // optional.
-bool HloParser::ParseWindow(Window* window, bool expect_outer_curlies) {
+bool HloParserImpl::ParseWindow(Window* window, bool expect_outer_curlies) {
   LocTy loc = lexer_.GetLoc();
   if (expect_outer_curlies &&
       !ParseToken(TokKind::kLbrace, "expected '{' to start window attribute")) {
@@ -3154,7 +3169,7 @@ bool HloParser::ParseWindow(Window* window, bool expect_outer_curlies) {
       expect_outer_curlies ? TokKind::kRbrace : TokKind::kEof;
   while (lexer_.GetKind() != end_token) {
     LocTy attr_loc = lexer_.GetLoc();
-    string field_name;
+    std::string field_name;
     if (!ParseAttributeName(&field_name)) {
       return Error(attr_loc, "expects sub-attributes in window");
     }
@@ -3184,10 +3199,6 @@ bool HloParser::ParseWindow(Window* window, bool expect_outer_curlies) {
     }
   }
 
-  if (size.empty()) {
-    return Error(loc,
-                 "sub-attribute 'size=' is required in the window attribute");
-  }
   if (!stride.empty() && stride.size() != size.size()) {
     return Error(loc, "expects 'stride=' has the same size as 'size='");
   }
@@ -3221,22 +3232,22 @@ bool HloParser::ParseWindow(Window* window, bool expect_outer_curlies) {
 }
 
 // This is the inverse of HloInstruction::ConvolutionDimensionNumbersToString.
-// The string looks like "dim_labels=0bf_0io->0bf".
-bool HloParser::ParseConvolutionDimensionNumbers(
+// Thestring looks like "dim_labels=0bf_0io->0bf".
+bool HloParserImpl::ParseConvolutionDimensionNumbers(
     ConvolutionDimensionNumbers* dnums) {
   if (lexer_.GetKind() != TokKind::kDimLabels) {
     return TokenError("expects dim labels pattern, e.g., 'bf0_0io->0bf'");
   }
-  string str = lexer_.GetStrVal();
+  std::string str = lexer_.GetStrVal();
 
   // The str is expected to have 3 items, lhs, rhs, out, and it must look like
   // lhs_rhs->out, that is, the first separator is "_" and the second is "->".
-  std::vector<string> split1 = absl::StrSplit(str, '_');
+  std::vector<std::string> split1 = absl::StrSplit(str, '_');
   if (split1.size() != 2) {
     LOG(FATAL) << "expects 3 items: lhs, rhs, and output dims, but sees "
                << str;
   }
-  std::vector<string> split2 = absl::StrSplit(split1[1], "->");
+  std::vector<std::string> split2 = absl::StrSplit(split1[1], "->");
   if (split2.size() != 2) {
     LOG(FATAL) << "expects 3 items: lhs, rhs, and output dims, but sees "
                << str;
@@ -3254,14 +3265,14 @@ bool HloParser::ParseConvolutionDimensionNumbers(
     return TokenError("convolution rank must >=2");
   }
 
-  auto is_unique = [](string str) -> bool {
+  auto is_unique = [](std::string str) -> bool {
     absl::c_sort(str);
     return std::unique(str.begin(), str.end()) == str.end();
   };
 
   // lhs
   {
-    if (!is_unique(string(lhs))) {
+    if (!is_unique(std::string(lhs))) {
       return TokenError(
           StrCat("expects unique lhs dimension numbers, but sees ", lhs));
     }
@@ -3284,7 +3295,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
   }
   // rhs
   {
-    if (!is_unique(string(rhs))) {
+    if (!is_unique(std::string(rhs))) {
       return TokenError(
           StrCat("expects unique rhs dimension numbers, but sees ", rhs));
     }
@@ -3307,7 +3318,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
   }
   // output
   {
-    if (!is_unique(string(out))) {
+    if (!is_unique(std::string(out))) {
       return TokenError(
           StrCat("expects unique output dimension numbers, but sees ", out));
     }
@@ -3352,7 +3363,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
 //
 //  {/*starts=*/{2, 5, 8}, /*limits=*/{3, 6, 9}, /*strides=*/{4, 7, 1}}
 //
-bool HloParser::ParseSliceRanges(SliceRanges* result) {
+bool HloParserImpl::ParseSliceRanges(SliceRanges* result) {
   if (!ParseToken(TokKind::kLbrace, "expects '{' to start ranges")) {
     return false;
   }
@@ -3389,7 +3400,7 @@ bool HloParser::ParseSliceRanges(SliceRanges* result) {
 // precision_elements
 //   ::= /*empty*/
 //   ::= precision_val (delim precision_val)*
-bool HloParser::ParsePrecisionList(
+bool HloParserImpl::ParsePrecisionList(
     std::vector<PrecisionConfig::Precision>* result) {
   auto parse_and_add_item = [&]() {
     PrecisionConfig::Precision item;
@@ -3403,7 +3414,7 @@ bool HloParser::ParsePrecisionList(
                    parse_and_add_item);
 }
 
-bool HloParser::ParseHloComputation(HloComputation** result) {
+bool HloParserImpl::ParseHloComputation(HloComputation** result) {
   if (lexer_.GetKind() == TokKind::kLbrace) {
     // This means it is a nested computation.
     return ParseInstructionList(result, /*computation_name=*/"_");
@@ -3412,7 +3423,8 @@ bool HloParser::ParseHloComputation(HloComputation** result) {
   return ParseComputationName(result);
 }
 
-bool HloParser::ParseHloComputationList(std::vector<HloComputation*>* result) {
+bool HloParserImpl::ParseHloComputationList(
+    std::vector<HloComputation*>* result) {
   auto parse_and_add_item = [&]() {
     HloComputation* computation;
     if (!ParseHloComputation(&computation)) {
@@ -3430,7 +3442,7 @@ bool HloParser::ParseHloComputationList(std::vector<HloComputation*>* result) {
 // precision_elements
 //   ::= /*empty*/
 //   ::= shape (',' shape)*
-bool HloParser::ParseShapeList(std::vector<Shape>* result) {
+bool HloParserImpl::ParseShapeList(std::vector<Shape>* result) {
   auto parse_and_add_item = [&]() {
     Shape shape;
     if (!ParseShape(&shape)) {
@@ -3447,9 +3459,9 @@ bool HloParser::ParseShapeList(std::vector<Shape>* result) {
 // int64_elements
 //   ::= /*empty*/
 //   ::= int64_val (delim int64_val)*
-bool HloParser::ParseInt64List(const TokKind start, const TokKind end,
-                               const TokKind delim,
-                               std::vector<int64>* result) {
+bool HloParserImpl::ParseInt64List(const TokKind start, const TokKind end,
+                                   const TokKind delim,
+                                   std::vector<int64>* result) {
   auto parse_and_add_item = [&]() {
     int64 i;
     if (!ParseInt64(&i)) {
@@ -3469,9 +3481,9 @@ bool HloParser::ParseInt64List(const TokKind start, const TokKind end,
 // int64_elements
 //   ::= /*empty*/
 //   ::= int64_val (delim int64_val)*
-bool HloParser::ParseInt64ListList(const TokKind start, const TokKind end,
-                                   const TokKind delim,
-                                   std::vector<std::vector<int64>>* result) {
+bool HloParserImpl::ParseInt64ListList(
+    const TokKind start, const TokKind end, const TokKind delim,
+    std::vector<std::vector<int64>>* result) {
   auto parse_and_add_item = [&]() {
     std::vector<int64> item;
     if (!ParseInt64List(start, end, delim, &item)) {
@@ -3483,9 +3495,9 @@ bool HloParser::ParseInt64ListList(const TokKind start, const TokKind end,
   return ParseList(start, end, delim, parse_and_add_item);
 }
 
-bool HloParser::ParseList(const TokKind start, const TokKind end,
-                          const TokKind delim,
-                          const std::function<bool()>& parse_and_add_item) {
+bool HloParserImpl::ParseList(const TokKind start, const TokKind end,
+                              const TokKind delim,
+                              const std::function<bool()>& parse_and_add_item) {
   if (!ParseToken(start, StrCat("expects a list starting with ",
                                 TokKindToString(start)))) {
     return false;
@@ -3504,7 +3516,7 @@ bool HloParser::ParseList(const TokKind start, const TokKind end,
 }
 
 // param_list_to_shape ::= param_list '->' shape
-bool HloParser::ParseParamListToShape(Shape* shape, LocTy* shape_loc) {
+bool HloParserImpl::ParseParamListToShape(Shape* shape, LocTy* shape_loc) {
   if (!ParseParamList() || !ParseToken(TokKind::kArrow, "expects '->'")) {
     return false;
   }
@@ -3512,7 +3524,7 @@ bool HloParser::ParseParamListToShape(Shape* shape, LocTy* shape_loc) {
   return ParseShape(shape);
 }
 
-bool HloParser::CanBeParamListToShape() {
+bool HloParserImpl::CanBeParamListToShape() {
   return lexer_.GetKind() == TokKind::kLparen;
 }
 
@@ -3521,7 +3533,7 @@ bool HloParser::CanBeParamListToShape() {
 //   ::= /*empty*/
 //   ::= param (',' param)*
 // param ::= name shape
-bool HloParser::ParseParamList() {
+bool HloParserImpl::ParseParamList() {
   if (!ParseToken(TokKind::kLparen,
                   "expects '(' at the beginning of param list")) {
     return false;
@@ -3532,7 +3544,7 @@ bool HloParser::ParseParamList() {
   } else {
     do {
       Shape shape;
-      string name;
+      std::string name;
       if (!ParseName(&name) || !ParseShape(&shape)) {
         return false;
       }
@@ -3546,8 +3558,8 @@ bool HloParser::ParseParamList() {
 //   ::= /*empty*/
 //   ::= <=? int64 (',' param)*
 // param ::= name shape
-bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes,
-                                    std::vector<bool>* dynamic_dimensions) {
+bool HloParserImpl::ParseDimensionSizes(std::vector<int64>* dimension_sizes,
+                                        std::vector<bool>* dynamic_dimensions) {
   auto parse_and_add_item = [&]() {
     int64 i;
     bool is_dynamic = false;
@@ -3572,7 +3584,7 @@ bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes,
 // dim_list
 //   ::= /*empty*/
 //   ::= (int64 | '*') (',' (int64 | '*'))*
-bool HloParser::ParseTiles(std::vector<Tile>* tiles) {
+bool HloParserImpl::ParseTiles(std::vector<Tile>* tiles) {
   auto parse_and_add_tile_dimension = [&]() {
     tensorflow::int64 i;
     if (ParseInt64(&i)) {
@@ -3604,8 +3616,8 @@ bool HloParser::ParseTiles(std::vector<Tile>* tiles) {
 //   ::= 'E' | 'S'
 // attr_value
 //   ::= int64
-bool HloParser::ParseLayoutIntAttribute(int64* attr_value,
-                                        absl::string_view attr_description) {
+bool HloParserImpl::ParseLayoutIntAttribute(
+    int64* attr_value, absl::string_view attr_description) {
   if (!ParseToken(TokKind::kLparen,
                   StrCat("expects ", attr_description, " to start with ",
                          TokKindToString(TokKind::kLparen)))) {
@@ -3629,7 +3641,7 @@ bool HloParser::ParseLayoutIntAttribute(int64* attr_value,
 // memory_space
 //   ::= /*empty*/
 //   ::= 'S' '(' int64 ')'
-bool HloParser::ParseLayout(Layout* layout) {
+bool HloParserImpl::ParseLayout(Layout* layout) {
   std::vector<int64> minor_to_major;
   std::vector<Tile> tiles;
   tensorflow::int64 element_size_in_bits = 0;
@@ -3697,7 +3709,7 @@ bool HloParser::ParseLayout(Layout* layout) {
 // tuple_elements
 //   ::= /*empty*/
 //   ::= shape (',' shape)*
-bool HloParser::ParseShape(Shape* result) {
+bool HloParserImpl::ParseShape(Shape* result) {
   if (EatIfPresent(TokKind::kLparen)) {  // Tuple
     std::vector<Shape> shapes;
     if (lexer_.GetKind() == TokKind::kRparen) {
@@ -3736,21 +3748,6 @@ bool HloParser::ParseShape(Shape* result) {
   }
   LayoutUtil::SetToDefaultLayout(result);
 
-  if (lexer_.GetKind() == TokKind::kw_sparse) {
-    lexer_.Lex();
-    const string message =
-        "expects a brace-bracketed integer for sparse layout";
-    int64 max_sparse_elements;
-    if (!ParseToken(TokKind::kLbrace, message) ||
-        !ParseInt64(&max_sparse_elements) ||
-        !ParseToken(TokKind::kRbrace, message)) {
-      return false;
-    }
-    *result->mutable_layout() =
-        LayoutUtil::MakeSparseLayout(max_sparse_elements);
-    return true;
-  }
-
   // We need to lookahead to see if a following open brace is the start of a
   // layout. The specific problematic case is:
   //
@@ -3779,14 +3776,14 @@ bool HloParser::ParseShape(Shape* result) {
   return true;
 }
 
-bool HloParser::CanBeShape() {
+bool HloParserImpl::CanBeShape() {
   // A non-tuple shape starts with a kPrimitiveType token; a tuple shape starts
   // with '('.
   return lexer_.GetKind() == TokKind::kPrimitiveType ||
          lexer_.GetKind() == TokKind::kLparen;
 }
 
-bool HloParser::ParseName(string* result) {
+bool HloParserImpl::ParseName(std::string* result) {
   VLOG(3) << "ParseName";
   if (lexer_.GetKind() != TokKind::kIdent &&
       lexer_.GetKind() != TokKind::kName) {
@@ -3797,7 +3794,7 @@ bool HloParser::ParseName(string* result) {
   return true;
 }
 
-bool HloParser::ParseAttributeName(string* result) {
+bool HloParserImpl::ParseAttributeName(std::string* result) {
   if (lexer_.GetKind() != TokKind::kAttributeName) {
     return TokenError("expects attribute name");
   }
@@ -3806,7 +3803,7 @@ bool HloParser::ParseAttributeName(string* result) {
   return true;
 }
 
-bool HloParser::ParseString(string* result) {
+bool HloParserImpl::ParseString(std::string* result) {
   VLOG(3) << "ParseString";
   if (lexer_.GetKind() != TokKind::kString) {
     return TokenError("expects string");
@@ -3816,7 +3813,8 @@ bool HloParser::ParseString(string* result) {
   return true;
 }
 
-bool HloParser::ParseDxD(const string& name, std::vector<int64>* result) {
+bool HloParserImpl::ParseDxD(const std::string& name,
+                             std::vector<int64>* result) {
   LocTy loc = lexer_.GetLoc();
   if (!result->empty()) {
     return Error(loc, StrFormat("sub-attribute '%s=' already exists", name));
@@ -3832,7 +3830,7 @@ bool HloParser::ParseDxD(const string& name, std::vector<int64>* result) {
   }
   // 2D or higher.
   if (lexer_.GetKind() == TokKind::kDxD) {
-    string str = lexer_.GetStrVal();
+    std::string str = lexer_.GetStrVal();
     if (!SplitToInt64s(str, 'x', result)) {
       return Error(loc, StrFormat("expects sub-attribute '%s=ixj...'", name));
     }
@@ -3842,7 +3840,7 @@ bool HloParser::ParseDxD(const string& name, std::vector<int64>* result) {
   return TokenError("expects token type kInt or kDxD");
 }
 
-bool HloParser::ParseWindowPad(std::vector<std::vector<int64>>* pad) {
+bool HloParserImpl::ParseWindowPad(std::vector<std::vector<int64>>* pad) {
   LocTy loc = lexer_.GetLoc();
   if (!pad->empty()) {
     return Error(loc, "sub-attribute 'pad=' already exists");
@@ -3850,7 +3848,7 @@ bool HloParser::ParseWindowPad(std::vector<std::vector<int64>>* pad) {
   if (lexer_.GetKind() != TokKind::kPad) {
     return TokenError("expects window pad pattern, e.g., '0_0x3_3'");
   }
-  string str = lexer_.GetStrVal();
+  std::string str = lexer_.GetStrVal();
   for (const auto& padding_dim_str : absl::StrSplit(str, 'x')) {
     std::vector<int64> low_high;
     if (!SplitToInt64s(padding_dim_str, '_', &low_high) ||
@@ -3868,12 +3866,12 @@ bool HloParser::ParseWindowPad(std::vector<std::vector<int64>>* pad) {
 // looks like "0_0_0x3_3_1". The string is first separated by 'x', each
 // substring represents one PaddingConfigDimension. The substring is 3 (or 2)
 // numbers joined by '_'.
-bool HloParser::ParsePaddingConfig(PaddingConfig* padding) {
+bool HloParserImpl::ParsePaddingConfig(PaddingConfig* padding) {
   if (lexer_.GetKind() != TokKind::kPad) {
     return TokenError("expects padding config, e.g., '0_0_0x3_3_1'");
   }
   LocTy loc = lexer_.GetLoc();
-  string str = lexer_.GetStrVal();
+  std::string str = lexer_.GetStrVal();
   for (const auto& padding_dim_str : absl::StrSplit(str, 'x')) {
     std::vector<int64> padding_dim;
     if (!SplitToInt64s(padding_dim_str, '_', &padding_dim) ||
@@ -3892,11 +3890,11 @@ bool HloParser::ParsePaddingConfig(PaddingConfig* padding) {
 }
 
 // '{' metadata_string '}'
-bool HloParser::ParseMetadata(OpMetadata* metadata) {
-  std::unordered_map<string, AttrConfig> attrs;
-  optional<string> op_type;
-  optional<string> op_name;
-  optional<string> source_file;
+bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
+  absl::flat_hash_map<std::string, AttrConfig> attrs;
+  optional<std::string> op_type;
+  optional<std::string> op_name;
+  optional<std::string> source_file;
   optional<int32> source_line;
   attrs["op_type"] = {/*required=*/false, AttrTy::kString, &op_type};
   attrs["op_name"] = {/*required=*/false, AttrTy::kString, &op_name};
@@ -3920,12 +3918,12 @@ bool HloParser::ParseMetadata(OpMetadata* metadata) {
   return true;
 }
 
-bool HloParser::ParseOpcode(HloOpcode* result) {
+bool HloParserImpl::ParseOpcode(HloOpcode* result) {
   VLOG(3) << "ParseOpcode";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects opcode");
   }
-  string val = lexer_.GetStrVal();
+  std::string val = lexer_.GetStrVal();
   auto status_or_result = StringToHloOpcode(val);
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects opcode but sees: %s, error: %s", val,
@@ -3936,12 +3934,12 @@ bool HloParser::ParseOpcode(HloOpcode* result) {
   return true;
 }
 
-bool HloParser::ParseFftType(FftType* result) {
+bool HloParserImpl::ParseFftType(FftType* result) {
   VLOG(3) << "ParseFftType";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects fft type");
   }
-  string val = lexer_.GetStrVal();
+  std::string val = lexer_.GetStrVal();
   if (!FftType_Parse(val, result) || !FftType_IsValid(*result)) {
     return TokenError(StrFormat("expects fft type but sees: %s", val));
   }
@@ -3949,12 +3947,12 @@ bool HloParser::ParseFftType(FftType* result) {
   return true;
 }
 
-bool HloParser::ParseComparisonDirection(ComparisonDirection* result) {
+bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
   VLOG(1) << "ParseComparisonDirection";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects comparison direction");
   }
-  string val = lexer_.GetStrVal();
+  std::string val = lexer_.GetStrVal();
   auto status_or_result = StringToComparisonDirection(val);
   if (!status_or_result.ok()) {
     return TokenError(
@@ -3965,12 +3963,12 @@ bool HloParser::ParseComparisonDirection(ComparisonDirection* result) {
   return true;
 }
 
-bool HloParser::ParseFusionKind(HloInstruction::FusionKind* result) {
+bool HloParserImpl::ParseFusionKind(HloInstruction::FusionKind* result) {
   VLOG(3) << "ParseFusionKind";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects fusion kind");
   }
-  string val = lexer_.GetStrVal();
+  std::string val = lexer_.GetStrVal();
   auto status_or_result = StringToFusionKind(val);
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects fusion kind but sees: %s, error: %s",
@@ -3982,12 +3980,12 @@ bool HloParser::ParseFusionKind(HloInstruction::FusionKind* result) {
   return true;
 }
 
-bool HloParser::ParseRandomDistribution(RandomDistribution* result) {
+bool HloParserImpl::ParseRandomDistribution(RandomDistribution* result) {
   VLOG(3) << "ParseRandomDistribution";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects random distribution");
   }
-  string val = lexer_.GetStrVal();
+  std::string val = lexer_.GetStrVal();
   auto status_or_result = StringToRandomDistribution(val);
   if (!status_or_result.ok()) {
     return TokenError(
@@ -3999,12 +3997,29 @@ bool HloParser::ParseRandomDistribution(RandomDistribution* result) {
   return true;
 }
 
-bool HloParser::ParsePrecision(PrecisionConfig::Precision* result) {
+bool HloParserImpl::ParseRandomAlgorithm(RandomAlgorithm* result) {
+  VLOG(3) << "ParseRandomAlgorithm";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects random algorithm");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = StringToRandomAlgorithm(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        StrFormat("expects random algorithm but sees: %s, error: %s", val,
+                  status_or_result.status().error_message()));
+  }
+  *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParsePrecision(PrecisionConfig::Precision* result) {
   VLOG(3) << "ParsePrecision";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects random distribution");
   }
-  string val = lexer_.GetStrVal();
+  std::string val = lexer_.GetStrVal();
   auto status_or_result = StringToPrecision(val);
   if (!status_or_result.ok()) {
     return TokenError(StrFormat("expects precision but sees: %s, error: %s",
@@ -4016,7 +4031,7 @@ bool HloParser::ParsePrecision(PrecisionConfig::Precision* result) {
   return true;
 }
 
-bool HloParser::ParseInt64(int64* result) {
+bool HloParserImpl::ParseInt64(int64* result) {
   VLOG(3) << "ParseInt64";
   if (lexer_.GetKind() != TokKind::kInt) {
     return TokenError("expects integer");
@@ -4026,7 +4041,7 @@ bool HloParser::ParseInt64(int64* result) {
   return true;
 }
 
-bool HloParser::ParseDouble(double* result) {
+bool HloParserImpl::ParseDouble(double* result) {
   switch (lexer_.GetKind()) {
     case TokKind::kDecimal: {
       double val = lexer_.GetDecimalVal();
@@ -4059,7 +4074,7 @@ bool HloParser::ParseDouble(double* result) {
   return true;
 }
 
-bool HloParser::ParseComplex(std::complex<double>* result) {
+bool HloParserImpl::ParseComplex(std::complex<double>* result) {
   if (lexer_.GetKind() != TokKind::kLparen) {
     return TokenError("expects '(' before complex number");
   }
@@ -4095,7 +4110,7 @@ bool HloParser::ParseComplex(std::complex<double>* result) {
   return true;
 }
 
-bool HloParser::ParseBool(bool* result) {
+bool HloParserImpl::ParseBool(bool* result) {
   if (lexer_.GetKind() != TokKind::kw_true &&
       lexer_.GetKind() != TokKind::kw_false) {
     return TokenError("expects true or false");
@@ -4105,7 +4120,7 @@ bool HloParser::ParseBool(bool* result) {
   return true;
 }
 
-bool HloParser::ParseToken(TokKind kind, const string& msg) {
+bool HloParserImpl::ParseToken(TokKind kind, const std::string& msg) {
   VLOG(3) << "ParseToken " << TokKindToString(kind) << " " << msg;
   if (lexer_.GetKind() != kind) {
     return TokenError(msg);
@@ -4114,7 +4129,7 @@ bool HloParser::ParseToken(TokKind kind, const string& msg) {
   return true;
 }
 
-bool HloParser::EatIfPresent(TokKind kind) {
+bool HloParserImpl::EatIfPresent(TokKind kind) {
   if (lexer_.GetKind() != kind) {
     return false;
   }
@@ -4122,8 +4137,9 @@ bool HloParser::EatIfPresent(TokKind kind) {
   return true;
 }
 
-bool HloParser::AddInstruction(const string& name, HloInstruction* instruction,
-                               LocTy name_loc) {
+bool HloParserImpl::AddInstruction(const std::string& name,
+                                   HloInstruction* instruction,
+                                   LocTy name_loc) {
   auto result = current_name_table().insert({name, {instruction, name_loc}});
   if (!result.second) {
     Error(name_loc, StrCat("instruction already exists: ", name));
@@ -4133,8 +4149,9 @@ bool HloParser::AddInstruction(const string& name, HloInstruction* instruction,
   return true;
 }
 
-bool HloParser::AddComputation(const string& name, HloComputation* computation,
-                               LocTy name_loc) {
+bool HloParserImpl::AddComputation(const std::string& name,
+                                   HloComputation* computation,
+                                   LocTy name_loc) {
   auto result = computation_pool_.insert({name, {computation, name_loc}});
   if (!result.second) {
     Error(name_loc, StrCat("computation already exists: ", name));
@@ -4144,7 +4161,7 @@ bool HloParser::AddComputation(const string& name, HloComputation* computation,
   return true;
 }
 
-StatusOr<Shape> HloParser::ParseShapeOnly() {
+StatusOr<Shape> HloParserImpl::ParseShapeOnly() {
   lexer_.Lex();
   Shape shape;
   if (!ParseShape(&shape)) {
@@ -4156,7 +4173,7 @@ StatusOr<Shape> HloParser::ParseShapeOnly() {
   return shape;
 }
 
-StatusOr<HloSharding> HloParser::ParseShardingOnly() {
+StatusOr<HloSharding> HloParserImpl::ParseShardingOnly() {
   lexer_.Lex();
   OpSharding op_sharding;
   if (!ParseSharding(&op_sharding)) {
@@ -4168,7 +4185,7 @@ StatusOr<HloSharding> HloParser::ParseShardingOnly() {
   return HloSharding::FromProto(op_sharding);
 }
 
-StatusOr<FrontendAttributes> HloParser::ParseFrontendAttributesOnly() {
+StatusOr<FrontendAttributes> HloParserImpl::ParseFrontendAttributesOnly() {
   lexer_.Lex();
   FrontendAttributes attributes;
   if (!ParseFrontendAttributes(&attributes)) {
@@ -4181,7 +4198,7 @@ StatusOr<FrontendAttributes> HloParser::ParseFrontendAttributesOnly() {
   return attributes;
 }
 
-StatusOr<std::vector<bool>> HloParser::ParseParameterReplicationOnly() {
+StatusOr<std::vector<bool>> HloParserImpl::ParseParameterReplicationOnly() {
   lexer_.Lex();
   ParameterReplication parameter_replication;
   if (!ParseParameterReplication(&parameter_replication)) {
@@ -4196,7 +4213,7 @@ StatusOr<std::vector<bool>> HloParser::ParseParameterReplicationOnly() {
       parameter_replication.replicated_at_leaf_buffers().end());
 }
 
-StatusOr<std::vector<ReplicaGroup>> HloParser::ParseReplicaGroupsOnly() {
+StatusOr<std::vector<ReplicaGroup>> HloParserImpl::ParseReplicaGroupsOnly() {
   lexer_.Lex();
   std::vector<ReplicaGroup> replica_groups;
   if (!ParseReplicaGroupsOnly(&replica_groups)) {
@@ -4208,7 +4225,7 @@ StatusOr<std::vector<ReplicaGroup>> HloParser::ParseReplicaGroupsOnly() {
   return replica_groups;
 }
 
-StatusOr<Window> HloParser::ParseWindowOnly() {
+StatusOr<Window> HloParserImpl::ParseWindowOnly() {
   lexer_.Lex();
   Window window;
   if (!ParseWindow(&window, /*expect_outer_curlies=*/false)) {
@@ -4221,7 +4238,7 @@ StatusOr<Window> HloParser::ParseWindowOnly() {
 }
 
 StatusOr<ConvolutionDimensionNumbers>
-HloParser::ParseConvolutionDimensionNumbersOnly() {
+HloParserImpl::ParseConvolutionDimensionNumbersOnly() {
   lexer_.Lex();
   ConvolutionDimensionNumbers dnums;
   if (!ParseConvolutionDimensionNumbers(&dnums)) {
@@ -4234,7 +4251,7 @@ HloParser::ParseConvolutionDimensionNumbersOnly() {
   return dnums;
 }
 
-StatusOr<PaddingConfig> HloParser::ParsePaddingConfigOnly() {
+StatusOr<PaddingConfig> HloParserImpl::ParsePaddingConfigOnly() {
   lexer_.Lex();
   PaddingConfig padding_config;
   if (!ParsePaddingConfig(&padding_config)) {
@@ -4246,7 +4263,7 @@ StatusOr<PaddingConfig> HloParser::ParsePaddingConfigOnly() {
   return padding_config;
 }
 
-bool HloParser::ParseSingleInstruction(HloModule* module) {
+bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
   if (create_missing_instruction_ != nullptr || !scoped_name_tables_.empty()) {
     LOG(FATAL) << "Parser state is not clean. Please do not call any other "
                   "methods before calling ParseSingleInstruction.";
@@ -4258,9 +4275,9 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
   int64 parameter_count = 0;
   create_missing_instruction_ =
       [this, &builder, &parameter_count](
-          const string& name,
+          const std::string& name,
           const Shape& shape) -> std::pair<HloInstruction*, LocTy>* {
-    string new_name = name.empty() ? StrCat("_", parameter_count) : name;
+    std::string new_name = name.empty() ? StrCat("_", parameter_count) : name;
     HloInstruction* parameter = builder.AddInstruction(
         HloInstruction::CreateParameter(parameter_count++, shape, new_name));
     current_name_table()[new_name] = {parameter, lexer_.GetLoc()};
@@ -4281,7 +4298,7 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
     // This means that the instruction's left-hand side might exist, e.g.
     //
     //  foo = f32[10] fusion(...), calls={...}
-    string root_name;
+    std::string root_name;
     if (!ParseInstruction(&builder, &root_name)) {
       return false;
     }
@@ -4299,6 +4316,7 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
   for (auto& comp : computations_) {
     module->AddEmbeddedComputation(std::move(comp));
   }
+  TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   return true;
 }
 
@@ -4307,7 +4325,7 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
 StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str, const HloModuleConfig& config) {
   auto module = absl::make_unique<HloModule>(/*name=*/"_", config);
-  HloParser parser(str);
+  HloParserImpl parser(str);
   TF_RETURN_IF_ERROR(parser.Run(module.get()));
   return std::move(module);
 }
@@ -4317,53 +4335,51 @@ StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
   return ParseAndReturnUnverifiedModule(str, HloModuleConfig());
 }
 
-Status ParseHloString(absl::string_view str, HloModule* module) {
-  TF_RET_CHECK(module->computation_count() == 0);
-  HloParser parser(str);
-  TF_RETURN_IF_ERROR(parser.Run(module));
-  return Status::OK();
-}
-
 StatusOr<HloSharding> ParseSharding(absl::string_view str) {
-  HloParser parser(str);
+  HloParserImpl parser(str);
   return parser.ParseShardingOnly();
 }
 
 StatusOr<FrontendAttributes> ParseFrontendAttributes(absl::string_view str) {
-  HloParser parser(str);
+  HloParserImpl parser(str);
   return parser.ParseFrontendAttributesOnly();
 }
 
 StatusOr<std::vector<bool>> ParseParameterReplication(absl::string_view str) {
-  HloParser parser(str);
+  HloParserImpl parser(str);
   return parser.ParseParameterReplicationOnly();
 }
 
 StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
     absl::string_view str) {
-  HloParser parser(str);
+  HloParserImpl parser(str);
   return parser.ParseReplicaGroupsOnly();
 }
 
 StatusOr<Window> ParseWindow(absl::string_view str) {
-  HloParser parser(str);
+  HloParserImpl parser(str);
   return parser.ParseWindowOnly();
 }
 
 StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
     absl::string_view str) {
-  HloParser parser(str);
+  HloParserImpl parser(str);
   return parser.ParseConvolutionDimensionNumbersOnly();
 }
 
 StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str) {
-  HloParser parser(str);
+  HloParserImpl parser(str);
   return parser.ParsePaddingConfigOnly();
 }
 
 StatusOr<Shape> ParseShape(absl::string_view str) {
-  HloParser parser(str);
+  HloParserImpl parser(str);
   return parser.ParseShapeOnly();
+}
+
+std::unique_ptr<HloParser> HloParser::CreateHloParserForTests(
+    absl::string_view str) {
+  return absl::make_unique<HloParserImpl>(str);
 }
 
 }  // namespace xla

@@ -86,6 +86,15 @@ PyObject* IsNamedtuple(PyObject* o, bool strict);
 //   True if the sequence subclasses mapping.
 bool IsMapping(PyObject* o);
 
+// Returns a true if its input is a (possibly wrapped) tuple.
+//
+// Args:
+//   seq: the input to be checked.
+//
+// Returns:
+//   True if the sequence is a tuple.
+bool IsTuple(PyObject* o);
+
 // Returns a true if its input is a collections.MappingView.
 //
 // Args:
@@ -121,6 +130,15 @@ bool IsAttrs(PyObject* o);
 // Returns:
 //   True if the object is a tensor.
 bool IsTensor(PyObject* o);
+
+// Returns a true if its input is an eager.EagerTensor.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is an eager tensor (or mimicking as one).
+bool IsEagerTensorSlow(PyObject* o);
 
 // Returns a true if its input is a ResourceVariable.
 //
@@ -159,7 +177,7 @@ PyObject* SameNamedtuples(PyObject* o1, PyObject* o2);
 //
 // Note that namedtuples with identical name and fields are always considered
 // to have the same shallow structure (even with `check_types=True`).
-// For intance, this code will print `True`:
+// For instance, this code will print `True`:
 //
 // ```python
 // def nt(a, b):

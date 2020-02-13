@@ -6,8 +6,7 @@ degradation in model accuracy. You can perform these techniques using an
 already-trained float TensorFlow model when you convert it to TensorFlow Lite
 format.
 
-Note: The procedures on this page require TensorFlow 1.15 or higher (available
-with the `tf-nightly` build).
+Note: The procedures on this page require TensorFlow 1.15 or higher.
 
 
 ### Optimization options

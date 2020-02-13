@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -31,7 +31,7 @@ TEST(ConvertTypeToTensorTypeTest, UnrankedTensorType) {
   mlir::Builder b(&context);
 
   PartialTensorShape output_shape =
-      ConvertTypeToTensorShape(b.getTensorType(b.getF32Type()));
+      ConvertTypeToTensorShape(mlir::UnrankedTensorType::get(b.getF32Type()));
   EXPECT_TRUE(output_shape.IsIdenticalTo(PartialTensorShape()));
 }
 
@@ -39,8 +39,8 @@ TEST(ConvertTypeToTensorTypeTest, NonFullyDefinedRankedTensorType) {
   mlir::MLIRContext context;
   mlir::Builder b(&context);
 
-  PartialTensorShape output_shape =
-      ConvertTypeToTensorShape(b.getTensorType({-1, 2, 3}, b.getF32Type()));
+  PartialTensorShape output_shape = ConvertTypeToTensorShape(
+      mlir::RankedTensorType::get({-1, 2, 3}, b.getF32Type()));
   EXPECT_TRUE(output_shape.IsIdenticalTo(PartialTensorShape({-1, 2, 3})));
 }
 
@@ -48,8 +48,8 @@ TEST(ConvertTypeToTensorTypeTest, FullyDefinedRankedTensorType) {
   mlir::MLIRContext context;
   mlir::Builder b(&context);
 
-  PartialTensorShape output_shape =
-      ConvertTypeToTensorShape(b.getTensorType({1, 2, 3}, b.getF32Type()));
+  PartialTensorShape output_shape = ConvertTypeToTensorShape(
+      mlir::RankedTensorType::get({1, 2, 3}, b.getF32Type()));
   EXPECT_TRUE(output_shape.IsIdenticalTo(PartialTensorShape({1, 2, 3})));
 }
 

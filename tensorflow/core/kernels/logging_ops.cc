@@ -56,7 +56,7 @@ AssertOp::AssertOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
 
 void AssertOp::Compute(OpKernelContext* ctx) {
   const Tensor& cond = ctx->input(0);
-  OP_REQUIRES(ctx, IsLegacyScalar(cond.shape()),
+  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(cond.shape()),
               errors::InvalidArgument("In[0] should be a scalar: ",
                                       cond.shape().DebugString()));
 
@@ -143,6 +143,10 @@ class PrintV2Op : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* input_;
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(input_->shape()),
+        errors::InvalidArgument("Input is expected to be scalar, but got ",
+                                input_->shape()));
     const string& msg = input_->scalar<tstring>()();
 
     string ended_msg = strings::StrCat(msg, end_);

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -486,7 +487,8 @@ XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF16) {
 XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF32) {
   TestImpl<float>();
 }
-XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF64) {
+// TODO(b/147505663): Disabled for now.
+XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, DISABLED_TestF64) {
   TestImpl<double>();
 }
 
@@ -1201,7 +1203,12 @@ XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<1>(GetParam())))
           .ValueOrDie(),
       &builder);
-  Einsum(x, y, std::get<2>(GetParam()));
+  auto config = std::get<2>(GetParam());
+  if (config.find(",") == config.npos) {
+    Einsum(x, config);
+  } else {
+    Einsum(x, y, config);
+  }
   ComputeAndCompare(&builder, {}, ErrorSpec{1e-3, 1e-3});
 }
 
@@ -1228,6 +1235,42 @@ std::vector<EinsumParamType> GetEinsumTestCases() {
       p{v{16, 3, 34}, v{3, 16, 34}, "abc,bac->abc"},
       p{v{5, 19}, v{}, "ab,->ab"},
       p{v{8, 1, 16, 64}, v{8, 12, 16, 64}, "bqhf,bkhf->bhqk"},
+      p{v{2, 3, 5, 6}, v{2, 3, 6, 7}, "...mk,...kn->...mn"},
+      p{v{5, 6}, v{6, 7}, "...mk,...kn->...mn"},
+      p{v{5, 6}, v{6, 7}, "...mk,kn->...mn"},
+      p{v{6, 6}, v{7, 7}, "mm,nn->mn"},
+      p{v{1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn->...mn"},
+      p{v{3, 1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn->...mn"},
+      p{v{1, 2, 5, 6}, v{3, 2, 1, 6, 7}, "...mk,...kn->...mn"},
+      p{v{1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn->n"},
+      p{v{1, 2, 2, 3, 77}, v{77, 2, 3, 55, 1, 2}, "...ija,aijb...->ba...ij"},
+      p{v{5, 6}, v{6, 7}, "mk,kn"},
+      p{v{5, 6}, v{6, 7}, "mk,kn"},
+      p{v{5, 6, 11}, v{6, 11, 7}, "mkB,kBn"},
+      p{v{5, 6}, v{6, 7}, "ab,cd"},
+      p{v{6}, v{6, 7}, "b,bc"},
+      p{v{5, 6, 7}, v{5, 6, 7}, "abc,abc"},
+      p{v{5, 6, 7}, v{7, 6, 5}, "abc,cba"},
+      p{v{77}, v{77}, "a,a"},
+      p{v{77}, v{77, 55}, "a,ab"},
+      p{v{2, 3, 77}, v{77, 2, 3, 55}, "ija,aijb"},
+      p{v{55}, v{}, "a"},
+      p{v{11, 111}, v{11}, "ab,a"},
+      p{v{16, 34}, v{16, 34}, "ab,ab"},
+      p{v{16, 3, 34}, v{3, 16, 34}, "abc,bac"},
+      p{v{5, 19}, v{}, "ab"},
+      p{v{8, 1, 16, 64}, v{8, 12, 16, 64}, "bqhf,bkhf"},
+      p{v{2, 3, 5, 6}, v{2, 3, 6, 7}, "...mk,...kn"},
+      p{v{5, 6}, v{}, "...mk"},
+      p{v{5, 6, 12, 13}, v{}, "...mk"},
+      p{v{5, 6, 12, 13}, v{}, "m...k"},
+      p{v{5, 6, 12, 13}, v{}, "mk..."},
+      p{v{5, 6}, v{6, 7}, "...mk->km..."},
+      p{v{1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn"},
+      p{v{3, 1, 2, 5, 6}, v{2, 1, 6, 7}, "...mk,...kn"},
+      p{v{1, 2, 5, 6}, v{3, 2, 1, 6, 7}, "...mk,...kn"},
+      p{v{16, 16, 16}, v{}, "iii"},
+      p{v{1, 2, 2, 3, 77}, v{77, 2, 3, 55, 1, 2}, "...ija,aijb..."},
   };
   return test_cases;
 }
@@ -1427,7 +1470,9 @@ ENTRY MatrixVectorComplex {
 }
 )";
 
-  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{4e-3, 4e-3}));
 }
 
 // Regression test for b/138155357, where we were incorrectly creating a dot-add
@@ -1627,11 +1672,10 @@ void DOT_ReorderContracting(int num_iters) {
       client->LiteralToShapedBuffer(input_literal, device_ordinal)
           .ConsumeValueOrDie();
 
-  std::unique_ptr<LocalExecutable> executable =
-      client
-          ->Compile(computation, {&buffer0.on_host_shape()},
-                    ExecutableBuildOptions())
-          .ConsumeValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables, client->Compile(computation, {&buffer0.on_host_shape()},
+                                        ExecutableBuildOptions()));
+  auto executable = std::move(executables[0]);
 
   se::Stream stream(executors[device_ordinal]);
   stream.Init();

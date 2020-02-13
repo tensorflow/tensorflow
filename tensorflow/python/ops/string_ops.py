@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +22,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -59,10 +59,6 @@ def regex_full_match(input, pattern, name=None):
   Returns:
     bool `Tensor` of the same shape as `input` with match results.
   """
-  # TODO(b/112455102): Remove compat.forward_compatible once past the horizon.
-  if not compat.forward_compatible(2018, 11, 10):
-    return gen_string_ops.regex_full_match(
-        input=input, pattern=pattern, name=name)
   if isinstance(pattern, util_compat.bytes_or_text_types):
     # When `pattern` is static through the life of the op we can
     # use a version which performs the expensive regex compilation once at
@@ -81,6 +77,10 @@ regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
 @dispatch.add_dispatch_support
 def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
   r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
+
+  >>> tf.strings.regex_replace("Text with tags.<br /><b>contains html</b>",
+  ...                          "<[^>]+>", " ")
+  <tf.Tensor: shape=(), dtype=string, numpy=b'Text with tags.  contains html '>
 
   Args:
     input: string `Tensor`, the source strings to process.
@@ -352,6 +352,31 @@ def reduce_join_v2(  # pylint: disable=missing-docstring
     keepdims=False,
     separator="",
     name=None):
+  """Joins all strings into a single string, or joins along an axis.
+
+  >>> tf.strings.reduce_join([['abc','123'],
+  ...                         ['def','456']]).numpy()
+  b'abc123def456'
+  >>> tf.strings.reduce_join([['abc','123'],
+  ...                         ['def','456']], axis=-1).numpy()
+  array([b'abc123', b'def456'], dtype=object)
+  >>> tf.strings.reduce_join([['abc','123'],
+  ...                         ['def','456']],
+  ...                        axis=-1,
+  ...                        separator=" ").numpy()
+  array([b'abc 123', b'def 456'], dtype=object)
+
+  Args:
+    inputs: A `tf.string` tensor.
+    axis: Which axis to join along. The default behavior is to join all
+      elements, producing a scalar.
+    keepdims: If true, retains reduced dimensions with length 1.
+    separator: a string added between each string being joined.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.string` tensor.
+  """
   with ops.name_scope(None, "ReduceJoin", [inputs, axis]):
     inputs_t = ops.convert_to_tensor(inputs)
     axis = _reduce_join_reduction_dims(inputs_t, axis)
@@ -362,11 +387,7 @@ def reduce_join_v2(  # pylint: disable=missing-docstring
         separator=separator,
         name=name)
 
-
-reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
-    gen_string_ops.reduce_join.__doc__, "reduction_indices", "axis")
-reduce_join.__doc__ = reduce_join.__doc__.replace("tf.reduce_join(",
-                                                  "tf.strings.reduce_join(")
+reduce_join.__doc__ = reduce_join_v2.__doc__
 
 
 # This wrapper provides backwards compatibility for code that predates the
@@ -374,16 +395,39 @@ reduce_join.__doc__ = reduce_join.__doc__.replace("tf.reduce_join(",
 @tf_export(v1=["strings.length"])
 @dispatch.add_dispatch_support
 def string_length(input, name=None, unit="BYTE"):
+  """Computes the length of each string given in the input tensor.
+
+  >>> strings = tf.constant(['Hello','TensorFlow', '🙂'])
+  >>> tf.strings.length(strings).numpy() # default counts bytes
+  array([ 5, 10, 4], dtype=int32)
+  >>> tf.strings.length(strings, unit="UTF8_CHAR").numpy()
+  array([ 5, 10, 1], dtype=int32)
+
+  Args:
+    input: A `Tensor` of type `string`. The strings for which to compute the
+      length for each element.
+    name: A name for the operation (optional).
+    unit: An optional `string` from: `"BYTE", "UTF8_CHAR"`. Defaults to
+      `"BYTE"`. The unit that is counted to compute string length.  One of:
+        `"BYTE"` (for the number of bytes in each string) or `"UTF8_CHAR"` (for
+        the number of UTF-8 encoded Unicode code points in each string). Results
+        are undefined if `unit=UTF8_CHAR` and the `input` strings do not contain
+        structurally valid UTF-8.
+
+  Returns:
+    A `Tensor` of type `int32`, containing the length of the input string in
+    the same element of the input tensor.
+  """
   return gen_string_ops.string_length(input, unit=unit, name=name)
 
 
 @tf_export("strings.length", v1=[])
 @dispatch.add_dispatch_support
 def string_length_v2(input, unit="BYTE", name=None):
-  return string_length(input, name, unit)
+  return gen_string_ops.string_length(input, unit=unit, name=name)
 
 
-string_length.__doc__ = gen_string_ops.string_length.__doc__
+string_length_v2.__doc__ = gen_string_ops.string_length.__doc__
 
 
 @tf_export(v1=["substr"])
@@ -430,6 +474,13 @@ def string_to_number(input, out_type=dtypes.float32, name=None):
   (Note that int32 overflow results in an error while float overflow
   results in a rounded value.)
 
+  Examples:
+
+  >>> tf.strings.to_number("1.55")
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.55>
+  >>> tf.strings.to_number("3", tf.int32)
+  <tf.Tensor: shape=(), dtype=int32, numpy=3>
+
   Args:
     input: A `Tensor` of type `string`.
     out_type: An optional `tf.DType` from: `tf.float32, tf.float64, tf.int32,
@@ -469,6 +520,11 @@ def string_to_hash_bucket(input, num_buckets, name=None):
   This functionality will be deprecated and it's recommended to use
   `tf.strings.to_hash_bucket_fast()` or `tf.strings.to_hash_bucket_strong()`.
 
+  Examples:
+
+  >>> tf.strings.to_hash_bucket(["Hello", "TensorFlow", "2.x"], 3)
+  <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 0, 1])>
+
   Args:
     input: A `Tensor` of type `string`.
     num_buckets: An `int` that is `>= 1`. The number of buckets.
@@ -492,3 +548,35 @@ def string_to_hash_bucket_v1(
   return gen_string_ops.string_to_hash_bucket(string_tensor, num_buckets, name)
 
 string_to_hash_bucket_v1.__doc__ = gen_string_ops.string_to_hash_bucket.__doc__
+
+
+@tf_export("strings.join", v1=["strings.join", "string_join"])
+@deprecation.deprecated_endpoints("string_join")
+@dispatch.add_dispatch_support
+def string_join(inputs, separator="", name=None):
+  """Perform element-wise concatenation of a list of string tensors.
+
+  Given a list of string tensors of same shape, performs element-wise
+  concatenation of the strings of the same index in all tensors.
+
+
+  >>> tf.strings.join(['abc','def']).numpy()
+  b'abcdef'
+  >>> tf.strings.join([['abc','123'],
+  ...                  ['def','456'],
+  ...                  ['ghi','789']]).numpy()
+  array([b'abcdefghi', b'123456789'], dtype=object)
+  >>> tf.strings.join([['abc','123'],
+  ...                  ['def','456']],
+  ...                  separator=" ").numpy()
+  array([b'abc def', b'123 456'], dtype=object)
+
+  Args:
+    inputs: A list of `tf.Tensor` objects of same size and `tf.string` dtype.
+    separator: A string added between each string being joined.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.string` tensor.
+  """
+  return gen_string_ops.string_join(inputs, separator=separator, name=name)

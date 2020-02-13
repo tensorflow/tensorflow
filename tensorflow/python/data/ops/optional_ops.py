@@ -39,8 +39,8 @@ class Optional(composite_tensor.CompositeTensor):
   An `Optional` can represent the result of an operation that may fail as a
   value, rather than raising an exception and halting execution. For example,
   `tf.data.experimental.get_next_as_optional` returns an `Optional` that either
-  contains the next value from a `tf.compat.v1.data.Iterator` if one exists, or
-  a "none" value that indicates the end of the sequence has been reached.
+  contains the next value of an iterator if one exists, or a "none" value that
+  indicates the end of the sequence has been reached.
 
   `Optional` can only be used by values that are convertible to `Tensor` or
   `CompositeTensor`.

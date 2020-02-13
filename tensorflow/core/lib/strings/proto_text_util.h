@@ -17,12 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 namespace strings {

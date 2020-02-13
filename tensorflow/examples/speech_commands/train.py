@@ -78,8 +78,8 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-import input_data
-import models
+import tensorflow.examples.speech_commands.input_data as input_data
+import tensorflow.examples.speech_commands.models as models
 from tensorflow.python.platform import gfile
 
 FLAGS = None
@@ -153,14 +153,31 @@ def main(_):
   with tf.compat.v1.name_scope('cross_entropy'):
     cross_entropy_mean = tf.compat.v1.losses.sparse_softmax_cross_entropy(
         labels=ground_truth_input, logits=logits)
+
   if FLAGS.quantize:
-    tf.contrib.quantize.create_training_graph(quant_delay=0)
+    try:
+      tf.contrib.quantize.create_training_graph(quant_delay=0)
+    except AttributeError as e:
+      msg = e.args[0]
+      msg += ('\n\n The --quantize option still requires contrib, which is not '
+              'part of TensorFlow 2.0. Please install a previous version:'
+              '\n    `pip install tensorflow<=1.15`')
+      e.args = (msg,)
+      raise e
+
   with tf.compat.v1.name_scope('train'), tf.control_dependencies(
       control_dependencies):
     learning_rate_input = tf.compat.v1.placeholder(
         tf.float32, [], name='learning_rate_input')
-    train_step = tf.compat.v1.train.GradientDescentOptimizer(
-        learning_rate_input).minimize(cross_entropy_mean)
+    if FLAGS.optimizer == 'gradient_descent':
+      train_step = tf.compat.v1.train.GradientDescentOptimizer(
+          learning_rate_input).minimize(cross_entropy_mean)
+    elif FLAGS.optimizer == 'momentum':
+      train_step = tf.compat.v1.train.MomentumOptimizer(
+          learning_rate_input, .9,
+          use_nesterov=True).minimize(cross_entropy_mean)
+    else:
+      raise Exception('Invalid Optimizer')
   predicted_indices = tf.argmax(input=logits, axis=1)
   correct_prediction = tf.equal(predicted_indices, ground_truth_input)
   confusion_matrix = tf.math.confusion_matrix(labels=ground_truth_input,
@@ -381,7 +398,8 @@ if __name__ == '__main__':
       '--window_stride_ms',
       type=float,
       default=10.0,
-      help='How far to move in time between spectogram timeslices.',)
+      help='How far to move in time between spectrogram timeslices.',
+  )
   parser.add_argument(
       '--feature_bin_count',
       type=int,
@@ -464,23 +482,28 @@ if __name__ == '__main__':
       ArgumentTypeError: Not an expected value.
     """
     value = value.upper()
-    if value == 'INFO':
-      return tf.compat.v1.logging.INFO
-    elif value == 'DEBUG':
+    if value == 'DEBUG':
       return tf.compat.v1.logging.DEBUG
+    elif value == 'INFO':
+      return tf.compat.v1.logging.INFO
+    elif value == 'WARN':
+      return tf.compat.v1.logging.WARN
     elif value == 'ERROR':
       return tf.compat.v1.logging.ERROR
     elif value == 'FATAL':
       return tf.compat.v1.logging.FATAL
-    elif value == 'WARN':
-      return tf.compat.v1.logging.WARN
     else:
       raise argparse.ArgumentTypeError('Not an expected value')
   parser.add_argument(
       '--verbosity',
       type=verbosity_arg,
       default=tf.compat.v1.logging.INFO,
-      help='Log verbosity. Can be "INFO", "DEBUG", "ERROR", "FATAL", or "WARN"')
+      help='Log verbosity. Can be "DEBUG", "INFO", "WARN", "ERROR", or "FATAL"')
+  parser.add_argument(
+      '--optimizer',
+      type=str,
+      default='gradient_descent',
+      help='Optimizer (gradient_descent or momentum)')
 
   FLAGS, unparsed = parser.parse_known_args()
   tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

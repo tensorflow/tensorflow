@@ -16,11 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
-// TODO(whchung@gmail.com): Add gpu_conv_algorithm_picker after its PR merged.
+#include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_degenerate_dim_remover.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -73,8 +77,8 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   HloPassPipeline pipeline("conv_canonicalization");
   pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
-  pipeline.AddPass<CudnnConvRewriter>();
-  pipeline.AddPass<CudnnConvPaddingLegalization>();
+  pipeline.AddPass<GpuConvRewriter>();
+  pipeline.AddPass<GpuConvPaddingLegalization>();
 
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
@@ -91,13 +95,20 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
       /*allow_mixed_precision=*/false,
       LayoutAssignment::InstructionCanChangeLayout);
 
+  pipeline.AddPass<ReductionDegenerateDimRemover>();
+  pipeline.AddPass<ReductionLayoutNormalizer>();
+  pipeline.AddPass<ReductionDimensionGrouper>();
+
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
-  // TODO(whchung@gmail.com): Add gpu_conv_algorithm_picker after its PR merged.
+  // Rewrite GEMMs into custom calls.
+  pipeline.AddPass<GemmRewriter>();
+
+  pipeline.AddPass<GpuConvAlgorithmPicker>(stream_exec, device_allocator);
 
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();

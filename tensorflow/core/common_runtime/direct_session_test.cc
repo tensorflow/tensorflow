@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <random>
 #include <string>
 #include <thread>  // NOLINT
 #include <unordered_map>
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -224,6 +226,114 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_OptimizeForStaticGraph) {
   EXPECT_TRUE(errors::IsFailedPrecondition(s));
   EXPECT_TRUE(
       absl::StrContains(s.error_message(), "optimize_for_static_graph"));
+}
+
+TEST_F(DirectSessionMinusAXTest,
+       RunSimpleNetwork_DisableOutputPartitionGraphs) {
+  Initialize({3, 2, -1, 0});
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_disable_output_partition_graphs(
+      true);
+  auto session = absl::WrapUnique(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+  std::vector<Tensor> outputs;
+  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  TF_ASSERT_OK(s);
+
+  ASSERT_EQ(1, outputs.size());
+  // The first output should be initialized and have the correct
+  // output.
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+
+  // The Run() call should fail when `output_partition_graphs` is set to true.
+  RunOptions run_options;
+  run_options.set_output_partition_graphs(true);
+  RunMetadata run_metadata;
+  s = session->Run(run_options, inputs, output_names, target_nodes, &outputs,
+                   &run_metadata);
+
+  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "disable_output_partition_graphs"));
+}
+
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_FinalizeWithCallables) {
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions({}, {y_ + ":0"}, {y_neg_}), &handle));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // The callable is usable after finalization.
+  for (int i = 0; i < 2; ++i) {
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+
+    ASSERT_EQ(1, outputs.size());
+    // The first output should be initialized and have the correct
+    // output.
+    auto mat = outputs[0].matrix<float>();
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+  }
+
+  TF_ASSERT_OK(session->ReleaseCallable(handle));
+
+  // Making a new callable fails because the session has been finalized.
+  Status s =
+      session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle);
+  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "Session has been finalized."));
+}
+
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_FinalizeWithRun) {
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->Run({}, {y_ + ":0"}, {y_neg_}, &outputs));
+
+  ASSERT_EQ(1, outputs.size());
+  // The first output should be initialized and have the correct output.
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // Running the exact same subgraph succeeds after finalization.
+  TF_ASSERT_OK(session->Run({}, {y_ + ":0"}, {y_neg_}, &outputs));
+  ASSERT_EQ(1, outputs.size());
+  mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+
+  // Running a different subgraph fails because the session has been finalized.
+  Status s = session->Run({}, {y_ + ":0"}, {}, &outputs);
+  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "Session has been finalized."));
 }
 
 TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
@@ -610,7 +720,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
 
   // Prepares RunOptions and RunMetadata
   RunOptions run_options;
-  run_options.set_trace_level(RunOptions::FULL_TRACE);
+  run_options.set_trace_level(RunOptions::SOFTWARE_TRACE);
   RunMetadata run_metadata;
   EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 0);
 
@@ -641,7 +751,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts_Callable) {
   CallableOptions callable_options =
       MakeCallableOptions({}, {y_ + ":0"}, {y_neg_});
   callable_options.mutable_run_options()->set_trace_level(
-      RunOptions::FULL_TRACE);
+      RunOptions::SOFTWARE_TRACE);
   TF_ASSERT_OK(session->MakeCallable(callable_options, &handle));
 
   RunMetadata run_metadata;
@@ -1275,6 +1385,66 @@ TEST(DirectSessionTest, SessionSyncRun) {
   std::hash<std::thread::id> hasher;
   EXPECT_EQ(static_cast<int64>(hasher(std::this_thread::get_id())),
             static_cast<int64>(outputs[0].scalar<int64>()()));
+}
+
+REGISTER_OP("ExpensiveNoop").SetIsStateful();
+
+class ExpensiveNoopOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+  bool IsExpensive() override { return true; }
+  void Compute(OpKernelContext* ctx) override {
+    const string& stack_trace = tensorflow::CurrentStackTrace();
+    const string process_method = "ExecutorState::Process()";
+    size_t pos = 0;
+    int frame_count = 0;
+    while ((pos = stack_trace.find("ExecutorState::Process()", pos)) !=
+           string::npos) {
+      ++frame_count;
+      ++pos;
+    }
+    OP_REQUIRES(ctx, frame_count <= 1,
+                errors::Internal(
+                    "Recursive call to ExecutorState::Process() detected."));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("ExpensiveNoop").Device(DEVICE_CPU),
+                        ExpensiveNoopOp);
+
+TEST(DirectSessionTest, SessionSyncRun_DeepGraph) {
+  Graph g(OpRegistry::Global());
+
+  std::vector<Node*> nodes;
+  nodes.reserve(1024);
+
+  auto make_expensive_noop = [&g](gtl::ArraySlice<Node*> control_deps) {
+    Node* ret;
+    auto builder = NodeBuilder(g.NewName("N"), "ExpensiveNoop");
+    for (Node* control_dep : control_deps) {
+      builder = builder.ControlInput(control_dep);
+    }
+    TF_CHECK_OK(builder.Finalize(&g, &ret));
+    return ret;
+  };
+
+  Node* base = make_expensive_noop({});
+
+  Node* child_1 = make_expensive_noop({base});
+  Node* child_2 = make_expensive_noop({base});
+
+  GraphDef def;
+  g.ToGraphDef(&def);
+
+  auto sess = CreateSession();
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
+  run_opts.set_inter_op_thread_pool(-1);
+
+  EXPECT_TRUE(sess->Run(run_opts, {}, {}, {child_1->name(), child_2->name()},
+                        &outputs, nullptr)
+                  .ok());
 }
 
 TEST(DirectSessionTest, SyncSession) {
@@ -2159,7 +2329,7 @@ bool IsCUDATensor(const Tensor& t) {
       cudaPointerGetAttributes(&attributes, t.tensor_data().data());
   if (err == cudaErrorInvalidValue) return false;
   CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
-  return (attributes.memoryType == cudaMemoryTypeDevice);
+  return (attributes.type == cudaMemoryTypeDevice);
 #elif TENSORFLOW_USE_ROCM
   hipPointerAttribute_t attributes;
   hipError_t err = hipPointerGetAttributes(&attributes, t.tensor_data().data());
@@ -2418,8 +2588,9 @@ TEST(DirectSessionTest,
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
-void FeedFetchBenchmarkHelper(int iters, int num_feeds,
-                              bool use_make_callable) {
+void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
+                              int inter_op_threads,
+                              bool use_single_threaded_executor) {
   testing::StopTiming();
 
   Tensor value(DT_FLOAT, TensorShape());
@@ -2453,6 +2624,11 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds,
   GraphDef gd;
   g.ToGraphDef(&gd);
   SessionOptions opts;
+  opts.config.set_inter_op_parallelism_threads(inter_op_threads);
+  if (use_single_threaded_executor) {
+    opts.config.mutable_experimental()->set_executor_type(
+        "SINGLE_THREADED_EXECUTOR");
+  }
   std::unique_ptr<Session> session(NewSession(opts));
   TF_CHECK_OK(session->Create(gd));
   if (use_make_callable) {
@@ -2496,14 +2672,34 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds,
 }
 
 void BM_FeedFetch(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false);
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false,
+                           /* inter_op_threads */ 0,
+                           /* use_single_threaded_executor */ false);
 }
 void BM_FeedFetchCallable(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true);
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ 0,
+                           /* use_single_threaded_executor */ false);
+}
+void BM_FeedFetchCallableSingleThread(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ -1,
+                           /* use_single_threaded_executor */ false);
+}
+void BM_FeedFetchCallableSingleThreadExecutor(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ -1,
+                           /* use_single_threaded_executor */ true);
 }
 
 BENCHMARK(BM_FeedFetch)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 BENCHMARK(BM_FeedFetchCallable)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
+BENCHMARK(BM_FeedFetchCallableSingleThread)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
+BENCHMARK(BM_FeedFetchCallableSingleThreadExecutor)
+    ->Arg(1)
+    ->Arg(2)
+    ->Arg(5)
+    ->Arg(10);
 
 }  // namespace
 

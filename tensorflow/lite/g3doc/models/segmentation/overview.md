@@ -8,6 +8,18 @@ _DeepLab_ is a state-of-art deep learning model for semantic image segmentation,
 where the goal is to assign semantic labels (e.g. person, dog, cat) to every
 pixel in the input image.
 
+If you are new to TensorFlow Lite and are working with iOS, we
+recommend exploring the following example applications that can help you get
+started.
+
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/ios">iOS
+example</a>
+
+If you are using a platform other than Android or iOS, or you are already
+familiar with the
+<a href="https://www.tensorflow.org/api_docs/python/tf/lite">TensorFlow Lite
+APIs</a>, you can download our starter image segmentation model.
+
 <a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/deeplabv3_257_mv_gpu.tflite">Download
 starter model</a>
 
@@ -27,6 +39,48 @@ The current implementation includes the following features:
   <li>DeepLabv3: We augment the ASPP module with image-level feature [5, 6] to capture longer range information. We also include batch normalization [7] parameters to facilitate the training. In particular, we applying atrous convolution to extract output features at different output strides during training and evaluation, which efficiently enables training BN at output stride = 16 and attains a high performance at output stride = 8 during evaluation.</li>
   <li>DeepLabv3+: We extend DeepLabv3 to include a simple yet effective decoder module to refine the segmentation results especially along object boundaries. Furthermore, in this encoder-decoder structure one can arbitrarily control the resolution of extracted encoder features by atrous convolution to trade-off precision and runtime.</li>
 </ol>
+
+## Performance Benchmarks
+
+Performance benchmark numbers are generated with the tool
+[described here](https://www.tensorflow.org/lite/performance/benchmarks).
+
+<table>
+  <thead>
+    <tr>
+      <th>Model Name</th>
+      <th>Model size </th>
+      <th>Device </th>
+      <th>GPU</th>
+      <th>CPU</th>
+    </tr>
+  </thead>
+  <tr>
+    <td rowspan = 3>
+      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/deeplabv3_257_mv_gpu.tflite">Deeplab v3</a>
+    </td>
+    <td rowspan = 3>
+      2.7 Mb
+    </td>
+    <td>Pixel 3 (Android 10) </td>
+    <td>16ms</td>
+    <td>37ms*</td>
+  </tr>
+   <tr>
+     <td>Pixel 4 (Android 10) </td>
+    <td>20ms</td>
+    <td>23ms*</td>
+  </tr>
+   <tr>
+     <td>iPhone XS (iOS 12.4.1) </td>
+     <td>16ms</td>
+    <td>25ms** </td>
+  </tr>
+</table>
+
+\* 4 threads used.
+
+\*\* 2 threads used on iPhone for the best performance result.
 
 ## Example output
 

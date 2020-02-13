@@ -163,6 +163,12 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
   out_ndims = ndims if (ndims is None or not stack_values) else ndims + 1
   axis = ragged_util.get_positive_axis(axis, out_ndims)
 
+  if stack_values and ndims == 1 and axis == 0:
+    return ragged_tensor.RaggedTensor.from_row_lengths(
+        values=array_ops.concat(rt_inputs, axis=0),
+        row_lengths=array_ops.concat([array_ops.shape(r) for r in rt_inputs],
+                                     axis=0))
+
   # If all the inputs are Tensors, and we're combining the final dimension,
   # then we can delegate to the tf.stack/tf.concat operation, and return a
   # Tensor.
@@ -254,7 +260,7 @@ def _ragged_stack_concat_axis_1(rt_inputs, stack_values):
   ]
 
   with ops.control_dependencies(nrows_checks):
-    # Concatentate the inputs together to put them in a single ragged tensor.
+    # Concatenate the inputs together to put them in a single ragged tensor.
     concatenated_rt = _ragged_stack_concat_axis_0(rt_inputs, stack_values=False)
 
     # Use ragged.gather to permute the rows of concatenated_rt.  In particular,

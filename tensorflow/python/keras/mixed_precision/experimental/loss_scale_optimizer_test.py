@@ -310,6 +310,11 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
         'will be removed in the future.'):
       opt.add_slot(None, None)
 
+  def testPassingNoneToLossScale(self):
+    opt = gradient_descent.SGD()
+    with self.assertRaisesRegexp(ValueError, r'loss_scale cannot be None'):
+      loss_scale_optimizer.LossScaleOptimizer(opt, None)
+
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
   def testGettingAndSettingLearningRate(self, strategy_fn):

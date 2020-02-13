@@ -189,10 +189,12 @@ class HloDataflowAnalysis {
   bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
+  bool UpdateCopyStartValueSet(HloInstruction* copy_start);
   bool UpdateCopyDoneValueSet(HloInstruction* copy_done);
   bool UpdateRecvDoneValueSet(HloInstruction* recv_done);
   bool UpdateTupleSelectValueSet(HloInstruction* select);
   bool UpdateSendValueSet(HloInstruction* send);
+  bool UpdateSetDimensionSizeValueSet(HloInstruction* set_dimension_size);
   bool UpdateTupleValueSet(HloInstruction* tuple);
   bool UpdateWhileValueSet(HloInstruction* xla_while);
   bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);

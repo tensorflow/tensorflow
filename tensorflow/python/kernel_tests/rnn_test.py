@@ -36,6 +36,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import network as keras_network
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.layers import base as base_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -372,7 +373,7 @@ class RNNTest(test.TestCase):
           test_samples=0,
           input_shape=(timestep, input_shape),
           num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train)
+      y_train = np_utils.to_categorical(y_train)
       cell = keras.layers.SimpleRNNCell(output_shape)
 
       inputs = array_ops.placeholder(
@@ -406,7 +407,7 @@ class RNNTest(test.TestCase):
           test_samples=0,
           input_shape=(timestep, input_shape),
           num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train)
+      y_train = np_utils.to_categorical(y_train)
       cell = keras.layers.GRUCell(output_shape)
 
       inputs = array_ops.placeholder(
@@ -440,7 +441,7 @@ class RNNTest(test.TestCase):
           test_samples=0,
           input_shape=(timestep, input_shape),
           num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train)
+      y_train = np_utils.to_categorical(y_train)
       cell = keras.layers.LSTMCell(output_shape)
 
       inputs = array_ops.placeholder(
@@ -478,7 +479,7 @@ class RNNTest(test.TestCase):
           test_samples=0,
           input_shape=(timestep, input_shape),
           num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train)
+      y_train = np_utils.to_categorical(y_train)
       cell = keras.layers.StackedRNNCells(
           [keras.layers.LSTMCell(2 * output_shape),
            keras.layers.LSTMCell(output_shape)])
@@ -523,7 +524,7 @@ class RNNTest(test.TestCase):
           input_shape=(timestep, input_shape),
           num_classes=output_shape)
       x_train = np.transpose(x_train, (1, 0, 2))
-      y_train = keras.utils.to_categorical(y_train)
+      y_train = np_utils.to_categorical(y_train)
       cell = keras.layers.SimpleRNNCell(output_shape)
 
       inputs = [array_ops.placeholder(
@@ -648,7 +649,7 @@ class RNNTest(test.TestCase):
       save.restore(sess, save_path)
       self.assertAllEqual([10.] * 4, self.evaluate(lstm_cell._bias))
 
-  # TODO(scottzhu): Look into updating for V2 Intializers.
+  # TODO(scottzhu): Look into updating for V2 Initializers.
   @test_util.run_deprecated_v1
   def testRNNCellSerialization(self):
     for cell in [

@@ -44,7 +44,7 @@ class _Initializer(tracking.CapturableResource):
   original SavedModel's initialization procedure.
 
   Created when `tf.saved_model.load` loads a TF 1.x-style SavedModel with an
-  initialization op. This object holds a function which runs the
+  initialization op. This object holds a function that runs the
   initialization. It does not require any manual user intervention;
   `tf.saved_model.save` will see this object and automatically add it to the
   exported SavedModel, and `tf.saved_model.load` runs the initialization
@@ -91,19 +91,24 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     # pylint: enable=protected-access
     returns[0] = saver
 
-  def restore_variables(self, wrapped, saver):
+  def _extract_saver_restore(self, wrapped, saver):
+    if saver is None:
+      return None
+    saver_def = saver.saver_def
+    filename_tensor = wrapped.graph.as_graph_element(
+        saver_def.filename_tensor_name)
+    # We both feed and fetch filename_tensor so we have an operation to use to
+    # feed into variable initializers (only relevant for v1 graph building).
+    return wrapped.prune(
+        feeds=[filename_tensor],
+        fetches=[filename_tensor,
+                 wrapped.graph.as_graph_element(saver_def.restore_op_name)])
+
+  def restore_variables(self, wrapped, restore_from_saver):
     """Restores variables from the checkpoint."""
-    if saver is not None:
-      saver_def = saver.saver_def
-      filename_tensor = wrapped.graph.as_graph_element(
-          saver_def.filename_tensor_name)
-      # We both feed and fetch filename_tensor so we have an operation to use to
-      # feed into variable initializers (only relevant for v1 graph building).
-      restore_fn = wrapped.prune(
-          feeds=[filename_tensor],
-          fetches=[filename_tensor,
-                   wrapped.graph.as_graph_element(saver_def.restore_op_name)])
-      initializer, _ = restore_fn(constant_op.constant(self._variables_path))
+    if restore_from_saver is not None:
+      initializer, _ = restore_from_saver(
+          constant_op.constant(self._variables_path))
       if not ops.executing_eagerly_outside_functions():
         # Add the initialization operation to the table initializers collection
         # in case we don't have any lifted variables to attach it to. There
@@ -203,7 +208,8 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
         functools.partial(self.load_graph, load_graph_returns, meta_graph_def),
         signature=[])
     saver, = load_graph_returns
-    self.restore_variables(wrapped, saver)
+    restore_from_saver = self._extract_saver_restore(wrapped, saver)
+    self.restore_variables(wrapped, restore_from_saver)
     with wrapped.graph.as_default():
       init_op = loader_impl.get_init_op(
           meta_graph_def) or monitored_session.Scaffold.default_local_init_op()
@@ -211,6 +217,9 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
       init_anchor = constant_op.constant(0., name="dummy_fetch")
 
     root = tracking.AutoTrackable()
+    if restore_from_saver is not None:
+      root.restore = (
+          lambda path: restore_from_saver(constant_op.constant(path)))
     asset_feed_tensors = []
     asset_paths = []
     for tensor_name, value in loader_impl.get_asset_tensors(

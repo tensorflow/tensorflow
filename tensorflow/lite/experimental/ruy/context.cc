@@ -59,6 +59,18 @@ Path Context::GetRuntimeEnabledPaths() {
 #endif  // RUY_PLATFORM(ARM)
 
 #if RUY_PLATFORM(X86)
+  // TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete /
+  // placeholder. Optimization is not finished. In particular the dimensions of
+  // the kernel blocks can be changed as desired.
+  //
+  if ((runtime_enabled_paths_ & Path::kSse42) != Path::kNone) {
+    if (!(HaveBuiltPathForSse42() && DetectCpuSse42())) {
+      runtime_enabled_paths_ = runtime_enabled_paths_ & ~Path::kSse42;
+      // Sanity check.
+      RUY_DCHECK((runtime_enabled_paths_ & Path::kSse42) == Path::kNone);
+    }
+  }
+
   if ((runtime_enabled_paths_ & Path::kAvx2) != Path::kNone) {
     if (!(HaveBuiltPathForAvx2() && DetectCpuAvx2())) {
       runtime_enabled_paths_ = runtime_enabled_paths_ & ~Path::kAvx2;
@@ -74,11 +86,23 @@ Path Context::GetRuntimeEnabledPaths() {
       RUY_DCHECK((runtime_enabled_paths_ & Path::kAvx512) == Path::kNone);
     }
   }
+
+  // TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete /
+  // placeholder. Optimization is not finished. In particular the dimensions of
+  // the kernel blocks can be changed as desired.
+  //
+  if ((runtime_enabled_paths_ & Path::kAvxVnni) != Path::kNone) {
+    if (!(HaveBuiltPathForAvxVnni() && DetectCpuAvxVnni())) {
+      runtime_enabled_paths_ = runtime_enabled_paths_ & ~Path::kAvxVnni;
+      // Sanity check.
+      RUY_DCHECK((runtime_enabled_paths_ & Path::kAvxVnni) == Path::kNone);
+    }
+  }
 #endif  // RUY_PLATFORM(X86)
 
   // Sanity check. We can't possibly have disabled all paths, as some paths
   // are universally available (kReference, kStandardCpp).
-  RUY_DCHECK(runtime_enabled_paths_ != Path::kNone);
+  RUY_DCHECK_NE(runtime_enabled_paths_, Path::kNone);
   return runtime_enabled_paths_;
 }
 

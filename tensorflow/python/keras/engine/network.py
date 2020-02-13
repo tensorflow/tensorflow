@@ -24,14 +24,13 @@ import copy
 import itertools
 import json
 import os
-import threading
 
 import numpy as np
 import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
@@ -39,26 +38,28 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import saving
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_module
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.saving import hdf5_format
+from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.saving.saved_model import network_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 
@@ -155,7 +156,7 @@ class Network(base_layer.Layer):
   # The key of _layer_call_argspecs is a layer. tf.Module._flatten will fail to
   # flatten the key since it is trying to convert Trackable/Layer to a string.
   _TF_MODULE_IGNORED_PROPERTIES = frozenset(itertools.chain(
-      ('_layer_call_argspecs',),
+      ('_layer_call_argspecs', '_compiled_trainable_state'),
       base_layer.Layer._TF_MODULE_IGNORED_PROPERTIES
   ))
 
@@ -197,56 +198,23 @@ class Network(base_layer.Layer):
     generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic',
                                            'autocast'})
 
-    # Object to store all thread local layer properties.
-    self._thread_local = threading.local()
+    super(Network, self).__init__(name=name, **kwargs)
 
-    self._init_set_name(name, zero_based=True)
-    self._activity_regularizer = None
-    # This acts just like the `trainable` attribute of any layer instance.
-    self._trainable = kwargs.get('trainable', True)
-    # This attribute has no effect if the model is created using the Functional
-    # API. Instead, `model.dynamic` is determined based on the internal layers.
-    self._dynamic = kwargs.get('dynamic', False)
     self._is_compiled = False
-    self._layers = []
 
     # This is True for Sequential networks and Functional networks.
     self._compute_output_and_mask_jointly = False
 
-    self.supports_masking = False
     if not hasattr(self, 'optimizer'):
       # Don't reset optimizer if already set.
       self.optimizer = None
 
-    # Private attributes to implement compatibility with Layer.
-    self._maybe_create_attribute('_trainable_weights', [])
-    self._maybe_create_attribute('_non_trainable_weights', [])
-    self._updates = []  # Used in symbolic mode only.
-    self._losses = []
-    self._callable_losses = []
-    # A list of metric instances corresponding to the symbolic metric tensors
-    # added using the `add_metric` API.
-    self._metrics = []
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
     if context.executing_eagerly():
       self._graph = None
     else:
       self._graph = ops.get_default_graph()  # Used in symbolic mode only.
-
-    # Both graph and subclassed networks have a dtype policy. For graph
-    # networks, the policy's compute and variable dtypes are ignored, but other
-    # fields, like the loss scale, are used by Models. For subclassed networks,
-    # the compute and variable dtypes are used as like any ordinary layer.
-    self._set_dtype_policy(kwargs.get('dtype', None))
-
-    # All layers in order of horizontal graph traversal.
-    # Entries are unique. Includes input and output layers.
-    self._maybe_create_attribute('_layers', [])
-
-    # Used in symbolic mode only, only in conjunction with graph-networks
-    self._outbound_nodes = []
-    self._inbound_nodes = []
 
     self._trackable_saver = (
         trackable_utils.saver_with_op_caching(self))
@@ -276,6 +244,7 @@ class Network(base_layer.Layer):
     # A Network does not create weights of its own, thus it is already
     # built.
     self.built = True
+    self._build_input_shape = nest.map_structure(lambda x: x.shape, inputs)
     self._compute_output_and_mask_jointly = True
     self._is_graph_network = True
     # `_expects_training_arg` is True since the `training` argument is always
@@ -290,6 +259,8 @@ class Network(base_layer.Layer):
     self._output_layers = []
     self._input_coordinates = []
     self._output_coordinates = []
+
+    self._supports_ragged_inputs = None
 
     # This is for performance optimization when calling the Network on new
     # inputs. Every time the Network is called on a set on input tensors,
@@ -327,8 +298,6 @@ class Network(base_layer.Layer):
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
       layer._attribute_sentinel.add_parent(self._attribute_sentinel)
 
-    self._track_layers(layers)
-
     # Create the node linking internal inputs to internal outputs.
     node_module.Node(
         outbound_layer=self,
@@ -344,7 +313,7 @@ class Network(base_layer.Layer):
     self._feed_input_names = []
     self._feed_inputs = []
     self._feed_input_shapes = []
-    for i, layer in enumerate(self._input_layers):
+    for layer in self._input_layers:
       self.input_names.append(layer.name)
       if layer.is_placeholder:
         self._feed_input_names.append(layer.name)
@@ -355,6 +324,8 @@ class Network(base_layer.Layer):
         # batch_input_shape attr to allow for input shape validation.
         self._feed_input_shapes.append(layer._batch_input_shape)
         self._feed_inputs.append(layer.input)
+
+    self._compute_tensor_usage_count()
 
   def _set_output_names(self):
     """Assigns unique names to the Network's outputs.
@@ -382,9 +353,11 @@ class Network(base_layer.Layer):
     self._init_call_fn_args()
     self._autocast = kwargs.get('autocast',
                                 base_layer_utils.v2_dtype_behavior_enabled())
+    self._supports_ragged_inputs = None
     self.outputs = []
     self.inputs = []
     self.built = False
+    self._build_input_shape = None
 
   @property
   @trackable_layer_utils.cache_recursive_attribute('dynamic')
@@ -393,18 +366,25 @@ class Network(base_layer.Layer):
       return any(layer.dynamic for layer in self.layers)
     return self._dynamic or any(layer.dynamic for layer in self.layers)
 
-  def _track_layers(self, layers):
-    """Add Trackable dependencies on a list of Layers."""
+  @property
+  def _layer_checkpoint_dependencies(self):
+    """Dictionary of layer dependencies to be included in the checkpoint."""
+    # Use getattr because this function can be called from __setattr__, at which
+    # point the _is_graph_network attribute has not been created.
+    if (not getattr(self, '_is_graph_network', False) and
+        base_layer_utils.is_subclassed(self)):
+      return {}  # Only add layer dependencies for graph networks
+
     weight_layer_index = 0
-    for layer_index, layer in enumerate(layers):
+
+    dependencies = {}
+    for layer_index, layer in enumerate(self.layers):
       try:
         if layer.weights:
           # Keep a separate index for layers which have weights. This allows
           # users to insert Layers without weights anywhere in the network
           # without breaking checkpoints.
-          self._track_trackable(
-              layer, name='layer_with_weights-%d' % weight_layer_index,
-              overwrite=True)
+          dependencies['layer_with_weights-%d' % weight_layer_index] = layer
           weight_layer_index += 1
       except ValueError:
         # The layer might have weights, but may not be built yet. We just treat
@@ -413,8 +393,31 @@ class Network(base_layer.Layer):
 
       # Even if it doesn't have weights, we should still track everything in
       # case it has/will have Trackable dependencies.
-      self._track_trackable(
-          layer, name='layer-%d' % layer_index, overwrite=True)
+      dependencies['layer-%d' % layer_index] = layer
+    return dependencies
+
+  @property
+  def _checkpoint_dependencies(self):
+    dependencies = [
+        trackable.TrackableReference(name=name, ref=layer)
+        for name, layer in self._layer_checkpoint_dependencies.items()]
+    dependencies.extend(super(Network, self)._checkpoint_dependencies)
+    return dependencies
+
+  def _lookup_dependency(self, name):
+    layer_dependencies = self._layer_checkpoint_dependencies
+    if name in layer_dependencies:
+      return layer_dependencies[name]
+    return super(Network, self)._lookup_dependency(name)
+
+  def _handle_deferred_layer_dependencies(self, layers):
+    """Handles layer checkpoint dependencies that are added after init."""
+    layer_checkpoint_dependencies = self._layer_checkpoint_dependencies
+    layer_to_name = {v: k for k, v in layer_checkpoint_dependencies.items()}
+    for layer in layers:
+      if layer in layer_to_name:
+        self._handle_deferred_dependencies(name=layer_to_name[layer],
+                                           trackable=layer)
 
   def __setattr__(self, name, value):
     if not getattr(self, '_self_setattr_tracking', True):
@@ -618,7 +621,7 @@ class Network(base_layer.Layer):
       on real tensor data.
     """
     if self._is_graph_network:
-      self.built = True
+      super(Network, self).build(input_shape)
       return
 
     # If subclass network
@@ -682,9 +685,8 @@ class Network(base_layer.Layer):
                            'Instead, in order to instantiate and build your '
                            'model, `call` your model on real tensor data (of '
                            'the correct dtype).')
-    if self._layers:
-      self._track_layers(self._layers)
-    self.built = True
+
+    super(Network, self).build(input_shape)
 
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
@@ -809,7 +811,17 @@ class Network(base_layer.Layer):
     # the future and 2) Keras is a major user of Network.  If you don't
     # use masking, it does not interfere with regular behavior at all and you
     # can ignore it.
-    inputs = nest.flatten(inputs)
+
+    if isinstance(inputs, dict) and isinstance(self._nested_inputs,
+                                               (list, tuple)):
+      # Backwards compat: Allows passing a dict to a Model constructed with a
+      # list. Matches dict keys to input names.
+      inputs = [
+          inputs[inp._keras_history.layer.name] for inp in self._nested_inputs
+      ]
+    else:
+      inputs = nest.flatten(inputs)
+
     if mask is None:
       masks = [None for _ in range(len(inputs))]
     else:
@@ -822,7 +834,16 @@ class Network(base_layer.Layer):
     tensor_dict = {}
 
     for x, y in zip(self.inputs, inputs):
-      tensor_dict[str(id(x))] = y
+      x_id = str(id(x))
+      tensor_dict[x_id] = [y] * self._tensor_usage_count[x_id]
+      if isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor):
+        try:
+          y.set_shape(y.shape.merge_with(x.shape))
+        except ValueError:
+          logging.warning(
+              'Model was constructed with shape {} for input {}, but it was '
+              're-called on a Tensor with incompatible shape {}.'
+              .format(x, x.shape, y.shape))
 
     depth_keys = list(self._nodes_by_depth.keys())
     depth_keys.sort(reverse=True)
@@ -841,7 +862,7 @@ class Network(base_layer.Layer):
 
           # Call layer (reapplying ops to new inputs).
           computed_tensors = nest.map_structure(
-              lambda t: tensor_dict[str(id(t))], node.input_tensors)
+              lambda t: tensor_dict[str(id(t))].pop(), node.input_tensors)
 
           # Ensure `training` arg propagation if applicable.
           kwargs = copy.copy(node.arguments) if node.arguments else {}
@@ -858,9 +879,11 @@ class Network(base_layer.Layer):
 
           # Map Keras tensors in kwargs to their computed value.
           def _map_tensor_if_from_keras_layer(t):
-            if isinstance(t, ops.Tensor) and hasattr(t, '_keras_history'):
+            if (isinstance(t,
+                           (ops.Tensor, composite_tensor.CompositeTensor)) and
+                hasattr(t, '_keras_history')):
               t_id = str(id(t))
-              return tensor_dict[t_id]
+              return tensor_dict[t_id].pop()
             return t
 
           kwargs = nest.map_structure(_map_tensor_if_from_keras_layer, kwargs)
@@ -871,13 +894,14 @@ class Network(base_layer.Layer):
           # Update tensor_dict.
           for x, y in zip(
               nest.flatten(node.output_tensors), nest.flatten(output_tensors)):
-            tensor_dict[str(id(x))] = y
+            x_id = str(id(x))
+            tensor_dict[x_id] = [y] * self._tensor_usage_count[x_id]
 
     output_tensors = []
     output_shapes = []
     for x in self.outputs:
       assert str(id(x)) in tensor_dict, 'Could not compute output ' + str(x)
-      tensor = tensor_dict[str(id(x))]
+      tensor = tensor_dict[str(id(x))].pop()
       output_shapes.append(x.shape)
       output_tensors.append(tensor)
 
@@ -915,18 +939,7 @@ class Network(base_layer.Layer):
         config, custom_objects)
     model = cls(inputs=input_tensors, outputs=output_tensors,
                 name=config.get('name'))
-
-    # Layers not connected to outputs, such as those added in `add_loss`.
-    ancillary_layers = [
-        layer for layer in created_layers.values() if layer not in model.layers
-    ]
-    if ancillary_layers:
-      relevant_nodes = nest.flatten([
-          layer.inbound_nodes[1:]
-          if _should_skip_first_node(layer) else layer.inbound_nodes
-          for layer in created_layers.values()
-      ])
-      model._insert_layers(ancillary_layers, relevant_nodes)
+    connect_ancillary_layers(model, created_layers)
     return model
 
   def save(self,
@@ -948,9 +961,17 @@ class Network(base_layer.Layer):
     in a single file.
 
     Saved models can be reinstantiated via `keras.models.load_model`.
-    The model returned by `load_model`
-    is a compiled model ready to be used (unless the saved model
-    was never compiled in the first place).
+    The model returned by `load_model` is a compiled model ready to be used
+    (unless the saved model was never compiled in the first place).
+
+    Models built with the Sequential and Functional API can be saved to both the
+    HDF5 and SavedModel formats. Subclassed models can only be saved with the
+    SavedModel format.
+
+    Note that the model weights may have different scoped names after being
+    loaded. Scoped names include the model/layer names, such as
+    "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+     access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
     Arguments:
         filepath: String, path to SavedModel or H5 file to save the model.
@@ -958,14 +979,13 @@ class Network(base_layer.Layer):
             target location, or provide the user with a manual prompt.
         include_optimizer: If True, save optimizer's state together.
         save_format: Either 'tf' or 'h5', indicating whether to save the model
-          to Tensorflow SavedModel or HDF5. The default is currently 'h5', but
-          will switch to 'tf' in TensorFlow 2.0. The 'tf' option is currently
-          disabled (use `tf.keras.experimental.export_saved_model` instead).
-      signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
-        format only. Please see the `signatures` argument in
-        `tf.saved_model.save` for details.
-      options: Optional `tf.saved_model.SaveOptions` object that specifies
-        options for saving to SavedModel.
+            to Tensorflow SavedModel or HDF5. Defaults to 'tf' in TF 2.X, and
+            'h5' in TF 1.X.
+        signatures: Signatures to save with the SavedModel. Applicable to the
+            'tf' format only. Please see the `signatures` argument in
+            `tf.saved_model.save` for details.
+        options: Optional `tf.saved_model.SaveOptions` object that specifies
+            options for saving to SavedModel.
 
     Example:
 
@@ -980,8 +1000,8 @@ class Network(base_layer.Layer):
     model = load_model('my_model.h5')
     ```
     """
-    saving.save_model(self, filepath, overwrite, include_optimizer, save_format,
-                      signatures, options)
+    save.save_model(self, filepath, overwrite, include_optimizer, save_format,
+                    signatures, options)
 
   def save_weights(self, filepath, overwrite=True, save_format=None):
     """Saves all layer weights.
@@ -1023,7 +1043,7 @@ class Network(base_layer.Layer):
     means saving a `tf.keras.Model` using `save_weights` and loading into a
     `tf.train.Checkpoint` with a `Model` attached (or vice versa) will not match
     the `Model`'s variables. See the [guide to training
-    checkpoints](https://www.tensorflow.org/alpha/guide/checkpoints) for details
+    checkpoints](https://www.tensorflow.org/guide/checkpoint) for details
     on the TensorFlow format.
 
     Arguments:
@@ -1080,7 +1100,7 @@ class Network(base_layer.Layer):
         return
     if save_format == 'h5':
       with h5py.File(filepath, 'w') as f:
-        saving.save_weights_to_hdf5_group(f, self.layers)
+        hdf5_format.save_weights_to_hdf5_group(f, self.layers)
     else:
       if context.executing_eagerly():
         session = None
@@ -1104,7 +1124,7 @@ class Network(base_layer.Layer):
           save_relative_paths=True,
           all_model_checkpoint_paths=[filepath])
 
-  def load_weights(self, filepath, by_name=False):
+  def load_weights(self, filepath, by_name=False, skip_mismatch=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
 
     If `by_name` is False weights are loaded based on the network's
@@ -1131,6 +1151,9 @@ class Network(base_layer.Layer):
         by_name: Boolean, whether to load weights by name or by topological
             order. Only topological loading is supported for weight files in
             TensorFlow format.
+        skip_mismatch: Boolean, whether to skip loading of layers where there is
+            a mismatch in the number of weights, or a mismatch in the shape of
+            the weight (only valid when `by_name=True`).
 
     Returns:
         When loading a weight file in TensorFlow format, returns the same status
@@ -1144,12 +1167,20 @@ class Network(base_layer.Layer):
     Raises:
         ImportError: If h5py is not available and the weight file is in HDF5
             format.
+        ValueError: If `skip_mismatch` is set to `True` when `by_name` is
+          `False`.
     """
+
+    if skip_mismatch and not by_name:
+      raise ValueError(
+          'When calling model.load_weights, skip_mismatch can only be set to '
+          'True when by_name is True.')
+
     if _is_hdf5_filepath(filepath):
       save_format = 'h5'
     else:
       try:
-        pywrap_tensorflow.NewCheckpointReader(filepath)
+        py_checkpoint_reader.NewCheckpointReader(filepath)
         save_format = 'tf'
       except errors_impl.DataLossError:
         # The checkpoint is not readable in TensorFlow format. Try HDF5.
@@ -1181,9 +1212,10 @@ class Network(base_layer.Layer):
       if 'layer_names' not in f.attrs and 'model_weights' in f:
         f = f['model_weights']
       if by_name:
-        saving.load_weights_from_hdf5_group_by_name(f, self.layers)
+        hdf5_format.load_weights_from_hdf5_group_by_name(
+            f, self.layers, skip_mismatch=skip_mismatch)
       else:
-        saving.load_weights_from_hdf5_group(f, self.layers)
+        hdf5_format.load_weights_from_hdf5_group(f, self.layers)
 
   def _updated_config(self):
     """Util shared between different serialization methods.
@@ -1276,7 +1308,7 @@ class Network(base_layer.Layer):
   def _validate_graph_inputs_and_outputs(self):
     """Validates the inputs and outputs of a Graph Network."""
     # Check for redundancy in inputs.
-    if len(object_identity.ObjectIdentitySet(self.inputs)) != len(self.inputs):
+    if len({id(i) for i in self.inputs}) != len(self.inputs):
       raise ValueError('The list of inputs passed to the model '
                        'is redundant. '
                        'All inputs should only appear once.'
@@ -1306,6 +1338,8 @@ class Network(base_layer.Layer):
                         'Note that input tensors are '
                         'instantiated via `tensor = tf.keras.Input(shape)`.\n'
                         'The tensor that caused the issue was: ' + str(x.name))
+      if isinstance(x, ragged_tensor.RaggedTensor):
+        self._supports_ragged_inputs = True
 
     # Check compatibility of batch sizes of Input Layers.
     input_batch_sizes = [
@@ -1399,15 +1433,59 @@ class Network(base_layer.Layer):
 
     # Insert layers and update other layer attrs.
     layer_set = set(self._layers)
+    deferred_layers = []
     for layer in layers:
       if layer not in layer_set:
         self._layers.append(layer)
+        deferred_layers.append(layer)
         self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
 
         # This allows the added layer to broadcast mutations to the current
         # layer, which is necessary to ensure cache correctness.
         layer._attribute_sentinel.add_parent(self._attribute_sentinel)
         layer_set.add(layer)
+    self._handle_deferred_layer_dependencies(deferred_layers)
+
+    self._compute_tensor_usage_count()
+
+  def _compute_tensor_usage_count(self):
+    """Compute the #. of tensor usages for all the output tensors of layers.
+
+    The computed tensor usage count is saved as `self._tensor_usage_count`. This
+    is later used for saving memory in eager computation by releasing
+    no-longer-needed tensors as early as possible.
+    """
+    tensor_usage_count = collections.Counter()
+    available_tensors = set(str(id(tensor)) for tensor in self.inputs)
+
+    depth_keys = list(self._nodes_by_depth.keys())
+    depth_keys.sort(reverse=True)
+    depth_keys = depth_keys[1:]
+
+    for depth in depth_keys:
+      for node in self._nodes_by_depth[depth]:
+        input_tensors = {
+            str(id(tensor)) for tensor in nest.flatten(node.input_tensors)
+        }
+        if input_tensors.issubset(available_tensors):
+          kwargs = copy.copy(node.arguments) if node.arguments else {}
+
+          for tensor in nest.flatten(kwargs):
+            if (isinstance(tensor,
+                           (ops.Tensor, composite_tensor.CompositeTensor)) and
+                hasattr(tensor, '_keras_history')):
+              tensor_usage_count[str(id(tensor))] += 1
+
+          for tensor in nest.flatten(node.input_tensors):
+            tensor_usage_count[str(id(tensor))] += 1
+
+          for output_tensor in nest.flatten(node.output_tensors):
+            available_tensors.add(str(id(output_tensor)))
+
+    for tensor in self.outputs:
+      tensor_usage_count[str(id(tensor))] += 1
+
+    self._tensor_usage_count = tensor_usage_count
 
   def _assert_weights_created(self):
     """Asserts that all the weights for the network have been created.
@@ -1439,7 +1517,8 @@ class Network(base_layer.Layer):
     new_nodes, new_layers = _map_subgraph_network(self.inputs, [symbolic_loss])
     # Losses must be keyed on inputs no matter what in order to be supported in
     # DistributionStrategy.
-    add_loss_layer = base_layer.AddLoss(unconditional=False)
+    add_loss_layer = base_layer.AddLoss(
+        unconditional=False, dtype=symbolic_loss.dtype)
     add_loss_layer(symbolic_loss)
     new_nodes.extend(add_loss_layer.inbound_nodes)
     new_layers.append(add_loss_layer)
@@ -1447,7 +1526,8 @@ class Network(base_layer.Layer):
 
   def _graph_network_add_metric(self, value, aggregation, name):
     new_nodes, new_layers = _map_subgraph_network(self.inputs, [value])
-    add_metric_layer = base_layer.AddMetric(aggregation, name)
+    add_metric_layer = base_layer.AddMetric(
+        aggregation, name, dtype=value.dtype)
     add_metric_layer(value)
     new_nodes.extend(add_metric_layer.inbound_nodes)
     new_layers.append(add_metric_layer)
@@ -1619,9 +1699,9 @@ def _map_graph_network(inputs, outputs):
   # Check that all tensors required are computable.
   # computable_tensors: all tensors in the graph
   # that can be computed from the inputs provided.
-  computable_tensors = object_identity.ObjectIdentitySet()
+  computable_tensors = set()
   for x in inputs:
-    computable_tensors.add(x)
+    computable_tensors.add(id(x))
 
   layers_with_complete_input = []  # To provide a better error msg.
   for depth in depth_keys:
@@ -1629,7 +1709,7 @@ def _map_graph_network(inputs, outputs):
       layer = node.outbound_layer
       if layer:
         for x in nest.flatten(node.input_tensors):
-          if x not in computable_tensors:
+          if id(x) not in computable_tensors:
             raise ValueError('Graph disconnected: '
                              'cannot obtain value for tensor ' + str(x) +
                              ' at layer "' + layer.name + '". '
@@ -1637,7 +1717,7 @@ def _map_graph_network(inputs, outputs):
                              'were accessed without issue: ' +
                              str(layers_with_complete_input))
         for x in nest.flatten(node.output_tensors):
-          computable_tensors.add(x)
+          computable_tensors.add(id(x))
         layers_with_complete_input.append(layer.name)
 
   # Ensure name unicity, which will be crucial for serialization
@@ -1662,7 +1742,7 @@ def _map_subgraph_network(inputs, outputs):
     A tuple of List{Node] and List[Layer].
   """
   base_layer_utils.create_keras_history(outputs)
-  # Keep only nodes and layers in the topology betweeen inputs and outputs.
+  # Keep only nodes and layers in the topology between inputs and outputs.
   _, nodes_by_depth, layers, _ = _map_graph_network(inputs, outputs)
   return nest.flatten([nodes for nodes in nodes_by_depth.values()]), layers
 
@@ -1692,6 +1772,7 @@ def _serialize_tensors(kwargs):
 
   return nest.map_structure(_serialize_keras_tensor, kwargs)
 
+
 def _map_tensors_to_constants(kwargs):
 
   def _map_to_constants(t):
@@ -1720,6 +1801,22 @@ def _deserialize_keras_tensors(kwargs, layer_map):
 
   kwargs = tf_utils.convert_inner_node_data(kwargs, wrap=True)
   return nest.map_structure(_deserialize_keras_tensor, kwargs)
+
+
+def connect_ancillary_layers(model, created_layers):
+  """Adds layers that are not connected to the outputs to the model."""
+  # Layers not connected to outputs, such as those added in `add_loss`.
+  ancillary_layers = [
+      layer for layer in created_layers.values() if layer not in model.layers
+  ]
+  if ancillary_layers:
+    relevant_nodes = nest.flatten([
+        layer.inbound_nodes[1:]
+        if _should_skip_first_node(layer) else layer.inbound_nodes
+        for layer in created_layers.values()
+    ])
+    model._insert_layers(ancillary_layers, relevant_nodes)
+  return model
 
 
 def reconstruct_from_config(config, custom_objects=None, created_layers=None):
@@ -1802,20 +1899,13 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
     # Call layer on its inputs, thus creating the node
     # and building the layer if needed.
     if input_tensors is not None:
-      # Preserve compatibility with older configs
-      flat_input_tensors = nest.flatten(input_tensors)
-      # If this is a single element but not a dict, unwrap. If this is a dict,
-      # assume the first layer expects a dict (as is the case with a
-      # DenseFeatures layer); pass through.
-      if not isinstance(input_tensors, dict) and len(flat_input_tensors) == 1:
-        input_tensors = flat_input_tensors[0]
+      input_tensors = base_layer_utils.unnest_if_single_tensor(input_tensors)
       output_tensors = layer(input_tensors, **kwargs)
 
       # Update node index map.
       output_index = nest.flatten(output_tensors)[0]._keras_history.node_index
       node_index_map[(layer.name, node_count_by_layer[layer])] = output_index
       node_count_by_layer[layer] += 1
-
 
   def process_layer(layer_data):
     """Deserializes a layer, then call it on appropriate inputs.
@@ -1991,4 +2081,3 @@ def get_network_config(network, serialize_layer_fn=None):
   model_outputs = tf_utils.convert_inner_node_data(model_outputs)
   config['output_layers'] = model_outputs
   return config
-

@@ -21,7 +21,7 @@ func @extractSimpleOphint() {
 // CHECK-LABEL: extractPackedInputOphint
 func @extractPackedInputOphint() {
 // CHECK:  %[[PACK:[0-9]*]] = "tfl.pack"(%0, %1) {axis = 0 : i32, values_count = 2 : i32} : (tensor<1x16x1xf32>, tensor<1x16x1xf32>) -> tensor<2x1x16x1xf32>
-// CHECK:  %[[OP_HINT_CALL:[0-9]*]] = call @47393154b9af11e99426dc4a3e957995(%[[PACK]]) : (tensor<2x1x16x1xf32>) -> tensor<1x16x1xf32>
+// CHECK:  %[[OP_HINT_CALL:[0-9]*]] = call @"47393154b9af11e99426dc4a3e957995"(%[[PACK]]) : (tensor<2x1x16x1xf32>) -> tensor<1x16x1xf32>
 // CHECK:  %[[OUTPUT:[0-9]*]] = "tf.Identity"(%[[OP_HINT_CALL]]) {T = "tfdtype$DT_FLOAT", _tflite_function_name = "cool_activation_stack", _tflite_function_output_index = 0 : i64, _tflite_function_uuid = "47393154b9af11e99426dc4a3e957995", _tflite_ophint_level = 1 : i64, name = "OutputHint-cool_activation_stack-47393154b9af11e99426dc4a3e957995-0-None-None"} : (tensor<1x16x1xf32>) -> tensor<1x16x1xf32>
 
   %0 = "tf.Placeholder"() {dtype = "tfdtype$DT_FLOAT", name = "Placeholder", shape = "tfshape$dim { size: 1 } dim { size: 16 } dim { size: 1 }"} : () -> tensor<1x16x1xf32>
@@ -35,7 +35,7 @@ func @extractPackedInputOphint() {
   return
 }
 
-// CHECK:  func @47393154b9af11e99426dc4a3e957995(tensor<2x1x16x1xf32>) -> tensor<1x16x1xf32>
+// CHECK:  func @"47393154b9af11e99426dc4a3e957995"(tensor<2x1x16x1xf32>) -> tensor<1x16x1xf32>
 // CHECK:    attributes  {_tflite_function_input_index = [0 : i32], _tflite_function_name = "cool_activation_stack"}
 
 // -----
@@ -86,7 +86,7 @@ func @extractLastInputOphint() {
 func @extractPackOneInputOphint() {
 // CHECK:  %[[CST:.*]] = constant dense<[1, 1, 16, 1]> : tensor<4xi32>
 // CHECK:  %[[RESHAPE:[0-9]*]] = "tfl.reshape"(%0, %[[CST]]) : (tensor<1x16x1xf32>, tensor<4xi32>) -> tensor<1x1x16x1xf32>
-// CHECK:  %[[OP_HINT_CALL:[0-9]*]] = call @33fab028b9ef11e99426dc4a3e957995(%[[RESHAPE]]) : (tensor<1x1x16x1xf32>) -> tensor<1x16x1xf32>
+// CHECK:  %[[OP_HINT_CALL:[0-9]*]] = call @"33fab028b9ef11e99426dc4a3e957995"(%[[RESHAPE]]) : (tensor<1x1x16x1xf32>) -> tensor<1x16x1xf32>
 // CHECK:  %[[OUTPUT:[0-9]*]] = "tf.Identity"(%[[OP_HINT_CALL]]) {T = "tfdtype$DT_FLOAT", _tflite_function_name = "cool_activation_pack_input_one", _tflite_function_output_index = 0 : i64, _tflite_function_uuid = "33fab028b9ef11e99426dc4a3e957995", _tflite_ophint_level = 1 : i64, name = "OutputHint-cool_activation_pack_input_one-33fab028b9ef11e99426dc4a3e957995-0-None-None"} : (tensor<1x16x1xf32>) -> tensor<1x16x1xf32>
 
   %0 = "tf.Placeholder"() {dtype = "tfdtype$DT_FLOAT", name = "Placeholder", shape = "tfshape$dim { size: 1 } dim { size: 16 } dim { size: 1 }"} : () -> tensor<1x16x1xf32>
@@ -96,7 +96,7 @@ func @extractPackOneInputOphint() {
   return
 }
 
-// CHECK:  func @33fab028b9ef11e99426dc4a3e957995(tensor<1x1x16x1xf32>) -> tensor<1x16x1xf32>
+// CHECK:  func @"33fab028b9ef11e99426dc4a3e957995"(tensor<1x1x16x1xf32>) -> tensor<1x16x1xf32>
 // CHECK:    attributes  {_tflite_function_input_index = [0 : i32], _tflite_function_name = "cool_activation_pack_input_one"}
 
 // -----
@@ -106,6 +106,8 @@ func @extractStackInputOutputOphint() {
 // CHECK:  %[[PACK:[0-9]*]] = "tfl.pack"(%0, %1) {axis = 0 : i32, values_count = 2 : i32} : (tensor<1x16x1xf32>, tensor<1x16x1xf32>) -> tensor<2x1x16x1xf32>
 // CHECK:  %[[OP_HINT_CALL:[0-9]*]] = call @b92ed354b9f011e99426dc4a3e957995(%[[PACK]]) : (tensor<2x1x16x1xf32>) -> tensor<2x1x16x1xf32>
 // CHECK:  %[[UNPACK:[0-9]*]]:2 = "tfl.unpack"(%[[OP_HINT_CALL]]) {axis = 0 : i32, num = 2 : i32} : (tensor<2x1x16x1xf32>) -> (tensor<1x16x1xf32>, tensor<1x16x1xf32>)
+// CHECK-DAG:  %[[OUTPUT:[0-9]*]] = "tf.Identity"(%[[UNPACK]]#1) {T = "tfdtype$DT_FLOAT", _tflite_function_aggregate = "stack", _tflite_function_name = "cool_activation_stack_input_output", _tflite_function_output_index = 0 : i64, _tflite_function_sort_index = 1 : i64, _tflite_function_uuid = "b92ed354b9f011e99426dc4a3e957995", _tflite_ophint_level = 1 : i64, name = "OutputHint-cool_activation_stack_input_output-b92ed354b9f011e99426dc4a3e957995-0-1-None"} : (tensor<1x16x1xf32>) -> tensor<1x16x1xf32>
+// CHECK-DAG:  %[[OUTPUT_1:[0-9]*]] = "tf.Identity"(%[[UNPACK]]#0) {T = "tfdtype$DT_FLOAT", _tflite_function_aggregate = "stack", _tflite_function_name = "cool_activation_stack_input_output", _tflite_function_output_index = 0 : i64, _tflite_function_sort_index = 0 : i64, _tflite_function_uuid = "b92ed354b9f011e99426dc4a3e957995", _tflite_ophint_level = 1 : i64, name = "OutputHint-cool_activation_stack_input_output-b92ed354b9f011e99426dc4a3e957995-0-0-None"} : (tensor<1x16x1xf32>) -> tensor<1x16x1xf32>
 
   %0 = "tf.Placeholder"() {dtype = "tfdtype$DT_FLOAT", name = "Placeholder", shape = "tfshape$dim { size: 1 } dim { size: 16 } dim { size: 1 }"} : () -> tensor<1x16x1xf32>
   %1 = "tf.Identity"(%0) {T = "tfdtype$DT_FLOAT", _tflite_function_aggregate = "stack", _tflite_function_input_index = 0 : i64, _tflite_function_name = "cool_activation_stack_input_output", _tflite_function_sort_index = 0 : i64, _tflite_function_uuid = "b92ed354b9f011e99426dc4a3e957995", _tflite_ophint_level = 1 : i64, name = "InputHint-cool_activation_stack_input_output-b92ed354b9f011e99426dc4a3e957995-0-0-None"} : (tensor<1x16x1xf32>) -> tensor<1x16x1xf32>

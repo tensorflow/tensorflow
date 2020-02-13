@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 #define TENSORFLOW_LITE_SIMPLE_MEMORY_ARENA_H_
 
+#include <cstdint>
 #include <list>
 #include <memory>
-#include "tensorflow/lite/c/c_api_internal.h"
+
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
@@ -29,10 +31,21 @@ namespace tflite {
 // arena is committed and the underlying buffer is set, the alloc can be
 // resolved into an actual memory pointer.
 struct ArenaAllocWithUsageInterval {
+  ArenaAllocWithUsageInterval() { reset(); }
+
   size_t offset;
   size_t size;
-  size_t first_node;
-  size_t last_node;
+  int32_t tensor;
+  int32_t first_node;
+  int32_t last_node;
+
+  inline void reset() {
+    offset = 0;
+    size = 0;
+    tensor = -1;
+    first_node = -1;
+    last_node = -1;
+  }
 
   inline bool operator<(const ArenaAllocWithUsageInterval& other) const {
     return offset < other.offset;
@@ -57,8 +70,11 @@ class SimpleMemoryArena {
   // needs to be allocated before the execution of first_node, and deallocated
   // after the execution of last_node.
   TfLiteStatus Allocate(TfLiteContext* context, size_t alignment, size_t size,
-                        size_t first_node, size_t last_node,
+                        int32_t tensor, int32_t first_node, int32_t last_node,
                         ArenaAllocWithUsageInterval* new_alloc);
+
+  TfLiteStatus Deallocate(TfLiteContext* context,
+                          const ArenaAllocWithUsageInterval& alloc);
 
   inline size_t RequiredBufferSize() {
     // Add in a small amount of padding to reduce the chance of resize events
@@ -73,10 +89,20 @@ class SimpleMemoryArena {
                             const ArenaAllocWithUsageInterval& alloc,
                             char** output_ptr);
 
-  TfLiteStatus Clear();
+  // This clears allocation details but does not release the underlying buffer.
+  // New allocations should be committed & resolved before using this arena
+  // again.
+  TfLiteStatus ClearPlan();
 
-  int64_t BasePointer() const {
-    return reinterpret_cast<int64_t>(underlying_buffer_aligned_ptr_);
+  // This releases the underlying buffer but does not clear the allocation plan.
+  // Since all associated pointers are invalidated, the arena cannot be used
+  // again until Commit() is called & tensor allocations are resolved.
+  TfLiteStatus ReleaseBuffer();
+
+  size_t GetBufferSize() { return underlying_buffer_size_; }
+
+  std::intptr_t BasePointer() const {
+    return reinterpret_cast<std::intptr_t>(underlying_buffer_aligned_ptr_);
   }
 
  private:

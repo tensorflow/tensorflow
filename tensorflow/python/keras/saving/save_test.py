@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 
 import numpy as np
 
@@ -34,6 +35,8 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl
 
+if sys.version_info >= (3, 4):
+  import pathlib  # pylint:disable=g-import-not-at-top
 try:
   import h5py  # pylint:disable=g-import-not-at-top
 except ImportError:
@@ -83,6 +86,19 @@ class TestSaveModel(test.TestCase):
     save.save_model(self.subclassed_model, path, save_format='tf')
     self.assert_saved_model(path)
 
+  @test_util.run_v2_only
+  def test_save_load_tf_string(self):
+    path = os.path.join(self.get_temp_dir(), 'model')
+    save.save_model(self.model, path, save_format='tf')
+    save.load_model(path)
+
+  @test_util.run_v2_only
+  def test_save_load_tf_pathlib(self):
+    if sys.version_info >= (3, 4):
+      path = pathlib.Path(self.get_temp_dir()) / 'model'
+      save.save_model(self.model, path, save_format='tf')
+      save.load_model(path)
+
   @test_util.run_in_graph_and_eager_modes
   def test_saving_with_dense_features(self):
     cols = [
@@ -103,7 +119,7 @@ class TestSaveModel(test.TestCase):
 
     model.compile(
         loss=keras.losses.MSE,
-        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+        optimizer='rmsprop',
         metrics=[keras.metrics.categorical_accuracy])
 
     config = model.to_json()
@@ -145,7 +161,7 @@ class TestSaveModel(test.TestCase):
 
     model.compile(
         loss=keras.losses.MSE,
-        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+        optimizer='rmsprop',
         metrics=[keras.metrics.categorical_accuracy])
 
     config = model.to_json()
@@ -175,6 +191,27 @@ class TestSaveModel(test.TestCase):
             'a': inputs_a,
             'b': inputs_b
         }, steps=1), batch_size)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_saving_h5_for_rnn_layers(self):
+    # See https://github.com/tensorflow/tensorflow/issues/35731 for details.
+    inputs = keras.Input([10, 91], name='train_input')
+    rnn_layers = [
+        keras.layers.LSTMCell(size, recurrent_dropout=0, name='rnn_cell%d' % i)
+        for i, size in enumerate([512, 512])
+    ]
+    rnn_output = keras.layers.RNN(
+        rnn_layers, return_sequences=True, name='rnn_layer')(inputs)
+    pred_feat = keras.layers.Dense(91, name='prediction_features')(rnn_output)
+    pred = keras.layers.Softmax()(pred_feat)
+    model = keras.Model(inputs=[inputs], outputs=[pred, pred_feat])
+    path = os.path.join(self.get_temp_dir(), 'model_path.h5')
+    model.save(path)
+
+    # Make sure the variable name is unique.
+    self.assertNotEqual(rnn_layers[0].kernel.name,
+                        rnn_layers[1].kernel.name)
+    self.assertIn('rnn_cell1', rnn_layers[1].kernel.name)
 
 
 if __name__ == '__main__':

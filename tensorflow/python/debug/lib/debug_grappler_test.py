@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import tempfile
 
 from tensorflow.core.protobuf import config_pb2
@@ -29,6 +28,7 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -58,7 +58,7 @@ class SessionDebugGrapplerInteractionTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     ops.reset_default_graph()
     if os.path.isdir(self._dump_root):
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
     super(SessionDebugGrapplerInteractionTest, self).tearDown()
 
   def testArithmeticOptimizationActive(self):
@@ -88,7 +88,7 @@ class SessionDebugGrapplerInteractionTest(test_util.TensorFlowTestCase):
           self._dump_root, partition_graphs=run_metadata.partition_graphs,
           validate=True)
 
-      original_node_names = set([op.name for op in sess.graph.get_operations()])
+      original_node_names = set(op.name for op in sess.graph.get_operations())
       dumped_node_names = set(dump_data.nodes())
       grappler_created_node_names = dumped_node_names - original_node_names
       grappler_removed_node_names = original_node_names - dumped_node_names
@@ -105,7 +105,8 @@ class SessionDebugGrapplerInteractionTest(test_util.TensorFlowTestCase):
       for grappler_node_name in grappler_created_node_names:
         node_op_type = dump_data.node_op_type(grappler_node_name)
         # Look for the node created by Grappler's arithmetic optimization.
-        if node_op_type in ("AddN", "Mul"):
+        if ((test_util.IsMklEnabled() and node_op_type in ("_MklAddN", "Mul"))
+            or (node_op_type in ("AddN", "Mul"))):
           datum = dump_data.get_tensors(grappler_node_name, 0, "DebugIdentity")
           self.assertEqual(1, len(datum))
           self.assertAllClose(datum[0], [[3, 6], [9, 12]])

@@ -142,6 +142,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 
   Tensor TempChunk(int i) const override {
     AllocationAttributes empty;
+    MEMDEBUG_CACHE_OP("CollectiveAdapterImpl::TempChunk");
     return Tensor(allocator_, dt_, {ChunkElts(i)}, empty);
   }
 
@@ -213,7 +214,7 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
 BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
 void BaseCollectiveExecutor::StartAbort(const Status& s) {
-  LOG(WARNING) << "BaseCollectiveExecutor::StartAbort " << s;
+  VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
   remote_access_->StartAbort(s);
 }
 
@@ -267,8 +268,8 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   remote_access_->RunClosure([col_impl, col_ctx, done_safe, ctx]() {
     profiler::TraceMe activity(
         [&] {
-          return strings::StrCat(ctx->op_kernel().name(), ":",
-                                 ctx->op_kernel().type_string(),
+          return strings::StrCat(ctx->op_kernel().name_view(), ":",
+                                 ctx->op_kernel().type_string_view(),
                                  "#id=", ctx->step_id(), "#");
         },
         profiler::TraceMeLevel::kInfo);
@@ -295,6 +296,14 @@ Status BaseCollectiveExecutor::CreateCollective(
           << col_params.instance.impl_details.collective_name;
   *col_impl = nullptr;
   switch (col_params.instance.data_type) {
+    case DT_BOOL:
+      if (col_params.instance.type == BROADCAST_COLLECTIVE) {
+        return CollectiveRegistry::Lookup(
+            col_params.instance.impl_details.collective_name, col_impl);
+      } else {
+        return errors::Internal(
+            "No collective other than broadcast supports DT_BOOL");
+      }
     case DT_INT32:
       if (col_params.group.device_type == DEVICE_GPU &&
           col_params.instance.type == REDUCTION_COLLECTIVE) {
@@ -302,8 +311,10 @@ Status BaseCollectiveExecutor::CreateCollective(
         return errors::Internal(
             "Collective all-reduce does not support datatype DT_INT32 on "
             "DEVICE_GPU");
+      } else {
+        return CollectiveRegistry::Lookup(
+            col_params.instance.impl_details.collective_name, col_impl);
       }
-      TF_FALLTHROUGH_INTENDED;
     case DT_HALF:
     case DT_FLOAT:
     case DT_DOUBLE:
@@ -340,7 +351,8 @@ void BaseCollectiveExecutor::WaitForDependencies(
   VLOG(1) << "Unblocking collective " << col_params.ToString();
 }
 
-void BaseCollectiveExecutor::Launched(const CollectiveParams& col_params) {
+void BaseCollectiveExecutor::UnblockDependencies(
+    const CollectiveParams& col_params) {
   mutex_lock l(launch_mu_);
   if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
     const string& task_name =

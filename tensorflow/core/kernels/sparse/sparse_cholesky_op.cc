@@ -150,8 +150,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
               // lower triangular part of the output CSRSparseMatrix when
               // interpreted in row major format.
               sparse_cholesky_factors[batch_index] =
-                  solver.matrixU().twistedBy(permutation);
-
+                  std::move(solver.matrixU());
               // For now, batch_ptr contains the number of nonzeros in each
               // batch.
               batch_ptr_vec(batch_index + 1) =

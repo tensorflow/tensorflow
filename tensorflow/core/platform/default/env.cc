@@ -18,6 +18,7 @@ limitations under the License.
 #include <fcntl.h>
 #include <fnmatch.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -32,12 +33,12 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/default/posix_file_system.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
@@ -210,7 +211,7 @@ class PosixEnv : public Env {
 
 }  // namespace
 
-#if defined(PLATFORM_POSIX) || defined(__ANDROID__)
+#if defined(PLATFORM_POSIX) || defined(__APPLE__) || defined(__ANDROID__)
 REGISTER_FILE_SYSTEM("", PosixFileSystem);
 REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
 Env* Env::Default() {
@@ -257,5 +258,11 @@ void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
     }
   }
 }
+
+int setenv(const char* name, const char* value, int overwrite) {
+  return ::setenv(name, value, overwrite);
+}
+
+int unsetenv(const char* name) { return ::unsetenv(name); }
 
 }  // namespace tensorflow

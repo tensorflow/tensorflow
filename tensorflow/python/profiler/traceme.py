@@ -25,18 +25,18 @@ from __future__ import print_function
 
 import six
 
-from tensorflow.python.pywrap_tensorflow import PythonTraceMe
+from tensorflow.python.profiler.internal import _pywrap_traceme
 
 
 class TraceMe(object):
   """Context manager that generates a trace event in the profiler."""
 
   def __init__(self, name, **kwargs):
-    if PythonTraceMe.IsEnabled():
+    if _pywrap_traceme.TraceMe.IsEnabled():
       if kwargs:
         name += '#' + ','.join(key + '=' + str(value)
                                for key, value in six.iteritems(kwargs)) + '#'
-      self._traceme = PythonTraceMe(name)
+      self._traceme = _pywrap_traceme.TraceMe(name)
     else:
       self._traceme = None
 
@@ -47,3 +47,15 @@ class TraceMe(object):
   def __exit__(self, exc_type, exc_val, exc_tb):
     if self._traceme:
       self._traceme.Exit()
+
+
+def traceme_wrapper(func):
+  name = getattr(func, '__qualname__', None)
+  if not name:
+    name = func.__name__
+
+  def wrapper(*args, **kwargs):
+    with TraceMe(name):
+      return func(*args, **kwargs)
+  return wrapper
+

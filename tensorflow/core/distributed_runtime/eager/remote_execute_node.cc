@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
 
+#include <vector>
+
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+
 namespace tensorflow {
 namespace eager {
 

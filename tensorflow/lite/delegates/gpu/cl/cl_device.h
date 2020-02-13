@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
+#include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
@@ -27,7 +28,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-enum class Vendor { QUALCOMM, MALI, POWERVR, NVIDIA, UNKNOWN };
+enum class Vendor { QUALCOMM, MALI, POWERVR, NVIDIA, AMD, UNKNOWN };
 std::string VendorToString(Vendor v);
 
 enum class OpenCLVersion { CL_1_0, CL_1_1, CL_1_2, CL_2_0 };
@@ -65,9 +66,12 @@ struct DeviceInfo {
   explicit DeviceInfo(cl_device_id id);
 
   bool SupportsTextureArray() const;
+  bool SupportsImageBuffer() const;
+  bool SupportsImage3D() const;
 
   std::vector<std::string> extensions;
   bool supports_fp16;
+  bool supports_image3d_writes;
   Vendor vendor;
   OpenCLVersion cl_version;
   int compute_units_count;
@@ -76,7 +80,22 @@ struct DeviceInfo {
   uint64_t image2d_max_height;
   uint64_t image_buffer_max_size;
   uint64_t image_array_max_layers;
+  uint64_t image3d_max_width;
+  uint64_t image3d_max_height;
+  uint64_t image3d_max_depth;
   int3 max_work_group_sizes;
+
+  cl_device_fp_config f32_config;
+  // valid only with cl_khr_fp16
+  cl_device_fp_config f16_config;
+
+  // rtn is ROUND_TO_NEAREST
+  // with rtn precision is much better then with rtz (ROUND_TO_ZERO)
+  // Adreno 3xx supports only rtz, Adreno 4xx and more support rtn
+  // Mali from T6xx supports rtn
+  // PowerVR supports only rtz
+  bool supports_fp32_rtn;
+  bool supports_fp16_rtn;
 
   AdrenoInfo adreno_info;
 };
@@ -105,7 +124,11 @@ class CLDevice {
   OpenCLVersion cl_version() const { return info_.cl_version; }
   bool SupportsFP16() const;
   bool SupportsTextureArray() const;
+  bool SupportsImageBuffer() const;
+  bool SupportsImage3D() const;
   bool SupportsExtension(const std::string& extension) const;
+  bool SupportsFP32RTN() const;
+  bool SupportsFP16RTN() const;
   bool IsAdreno() const;
   bool IsAdreno3xx() const;
   bool IsAdreno4xx() const;
@@ -115,6 +138,7 @@ class CLDevice {
   bool IsPowerVR() const;
   bool IsNvidia() const;
   bool IsMali() const;
+  bool IsAMD() const;
 
   // To track bug on some Adreno. b/131099086
   bool SupportsOneLayerTextureArray() const;
@@ -136,6 +160,15 @@ T GetDeviceInfo(cl_device_id id, cl_device_info info) {
     return -1;
   }
   return result;
+}
+
+template <typename T>
+Status GetDeviceInfo(cl_device_id id, cl_device_info info, T* result) {
+  cl_int error = clGetDeviceInfo(id, info, sizeof(T), result, nullptr);
+  if (error != CL_SUCCESS) {
+    return InvalidArgumentError(CLErrorCodeToString(error));
+  }
+  return OkStatus();
 }
 
 }  // namespace cl

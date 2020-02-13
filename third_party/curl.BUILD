@@ -25,7 +25,9 @@ CURL_WIN_SRCS = [
     "lib/asyn-thread.c",
     "lib/inet_ntop.c",
     "lib/system_win32.c",
+    "lib/x509asn1.c",
     "lib/vtls/schannel.c",
+    "lib/vtls/schannel_verify.c",
     "lib/idn_win32.c",
 ]
 
@@ -158,6 +160,7 @@ cc_library(
         "lib/pop3.h",
         "lib/progress.c",
         "lib/progress.h",
+        "lib/quic.h",
         "lib/rand.c",
         "lib/rand.h",
         "lib/rtsp.c",

@@ -534,7 +534,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
       with summary_ops.summary_scope('with/slash') as (tag, scope):
         self.assertEqual('foo/with/slash', tag)
         self.assertEqual('foo/with/slash/', scope)
-      with ops.name_scope(None):
+      with ops.name_scope(None, skip_on_eager=False):
         with summary_ops.summary_scope('unnested') as (tag, scope):
           self.assertEqual('unnested', tag)
           self.assertEqual('unnested/', scope)
@@ -565,7 +565,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
       self.assertEqual('foo', tag)
     with summary_ops.summary_scope('foo') as (tag, _):
       self.assertEqual('foo', tag)
-    with ops.name_scope('with'):
+    with ops.name_scope('with', skip_on_eager=False):
       constant_op.constant(0, name='slash')
     with summary_ops.summary_scope('with/slash') as (tag, _):
       self.assertEqual('with/slash', tag)
@@ -674,7 +674,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
         summary_ops.flush()
     finally:
       # Ensure we clean up no matter how the test executes.
-      context.context().summary_writer_resource = None
+      summary_ops._summary_state.writer = None  # pylint: disable=protected-access
 
   def testCreate_immediateAsDefault_retainsReference(self):
     logdir = self.get_temp_dir()
@@ -942,7 +942,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
   def testRunMetadata_usesNameAsTag(self):
     meta = config_pb2.RunMetadata()
 
-    with ops.name_scope('foo'):
+    with ops.name_scope('foo', skip_on_eager=False):
       event = self.run_metadata(name='my_name', data=meta, step=1)
       first_val = event.summary.value[0]
 
@@ -1003,7 +1003,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
   def testRunMetadataGraph_usesNameAsTag(self):
     meta = config_pb2.RunMetadata()
 
-    with ops.name_scope('foo'):
+    with ops.name_scope('foo', skip_on_eager=False):
       event = self.run_metadata_graphs(name='my_name', data=meta, step=1)
       first_val = event.summary.value[0]
 

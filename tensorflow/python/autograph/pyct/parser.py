@@ -25,11 +25,12 @@ import re
 import textwrap
 import tokenize
 
+import astunparse
 import gast
 import six
 
+from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
-from tensorflow.python.util import tf_inspect
 
 
 STANDARD_PREAMBLE = textwrap.dedent("""
@@ -42,8 +43,15 @@ STANDARD_PREAMBLE_LEN = 2
 _LEADING_WHITESPACE = re.compile(r'\s*')
 
 
+def _unfold_continuations(code_string):
+  """Removes any backslash line continuations from the code."""
+  return code_string.replace('\\\n', '')
+
+
 def dedent_block(code_string):
   """Dedents a code so that its first line starts at row zero."""
+
+  code_string = _unfold_continuations(code_string)
 
   token_gen = tokenize.generate_tokens(six.StringIO(code_string).readline)
 
@@ -82,8 +90,8 @@ def dedent_block(code_string):
         # TODO(mdan): We could attempt to convert tabs to spaces by unix rule.
         # See:
         # https://docs.python.org/3/reference/lexical_analysis.html#indentation
-        raise ValueError(
-            'code mixing tabs and spaces for intentation is not allowed')
+        raise errors.UnsupportedLanguageElementError(
+            'code mixing tabs and spaces for indentation is not allowed')
       if len(tok_string) >= block_level:
         tok_string = tok_string[block_level:]
       tokens[i] = (tok_type, tok_string)
@@ -106,6 +114,69 @@ def dedent_block(code_string):
   new_code = '\n'.join(dedented_code)
 
   return new_code
+
+
+def _attempt_to_parse_normal_source(source, future_features):
+  return parse(source, preamble_len=len(future_features)), source
+
+
+def _attempt_to_parse_lambda_source(source, original_source,
+                                    future_features, try_fallback=True):
+  """Parsing function specialized on dealing with lambdas.
+
+  Lambda functions, only hold the raw code lines which defined
+  them, which may include surrounding tokens and may be syntactically
+  invalid out of context. For example:
+
+      l = (
+          lambda x: x,)[0]
+
+  will have the dedented source "lambda x: x,)[0]"
+  This function makes an attempt to stip away the garbage by looking at the
+  information in the syntax error.
+
+  Args:
+    source: the processed source code of `entity`.
+    original_source: the source code of `entity`, as it was reported
+        by `inspect.getsource`.
+    future_features: see `parse`.
+    try_fallback: whether to attempt to remove extra code from `source` before
+        one more attempt to parse it.
+  Returns:
+    Same as `parse`.
+  """
+
+  try:
+    return parse(source, preamble_len=len(future_features)), source
+
+  # Note: the ValueError may be raised by parse.
+  except (SyntaxError, ValueError) as e:
+    def fail():
+      raise errors.UnsupportedLanguageElementError(
+          'could not parse the source code:'
+          '\n\n{}\n'
+          'This error may be avoided by creating the lambda in a standalone'
+          ' statement.\n'.format(original_source))
+
+    if not try_fallback:
+      fail()
+
+    lines = source.split('\n')
+    lineno, offset = e.lineno, e.offset  # 1-based
+
+    # Give up if there's nothing we can chip away.
+    if len(lines) == lineno and len(lines[-1]) == offset:
+      fail()
+
+    # Drop all lines following the error location
+    # TODO(mdan): What's with the pylint errors?
+    lines = lines[:lineno]  # pylint:disable=invalid-slice-index
+    # Drop all characters following the error location
+    lines[-1] = lines[-1][:offset - 1]  # pylint:disable=invalid-slice-index
+    source = '\n'.join(lines)
+
+    return _attempt_to_parse_lambda_source(
+        source, original_source, future_features, try_fallback=False)
 
 
 def parse_entity(entity, future_features):
@@ -132,67 +203,21 @@ def parse_entity(entity, future_features):
         ' graph-compatible, wrap the call using'
         ' @tf.autograph.do_not_convert. Original error: {}'.format(entity, e))
 
-  def raise_parse_failure(comment):
-    raise ValueError(
-        'Failed to parse source code of {}, which Python reported as:\n{}\n'
-        '{}'.format(entity, original_source, comment))
-
   source = dedent_block(original_source)
 
   future_statements = tuple(
       'from __future__ import {}'.format(name) for name in future_features)
   source = '\n'.join(future_statements + (source,))
 
-  try:
-    return parse_str(source, preamble_len=len(future_features)), source
-
-  except IndentationError:
-    # The text below lists the causes of this error known to us. There may
-    # be more.
-    raise_parse_failure(
-        'This may be caused by multiline strings or comments not indented at'
-        ' the same level as the code.')
-
-  except SyntaxError as e:
-    if not tf_inspect.isfunction(entity) or entity.__name__ != '<lambda>':
-      raise
-
-    # Certain entities, like lambdas, only hold the raw code lines which defined
-    # them, which may include surrounding tokens and may be syntactically
-    # invalid out of context. For example:
-    #
-    #     l = (
-    #         lambda x: x,)[0]
-    #
-    # will have the dedented source "lambda x: x,)[0]"
-    # Here we make an attempt to stip away the garbage by looking at the
-    # information in the syntax error.
-    lines = source.split('\n')
-    lineno, offset = e.lineno, e.offset  # 1-based
-
-    # Give up if there's nothing we can chip away.
-    if len(lines) == lineno and len(lines[-1]) == offset:
-      raise_parse_failure(
-          'If this is a lambda function, the error may be avoided by creating'
-          ' the lambda in a standalone statement.')
-
-    # Drop all lines following the error location
-    # TODO(mdan): What's with the pylint errors?
-    lines = lines[:lineno]  # pylint:disable=invalid-slice-index
-    # Drop all characters following the error location
-    lines[-1] = lines[-1][:offset - 1]  # pylint:disable=invalid-slice-index
-    source = '\n'.join(lines)
-
-    try:
-      return parse_str(source, preamble_len=len(future_features)), source
-    except SyntaxError as e:
-      raise_parse_failure(
-          'If this is a lambda function, the error may be avoided by creating'
-          ' the lambda in a standalone statement.')
+  if inspect_utils.islambda(entity):
+    return _attempt_to_parse_lambda_source(
+        source, original_source, future_features)
+  else:
+    return _attempt_to_parse_normal_source(source, future_features)
 
 
 # TODO(mdan): This should take futures as input instead.
-def parse_str(src, preamble_len=0, single_node=True):
+def parse(src, preamble_len=0, single_node=True):
   """Returns the AST of given piece of code.
 
   Args:
@@ -227,9 +252,38 @@ def parse_expression(src):
     ValueError: if src does not consist of a single Expression.
   """
   src = STANDARD_PREAMBLE + src.strip()
-  node = parse_str(src, preamble_len=STANDARD_PREAMBLE_LEN, single_node=True)
+  node = parse(src, preamble_len=STANDARD_PREAMBLE_LEN, single_node=True)
   if __debug__:
     if not isinstance(node, gast.Expr):
       raise ValueError(
           'expected a single expression, found instead {}'.format(node))
   return node.value
+
+
+def unparse(node, indentation=None, include_encoding_marker=True):
+  """Returns the source code of given AST.
+
+  Args:
+    node: The code to compile, as an AST object.
+    indentation: Unused, deprecated. The returning code will always be indented
+      at 4 spaces.
+    include_encoding_marker: Bool, thether to include a comment on the first
+      line to explicitly specify UTF-8 encoding.
+
+  Returns:
+    code: The source code generated from the AST object
+    source_mapping: A mapping between the user and AutoGraph generated code.
+  """
+  del indentation  # astunparse doesn't allow configuring it.
+  if not isinstance(node, (list, tuple)):
+    node = (node,)
+
+  codes = []
+  if include_encoding_marker:
+    codes.append('# coding=utf-8')
+  for n in node:
+    if isinstance(n, gast.AST):
+      n = gast.gast_to_ast(n)
+    codes.append(astunparse.unparse(n).strip())
+
+  return '\n'.join(codes)

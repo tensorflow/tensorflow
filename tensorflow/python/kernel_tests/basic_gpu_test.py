@@ -273,7 +273,7 @@ class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
     for thread in threads:
       thread.join()
 
-    flat_results = set([x for x in itertools.chain(*results)])
+    flat_results = set(itertools.chain(*results))
     self.assertEqual(1,
                      len(flat_results),
                      'Expected single value, got %r' % flat_results)

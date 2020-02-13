@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -45,7 +46,10 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         num_shards_(num_shards),
         index_(index),
         input_(input),
-        require_non_empty_(require_non_empty) {
+        require_non_empty_(require_non_empty),
+        traceme_metadata_(
+            {{"index", strings::Printf("%lld", index)},
+             {"num_shards", strings::Printf("%lld", num_shards)}}) {
     input_->Ref();
   }
 
@@ -110,7 +114,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params), next_index_(0) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -140,12 +144,13 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         Status s = input_impl_->GetNext(ctx, &unused_result, end_of_sequence);
         if (*end_of_sequence || errors::IsOutOfRange(s)) {
           return errors::InvalidArgument(
-              "There aren't enough elements in this dataset for each shard "
-              "to have at least one element (# elems = ",
+              "There aren't enough elements in this dataset for each shard to "
+              "have at least one element (# elems = ",
               next_index_, ", ", "# shards = ", dataset()->num_shards_,
-              "). If you are using ",
-              "datasets with distribution strategy, consider turning ",
-              "dataset autosharding off with `tf.data.Options`.");
+              "). If you are using datasets with distribution strategy, "
+              "considering setting the auto sharding policy to either DATA or "
+              "OFF using the `experimental_distribute.auto_shard_policy` option"
+              "of `tf.data.Options()`.");
         } else if (!s.ok()) {
           return s;
         }
@@ -188,6 +193,10 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      return dataset()->traceme_metadata_;
+    }
+
    private:
     mutex mu_;
     std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
@@ -198,6 +207,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
   const int64 index_;
   const DatasetBase* const input_;
   const bool require_non_empty_;
+  const TraceMeMetadata traceme_metadata_;
 };
 
 ShardDatasetOp::ShardDatasetOp(OpKernelConstruction* ctx)

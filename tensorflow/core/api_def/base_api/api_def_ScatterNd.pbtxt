@@ -70,8 +70,7 @@ In Python, this scatter operation would look like this:
     updates = tf.constant([9, 10, 11, 12])
     shape = tf.constant([8])
     scatter = tf.scatter_nd(indices, updates, shape)
-    with tf.Session() as sess:
-      print(sess.run(scatter))
+    print(scatter)
 ```
 
 The resulting tensor would look like this:
@@ -96,8 +95,7 @@ In Python, this scatter operation would look like this:
                             [7, 7, 7, 7], [8, 8, 8, 8]]])
     shape = tf.constant([4, 4, 4])
     scatter = tf.scatter_nd(indices, updates, shape)
-    with tf.Session() as sess:
-      print(sess.run(scatter))
+    print(scatter)
 ```
 
 The resulting tensor would look like this:

@@ -58,6 +58,7 @@ UNARY_FLOAT_OPS = [
     math_ops.digamma,
     math_ops.erf,
     math_ops.erfc,
+    math_ops.erfinv,
     math_ops.exp,
     math_ops.expm1,
     math_ops.floor,
@@ -69,6 +70,7 @@ UNARY_FLOAT_OPS = [
     math_ops.log,
     math_ops.log1p,
     math_ops.log_sigmoid,
+    math_ops.ndtri,
     math_ops.negative,
     math_ops.real,
     math_ops.reciprocal,
@@ -137,14 +139,15 @@ BINARY_INT_OPS = [
 ]
 
 
+# pylint: disable=g-complex-comprehension
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
                                parameterized.TestCase):
 
   def assertSameShape(self, x, y):
     """Checks that x and y have the same shape (including ragged shapes)."""
-    if isinstance(x, ragged_tensor.RaggedTensor):
-      self.assertIsInstance(y, ragged_tensor.RaggedTensor)
+    if ragged_tensor.is_ragged(x):
+      self.assertTrue(ragged_tensor.is_ragged(y))
       self.assertEqual(x.ragged_rank, y.ragged_rank)
       for (x_splits, y_splits) in zip(x.nested_row_splits, y.nested_row_splits):
         self.assertAllEqual(x_splits, y_splits)
@@ -232,18 +235,17 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       ]
       )  # pyformat: disable
   def testUnaryElementwiseOp(self, x, op=math_ops.abs, **extra_args):
-    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x)
     result = op(x, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
-    dense_x = x.flat_values if isinstance(x, ragged_tensor.RaggedTensor) else x
+    dense_x = x.flat_values if ragged_tensor.is_ragged(x) else x
     expected_flat_values = array_ops.reshape(op(dense_x, **extra_args), [-1])
 
     # Check that the result has the expected shape.
     self.assertSameShape(x, result)
 
     # Check that the result has the expected (flattened) values.
-    if isinstance(result, ragged_tensor.RaggedTensor):
+    if ragged_tensor.is_ragged(result):
       result_flat_values = array_ops.reshape(result.flat_values, [-1])
     else:
       result_flat_values = array_ops.reshape(result, [-1])
@@ -348,8 +350,6 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       )  # pyformat: disable
   def testBinaryElementwiseOp(self, x, y, op=math_ops.add, **extra_args):
     use_kwargs = extra_args.pop('use_kwargs', ())
-    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x)
-    y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y)
     if 'x' in use_kwargs and 'y' in use_kwargs:
       result = op(x=x, y=y, **extra_args)
     elif 'y' in use_kwargs:
@@ -358,8 +358,8 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       result = op(x, y, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
-    dense_x = x.flat_values if isinstance(x, ragged_tensor.RaggedTensor) else x
-    dense_y = y.flat_values if isinstance(y, ragged_tensor.RaggedTensor) else y
+    dense_x = x.flat_values if ragged_tensor.is_ragged(x) else x
+    dense_y = y.flat_values if ragged_tensor.is_ragged(y) else y
     expected_flat_values = array_ops.reshape(
         op(dense_x, dense_y, **extra_args), [-1])
 
@@ -367,7 +367,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     self.assertSameShape(y, result)
 
     # Check that the result has the expected (flattened) values.
-    if isinstance(result, ragged_tensor.RaggedTensor):
+    if ragged_tensor.is_ragged(result):
       result_flat_values = array_ops.reshape(result.flat_values, [-1])
     else:
       result_flat_values = array_ops.reshape(result, [-1])
@@ -413,9 +413,6 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
   def testListValuedElementwiseOp(self, inputs, op=math_ops.add_n,
                                   **extra_args):
     use_kwargs = extra_args.pop('use_kwargs', False)
-    inputs = [
-        ragged_tensor.convert_to_tensor_or_ragged_tensor(x) for x in inputs
-    ]
     if use_kwargs:
       result = op(inputs=inputs, **extra_args)
     else:
@@ -423,8 +420,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
 
     # Run the wrapped op on the dense values, for comparison.
     dense_inputs = [
-        x.flat_values if isinstance(x, ragged_tensor.RaggedTensor) else x
-        for x in inputs
+        x.flat_values if ragged_tensor.is_ragged(x) else x for x in inputs
     ]
     expected_flat_values = array_ops.reshape(
         op(dense_inputs, **extra_args), [-1])
@@ -433,7 +429,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     self.assertSameShape(inputs[0], result)
 
     # Check that the result has the expected (flattened) values.
-    if isinstance(result, ragged_tensor.RaggedTensor):
+    if ragged_tensor.is_ragged(result):
       result_flat_values = array_ops.reshape(result.flat_values, [-1])
     else:
       result_flat_values = array_ops.reshape(result, [-1])
@@ -474,7 +470,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
   def testElementwiseOpShapeMismatch(self):
     x = ragged_factory_ops.constant([[1, 2, 3], [4, 5]])
     y = ragged_factory_ops.constant([[1, 2, 3], [4, 5, 6]])
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
       self.evaluate(math_ops.add(x, y))
 
   def testBinaryOpSparseAndRagged(self):
@@ -756,6 +752,13 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
               ragged_factory_ops.constant_value([[1]])
           ],
           result_is_list=True),
+      dict(
+          op=array_ops.reverse,
+          kwargs={
+              'tensor': ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]]),
+              'axis': [0, -1]
+          },
+          expected=ragged_factory_ops.constant_value([[5, 4], [3, 2, 1]]))
   ])
   def testRaggedDispatch(self, op, expected, args=(), result_is_list=False,
                          kwargs=None):
@@ -802,7 +805,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
         'strings.substr', 'strings.to_hash_bucket_fast',
         'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
         'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
-        'truncatemod', 'zeros_like', 'dynamic_partition'
+        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse'
     ]
 
     # Ops that should be listed as supported in v1 only.

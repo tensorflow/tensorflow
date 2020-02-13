@@ -23,9 +23,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_CONTROL_FLOW_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_CONTROL_FLOW_OPS_H_
 
-#include "mlir/IR/Dialect.h"  // TF:local_config_mlir
-#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/IR/Dialect.h"  // TF:llvm-project
+#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
 
 namespace mlir {
 namespace TFControlFlow {
@@ -35,10 +35,10 @@ class TFControlFlowDialect : public Dialect {
   explicit TFControlFlowDialect(MLIRContext *context);
 
   // Parses a type registered to this dialect.
-  Type parseType(StringRef tyData, Location loc) const override;
+  Type parseType(DialectAsmParser &parser) const override;
 
   // Prints a type registered to this dialect.
-  void printType(Type type, raw_ostream &os) const override;
+  void printType(Type type, DialectAsmPrinter &os) const override;
 };
 
 namespace TensorFlowControlTypes {
@@ -90,8 +90,8 @@ class EnterOp
 
   static StringRef getOperationName() { return "_tf.Enter"; }
 
-  Value *getData() { return getOperand(0); }
-  void setData(Value *value) { setOperand(0, value); }
+  Value getData() { return getOperand(0); }
+  void setData(Value value) { setOperand(0, value); }
 
   LogicalResult verify();
 };
@@ -172,8 +172,8 @@ class NextIterationSinkOp
 
   static StringRef getOperationName() { return "_tf.NextIteration.sink"; }
 
-  Value *getData() { return getOperand(0); }
-  void setData(Value *value) { setOperand(0, value); }
+  Value getData() { return getOperand(0); }
+  void setData(Value value) { setOperand(0, value); }
 
   LogicalResult verify();
 };
@@ -202,8 +202,8 @@ class LoopCondOp
   using Op::Op;
   static StringRef getOperationName() { return "_tf.LoopCond"; }
 
-  Value *getData() { return getOperand(0); }
-  void setData(Value *value) { setOperand(0, value); }
+  Value getData() { return getOperand(0); }
+  void setData(Value value) { setOperand(0, value); }
 
   LogicalResult verify();
 };
@@ -233,11 +233,11 @@ class SwitchOp : public Op<SwitchOp, OpTrait::AtLeastNOperands<2>::Impl,
 
   static StringRef getOperationName() { return "_tf.Switch"; }
 
-  Value *getData() { return getOperand(0); }
-  void setData(Value *value) { setOperand(0, value); }
+  Value getData() { return getOperand(0); }
+  void setData(Value value) { setOperand(0, value); }
 
-  Value *getPredicate() { return getOperand(1); }
-  void setPredicate(Value *value) { setOperand(1, value); }
+  Value getPredicate() { return getOperand(1); }
+  void setPredicate(Value value) { setOperand(1, value); }
 
   LogicalResult verify();
 };
@@ -266,8 +266,8 @@ class ExitOp : public Op<ExitOp, OpTrait::AtLeastNOperands<1>::Impl,
   using Op::Op;
   static StringRef getOperationName() { return "_tf.Exit"; }
 
-  Value *getData() { return getOperand(0); }
-  void setData(Value *value) { setOperand(0, value); }
+  Value getData() { return getOperand(0); }
+  void setData(Value value) { setOperand(0, value); }
 
   LogicalResult verify();
 };

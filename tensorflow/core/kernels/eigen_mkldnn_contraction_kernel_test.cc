@@ -116,11 +116,12 @@ TEST(EigenMkldnnTest, MkldnnGemm) {
       mkldnn_gemm_kernel<Scalar, Index, OutputMapper, ColMajor>;
 
   Tensor2d mkldnn_result(m, n);
-  mkldnn_result.setZero();
+  mkldnn_result.setRandom();
   OutputMapper output_mapper(mkldnn_result.data(), m);
 
   MkldnnGemmKernel gemm_kernel;
-  gemm_kernel(output_mapper, lhs.data(), rhs.data(), m, k, n, /*alpha=*/1.0);
+  gemm_kernel(output_mapper, lhs.data(), rhs.data(), m, k, n, /*alpha=*/1.0,
+              /*beta=*/0.0);
 
   // Compute matmul with Eigen::Matrix.
   using Matrix = Eigen::Matrix<Scalar, Dynamic, Dynamic, ColMajor>;

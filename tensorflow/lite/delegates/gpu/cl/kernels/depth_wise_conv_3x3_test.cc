@@ -47,14 +47,14 @@ TEST_F(OpenCLOperationTest, DepthWiseConv3x3SimpleWeights) {
   attr.bias.shape = Linear(2);
   attr.bias.data = {0.0f, 0.0f};
 
-  for (auto storage : env_.GetSupportedTextureStorages()) {
+  for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       DepthWiseConv3x3 operation;
       ASSERT_OK(
@@ -90,8 +90,8 @@ TEST_F(OpenCLOperationTest, DepthWiseConv3x3) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       DepthWiseConv3x3 operation;
       ASSERT_OK(

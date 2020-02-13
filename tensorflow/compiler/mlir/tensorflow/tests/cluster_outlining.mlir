@@ -14,7 +14,7 @@ module {
         // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf_device.launch_func"(%[[A_OUTPUT]]) {device = "tpu0", func = @tpu0_func}
         %3 = "tf_device.launch"() ( {
           %4 = "tf.B"(%2) : (tensor<?xi32>) -> tensor<?xi32>
-          "tf_device.return"(%4) : (tensor<?xi32>) -> ()
+          tf_device.return %4 : tensor<?xi32>
         }) {device = "tpu0"} : () -> tensor<?xi32>
 
         // CHECK: tf_executor.yield %[[C_OUTPUT]]
@@ -48,7 +48,7 @@ module {
         // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf_device.launch_func"(%[[A_OUTPUT]]) {device = "tpu0", func = @tpu0_func}
         %3 = "tf_device.launch"() ( {
           %6 = "tf.B"(%2) : (tensor<?xi32>) -> tensor<?xi32>
-          "tf_device.return"(%6) : (tensor<?xi32>) -> ()
+          tf_device.return %6 : tensor<?xi32>
         }) {device = "tpu0"} : () -> tensor<?xi32>
 
         // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[C_OUTPUT]])
@@ -58,7 +58,7 @@ module {
         %5 = "tf_device.launch"() ( {
           %6 = "tf.E"(%3) : (tensor<?xi32>) -> tensor<?xi32>
           %7 = "tf.F"(%4, %6) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
-          "tf_device.return"(%7) : (tensor<?xi32>) -> ()
+          tf_device.return %7 : tensor<?xi32>
         }) {device = "gpu0"} : () -> tensor<?xi32>
 
         // CHECK: tf_executor.yield %[[E_OUTPUT]]
@@ -91,12 +91,12 @@ module {
   func @multiplelaunches(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island wraps
-        // CHECK: %[[A_OUTPUT:[0-9]*]]:2 = {{.*}} "tf_device.launch_func"() {device = "tpu0", func = @tpu0_func}
+        // CHECK: %[[A_OUTPUT:[a-z0-9]*]], %{{.*}} = {{.*}} "tf_device.launch_func"() {device = "tpu0", func = @tpu0_func}
         "tf_device.launch"() ( {
           %3 = "tf.A"() : () -> tensor<?xi32>
-          "tf_device.return"(%3) : (tensor<?xi32>) -> ()
+          tf_device.return %3 : tensor<?xi32>
         }) {device = "tpu0"} : () -> tensor<?xi32>
-      // CHECK: tf_executor.fetch %[[A_OUTPUT]]#0
+      // CHECK: tf_executor.fetch %[[A_OUTPUT]]
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
     return %0 : tensor<?xi32>
@@ -117,7 +117,7 @@ module {
   func @launch_attrs() -> tensor<?xi32> {
     %0 = "tf_device.launch"() ( {
       %1 = "tf.A"() : () -> tensor<?xi32>
-      "tf_device.return"(%1) : (tensor<?xi32>) -> ()
+      tf_device.return %1 : tensor<?xi32>
     }) {device = "tpu0", launch_attr = "launch_attr"} : () -> tensor<?xi32>
     return %0 : tensor<?xi32>
   }

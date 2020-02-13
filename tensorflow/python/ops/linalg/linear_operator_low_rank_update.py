@@ -248,12 +248,13 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
       super(LinearOperatorLowRankUpdate, self).__init__(
           dtype=self._base_operator.dtype,
-          graph_parents=graph_parents,
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      self._set_graph_parents(graph_parents)
 
       # Create the diagonal operator D.
       self._set_diag_operators(diag_update, is_diag_update_positive)
@@ -333,6 +334,9 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     batch_shape = array_ops.broadcast_dynamic_shape(
         self.base_operator.batch_shape_tensor(),
         array_ops.shape(self.u)[:-2])
+    batch_shape = array_ops.broadcast_dynamic_shape(
+        batch_shape,
+        array_ops.shape(self.v)[:-2])
     return array_ops.concat(
         [batch_shape, self.base_operator.shape_tensor()[-2:]], axis=0)
 
@@ -417,7 +421,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     vh_linv_rhs = math_ops.matmul(v, linv_rhs, adjoint_a=True)
     # C^{-1} V^H L^{-1} rhs
     if self._use_cholesky:
-      capinv_vh_linv_rhs = linear_operator_util.cholesky_solve_with_broadcast(
+      capinv_vh_linv_rhs = linalg_ops.cholesky_solve(
           linalg_ops.cholesky(self._make_capacitance()), vh_linv_rhs)
     else:
       capinv_vh_linv_rhs = linear_operator_util.matrix_solve_with_broadcast(

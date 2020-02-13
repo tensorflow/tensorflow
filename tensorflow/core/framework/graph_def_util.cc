@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -161,6 +162,42 @@ Status RemoveNewDefaultAttrsFromGraphDef(
   }
 
   return Status::OK();
+}
+
+void StripDefaultAttributes(const OpRegistryInterface& op_registry,
+                            protobuf::RepeatedPtrField<NodeDef>* nodes) {
+  for (int i = 0; i < nodes->size(); ++i) {
+    NodeDef* node = nodes->Mutable(i);
+
+    const OpDef* op_def;
+    const OpRegistrationData* op_reg_data = nullptr;
+    Status s = op_registry.LookUp(node->op(), &op_reg_data);
+    if (!s.ok()) {
+      VLOG(1) << "Ignoring encountered unknown operation "
+              << SummarizeNodeDef(*node)
+              << " when stripping default attributes. It is likely a function, "
+                 "in which case ignoring it is fine";
+      continue;
+    }
+    op_def = &op_reg_data->op_def;
+
+    for (const OpDef::AttrDef& attr_def : op_def->attr()) {
+      if (attr_def.has_default_value()) {
+        AttrValueMap* attrs = node->mutable_attr();
+        const string& name = attr_def.name();
+        auto iter = attrs->find(name);
+        if (iter != attrs->end()) {
+          const AttrValue& default_value = attr_def.default_value();
+          // The "Fast*" version can return false negatives for very large
+          // AttrValues containing Tensors. There should never be an attribute
+          // whose default value is a tensor larger than 32MB.
+          if (FastAreAttrValuesEqual(iter->second, default_value)) {
+            attrs->erase(name);
+          }
+        }
+      }
+    }
+  }
 }
 
 void OpsUsedByGraph(const GraphDef& graph_def,

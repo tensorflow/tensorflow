@@ -25,14 +25,16 @@ namespace cl {
 namespace {
 
 std::string GetElementWiseCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
-    const ElementwiseOperation& op,
+    const OperationDef& op_def, const ElementwiseOperation& op,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
-  std::string c = GetCommonDefines(precision);
+  std::string c = GetCommonDefines(op_def.precision);
 
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
@@ -45,15 +47,15 @@ std::string GetElementWiseCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) { \n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) { \n";
   c += "    return; \n";
   c += "  } \n";
   c += "  FLT4 src = " +
-       src_tensor.Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
+       src_tensor.ReadWHS("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
   const LinkingContext context{"src", "X", "Y", "Z"};
   c += "  " + op.GetCoreCode(context);
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("src", "X", "Y", "Z") + "\n";
+  c += "  " + dst_tensor.WriteWHS("src", "X", "Y", "Z") + "\n";
   c += "} \n";
   return c;
 }
@@ -83,6 +85,20 @@ bool OperationDef::HasAllTensorsOfType(TensorStorageType storage_type) const {
     }
   }
   return true;
+}
+
+bool OperationDef::IsBatchSupported() const {
+  for (const auto& src : src_tensors) {
+    if (HasAxis(src.layout, Axis::BATCH)) {
+      return true;
+    }
+  }
+  for (const auto& dst : dst_tensors) {
+    if (HasAxis(dst.layout, Axis::BATCH)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 GPUOperation::GPUOperation(const OperationDef& definition)
@@ -143,23 +159,21 @@ Status ElementwiseOperation::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArguments(&kernel_));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   return OkStatus();
 }
 
 int3 ElementwiseOperation::GetGridSize() const {
-  const int grid_x = dst_[0]->Width();
+  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 
 Status ElementwiseOperation::Compile(const CreationContext& creation_context) {
-  const auto code =
-      GetElementWiseCode(definition_.src_tensors[0], definition_.dst_tensors[0],
-                         definition_.precision, *this, linked_operations_);
+  const auto code = GetElementWiseCode(definition_, *this, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);

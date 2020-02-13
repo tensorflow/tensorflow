@@ -41,11 +41,11 @@ inline void Mean(const tflite::MeanParams& op_params, int32_t multiplier,
   const int input_width = input_shape.Dims(2);
   const int num_elements_in_axis = input_width * input_height;
 
-  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
-  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
+  TFLITE_CHECK_EQ(op_params.axis_count, 2);
+  TFLITE_CHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+               (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_CHECK_EQ(output_height, 1);
+  TFLITE_CHECK_EQ(output_width, 1);
 
   static constexpr int32_t kMinInt8 = std::numeric_limits<int8_t>::min();
   static constexpr int32_t kMaxInt8 = std::numeric_limits<int8_t>::max();

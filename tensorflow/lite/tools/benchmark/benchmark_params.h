@@ -94,6 +94,8 @@ class BenchmarkParams {
     return params_.find(name) != params_.end();
   }
 
+  bool Empty() const { return params_.empty(); }
+
   const BenchmarkParam* GetParam(const std::string& name) const {
     const auto& entry = params_.find(name);
     if (entry == params_.end()) return nullptr;

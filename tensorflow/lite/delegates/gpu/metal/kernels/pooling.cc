@@ -134,7 +134,7 @@ std::string GetMaxPoolingIndicesCode(const HW& kernel_size) {
       }
       const int linear_index = (gid.z * params.dst_size.y + int(gid.y)) * params.dst_size.x +
         int(gid.x);
-      FLT4 value = static_cast<FLT4>(indexes) + FLT4(0.1);
+      FLT4 value = static_cast<FLT4>(indexes);
       $$2
       output_buffer[linear_index] = value;
     }
@@ -235,7 +235,7 @@ ComputeTaskDescriptorPtr PoolingInternal(int id, ValueId input_id,
              params.padding.prepended.w,
              params.padding.prepended.h,
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 

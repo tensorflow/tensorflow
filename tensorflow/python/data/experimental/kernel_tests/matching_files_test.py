@@ -21,27 +21,32 @@ import os
 import shutil
 import tempfile
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.ops import matching_files
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class MatchingFilesDatasetTest(test_base.DatasetTestBase):
+class MatchingFilesDatasetTest(test_base.DatasetTestBase,
+                               parameterized.TestCase):
 
   def setUp(self):
+    super(MatchingFilesDatasetTest, self).setUp()
     self.tmp_dir = tempfile.mkdtemp()
 
   def tearDown(self):
     shutil.rmtree(self.tmp_dir, ignore_errors=True)
+    super(MatchingFilesDatasetTest, self).tearDown()
 
   def _touchTempFiles(self, filenames):
     for filename in filenames:
       open(os.path.join(self.tmp_dir, filename), 'a').close()
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNonExistingDirectory(self):
     """Test the MatchingFiles dataset with a non-existing directory."""
 
@@ -51,6 +56,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
     self.assertDatasetProduces(
         dataset, expected_error=(errors.NotFoundError, ''))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testEmptyDirectory(self):
     """Test the MatchingFiles dataset with an empty directory."""
 
@@ -59,6 +65,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
     self.assertDatasetProduces(
         dataset, expected_error=(errors.NotFoundError, ''))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSimpleDirectory(self):
     """Test the MatchingFiles dataset with a simple directory."""
 
@@ -75,6 +82,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
         ],
         assert_items_equal=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFileSuffixes(self):
     """Test the MatchingFiles dataset using the suffixes of filename."""
 
@@ -91,6 +99,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
         ],
         assert_items_equal=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testFileMiddles(self):
     """Test the MatchingFiles dataset using the middles of filename."""
 
@@ -107,6 +116,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
         ],
         assert_items_equal=True)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNestedDirectories(self):
     """Test the MatchingFiles dataset with nested directories."""
 

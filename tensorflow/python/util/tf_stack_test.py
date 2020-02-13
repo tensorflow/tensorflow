@@ -36,7 +36,7 @@ class TFStackTest(test.TestCase):
   def testConsistencyWithTraceback(self):
     stack, expected_stack = extract_stack()
     for frame, expected in zip(stack, expected_stack):
-      self.assertEqual(tuple(frame), expected)
+      self.assertEqual(convert_stack_frame(frame), expected)
 
   def testFormatStack(self):
     stack, expected_stack = extract_stack()
@@ -56,6 +56,18 @@ class TFStackTest(test.TestCase):
 def extract_stack(limit=None):
   # Both defined on the same line to produce identical stacks.
   return tf_stack.extract_stack(limit), traceback.extract_stack(limit)
+
+
+def convert_stack_frame(frame):
+  """Converts a TF stack frame into Python's."""
+  # TODO(mihaimaruseac): Remove except case when dropping suport for py2
+  try:
+    return traceback.FrameSummary(
+        frame.filename, frame.lineno, frame.name, line=frame.line)
+  except AttributeError:
+    # On Python < 3.5 (i.e., Python2), we don't have traceback.FrameSummary so
+    # we don't need to match with that class. Instead, just a tuple is enough.
+    return tuple(frame)
 
 
 if __name__ == "__main__":

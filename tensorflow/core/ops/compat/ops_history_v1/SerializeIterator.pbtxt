@@ -10,3 +10,22 @@ op {
   }
   is_stateful: true
 }
+op {
+  name: "SerializeIterator"
+  input_arg {
+    name: "resource_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "serialized"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "external_state_policy"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  is_stateful: true
+}

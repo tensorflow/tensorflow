@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -canonicalize | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -pass-pipeline='func(canonicalize)' | FileCheck %s --dump-input=fail
 
 // CHECK-LABEL: func @remove_noop
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]

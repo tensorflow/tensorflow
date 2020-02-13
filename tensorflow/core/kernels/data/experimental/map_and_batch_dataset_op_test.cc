@@ -33,84 +33,71 @@ class MapAndBatchDatasetParams : public DatasetParams {
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         other_arguments_(std::move(other_arguments)),
-        batch_size_(CreateTensor<int64>(TensorShape({}), {batch_size})),
-        num_parallel_calls_(
-            CreateTensor<int64>(TensorShape({}), {num_parallel_calls})),
-        drop_remainder_(CreateTensor<bool>(TensorShape({}), {drop_remainder})),
+        batch_size_(batch_size),
+        num_parallel_calls_(num_parallel_calls),
+        drop_remainder_(drop_remainder),
         func_(std::move(func)),
         func_lib_(std::move(func_lib)),
         type_arguments_(std::move(type_arguments)),
         preserve_cardinality_(preserve_cardinality) {
-    auto input_dataset_params_ptr =
-        std::make_shared<T>(std::move(input_dataset_params));
-    input_dataset_params_group_.emplace_back(
-        std::make_pair(std::move(input_dataset_params_ptr), Tensor()));
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
-  Status GetInputs(gtl::InlinedVector<TensorValue, 4>* inputs) override {
-    inputs->reserve(input_dataset_params_group_.size() +
-                    other_arguments_.size() + 3);
-    for (auto& pair : input_dataset_params_group_) {
-      if (!IsDatasetTensor(pair.second)) {
-        inputs->clear();
-        return errors::Internal(
-            "The input dataset is not populated as the dataset tensor yet.");
-      } else {
-        inputs->emplace_back(TensorValue(&pair.second));
-      }
-    }
-    for (auto& argument : other_arguments_) {
-      inputs->emplace_back(TensorValue(&argument));
-    }
-    inputs->emplace_back(TensorValue(&batch_size_));
-    inputs->emplace_back(TensorValue(&num_parallel_calls_));
-    inputs->emplace_back(TensorValue(&drop_remainder_));
-
-    return Status::OK();
+  std::vector<Tensor> GetInputTensors() const override {
+    std::vector<Tensor> inputs = other_arguments_;
+    inputs.emplace_back(CreateTensor<int64>(TensorShape({}), {batch_size_}));
+    inputs.emplace_back(
+        CreateTensor<int64>(TensorShape({}), {num_parallel_calls_}));
+    inputs.emplace_back(CreateTensor<bool>(TensorShape({}), {drop_remainder_}));
+    return inputs;
   }
 
-  Status GetInputPlaceholder(
-      std::vector<string>* input_placeholder) const override {
-    input_placeholder->reserve(input_dataset_params_group_.size() +
-                               other_arguments_.size() + 3);
-    input_placeholder->emplace_back(MapAndBatchDatasetOp::kInputDataset);
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->reserve(input_dataset_params_.size() +
+                         other_arguments_.size() + 3);
+    input_names->emplace_back(MapAndBatchDatasetOp::kInputDataset);
     for (int i = 0; i < other_arguments_.size(); ++i) {
-      input_placeholder->emplace_back(
+      input_names->emplace_back(
           absl::StrCat(MapAndBatchDatasetOp::kOtherArguments, "_", i));
     }
-    input_placeholder->emplace_back(MapAndBatchDatasetOp::kBatchSize);
-    input_placeholder->emplace_back(MapAndBatchDatasetOp::kNumParallelCalls);
-    input_placeholder->emplace_back(MapAndBatchDatasetOp::kDropRemainder);
+    input_names->emplace_back(MapAndBatchDatasetOp::kBatchSize);
+    input_names->emplace_back(MapAndBatchDatasetOp::kNumParallelCalls);
+    input_names->emplace_back(MapAndBatchDatasetOp::kDropRemainder);
 
     return Status::OK();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {
-        {MapDatasetOp::kFunc, func_},
-        {MapDatasetOp::kTarguments, type_arguments_},
-        {MapDatasetOp::kOutputShapes, output_shapes_},
-        {MapDatasetOp::kOutputTypes, output_dtypes_},
-        {MapDatasetOp::kPreserveCardinality, preserve_cardinality_}};
+        {MapAndBatchDatasetOp::kFunc, func_},
+        {MapAndBatchDatasetOp::kTarguments, type_arguments_},
+        {MapAndBatchDatasetOp::kOutputShapes, output_shapes_},
+        {MapAndBatchDatasetOp::kOutputTypes, output_dtypes_},
+        {MapAndBatchDatasetOp::kPreserveCardinality, preserve_cardinality_}};
     return Status::OK();
   }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
 
-  string op_name() const override { return MapAndBatchDatasetOp::kDatasetType; }
+  string dataset_type() const override {
+    return MapAndBatchDatasetOp::kDatasetType;
+  }
 
  private:
   std::vector<Tensor> other_arguments_;
-  Tensor batch_size_;
-  Tensor num_parallel_calls_;
-  Tensor drop_remainder_;
+  int64 batch_size_;
+  int64 num_parallel_calls_;
+  bool drop_remainder_;
   FunctionDefHelper::AttrValueWrapper func_;
   std::vector<FunctionDef> func_lib_;
   DataTypeVector type_arguments_;
   bool preserve_cardinality_;
 };
 
-class MapAndBatchDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class MapAndBatchDatasetOpTest : public DatasetOpsTestBase {};
 
 FunctionDefHelper::AttrValueWrapper MapFunc(const string& func_name,
                                             const DataType& dtype) {
@@ -281,6 +268,12 @@ std::vector<GetNextTestCase<MapAndBatchDatasetParams>> GetNextTestCases() {
 
 ITERATOR_GET_NEXT_TEST_P(MapAndBatchDatasetOpTest, MapAndBatchDatasetParams,
                          GetNextTestCases())
+
+TEST_F(MapAndBatchDatasetOpTest, DatasetNodeName) {
+  auto dataset_params = MapAndBatchDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name()));
+}
 
 TEST_F(MapAndBatchDatasetOpTest, DatasetTypeString) {
   auto dataset_params = MapAndBatchDatasetParams1();

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -29,10 +29,11 @@ namespace tensorflow {
 
 namespace functor {
 
-// For 2d ops.
-template struct PadInput<Eigen::GpuDevice, int, int, 4>;
+template struct MatMulConvFunctor<Eigen::GpuDevice, int32>;
+template struct TransformFilter<Eigen::GpuDevice, int32, int, 4>;
+template struct PadInput<Eigen::GpuDevice, int32, int, 4>;
 
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

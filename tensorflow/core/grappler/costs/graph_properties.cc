@@ -501,6 +501,7 @@ bool IsWhiteListedOpTypeForEvaluateNode(const string& op_type) {
           "Sign",
           // Binary arithmetic ops
           "Add",
+          "AddV2",
           "Div",
           "FloorDiv",
           "FloorMod",
@@ -663,14 +664,9 @@ class SymbolicShapeRefiner {
         }
       }
 
-      // Turn _Arg node into a Placeholder. _Arg node is a system op without a
-      // valid shape function.
-      *attr_output_shape.mutable_shape() = proto;
-      fun_node->set_op("Placeholder");
-      (*fun_node->mutable_attr())["dtype"] = (*fun_node->mutable_attr())["T"];
-      (*fun_node->mutable_attr()).erase("index");
-      (*fun_node->mutable_attr()).erase("T");
-      (*fun_node->mutable_attr())["shape"] = attr_output_shape;
+      AttrValue output_attr;
+      output_attr.mutable_list()->add_shape()->Swap(&proto);
+      (*fun_node->mutable_attr())["_output_shapes"] = output_attr;
     }
 
     // Replace input nodes with Consts, if values are known. Note that
@@ -895,6 +891,18 @@ class SymbolicShapeRefiner {
       // true, as the updates to the call node will have changed, even if it's
       // the same function being called twice with the same input shapes.
       // Example: simple_function.pbtxt
+      if (aggressive_shape_inference_) {
+        // If output shapes are annotated, use it and skip UpdateFunction();
+        // it can be very expensive when a function node has nested function
+        // nodes internally. One downside with this approach is that we do not
+        // get output values or output shapes as tensor from function node.
+        auto s = UpdateOutputShapesUsingAnnotatedInformation(*node, ctx);
+        if (s.ok() && AllOutputShapesKnown(ctx)) {
+          return Status::OK();
+        }
+        // If shape annotation was not available, incomplete, or incompatible,
+        // fall through to call UpdateFunction().
+      }
       auto s = UpdateFunction(node);
       if (s.ok()) {
         return Status::OK();
@@ -1155,7 +1163,7 @@ class SymbolicShapeRefiner {
     std::vector<ShapeHandle> input_tensors_as_shapes;
 
     node_ctx.inference_context.reset(new InferenceContext(
-        graph_def_version_, node, node_ctx.op_data->op_def, input_shapes,
+        graph_def_version_, *node, node_ctx.op_data->op_def, input_shapes,
         input_tensors, input_tensors_as_shapes,
         std::move(input_handle_shapes_and_types)));
     const Status s = node_ctx.inference_context->construction_status();
@@ -1214,6 +1222,19 @@ class SymbolicShapeRefiner {
         }
 
         // Unknown for output[i].
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Returns true if all the output shapes are known.
+  bool AllOutputShapesKnown(NodeContext* c) {
+    InferenceContext* ic = c->inference_context.get();
+    // LOG(INFO) << ic->DebugString();
+    // Checks if all the output shapes are fully defined.
+    for (int i = 0; i < ic->num_outputs(); i++) {
+      if (!ic->FullyDefined(ic->output(i))) {
         return false;
       }
     }
@@ -1885,7 +1906,7 @@ Status GraphProperties::UpdateMerge(SymbolicShapeRefiner* shape_refiner,
     // Infer the shape of the second output once and for all since it never
     // changes.
     ShapeHandle out1 = ic->Scalar();
-    ic->set_output(1, out1);
+    if (ic->num_outputs() >= 2) ic->set_output(1, out1);
   }
 
   ShapeHandle out;
@@ -2371,14 +2392,25 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
   return InferFromCostGraph(metadata.cost_graph());
 }
 
-Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) const {
+Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def,
+                                             bool allow_symbolic_shapes) const {
   *output_graph_def = item_.graph;
   for (int i = 0; i < output_graph_def->node_size(); i++) {
     auto node = output_graph_def->mutable_node(i);
     AttrValue attr_output_shape;
     auto tensor_properties = GetOutputProperties(node->name());
     for (const auto& tensor_property : tensor_properties) {
-      *attr_output_shape.mutable_list()->add_shape() = tensor_property.shape();
+      TensorShapeProto* proto = attr_output_shape.mutable_list()->add_shape();
+      *proto = tensor_property.shape();
+      if (!allow_symbolic_shapes) {
+        // There may be dim.size < -1 in SymbolicShapeRefiner. Change those to
+        // -1.
+        for (int i = 0; i < proto->dim_size(); i++) {
+          if (proto->dim(i).size() < -1) {
+            proto->mutable_dim(i)->set_size(-1);
+          }
+        }
+      }
     }
     (*node->mutable_attr())["_output_shapes"] = attr_output_shape;
   }

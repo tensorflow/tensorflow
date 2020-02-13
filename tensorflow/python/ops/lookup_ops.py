@@ -21,9 +21,9 @@ from __future__ import print_function
 import collections
 import functools
 import uuid
+
 import six
 
-from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -461,14 +461,8 @@ class KeyValueTensorInitializer(TableInitializerBase):
     _check_table_dtypes(table, self._keys.dtype, self._values.dtype)
     with ops.name_scope(
         self._name, values=(table.resource_handle, self._keys, self._values)):
-      if fwd_compat.forward_compatible(2018, 9, 19):
-        init_op = gen_lookup_ops.lookup_table_import_v2(table.resource_handle,
-                                                        self._keys,
-                                                        self._values)
-      else:
-        # To maintain forward compatibiltiy, use the old implementation.
-        init_op = gen_lookup_ops.initialize_table_v2(table.resource_handle,
-                                                     self._keys, self._values)
+      init_op = gen_lookup_ops.lookup_table_import_v2(table.resource_handle,
+                                                      self._keys, self._values)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 
@@ -827,7 +821,7 @@ def _as_string(tensor):
 
 
 class IdTableWithHashBuckets(LookupInterface):
-  """String to Id table wrapper that assigns out-of-vocabulary keys to buckets.
+  r"""String to Id table wrapper that assigns out-of-vocabulary keys to buckets.
 
   For example, if an instance of `IdTableWithHashBuckets` is initialized with a
   string-to-id table that maps:
@@ -856,8 +850,15 @@ class IdTableWithHashBuckets(LookupInterface):
   num_oov_buckets = 3
   input_tensor = tf.constant(["emerson", "lake", "palmer", "king", "crimnson"])
   table = tf.IdTableWithHashBuckets(
-      tf.StaticHashTable(tf.TextFileIdTableInitializer(filename),
-                         default_value),
+      tf.StaticHashTable(
+          tf.lookup.TextFileInitializer(
+              filename,
+              key_dtype=tf.string,
+              key_index=tf.lookup.TextFileIndex.WHOLE_LINE,
+              value_dtype=tf.int64,
+              value_index=tf.lookup.TextFileIndex.LINE_NUMBER,
+              delimiter="\t"),
+          default_value),
       num_oov_buckets)
   out = table.lookup(input_tensor).
   table.init.run()
@@ -1035,7 +1036,7 @@ class IdTableWithHashBuckets(LookupInterface):
 
 @tf_export("lookup.StaticVocabularyTable", v1=[])
 class StaticVocabularyTable(LookupInterface):
-  """String to Id table wrapper that assigns out-of-vocabulary keys to buckets.
+  r"""String to Id table wrapper that assigns out-of-vocabulary keys to buckets.
 
   For example, if an instance of `StaticVocabularyTable` is initialized with a
   string-to-id initializer that maps:
@@ -1064,7 +1065,12 @@ class StaticVocabularyTable(LookupInterface):
   num_oov_buckets = 3
   input_tensor = tf.constant(["emerson", "lake", "palmer", "king", "crimnson"])
   table = tf.lookup.StaticVocabularyTable(
-      tf.TextFileIdTableInitializer(filename), num_oov_buckets)
+      tf.lookup.TextFileInitializer(
+          filename,
+          key_dtype=tf.string, key_index=tf.lookup.TextFileIndex.WHOLE_LINE,
+          value_dtype=tf.int64, value_index=tf.lookup.TextFileIndex.LINE_NUMBER,
+          delimiter="\t"),
+      num_oov_buckets)
   out = table.lookup(input_tensor).
   table.init.run()
   print(out.eval())
@@ -1118,6 +1124,8 @@ class StaticVocabularyTable(LookupInterface):
       if initializer.value_dtype != dtypes.int64:
         raise TypeError("Invalid value dtype, expected %s but got %s." %
                         (dtypes.int64, initializer.value_dtype))
+      if isinstance(initializer, trackable_base.Trackable):
+        self._initializer = self._track_trackable(initializer, "_initializer")
       self._table = HashTable(initializer, default_value=-1)
       name = name or self._table.name
     else:
@@ -1525,7 +1533,7 @@ def index_to_string_table_from_file(vocabulary_file,
         value_column_index=value_column_index,
         delimiter=delimiter)
 
-    # TODO(yleon): Use a more effienct structure.
+    # TODO(yleon): Use a more efficient structure.
     return StaticHashTableV1(init, default_value)
 
 
@@ -1587,7 +1595,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
 
     init = KeyValueTensorInitializer(
         keys, vocabulary_list, dtypes.int64, dtypes.string, name="table_init")
-    # TODO(yleon): Use a more effienct structure.
+    # TODO(yleon): Use a more efficient structure.
     return StaticHashTableV1(init, default_value)
 
 

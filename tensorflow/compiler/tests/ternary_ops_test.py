@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
+import scipy.special as sps
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
@@ -28,9 +30,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-class TernaryOpsTest(xla_test.XLATestCase):
+class TernaryOpsTest(xla_test.XLATestCase, parameterized.TestCase):
 
-  def _testTernary(self, op, a, b, c, expected):
+  def _testTernary(self, op, a, b, c, expected, rtol=1e-3, atol=1e-6):
     with self.session() as session:
       with self.test_scope():
         pa = array_ops.placeholder(dtypes.as_dtype(a.dtype), a.shape, name="a")
@@ -38,21 +40,25 @@ class TernaryOpsTest(xla_test.XLATestCase):
         pc = array_ops.placeholder(dtypes.as_dtype(c.dtype), c.shape, name="c")
         output = op(pa, pb, pc)
       result = session.run(output, {pa: a, pb: b, pc: c})
-      self.assertAllClose(result, expected, rtol=1e-3)
+      self.assertAllClose(result, expected, rtol=rtol, atol=atol)
+      return result
 
-  def testLinspace(self):
-    self._testTernary(
+  @parameterized.parameters(
+      {'start': 1, 'end': 2, 'num': 1},
+      {'start': 1, 'end': 4, 'num': 3},
+      {'start': 0, 'end': 41, 'num': 42})
+  def testLinspace(self, start, end, num):
+    expected = np.linspace(start, end, num, dtype=np.float32)
+    result = self._testTernary(
         math_ops.linspace,
-        np.float32(1),
-        np.float32(2),
-        np.int32(1),
-        expected=np.array([1], dtype=np.float32))
-    self._testTernary(
-        math_ops.linspace,
-        np.float32(1),
-        np.float32(4),
-        np.int32(3),
-        expected=np.array([1, 2.5, 4], dtype=np.float32))
+        np.float32(start),
+        np.float32(end),
+        np.int32(num),
+        expected)
+    # According to linspace spec, start has to be the first element and end has
+    # to be last element.
+    self.assertEqual(result[-1], expected[-1])
+    self.assertEqual(result[0], expected[0])
 
   def testRange(self):
     self._testTernary(
@@ -204,6 +210,55 @@ class TernaryOpsTest(xla_test.XLATestCase):
             lower,
             upper,
             expected=np.minimum(np.maximum(x, lower), upper))
+
+  def testBetaincSanity(self):
+    # This operation is only supported for float32 and float64.
+    for dtype in self.numeric_types & {np.float32, np.float64}:
+      # Sanity check a few identities:
+      # - betainc(a, b, 0) == 0
+      # - betainc(a, b, 1) == 1
+      # - betainc(a, 1, x) == x ** a
+      # Compare against the implementation in SciPy.
+      a = np.array([.3, .4, .2, .2], dtype=dtype)
+      b = np.array([1., 1., .4, .4], dtype=dtype)
+      x = np.array([.3, .4, .0, .1], dtype=dtype)
+      expected = sps.betainc(a, b, x)
+      self._testTernary(
+          math_ops.betainc, a, b, x, expected, rtol=5e-6, atol=6e-6)
+
+  @parameterized.parameters(
+      {
+          'sigma': 1e15,
+          'rtol': 1e-6,
+          'atol': 1e-6
+      },
+      {
+          'sigma': 30,
+          'rtol': 1e-6,
+          'atol': 2e-3
+      },
+      {
+          'sigma': 1e-8,
+          'rtol': 5e-4,
+          'atol': 3e-6
+      },
+      {
+          'sigma': 1e-16,
+          'rtol': 1e-6,
+          'atol': 2e-4
+      },
+  )
+  def testBetainc(self, sigma, rtol, atol):
+    # This operation is only supported for float32 and float64.
+    for dtype in self.numeric_types & {np.float32, np.float64}:
+      # Randomly generate a, b, x in the numerical domain of betainc.
+      # Compare against the implementation in SciPy.
+      a = np.abs(np.random.randn(10, 10) * sigma).astype(dtype)  # in (0, infty)
+      b = np.abs(np.random.randn(10, 10) * sigma).astype(dtype)  # in (0, infty)
+      x = np.random.rand(10, 10).astype(dtype)  # in (0, 1)
+      expected = sps.betainc(a, b, x, dtype=dtype)
+      self._testTernary(
+          math_ops.betainc, a, b, x, expected, rtol=rtol, atol=atol)
 
 
 if __name__ == "__main__":

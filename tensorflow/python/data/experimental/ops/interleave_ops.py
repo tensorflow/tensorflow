@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -88,10 +89,12 @@ def parallel_interleave(map_func,
     A `Dataset` transformation function, which can be passed to
     `tf.data.Dataset.apply`.
   """
+
   def _apply_fn(dataset):
-    return readers.ParallelInterleaveDataset(
-        dataset, map_func, cycle_length, block_length, sloppy,
-        buffer_output_elements, prefetch_input_elements)
+    return readers.ParallelInterleaveDataset(dataset, map_func, cycle_length,
+                                             block_length, sloppy,
+                                             buffer_output_elements,
+                                             prefetch_input_elements)
 
   return _apply_fn
 
@@ -150,7 +153,7 @@ def sample_from_datasets_v2(datasets, weights=None, seed=None):
       `datasets`.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
-      `tf.compat.v1.set_random_seed` for behavior.
+      `tf.random.set_seed` for behavior.
 
   Returns:
     A dataset that interleaves elements from `datasets` at random, according to
@@ -278,7 +281,9 @@ def choose_from_datasets_v1(datasets, choice_dataset):
 choose_from_datasets_v1.__doc__ = choose_from_datasets_v2.__doc__
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# these aliases in place.
-choose_from_datasets = choose_from_datasets_v1
-sample_from_datasets = sample_from_datasets_v1
+if tf2.enabled():
+  choose_from_datasets = choose_from_datasets_v2
+  sample_from_datasets = sample_from_datasets_v2
+else:
+  choose_from_datasets = choose_from_datasets_v1
+  sample_from_datasets = sample_from_datasets_v1

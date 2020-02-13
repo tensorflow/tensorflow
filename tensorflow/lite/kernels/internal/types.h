@@ -457,6 +457,25 @@ inline int RequiredBufferSizeForDims(const Dims<4>& dims) {
   return FlatSize(dims);
 }
 
+inline int MatchingElementsSize(const RuntimeShape& shape,
+                                const RuntimeShape& check_shape_0) {
+  const int size_1 = shape.FlatSize();
+  const int size_2 = check_shape_0.FlatSize();
+  TFLITE_CHECK_EQ(size_1, size_2);
+  return size_1;
+}
+
+inline int MatchingElementsSize(const RuntimeShape& shape,
+                                const RuntimeShape& check_shape_0,
+                                const RuntimeShape& check_shape_1) {
+  const int size_1 = shape.FlatSize();
+  const int size_2 = check_shape_0.FlatSize();
+  const int size_3 = check_shape_1.FlatSize();
+  TFLITE_CHECK_EQ(size_1, size_2);
+  TFLITE_CHECK_EQ(size_2, size_3);
+  return size_1;
+}
+
 // Flat size calculation, checking that dimensions match with one or more other
 // arrays.
 inline int MatchingFlatSize(const RuntimeShape& shape,
@@ -715,6 +734,13 @@ struct ActivationParams {
   int32 quantized_activation_max;
 };
 
+struct ReluParams : public ActivationParams {
+  int32 input_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int32 output_shift;
+};
+
 // Styles of resizing op usages. For example, kImageStyle can be used with a Pad
 // op for pattern-specific optimization.
 enum class ResizingCategory : uint8 {
@@ -828,6 +854,8 @@ struct DepthwiseParams {
   // float activation params.
   float float_activation_min;
   float float_activation_max;
+  const int32* output_multiplier_per_channel;
+  const int32* output_shift_per_channel;
 };
 
 struct DequantizationParams {
@@ -854,6 +882,9 @@ struct FullyConnectedParams {
   // float activation params.
   float float_activation_min;
   float float_activation_max;
+  // Mark the operands as cacheable if they are unchanging, e.g. weights.
+  bool lhs_cacheable;
+  bool rhs_cacheable;
   FullyConnectedWeightsFormat weights_format;
 };
 
@@ -962,6 +993,10 @@ struct ReshapeParams {
 
 struct ResizeBilinearParams {
   bool align_corners;
+  // half_pixel_centers assumes pixels are of half the actual dimensions, and
+  // yields more accurate resizes. Corresponds to the same argument for the
+  // original TensorFlow op in TF2.0.
+  bool half_pixel_centers;
 };
 
 struct ResizeNearestNeighborParams {
@@ -1014,11 +1049,11 @@ struct SqueezeParams {
 
 struct StridedSliceParams {
   int8 start_indices_count;
-  int16 start_indices[4];
+  int32 start_indices[4];
   int8 stop_indices_count;
-  int16 stop_indices[4];
+  int32 stop_indices[4];
   int8 strides_count;
-  int16 strides[4];
+  int32 strides[4];
 
   int16 begin_mask;
   int16 ellipsis_mask;

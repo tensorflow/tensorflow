@@ -23,7 +23,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
@@ -323,7 +323,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
   @combinations.generate(skip_v2_test_combinations())
   def testOptimization(self):
     dataset = dataset_ops.Dataset.range(10)
-    dataset = dataset.apply(optimization.assert_next(["MemoryCacheImpl"]))
+    dataset = dataset.apply(testing.assert_next(["MemoryCacheImpl"]))
     dataset = dataset.skip(0)  # this should be optimized away
     dataset = dataset.cache()
 
@@ -347,8 +347,8 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_2)
 
 
-class MultiDeviceIteratorV2Test(test_base.DatasetTestBase,
-                                parameterized.TestCase):
+class OwnedMultiDeviceIteratorTest(test_base.DatasetTestBase,
+                                   parameterized.TestCase):
 
   @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
   def testBasic(self):
@@ -358,7 +358,7 @@ class MultiDeviceIteratorV2Test(test_base.DatasetTestBase,
     with ops.device("/cpu:0"):
       dataset = dataset_ops.Dataset.range(1000)
 
-    mdi = multi_device_iterator_ops.MultiDeviceIteratorV2(
+    mdi = multi_device_iterator_ops.OwnedMultiDeviceIterator(
         dataset, ["/cpu:0", "/gpu:0"])
 
     for i, el in enumerate(mdi):
@@ -375,7 +375,7 @@ class MultiDeviceIteratorV2Test(test_base.DatasetTestBase,
     def fn():
       with ops.device("/cpu:0"):
         dataset = dataset_ops.Dataset.range(10)
-      iterator = multi_device_iterator_ops.MultiDeviceIteratorV2(
+      iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
           dataset, ["/cpu:0", "/gpu:0"])
       for _ in range(5):
         el0, el1 = next(iterator)
@@ -412,7 +412,7 @@ class MultiDeviceIteratorV2Test(test_base.DatasetTestBase,
     @def_function.function
     def fn():
       dataset = dataset_ops._GeneratorDataset(1, init_fn, next_fn, finalize_fn)
-      iterator = multi_device_iterator_ops.MultiDeviceIteratorV2(
+      iterator = multi_device_iterator_ops.OwnedMultiDeviceIterator(
           dataset, ["/cpu:0", "/gpu:0"])
       next(iterator)
 
@@ -430,8 +430,9 @@ class MultiDeviceIteratorV2Test(test_base.DatasetTestBase,
       dataset = dataset_ops.Dataset.range(1000)
 
     for _ in range(5):
-      multi_device_iterator = multi_device_iterator_ops.MultiDeviceIteratorV2(
-          dataset, ["/cpu:0", "/gpu:0"])
+      multi_device_iterator = (
+          multi_device_iterator_ops.OwnedMultiDeviceIterator(
+              dataset, ["/cpu:0", "/gpu:0"]))
       for i, el in enumerate(multi_device_iterator):
         self.assertEqual([i * 2, i * 2 + 1], [el[0].numpy(), el[1].numpy()])
 
@@ -456,11 +457,13 @@ class MultiDeviceIteratorV2Test(test_base.DatasetTestBase,
     dataset2 = dataset_ops.Dataset.range(20)
 
     for _ in range(10):
-      multi_device_iterator = multi_device_iterator_ops.MultiDeviceIteratorV2(
-          dataset, ["/cpu:0", "/gpu:0"])
+      multi_device_iterator = (
+          multi_device_iterator_ops.OwnedMultiDeviceIterator(
+              dataset, ["/cpu:0", "/gpu:0"]))
       self.assertEqual(self.evaluate(f(multi_device_iterator)), 45)
-      multi_device_iterator2 = multi_device_iterator_ops.MultiDeviceIteratorV2(
-          dataset2, ["/cpu:0", "/gpu:0"])
+      multi_device_iterator2 = (
+          multi_device_iterator_ops.OwnedMultiDeviceIterator(
+              dataset2, ["/cpu:0", "/gpu:0"]))
       self.assertEqual(self.evaluate(f(multi_device_iterator2)), 45)
       self.assertEqual(trace_count[0], 1)
 

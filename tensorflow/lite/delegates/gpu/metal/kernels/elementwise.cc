@@ -19,9 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-
 #include "tensorflow/lite/delegates/gpu/common/util.h"
+#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 
 namespace tflite {
 namespace gpu {
@@ -53,12 +52,6 @@ std::string GetElementwiseWithTwoInputsCode(int src_count,
         )";
 
   switch (op_type) {
-    case OperationType::SUB: {
-      code +=
-          " FLT4 value = src_buffer0[linear_index] - "
-          "src_buffer1[linear_index];";
-      break;
-    }
     case OperationType::DIV: {
       code +=
           " FLT4 value = src_buffer0[linear_index] / "
@@ -77,6 +70,12 @@ std::string GetElementwiseWithTwoInputsCode(int src_count,
      FLT4 src_1 = src_buffer1[linear_index];
      FLT4 value = (src_0 - src_1) * (src_0 - src_1);
    )";
+      break;
+    }
+    case OperationType::SUB: {
+      code +=
+          " FLT4 value = src_buffer0[linear_index] - "
+          "src_buffer1[linear_index];";
       break;
     }
     default: {
@@ -116,7 +115,7 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
        [input_ids](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_ids[0])->second;
          std::vector<int> uniform_params = {dimension.w, dimension.h, 0, 0};
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -141,6 +140,8 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInput(
   const std::unordered_map<OperationType, std::string> functors{
       {OperationType::ABS, "abs(value)"},
       {OperationType::SIN, "sin(value)"},
+      {OperationType::HARD_SWISH,
+       "value * clamp(value / 6.0f + FLT4(0.5f), FLT4(0.0f), FLT4(1.0f))"},
       {OperationType::COS, "cos(value)"},
       {OperationType::LOG, "log(value)"},
       {OperationType::SQRT, "sqrt(value)"},

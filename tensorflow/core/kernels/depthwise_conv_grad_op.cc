@@ -570,8 +570,17 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     // For in_depth == 1 and grouped convolutions.
     use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
-    use_cudnn_grouped_conv_ = false;
     dtype_ = DataTypeToEnum<T>::value;
+    // Use CuDNN grouped conv (input gradient) when stride = 1, input/output is
+    // NCHW and float16(half). See cudnn release note 7.6.3 (https://docs.nvidi
+    // a.com/deeplearning/sdk/cudnn-release-notes/rel_763.html#rel_763).
+#if CUDNN_VERSION >= 7603
+    use_cudnn_grouped_conv_ = dtype_ == DT_HALF &&
+                              data_format_ == FORMAT_NCHW && stride_ == 1 &&
+                              stride_w == 1;
+#else
+    use_cudnn_grouped_conv_ = false;
+#endif
   }
 
   void Compute(OpKernelContext* context) override {
@@ -605,7 +614,13 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
 
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn = use_cudnn_ && (in_depth == 1 || use_cudnn_grouped_conv_);
+    bool use_cudnn =
+        use_cudnn_ && (in_depth == 1 ||
+                       (use_cudnn_grouped_conv_ &&
+                        IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
+                                                   /*filter_cols=*/filter_cols,
+                                                   /*in_depth=*/in_depth,
+                                                   /*out_depth=*/out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropInput: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
@@ -1044,7 +1059,6 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     // For in_depth == 1 and grouped convolutions.
     use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
-    use_cudnn_grouped_conv_ = false;
 
     if (std::is_same<T, Eigen::half>::value) {
       dtype_ = DT_HALF;
@@ -1055,6 +1069,14 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     } else {
       LOG(ERROR) << "Only half, float, and double are supported.";
     }
+    // Use CuDNN grouped conv (filter gradients) when input/output is
+    // float16(half). See cudnn release note 7.6.3. (https://docs.nvidia.com/dee
+    // plearning/sdk/cudnn-release-notes/rel_763.html#rel_763)
+#if CUDNN_VERSION >= 7603
+    use_cudnn_grouped_conv_ = dtype_ == DT_HALF;
+#else
+    use_cudnn_grouped_conv_ = false;
+#endif
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1087,7 +1109,13 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
 
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn = use_cudnn_ && (in_depth == 1 || use_cudnn_grouped_conv_);
+    bool use_cudnn =
+        use_cudnn_ && (in_depth == 1 ||
+                       (use_cudnn_grouped_conv_ &&
+                        IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
+                                                   /*filter_cols=*/filter_cols,
+                                                   /*in_depth=*/in_depth,
+                                                   /*out_depth=*/out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropFilter: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols

@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/interpreter/executable.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
-#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
@@ -86,10 +85,6 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   pipeline.AddPass<LayoutAssignment>(
       hlo_module->mutable_entry_computation_layout(),
       LayoutAssignment::InstructionCanChangeLayout);
-
-  ReducePrecisionInsertion::AddPasses(
-      &pipeline, hlo_module->config().debug_options(),
-      ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
   return pipeline.Run(hlo_module).status();
 }

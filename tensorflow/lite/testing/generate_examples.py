@@ -29,7 +29,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 import tensorflow as tf
 import argparse
 import os
@@ -99,6 +98,10 @@ bin_path = None
 
 
 def main(unused_args):
+  # Eager execution is enabled by default in TF 2.0, but generated example
+  # tests are still using non-eager features (e.g. `tf.placeholder`).
+  tf.compat.v1.disable_eager_execution()
+
   options = generate_examples_lib.Options()
 
   options.output_path = FLAGS.output_path
@@ -125,7 +128,8 @@ if __name__ == "__main__":
   FLAGS, unparsed = parser.parse_known_args()
 
   if unparsed:
-    print("Usage: %s <path out> <zip file to generate>")
+    parser.print_usage()
+    print("\nGot the following unparsed args, %r please fix.\n" % unparsed)
     exit(1)
   else:
     tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

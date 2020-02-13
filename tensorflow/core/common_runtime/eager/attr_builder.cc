@@ -18,10 +18,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/public/version.h"
@@ -168,6 +168,37 @@ void AttrBuilder::FillAttrValueMap(AttrValueMap* m) const {
   for (const auto& attr_def : op_def->attr()) {
     if (attr_def.has_default_value() && !m->count(attr_def.name())) {
       SetInAttrValueMap(m, attr_def.name(), attr_def.default_value());
+    }
+  }
+}
+
+namespace {
+
+bool ValueMatchesDefault(const OpDef* op_def, const string& attr_name,
+                         const AttrValue& attr_value) {
+  // TODO(iga): It might make sense to augment OpRegistrationData with a
+  // {attr_name -> default_attr_value} FlatMap to avoid the loop here.
+  for (const OpDef::AttrDef& attr_def : op_def->attr()) {
+    if (attr_def.name() == attr_name && attr_def.has_default_value() &&
+        AreAttrValuesEqual(attr_def.default_value(), attr_value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
+void AttrBuilder::FillAttrValueMapWithoutDefaults(AttrValueMap* m) const {
+  const OpDef* op_def = nullptr;
+  Status s = OpDefForOp(op_name().c_str(), &op_def);
+
+  for (auto& entry : encoded_attrs_) {
+    attr_tmp_.ParseFromString(entry.second);
+    // Insert the attr-value pair if we did not find the OpDef or if the value
+    // is different from default.
+    if (!s.ok() || !ValueMatchesDefault(op_def, entry.first, attr_tmp_)) {
+      m->insert(AttrValueMap::value_type(entry.first, attr_tmp_));
     }
   }
 }

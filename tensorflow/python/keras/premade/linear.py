@@ -64,7 +64,7 @@ class LinearModel(training.Model):
                units=1,
                activation=None,
                use_bias=True,
-               kernel_initializer='glorot_uniform',
+               kernel_initializer='zeros',
                bias_initializer='zeros',
                kernel_regularizer=None,
                bias_regularizer=None,
@@ -93,6 +93,7 @@ class LinearModel(training.Model):
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
     super(LinearModel, self).__init__(**kwargs)
+    base_layer._keras_model_gauge.get_cell('Linear').set(True)  # pylint: disable=protected-access
 
   def build(self, input_shape):
     self.dense_layers = []

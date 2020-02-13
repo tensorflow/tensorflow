@@ -74,7 +74,8 @@ class Adadelta(optimizer_v2.OptimizerV2):
     learning rate can be set, as in most other Keras optimizers.
 
     Args:
-      learning_rate: A `Tensor` or a floating point value. The learning rate.
+      learning_rate: A `Tensor`, floating point value, or a schedule that is a
+        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
         To match the exact form in the original paper use 1.0.
       rho: A `Tensor` or a floating point value. The decay rate.
       epsilon: A `Tensor` or a floating point value.  A constant epsilon used

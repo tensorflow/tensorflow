@@ -21,100 +21,73 @@ namespace {
 
 constexpr char kNodeName[] = "optimize_dataset";
 constexpr char kNoopElimination[] = "noop_elimination";
-constexpr char kIteratorPrefix[] = "Iterator";
 
-class OptimizeDatasetOpTest : public DatasetOpsTestBase {
- protected:
-  // Creates a new `OptimizeDataset` op kernel.
-  Status CreateOptimizeDatasetOpKernel(
-      const DataTypeVector& output_types,
-      const std::vector<PartialTensorShape>& output_shapes,
-      const std::vector<string>& optimization_configs,
-      std::unique_ptr<OpKernel>* optimize_dataset_op_kernel) {
-    NodeDef node_def = test::function::NDef(
-        kNodeName, name_utils::OpName(OptimizeDatasetOp::kDatasetType),
-        {OptimizeDatasetOp::kInputDataset, OptimizeDatasetOp::kOptimizations},
-        {{OptimizeDatasetOp::kOutputTypes, output_types},
-         {OptimizeDatasetOp::kOutputShapes, output_shapes},
-         {OptimizeDatasetOp::kOptimizationConfigs, optimization_configs}});
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, optimize_dataset_op_kernel));
+class OptimizeDatasetParams : public DatasetParams {
+ public:
+  template <typename T>
+  OptimizeDatasetParams(T input_dataset_params, string optimizations,
+                        DataTypeVector output_dtypes,
+                        std::vector<PartialTensorShape> output_shapes,
+                        std::vector<tstring> optimization_configs,
+                        string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name)),
+        optimizations_(std::move(optimizations)),
+        optimization_configs_(std::move(optimization_configs)) {
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
+  }
+
+  std::vector<Tensor> GetInputTensors() const override {
+    return {CreateTensor<tstring>(TensorShape({1}), {optimizations_})};
+  }
+
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    *input_names = {OptimizeDatasetOp::kInputDataset,
+                    OptimizeDatasetOp::kOptimizations};
     return Status::OK();
   }
 
-  // Create a new `OptimizeDataset` op kernel context.
-  Status CreateOptimizeDatasetContext(
-      OpKernel* const op_kernel,
-      gtl::InlinedVector<TensorValue, 4>* const inputs,
-      std::unique_ptr<OpKernelContext>* context) {
-    TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
-    TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
+  Status GetAttributes(AttributeVector* attr_vector) const override {
+    *attr_vector = {
+        {OptimizeDatasetOp::kOutputShapes, output_shapes_},
+        {OptimizeDatasetOp::kOutputTypes, output_dtypes_},
+        {OptimizeDatasetOp::kOptimizationConfigs, optimization_configs_}};
     return Status::OK();
   }
+
+  string dataset_type() const override {
+    return OptimizeDatasetOp::kDatasetType;
+  }
+
+ private:
+  string optimizations_;
+  std::vector<tstring> optimization_configs_;
 };
 
+class OptimizeDatasetOpTest : public DatasetOpsTestBase {};
+
 TEST_F(OptimizeDatasetOpTest, NoopElimination) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+  auto take_dataset_parmas =
+      TakeDatasetParams(RangeDatasetParams(-3, 3, 1),
+                        /*count=*/-3,
+                        /*output_dtypes=*/{DT_INT64},
+                        /*output_shapes=*/{PartialTensorShape({})},
+                        /*node_name=*/"take_dataset");
+  auto optimize_dataset_params =
+      OptimizeDatasetParams(std::move(take_dataset_parmas),
+                            /*optimizations=*/{kNoopElimination},
+                            /*output_dtypes=*/{DT_INT64},
+                            /*output_shapes=*/{PartialTensorShape({})},
+                            /*optimization_configs=*/{},
+                            /*node_name=*/kNodeName);
+  std::vector<Tensor> expected_outputs =
+      CreateTensors<int64>(TensorShape({}), {{-3}, {-2}, {-1}, {0}, {1}, {2}});
 
-  Tensor range_dataset_tensor;
-  DataTypeVector output_types = DataTypeVector({DT_INT64});
-  std::vector<PartialTensorShape> output_shapes =
-      std::vector<PartialTensorShape>{PartialTensorShape({})};
-  Tensor start = CreateTensor<int64>(TensorShape({}), {-3});
-  Tensor stop = CreateTensor<int64>(TensorShape({}), {3});
-  Tensor step = CreateTensor<int64>(TensorShape({}), {1});
-  TF_ASSERT_OK(MakeRangeDataset(start, stop, step, output_types, output_shapes,
-                                &range_dataset_tensor));
-
-  Tensor take_dataset_tensor;
-  int count = -3;
-  TF_ASSERT_OK(MakeTakeDataset(range_dataset_tensor, count, output_types,
-                               output_shapes, &take_dataset_tensor));
-
-  std::unique_ptr<OpKernel> optimize_dataset_kernel;
-  TF_ASSERT_OK(CreateOptimizeDatasetOpKernel(output_types, output_shapes,
-                                             /*optimization_configs*/ {},
-                                             &optimize_dataset_kernel));
-  Tensor optimizations =
-      CreateTensor<tstring>(TensorShape({1}), {kNoopElimination});
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&take_dataset_tensor), TensorValue(&optimizations)});
-  std::unique_ptr<OpKernelContext> optimize_dataset_context;
-  TF_ASSERT_OK(CreateOptimizeDatasetContext(
-      optimize_dataset_kernel.get(), &inputs, &optimize_dataset_context));
-
-  DatasetBase* optimize_dataset;
-  TF_ASSERT_OK(CreateDataset(optimize_dataset_kernel.get(),
-                             optimize_dataset_context.get(),
-                             &optimize_dataset));
-  core::ScopedUnref scoped_unref(optimize_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_context;
-  TF_ASSERT_OK(
-      CreateIteratorContext(optimize_dataset_context.get(), &iterator_context));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(optimize_dataset->MakeIterator(iterator_context.get(),
-                                              kIteratorPrefix, &iterator));
-
-  bool end_of_sequence = false;
-  std::vector<Tensor> out_tensors;
-  while (!end_of_sequence) {
-    std::vector<Tensor> next;
-    TF_EXPECT_OK(
-        iterator->GetNext(iterator_context.get(), &next, &end_of_sequence));
-    out_tensors.insert(out_tensors.end(), next.begin(), next.end());
-  }
-
-  std::vector<Tensor> expected_outputs = {
-      CreateTensor<int64>(TensorShape({}), {-3}),
-      CreateTensor<int64>(TensorShape({}), {-2}),
-      CreateTensor<int64>(TensorShape({}), {-1}),
-      CreateTensor<int64>(TensorShape({}), {0}),
-      CreateTensor<int64>(TensorShape({}), {1}),
-      CreateTensor<int64>(TensorShape({}), {2})};
-  TF_EXPECT_OK(ExpectEqual(out_tensors, expected_outputs,
-                           /*compare_order*/ true));
+  TF_ASSERT_OK(Initialize(optimize_dataset_params));
+  TF_EXPECT_OK(CheckIteratorGetNext(expected_outputs, /*compare_order=*/true));
 }
 
 }  // namespace

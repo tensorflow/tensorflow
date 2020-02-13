@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,13 +26,16 @@ import re
 import shutil
 import tempfile
 
+import six
+
 CodeLine = collections.namedtuple("CodeLine", ["cell_number", "code"])
 
 def is_python(cell):
   """Checks if the cell consists of Python code."""
   return (cell["cell_type"] == "code"  # code cells only
           and cell["source"]  # non-empty cells
-          and not cell["source"][0].startswith("%%"))  # multiline eg: %%bash
+          and not six.ensure_str(cell["source"][0]).startswith("%%")
+         )  # multiline eg: %%bash
 
 
 def process_file(in_filename, out_filename, upgrader):
@@ -47,8 +51,9 @@ def process_file(in_filename, out_filename, upgrader):
         upgrader.update_string_pasta("\n".join(raw_lines), in_filename))
 
     if temp_file and processed_file:
-      new_notebook = _update_notebook(notebook, raw_code,
-                                      new_file_content.split("\n"))
+      new_notebook = _update_notebook(
+          notebook, raw_code,
+          six.ensure_str(new_file_content).split("\n"))
       json.dump(new_notebook, temp_file)
     else:
       raise SyntaxError(
@@ -78,7 +83,7 @@ def skip_magic(code_line, magic_list):
   """
 
   for magic in magic_list:
-    if code_line.startswith(magic):
+    if six.ensure_str(code_line).startswith(magic):
       return True
 
   return False
@@ -120,7 +125,7 @@ def _get_code(input_file):
         # Idea is to comment these lines, for upgrade time
         if skip_magic(code_line, ["%", "!", "?"]) or is_line_split:
           # Found a special character, need to "encode"
-          code_line = "###!!!" + code_line
+          code_line = "###!!!" + six.ensure_str(code_line)
 
           # if this cell ends with `\` -> skip the next line
           is_line_split = check_line_split(code_line)
@@ -131,14 +136,16 @@ def _get_code(input_file):
         # Sometimes, people leave \n at the end of cell
         # in order to migrate only related things, and make the diff
         # the smallest -> here is another hack
-        if (line_idx == len(cell_lines) - 1) and code_line.endswith("\n"):
-          code_line = code_line.replace("\n", "###===")
+        if (line_idx == len(cell_lines) -
+            1) and six.ensure_str(code_line).endswith("\n"):
+          code_line = six.ensure_str(code_line).replace("\n", "###===")
 
         # sometimes a line would start with `\n` and content after
         # that's the hack for this
         raw_code.append(
             CodeLine(cell_index,
-                     code_line.rstrip().replace("\n", "###===")))
+                     six.ensure_str(code_line.rstrip()).replace("\n",
+                                                                "###===")))
 
       cell_index += 1
 

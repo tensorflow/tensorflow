@@ -37,6 +37,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
+from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
@@ -80,6 +82,45 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(ret), 16.)
       self.assertSequenceEqual(self.evaluate(grad), [32.])
 
+  @test_util.run_deprecated_v1
+  def testSingleLoopVarBackPropFalse(self):
+    x = constant_op.constant(2.)
+    ret = while_loop_v2(
+        lambda v: v < 8.,
+        lambda v: v * v, [x],
+        return_same_structure=False,
+        back_prop=False)
+    grad = gradients_impl.gradients(ret, [x])
+    self.assertEqual(grad, [None])
+    with self.cached_session():
+      self.assertEqual(self.evaluate(ret), 16.)
+
+  @test_util.run_deprecated_v1
+  def testCustomGradient(self):
+    x = constant_op.constant(2.)
+    n = constant_op.constant(1., name="const-n")
+    m = variables.Variable(1.0)
+    self.evaluate(variables.global_variables_initializer())
+
+    def body_fn(v):  # pylint: disable=invalid-name
+
+      @custom_gradient.custom_gradient
+      def inner_fn(v):  # pylint: disable=invalid-name
+
+        def grad_fn(dy, variables=None):  # pylint: disable=invalid-name, unused-argument, redefined-outer-name
+          return dy * 2 * v * n * m, [v * v]
+
+        return v * v * m, grad_fn
+
+      return inner_fn(v)
+
+    ret = while_loop_v2(
+        lambda v: v < 8., body_fn, [x], return_same_structure=False)
+    grad = gradients_impl.gradients(ret, [x])
+    with self.cached_session():
+      self.assertEqual(self.evaluate(ret), 16.)
+      self.assertSequenceEqual(self.evaluate(grad), [32.])
+
   @test_util.run_v1_only("b/120545219")
   def testReturnSameStructureTrue(self):
     x = constant_op.constant(2.)
@@ -110,9 +151,10 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         r"but has type <dtype: 'float16'> after 1 iteration."):
       BuildWhile()
 
-  def testGradientTapeResourceVariable(self):
+  @parameterized.parameters(dtypes.float32, dtypes.float64)
+  def testGradientTapeResourceVariable(self, dtype):
     with context.eager_mode():
-      v = variables.Variable(1.)
+      v = variables.Variable(1., dtype=dtype)
 
       @def_function.function
       def fnWithLoop():  # pylint: disable=invalid-name
@@ -120,7 +162,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
           _, x = while_loop_v2(
               lambda i, _: i < 2,
               lambda i, x: (i + 1, x * v),
-              [0, 2.])
+              [0, constant_op.constant(2., dtype=dtype)])
         return tape.gradient(x, v)
 
       self.assertAllEqual(fnWithLoop(), 4.0)
@@ -263,6 +305,34 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     self.assertEqual(while_2.type, "StatelessWhile")
     self.assertEmpty(while_1.control_inputs)
     self.assertEmpty(while_2.control_inputs)
+
+  def testMultipleWhileLoopsGradStateless(self):
+
+    @def_function.function
+    def Fn():
+      x = constant_op.constant(2.)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        ret1 = while_loop_v2(
+            lambda v: v < 4.,
+            lambda v: v * v, [x],
+            return_same_structure=False,
+            name="while_1")  # x**2
+        ret2 = while_loop_v2(
+            lambda v: v < 16.,
+            lambda v: v * v, [x],
+            return_same_structure=False,
+            name="while_2")  # x**4
+        loss = ret1 + ret2
+      return tape.gradient(loss, x)
+
+    graph = Fn.get_concrete_function().graph
+    while_ops = [op for op in graph.get_operations() if "While" in op.type]
+    self.assertAllEqual([op.type for op in while_ops], ["StatelessWhile"] * 4,
+                        "Must have exactly 4 StatelessWhile ops.")
+    for op in while_ops:
+      self.assertEmpty(op.control_inputs,
+                       "{} should not have any control inputs".format(op.name))
 
   def testMultipleWhileLoopsWithDeps(self):
     x = variables.Variable(2.)
@@ -611,7 +681,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
   def _assertNotAccumulated(self, while_op, index):
     """Asserts that `while_op` input at `index` is not accumulated."""
-    body_graph = while_v2._get_graph(while_op, "body")
+    body_graph = while_v2._get_graph(while_op, "body", "_body_graph")
     placeholder = body_graph.inputs[index]
     self.assertNotIn("TensorListPushBack",
                      [op.type for op in placeholder.consumers()])
@@ -645,7 +715,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # Skip over Identity.
     while_op = r.op.inputs[0].op
     # We can't directly use while_op.inputs.index() because Tensors are not
-    # hashshable.
+    # hashable.
     index = GetInputIndex(while_op, v)
     self._assertNotAccumulated(while_op, index)
 
@@ -720,7 +790,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       if op.type == "While" or op.type == "StatelessWhile":
         while_op = op
 
-    body_graph = while_v2._get_graph(while_op, "body")
+    body_graph = while_v2._get_graph(while_op, "body", "_body_graph")
     x_input_index = [i for i, inp in enumerate(while_op.inputs) if inp == x][0]
     x_input_t = body_graph.inputs[x_input_index]
     accumulator_count = len(
@@ -751,7 +821,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         self.assertListEqual(actual_tensor_shape.as_list(), shape)
 
     def GetAccumulatorForInputAtIndex(while_op, idx):
-      body_graph = while_v2._get_graph(while_op, "body")
+      body_graph = while_v2._get_graph(while_op, "body", "_body_graph")
       y_input_t = body_graph.inputs[idx]
       push_back_node = [c for c in y_input_t.consumers()
                         if c.type == "TensorListPushBack"][0]
@@ -1030,13 +1100,50 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # ret is separated from the `While` op by an `Identity` so we skip over
     # that.
     forward_while_op = ret.op.inputs[0].op
-    body_graph = while_v2._get_graph(forward_while_op, "body")
+    body_graph = while_v2._get_graph(forward_while_op, "body", "_body_graph")
     push_back_nodes = [
         o for o in body_graph.get_operations() if o.type == "TensorListPushBack"
     ]
     # Gradient of `Mul` requires accumulating both its inputs. But since one
     # of those is a Const (2.0), we should have just one accumulator.
     self.assertLen(push_back_nodes, 1)
+
+  def testDoNotAccumulateForwardTensorsForReductionOps(self):
+
+    @def_function.function
+    def Fn():
+      with backprop.GradientTape() as tape:
+        x = constant_op.constant(2.)
+        tape.watch(x)
+
+        def Body(i, x):
+          forward_graph = ops.get_default_graph()
+
+          @custom_gradient.custom_gradient
+          def SquaredWithZeroGrad(x):
+
+            def Grad(unused_g, variables=None):  # pylint: disable=redefined-outer-name
+              del variables
+              gradient_graph = ops.get_default_graph()
+              shape = gen_array_ops.shape(x)
+              assert shape.graph is forward_graph
+              rank = gen_array_ops.rank(x)
+              assert rank.graph is forward_graph
+              size = gen_array_ops.size(x)
+              assert size.graph is forward_graph
+              zeros = array_ops.zeros(shape)
+              assert zeros.graph is gradient_graph
+              return zeros
+
+            return x * 2, Grad
+
+          return i + 1, SquaredWithZeroGrad(x)
+
+        _, result = while_loop_v2(lambda i, _: i < 2, Body, [0, x])
+      grad = tape.gradient(result, x)
+      return grad
+
+    Fn()
 
 
 def ScalarShape():

@@ -281,7 +281,8 @@ REGISTER_OP("Lgamma").UNARY_REAL();
 REGISTER_OP("Digamma").UNARY_REAL();
 
 REGISTER_OP("Erf").UNARY_REAL();
-
+REGISTER_OP("Erfinv").UNARY_REAL();
+REGISTER_OP("Ndtri").UNARY_REAL();
 REGISTER_OP("Erfc").UNARY_REAL();
 
 REGISTER_OP("Sigmoid").UNARY_COMPLEX();
@@ -426,7 +427,12 @@ REGISTER_OP("_MklAddV2")
         "complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .SetIsAggregate()
-    .SetIsCommutative();
+    .SetIsCommutative()
+    .Doc(R"doc(
+Returns `x` + `y` element-wise.
+*NOTE*: `tf.math.add` supports broadcasting. `tf.math.add_n` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+)doc");
 #endif  // INTEL_MKL
 
 REGISTER_OP("Sub").BINARY_MORE().SetShapeFn(
@@ -510,6 +516,13 @@ Returns (x - y)(x - y) element-wise.
 )doc");
 
 REGISTER_OP("Xlogy")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {half, float, double, complex64, complex128}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
+REGISTER_OP("Xlog1py")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
@@ -917,7 +930,7 @@ REGISTER_OP("_MklMatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {float, double, complex64, complex128}")
+    .Attr("T: {bfloat16, float, double, complex64, complex128}")
     .SetShapeFn(shape_inference::MatMulShape);
 #endif  // INTEL_MKL
 
@@ -1420,7 +1433,7 @@ REGISTER_OP("Range")
     .Input("limit: Tidx")
     .Input("delta: Tidx")
     .Output("output: Tidx")
-    .Attr("Tidx: {bfloat16, float, double, int32, int64} = DT_INT32")
+    .Attr("Tidx: {bfloat16, half, float, double, int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
@@ -1459,7 +1472,7 @@ REGISTER_OP("LinSpace")
     .Input("stop: T")
     .Input("num: Tidx")
     .Output("output: T")
-    .Attr("T: {bfloat16, float, double}")
+    .Attr("T: {bfloat16, half, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
@@ -1900,5 +1913,33 @@ REGISTER_OP("NextAfter")
     .Input("x2: T")
     .Output("output: T")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
+REGISTER_OP("SobolSample")
+    .Input("dim: int32")
+    .Input("num_results: int32")
+    .Input("skip: int32")
+    .Attr("dtype: {float, double} = DT_FLOAT")
+    .Output("samples: dtype")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      ShapeHandle unused;
+
+      // inputs must be scalars
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+
+      const Tensor* dim_t = c->input_tensor(0);
+      const Tensor* num_results_t = c->input_tensor(1);
+
+      int32 dim = dim_t == nullptr ? InferenceContext::kUnknownDim
+                                   : dim_t->scalar<int32>()();
+
+      int32 num_results = num_results_t == nullptr
+                              ? InferenceContext::kUnknownDim
+                              : num_results_t->scalar<int32>()();
+
+      c->set_output(0, c->Matrix(num_results, dim));
+      return Status::OK();
+    });
 
 }  // namespace tensorflow

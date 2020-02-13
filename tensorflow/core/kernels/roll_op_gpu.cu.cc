@@ -58,6 +58,7 @@ struct Roll<GPUDevice, T> {
                   const T* input, T* output,
                   const gtl::ArraySlice<int32> threshold,
                   const gtl::ArraySlice<int64> dim_range, const int64 isd) {
+    if (!num_elements) return;
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
     auto dim_bytes = sizeof(int32) * dim_size.size();

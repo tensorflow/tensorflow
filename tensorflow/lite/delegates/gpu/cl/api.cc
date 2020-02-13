@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
@@ -153,12 +154,14 @@ class DefaultTensorTie : public TensorTie {
       case ObjectType::OPENCL_TEXTURE:
       case ObjectType::OPENCL_BUFFER: {
         auto& dims = d.dimensions;
-        RETURN_IF_ERROR(
-            AllocateTensorMemory(env->context(), env->device(), dims.w, dims.h,
-                                 dims.c, d.object_def.data_type,
-                                 ToTensorStorageType(d.object_def.object_type,
-                                                     d.object_def.data_layout),
-                                 &cl_memory_));
+        const BHWC shape(dims.b, dims.h, dims.w, dims.c);
+        const TensorDescriptor desc{
+            d.object_def.data_type,
+            ToTensorStorageType(d.object_def.object_type,
+                                d.object_def.data_layout),
+            Layout::BHWC};
+        RETURN_IF_ERROR(AllocateTensorMemory(env->context(), env->device(),
+                                             shape, desc, &cl_memory_));
         if (d.object_def.object_type == ObjectType::OPENCL_TEXTURE) {
           external_obj_ = OpenClTexture{cl_memory_.memory()};
         } else {
@@ -330,6 +333,9 @@ class GlBufferHolder : public TensorTie {
 TensorObject TensorToObj(const Tensor& tensor) {
   if (tensor.StorageType() == TensorStorageType::BUFFER) {
     return OpenClBuffer{tensor.GetMemoryPtr()};
+  }
+  if (tensor.StorageType() == TensorStorageType::IMAGE_BUFFER) {
+    return OpenClBuffer{tensor.GetMemoryPtrForWriting()};
   }
   return OpenClTexture{tensor.GetMemoryPtr()};
 }
@@ -508,33 +514,12 @@ class InferenceBuilderImpl : public InferenceBuilder {
   Status Initialize(const InferenceOptions& options,
                     const InferenceEnvironmentOptions& env_options,
                     const GraphFloat32& graph) {
-    // Select precision based on given options.
-    CalculationsPrecision precision = CalculationsPrecision::F32;
-    if (options.allow_precision_loss) {
-      precision = options.priority == InferencePriority::MAX_PRECISION
-                      ? CalculationsPrecision::F32_F16
-                      : CalculationsPrecision::F16;
-    }
-
-    // Increase precision if not supported.
-    if (!environment_->IsSupported(precision)) {
-      precision = CalculationsPrecision::F32_F16;
-      if (!environment_->IsSupported(precision)) {
-        precision = CalculationsPrecision::F32;
-      }
-    }
-
     context_ = absl::make_unique<InferenceContext>();
     InferenceContext::CreateInferenceInfo create_info;
-    create_info.precision = precision;
-    create_info.storage_type = GetOptimalStorageType(environment_->device());
-    create_info.hints.Add(ModelHints::kReduceKernelsCount);
-    // TODO(sorokin) temporary hack to speed up init time in some cases.
-    // TODO(sorokin): move this check to the place where hint is applied.
-    if ((precision == CalculationsPrecision::F16 ||
-         precision == CalculationsPrecision::F32_F16) &&
-        create_info.storage_type == TensorStorageType::TEXTURE_ARRAY &&
-        environment_->device().IsAdreno6xxOrHigher()) {
+    create_info.precision = GetPrecision(options);
+    create_info.storage_type = GetStorageType(options);
+    if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
+      create_info.hints.Add(ModelHints::kReduceKernelsCount);
       create_info.hints.Add(ModelHints::kFastTuning);
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
@@ -607,6 +592,54 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
  private:
+  TensorStorageType GetStorageType(const InferenceOptions& options) const {
+    // Fallback to BUFFER that should be supported by default.
+    std::vector<TensorStorageType> preferred_storage_types;
+    if (GetRelativeImportance(options, InferencePriority::MIN_LATENCY,
+                              InferencePriority::MIN_MEMORY_USAGE) ==
+        PriorityImportance::HIGHER) {
+      preferred_storage_types = {GetFastestStorageType(environment_->device()),
+                                 TensorStorageType::BUFFER};
+    } else {
+      preferred_storage_types = {TensorStorageType::IMAGE_BUFFER,
+                                 GetFastestStorageType(environment_->device()),
+                                 TensorStorageType::BUFFER};
+    }
+
+    for (TensorStorageType storage_type : preferred_storage_types) {
+      if (environment_->IsSupported(storage_type)) {
+        return storage_type;
+      }
+    }
+    return TensorStorageType::UNKNOWN;
+  }
+
+  CalculationsPrecision GetPrecision(const InferenceOptions& options) const {
+    CalculationsPrecision precision;
+    switch (GetPosition(options, InferencePriority::MAX_PRECISION)) {
+      case 1:
+        precision = CalculationsPrecision::F32;
+        break;
+      case 2:
+        precision = CalculationsPrecision::F32_F16;
+        break;
+      case 3:
+        precision = CalculationsPrecision::F16;
+        break;
+      default:
+        precision = CalculationsPrecision::F16;
+        break;
+    }
+    // Increase precision if lower precision is not supported.
+    if (!environment_->IsSupported(precision)) {
+      precision = CalculationsPrecision::F32_F16;
+      if (!environment_->IsSupported(precision)) {
+        precision = CalculationsPrecision::F32;
+      }
+    }
+    return precision;
+  }
+
   // Links internal tensors with external user-facing objects.
   std::vector<TensorTieDef> LinkTensors(
       const GraphFloat32& graph,
@@ -667,15 +700,16 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     RETURN_IF_ERROR(LoadOpenCL());
     properties_.is_opencl_available = true;
 
-    if (options_.IsGlAware()) {
-      RETURN_IF_ERROR(CreateGLCompatibleEnvironment(
-          reinterpret_cast<cl_context_properties>(options_.egl_context),
-          reinterpret_cast<cl_context_properties>(options_.egl_display),
-          &environment_));
+    CLDevice device;
+    if (options_.device) {
+      cl_platform_id platform;
+      RETURN_IF_ERROR(GetDeviceInfo<cl_platform_id>(
+          options_.device, CL_DEVICE_PLATFORM, &platform));
+      device = CLDevice(options_.device, platform);
     } else {
-      RETURN_IF_ERROR(CreateEnvironment(&environment_));
+      RETURN_IF_ERROR(CreateDefaultGPUDevice(&device));
     }
-    auto& device = environment_.device();
+
     properties_.is_gl_sharing_supported = IsGlSharingSupported(device);
     properties_.is_gl_to_cl_fast_sync_supported =
         IsClEventFromEglSyncSupported(device);
@@ -684,12 +718,50 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     if (options_.IsGlAware() && !properties_.is_gl_sharing_supported) {
       return UnavailableError("GL sharing is not supported");
     }
-    return OkStatus();
+
+    CLContext context;
+    if (options_.context) {
+      if (options_.IsGlAware()) {
+        return InvalidArgumentError(
+            "OpenCL context and EGL parameters are set in the same time.");
+      }
+      context = CLContext(options_.context, /* has_ownership = */ false);
+    } else {
+      if (options_.IsGlAware()) {
+        RETURN_IF_ERROR(CreateCLGLContext(
+            device,
+            reinterpret_cast<cl_context_properties>(options_.egl_context),
+            reinterpret_cast<cl_context_properties>(options_.egl_display),
+            &context));
+      } else {
+        RETURN_IF_ERROR(CreateCLContext(device, &context));
+      }
+    }
+
+    CLCommandQueue queue;
+    if (options_.command_queue) {
+      queue =
+          CLCommandQueue(options_.command_queue, /* has_ownership = */ false);
+    } else {
+      RETURN_IF_ERROR(CreateCLCommandQueue(device, context, &queue));
+    }
+    // Profiling queue is used for workgroup size tuning.
+    ProfilingCommandQueue profiling_queue;
+    RETURN_IF_ERROR(
+        CreateProfilingCommandQueue(device, context, &profiling_queue));
+    environment_ = Environment(std::move(device), std::move(context),
+                               std::move(queue), std::move(profiling_queue));
+    return environment_.Init();
   }
 
   Status NewInferenceBuilder(const InferenceOptions& options,
                              GraphFloat32 model,
                              std::unique_ptr<InferenceBuilder>* builder) final {
+    if (!IsValid(options)) {
+      return InvalidArgumentError("InferenceOptions are invalid.");
+    }
+    InferenceOptions resolved_options = options;
+    ResolveAutoPriority(&resolved_options);
     if (environment_.program_cache() &&
         !options_.serialized_binary_cache.empty()) {
       // Ignore returned error. Cache is discarded.
@@ -701,7 +773,8 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
 
     RETURN_IF_ERROR(RunGraphTransforms(&model));
     auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
-    RETURN_IF_ERROR(builder_impl->Initialize(options, options_, model));
+    RETURN_IF_ERROR(
+        builder_impl->Initialize(resolved_options, options_, model));
     *builder = std::move(builder_impl);
     return OkStatus();
   }

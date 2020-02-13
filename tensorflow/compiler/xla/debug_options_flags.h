@@ -52,7 +52,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags();
 // By default all passes have infinite fuel.  You can restrict how much fuel a
 // pass has by specifying XLA_FLAGS=--xla_fuel=PASS1=NUM1,PASS2=NUM2,...
 //
-// If a user specifes --xla_fuel=PASS=NUM but ConsumeFuel(PASS) is not called
+// If a user specifies --xla_fuel=PASS=NUM but ConsumeFuel(PASS) is not called
 // before the program exits, we'll print a warning.
 //
 // We recommend as a convention you use a pass's name for the `pass` argument,
@@ -91,7 +91,7 @@ bool ConsumeFuel(absl::string_view pass,
 // startup.
 //
 // You may call this function twice in the same thread to reset its fuel pool
-// back to the intitial state.
+// back to the initial state.
 void ResetThreadLocalFuel();
 
 }  // namespace xla

@@ -55,6 +55,36 @@ class MaxUnpooling : public GPUOperation {
 MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,
                                 const MaxUnpooling2DAttributes& attr);
 
+class MaxUnpooling3D : public GPUOperation {
+ public:
+  MaxUnpooling3D(const OperationDef& definition,
+                 const MaxUnpooling3DAttributes& attr);
+  Status AddToQueue(CLCommandQueue* queue) override;
+  Status Tune(const TuningParameters& params) override;
+
+  Status Compile(const CreationContext& creation_context) override;
+
+  // Move only
+  MaxUnpooling3D(MaxUnpooling3D&& kernel);
+  MaxUnpooling3D& operator=(MaxUnpooling3D&& kernel);
+  MaxUnpooling3D(const MaxUnpooling3D&) = delete;
+  MaxUnpooling3D& operator=(const MaxUnpooling3D&) = delete;
+
+ private:
+  Status BindArguments();
+  int3 GetGridSize() const;
+
+  int3 stride_;
+  int3 padding_;
+  int3 kernel_size_;
+
+  CLKernel kernel_;
+  int3 work_group_size_ = int3(8, 4, 1);
+};
+
+MaxUnpooling3D CreateMaxUnpooling3D(const OperationDef& definition,
+                                    const MaxUnpooling3DAttributes& attr);
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

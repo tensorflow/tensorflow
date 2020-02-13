@@ -21,16 +21,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/tuning_parameters.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/common/workgroup_selection.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-// PRECISE assume that WorkGroupSize * k = GridSize;
-// NO_ALIGNMENT no restrictions;
-// We need PRECISE when we don't have check in kernel for boundaries
-// If we have the check, we can use PRECISE or NO_ALIGNMENT as well.
-enum class WorkGroupSizeAlignment { PRECISE, NO_ALIGNMENT };
 
 // writes best_work_group if successful
 // Here and later you can find XY128, this is because 128 is SIMD width of A6xx

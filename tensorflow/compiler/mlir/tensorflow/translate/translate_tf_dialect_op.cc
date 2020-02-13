@@ -14,12 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
-#include "mlir/Translation.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Translation.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
 namespace mlir {
@@ -40,15 +39,8 @@ static mlir::Operation* ExtractOnlyOp(mlir::ModuleOp module) {
 }
 
 static LogicalResult MlirToTfNodeDef(ModuleOp module,
-                                     llvm::StringRef filename) {
+                                     llvm::raw_ostream& output) {
   auto* context = module.getContext();
-
-  auto file = openOutputFile(filename);
-  if (!file) {
-    emitError(UnknownLoc::get(context))
-        << "failed to open output file " << filename;
-    return failure();
-  }
 
   Operation* op = ExtractOnlyOp(module);
   if (!op) {
@@ -67,8 +59,7 @@ static LogicalResult MlirToTfNodeDef(ModuleOp module,
     return failure();
   }
 
-  file->os() << node_def_or.ValueOrDie()->DebugString();
-  file->keep();
+  output << node_def_or.ValueOrDie()->DebugString();
   return success();
 }
 

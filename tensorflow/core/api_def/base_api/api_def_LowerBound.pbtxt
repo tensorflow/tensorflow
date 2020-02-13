@@ -28,7 +28,7 @@ Each set of rows with the same index in (sorted_inputs, values) is treated
 independently.  The resulting row is the equivalent of calling
 `np.searchsorted(sorted_inputs, values, side='left')`.
 
-The result is not a global index to the entire 
+The result is not a global index to the entire
 `Tensor`, but rather just the index in the last dimension.
 
 A 2-D example:

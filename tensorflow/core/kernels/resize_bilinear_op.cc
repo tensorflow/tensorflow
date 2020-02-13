@@ -230,6 +230,7 @@ struct ResizeBilinear<CPUDevice, T> {
     std::vector<CachedInterpolation> ys(out_height + 1);
     std::vector<CachedInterpolation> xs(out_width + 1);
 
+    // Compute the cached interpolation weights on the x and y dimensions.
     if (half_pixel_centers) {
       compute_interpolation_weights(HalfPixelScaler(), out_height, in_height,
                                     height_scale, ys.data());
@@ -237,7 +238,6 @@ struct ResizeBilinear<CPUDevice, T> {
                                     width_scale, xs.data());
 
     } else {
-      // Compute the cached interpolation weights on the x and y dimensions.
       compute_interpolation_weights(LegacyScaler(), out_height, in_height,
                                     height_scale, ys.data());
       compute_interpolation_weights(LegacyScaler(), out_width, in_width,
@@ -309,13 +309,16 @@ struct ResizeBilinearGrad<CPUDevice, T> {
 
     output_grad.setZero();
 
-    // Each resized pixel was computed as a weighted average of four input
-    // pixels. Here we find the pixels that contributed to each output pixel
-    // and add the corresponding coefficient to the gradient.
-    // resized(b, y, x, c) = top_left * (1 - y) * (1 - x)
-    //                       +  top_right * (1 - y) * x
-    //                       +  bottom_left * y * (1 - x)
-    //                       +  bottom_right * y * x
+    // Each resized output pixel was computed as a weighted average of four
+    // input pixels. Here we find the four input pixel locations that
+    // contributed to each output pixel and propgate the gradient at the output
+    // pixel location to each of those four input pixel locations in the same
+    // proportions that they originally contributed to the output pixel.
+    // Here is the forward-propagation pseudo-code, for reference:
+    // resized(b, y, x, c) = top_left     * (1 - y) * (1 - x)
+    //                     + top_right    * (1 - y) *      x
+    //                     + bottom_left  *      y  * (1 - x)
+    //                     + bottom_right *      y  *      x
     for (Eigen::Index b = 0; b < batch; ++b) {
       for (Eigen::Index y = 0; y < resized_height; ++y) {
         const float in_y = scaler(y, height_scale);

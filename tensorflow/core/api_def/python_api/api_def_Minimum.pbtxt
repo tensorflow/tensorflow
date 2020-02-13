@@ -6,4 +6,12 @@ op {
   endpoint {
     name: "minimum"
   }
+  description: <<END
+Example:
+>>> x = tf.constant([0., 0., 0., 0.])
+>>> y = tf.constant([-5., -2., 0., 3.])
+>>> tf.math.minimum(x, y)
+<tf.Tensor: shape=(4,), dtype=float32, numpy=array([-5., -2., 0., 0.], dtype=float32)>
+
+END
 }

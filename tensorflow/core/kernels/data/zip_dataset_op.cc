@@ -121,7 +121,8 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       input_impls_.resize(dataset()->inputs_.size());
       for (size_t i = 0; i < input_impls_.size(); ++i) {
         TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
-            ctx, strings::StrCat(prefix(), "[", i, "]"), &input_impls_[i]));
+            ctx, this, strings::StrCat(prefix(), "[", i, "]"),
+            &input_impls_[i]));
       }
       return Status::OK();
     }
@@ -136,21 +137,32 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       }
       out_tensors->clear();
       out_tensors->reserve(dataset()->output_dtypes().size());
+      Status status = Status::OK();
+      *end_of_sequence = false;
       for (const auto& input_impl : input_impls_) {
         std::vector<Tensor> input_tensors;
-        TF_RETURN_IF_ERROR(
-            input_impl->GetNext(ctx, &input_tensors, end_of_sequence));
+        bool component_end_of_sequence = false;
+        status.Update(input_impl->GetNext(ctx, &input_tensors,
+                                          &component_end_of_sequence));
+        *end_of_sequence |= component_end_of_sequence;
+        // Even if an error is encountered for one of the components,
+        // we need to make sure to advance all components, to keep them in sync.
+        if (!status.ok()) {
+          continue;
+        }
         if (*end_of_sequence) {
           break;
         }
         out_tensors->insert(out_tensors->end(), input_tensors.begin(),
                             input_tensors.end());
       }
-      if (*end_of_sequence) {
+      if (*end_of_sequence || !status.ok()) {
         out_tensors->clear();
+      }
+      if (*end_of_sequence) {
         input_impls_.clear();
       }
-      return Status::OK();
+      return status;
     }
 
    protected:

@@ -140,10 +140,8 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
     """
 
     with ops.name_scope(name, values=[row, col]):
-      self._row = linear_operator_util.convert_nonref_to_tensor(
-          row, name="row")
-      self._col = linear_operator_util.convert_nonref_to_tensor(
-          col, name="col")
+      self._row = linear_operator_util.convert_nonref_to_tensor(row, name="row")
+      self._col = linear_operator_util.convert_nonref_to_tensor(col, name="col")
       self._check_row_col(self._row, self._col)
 
       if is_square is False:  # pylint:disable=g-bool-id-comparison
@@ -152,12 +150,13 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
 
       super(LinearOperatorToeplitz, self).__init__(
           dtype=self._row.dtype,
-          graph_parents=[self._row, self._col],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      self._set_graph_parents([self._row, self._col])
 
   def _check_row_col(self, row, col):
     """Static check of row and column."""
@@ -178,10 +177,12 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
         self.row.shape, self.col.shape)
     return v_shape.concatenate(v_shape[-1:])
 
-  def _shape_tensor(self):
+  def _shape_tensor(self, row=None, col=None):
+    row = self.row if row is None else row
+    col = self.col if col is None else col
     v_shape = array_ops.broadcast_dynamic_shape(
-        array_ops.shape(self.row),
-        array_ops.shape(self.col))
+        array_ops.shape(row),
+        array_ops.shape(col))
     k = v_shape[-1]
     return array_ops.concat((v_shape, [k]), 0)
 
@@ -208,17 +209,20 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
     # for more details.
     x = linalg.adjoint(x) if adjoint_arg else x
     expanded_x = array_ops.concat([x, array_ops.zeros_like(x)], axis=-2)
+    col = ops.convert_to_tensor(self.col)
+    row = ops.convert_to_tensor(self.row)
     circulant_col = array_ops.concat(
-        [self._col,
-         array_ops.zeros_like(self.col[..., 0:1]),
-         array_ops.reverse(self.row[..., 1:], axis=[-1])], axis=-1)
+        [col,
+         array_ops.zeros_like(col[..., 0:1]),
+         array_ops.reverse(row[..., 1:], axis=[-1])], axis=-1)
     circulant = linear_operator_circulant.LinearOperatorCirculant(
         fft_ops.fft(_to_complex(circulant_col)),
-        input_output_dtype=self.row.dtype)
+        input_output_dtype=row.dtype)
     result = circulant.matmul(expanded_x, adjoint=adjoint, adjoint_arg=False)
 
+    shape = self._shape_tensor(row=row, col=col)
     return math_ops.cast(
-        result[..., :self.domain_dimension_tensor(), :],
+        result[..., :self._domain_dimension_tensor(shape=shape), :],
         self.dtype)
 
   def _trace(self):
@@ -232,11 +236,13 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
         [self.domain_dimension_tensor()], self.dtype)
 
   def _to_dense(self):
+    row = ops.convert_to_tensor(self.row)
+    col = ops.convert_to_tensor(self.col)
     total_shape = array_ops.broadcast_dynamic_shape(
-        array_ops.shape(self.row), array_ops.shape(self.col))
-    n = array_ops.shape(self.row)[-1]
-    row = array_ops.broadcast_to(self.row, total_shape)
-    col = array_ops.broadcast_to(self.col, total_shape)
+        array_ops.shape(row), array_ops.shape(col))
+    n = array_ops.shape(row)[-1]
+    row = array_ops.broadcast_to(row, total_shape)
+    col = array_ops.broadcast_to(col, total_shape)
     # We concatenate the column in reverse order to the row.
     # This gives us 2*n + 1 elements.
     elements = array_ops.concat(

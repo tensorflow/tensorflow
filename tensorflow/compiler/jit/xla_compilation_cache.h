@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -97,11 +98,12 @@ class XlaCompilationCache : public ResourceBase {
 
     // List of Tensor types & shapes for compile-time constant arguments to the
     // compilation, ordered by argument number.
-    std::vector<std::pair<DataType, std::vector<int64>>> arg_shapes;
+    absl::InlinedVector<std::pair<DataType, absl::InlinedVector<int64, 4>>, 4>
+        arg_shapes;
 
     // List of Tensor values for compile-time constant arguments to the
     // compilation, ordered by argument number. Tensors must be in host memory.
-    std::vector<Tensor> arg_values;
+    absl::InlinedVector<Tensor, 4> arg_values;
 
     bool operator==(const Signature& other) const;
 

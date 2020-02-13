@@ -20,7 +20,6 @@ namespace tensorflow {
 const char* kProtobufInt64Typename = "::tensorflow::protobuf_int64";
 const char* kProtobufUint64Typename = "::tensorflow::protobuf_uint64";
 
-#ifdef USE_TSTRING
 TStringOutputStream::TStringOutputStream(tstring* target) : target_(target) {}
 
 bool TStringOutputStream::Next(void** data, int* size) {
@@ -54,9 +53,6 @@ void TStringOutputStream::BackUp(int count) {
   target_->resize(target_->size() - count);
 }
 
-protobuf::io::ByteCountInt64 TStringOutputStream::ByteCount() const {
-  return target_->size();
-}
-#endif  // USE_TSTRING
+int64_t TStringOutputStream::ByteCount() const { return target_->size(); }
 
 }  // namespace tensorflow

@@ -20,6 +20,11 @@ from __future__ import print_function
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
+from tensorflow.python.ops.linalg.sparse.conjugate_gradient import conjugate_gradient
 from tensorflow.python.ops.linalg.sparse.sparse_csr_matrix_grad import *
 from tensorflow.python.ops.linalg.sparse.sparse_csr_matrix_ops import *
 # pylint: enable=wildcard-import
+
+__all__ = [
+    'conjugate_gradient'
+]

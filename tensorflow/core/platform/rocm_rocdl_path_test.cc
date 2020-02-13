@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
 
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

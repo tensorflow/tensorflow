@@ -24,7 +24,7 @@ import sys
 
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -38,6 +38,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -70,19 +72,25 @@ def op_attr_type(op_type, attr_name):
   except KeyError:
     context.ensure_initialized()
     h = context.context()._handle  # pylint: disable=protected-access
-    attr_type = pywrap_tensorflow.TFE_OpNameGetAttrType(h, op_type, attr_name)
+    attr_type = pywrap_tfe.TFE_OpNameGetAttrType(h, op_type, attr_name)
   _op_attr_type_cache[(op_type, attr_name)] = attr_type
   return attr_type
 
 
 def make_attr(attr_type, value):
-  if attr_type == pywrap_tensorflow.TF_ATTR_TYPE:
+  # pybind11 enums do not return the raw value like SWIG enums do. They are
+  # useful when comparing amongst each other but not direct integers as we are
+  # doing in most tests.
+  # https://pybind11.readthedocs.io/en/stable/classes.html#enumerations-and-internal-types
+  # TODO(amitpatankar): After all SWIG transitions, convert the enum comparisons
+  # from integer value to class.
+  if attr_type == int(pywrap_tfe.TF_ATTR_TYPE):
     return dtypes.as_dtype(value)
-  elif attr_type == [pywrap_tensorflow.TF_ATTR_TYPE]:
+  elif attr_type == [int(pywrap_tfe.TF_ATTR_TYPE)]:
     return [dtypes.as_dtype(v) for v in value]
-  elif attr_type == pywrap_tensorflow.TF_ATTR_SHAPE:
+  elif attr_type == int(pywrap_tfe.TF_ATTR_SHAPE):
     return tensor_shape.as_shape(value).as_proto()
-  elif attr_type == [pywrap_tensorflow.TF_ATTR_SHAPE]:
+  elif attr_type == [int(pywrap_tfe.TF_ATTR_SHAPE)]:
     return [tensor_shape.as_shape(v).as_proto() for v in value]
   elif isinstance(value, str):
     return value.encode()
@@ -116,7 +124,7 @@ class _MockOp(object):
 
 
 def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
-                       out_grads, skip_input_indices):
+                       out_grads, skip_input_indices, forward_pass_name_scope):
   """Calls the gradient function of the op.
 
   Args:
@@ -128,6 +136,7 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
     out_grads: gradients of the operation wrt its outputs.
     skip_input_indices: a tuple that is passed to the gradient function,
       indicating which inputs to skip calculating the gradient for
+    forward_pass_name_scope: the namescope of the op in the forward pass.
 
   Returns:
     The gradients with respect to the inputs of the function, as a list.
@@ -137,19 +146,29 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
   if grad_fn is None:
     return [None] * num_inputs
 
-  return grad_fn(mock_op, *out_grads)
+  # This does not work with v1 TensorArrays.
+  if ops.executing_eagerly_outside_functions(
+  ) or control_flow_util.EnableControlFlowV2(ops.get_default_graph()):
+    if forward_pass_name_scope:
+      gradient_name_scope = "gradient_tape/" + forward_pass_name_scope + "/"
+    else:
+      gradient_name_scope = "gradient_tape/"
+    with ops.name_scope(gradient_name_scope):
+      return grad_fn(mock_op, *out_grads)
+  else:
+    return grad_fn(mock_op, *out_grads)
 
 
-pywrap_tensorflow.TFE_Py_RegisterGradientFunction(_gradient_function)
+pywrap_tfe.TFE_Py_RegisterGradientFunction(_gradient_function)
 
 
 def _must_record_gradient():
-  return not pywrap_tensorflow.TFE_Py_TapeSetIsEmpty()
+  return not pywrap_tfe.TFE_Py_TapeSetIsEmpty()
 
 
-def _record_gradient(op_name, inputs, attrs, results, name):
-  return pywrap_tensorflow.TFE_Py_RecordGradient(op_name, inputs, attrs,
-                                                 results, name)
+def _record_gradient(op_name, inputs, attrs, results):
+  return pywrap_tfe.TFE_Py_RecordGradient(op_name, inputs, attrs, results,
+                                          ops.get_name_scope())
 
 
 execute.must_record_gradient = _must_record_gradient
@@ -295,7 +314,10 @@ def _get_arg_spec(f, params, param_args):
   if params is None:
     if not args:
       return range(len(param_args))
-    return range(len(args))
+    if args[0] == "self":
+      return range(len(args) - 1)
+    else:
+      return range(len(args))
   elif all(isinstance(x, six.string_types) for x in params):
     return [args.index(n) for n in params]
   elif all(isinstance(x, int) for x in params):
@@ -632,11 +654,8 @@ def _fast_fill(value, shape, dtype):
 
 def _zeros(shape, dtype):
   """Helper to return (possibly cached) zero tensors in eager mode."""
-  if (dtype == dtypes.variant
-      or dtype == dtypes.string
-      or dtype == dtypes.resource):
-    # TODO(apassos): need to save enough information about variant tensors to do
-    # a zeros
+  # Note: variants will use _zeros_like
+  if dtype == dtypes.string or dtype == dtypes.resource:
     return None
 
   ctx = context.context()
@@ -646,7 +665,7 @@ def _zeros(shape, dtype):
   device = ctx.device_name
 
   if tensor_util.is_tensor(shape):
-    shape_key = shape.experimental_ref()
+    shape_key = shape.ref()
   else:
     shape_key = shape
   cache_key = shape_key, dtype, device
@@ -684,8 +703,10 @@ _default_vspace = imperative_grad.VSpace(
     aggregate_fn=_aggregate_grads,
     zeros_fn=_zeros,
     ones_fn=_ones,
+    zeros_like_fn=default_gradient.zeros_like,
+    ones_like_fn=default_gradient.ones_like,
     graph_shape_fn=gen_array_ops.shape)
-pywrap_tensorflow.TFE_Py_RegisterVSpace(_default_vspace)
+pywrap_tfe.TFE_Py_RegisterVSpace(_default_vspace)
 
 
 def _handle_or_self(x):
@@ -695,7 +716,7 @@ def _handle_or_self(x):
   return x
 
 
-@tf_export("GradientTape")
+@tf_export("GradientTape", "autodiff.GradientTape", v1=["GradientTape"])
 class GradientTape(object):
   """Record operations for automatic differentiation.
 
@@ -799,6 +820,7 @@ class GradientTape(object):
     self._tape = None
     self._persistent = persistent
     self._watch_accessed_variables = watch_accessed_variables
+    self._watched_variables = ()
     self._recording = False
     self._created_eagerly = context.executing_eagerly()
     if self._created_eagerly:
@@ -938,7 +960,9 @@ class GradientTape(object):
 
   def watched_variables(self):
     """Returns variables watched by this tape in order of construction."""
-    return self._tape.watched_variables()
+    if self._tape is not None:
+      self._watched_variables = self._tape.watched_variables()
+    return self._watched_variables
 
   def gradient(self,
                target,
@@ -1023,6 +1047,8 @@ class GradientTape(object):
         unconnected_gradients=unconnected_gradients)
 
     if not self._persistent:
+      # Keep track of watched variables before setting tape to None
+      self._watched_variables = self._tape.watched_variables()
       self._tape = None
 
     grad = nest.pack_sequence_as(sources, flat_grad)

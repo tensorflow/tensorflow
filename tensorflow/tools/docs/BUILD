@@ -10,18 +10,48 @@ package(
 
 exports_files(["LICENSE"])
 
+py_library(
+    name = "tf_doctest_lib",
+    srcs = ["tf_doctest_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//third_party/py/numpy",
+    ],
+)
+
 py_test(
     name = "tf_doctest",
     srcs = ["tf_doctest.py"],
     python_version = "PY3",
     tags = [
         "no_oss_py2",
+        "no_pip",
+        "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",
         "notsan",
     ],
     deps = [
+        ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "tf_doctest_test",
+    srcs = ["tf_doctest_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":tf_doctest_lib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -31,21 +61,7 @@ py_library(
         "doc_generator_visitor.py",
     ],
     srcs_version = "PY2AND3",
-)
-
-py_test(
-    name = "doc_generator_visitor_test",
-    size = "small",
-    srcs = [
-        "doc_generator_visitor_test.py",
-    ],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":doc_generator_visitor",
-        ":generate_lib",
-        "//tensorflow/python:platform_test",
-    ],
+    deps = ["@six_archive//:six"],
 )
 
 py_library(
@@ -59,7 +75,7 @@ py_test(
     name = "doc_controls_test",
     size = "small",
     srcs = ["doc_controls_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":doc_controls",
@@ -77,18 +93,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "@astor_archive//:astor",
-    ],
-)
-
-py_test(
-    name = "parser_test",
-    size = "small",
-    srcs = ["parser_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":parser",
-        "//tensorflow/python:platform_test",
+        "@six_archive//:six",
     ],
 )
 
@@ -96,6 +101,7 @@ py_library(
     name = "pretty_docs",
     srcs = ["pretty_docs.py"],
     srcs_version = "PY2AND3",
+    deps = ["@six_archive//:six"],
 )
 
 py_library(
@@ -116,23 +122,10 @@ py_library(
     ],
 )
 
-py_test(
-    name = "generate_lib_test",
-    size = "small",
-    srcs = ["generate_lib_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":generate_lib",
-        ":parser",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
 py_binary(
     name = "generate",
     srcs = ["generate.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":generate_lib",
@@ -146,7 +139,7 @@ py_test(
     name = "generate2_test",
     size = "medium",
     srcs = ["generate2_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -165,15 +158,17 @@ py_test(
 py_binary(
     name = "generate2",
     srcs = ["generate2.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [":generate2_lib"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":generate2_lib",
+    ],
 )
 
 py_library(
     name = "generate2_lib",
     srcs = ["generate2.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:util",
@@ -184,16 +179,5 @@ py_library(
     name = "py_guide_parser",
     srcs = ["py_guide_parser.py"],
     srcs_version = "PY2AND3",
-)
-
-py_test(
-    name = "py_guide_parser_test",
-    size = "small",
-    srcs = ["py_guide_parser_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":py_guide_parser",
-        "//tensorflow/python:client_testlib",
-    ],
+    deps = ["@six_archive//:six"],
 )

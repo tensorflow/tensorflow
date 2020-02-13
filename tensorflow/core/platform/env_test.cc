@@ -20,13 +20,13 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/null_file_system.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -36,7 +36,7 @@ namespace {
 string CreateTestFile(Env* env, const string& filename, int length) {
   string input(length, 0);
   for (int i = 0; i < length; i++) input[i] = i;
-  TF_CHECK_OK(WriteStringToFile(env, filename, input));
+  TF_EXPECT_OK(WriteStringToFile(env, filename, input));
   return input;
 }
 
@@ -319,13 +319,27 @@ class TmpDirFileSystem : public NullFileSystem {
     if (host != "testhost") {
       return errors::FailedPrecondition("host must be testhost");
     }
-    return Env::Default()->CreateDir(io::JoinPath(BaseDir(), path));
+    Status status = Env::Default()->CreateDir(io::JoinPath(BaseDir(), path));
+    if (status.ok()) {
+      // Record that we have created this directory so `IsDirectory` works.
+      created_directories_.push_back(std::string(path));
+    }
+    return status;
+  }
+
+  Status IsDirectory(const string& dir) override {
+    StringPiece scheme, host, path;
+    io::ParseURI(dir, &scheme, &host, &path);
+    for (const auto& existing_dir : created_directories_)
+      if (existing_dir == path) return Status::OK();
+    return errors::NotFound(dir, " not found");
   }
 
   void FlushCaches() override { flushed_ = true; }
 
  private:
   bool flushed_ = false;
+  std::vector<std::string> created_directories_ = {"/"};
 };
 
 REGISTER_FILE_SYSTEM("tmpdirfs", TmpDirFileSystem);

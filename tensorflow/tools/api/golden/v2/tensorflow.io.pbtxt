@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RaggedFeature"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "SparseFeature"
     mtype: "<type \'type\'>"
   }
@@ -18,7 +22,7 @@ tf_module {
   }
   member {
     name: "TFRecordWriter"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "VarLenFeature"

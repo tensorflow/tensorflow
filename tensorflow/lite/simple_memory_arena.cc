@@ -32,22 +32,23 @@ T AlignTo(size_t alignment, T offset) {
 
 namespace tflite {
 TfLiteStatus SimpleMemoryArena::Allocate(
-    TfLiteContext* context, size_t alignment, size_t size, size_t first_node,
-    size_t last_node, ArenaAllocWithUsageInterval* new_alloc) {
+    TfLiteContext* context, size_t alignment, size_t size, int32_t tensor,
+    int32_t first_node, int32_t last_node,
+    ArenaAllocWithUsageInterval* new_alloc) {
   TF_LITE_ENSURE(context, alignment <= arena_alignment_);
+  new_alloc->tensor = tensor;
   new_alloc->first_node = first_node;
   new_alloc->last_node = last_node;
   new_alloc->size = size;
-
   if (size == 0) {
     new_alloc->offset = 0;
     return kTfLiteOk;
   }
 
   // If we don't find a better gap just allocate at the end of the buffer.
-  const size_t kNotAssigned = std::numeric_limits<size_t>::max();
-  size_t best_offset = kNotAssigned;
-  size_t best_offset_fit = kNotAssigned;
+  const size_t kOffsetNotAssigned = std::numeric_limits<size_t>::max();
+  size_t best_offset = kOffsetNotAssigned;
+  size_t best_offset_fit = kOffsetNotAssigned;
 
   // Go through the sorted allocs and look at the gaps between them.
   size_t current_offset = 0;
@@ -67,7 +68,7 @@ TfLiteStatus SimpleMemoryArena::Allocate(
     }
     current_offset = std::max(current_offset, alloc.offset + alloc.size);
   }
-  if (best_offset == kNotAssigned) {
+  if (best_offset == kOffsetNotAssigned) {
     best_offset = AlignTo(alignment, current_offset);
   }
 
@@ -80,6 +81,26 @@ TfLiteStatus SimpleMemoryArena::Allocate(
     ++insertion_it;
   }
   ordered_allocs_.insert(insertion_it, *new_alloc);
+  return kTfLiteOk;
+}
+
+TfLiteStatus SimpleMemoryArena::Deallocate(
+    TfLiteContext* context, const ArenaAllocWithUsageInterval& alloc) {
+  if (alloc.size == 0) {
+    return kTfLiteOk;
+  }
+
+  int erased_allocs_count = 0;
+  auto it = ordered_allocs_.begin();
+  while (it != ordered_allocs_.end()) {
+    if (it->tensor == alloc.tensor) {
+      erased_allocs_count++;
+      it = ordered_allocs_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  TF_LITE_ENSURE(context, erased_allocs_count <= 1);
   return kTfLiteOk;
 }
 
@@ -123,10 +144,18 @@ TfLiteStatus SimpleMemoryArena::ResolveAlloc(
   return kTfLiteOk;
 }
 
-TfLiteStatus SimpleMemoryArena::Clear() {
+TfLiteStatus SimpleMemoryArena::ClearPlan() {
   committed_ = false;
   high_water_mark_ = 0;
   ordered_allocs_.clear();
+  return kTfLiteOk;
+}
+
+TfLiteStatus SimpleMemoryArena::ReleaseBuffer() {
+  committed_ = false;
+  underlying_buffer_size_ = 0;
+  underlying_buffer_aligned_ptr_ = nullptr;
+  underlying_buffer_.reset();
   return kTfLiteOk;
 }
 

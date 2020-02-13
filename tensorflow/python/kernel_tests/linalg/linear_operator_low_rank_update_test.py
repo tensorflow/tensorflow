@@ -199,7 +199,7 @@ class LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky(
 
   @staticmethod
   def skip_these_tests():
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   _use_diag_update = True
   _is_diag_update_positive = False
@@ -242,7 +242,7 @@ class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
 
   @staticmethod
   def skip_these_tests():
-    return ["cholesky"]
+    return ["cholesky", "eigvalsh"]
 
   _use_diag_update = False
   _is_diag_update_positive = None
@@ -270,7 +270,7 @@ class LinearOperatorLowRankUpdatetestWithDiagNotSquare(
   _use_v = True
 
 
-class LinearOpearatorLowRankUpdateBroadcastsShape(test.TestCase):
+class LinearOperatorLowRankUpdateBroadcastsShape(test.TestCase):
   """Test that the operator's shape is the broadcast of arguments."""
 
   def test_static_shape_broadcasts_up_from_operator_to_other_args(self):

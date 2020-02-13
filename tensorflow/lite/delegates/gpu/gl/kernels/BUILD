@@ -1,4 +1,8 @@
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -32,7 +36,7 @@ cc_test(
         "-lEGL",
         "-lGLESv3",
     ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "local",
         "nobuilder",
         "notap",
@@ -69,11 +73,7 @@ cc_library(
 cc_test(
     name = "add_test",
     srcs = ["add_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -82,7 +82,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -103,11 +102,7 @@ cc_library(
 cc_test(
     name = "concat_test",
     srcs = ["concat_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -116,7 +111,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -142,11 +136,7 @@ cc_library(
 cc_test(
     name = "conv_test",
     srcs = ["conv_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -155,7 +145,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -187,11 +176,7 @@ cc_library(
 cc_test(
     name = "depthwise_conv_test",
     srcs = ["depthwise_conv_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -200,7 +185,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -220,11 +204,7 @@ cc_library(
 cc_test(
     name = "elementwise_test",
     srcs = ["elementwise_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -233,7 +213,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -255,11 +234,7 @@ cc_library(
 cc_test(
     name = "fully_connected_test",
     srcs = ["fully_connected_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -268,7 +243,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -288,11 +262,7 @@ cc_library(
 cc_test(
     name = "lstm_test",
     srcs = ["lstm_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -301,7 +271,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -322,11 +291,7 @@ cc_library(
 cc_test(
     name = "max_unpooling_test",
     srcs = ["max_unpooling_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -335,7 +300,36 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "mean",
+    srcs = ["mean.cc"],
+    hdrs = ["mean.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "mean_test",
+    srcs = ["mean_test.cc"],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":mean",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -356,11 +350,7 @@ cc_library(
 cc_test(
     name = "mul_test",
     srcs = ["mul_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -369,7 +359,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -390,11 +379,7 @@ cc_library(
 cc_test(
     name = "pad_test",
     srcs = ["pad_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -403,7 +388,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -424,11 +408,7 @@ cc_library(
 cc_test(
     name = "pooling_test",
     srcs = ["pooling_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -437,7 +417,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -460,11 +439,7 @@ cc_library(
 cc_test(
     name = "prelu_test",
     srcs = ["prelu_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -473,7 +448,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -494,11 +468,7 @@ cc_library(
 cc_test(
     name = "relu_test",
     srcs = ["relu_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -507,7 +477,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -527,11 +496,7 @@ cc_library(
 cc_test(
     name = "reshape_test",
     srcs = ["reshape_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -540,7 +505,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -561,11 +525,7 @@ cc_library(
 cc_test(
     name = "slice_test",
     srcs = ["slice_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -574,7 +534,6 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -597,11 +556,7 @@ cc_library(
 cc_test(
     name = "softmax_test",
     srcs = ["softmax_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -611,7 +566,6 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -620,6 +574,10 @@ cc_library(
     testonly = 1,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    linkopts = [
+        "-lEGL",
+        "-lGLESv3",
+    ],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -659,11 +617,7 @@ cc_library(
 cc_test(
     name = "transpose_conv_test",
     srcs = ["transpose_conv_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
@@ -672,14 +626,13 @@ cc_test(
         ":transpose_conv",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_library(
-    name = "upsampling_bilinear",
-    srcs = ["upsampling_bilinear.cc"],
-    hdrs = ["upsampling_bilinear.h"],
+    name = "resize",
+    srcs = ["resize.cc"],
+    hdrs = ["resize.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -691,22 +644,17 @@ cc_library(
 )
 
 cc_test(
-    name = "upsampling_bilinear_test",
-    srcs = ["upsampling_bilinear_test.cc"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
-    tags = [
+    name = "resize_test",
+    srcs = ["resize_test.cc"],
+    tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
+        ":resize",
         ":test_util",
-        ":upsampling_bilinear",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -723,11 +671,12 @@ TFLITE_GPU_BINARY_RELEASE_OPERATORS = [
     "pooling",
     "prelu",
     "relu",
+    "mean",
     "reshape",
+    "resize",
     "slice",
     "softmax",
     "transpose_conv",
-    "upsampling_bilinear",
 ]
 
 NON_TFLITE_GPU_BINARY_RELEASE_OPERATORS = [
@@ -753,4 +702,4 @@ cc_library(
     ],
 )
 
-tflite_portable_test_suite()
+tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_util"]})

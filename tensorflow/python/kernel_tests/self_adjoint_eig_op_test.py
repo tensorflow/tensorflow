@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.ops.math_ops.matrix_inverse."""
+"""Tests for tensorflow.ops.linalg_ops.self_adjoint_eig."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -104,7 +104,7 @@ def EquilibrateEigenVectorPhases(x, y):
   """Equilibrate the phase of the Eigenvectors in the columns of `x` and `y`.
 
   Eigenvectors are only unique up to an arbitrary phase. This function rotates x
-  such that it matches y. Precondition: The coluns of x and y differ by a
+  such that it matches y. Precondition: The columns of x and y differ by a
   multiplicative complex phase factor only.
 
   Args:

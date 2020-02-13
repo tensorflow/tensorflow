@@ -4,7 +4,7 @@
 
 ## Common AutoGraph errors
 
-### "WARNING: `<name>` could not be transformed"
+### "WARNING: AutoGraph could not transform `<name>`"
 
 This warning is output when AutoGraph could not convert a function, for an
 unexpected reason. The error message contains the reason why the function could
@@ -19,6 +19,44 @@ conversion. If the functions contain pure Python or graph code (for example,
 they have no Tensor-dependent control flow), then the code is likely to still
 run without error. However, if it contains any constructs that are only
 supported in AutoGraph, expect subsequent exceptions.
+
+Note: the warning is output to the [abseil](https://github.com/abseil/abseil-py)
+logger, with `WARNING` severity. To direct these warnings to `stdout`, use
+`tf.autograph.set_verbosity(0, True)`.
+
+### "WARNING: Large unrolled loop detected"
+
+This warning is output when AutoGraph detects a `for` or `while` loop that
+creates TensorFlow ops and which has a large number of iterations and creates.
+
+This usually indicates a loop that was intended to run as a `tf.while_loop`, but
+instead runs as a Python loop.
+
+For example, a training loop might mistakenly iterate over a Python `range`,
+instead of `tf.range`:
+
+```
+num_steps = 10000
+step = tf.constant(0)
+for i in range(num_steps):
+  step += 1
+  train_step(model)
+```
+
+Another example is when using custom generators which AutoGraph does not
+support, even if they wrap over supported iterators like Datasets:
+
+```
+def my_iterator(ds):
+  for data in ds:
+    yield data
+
+# Custom iterators always dispatch to a Python for loop.
+for x in my_iterator(tf.data.Dataset.range(10)):
+  tf.print(x)
+```
+
+Note: This verification is only performed when `__debug__` is `True`.
 
 Note: the warning is output to the [abseil](https://github.com/abseil/abseil-py)
 logger, with `WARNING` severity. To direct these warnings to `stdout`, use

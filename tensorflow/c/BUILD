@@ -25,6 +25,7 @@ filegroup(
         "c_api_experimental.h",
         "tf_attrtype.h",
         "tf_datatype.h",
+        "tf_file_statistics.h",
         "tf_status.h",
         "tf_tensor.h",
     ],
@@ -50,6 +51,21 @@ filegroup(
         "//tensorflow/core/distributed_runtime:server_lib.h",
     ],
     visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "c_api_internal.h",
+        "python_api.h",
+        "tf_status_helper.h",
+        "tf_status_internal.h",
+        "tf_tensor_internal.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
 )
 
 tf_cuda_library(
@@ -83,6 +99,17 @@ tf_cuda_library(
     ],
 )
 
+filegroup(
+    name = "pywrap_tf_session_hdrs",
+    srcs = [
+        "python_api.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "tf_attrtype",
     hdrs = ["tf_attrtype.h"],
@@ -95,6 +122,7 @@ tf_cuda_library(
         "c_api.h",
         "tf_attrtype.h",
         "tf_datatype.h",
+        "tf_file_statistics.h",
         "tf_status.h",
         "tf_tensor.h",
     ],
@@ -105,6 +133,8 @@ tf_cuda_library(
         ":c_api_internal",
         ":tf_attrtype",
         ":tf_status_internal",
+        ":tf_file_statistics",
+        ":tf_tensor_internal",
     ] + select({
         "//tensorflow:with_xla_support": [
             "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -155,6 +185,7 @@ tf_cuda_library(
             "//tensorflow/core/kernels:logging_ops",
         ],
     }),
+    alwayslink = 1,
 )
 
 tf_cuda_library(
@@ -162,6 +193,9 @@ tf_cuda_library(
     hdrs = [
         "tf_status.h",
         "tf_status_internal.h",
+    ],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
     ],
     deps = select({
         "//tensorflow:android": [
@@ -187,6 +221,18 @@ cc_library(
             "//tensorflow/core:lib",
         ],
     }),
+)
+
+cc_library(
+    name = "tf_status_headers",
+    hdrs = ["tf_status.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "tf_file_statistics",
+    hdrs = ["tf_file_statistics.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -232,6 +278,7 @@ tf_cuda_library(
         "tf_tensor.h",
         "tf_tensor_internal.h",
     ],
+    visibility = ["//tensorflow/c:__subpackages__"],
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -240,6 +287,7 @@ tf_cuda_library(
             ":tf_datatype",
             ":tf_status",
             "//tensorflow/core:framework",
+            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )
@@ -266,6 +314,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:attr_builder",
+        "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform",
         "@com_google_absl//absl/strings",
@@ -279,6 +328,15 @@ exports_files(
         "exported_symbols.lds",
     ],
     visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "checkpoint_reader_hdrs",
+    srcs = [
+        "checkpoint_reader.h",
+        "tf_status_helper.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tf_cuda_library(
@@ -329,18 +387,18 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            ":c_api",
-            ":tf_status_helper",
             "//tensorflow/core:android_tensorflow_lib_lite",
-            "//tensorflow/core:lib",
         ],
         "//conditions:default": [
-            ":c_api",
-            ":tf_status_helper",
             "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
         ],
-    }) + [":c_api_internal"],
+    }) + [
+        ":c_api",
+        ":tf_status_helper",
+        ":c_api_internal",
+        ":tf_file_statistics",
+        "//tensorflow/core:lib",
+    ],
 )
 
 tf_cuda_library(
@@ -490,6 +548,7 @@ tf_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
+    tags = ["notsan"],  # b/149031034
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
@@ -588,6 +647,7 @@ tf_cuda_cc_test(
     deps = [
         ":c_api",
         ":kernels",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -595,6 +655,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/kernels:ops_testutil",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 

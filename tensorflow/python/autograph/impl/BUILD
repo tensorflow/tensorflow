@@ -40,11 +40,12 @@ py_library(
 tf_py_test(
     name = "api_test",
     srcs = ["api_test.py"],
-    additional_deps = [
+    deps = [
         ":impl",
-        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/autograph/utils",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -61,17 +62,17 @@ py_test(
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/utils",
-        "//third_party/py/numpy",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/autograph/core",
     ],
 )
 
 tf_py_test(
     name = "conversion_test",
     srcs = ["conversion_test.py"],
-    additional_deps = [
+    deps = [
         ":impl",
-        "@gast_archive//:gast",
         "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
     ],
 )

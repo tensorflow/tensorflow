@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {

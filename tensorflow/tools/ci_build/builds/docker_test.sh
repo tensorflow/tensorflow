@@ -75,7 +75,7 @@ fi
 BASE_DIR=$(upsearch "${DOCKERFILE}")
 if [[ -z "${BASE_DIR}" ]]; then
   die "FAILED: Unable to find the base directory where the dockerfile "\
-"${DOCKERFFILE} resides"
+"${DOCKERFILE} resides"
 fi
 echo "Base directory: ${BASE_DIR}"
 
@@ -109,7 +109,8 @@ if [ "${IMAGE_TYPE}" == "gpu" ]; then
   libs=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
   GPU_EXTRA_PARAMS="${devices} ${libs}"
 elif [ "${IMAGE_TYPE}" == "rocm" ]; then
-  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video"
+  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video \
+  --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --shm-size 16G"
 else
   GPU_EXTRA_PARAMS=""
   ROCM_EXTRA_PARAMS=""

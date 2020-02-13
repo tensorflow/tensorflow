@@ -141,14 +141,6 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
                                                          int32* shape_size,
                                                          llvm::IRBuilder<>* b);
 
-// Inverses the encoding of a Shape protobuf into an LLVM global variable.
-//
-// This is intended to be called from the runtime to decode the llvm::Constants
-// that are created via ConvertShapeToSelfDescribingConstant and subsequently
-// embedded into the program.
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32 size_bytes);
-
 // Converts a given literal to an IR Constant. Literals have known constant
 // values at IR emission time.
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,

@@ -36,4 +36,26 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* /* context */,
   return kTfLiteOk;
 }
 
+TfLiteBufferHandle StatefulNnApiDelegate::RegisterNnapiMemory(
+    ANeuralNetworksMemory* memory, CopyToHostTensorFnPtr callback,
+    void* callback_context) {
+  return kTfLiteNullBufferHandle;
+}
+
+int StatefulNnApiDelegate::GetNnApiErrno() const { return 0; }
+
+using ::tflite::delegate::nnapi::NNAPIDelegateKernel;
+
+StatefulNnApiDelegate::Data::~Data() {}
+
+void StatefulNnApiDelegate::Data::CacheDelegateKernel(
+    const TfLiteDelegateParams* delegate_params,
+    NNAPIDelegateKernel* delegate_state) {}
+
+absl::optional<NNAPIDelegateKernel*>
+StatefulNnApiDelegate::Data::GetCachedDelegateKernel(
+    const TfLiteDelegateParams* delegate_params) {
+  return absl::nullopt;
+}
+
 }  // namespace tflite

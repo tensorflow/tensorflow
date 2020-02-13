@@ -22,9 +22,10 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/util/stats_calculator.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #if defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
+#include "tensorflow/lite/nnapi/nnapi_util.h"
 #endif
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
@@ -32,56 +33,58 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 
+#if (defined(ANDROID) || defined(__ANDROID__)) && \
+    (defined(__arm__) || defined(__aarch64__))
+#define TFLITE_ENABLE_HEXAGON
+#endif
+
 namespace tflite {
 namespace benchmark {
 
 void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
   current_run_name_.clear();
 
+#if defined(__ANDROID__)
   if (params.Get<bool>("use_nnapi")) {
-    current_run_name_ = "nnapi";
+    const std::string accelerator =
+        params.Get<std::string>("nnapi_accelerator_name");
+    current_run_name_ = accelerator.empty() ? "nnapi(w/o accel name)"
+                                            : "nnapi(" + accelerator + ")";
     return;
   }
+#endif
 
   if (params.Get<bool>("use_gpu")) {
 #if defined(__ANDROID__)
-    const bool allow_precision_loss =
-        params.Get<bool>("gpu_precision_loss_allowed");
-    const std::string precision_tag = allow_precision_loss ? "fp16" : "fp32";
-
-    const int32_t gl_obj_type = params.Get<int32_t>("gpu_gl_object_type");
-    std::string gl_type;
-    switch (gl_obj_type) {
-      case TFLITE_GL_OBJECT_TYPE_FASTEST:
-        gl_type = "fastest";
-        break;
-      case TFLITE_GL_OBJECT_TYPE_TEXTURE:
-        gl_type = "texture";
-        break;
-      case TFLITE_GL_OBJECT_TYPE_BUFFER:
-        gl_type = "buffer";
-        break;
-      default:
-        gl_type = "unknown";
-        break;
+    if (params.Get<bool>("gpu_precision_loss_allowed")) {
+      current_run_name_ = "gpu-fp16";
+    } else {
+      current_run_name_ = "gpu-default";
     }
-
-    if (allow_precision_loss && gl_obj_type == TFLITE_GL_OBJECT_TYPE_FASTEST) {
-      current_run_name_ = "gpu(fp16, fastest)-default";
-      return;
-    }
-    current_run_name_ = "gpu(" + precision_tag + ", " + gl_type + ")";
 #else
-    current_run_name_ = "gpu(fp16, fastest)-default";
+    current_run_name_ = "gpu-default";
 #endif
     return;
   }
+
+#if defined(TFLITE_ENABLE_HEXAGON)
+  if (params.Get<bool>("use_hexagon")) {
+    current_run_name_ = "dsp w/ hexagon";
+    return;
+  }
+#endif
 
   // Handle cases run on CPU
   // Note: could use std::to_string to convert an integer to string but it
   // requires C++11.
   std::stringstream sstm;
   sstm << "cpu w/ " << params.Get<int32_t>("num_threads") << " threads";
+
+  // Handle cases run on CPU w/ the xnnpack delegate
+  if (params.Get<bool>("use_xnnpack")) {
+    sstm << " (xnnpack)";
+  }
+
   current_run_name_ = sstm.str();
 }
 
@@ -101,6 +104,10 @@ void MultiRunStatsRecorder::OutputStats() {
     // Output the name of this run first.
     stream << std::setw(26) << run_stats.first << ": ";
     run_stats.second.inference_time_us().OutputToStream(&stream);
+    // NOTE: As of 2019/11/07, the memory usage is collected in an
+    // OS-process-wide way and this program performs multiple runs in a single
+    // OS process, therefore, the memory usage information of each run becomes
+    // incorrect, hence no output here.
     TFLITE_LOG(INFO) << stream.str();
   }
 }
@@ -141,7 +148,9 @@ std::vector<Flag> BenchmarkPerformanceOptions::GetFlags() {
       CreateFlag<std::string>(
           "perf_options_list", &params_,
           "A comma-separated list of TFLite performance options to benchmark. "
-          "By default, all performance options are benchmarked."),
+          "By default, all performance options are benchmarked. Note if it's "
+          "set to 'none', then the tool simply benchmark the model against the "
+          "specified benchmark parameters."),
       CreateFlag<float>("option_benchmark_run_delay", &params_,
                         "The delay between two consecutive runs of "
                         "benchmarking performance options in seconds."),
@@ -199,12 +208,24 @@ bool BenchmarkPerformanceOptions::ParsePerfOptions() {
     perf_options_.clear();
     return false;
   }
+
+  if (HasOption("none") && perf_options_.size() > 1) {
+    TFLITE_LOG(ERROR) << "The 'none' option can not be used together with "
+                         "other perf options in --perf_options_list!";
+    perf_options_.clear();
+    return false;
+  }
   return true;
 }
 
 std::vector<std::string> BenchmarkPerformanceOptions::GetValidPerfOptions()
     const {
-  return {"all", "cpu", "gpu", "nnapi"};
+  std::vector<std::string> valid_options = {"all", "cpu", "gpu", "nnapi",
+                                            "none"};
+#if defined(TFLITE_ENABLE_HEXAGON)
+  valid_options.emplace_back("dsp");
+#endif
+  return valid_options;
 }
 
 bool BenchmarkPerformanceOptions::HasOption(const std::string& option) const {
@@ -217,15 +238,26 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<bool>("use_gpu", false);
 #if defined(__ANDROID__)
   single_option_run_params_->Set<bool>("gpu_precision_loss_allowed", true);
-  single_option_run_params_->Set<int32_t>("gpu_gl_object_type",
-                                          TFLITE_GL_OBJECT_TYPE_FASTEST);
-#endif
   single_option_run_params_->Set<bool>("use_nnapi", false);
+  single_option_run_params_->Set<std::string>("nnapi_accelerator_name", "");
+#endif
+#if defined(TFLITE_ENABLE_HEXAGON)
+  single_option_run_params_->Set<bool>("use_hexagon", false);
+#endif
+  single_option_run_params_->Set<bool>("use_xnnpack", false);
 }
 
 void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
   TFLITE_LOG(INFO) << "The list of TFLite runtime options to be benchmarked: ["
                    << params_.Get<std::string>("perf_options_list") << "]";
+
+  if (HasOption("none")) {
+    // Just add an empty BenchmarkParams instance.
+    BenchmarkParams params;
+    all_run_params_.emplace_back(std::move(params));
+    // As 'none' is exclusive to others, simply return here.
+    return;
+  }
 
   const bool benchmark_all = HasOption("all");
 
@@ -235,38 +267,97 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
       BenchmarkParams params;
       params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(count));
       all_run_params_.emplace_back(std::move(params));
+
+      BenchmarkParams xnnpack_params;
+      xnnpack_params.AddParam("use_xnnpack",
+                              BenchmarkParam::Create<bool>(true));
+      xnnpack_params.AddParam("num_threads",
+                              BenchmarkParam::Create<int32_t>(count));
+      all_run_params_.emplace_back(std::move(xnnpack_params));
     }
   }
 
   if (benchmark_all || HasOption("gpu")) {
 #if defined(__ANDROID__)
     const std::vector<bool> allow_precision_loss = {true, false};
-    const std::vector<int32_t> gl_obj_types = {TFLITE_GL_OBJECT_TYPE_TEXTURE,
-                                               TFLITE_GL_OBJECT_TYPE_BUFFER};
     for (const auto precision_loss : allow_precision_loss) {
-      for (const auto obj_type : gl_obj_types) {
-        BenchmarkParams params;
-        params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
-        params.AddParam("gpu_precision_loss_allowed",
-                        BenchmarkParam::Create<bool>(precision_loss));
-        params.AddParam("gpu_gl_object_type",
-                        BenchmarkParam::Create<int32_t>(obj_type));
-        all_run_params_.emplace_back(std::move(params));
-      }
+      BenchmarkParams params;
+      params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
+      params.AddParam("gpu_precision_loss_allowed",
+                      BenchmarkParam::Create<bool>(precision_loss));
+      all_run_params_.emplace_back(std::move(params));
     }
-#endif
-    // Note by default, gpu delegate allows to operate on lower precision and
-    // uses the fastest GL object type.
+#else
     BenchmarkParams params;
     params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
     all_run_params_.emplace_back(std::move(params));
+#endif
   }
 
+#if defined(__ANDROID__)
   if (benchmark_all || HasOption("nnapi")) {
+    std::string nnapi_accelerators = nnapi::GetStringDeviceNamesList();
+    if (!nnapi_accelerators.empty()) {
+      std::vector<std::string> device_names;
+      util::SplitAndParse(nnapi_accelerators, ',', &device_names);
+      for (const auto name : device_names) {
+        BenchmarkParams params;
+        params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(true));
+        params.AddParam("nnapi_accelerator_name",
+                        BenchmarkParam::Create<std::string>(name));
+        all_run_params_.emplace_back(std::move(params));
+      }
+    }
+    // Explicitly test the case when there's no "nnapi_accelerator_name"
+    // parameter as the nnpai execution is different from the case when
+    // an accelerator name is explicitly specified.
     BenchmarkParams params;
     params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(true));
     all_run_params_.emplace_back(std::move(params));
   }
+#endif
+
+#if defined(TFLITE_ENABLE_HEXAGON)
+  if (benchmark_all || HasOption("dsp")) {
+    BenchmarkParams params;
+    params.AddParam("use_hexagon", BenchmarkParam::Create<bool>(true));
+    all_run_params_.emplace_back(std::move(params));
+  }
+#endif
+}
+
+void BenchmarkPerformanceOptions::Run() {
+  CreatePerformanceOptions();
+
+  if (params_.Get<bool>("random_shuffle_benchmark_runs")) {
+    std::random_shuffle(all_run_params_.begin(), all_run_params_.end());
+  }
+
+  // We need to clean *internally* created benchmark listeners, like the
+  // profiling listener etc. in each Run() invoke because such listeners may be
+  // reset and become invalid in the next Run(). As a result, we record the
+  // number of externally-added listeners here to prevent they're cleared later.
+  const int num_external_listners = single_option_run_->NumListeners();
+
+  // Now perform all runs, each with different performance-affecting parameters.
+  for (const auto& run_params : all_run_params_) {
+    // If the run_params is empty, then it means "none" is set for
+    // --perf_options_list.
+    if (!run_params.Empty()) {
+      // Reset all performance-related options before any runs.
+      ResetPerformanceOptions();
+      single_option_run_params_->Set(run_params);
+    }
+    util::SleepForSeconds(params_.Get<float>("option_benchmark_run_delay"));
+
+    // Clear internally created listeners before each run but keep externally
+    // created ones.
+    single_option_run_->RemoveListeners(num_external_listners);
+
+    single_option_run_->Run();
+  }
+
+  all_run_stats_->OutputStats();
 }
 
 void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
@@ -282,22 +373,7 @@ void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
     TFLITE_LOG(WARN) << "WARNING: unrecognized commandline flag: " << argv[i];
   }
 
-  CreatePerformanceOptions();
-
-  if (params_.Get<bool>("random_shuffle_benchmark_runs")) {
-    std::random_shuffle(all_run_params_.begin(), all_run_params_.end());
-  }
-
-  // Now perform all runs, each with different performance-affecting parameters.
-  for (const auto& run_params : all_run_params_) {
-    // Reset all performance-related options before any runs.
-    ResetPerformanceOptions();
-    single_option_run_params_->Set(run_params);
-    util::SleepForSeconds(params_.Get<float>("option_benchmark_run_delay"));
-    single_option_run_->Run();
-  }
-
-  all_run_stats_->OutputStats();
+  Run();
 }
 }  // namespace benchmark
 }  // namespace tflite

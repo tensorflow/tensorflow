@@ -161,12 +161,16 @@ class PluginRegistry {
 };
 
 // Explicit specializations are defined in plugin_registry.cc.
-#define DECLARE_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE)                       \
-  template <>                                                              \
-  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory( \
-      Platform::Id platform_id, PluginId plugin_id);                       \
-  template <>                                                              \
-  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory( \
+#define DECLARE_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE)                          \
+  template <>                                                                 \
+  port::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
+      Platform::Id platform_id, PluginId plugin_id, const string& name,       \
+      PluginRegistry::FACTORY_TYPE factory);                                  \
+  template <>                                                                 \
+  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
+      Platform::Id platform_id, PluginId plugin_id);                          \
+  template <>                                                                 \
+  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
       PlatformKind platform_kind, PluginId plugin_id)
 
 DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);

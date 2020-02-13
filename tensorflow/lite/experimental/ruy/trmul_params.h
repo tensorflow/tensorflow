@@ -39,6 +39,15 @@ struct TrMulParams {
     run_kernel(tuning, packed, spec, start, end, &dst);
   }
 
+  // path id, can be useful info for some fine-tuning, e.g. to guess reasonable
+  // cache sizes when not runtime-detectable.
+  Path path;
+
+  // See Spec::local_data_cache_size().
+  int local_data_cache_size = 0;
+  // See Spec::shared_data_cache_size().
+  int shared_data_cache_size = 0;
+
   // Function pointers to type-erased entry points for kernels and packers.
   SidePair<RunPackFn*> run_pack;
   RunKernelFn* run_kernel = nullptr;
@@ -48,7 +57,6 @@ struct TrMulParams {
   DMatrix dst;
   SidePair<PMatrix> packed;
   SidePair<bool> is_prepacked;
-  int cache_friendly_traversal_threshold = 0;
 
   // Type-erased Spec.
   void* spec = nullptr;

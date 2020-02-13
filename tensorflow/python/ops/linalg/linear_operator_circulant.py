@@ -114,19 +114,16 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
             "A [[nested] block] circulant operator is always square.")
       is_square = True
 
-      # If spectrum.shape = [s0, s1, s2], and block_depth = 2,
-      # block_shape = [s1, s2]
-      s_shape = array_ops.shape(self.spectrum)
-      self._block_shape_tensor = s_shape[-self.block_depth:]
-
       super(_BaseLinearOperatorCirculant, self).__init__(
           dtype=dtypes.as_dtype(input_output_dtype),
-          graph_parents=[self.spectrum],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      # TODO(b/143910018) Remove graph_parents in V3.
+      self._set_graph_parents([self.spectrum])
 
   def _check_spectrum_and_return_tensor(self, spectrum):
     """Static check of spectrum.  Then return `Tensor` version."""
@@ -155,7 +152,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
         |z y x w|
     ```
 
-    `block_depth = 2` means `A` is block symmetric circulant with symemtric
+    `block_depth = 2` means `A` is block symmetric circulant with symmetric
     circulant blocks.  For example, with `W`, `X`, `Y`, `Z` symmetric circulant,
 
     ```
@@ -175,7 +172,18 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
   def block_shape_tensor(self):
     """Shape of the block dimensions of `self.spectrum`."""
-    return self._block_shape_tensor
+    # If spectrum.shape = [s0, s1, s2], and block_depth = 2,
+    # block_shape = [s1, s2]
+    return self._block_shape_tensor()
+
+  def _block_shape_tensor(self, spectrum_shape=None):
+    if self.block_shape.is_fully_defined():
+      return linear_operator_util.shape_tensor(
+          self.block_shape.as_list(), name="block_shape")
+    spectrum_shape = (
+        array_ops.shape(self.spectrum)
+        if spectrum_shape is None else spectrum_shape)
+    return spectrum_shape[-self.block_depth:]
 
   @property
   def block_shape(self):
@@ -312,9 +320,10 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
     n_x_n = tensor_shape.TensorShape([n, n])
     return batch_shape.concatenate(n_x_n)
 
-  def _shape_tensor(self):
+  def _shape_tensor(self, spectrum=None):
+    spectrum = self.spectrum if spectrum is None else spectrum
     # See self.shape for explanation of steps
-    s_shape = array_ops.shape(self._spectrum)
+    s_shape = array_ops.shape(spectrum)
     batch_shape = s_shape[:-self.block_depth]
     trailing_dims = s_shape[-self.block_depth:]
     n = math_ops.reduce_prod(trailing_dims)
@@ -369,20 +378,26 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
   def _broadcast_batch_dims(self, x, spectrum):
     """Broadcast batch dims of batch matrix `x` and spectrum."""
+    spectrum = ops.convert_to_tensor(spectrum, name="spectrum")
     # spectrum.shape = batch_shape + block_shape
     # First make spectrum a batch matrix with
     #   spectrum.shape = batch_shape + [prod(block_shape), 1]
+    batch_shape = self._batch_shape_tensor(
+        shape=self._shape_tensor(spectrum=spectrum))
     spec_mat = array_ops.reshape(
-        spectrum, array_ops.concat(
-            (self.batch_shape_tensor(), [-1, 1]), axis=0))
+        spectrum, array_ops.concat((batch_shape, [-1, 1]), axis=0))
     # Second, broadcast, possibly requiring an addition of array of zeros.
     x, spec_mat = linear_operator_util.broadcast_matrix_batch_dims((x,
                                                                     spec_mat))
     # Third, put the block shape back into spectrum.
-    batch_shape = array_ops.shape(x)[:-2]
+    x_batch_shape = array_ops.shape(x)[:-2]
+    spectrum_shape = array_ops.shape(spectrum)
     spectrum = array_ops.reshape(
         spec_mat,
-        array_ops.concat((batch_shape, self.block_shape_tensor()), axis=0))
+        array_ops.concat(
+            (x_batch_shape,
+             self._block_shape_tensor(spectrum_shape=spectrum_shape)),
+            axis=0))
 
     return x, spectrum
 
@@ -521,8 +536,6 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
 
   This means that the result of matrix multiplication `v = Au` has `Lth` column
   given circular convolution between `h` with the `Lth` column of `u`.
-
-  See http://ee.stanford.edu/~gray/toeplitz.pdf
 
   #### Description in terms of the frequency spectrum
 
@@ -679,6 +692,11 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   * If `is_X == False`, callers should expect the operator to not have `X`.
   * If `is_X == None` (the default), callers should have no expectation either
     way.
+
+  References:
+    Toeplitz and Circulant Matrices - A Review:
+      [Gray, 2006](https://www.nowpublishers.com/article/Details/CIT-006)
+      ([pdf](https://ee.stanford.edu/~gray/toeplitz.pdf))
   """
 
   def __init__(self,
@@ -735,6 +753,9 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
         is_positive_definite=is_positive_definite,
         is_square=is_square,
         name=name)
+
+  def _eigvals(self):
+    return ops.convert_to_tensor(self.spectrum)
 
 
 @tf_export("linalg.LinearOperatorCirculant2D")
