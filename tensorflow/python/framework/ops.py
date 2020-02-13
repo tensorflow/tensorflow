@@ -77,7 +77,6 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import kwarg_only
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.tools.docs.doc_controls import do_not_generate_docs
 
 ag_ctx = LazyLoader(
     "ag_ctx", globals(),
@@ -6606,8 +6605,7 @@ register_tensor_conversion_function = \
 def to_raw_op(f):
   """Make a given op wrapper function `f` raw.
 
-  Raw op wrappers are not included in the docs, and can only be called
-  with keyword arguments.
+  Raw op wrappers can only be called with keyword arguments.
 
   Args:
     f: An op wrapper function to make raw.
@@ -6619,7 +6617,7 @@ def to_raw_op(f):
   # due to double-registration.
   f = types.FunctionType(f.__code__, f.__globals__, f.__name__, f.__defaults__,
                          f.__closure__)
-  return kwarg_only(do_not_generate_docs(f))
+  return kwarg_only(f)
 
 
 def raise_from_not_ok_status(e, name):
