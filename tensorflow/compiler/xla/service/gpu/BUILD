@@ -117,7 +117,6 @@ tf_cc_test(
     srcs = if_cuda_is_configured(["custom_call_test.cc"]),
     tags = [
         "gpu",
-        "no_oss",
         "requires-gpu-sm35",
     ],
     deps = [
