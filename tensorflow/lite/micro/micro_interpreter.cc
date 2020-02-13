@@ -244,6 +244,12 @@ TfLiteStatus MicroInterpreter::Invoke() {
     auto* node = &(node_and_registrations_[i].node);
     auto* registration = node_and_registrations_[i].registration;
 
+    if (check_cancelled_func_ != nullptr &&
+        check_cancelled_func_(cancellation_data_)) {
+      error_reporter_->Report("Client requested cancel during Invoke()");
+      return kTfLiteError;
+    }
+
     if (registration->invoke) {
       TfLiteStatus invoke_status = registration->invoke(&context_, node);
       if (invoke_status == kTfLiteError) {
@@ -307,6 +313,12 @@ TfLiteStatus MicroInterpreter::ResetVariableTensors() {
     }
   }
   return kTfLiteOk;
+}
+
+void MicroInterpreter::SetCancellationFunction(void* data,
+                                       bool (*check_cancelled_func)(void*)) {
+  cancellation_data_ = data;
+  check_cancelled_func_ = check_cancelled_func;
 }
 
 }  // namespace tflite

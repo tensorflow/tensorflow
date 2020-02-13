@@ -138,6 +138,15 @@ class MicroInterpreter {
 
   size_t operators_size() const { return subgraph_->operators()->size(); }
 
+  /// Sets the cancellation function pointer in order to cancel a request in the
+  /// middle of a call to Invoke(). The interpreter queries this function during
+  /// inference, between op invocations; when it returns true, the interpreter
+  /// will abort execution and return `kTfLiteError`. The `data` parameter
+  /// contains any data used by the cancellation function, and if non-null,
+  /// remains owned by the caller.
+  /// WARNING: This is an experimental API and subject to change.
+  void SetCancellationFunction(void* data, bool (*check_cancelled_func)(void*));
+
   // For debugging only.
   const NodeAndRegistration node_and_registration(int node_index) const {
     return node_and_registrations_[node_index];
@@ -169,7 +178,17 @@ class MicroInterpreter {
   TfLiteStatus initialization_status_;
 
   const SubGraph* subgraph_;
+
   internal::ContextHelper context_helper_;
+
+  // Reference to cancellation function that can cancel a request in the middle
+  // of a call to Invoke(). When this function returns True, a kTfLiteError is
+  // thrown by Invoke().
+  bool (*check_cancelled_func_)(void*) = nullptr;
+
+  // Reference to data used by the cancellation function in
+  // `check_cancelled_func_`.
+  void* cancellation_data_ = nullptr;
 };
 
 }  // namespace tflite

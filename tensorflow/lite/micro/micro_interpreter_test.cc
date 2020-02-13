@@ -112,6 +112,7 @@ class SimpleStatefulOp {
 };
 
 bool freed = false;
+int  invoked = 0;
 
 class MockCustom {
  public:
@@ -145,6 +146,7 @@ class MockCustom {
     output_data[0] =
         0;  // Catch output tensor sharing memory with an input tensor
     output_data[0] = input_data[0] + weight_data[0];
+    invoked++;
     return kTfLiteOk;
   }
 };
@@ -180,6 +182,42 @@ class MockOpResolver : public MicroOpResolver {
     return kTfLiteError;
   }
 };
+
+struct CancellationData {
+  bool is_cancelled;
+  int  cancel_op_number;
+  bool cancel_error_double;
+  bool cancel_error_late;
+  void Clear() {
+    is_cancelled = false;
+    cancel_op_number = -1;
+    cancel_error_double = false;
+    cancel_error_late = false;
+  }
+};
+
+// Indicates whether Invoke() has been cancelled based on the value of the
+// CancellationData object passed in.
+static bool CheckCancellation(void* data) {
+  CancellationData* cancellation_data =
+      static_cast<struct CancellationData*>(data);
+
+  if (cancellation_data->is_cancelled) {
+    cancellation_data->cancel_error_double = true;
+    return true;
+  }
+
+  if (cancellation_data->cancel_op_number >= 0 &&
+      cancellation_data->cancel_op_number <= invoked) {
+    cancellation_data->is_cancelled = true;
+    if (cancellation_data->cancel_op_number != invoked) {
+      cancellation_data->cancel_error_late = true;
+    }
+    return true;
+  }
+
+  return false;
+}
 
 }  // namespace
 }  // namespace tflite
@@ -370,5 +408,44 @@ TF_LITE_MICRO_TEST(TestIncompleteInitialization) {
                                        allocator_buffer_size,
                                        micro_test::reporter);
 }
+
+
+
+TF_LITE_MICRO_TEST(TestCancellationFunction) {
+  tflite::CancellationData cancel_data;
+  const tflite::Model* model = tflite::testing::GetSimpleMockModel();
+  TF_LITE_MICRO_EXPECT_NE(nullptr, model);
+  tflite::MockOpResolver mock_resolver;
+  constexpr size_t allocator_buffer_size = 1024;
+  uint8_t allocator_buffer[allocator_buffer_size];
+  tflite::MicroInterpreter interpreter(model, mock_resolver, allocator_buffer,
+                                       allocator_buffer_size,
+                                       micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  TfLiteTensor* input = interpreter.input(0);
+  interpreter.SetCancellationFunction( &cancel_data, tflite::CheckCancellation);
+
+  for (int i = 0; i <= interpreter.operators_size(); i++) {
+
+    tflite::invoked = 0;
+    cancel_data.Clear();
+    cancel_data.cancel_op_number = i;
+
+    input->data.i32[0] = 21;
+
+    TfLiteStatus status = interpreter.Invoke();
+
+    if (status == kTfLiteOk) {
+      TF_LITE_MICRO_EXPECT_EQ(cancel_data.is_cancelled, false);
+      TF_LITE_MICRO_EXPECT_EQ(i, interpreter.operators_size());
+    } else {
+      TF_LITE_MICRO_EXPECT_EQ(cancel_data.cancel_error_double, false);
+      TF_LITE_MICRO_EXPECT_EQ(cancel_data.cancel_error_late, false);
+      TF_LITE_MICRO_EXPECT_NE(i, interpreter.operators_size());
+    }
+  }
+}
+
 
 TF_LITE_MICRO_TESTS_END
