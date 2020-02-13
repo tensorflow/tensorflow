@@ -39,18 +39,12 @@ void CreateStatMetadata(XPlane* plane) {
 // Returns event type if it is a KernelLaunch or KernelExecute event.
 absl::optional<int64> GetKernelEventType(const XPlaneVisitor& visitor,
                                          const XEvent& event) {
-  bool found_correlation_id = false;
-  bool found_device_id = false;
   for (const auto& stat : event.stats()) {
     if (visitor.GetStatType(stat) == StatType::kCorrelationId) {
-      found_correlation_id = true;
-    } else if (visitor.GetStatType(stat) == StatType::kDeviceId) {
-      found_device_id = true;
+      // TODO(b/149095099): avoid string comparison.
+      return visitor.Name() == kHostThreads ? HostEventType::kKernelLaunch
+                                            : HostEventType::kKernelExecute;
     }
-  }
-  if (found_correlation_id) {
-    return found_device_id ? HostEventType::kKernelLaunch
-                           : HostEventType::kKernelExecute;
   }
   return absl::nullopt;
 }
@@ -242,6 +236,9 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
        {HostEventType::kSessionRun,
         HostEventType::kExecutorStateProcess,
         {StatType::kStepId}},
+       {HostEventType::kExecutorStateProcess,
+        HostEventType::kIteratorGetNextOp,
+        {StatType::kStepId, kIterNum}},
        {HostEventType::kKernelLaunch,
         HostEventType::kKernelExecute,
         {StatType::kCorrelationId}}});

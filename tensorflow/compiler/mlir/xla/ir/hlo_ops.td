@@ -60,6 +60,15 @@ def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
+def HLO_DimensionTensor : ShapedContainerType<
+    [Index], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
+    "a 1D tensor of dimensions">;
+
+// In general, static shaped tensor constraints should be avoided unless
+// it is for a legacy op which is only correct with static shapes.
+def HLO_StaticShapeTensor : StaticShapeTensorOf<[
+      AnyFloat, AnyInteger, AnyComplex]>;
+
 //===----------------------------------------------------------------------===//
 // XLA combined type definitions.
 //===----------------------------------------------------------------------===//
@@ -672,7 +681,8 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
 }
 
 def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
-      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>]> {
+      [NoSideEffect, AllElementTypesMatch<["operand", "update", "result"]>,
+       AllShapesMatch<["operand", "result"]>]> {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$update,
@@ -758,10 +768,23 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
     BroadcastDimAttr:$broadcast_dimensions
   );
 
+  let results = (outs HLO_StaticShapeTensor);
+
+  // Only handles a static subset of the legacy format.
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
+      [NoSideEffect]>, BASE_HLO_DynamicBroadcastInDimOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_DimensionTensor:$output_dimensions,
+    BroadcastDimAttr:$broadcast_dimensions
+  );
+
   let results = (outs HLO_Tensor);
 
-  // TODO(b/130357376): One of the arguments comes from the new shape, which is
-  // not handled by the codegen.
+  // Cannot be exported to legacy formats.
   let hasCustomHLOConverter = 1;
 }
 

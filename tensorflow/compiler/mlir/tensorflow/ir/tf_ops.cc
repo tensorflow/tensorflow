@@ -1546,15 +1546,17 @@ static LogicalResult Verify(ParseExampleV2Op op) {
 // PartitionedCallOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(PartitionedCallOp op) {
-  auto module = op.getParentOfType<ModuleOp>();
-  FlatSymbolRefAttr func = op.getAttr("f").cast<FlatSymbolRefAttr>();
+template <class OpClass>
+static LogicalResult VerifyPartitionedCall(OpClass op) {
+  auto module = op.template getParentOfType<ModuleOp>();
+  SymbolRefAttr func = op.getAttr("f").template cast<SymbolRefAttr>();
 
-  auto function = module.lookupSymbol<FuncOp>(func.getValue());
+  auto function =
+      dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
 
   if (!function) {
-    return op.emitError("f attribute refers to an undefined function: ")
-           << func.getValue();
+    return op.emitError("'f' attribute refers to an undefined function: ")
+           << func;
   }
 
   FunctionType function_ty = function.getType();
@@ -1562,9 +1564,9 @@ static LogicalResult Verify(PartitionedCallOp op) {
   int arg_count = op.args().size();
 
   if (arg_count != func_arg_count) {
-    return op.emitError() << "argument count mismatch: args has " << arg_count
-                          << " arguments, but " << func.getValue()
-                          << " expects " << func_arg_count;
+    return op.emitError() << "argument count mismatch: 'args' has " << arg_count
+                          << " arguments, but '" << func << "' expects "
+                          << func_arg_count;
   }
 
   return success();
@@ -2285,6 +2287,118 @@ constexpr const T &Clamp(const T &val, const T &low, const T &high) {
   return (val < low) ? low : (high < val) ? high : val;
 }
 
+// Checks if the `index` bit of `val` is set.
+template <class T>
+constexpr bool IsSet(const T &val, unsigned index) {
+  return (val & (1 << index)) != 0;
+}
+
+// Sets the `index` bit of `val`.
+template <class T>
+constexpr void Set(T &val, unsigned index) {
+  val |= (1 << index);
+}
+
+// Unset the `index` bit of `val`.
+template <class T>
+constexpr void Unset(T &val, unsigned index) {
+  val &= ~(1 << index);
+}
+
+// Copy the `src_index` bit of `src` to `dst_index` bit of `dst`.
+template <class T>
+constexpr void CopyBit(const T &src, unsigned src_index, T &dst,
+                       unsigned dst_index) {
+  if (IsSet(src, src_index))
+    Set(dst, dst_index);
+  else
+    Unset(dst, dst_index);
+}
+
+// The sparse spec of strided slice does not correspond to the number of
+// dimensions. For example, sparse spec for foo[..., 3:10] for foo of shape (2,
+// 4, 8) would have dims = 2.
+struct SparseSliceSpec {
+  const int64_t dims;
+  const uint64_t begin_mask, end_mask, ellipsis_mask, new_axis_mask,
+      shrink_axis_mask;
+  const ArrayRef<int64_t> &begin;
+  const ArrayRef<int64_t> &end;
+  const ArrayRef<int64_t> &strides;
+};
+
+// The dense spec of strided slice is the canonicalized version of sparse spec.
+// The number of dimensions of dense spec correspond to the number of dimensions
+// in operand tensor.
+struct DenseSliceSpec {
+  int64_t dims;
+  uint64_t begin_mask, end_mask, shrink_axis_mask;
+  SmallVectorImpl<int64_t> &begin;
+  SmallVectorImpl<int64_t> &end;
+  SmallVectorImpl<int64_t> &strides;
+};
+
+// Make a sparse spec into a dense index spec.
+// The sparse spec does not correspond to the number of dimensions
+// Make a dense spec that corresponds to the number of dimensions
+//
+// For example suppose foo[...,3:, 2] on foo.shape=(2,2,3,4) then
+// we need to produce the missing begin_mask, end_mask for the first two
+// dimensions i.e. foo[:, :, 3:, 2].
+static LogicalResult BuildDenseSliceSpec(const SparseSliceSpec &sparse,
+                                         DenseSliceSpec *dense) {
+  // Build expanded dense begin, end, strides, begin_mask, end_mask, and
+  // shrink_axis_mask.
+  dense->begin.resize(dense->dims);
+  dense->end.resize(dense->dims);
+  dense->strides.resize(dense->dims);
+  dense->begin_mask = 0;
+  dense->end_mask = 0;
+  dense->shrink_axis_mask = 0;
+
+  // Count number of new_axis after ellipsis. This helps in calculating the
+  // number of dimensions ellipsis represents in the sparse spec.
+  bool ellipsis_seen = false;
+  int num_new_axis_after_ellipsis = 0;
+  for (int sparse_index = 0; sparse_index < sparse.dims; ++sparse_index) {
+    if (ellipsis_seen && IsSet(sparse.new_axis_mask, sparse_index))
+      num_new_axis_after_ellipsis++;
+    if (IsSet(sparse.ellipsis_mask, sparse_index)) ellipsis_seen = true;
+  }
+
+  int dense_index = 0;
+  for (int sparse_index = 0; sparse_index < sparse.dims; ++sparse_index) {
+    if (IsSet(sparse.new_axis_mask, sparse_index)) continue;
+    if (IsSet(sparse.ellipsis_mask, sparse_index)) {
+      auto next_index = std::min(dense->dims - (sparse.dims - sparse_index) +
+                                     1 + num_new_axis_after_ellipsis,
+                                 dense->dims);
+      // Expand ellipsis into the appropriate dense indices. From current index
+      // until next_index, all dimensions would have begin and end masks set and
+      // stride 1, i.e., get all elements in those dimensions.
+      for (; dense_index < next_index; ++dense_index) {
+        dense->begin[dense_index] = dense->end[dense_index] = 0;
+        dense->strides[dense_index] = 1;
+        Set(dense->begin_mask, dense_index);
+        Set(dense->end_mask, dense_index);
+      }
+      continue;
+    }
+    assert(dense_index < dense->dims);
+    // Copy over the sparse indices to dense indices if ellipsis_mask and
+    // new_axis_mask are not set.
+    dense->begin[dense_index] = sparse.begin[sparse_index];
+    dense->end[dense_index] = sparse.end[sparse_index];
+    dense->strides[dense_index] = sparse.strides[sparse_index];
+    CopyBit(sparse.begin_mask, sparse_index, dense->begin_mask, dense_index);
+    CopyBit(sparse.end_mask, sparse_index, dense->end_mask, dense_index);
+    CopyBit(sparse.shrink_axis_mask, sparse_index, dense->shrink_axis_mask,
+            dense_index);
+    dense_index++;
+  }
+  return success();
+}
+
 // For the given `input_shape`, calculates the sliced shape using the given
 // `begin`, `end`, and `stride` ranges and `begin_mask`, `end_mask`, and
 // `shrink_axis_mask` masks. Updates the result back to `input_shape`. If
@@ -2339,7 +2453,7 @@ static void CalculateSlicedShapeAndBoundRanges(
       size_i = (interval_len / stride_i) + (interval_len % stride_i != 0);
 
     begin[i] = begin_i;
-    if ((1 << i) & shrink_axis_mask) {
+    if (IsSet(shrink_axis_mask, i)) {
       // Shrink this dimension. It means we only take the element at begin_i.
       input_shape[i] = 1;
       end[i] = begin_i + 1;
@@ -2355,16 +2469,12 @@ static void CalculateSlicedShapeAndBoundRanges(
 bool StridedSliceOp::GetSlicedBoundRanges(
     SmallVectorImpl<int64_t> *begin_indices,
     SmallVectorImpl<int64_t> *end_indices, SmallVectorImpl<int64_t> *strides) {
-  if (this->ellipsis_mask().getZExtValue() ||
-      this->new_axis_mask().getZExtValue())
-    return false;  // TODO(b/146512589): support these masks
-
   // TODO(hinsu): Support lowering for ops with dynamic begin and end values
   // when it is possible to derive indices based on mask attributes.
-  DenseIntElementsAttr begin_indices_attr, end_indices_attr, strides_attr;
-  if (!matchPattern(this->begin(), m_Constant(&begin_indices_attr)) ||
-      !matchPattern(this->end(), m_Constant(&end_indices_attr)) ||
-      !matchPattern(this->strides(), m_Constant(&strides_attr)))
+  DenseIntElementsAttr sparse_begin_attr, sparse_end_attr, sparse_strides_attr;
+  if (!matchPattern(this->begin(), m_Constant(&sparse_begin_attr)) ||
+      !matchPattern(this->end(), m_Constant(&sparse_end_attr)) ||
+      !matchPattern(this->strides(), m_Constant(&sparse_strides_attr)))
     return false;
 
   auto input_ty = this->input().getType().dyn_cast<RankedTensorType>();
@@ -2372,24 +2482,39 @@ bool StridedSliceOp::GetSlicedBoundRanges(
   auto input_shape = llvm::to_vector<4>(input_ty.getShape());
   int rank = input_shape.size();
 
-  begin_indices->clear();
-  begin_indices->reserve(rank);
-  end_indices->clear();
-  end_indices->reserve(rank);
-  strides->clear();
-  strides->reserve(rank);
+  SmallVector<int64_t, 4> sparse_begin, sparse_end, sparse_strides;
 
-  for (const APInt &index : begin_indices_attr)
-    begin_indices->push_back(index.getSExtValue());
-  for (const APInt &index : end_indices_attr)
-    end_indices->push_back(index.getSExtValue());
-  for (const APInt &stride : strides_attr)
-    strides->push_back(stride.getSExtValue());
+  for (const APInt &index : sparse_begin_attr)
+    sparse_begin.push_back(index.getSExtValue());
+  for (const APInt &index : sparse_end_attr)
+    sparse_end.push_back(index.getSExtValue());
+  for (const APInt &stride : sparse_strides_attr)
+    sparse_strides.push_back(stride.getSExtValue());
 
-  CalculateSlicedShapeAndBoundRanges(
-      input_shape, this->begin_mask().getZExtValue(),
-      this->end_mask().getZExtValue(), this->shrink_axis_mask().getZExtValue(),
-      *begin_indices, *end_indices, *strides);
+  auto num_sparse_indices = sparse_begin_attr.getNumElements();
+  SparseSliceSpec sparse = {num_sparse_indices,
+                            this->begin_mask().getZExtValue(),
+                            this->end_mask().getZExtValue(),
+                            this->ellipsis_mask().getZExtValue(),
+                            this->new_axis_mask().getZExtValue(),
+                            this->shrink_axis_mask().getZExtValue(),
+                            sparse_begin,
+                            sparse_end,
+                            sparse_strides};
+
+  DenseSliceSpec dense = {rank,
+                          /*begin_mask = */ 0,
+                          /*end_mask = */ 0,
+                          /*shrink_axis_mask = */ 0,
+                          *begin_indices,
+                          *end_indices,
+                          *strides};
+
+  if (failed(BuildDenseSliceSpec(sparse, &dense))) return false;
+
+  CalculateSlicedShapeAndBoundRanges(input_shape, dense.begin_mask,
+                                     dense.end_mask, dense.shrink_axis_mask,
+                                     *begin_indices, *end_indices, *strides);
   return true;
 }
 

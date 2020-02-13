@@ -1319,7 +1319,7 @@ class MirroredVariableStopGradientTest(test.TestCase, parameterized.TestCase):
 
 class FunctionTest(test.TestCase):
 
-  def testBackwardFuctionDevicePlacement(self):
+  def testBackwardFunctionDevicePlacement(self):
     if context.num_gpus() < 1:
       self.skipTest("At least one GPU is required.")
     devices = [device_util.resolve("/device:GPU:0"),

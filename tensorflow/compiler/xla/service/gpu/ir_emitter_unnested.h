@@ -52,13 +52,25 @@ namespace gpu {
 class IrEmitterUnnested : public IrEmitter,
                           private ThunkEmitter::EmissionContext {
  public:
+  struct ThreadIdInfo {
+    // Raw thread id.
+    llvm::Value* thread_id;
+
+    // X-coordinate calculated from thread id: `thread_id % num_threads_x`
+    llvm::Value* thread_id_x;
+
+    // Y-coordinate calculated from thread id: `thread_id / num_threads_x`
+    llvm::Value* thread_id_y;
+
+    // Lane id: `thread_id % kWarpSize`
+    llvm::Value* lane_id;
+  };
+
   // A function object to generate code to process one element in a tile.
   //
-  // hlo: the instruction for which the code is generated for.
   // index: the index for the first output element of the current thread.
   // y_loc: The y coordinate within a tile.
   // x_loc: The x coordinate within a tile.
-  // kernel_info: Other information to support the kernel code generation.
   // x_iter_num: When a thread process N elements in the X dimension, x_iter_num
   //             has a value of 0..N-1 to identify the element being process.
   using EmitElementFunction = std::function<void(
@@ -69,7 +81,7 @@ class IrEmitterUnnested : public IrEmitter,
 
   // A function to generate the code to emit the entire tile.
   using TileElementGenerator = std::function<void(
-      llvm::Value* y, llvm::Value* x, const llvm_ir::IrArray::Index& index,
+      const ThreadIdInfo& thread_id_info, const llvm_ir::IrArray::Index& index,
       const string& loop_name, llvm::Value* tile_height,
       llvm::Value* tile_width, KernelSupportLibrary* ksl)>;
 
@@ -169,6 +181,34 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Generates code for reduction to contiguous dimensions.
   //
+  // TODO(cheshire): Pseudocode for row reduction.
+  // Column reduction uses the following algorithm described in CUDA-like
+  // pseudocode:
+  //
+  // ```
+  // void reduce(float** in, float* out) {
+  //   __shared__ float[32][33] cache;
+  //   int thread_id = GetThreadId();
+  //   int block_id = GetBlockId();
+  //   int tile_size = 128;
+  //
+  //   float accum = 0;
+  //   for (int i=0; i<tile_size; i++) {
+  //     accum += in[thread_id.y * tile_size + i][block_id * 32 + thread_id.x];
+  //   }
+  //   cache[thread_id.x][thread_id.y] = accum;
+  //
+  //   __syncthreads();
+  //   accum = cache[thread_id.y][thread_id.x];
+  //   accum = warp_reduce(accum); // Sum all the values of `accum` in the same
+  //                               // warp.
+  //
+  //   if (thread_id.y % 32 == 0) {
+  //     out[block_id * 32 + thread_id.x] = accum;
+  //   }
+  // }
+  // ```
+  //
   // output_instructions: Output instructions in the computation: instruction
   // itself if it's not a fusion, fusion root if fusion is not multi-output, and
   // elements of the fusion multi-output tuple otherwise.
@@ -263,26 +303,27 @@ class IrEmitterUnnested : public IrEmitter,
   void EmitTile(
       const KernelMappingScheme& mapping_scheme,
       const llvm_ir::IrArray::Index& tile_origin_index, const string& loop_name,
-      KernelSupportLibrary* ksl, llvm::Value* thread_id_y,
-      llvm::Value* thread_id_x, llvm::Value* tile_height,
-      llvm::Value* tile_width,
+      KernelSupportLibrary* ksl, const ThreadIdInfo& thread_id_info,
+      llvm::Value* tile_height, llvm::Value* tile_width,
       const IrEmitterUnnested::EmitElementFunction& emit_elem_function);
 
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
+  // y_loc: The y coordinate within a tile.
+  // x_loc: The x coordinate within a tile.
   void EmitTileElementForCopy(
       HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
       const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
-      llvm::Value* x_loc, int64 x_iter_num,
-      absl::Span<llvm::Value* const> param_shmem_buffers);
+      llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers);
 
   // Emits code to process a tensor element in a tile for the given kLoop
   // fusion HLO containing parameters that are 0-2-1 transpose of its outputs.
+  // y_loc: The y coordinate within a tile.
+  // x_loc: The x coordinate within a tile.
   void EmitTileElementForFusion(
       HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
       const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
-      llvm::Value* x_loc, int64 x_iter_num,
-      absl::Span<llvm::Value* const> param_shmem_buffers);
+      llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers);
 
   // Emits code to process a tensor element in a tile for the given input hlo
   // that is either a unnested kReduce or a kInput fusion.
@@ -360,20 +401,6 @@ class IrEmitterUnnested : public IrEmitter,
   //
   // Sets the return value range to [0, threads_per_block).
   llvm::Value* EmitThreadId(int64 threads_per_block, llvm::Type* index_ty);
-
-  struct ThreadIdInfo {
-    // Raw thread id.
-    llvm::Value* thread_id;
-
-    // X-coordinate calculated from thread id: `thread_id % num_threads_x`
-    llvm::Value* thread_id_x;
-
-    // Y-coordinate calculated from thread id: `thread_id / num_threads_x`
-    llvm::Value* thread_id_y;
-
-    // Lane id: `thread_id % kWarpSize`
-    llvm::Value* lane_id;
-  };
 
   // Emits the LLVM values for thread_id, thread_id.x, thread_id.y and lane
   // id.

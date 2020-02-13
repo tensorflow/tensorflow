@@ -891,7 +891,10 @@ inline float32x4_t DivideSumForMeanImpl(
 }
 
 inline int32x4_t RoundToNearest(const float32x4_t input) {
-#if !defined(__aarch64__) && !defined(__SSE4_1__)
+#if defined(__aarch64__) || defined(__SSSE3__)
+  // Note: vcvtnq_s32_f32 is not available in ARMv7
+  return vcvtnq_s32_f32(input);
+#else
   static const float32x4_t zero_val_dup = vdupq_n_f32(0.0f);
   static const float32x4_t point5_val_dup = vdupq_n_f32(0.5f);
   static const float32x4_t minus_point5_val_dup = vdupq_n_f32(-0.5f);
@@ -900,20 +903,18 @@ inline int32x4_t RoundToNearest(const float32x4_t input) {
   const float32x4_t round =
       vbslq_f32(mask, minus_point5_val_dup, point5_val_dup);
   return vcvtq_s32_f32(vaddq_f32(input, round));
-#else
-  return vcvtnq_s32_f32(input);
-#endif  // !defined(__aarch64__)
+#endif  // defined(__aarch64__) || defined(__SSSE3__)
 }
 
 inline uint32x4_t RoundToNearestUnsigned(const float32x4_t input) {
-#if defined(__aarch64__) && !defined(__SSE4_1__)
-  // Note that vcvtnq_u32_f32 is not available on the arm_neon_sse.h.
+#if defined(__aarch64__)
+  // Note that vcvtnq_u32_f32 is not available in ARMv7 or in arm_neon_sse.h.
   return vcvtnq_u32_f32(input);
 #else
   static const float32x4_t point5_val_dup = vdupq_n_f32(0.5f);
 
   return vcvtq_u32_f32(vaddq_f32(input, point5_val_dup));
-#endif  // defined(__aarch64__) && !defined(__SSE4_1__)
+#endif  // defined(__aarch64__)
 }
 
 #endif  // USE_NEON
@@ -1313,6 +1314,8 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
   std::fill_n(output_data, output_rows * output_cols, 0.0f);
 
 #ifdef TFLITE_WITH_RUY_GEMV
+  // The scratch buffer must have the same size as the output.
+  TFLITE_DCHECK_EQ(accum_scratch_shape.FlatSize(), output_shape.FlatSize());
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, filter_rows, filter_cols, gemm_input_data,
       scaling_factors_ptr, /*n_batch=*/gemm_input_rows, accum_scratch,

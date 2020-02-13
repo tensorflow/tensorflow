@@ -250,6 +250,19 @@ void GetInputProperties(const grappler::GraphProperties& graph_properties,
   }
 }
 
+// This function checks if a tensor is compatible with TRT.
+//
+// We check that the shape and datatype is compatible with TensorRT. We also
+// return the corresponding trt_dtype, the trt_dims and the batch_size (latter
+// is only needed in implicit batch mode).
+//
+// The return status indicates wether the tensor is compatible.
+//
+// If validation_only == false, then we make an additional check. In implicit
+// batch mode we check that all inputs for the network has static shape (as
+// required by the TensorRT). The only exception is the batch size, which
+// could be unknown. In contrast, using explicit batch mode this test is not
+// necessary, since any dimension could be unknown in explicit batch mode.
 Status ValidateTensorProperties(const string& producer_node_type,
                                 const DataType dtype,
                                 const PartialTensorShape& shape,
@@ -294,11 +307,7 @@ Status ValidateTensorProperties(const string& producer_node_type,
 
   if (validation_only) return Status::OK();
 
-  // Following checks are only used during TRT engine creation time. In implicit
-  // batch mode we check that all inputs for the network has static shape (as
-  // required by the TensorRT). The only exception is the batch size, which
-  // could be unknown. In contrast, using explicit batch mode this test is not
-  // necessary, since any dimension could be unknown in explicit batch mode.
+  // Following checks are only used during TRT engine creation time.
   if (use_implicit_batch) {
     for (int d = first_trt_dim; d < shape.dims(); ++d) {
       if (shape.dim_size(d) < 0) {
@@ -2239,6 +2248,14 @@ Status ConvertTranspose(OpConverterParams* params) {
         "Transpose at batch dimension is not supported.");
   }
 
+  // TensorRT as of version 7.0.0.11 is slow transposing large tensors.
+  // So check tensor size, and don't convert if it is too large.
+  constexpr int64_t kMaxEfficientTranspose = 2500000;
+  int64_t tensor_size = TrtTensorDimsNumElements(input_tensor->getDimensions());
+  if (tensor_size > kMaxEfficientTranspose) {
+    return errors::Unimplemented(StrCat("Transpose too large:", tensor_size));
+  }
+
   if (params->validation_only) return Status::OK();
 
   // Start conversion.
@@ -2408,7 +2425,7 @@ Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
   }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  // If the remaining dimensions of squeeze operation have dynamic sizes, we
+  // If the remaining dimensions of a squeeze operation have dynamic sizes, we
   // need to use TRT ops to build the result shape for the squeeze operation.
   // This is because IShuffleLayer::setReshapeDimensions treats -1 as a special
   // value.

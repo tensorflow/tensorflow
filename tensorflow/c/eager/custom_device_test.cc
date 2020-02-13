@@ -151,6 +151,17 @@ TEST(CUSTOM_DEVICE, RegisterSimpleDevice) {
   TFE_TensorHandle* hdevice =
       TFE_TensorHandleCopyToDevice(hcpu, context, name, status.get());
   ASSERT_TRUE(arrived);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> matmul(
+      MatMulOp(context, hcpu, hdevice), TFE_DeleteOp);
+  TFE_OpSetDevice(matmul.get(), name, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  TFE_TensorHandle* retval;
+  int num_retvals = 1;
+  TFE_Execute(matmul.get(), &retval, &num_retvals, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+  TFE_DeleteTensorHandle(retval);
   TFE_DeleteTensorHandle(hcpu);
   TFE_DeleteTensorHandle(hdevice);
   TFE_DeleteContext(context);

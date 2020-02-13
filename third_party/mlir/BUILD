@@ -101,23 +101,16 @@ cc_library(
     name = "EDSC",
     srcs = [
         "lib/EDSC/Builders.cpp",
-        "lib/EDSC/Helpers.cpp",
-        "lib/EDSC/Intrinsics.cpp",
     ],
     hdrs = [
         "include/mlir-c/Core.h",
         "include/mlir/EDSC/Builders.h",
-        "include/mlir/EDSC/Helpers.h",
         "include/mlir/EDSC/Intrinsics.h",
     ],
     includes = ["include"],
     deps = [
-        ":AffineOps",
         ":IR",
-        ":LoopOps",
-        ":StandardOps",
         ":Support",
-        ":TransformUtils",
         "@llvm-project//llvm:support",
     ],
 )
@@ -282,6 +275,7 @@ cc_library(
         [
             "lib/Dialect/AffineOps/*.cpp",
             "lib/Dialect/AffineOps/*.h",
+            "lib/Dialect/AffineOps/EDSC/*.cpp",
         ],
         exclude = ["lib/Dialect/**/DialectRegistration.cpp"],
     ) + [
@@ -290,12 +284,14 @@ cc_library(
     ],
     hdrs = glob([
         "include/mlir/Dialect/AffineOps/*.h",
+        "include/mlir/Dialect/AffineOps/EDSC/*.h",
     ]) + [
         "include/mlir/Transforms/SideEffectsInterface.h",
     ],
     includes = ["include"],
     deps = [
         ":AffineOpsIncGen",
+        ":EDSC",
         ":IR",
         ":LoopLikeOpInterfaceIncGen",
         ":StandardOps",
@@ -359,17 +355,20 @@ cc_library(
         [
             "lib/Dialect/LoopOps/*.cpp",
             "lib/Dialect/LoopOps/*.h",
+            "lib/Dialect/LoopOps/EDSC/*.cpp",
         ],
         exclude = ["lib/Dialect/**/DialectRegistration.cpp"],
     ),
     hdrs = glob([
         "include/mlir/Dialect/LoopOps/*.h",
+        "include/mlir/Dialect/LoopOps/EDSC/*.h",
     ]) + [
         "include/mlir/Transforms/LoopLikeInterface.h",
         "include/mlir/Transforms/SideEffectsInterface.h",
     ],
     includes = ["include"],
     deps = [
+        ":EDSC",
         ":IR",
         ":LoopLikeOpInterfaceIncGen",
         ":LoopOpsIncGen",
@@ -392,11 +391,13 @@ cc_library(
         [
             "lib/Dialect/StandardOps/*.cpp",
             "lib/Dialect/StandardOps/*.h",
+            "lib/Dialect/StandardOps/EDSC/*.cpp",
         ],
         exclude = ["lib/Dialect/**/DialectRegistration.cpp"],
     ),
     hdrs = glob([
         "include/mlir/Dialect/StandardOps/*.h",
+        "include/mlir/Dialect/StandardOps/EDSC/*.h",
     ]) + [
         "include/mlir/Analysis/CallInterfaces.h",
         "include/mlir/Transforms/InliningUtils.h",
@@ -405,6 +406,7 @@ cc_library(
     deps = [
         ":CallOpInterfacesIncGen",
         ":CommonFolders",
+        ":EDSC",
         ":IR",
         ":StandardOpsIncGen",
         ":Support",
@@ -426,17 +428,21 @@ cc_library(
         [
             "lib/Dialect/VectorOps/*.cpp",
             "lib/Dialect/VectorOps/*.h",
+            "lib/Dialect/VectorOps/EDSC/*.cpp",
+            "lib/Dialect/VectorOps/EDSC/*.h",
         ],
         exclude = ["lib/Dialect/**/DialectRegistration.cpp"],
     ),
     hdrs = glob([
         "include/mlir/Dialect/VectorOps/*.h",
+        "include/mlir/Dialect/VectorOps/EDSC/*.h",
     ]),
     includes = ["include"],
     deps = [
         ":AffineOps",
         ":Analysis",
         ":DialectUtils",
+        ":EDSC",
         ":IR",
         ":StandardOps",
         ":Support",
@@ -1295,6 +1301,7 @@ cc_library(
     deps = [
         ":AffineOps",
         ":Analysis",
+        ":EDSC",
         ":IR",
         ":LoopLikeOpInterfaceIncGen",
         ":LoopOps",
@@ -2516,10 +2523,12 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
+        ":AffineOps",
         ":EDSC",
         ":IR",
         ":LLVMDialect",
         ":LLVMTransforms",
+        ":LoopOps",
         ":Pass",
         ":StandardOps",
         ":Support",

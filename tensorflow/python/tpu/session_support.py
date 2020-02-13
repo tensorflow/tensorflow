@@ -358,7 +358,7 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
           self._heartbeat_supported = False
       else:
         logging.warn(
-            'No workers support hearbeats. Failure handling will be disabled.')
+            'No workers support heartbeats. Failure handling will be disabled.')
 
   def saver(self):
     if self._saver:

@@ -160,7 +160,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _GetTensorSpec(self, shape, mask, dtype, name):
     # Set dimension i to None if mask[i] == False
     assert len(shape) == len(mask)
-    new_shape = [None if m is False else s for s, m in zip(shape, mask)]
+    new_shape = [s if m else None for s, m in zip(shape, mask)]
     return tensor_spec.TensorSpec(new_shape, dtype, name)
 
   def BuildParams(self, graph_fn, dtype, input_shapes, output_shapes):
@@ -175,10 +175,21 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
     and similarly for output shapes. This means that we leave the first (batch)
     dimension unknown, the rest is just copied from the shapes arg.
+
+    Args:
+      graph_fn: The function to build the graph.
+      dtype: The element type.
+      input_shapes: The input shapes.
+      output_shapes: The output shapes.
+
+    Returns:
+      The test parameters.
     """
 
-    input_mask = [[False] + [True]*(len(shape)-1) for shape in input_shapes]
-    output_mask = [[False] + [True]*(len(shape)-1) for shape in output_shapes]
+    input_mask = [[False] + [True] * (len(shape) - 1) for shape in input_shapes]
+    output_mask = [
+        [False] + [True] * (len(shape) - 1) for shape in output_shapes
+    ]
 
     return self.BuildParamsWithMask(graph_fn, dtype, input_shapes,
                                     output_shapes, input_mask, output_mask)
@@ -195,6 +206,17 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
              with None)
     For example, to define the first two dimension with unknown size use
     input_shapes=[[1,2,1,8]], input_mask=[[False, False, True, True]].
+
+    Args:
+      graph_fn: The function to build the graph.
+      dtype: The element type.
+      input_shapes: The input shapes.
+      output_shapes: The output shapes.
+      input_mask: The input shape masks.
+      output_mask: the output shape masks.
+
+    Returns:
+      The test parameters.
     """
 
     def _ValidateShapes(shapes):

@@ -30,7 +30,7 @@ class EagerOperation {
  public:
   explicit EagerOperation(tensorflow::EagerContext* ctx) : ctx_(*ctx) {}
   ~EagerOperation() {
-    for (tensorflow::TensorHandle* h : inputs_) {
+    for (TensorHandle* h : inputs_) {
       h->Unref();
     }
   }
@@ -39,41 +39,35 @@ class EagerOperation {
   // Clear(), and then Reset(...) with the same arguments that would have
   // been provided to the constructor.
   void Clear() {
-    for (tensorflow::TensorHandle* h : inputs_) {
+    for (TensorHandle* h : inputs_) {
       h->Unref();
     }
     inputs_.clear();
     ClearInferenceState();
   }
 
-  tensorflow::Status Reset(const char* op, const char* raw_device_name,
-                           bool remote, EagerExecutor* executor,
-                           const absl::optional<EagerRemoteFunctionParams>
-                               remote_func_params = absl::nullopt);
+  Status Reset(const char* op, const char* raw_device_name, bool remote,
+               EagerExecutor* executor,
+               const absl::optional<EagerRemoteFunctionParams>
+                   remote_func_params = absl::nullopt);
 
   bool is_function() const { return is_function_; }
 
   tensorflow::EagerContext& EagerContext() { return ctx_; }
 
-  tensorflow::AttrBuilder* MutableAttrs() { return &attrs_; }
-  const tensorflow::AttrBuilder& Attrs() const { return attrs_; }
+  AttrBuilder* MutableAttrs() { return &attrs_; }
+  const AttrBuilder& Attrs() const { return attrs_; }
   const tensorflow::OpDef* OpDef() const { return op_def_; }
 
-  const tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 4>& Inputs()
-      const {
-    return inputs_;
-  }
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 4>*
-  MutableInputs() {
-    return &inputs_;
-  }
+  const gtl::InlinedVector<TensorHandle*, 4>& Inputs() const { return inputs_; }
+  gtl::InlinedVector<TensorHandle*, 4>* MutableInputs() { return &inputs_; }
 
-  void AddInput(tensorflow::TensorHandle* h);
-  void UpdateInput(int i, tensorflow::TensorHandle* h);
-  void ConsumeInput(tensorflow::TensorHandle* h);
+  void AddInput(TensorHandle* h);
+  void UpdateInput(int i, TensorHandle* h);
+  void ConsumeInput(TensorHandle* h);
 
-  const tensorflow::string& Name() const { return attrs_.op_name(); }
-  const tensorflow::AttrTypeMap* AttrTypes() const { return attr_types_; }
+  const string& Name() const { return attrs_.op_name(); }
+  const AttrTypeMap* AttrTypes() const { return attr_types_; }
 
   tensorflow::Device* Device() const { return device_; }
   void SetDevice(tensorflow::Device* device) {
@@ -87,8 +81,7 @@ class EagerOperation {
   const DeviceNameUtils::ParsedName& GetDeviceParsedName() const {
     return device_parsed_name_;
   }
-  tensorflow::Status SetDeviceName(const char* device,
-                                   const bool reset = false);
+  Status SetDeviceName(const char* device, const bool reset = false);
 
   // Indicates whether the op is assigned to a device that is local to the
   // current host.
@@ -116,7 +109,7 @@ class EagerOperation {
   const char* op_name_ = nullptr;
 #endif
 
-  Status MaybeInferSingleInputAttrs(tensorflow::TensorHandle* handle);
+  Status MaybeInferSingleInputAttrs(TensorHandle* handle);
   Status InferInputListAttrs(int num_inputs);
 
  private:
@@ -125,17 +118,15 @@ class EagerOperation {
     inference_arg_idx_ = 0;
     inference_attrs_.clear_no_resize();
   }
-  void InferSingleTypeInputListAttrs(const tensorflow::OpDef::ArgDef& input_def,
-                                     const tensorflow::DataType dtype,
-                                     int num_inputs);
-  void InferMixedTypeInputListAttrs(
-      const tensorflow::OpDef::ArgDef& input_def,
-      const std::vector<tensorflow::DataType>& dtypes);
+  void InferSingleTypeInputListAttrs(const OpDef::ArgDef& input_def,
+                                     const DataType dtype, int num_inputs);
+  void InferMixedTypeInputListAttrs(const OpDef::ArgDef& input_def,
+                                    const std::vector<DataType>& dtypes);
 
   tensorflow::EagerContext& ctx_;
-  tensorflow::AttrBuilder attrs_;
-  const tensorflow::AttrTypeMap* attr_types_;
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 4> inputs_;
+  AttrBuilder attrs_;
+  const AttrTypeMap* attr_types_;
+  gtl::InlinedVector<TensorHandle*, 4> inputs_;
   tensorflow::Device* device_;
   string raw_device_name_;
   string device_name_;
@@ -150,19 +141,18 @@ class EagerOperation {
   const tensorflow::OpDef* op_def_;  // op definition from protobuf
   int inference_arg_idx_;  // arg definition index for the next input to be
                            // added
-  tensorflow::gtl::FlatSet<std::string>
-      inference_attrs_;  // attributes inferred so far
+  gtl::FlatSet<std::string> inference_attrs_;  // attributes inferred so far
 };
 
-inline void EagerOperation::AddInput(tensorflow::TensorHandle* h) {
+inline void EagerOperation::AddInput(TensorHandle* h) {
   h->Ref();
   inputs_.push_back(h);
   attrs_.NumInputs(static_cast<int>(inputs_.size()));
 }
 
-inline void EagerOperation::UpdateInput(int i, tensorflow::TensorHandle* h) {
-  tensorflow::TensorHandle** slot = &inputs_[i];
-  tensorflow::TensorHandle* existing = *slot;
+inline void EagerOperation::UpdateInput(int i, TensorHandle* h) {
+  TensorHandle** slot = &inputs_[i];
+  TensorHandle* existing = *slot;
   if (existing != h) {
     h->Ref();
     existing->Unref();
@@ -170,11 +160,10 @@ inline void EagerOperation::UpdateInput(int i, tensorflow::TensorHandle* h) {
   }
 }
 
-inline void EagerOperation::ConsumeInput(tensorflow::TensorHandle* h) {
+inline void EagerOperation::ConsumeInput(TensorHandle* h) {
   inputs_.push_back(h);
   attrs_.NumInputs(static_cast<int>(inputs_.size()));
 }
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OPERATION_H_

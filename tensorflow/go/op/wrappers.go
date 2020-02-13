@@ -11381,144 +11381,6 @@ func ShardDataset(scope *Scope, input_dataset tf.Output, num_shards tf.Output, i
 	return op.Output(0)
 }
 
-// CollectiveBcastSendAttr is an optional argument to CollectiveBcastSend.
-type CollectiveBcastSendAttr func(optionalAttr)
-
-// CollectiveBcastSendCommunicationHint sets the optional communication_hint attribute to value.
-// If not specified, defaults to "auto"
-func CollectiveBcastSendCommunicationHint(value string) CollectiveBcastSendAttr {
-	return func(m optionalAttr) {
-		m["communication_hint"] = value
-	}
-}
-
-// Broadcasts a tensor value to one or more other devices.
-func CollectiveBcastSend(scope *Scope, input tf.Output, group_size int64, group_key int64, instance_key int64, shape tf.Shape, optional ...CollectiveBcastSendAttr) (data tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"group_size": group_size, "group_key": group_key, "instance_key": instance_key, "shape": shape}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "CollectiveBcastSend",
-		Input: []tf.Input{
-			input,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the truth value of x AND y element-wise.
-//
-// *NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func LogicalAnd(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LogicalAnd",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// CombinedNonMaxSuppressionAttr is an optional argument to CombinedNonMaxSuppression.
-type CombinedNonMaxSuppressionAttr func(optionalAttr)
-
-// CombinedNonMaxSuppressionPadPerClass sets the optional pad_per_class attribute to value.
-//
-// value: If false, the output nmsed boxes, scores and classes
-// are padded/clipped to `max_total_size`. If true, the
-// output nmsed boxes, scores and classes are padded to be of length
-// `max_size_per_class`*`num_classes`, unless it exceeds `max_total_size` in
-// which case it is clipped to `max_total_size`. Defaults to false.
-// If not specified, defaults to false
-func CombinedNonMaxSuppressionPadPerClass(value bool) CombinedNonMaxSuppressionAttr {
-	return func(m optionalAttr) {
-		m["pad_per_class"] = value
-	}
-}
-
-// CombinedNonMaxSuppressionClipBoxes sets the optional clip_boxes attribute to value.
-//
-// value: If true, assume the box coordinates are between [0, 1] and clip the output boxes
-// if they fall beyond [0, 1]. If false, do not do clipping and output the box
-// coordinates as it is.
-// If not specified, defaults to true
-func CombinedNonMaxSuppressionClipBoxes(value bool) CombinedNonMaxSuppressionAttr {
-	return func(m optionalAttr) {
-		m["clip_boxes"] = value
-	}
-}
-
-// Greedily selects a subset of bounding boxes in descending order of score,
-//
-// This operation performs non_max_suppression on the inputs per batch, across
-// all classes.
-// Prunes away boxes that have high intersection-over-union (IOU) overlap
-// with previously selected boxes.  Bounding boxes are supplied as
-// [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
-// diagonal pair of box corners and the coordinates can be provided as normalized
-// (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
-// is agnostic to where the origin is in the coordinate system. Also note that
-// this algorithm is invariant to orthogonal transformations and translations
-// of the coordinate system; thus translating or reflections of the coordinate
-// system result in the same boxes being selected by the algorithm.
-// The output of this operation is the final boxes, scores and classes tensor
-// returned after performing non_max_suppression.
-//
-// Arguments:
-//	boxes: A 4-D float tensor of shape `[batch_size, num_boxes, q, 4]`. If `q` is 1 then
-// same boxes are used for all classes otherwise, if `q` is equal to number of
-// classes, class-specific boxes are used.
-//	scores: A 3-D float tensor of shape `[batch_size, num_boxes, num_classes]`
-// representing a single score corresponding to each box (each row of boxes).
-//	max_output_size_per_class: A scalar integer tensor representing the maximum number of
-// boxes to be selected by non max suppression per class
-//	max_total_size: A scalar representing maximum number of boxes retained over all classes.
-//	iou_threshold: A 0-D float tensor representing the threshold for deciding whether
-// boxes overlap too much with respect to IOU.
-//	score_threshold: A 0-D float tensor representing the threshold for deciding when to remove
-// boxes based on score.
-//
-// Returns:
-//	nmsed_boxes: A [batch_size, max_detections, 4] float32 tensor
-// containing the non-max suppressed boxes.
-//	nmsed_scores: A [batch_size, max_detections] float32 tensor
-// containing the scores for the boxes.
-//	nmsed_classes: A [batch_size, max_detections] float32 tensor
-// containing the classes for the boxes.
-//	valid_detections: A [batch_size] int32 tensor indicating the number of
-// valid detections per batch item. Only the top num_detections[i] entries in
-// nms_boxes[i], nms_scores[i] and nms_class[i] are valid. The rest of the
-// entries are zero paddings.
-func CombinedNonMaxSuppression(scope *Scope, boxes tf.Output, scores tf.Output, max_output_size_per_class tf.Output, max_total_size tf.Output, iou_threshold tf.Output, score_threshold tf.Output, optional ...CombinedNonMaxSuppressionAttr) (nmsed_boxes tf.Output, nmsed_scores tf.Output, nmsed_classes tf.Output, valid_detections tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "CombinedNonMaxSuppression",
-		Input: []tf.Input{
-			boxes, scores, max_output_size_per_class, max_total_size, iou_threshold, score_threshold,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
-}
-
 // NonMaxSuppressionV4Attr is an optional argument to NonMaxSuppressionV4.
 type NonMaxSuppressionV4Attr func(optionalAttr)
 
@@ -15718,6 +15580,13 @@ func HashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, o
 //
 // The pattern follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)
 //
+// Examples:
+//
+// >>> tf.strings.regex_full_match(["TF lib", "lib TF"], ".*lib$")
+// <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True, False])>
+// >>> tf.strings.regex_full_match(["TF lib", "lib TF"], ".*TF$")
+// <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False,  True])>
+//
 // Arguments:
 //	input: A string tensor of the text to be processed.
 //	pattern: A scalar string tensor containing the regular expression to match the input.
@@ -19045,6 +18914,144 @@ func ImageSummary(scope *Scope, tag tf.Output, tensor tf.Output, optional ...Ima
 	return op.Output(0)
 }
 
+// CollectiveBcastSendAttr is an optional argument to CollectiveBcastSend.
+type CollectiveBcastSendAttr func(optionalAttr)
+
+// CollectiveBcastSendCommunicationHint sets the optional communication_hint attribute to value.
+// If not specified, defaults to "auto"
+func CollectiveBcastSendCommunicationHint(value string) CollectiveBcastSendAttr {
+	return func(m optionalAttr) {
+		m["communication_hint"] = value
+	}
+}
+
+// Broadcasts a tensor value to one or more other devices.
+func CollectiveBcastSend(scope *Scope, input tf.Output, group_size int64, group_key int64, instance_key int64, shape tf.Shape, optional ...CollectiveBcastSendAttr) (data tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"group_size": group_size, "group_key": group_key, "instance_key": instance_key, "shape": shape}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CollectiveBcastSend",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// CombinedNonMaxSuppressionAttr is an optional argument to CombinedNonMaxSuppression.
+type CombinedNonMaxSuppressionAttr func(optionalAttr)
+
+// CombinedNonMaxSuppressionPadPerClass sets the optional pad_per_class attribute to value.
+//
+// value: If false, the output nmsed boxes, scores and classes
+// are padded/clipped to `max_total_size`. If true, the
+// output nmsed boxes, scores and classes are padded to be of length
+// `max_size_per_class`*`num_classes`, unless it exceeds `max_total_size` in
+// which case it is clipped to `max_total_size`. Defaults to false.
+// If not specified, defaults to false
+func CombinedNonMaxSuppressionPadPerClass(value bool) CombinedNonMaxSuppressionAttr {
+	return func(m optionalAttr) {
+		m["pad_per_class"] = value
+	}
+}
+
+// CombinedNonMaxSuppressionClipBoxes sets the optional clip_boxes attribute to value.
+//
+// value: If true, assume the box coordinates are between [0, 1] and clip the output boxes
+// if they fall beyond [0, 1]. If false, do not do clipping and output the box
+// coordinates as it is.
+// If not specified, defaults to true
+func CombinedNonMaxSuppressionClipBoxes(value bool) CombinedNonMaxSuppressionAttr {
+	return func(m optionalAttr) {
+		m["clip_boxes"] = value
+	}
+}
+
+// Greedily selects a subset of bounding boxes in descending order of score,
+//
+// This operation performs non_max_suppression on the inputs per batch, across
+// all classes.
+// Prunes away boxes that have high intersection-over-union (IOU) overlap
+// with previously selected boxes.  Bounding boxes are supplied as
+// [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+// diagonal pair of box corners and the coordinates can be provided as normalized
+// (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+// is agnostic to where the origin is in the coordinate system. Also note that
+// this algorithm is invariant to orthogonal transformations and translations
+// of the coordinate system; thus translating or reflections of the coordinate
+// system result in the same boxes being selected by the algorithm.
+// The output of this operation is the final boxes, scores and classes tensor
+// returned after performing non_max_suppression.
+//
+// Arguments:
+//	boxes: A 4-D float tensor of shape `[batch_size, num_boxes, q, 4]`. If `q` is 1 then
+// same boxes are used for all classes otherwise, if `q` is equal to number of
+// classes, class-specific boxes are used.
+//	scores: A 3-D float tensor of shape `[batch_size, num_boxes, num_classes]`
+// representing a single score corresponding to each box (each row of boxes).
+//	max_output_size_per_class: A scalar integer tensor representing the maximum number of
+// boxes to be selected by non max suppression per class
+//	max_total_size: A scalar representing maximum number of boxes retained over all classes.
+//	iou_threshold: A 0-D float tensor representing the threshold for deciding whether
+// boxes overlap too much with respect to IOU.
+//	score_threshold: A 0-D float tensor representing the threshold for deciding when to remove
+// boxes based on score.
+//
+// Returns:
+//	nmsed_boxes: A [batch_size, max_detections, 4] float32 tensor
+// containing the non-max suppressed boxes.
+//	nmsed_scores: A [batch_size, max_detections] float32 tensor
+// containing the scores for the boxes.
+//	nmsed_classes: A [batch_size, max_detections] float32 tensor
+// containing the classes for the boxes.
+//	valid_detections: A [batch_size] int32 tensor indicating the number of
+// valid detections per batch item. Only the top num_detections[i] entries in
+// nms_boxes[i], nms_scores[i] and nms_class[i] are valid. The rest of the
+// entries are zero paddings.
+func CombinedNonMaxSuppression(scope *Scope, boxes tf.Output, scores tf.Output, max_output_size_per_class tf.Output, max_total_size tf.Output, iou_threshold tf.Output, score_threshold tf.Output, optional ...CombinedNonMaxSuppressionAttr) (nmsed_boxes tf.Output, nmsed_scores tf.Output, nmsed_classes tf.Output, valid_detections tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CombinedNonMaxSuppression",
+		Input: []tf.Input{
+			boxes, scores, max_output_size_per_class, max_total_size, iou_threshold, score_threshold,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
+}
+
+// Returns the truth value of x AND y element-wise.
+//
+// *NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func LogicalAnd(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LogicalAnd",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ApproximateEqualAttr is an optional argument to ApproximateEqual.
 type ApproximateEqualAttr func(optionalAttr)
 
@@ -19929,6 +19936,13 @@ func AsStringFill(value string) AsStringAttr {
 // For Unicode, see the
 // [https://www.tensorflow.org/tutorials/representation/unicode](Working with Unicode text)
 // tutorial.
+//
+// Examples:
+//
+// >>> tf.strings.as_string([3, 2])
+// <tf.Tensor: shape=(2,), dtype=string, numpy=array([b'3', b'2'], dtype=object)>
+// >>> tf.strings.as_string([3.1415926, 2.71828], precision=2).numpy()
+// array([b'3.14', b'2.72'], dtype=object)
 func AsString(scope *Scope, input tf.Output, optional ...AsStringAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -25165,6 +25179,49 @@ func AvgPool3DGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksi
 		Type: "AvgPool3DGrad",
 		Input: []tf.Input{
 			orig_input_shape, grad,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Conv3DBackpropFilterAttr is an optional argument to Conv3DBackpropFilter.
+type Conv3DBackpropFilterAttr func(optionalAttr)
+
+// Conv3DBackpropFilterDilations sets the optional dilations attribute to value.
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
+func Conv3DBackpropFilterDilations(value []int64) Conv3DBackpropFilterAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes the gradients of 3-D convolution with respect to the filter.
+//
+// DEPRECATED at GraphDef version 10: Use Conv3DBackpropFilterV2
+//
+// Arguments:
+//	input: Shape `[batch, depth, rows, cols, in_channels]`.
+//	filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
+// `in_channels` must match between `input` and `filter`.
+//	out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+// out_channels]`.
+//	strides: 1-D tensor of length 5. The stride of the sliding window for each
+// dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+//	padding: The type of padding algorithm to use.
+func Conv3DBackpropFilter(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv3DBackpropFilterAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv3DBackpropFilter",
+		Input: []tf.Input{
+			input, filter, out_backprop,
 		},
 		Attrs: attrs,
 	}
@@ -33948,49 +34005,6 @@ func SparseReduceMax(scope *Scope, input_indices tf.Output, input_values tf.Outp
 	return op.Output(0)
 }
 
-// Conv3DBackpropFilterAttr is an optional argument to Conv3DBackpropFilter.
-type Conv3DBackpropFilterAttr func(optionalAttr)
-
-// Conv3DBackpropFilterDilations sets the optional dilations attribute to value.
-// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
-func Conv3DBackpropFilterDilations(value []int64) Conv3DBackpropFilterAttr {
-	return func(m optionalAttr) {
-		m["dilations"] = value
-	}
-}
-
-// Computes the gradients of 3-D convolution with respect to the filter.
-//
-// DEPRECATED at GraphDef version 10: Use Conv3DBackpropFilterV2
-//
-// Arguments:
-//	input: Shape `[batch, depth, rows, cols, in_channels]`.
-//	filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
-// `in_channels` must match between `input` and `filter`.
-//	out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
-// out_channels]`.
-//	strides: 1-D tensor of length 5. The stride of the sliding window for each
-// dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-//	padding: The type of padding algorithm to use.
-func Conv3DBackpropFilter(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv3DBackpropFilterAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Conv3DBackpropFilter",
-		Input: []tf.Input{
-			input, filter, out_backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // QuantizedInstanceNormAttr is an optional argument to QuantizedInstanceNorm.
 type QuantizedInstanceNormAttr func(optionalAttr)
 
@@ -38707,6 +38721,16 @@ func UnicodeTranscodeReplaceControlCharacters(value bool) UnicodeTranscodeAttr {
 // with an explicit endianness, the BOM is not considered part of the string itself
 // but as metadata, and so is not preserved in the output.
 //
+// Examples:
+//
+// >>> tf.strings.unicode_transcode(["Hello", "TensorFlow", "2.x"], "UTF-8", "UTF-16-BE")
+// <tf.Tensor: shape=(3,), dtype=string, numpy=
+// array([b'\x00H\x00e\x00l\x00l\x00o',
+//        b'\x00T\x00e\x00n\x00s\x00o\x00r\x00F\x00l\x00o\x00w',
+//        b'\x002\x00.\x00x'], dtype=object)>
+// >>> tf.strings.unicode_transcode(["A", "B", "C"], "US ASCII", "UTF-8").numpy()
+// array([b'A', b'B', b'C'], dtype=object)
+//
 // Arguments:
 //	input: The text to be processed. Can have any shape.
 //	input_encoding: Text encoding of the input strings. This is any of the encodings supported
@@ -39027,6 +39051,11 @@ func DecodeCompressed(scope *Scope, bytes tf.Output, optional ...DecodeCompresse
 // The additional robustness comes at a cost of roughly 4x higher compute
 // time than `tf.string_to_hash_bucket_fast`.
 //
+// Examples:
+//
+// >>> tf.strings.to_hash_bucket_strong(["Hello", "TF"], 3, [1, 2]).numpy()
+// array([2, 0])
+//
 // Arguments:
 //	input: The strings to assign a hash bucket.
 //	num_buckets: The number of buckets.
@@ -39130,6 +39159,11 @@ func ResourceApplyAdadelta(scope *Scope, var_ tf.Output, accum tf.Output, accum_
 // to the same bucket. To prevent this problem, use a strong hash function with
 // `tf.string_to_hash_bucket_strong`.
 //
+// Examples:
+//
+// >>> tf.strings.to_hash_bucket_fast(["Hello", "TensorFlow", "2.x"], 3).numpy()
+// array([0, 2, 2])
+//
 // Arguments:
 //	input: The strings to assign a hash bucket.
 //	num_buckets: The number of buckets.
@@ -39167,6 +39201,12 @@ func StringJoinSeparator(value string) StringJoinAttr {
 // Joins the strings in the given list of string tensors into one tensor;
 //
 // with the given separator (default is an empty separator).
+//
+// Examples:
+//
+// >>> s = ["hello", "world", "tensorflow"]
+// >>> tf.strings.join(s, " ")
+// <tf.Tensor: shape=(), dtype=string, numpy=b'hello world tensorflow'>
 //
 // Arguments:
 //	inputs: A list of string tensors.  The tensors must all have the same shape,
@@ -39985,6 +40025,11 @@ func OptionalGetValue(scope *Scope, optional tf.Output, output_types []tf.DataTy
 // Unicode (ICU) UScriptCode values. See http://icu-project.org/apiref/icu4c/uscript_8h.html.
 // Returns -1 (USCRIPT_INVALID_CODE) for invalid codepoints. Output shape will
 // match input shape.
+//
+// Examples:
+//
+// >>> tf.strings.unicode_script([1, 31, 38])
+// <tf.Tensor: shape=(3,), dtype=int32, numpy=array([0, 0, 0], dtype=int32)>
 //
 // Arguments:
 //	input: A Tensor of int32 Unicode code points.
@@ -42883,6 +42928,56 @@ func HSVToRGB(scope *Scope, images tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// Returns the truth value of `NOT x` element-wise.
+//
+// Arguments:
+//	x: A `Tensor` of type `bool`.
+//
+// Returns A `Tensor` of type `bool` with the same shape as `x`. The logical negation of `x`.
+func LogicalNot(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LogicalNot",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Outputs deterministic pseudorandom random numbers from a Poisson distribution.
+//
+// Outputs random values from a Poisson distribution.
+//
+// The outputs are a deterministic function of `shape`, `seed`, and `lam`.
+//
+// Arguments:
+//	shape: The shape of the output tensor.
+//	seed: 2 seeds (shape [2]).
+//	lam: The rate of the Poisson distribution. Shape must match the rightmost dimensions
+// of `shape`.
+//	dtype: The type of the output.
+//
+// Returns Random values with specified shape.
+func StatelessRandomPoisson(scope *Scope, shape tf.Output, seed tf.Output, lam tf.Output, dtype tf.DataType) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype}
+	opspec := tf.OpSpec{
+		Type: "StatelessRandomPoisson",
+		Input: []tf.Input{
+			shape, seed, lam,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebugAttr is an optional argument to RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebug.
 type RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebugAttr func(optionalAttr)
 
@@ -43582,6 +43677,11 @@ func ResourceApplyMomentum(scope *Scope, var_ tf.Output, accum tf.Output, lr tf.
 //	input: A string `Tensor` of any shape.
 //
 // Returns A string `Tensor` of the same shape as the input.
+//
+// Examples:
+//
+// >>> tf.strings.strip(["\nTensorFlow", "     The python library    "]).numpy()
+// array([b'TensorFlow', b'The python library'], dtype=object)
 func StringStrip(scope *Scope, input tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -44424,26 +44524,6 @@ func Lu(scope *Scope, input tf.Output, optional ...LuAttr) (lu tf.Output, p tf.O
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// Returns the truth value of `NOT x` element-wise.
-//
-// Arguments:
-//	x: A `Tensor` of type `bool`.
-//
-// Returns A `Tensor` of type `bool` with the same shape as `x`. The logical negation of `x`.
-func LogicalNot(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LogicalNot",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Applies the given transform to each of the images.

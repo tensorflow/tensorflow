@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
@@ -36,6 +37,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -53,10 +55,14 @@ struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
-  bool isLegalToInline(Operation *, Region *,
+  bool isLegalToInline(Operation *op, Region *dest,
                        BlockAndValueMapping &) const final {
     // No TFLite op restricts inlining today, revise as needed in the future.
     return true;
+  }
+  bool isLegalToInline(Region *dest, Region *src,
+                       BlockAndValueMapping &valueMapping) const final {
+    return isa<WhileOp>(dest->getParentOp());
   }
 };
 
@@ -1737,47 +1743,105 @@ static LogicalResult Verify(TransposeOp op) {
   return success();
 }
 
+LogicalResult Verify(WhileOp op) {
+  if (op.getNumOperands() != op.getNumResults())
+    return op.emitOpError(llvm::formatv(
+        "number of operands does not match number of results ({0} != {1})",
+        op.getNumOperands(), op.getNumResults()));
+  // TODO(jpienaar): Verify operand, result & block arguments types
+  return success();
+}
+
 namespace {
-struct WhileResultOperandsMatch : public OpRewritePattern<WhileOp> {
+// Canonicalize While op so that results and operands match and external values
+// are via implicit capture rather than via block args.
+struct WhileResultOperandsMatchAndImplicitCapture
+    : public OpRewritePattern<WhileOp> {
   using OpRewritePattern<WhileOp>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(WhileOp while_op,
                                      PatternRewriter &rewriter) const override {
-    auto size = while_op.body().front().getArguments().size();
-    Operation *op = while_op.getOperation();
-    auto old_size = op->getNumResults();
-    // No change needed as the number of operands match the number of results.
-    if (size == old_size) return matchFailure();
+    // Replace values simply passed through the body with extern values. The
+    // block arguments of body and while match and so the corresponding cond
+    // argument can be easily found.
+    bool unchanged = true;
+    auto &body_block = while_op.body().front();
+    auto &cond_block = while_op.cond().front();
+    auto &yield = *body_block.getTerminator();
+    for (auto ba : body_block.getArguments()) {
+      if (ba == yield.getOperand(ba.getArgNumber())) {
+        unchanged = false;
+        auto value = while_op.getOperand(ba.getArgNumber());
+        ba.replaceAllUsesWith(value);
+        cond_block.getArgument(ba.getArgNumber()).replaceAllUsesWith(value);
+      }
+    }
 
-    // Collect the new types by combining results of old op with additional
-    // operand results.
+    // The While ops operands and result types need to match
+    SmallVector<Value, 4> new_operands;
+    SmallVector<Value, 4> new_body_yield;
+    SmallVector<bool, 4> const_operand(while_op.getNumOperands(), false);
     llvm::SmallVector<Type, 4> types;
-    types.reserve(size);
-    for (auto type : while_op.getResultTypes()) types.push_back(type);
-    for (auto arg : while_op.body().front().getArguments().drop_front(old_size))
-      types.push_back(arg.getType());
-    // Collect operands.
-    llvm::SmallVector<Value, 8> operands;
-    operands.reserve(while_op.getNumOperands());
-    for (auto operand : while_op.getOperands()) operands.push_back(operand);
+    new_operands.reserve(while_op.getNumOperands());
+    new_body_yield.reserve(while_op.getNumOperands());
+    types.reserve(while_op.getNumOperands());
+
+    // Remove block arguments not used in either cond or body. This leaves the
+    // block arguments of body and cond matching still.
+    for (auto it :
+         llvm::zip(body_block.getArguments(), cond_block.getArguments())) {
+      int index = std::get<0>(it).getArgNumber();
+      auto value = while_op.getOperand(index);
+      if (std::get<0>(it).use_empty() && std::get<1>(it).use_empty() &&
+          // This could be relaxed and casts inserted.
+          while_op.getResult(index).getType() == value.getType()) {
+        unchanged = false;
+        body_block.eraseArgument(index);
+        cond_block.eraseArgument(index);
+
+        // Mark operand as constant and replace all uses with input to while.
+        while_op.getResult(index).replaceAllUsesWith(value);
+        const_operand[index] = true;
+      } else {
+        new_operands.push_back(value);
+        types.push_back(value.getType());
+        new_body_yield.push_back(yield.getOperand(index));
+      }
+    }
+
+    // Done if no values removed from blocks and operands & results match.
+    if (unchanged) return matchFailure();
 
     // Replace with new While with matching operands and results.
+    Operation *op = while_op.getOperation();
     Operation *new_op = rewriter.insert(
-        Operation::create(op->getLoc(), op->getName(), types, operands,
+        Operation::create(op->getLoc(), op->getName(), types, new_operands,
                           op->getAttrs(), {}, /*numRegions=*/2,
                           /*resizableOperandList=*/true));
+
     for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
-    rewriter.replaceOp(op,
-                       new_op->getResults().take_front(op->getNumResults()));
+    int index = 0;
+    for (int i = 0, e = op->getNumResults(); i < e; ++i) {
+      if (const_operand[i]) continue;
+      op->getResult(index).replaceAllUsesWith(new_op->getResult(index));
+      ++index;
+    }
+    rewriter.eraseOp(op);
+
+    Block &new_body_block = cast<WhileOp>(new_op).body().front();
+    rewriter.setInsertionPointToEnd(&new_body_block);
+    rewriter.replaceOpWithNewOp<YieldOp>(new_body_block.getTerminator(),
+                                         new_body_yield);
 
     return matchSuccess();
   }
 };
+
 }  // namespace
 
 void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  results.insert<WhileResultOperandsMatch>(context);
+  results.insert<WhileResultOperandsMatchAndImplicitCapture>(context);
 }
 
 Region &WhileOp::getLoopBody() { return body(); }

@@ -377,8 +377,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* weights_time =
       GetInput(context, node, kWeightsTimeTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
-  TfLiteTensor* activation_state =
-      &context->tensors[node->inputs->data[kInputActivationStateTensor]];
+  const TfLiteTensor* activation_state =
+      GetInput(context, node, kInputActivationStateTensor);
 
   // Define input constants based on input tensor definition above:
   const int rank = params->rank;
@@ -491,7 +491,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetInput(context, node, kWeightsTimeTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* activation_state =
-      &context->tensors[node->inputs->data[kInputActivationStateTensor]];
+      GetVariableInput(context, node, kInputActivationStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   const bool is_full_integer = input->type == kTfLiteInt8;
@@ -550,8 +550,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     default:
-      context->ReportError(context, "Type %s not currently supported.",
-                           TfLiteTypeGetName(weights_feature->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
+                         TfLiteTypeGetName(weights_feature->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

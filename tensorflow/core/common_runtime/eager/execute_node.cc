@@ -18,7 +18,8 @@ limitations under the License.
 
 namespace tensorflow {
 Status ExecuteNodeArgs::Init(
-    EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs) {
+    EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
+    const core::RefCountPtr<KernelAndDevice>& kernel) {
   // If there are multiple references to a TensorHandle in 'op_inputs' we must
   // increment the reference count of the corresponding Tensor or risk it being
   // overwritten during kernel execution. The reference count is incremented
@@ -33,7 +34,9 @@ Status ExecuteNodeArgs::Init(
     for (int i = 0; i < n_inputs; ++i) {
       TensorHandle* in = op_inputs_array[i];
       if (!in->IsRemote()) {
-        TF_RETURN_IF_ERROR(in->TensorValue(&tensor_args_array[i]));
+        TF_RETURN_IF_ERROR(
+            in->TensorValue(&tensor_args_array[i],
+                            ctx->CanonicalDevice(kernel->InputDevice(i))));
         if (!in->RefCountIsOne()) {
           if (first_index_that_needs_protecting < 0) {
             first_index_that_needs_protecting = i;
@@ -54,7 +57,8 @@ Status ExecuteNodeArgs::Init(
         TensorHandle* in = op_inputs_array[i];
         if (!in->IsRemote() && !in->RefCountIsOne()) {
           const Tensor* input_tensor = nullptr;
-          TF_RETURN_IF_ERROR(op_inputs_array[i]->Tensor(&input_tensor));
+          TF_RETURN_IF_ERROR(op_inputs_array[i]->TensorFromDevice(
+              ctx->CanonicalDevice(kernel->InputDevice(i)), &input_tensor));
           protected_tensors_.emplace_back(TensorReference(*input_tensor));
           --num_protected_tensors;
         }

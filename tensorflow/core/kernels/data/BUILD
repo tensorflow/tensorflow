@@ -483,6 +483,7 @@ tf_cc_test(
         ":dataset_test_base",
         ":dataset_utils",
         ":iterator_ops",
+        ":name_utils",
         ":parallel_map_dataset_op",
         ":range_dataset_op",
         ":stats_utils",

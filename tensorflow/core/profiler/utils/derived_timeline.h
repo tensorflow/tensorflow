@@ -26,10 +26,10 @@ typedef std::function<absl::string_view(absl::string_view hlo_module_name,
                                         absl::string_view hlo_op)>
     SymbolResolver;
 
-// Derives "Step Info", "Tensorflow Ops", "HLO Ops" and "HLO Module" lines in
+// Derives "Step Info", "Tensorflow Ops", "XLA Ops" and "XLA Module" lines in
 // an NVIDIA_GPU device trace from data passed as ScopedAnnotations and stored
 // as XStats in XEvents corresponding to GPU Kernels. Consecutive annotations
-// with the same value are merged into a single event.
+// with the same value are merged into a single event except for XLA modules.
 // The device_trace is both input and output.
 void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                  const EventGroupNameMap& event_group_name_map,

@@ -18,7 +18,7 @@ limitations under the License.
 #include <Python.h>
 
 // clang-format: off
-// Must be inlcluded first.
+// Must be included first.
 #include "tensorflow/python/lib/core/numpy.h"
 // clang-format: on
 

@@ -37,7 +37,7 @@ def jacobian(output, inputs, use_pfor=True, parallel_iterations=None):
       parallel. This knob can be used to control the total memory usage.
 
   Returns:
-    A tensor or a nested strucutre of tensors with the same structure as
+    A tensor or a nested structure of tensors with the same structure as
     `inputs`. Each entry is the jacobian of `output` w.r.t. to the corresponding
     value in `inputs`. If output has shape [y_1, ..., y_n] and inputs_i has
     shape [x_1, ..., x_m], the corresponding jacobian has shape

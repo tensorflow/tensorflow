@@ -334,6 +334,27 @@ bool GraphDefBuilderWrapper::HasAttr(const string& name,
   return HasAttr(op_def, attr_name);
 }
 
+Status IteratorBase::InitializeBase(IteratorContext* ctx,
+                                    const IteratorBase* parent,
+                                    const string& output_prefix) {
+  parent_ = parent;
+  id_ =
+      Hash64CombineUnordered(Hash64(prefix()), reinterpret_cast<uint64>(this));
+  if (parent_) {
+    parent_id_ = Hash64CombineUnordered(Hash64(parent_->prefix()),
+                                        reinterpret_cast<uint64>(parent_));
+  }
+  if (const auto& model = ctx->model()) {
+    auto factory = [ctx, this](model::Node::Args args) {
+      return CreateNode(ctx, std::move(args));
+    };
+    model->AddNode(std::move(factory), prefix(), output_prefix, &node_);
+    cleanup_fns_.push_back(
+        [model, prefix = prefix()]() { model->RemoveNode(prefix); });
+  }
+  return Status::OK();
+}
+
 int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
   int64 allocated_bytes = 0;
   DatasetBase* dataset;
@@ -396,17 +417,10 @@ Status DatasetBase::MakeIterator(
     const string& output_prefix,
     std::unique_ptr<IteratorBase>* iterator) const {
   *iterator = MakeIteratorInternal(output_prefix);
-  if (parent) {
-    (*iterator)->SetParent(parent);
+  Status s = (*iterator)->InitializeBase(ctx, parent, output_prefix);
+  if (s.ok()) {
+    s.Update((*iterator)->Initialize(ctx));
   }
-  if (const auto& model = ctx->model()) {
-    const string& prefix = (*iterator)->prefix();
-    (*iterator)->SetNode(model->AddNode(MakeNodeFactory(ctx, iterator->get()),
-                                        prefix, output_prefix));
-    (*iterator)->AddCleanupFunction(
-        [model, prefix]() { model->RemoveNode(prefix); });
-  }
-  Status s = (*iterator)->Initialize(ctx);
   if (!s.ok()) {
     // Reset the iterator to avoid returning an uninitialized iterator.
     iterator->reset();

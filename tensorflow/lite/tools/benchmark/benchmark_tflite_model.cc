@@ -63,8 +63,13 @@ constexpr int kOpProfilingEnabledDefault = false;
 // Dumps profiling events if profiling is enabled.
 class ProfilingListener : public BenchmarkListener {
  public:
-  ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
-      : interpreter_(interpreter), profiler_(max_num_entries) {
+  ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries,
+                    std::string csv_file_path = "")
+      : interpreter_(interpreter),
+        profiler_(max_num_entries),
+        run_summarizer_(!csv_file_path.empty()),
+        init_summarizer_(!csv_file_path.empty()),
+        csv_file_path_(csv_file_path) {
     TFLITE_BENCHMARK_CHECK(interpreter);
     interpreter_->SetProfiler(&profiler_);
 
@@ -84,10 +89,17 @@ class ProfilingListener : public BenchmarkListener {
   void OnBenchmarkEnd(const BenchmarkResults& results) override;
 
  private:
+  void WriteOutput(const std::string& header, const string& data,
+                   std::ostream* stream) {
+    (*stream) << header << std::endl;
+    (*stream) << data << std::endl;
+  }
+
   Interpreter* interpreter_;
   profiling::BufferedProfiler profiler_;
   profiling::ProfileSummarizer run_summarizer_;
   profiling::ProfileSummarizer init_summarizer_;
+  std::string csv_file_path_;
 };
 
 // Dumps ruy profiling events if the ruy profiler is enabled.
@@ -119,14 +131,20 @@ void ProfilingListener::OnSingleRunStart(RunType run_type) {
 }
 
 void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
+  std::ofstream output_file(csv_file_path_);
+  std::ostream* output_stream = nullptr;
+  if (output_file.good()) {
+    output_stream = &output_file;
+  }
   if (init_summarizer_.HasProfiles()) {
-    TFLITE_LOG(INFO) << "Profiling Info for Benchmark Initialization:";
-    TFLITE_LOG(INFO) << init_summarizer_.GetOutputString();
+    WriteOutput("Profiling Info for Benchmark Initialization:",
+                init_summarizer_.GetOutputString(),
+                output_stream == nullptr ? &TFLITE_LOG(INFO) : output_stream);
   }
   if (run_summarizer_.HasProfiles()) {
-    TFLITE_LOG(INFO)
-        << "Operator-wise Profiling Info for Regular Benchmark Runs:";
-    TFLITE_LOG(INFO) << run_summarizer_.GetOutputString();
+    WriteOutput("Operator-wise Profiling Info for Regular Benchmark Runs:",
+                run_summarizer_.GetOutputString(),
+                output_stream == nullptr ? &TFLITE_LOG(INFO) : output_stream);
   }
 }
 
@@ -272,6 +290,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
       BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
   default_params.AddParam("max_profiling_buffer_entries",
                           BenchmarkParam::Create<int32_t>(1024));
+  default_params.AddParam("profiling_output_csv_file",
+                          BenchmarkParam::Create<std::string>(""));
 
   for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
     delegate_util->AddParams(&default_params);
@@ -310,7 +330,11 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                        "require delegate to run the entire graph"),
       CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
       CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
-                          "max profiling buffer entries")};
+                          "max profiling buffer entries"),
+      CreateFlag<std::string>(
+          "profiling_output_csv_file", &params_,
+          "File path to export profile data as CSV, if not set "
+          "prints to stdout.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -344,6 +368,9 @@ void BenchmarkTfLiteModel::LogParams() {
                    << params_.Get<bool>("enable_op_profiling") << "]";
   TFLITE_LOG(INFO) << "Max profiling buffer entries: ["
                    << params_.Get<int32_t>("max_profiling_buffer_entries")
+                   << "]";
+  TFLITE_LOG(INFO) << "CSV File to export profiling data to: ["
+                   << params_.Get<std::string>("profiling_output_csv_file")
                    << "]";
 
   for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
@@ -622,8 +649,8 @@ std::unique_ptr<BenchmarkListener>
 BenchmarkTfLiteModel::MayCreateProfilingListener() const {
   if (!params_.Get<bool>("enable_op_profiling")) return nullptr;
   return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
-      interpreter_.get(),
-      params_.Get<int32_t>("max_profiling_buffer_entries")));
+      interpreter_.get(), params_.Get<int32_t>("max_profiling_buffer_entries"),
+      params_.Get<std::string>("profiling_output_csv_file")));
 }
 
 TfLiteStatus BenchmarkTfLiteModel::RunImpl() { return interpreter_->Invoke(); }

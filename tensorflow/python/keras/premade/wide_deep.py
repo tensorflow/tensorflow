@@ -129,7 +129,7 @@ class WideDeepModel(keras_training.Model):
     self._check_trainable_weights_consistency()
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # train function even if one exists already. This is because
-    # `_feed_sample_weights` list has been updated on re-copmpile.
+    # `_feed_sample_weights` list has been updated on re-compile.
     if getattr(self, 'train_function', None) is None or has_recompiled:
       # Restore the compiled trainable state.
       current_trainable_state = self._get_trainable_state()

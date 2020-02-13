@@ -370,6 +370,9 @@ struct Resize2DAttributes {
   // If true, the centers of the 4 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
   bool align_corners = false;
+  // half_pixel_centers assumes pixels are of half the actual dimensions, and
+  // yields more accurate resizes. Only applicable to BILINEAR sampling.
+  bool half_pixel_centers = false;
 };
 
 // TODO(b/147771327): rename to Resize3D

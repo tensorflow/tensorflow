@@ -98,15 +98,16 @@ class ImplicitBatchTest(TrtModeTestBase):
 class ExplicitBatchTest(TrtModeTestBase):
 
   def GetParams(self):
-    """ We specify input/output mask with static (known) shapes """
-    return self.BuildParamsWithMask(self.GraphFn, dtypes.float32, [[1, 12, 5]],
-                                    [[12, 5]], input_mask=[[True, True, True]],
-                                    output_mask=[[True, True]])
+    """We specify input/output masks with static (known) shapes."""
+    return self.BuildParamsWithMask(
+        self.GraphFn,
+        dtypes.float32, [[1, 12, 5]], [[12, 5]],
+        input_mask=[[True, True, True]],
+        output_mask=[[True, True]])
 
   def GetConversionParams(self, run_params):
     """Return a TrtConversionParams for test that enables explicit batch."""
-    return super(ExplicitBatchTest, self).GetConversionParams(run_params,
-                                                              False)
+    return super(ExplicitBatchTest, self).GetConversionParams(run_params, False)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Check that the expected engine is built.
@@ -123,29 +124,26 @@ class ExplicitBatchTest(TrtModeTestBase):
 
 
 class DynamicShapesTest(TrtModeTestBase):
-  """ Test with dynamic input shapes.
+  """Test with dynamic input shapes.
 
   DynamicShapesTest is different from ExplicitBatchTest in that it uses input
   and output masks to change the input and output shapes to unknown shapes.
   """
 
   def GetParams(self):
-    """ We specify input/output mask with dynamic (unknown) shapes. """
-    return self.BuildParamsWithMask(self.GraphFn, dtypes.float32, [[1, 12, 5]],
-                                    [[12, 5]],
-                                    input_mask=[[False, False, False]],
-                                    output_mask=[[False, False]])
+    """We specify input/output mask with dynamic (unknown) shapes."""
+    return self.BuildParamsWithMask(
+        self.GraphFn,
+        dtypes.float32, [[1, 12, 5]], [[12, 5]],
+        input_mask=[[False, False, False]],
+        output_mask=[[False, False]])
 
   def GetConversionParams(self, run_params):
-    """Return a TrtConversionParams for test that enables explicit batch. """
-    return super(DynamicShapesTest, self).GetConversionParams(run_params,
-                                                              False)
+    """Return a TrtConversionParams for test that enables explicit batch."""
+    return super(DynamicShapesTest, self).GetConversionParams(run_params, False)
 
   def ExpectedEnginesToBuild(self, run_params):
-    """Return the expected engines to build.
-
-    In explicit batch mode the whole graph is converted using a single engine.
-    """
+    """Return the expected engines to build."""
     return ["TRTEngineOp_0"]
 
 

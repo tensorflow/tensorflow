@@ -101,8 +101,7 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kMemcpyDetails)),
                         memcpy_details);
-  }
-  if (event.type == CuptiTracerEventType::MemoryAlloc) {
+  } else if (event.type == CuptiTracerEventType::MemoryAlloc) {
     std::string memalloc_details =
         absl::StrFormat("num_bytes:%u", event.memalloc_info.num_bytes);
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
@@ -126,6 +125,13 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
             *plane->GetOrCreateStatMetadata(metadata.key), metadata.value);
       }
     }
+  }
+  // TODO(profiler): we should get rid of kLevel0, it is based on the assumption
+  // that those op-related ScopedAnnotation are at the very TOP level.
+  if (!annotation_stack.empty()) {
+    xevent.AddStatValue(
+        *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
+        annotation_stack.begin()->name);
   }
 }
 

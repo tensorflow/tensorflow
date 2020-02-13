@@ -204,8 +204,8 @@ class TRTEngineCacheResource : public ResourceBase {
   std::unique_ptr<CalibrationContext> calib_ctx_;
 
   // This object maintains all the optimization profiles during profile
-  // generation and engine build. We currently don't use this object during
-  // runtime, instead we deserialize the profiles out of the cached engines.
+  // generation and engine build. During runtime the list of profiles is used to
+  // look up a matching profile for the input data.
   TrtShapeOptimizationProfile profiles_;
 };
 

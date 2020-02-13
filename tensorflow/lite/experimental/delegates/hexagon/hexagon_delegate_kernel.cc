@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate_kernel.h"
 
-#include <algorithm>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
@@ -57,15 +56,6 @@ inline uint64_t GetCycles(const hexagon_nn_perfinfo& perf_info) {
   res |= perf_info.counter_lo;
   return res;
 }
-
-// Comparator for hexagon_nn_perfinfo in descending order based on
-// total cycles consumed.
-struct PerfInfoCmp {
-  bool operator()(const hexagon_nn_perfinfo& a,
-                  const hexagon_nn_perfinfo& b) const {
-    return GetCycles(a) > GetCycles(b);
-  }
-};
 }  // namespace
 
 void HexagonDelegateKernel::ReportError(TfLiteContext* context,
@@ -193,7 +183,7 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
     return kTfLiteError;
   }
   if (params_.print_graph_profile) {
-    PrintPerformanceData();
+    PrintPerformanceData(reinterpret_cast<Profiler*>(context->profiler));
   }
   return kTfLiteOk;
 }
@@ -285,33 +275,23 @@ void HexagonDelegateKernel::PrintLog() {
   fflush(stdout);
 }
 
-void HexagonDelegateKernel::PrintPerformanceData() {
+void HexagonDelegateKernel::PrintPerformanceData(Profiler* profiler) {
+  if (profiler == nullptr) {
+    return;
+  }
   const int kMaxNodes = 2048;
   const int kMaxNameLen = 100;
   std::vector<hexagon_nn_perfinfo> perf_data(kMaxNodes);
   std::vector<char> op_name(kMaxNameLen);
-  uint64_t total_cycles = 0;
-  uint64_t cum_cycles = 0;
   uint64_t counter = 0;
   unsigned int num_nodes;
-  printf("------- Performance Debug Data Start -------\n");
   if (hexagon_nn_->hexagon_nn_get_perfinfo(graph_id_, perf_data.data(),
                                            kMaxNodes, &num_nodes) != 0) {
     printf("Failed fetching perf data.\n");
     return;
   }
-  printf("Total %d nodes.\n", num_nodes);
-  std::sort(perf_data.begin(), perf_data.begin() + num_nodes, PerfInfoCmp());
-  for (int i = 0; i < num_nodes; i++) {
-    total_cycles += GetCycles(perf_data[i]);
-  }
-  printf("Total %lu cycles\n", static_cast<unsigned long>(total_cycles));
-  printf(
-      "Node ID,\tOP Name,\tExecutions,\tCycles,\t%% of total,\tCummulative "
-      "cycles,\tCummulative %%\n");
   for (int i = 0; i < num_nodes; i++) {
     counter = GetCycles(perf_data[i]);
-    cum_cycles += counter;
     int op_type_id = builder_->GetOpTypeId(perf_data[i].node_id);
     if (op_type_id >= 0 && hexagon_nn_->hexagon_nn_op_id_to_name(
                                op_type_id, op_name.data(), kMaxNameLen) != 0) {
@@ -319,14 +299,13 @@ void HexagonDelegateKernel::PrintPerformanceData() {
              op_type_id);
       continue;
     }
-    printf("0x%x,\t%s,\t%d,\t%lu,\t%f %%,\t%lu,\t%f %%\n", perf_data[i].node_id,
-           (op_type_id < 0 ? "" : op_name.data()), perf_data[i].executions,
-           static_cast<unsigned long>(counter),
-           100.0 * (1.0 * counter / total_cycles),
-           static_cast<unsigned long>(cum_cycles),
-           100.0 * (1.0 * cum_cycles / total_cycles));
+    int node_id = builder_->GetTFLiteNodeID(perf_data[i].node_id);
+    if (node_id != -1 && op_type_id >= 0) {
+      profiler->AddEvent((op_type_id < 0 ? "" : op_name.data()),
+                         Profiler::EventType::OPERATOR_INVOKE_EVENT, node_id, 0,
+                         counter);
+    }
   }
-  printf("------- Performance Debug Data End -------\n");
 }
 
 void HexagonDelegateKernel::PrintDebuggingGraph() {

@@ -229,7 +229,7 @@ class SliceAggregator(Aggregator):
   There is, however, some scheduling and context switching overhead which will
   offset the gains from pipelining the slice assignment. Below a given threshold
   it is faster to simply assign in the main thread rather than enqueue the
-  assigmnet in a side thread. The exact threshold will vary from system to
+  assignment in a side thread. The exact threshold will vary from system to
   system, but the time is not very sensitive to the exact transition so a value
   of 2 ** 14 was chosen which should be reasonable on most systems.
   """
@@ -1506,7 +1506,7 @@ def prepare_loss_functions(loss, output_names):
 def prepare_loss_weights(training_endpoints, loss_weights=None):
   """Converts loss weights to a list of loss weights.
 
-  The result loss weights will be populated on the trainging endpoint.
+  The result loss weights will be populated on the training endpoint.
 
   Arguments:
       training_endpoints: List of model training endpoints.

@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
+#include "tensorflow/core/profiler/rpc/profiler_server.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -110,6 +111,8 @@ EagerContext::EagerContext(
 
 #if !defined(IS_MOBILE_PLATFORM)
   context_id_ = kInvalidContextId;
+  profiler_server_ = absl::make_unique<ProfilerServer>();
+  profiler_server_->MaybeStartProfilerServer();
 #endif  // IS_MOBILE_PLATFORM
 
   std::unique_ptr<DeviceResolverInterface> drl(

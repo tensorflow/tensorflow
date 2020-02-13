@@ -169,7 +169,7 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Array of all input shapes, collected from the input_shapes attribute when
   // constructing the TRTEngineOp. The input_shapes attribute is set during
-  // graph conversion time. This data is used to retrive which input dimensions
+  // graph conversion time. This data is used to retrieve which input dimensions
   // could be unknown. During inference time this information is not available
   // otherwise (all shapes are known (concrete) shapes when we run inference).
   std::vector<PartialTensorShape> input_partial_shapes_;
