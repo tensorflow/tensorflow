@@ -2376,40 +2376,6 @@ func MatrixSetDiagV2(scope *Scope, input tf.Output, diagonal tf.Output, k tf.Out
 	return op.Output(0)
 }
 
-// Returns a batched matrix tensor with new batched diagonal values.
-//
-// Given `input` and `diagonal`, this operation returns a tensor with the
-// same shape and values as `input`, except for the main diagonal of the
-// innermost matrices.  These will be overwritten by the values in `diagonal`.
-//
-// The output is computed as follows:
-//
-// Assume `input` has `k+1` dimensions `[I, J, K, ..., M, N]` and `diagonal` has
-// `k` dimensions `[I, J, K, ..., min(M, N)]`.  Then the output is a
-// tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
-//
-//   * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
-//   * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
-//
-// Arguments:
-//	input: Rank `k+1`, where `k >= 1`.
-//	diagonal: Rank `k`, where `k >= 1`.
-//
-// Returns Rank `k+1`, with `output.shape = input.shape`.
-func MatrixSetDiag(scope *Scope, input tf.Output, diagonal tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixSetDiag",
-		Input: []tf.Input{
-			input, diagonal,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Returns a diagonal tensor with a given diagonal values.
 //
 // Given a `diagonal`, this operation returns a tensor with the `diagonal` and
@@ -10414,6 +10380,131 @@ func ExperimentalParseExampleDataset(scope *Scope, input_dataset tf.Output, num_
 	}
 	opspec := tf.OpSpec{
 		Type: "ExperimentalParseExampleDataset",
+		Input: []tf.Input{
+			input_dataset, num_parallel_calls, tf.OutputList(dense_defaults),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns a batched matrix tensor with new batched diagonal values.
+//
+// Given `input` and `diagonal`, this operation returns a tensor with the
+// same shape and values as `input`, except for the main diagonal of the
+// innermost matrices.  These will be overwritten by the values in `diagonal`.
+//
+// The output is computed as follows:
+//
+// Assume `input` has `k+1` dimensions `[I, J, K, ..., M, N]` and `diagonal` has
+// `k` dimensions `[I, J, K, ..., min(M, N)]`.  Then the output is a
+// tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
+//
+//   * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
+//   * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
+//
+// Arguments:
+//	input: Rank `k+1`, where `k >= 1`.
+//	diagonal: Rank `k`, where `k >= 1`.
+//
+// Returns Rank `k+1`, with `output.shape = input.shape`.
+func MatrixSetDiag(scope *Scope, input tf.Output, diagonal tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixSetDiag",
+		Input: []tf.Input{
+			input, diagonal,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ParseExampleDatasetV2Attr is an optional argument to ParseExampleDatasetV2.
+type ParseExampleDatasetV2Attr func(optionalAttr)
+
+// ParseExampleDatasetV2Deterministic sets the optional deterministic attribute to value.
+//
+// value: A string indicating the op-level determinism to use. Deterministic controls
+// whether the dataset is allowed to return elements out of order if the next
+// element to be returned isn't available, but a later element is. Options are
+// "true", "false", and "default". "default" indicates that determinism should be
+// decided by the `experimental_deterministic` parameter of `tf.data.Options`.
+// If not specified, defaults to "default"
+func ParseExampleDatasetV2Deterministic(value string) ParseExampleDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["deterministic"] = value
+	}
+}
+
+// ParseExampleDatasetV2RaggedKeys sets the optional ragged_keys attribute to value.
+// If not specified, defaults to {}
+//
+// REQUIRES: len(value) >= 0
+func ParseExampleDatasetV2RaggedKeys(value []string) ParseExampleDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["ragged_keys"] = value
+	}
+}
+
+// ParseExampleDatasetV2RaggedValueTypes sets the optional ragged_value_types attribute to value.
+// If not specified, defaults to {}
+//
+// REQUIRES: len(value) >= 0
+func ParseExampleDatasetV2RaggedValueTypes(value []tf.DataType) ParseExampleDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["ragged_value_types"] = value
+	}
+}
+
+// ParseExampleDatasetV2RaggedSplitTypes sets the optional ragged_split_types attribute to value.
+// If not specified, defaults to {}
+//
+// REQUIRES: len(value) >= 0
+func ParseExampleDatasetV2RaggedSplitTypes(value []tf.DataType) ParseExampleDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["ragged_split_types"] = value
+	}
+}
+
+// Transforms `input_dataset` containing `Example` protos as vectors of DT_STRING into a dataset of `Tensor` or `SparseTensor` objects representing the parsed features.
+//
+// Arguments:
+//
+//
+//	dense_defaults: A dict mapping string keys to `Tensor`s.
+// The keys of the dict must match the dense_keys of the feature.
+//	sparse_keys: A list of string keys in the examples features.
+// The results for these keys will be returned as `SparseTensor` objects.
+//	dense_keys: A list of Ndense string Tensors (scalars).
+// The keys expected in the Examples features associated with dense values.
+//	sparse_types: A list of `DTypes` of the same length as `sparse_keys`.
+// Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
+// and `tf.string` (`BytesList`) are supported.
+//	dense_shapes: List of tuples with the same length as `dense_keys`.
+// The shape of the data for each dense feature referenced by `dense_keys`.
+// Required for any input tensors identified by `dense_keys`.  Must be
+// either fully defined, or may contain an unknown first dimension.
+// An unknown first dimension means the feature is treated as having
+// a variable number of blocks, and the output shape along this dimension
+// is considered unknown at graph build time.  Padding is applied for
+// minibatch elements smaller than the maximum number of blocks for the
+// given feature along this dimension.
+//	output_types: The type list for the return values.
+//	output_shapes: The list of shapes being produced.
+func ParseExampleDatasetV2(scope *Scope, input_dataset tf.Output, num_parallel_calls tf.Output, dense_defaults []tf.Output, sparse_keys []string, dense_keys []string, sparse_types []tf.DataType, dense_shapes []tf.Shape, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ParseExampleDatasetV2Attr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"sparse_keys": sparse_keys, "dense_keys": dense_keys, "sparse_types": sparse_types, "dense_shapes": dense_shapes, "output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ParseExampleDatasetV2",
 		Input: []tf.Input{
 			input_dataset, num_parallel_calls, tf.OutputList(dense_defaults),
 		},
