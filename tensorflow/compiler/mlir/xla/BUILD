@@ -157,8 +157,8 @@ cc_library(
         ":lhlo",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:AllPassesAndDialects",  # TODO: only Linalg is needed
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgDialectRegistration",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -193,7 +193,7 @@ cc_library(
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
-        "@llvm-project//mlir:LinalgDialectRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",  # TODO: only Linalg is needed
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
