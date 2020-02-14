@@ -89,9 +89,12 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
                                                  input_shape, input);
     }
 
-    int64 atomic_free_bound =
-        reduction_tiling[reduction_dimensions.is_row_reduction ? 2 : 1] *
-        kWarpSize;
+    int64 atomic_free_bound = [&] {
+      if (reduction_dimensions.is_row_reduction) {
+        return reduction_tiling[2] * kWarpSize * kWarpSize;
+      }
+      return reduction_tiling[1] * kWarpSize;
+    }();
     VLOG(3) << "atomic_free_bound: " << atomic_free_bound;
 
     // Base case: everything fits.
