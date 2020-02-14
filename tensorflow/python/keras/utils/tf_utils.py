@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
@@ -29,6 +30,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -452,3 +454,13 @@ def graph_context_for_symbolic_tensors(*args, **kwargs):
       yield
   else:
     yield
+
+
+def dataset_is_infinite(dataset):
+  """True if the passed dataset is infinite."""
+  if ops.executing_eagerly_outside_functions():
+    return math_ops.equal(
+        cardinality.cardinality(dataset), cardinality.INFINITE)
+  else:
+    dataset_size = K.get_session().run(cardinality.cardinality(dataset))
+    return dataset_size == cardinality.INFINITE
