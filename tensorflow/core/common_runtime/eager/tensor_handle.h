@@ -227,19 +227,13 @@ class TensorHandle : public core::RefCounted {
 
   string DebugString() const;
 
-  struct ResourceHandleInfo {
-    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
-    std::vector<string> allowed_devices;
-  };
-
-  void SetResourceHandleInfo(ResourceHandleInfo resource_handle_info);
+  void SetResourceHandleDtypeAndShape(
+      std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes);
 
   // If this TensorHandle is 1) a local tensor, and 2) a resource handle,
-  // return data types, shapes and allowed devices of the underlying resource.
-  Status GetResourceHandleInfo(ResourceHandleInfo* result);
+  // return data types and shapes of the underlying resource.
   Status GetResourceHandleDtypesAndShapes(
       std::vector<DtypeAndPartialTensorShape>* result);
-  Status GetResourceAllowedDevices(std::vector<string>* result);
 
  private:
   // The TensorHandleData can either represent a local or remote tensor handle.
@@ -252,8 +246,6 @@ class TensorHandle : public core::RefCounted {
   // computed by a EagerNode, this function will block till that computation is
   // done and the handle is "ready".
   Status WaitReady(const char* caller) const;
-
-  Status GetResourceHandleInfoImpl(std::function<void()> set_resource_info);
 
   // TODO(b/136608821): device_ == nullptr (Device*) iff Host CPU:0
   // This was expedient, but perhaps worth revisiting ('device_' should always
@@ -317,9 +309,9 @@ class TensorHandle : public core::RefCounted {
   bool is_ready_ GUARDED_BY(mu_);
 
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
-  // refers to a remote resource handle, we store data types, shapes and allowed
-  // devices for the underlying resource.
-  ResourceHandleInfo resource_handle_info_;
+  // refers to a remote resource handle, we store data types and shapes for
+  // the underlying resource.
+  std::vector<DtypeAndPartialTensorShape> handle_dtypes_and_shapes_;
 
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, tensor_handle_data_ is immutable.
