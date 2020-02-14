@@ -34,11 +34,11 @@ from tensorflow.python.util.tf_export import keras_export
 class RMSprop(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the RMSprop algorithm.
 
-  A detailed description of rmsprop.
-    - maintain a moving (discounted) average of the square of gradients
-    - divide gradient by the root of this average
+  RMSProp is a form of stochastic gradient descent where the gradients are 
+  divided by a running average of their recent magnitude. It keeps 
+  a moving average of the squared gradient for each weight.
 
-  The default settings does not use momentum:
+  The default settings do not use momentum:
 
   $$rms_t = \rho * rms_{t-1} + (1-\rho) * g_t^2$$
   $$\theta_t = \theta_{t-1} - \mathrm{learning\_rate} *
@@ -48,7 +48,7 @@ class RMSprop(optimizer_v2.OptimizerV2):
 
   $$ \theta_t = \theta_{t-1} - \mathrm{learning\_rate} * sign(g_t) $$
 
-  With momentum the update is:
+  With momentum, the update is:
 
   $$rms_t = \rho * rms_{t-1} + (1-\rho) * g_t^2$$
   $$mom_t = \mathrm{momentum} * mom_{t-1} + g_t / \sqrt{rms_t + \epsilon}$$
@@ -73,10 +73,13 @@ class RMSprop(optimizer_v2.OptimizerV2):
   >>> step_count = opt.minimize(loss, [var1]).numpy()
   >>> var1.numpy()
   9.683772
-
-  References
-    See ([pdf]
-      http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
+  
+  References:
+      - Lecture 6.5 - rmsprop: Divide the gradient by a running average of its 
+      recent magnitude, [Tieleman and Hinton, 2012](
+      http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf)
+      - Generating Sequences With Recurrent Neural Networks, [Graves, 2013](
+      https://arxiv.org/abs/1308.0850)
   """
 
   def __init__(self,
