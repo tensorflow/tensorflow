@@ -259,6 +259,7 @@ filegroup(
 
 filegroup(
     name = "test_hdrs",
+    testonly = 1,
     srcs = [
         "reporter.h",
     ],
