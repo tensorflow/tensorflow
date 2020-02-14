@@ -17,6 +17,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -124,23 +126,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (deregister_fn_) deregister_fn_();
     }
 
-    string BuildTraceMeName() override {
-      int64 limit = -1;
-      // NOTE: We only set the buffer limit value if the lock can be acquired
-      // right away to avoid introducing tracing overhead.
-      if (mu_->try_lock()) {
-        limit = buffer_limit();
-        mu_->unlock();
-      }
-      string prefetch_with_slack_trace = "";
-      if (dataset()->slack_period_ > 0) {
-        int64 slack_us = slack_us_;
-        prefetch_with_slack_trace = strings::StrCat(",slack=", slack_us);
-      }
-      return strings::StrCat(prefix(), "#buffer_limit=", limit,
-                             prefetch_with_slack_trace, "#");
-    }
-
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       if (buffer_size_->value == model::kAutotune) {
@@ -149,7 +134,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(), [this]() { CancelThreads(); },
           &deregister_fn_));
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -284,6 +269,24 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
+    data::TraceMeMetadata GetTraceMeMetadata() const override {
+      int64 limit = -1;
+      // NOTE: We only set the parallelism value if the lock can be acquired
+      // right away to avoid introducing tracing overhead.
+      if (mu_->try_lock()) {
+        limit = buffer_limit();
+        mu_->unlock();
+      }
+      data::TraceMeMetadata result;
+      result.push_back(
+          std::make_pair("buffer_limit", strings::Printf("%lld", limit)));
+      if (dataset()->slack_period_ > 0) {
+        result.push_back(
+            std::make_pair("slack", strings::Printf("%lld", slack_us_.load())));
+      }
+      return result;
+    }
+
    private:
     // A buffer element comprises a status and (if that status is
     // OK) a vector of tensors, representing an element of the input dataset.
@@ -295,7 +298,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       int64 created_us;
     };
 
-    inline int64 buffer_limit() EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+    int64 buffer_limit() const EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (legacy_autotune_) {
         return auto_tuner_.buffer_limit();
       }
@@ -507,6 +510,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
   // Determines whether legacy autotuning should be used.
   const bool legacy_autotune_ = true;
+
+  TraceMeMetadata traceme_metadata_;
 };
 
 PrefetchDatasetOp::PrefetchDatasetOp(OpKernelConstruction* ctx)

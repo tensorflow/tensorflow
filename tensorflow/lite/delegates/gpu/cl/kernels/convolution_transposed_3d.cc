@@ -49,7 +49,7 @@ std::string GenerateConvolutionTransposed3DCode(
   bool manual_clamp =
       image_buffer || src_tensor_type == TensorStorageType::BUFFER;
 
-  const std::string batch_id = op_def.batch_support ? "B" : "";
+  const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
 
   for (int s = 0; s < block_size.w; ++s) {
@@ -108,14 +108,14 @@ std::string GenerateConvolutionTransposed3DCode(
   c += "    int4 kernel_size,          \n";
   c += "    int4 stride,               \n";
   c += "    int4 padding,              \n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "    int batch_size,          \n";
   }
   c += "    int grid_size_s,           \n";
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size              \n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int dst_x = (linear_id / batch_size);\n";
     c += "  int B = linear_id % batch_size;\n";
@@ -220,7 +220,7 @@ std::string GenerateConvolutionTransposed3DCode(
   }
   const std::string layer_offset =
       std::string("src_size.x * src_size.y") +
-      (op_def.batch_support ? " * batch_size" : "");
+      (op_def.IsBatchSupported() ? " * batch_size" : "");
   for (int z = 0; z < block_size.z; ++z) {
     const std::string zindex = std::to_string(z);
     for (int y = 0; y < block_size.y; ++y) {
@@ -327,7 +327,7 @@ std::string GenerateConvolutionTransposed3DCode(
                "dst_size.z) {\n";
           c += "        FLT4 res = TO_FLT4(r" + id + ") + bias_val;\n";
           std::string x_3dcoord =
-              op_def.batch_support ? "xc * dst_size.w + B" : "xc";
+              op_def.IsBatchSupported() ? "xc * dst_size.w + B" : "xc";
           const LinkingContext context{"res", x_3dcoord, "yc", "S"};
           c += PostProcess(linked_operations, context);
           c += "        " +
@@ -437,7 +437,7 @@ Status ConvolutionTransposed3D::BindArguments() {
       kernel_.SetBytesAuto(int4(stride_.x, stride_.y, stride_.z, 1)));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int4(padding_.x, padding_.y, padding_.z, 1)));
-  if (definition_.batch_support) {
+  if (definition_.IsBatchSupported()) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Batch()));
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(

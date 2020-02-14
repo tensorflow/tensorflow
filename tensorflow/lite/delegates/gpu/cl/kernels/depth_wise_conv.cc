@@ -218,7 +218,8 @@ DepthWiseConvolution& DepthWiseConvolution::operator=(
 }
 
 Status DepthWiseConvolution::Compile(const CreationContext& creation_context) {
-  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
   const auto code = GenerateDepthWiseConvolutionCode(
       definition_, stride_correction, biases_, channel_multiplier_,
       linked_operations_, *creation_context.device);

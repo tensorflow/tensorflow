@@ -613,7 +613,10 @@ cc_library(
         "partial_tensor_shape.h",
         "tensor_shape.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/tfrt_delegate:__pkg__",
+    ],
     deps = [
         ":bounds_check",
         ":tensor_shape_proto_cc",
@@ -1028,7 +1031,7 @@ tf_cc_tests(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "op_gen_lib.h",
         "rendezvous.h",

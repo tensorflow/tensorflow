@@ -1323,6 +1323,44 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
           expected_output=expected_output,
           requires_initialization=True)
 
+  @combinations.generate(
+      combinations.times(
+          _test_combinations(),
+          combinations.combine(
+              local_determinism=[None, True, False],
+              global_determinism=[True, False])))
+  def testDeterminismConfiguration(self, apply_map, local_determinism,
+                                   global_determinism):
+    expect_determinism = local_determinism or (local_determinism is None and
+                                               global_determinism)
+    elements = list(range(1000))
+
+    def dataset_fn(delay_ms):
+
+      def sleep(x):
+        time.sleep(delay_ms / 1000)
+        return x
+
+      def map_function(x):
+        if math_ops.equal(x, 0):
+          return script_ops.py_func(sleep, [x], x.dtype)
+        else:
+          return x
+
+      dataset = dataset_ops.Dataset.from_tensor_slices(elements)
+      dataset = apply_map(
+          dataset,
+          map_function,
+          num_parallel_calls=2,
+          deterministic=local_determinism)
+      opts = dataset_ops.Options()
+      opts.experimental_deterministic = global_determinism
+      dataset = dataset.with_options(opts)
+      return dataset
+
+    self.checkDeterminism(
+        dataset_fn, expect_determinism, expected_elements=elements)
+
 
 if __name__ == "__main__":
   test.main()

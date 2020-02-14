@@ -69,6 +69,12 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vector, const float* scaling_factors,
+    int n_batch, int32_t* scratch, float* __restrict__ result,
+    int result_stride, CpuBackendContext* context);
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride,
     const float* per_channel_scale, const int32_t* input_offset);
@@ -76,13 +82,12 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
-    float* __restrict__ result, int result_stride);
+    float* __restrict__ result);
 
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result,
-    int result_stride);
+    const float* scaling_factors, int n_batch, float* __restrict__ result);
 
 // Dot product of two vectors.
 float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
@@ -162,9 +167,6 @@ void PortableVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
 // Clip elements of a vector using a abs_limit value.
 void PortableClipVector(const float* vector, int v_size, float abs_limit,
                         float* result);
-
-// Shift left a vector in place with v_size size.
-void PortableVectorShiftLeft(float* vector, int v_size, float shift_value);
 
 // Reduce-sum on a float input vector:
 // input_vector: float pointer to input vector.

@@ -33,13 +33,10 @@ tf_cc_test(
     deps = [
         ":assert_next_dataset_op",
         "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/kernels/data:dataset_test_base",
+        "//tensorflow/core/kernels/data:range_dataset_op",
         "//tensorflow/core/kernels/data:take_dataset_op",
-        "//third_party/eigen3",
     ],
 )
 
@@ -88,6 +85,18 @@ tf_kernel_library(
         "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:take_dataset_op",
+    ],
+)
+
+tf_kernel_library(
+    name = "choose_fastest_dataset_op",
+    srcs = ["choose_fastest_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/data:dataset",
     ],
 )
 
@@ -225,18 +234,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "choose_fastest_dataset_op",
-    srcs = ["choose_fastest_dataset_op.cc"],
-    deps = [
-        "//tensorflow/core:experimental_dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels/data:dataset",
-    ],
-)
-
-tf_kernel_library(
     name = "non_serializable_dataset_op",
     srcs = ["non_serializable_dataset_op.cc"],
     deps = [
@@ -285,6 +282,8 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/kernels/data:parallel_map_dataset_op",
         "//tensorflow/core/kernels/data:stats_utils",
     ],
@@ -433,7 +432,6 @@ tf_kernel_library(
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
     ],
 )

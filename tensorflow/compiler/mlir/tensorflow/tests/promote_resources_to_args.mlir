@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-promote-resources-to-args | FileCheck %s -dump-input-on-failure
+// RUN: tf-opt %s -split-input-file -tf-promote-resources-to-args | FileCheck %s -dump-input-on-failure
 
 // One resource, one read.
 // CHECK-LABEL: func @main(%arg0: tensor<f32>) -> tensor<2xf32>
@@ -88,12 +88,10 @@ func @main() -> tensor<2xf32> {
 // -----
 
 // A resource is passed into tf.If
-// expected-error @+1 {{potential nested resource accesses in function}}
 func @cond_false(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<f32>) -> tensor<f32> {
   return %arg1 : tensor<f32>
 }
 
-// expected-error @+1 {{potential nested resource accesses in function}}
 func @cond_true(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<f32>) -> tensor<f32> {
   %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
   %1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
@@ -101,6 +99,7 @@ func @cond_true(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<f32>) ->
   return %2 : tensor<f32>
 }
 
+// CHECK-LABEL: func @main(%arg0: tensor<f32>) -> tensor<2xf32>
 func @main() -> tensor<2xf32> attributes {tf.entry_function = {inputs = "", outputs = "result"}} {
   %0 = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>} : () -> tensor<f32>
   %1 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>

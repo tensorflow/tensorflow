@@ -323,14 +323,10 @@ Status InferenceContext::ConvertOperations(
     OperationDef op_def;
     op_def.precision = precision_;
     for (int j = 0; j < inputs.size(); ++j) {
-      op_def.batch_support =
-          op_def.batch_support || inputs[j]->tensor.shape.b != 1;
       op_def.src_tensors.push_back(
           tensor_reserver_.Get(inputs[j]->id).descriptor);
     }
     for (int j = 0; j < outputs.size(); ++j) {
-      op_def.batch_support =
-          op_def.batch_support || outputs[j]->tensor.shape.b != 1;
       op_def.dst_tensors.push_back(
           tensor_reserver_.Get(outputs[j]->id).descriptor);
     }

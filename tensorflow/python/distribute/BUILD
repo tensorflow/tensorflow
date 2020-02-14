@@ -532,6 +532,7 @@ py_library(
         ":numpy_dataset",
         ":reduce_util",
         ":values",
+        "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -651,6 +652,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -722,6 +724,9 @@ distribute_py_test(
     name = "checkpointing_test",
     srcs = ["checkpointing_test.py"],
     main = "checkpointing_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
@@ -738,6 +743,9 @@ distribute_py_test(
     srcs = ["input_lib_test.py"],
     main = "input_lib_test.py",
     shard_count = 10,
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":collective_all_reduce_strategy",
         ":mirrored_strategy",
@@ -853,7 +861,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:init_ops",
-        "//tensorflow/python:layers",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
@@ -865,6 +872,7 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/layers",
         "//third_party/py/numpy",
     ],
 )
@@ -917,9 +925,9 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "custom_training_loop_test",
-    srcs = ["custom_training_loop_test.py"],
-    main = "custom_training_loop_test.py",
+    name = "custom_training_loop_gradient_test",
+    srcs = ["custom_training_loop_gradient_test.py"],
+    main = "custom_training_loop_gradient_test.py",
     tags = [
         "multi_and_single_gpu",
     ],
@@ -930,6 +938,64 @@ distribute_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "custom_training_loop_input_test",
+    srcs = ["custom_training_loop_input_test.py"],
+    main = "custom_training_loop_input_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "custom_training_loop_metrics_test",
+    srcs = ["custom_training_loop_metrics_test.py"],
+    main = "custom_training_loop_metrics_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "custom_training_loop_models_test",
+    srcs = ["custom_training_loop_models_test.py"],
+    main = "custom_training_loop_models_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -957,6 +1023,7 @@ distribute_py_test(
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
@@ -1037,7 +1104,6 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:layers",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
@@ -1055,7 +1121,6 @@ cuda_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
         "no_windows_gpu",  # TODO(b/130551176)
         "noguitar",
     ],
@@ -1069,7 +1134,6 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:layers",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
@@ -1079,6 +1143,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -1097,13 +1162,13 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:layers",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -1196,6 +1261,9 @@ distribute_py_test(
     full_precision = True,
     main = "saved_model_save_load_test.py",
     shard_count = 5,
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/saved_model",
@@ -1209,6 +1277,9 @@ distribute_py_test(
     full_precision = True,
     main = "keras_save_load_test.py",
     shard_count = 5,
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras/saving",
@@ -1222,6 +1293,9 @@ distribute_py_test(
     full_precision = True,
     main = "saved_model_mixed_api_test.py",
     shard_count = 5,
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/keras/saving",
@@ -1271,12 +1345,12 @@ cuda_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:init_ops",
-        "//tensorflow/python:layers",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:cross_device_utils",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/keras/layers",
         "//tensorflow/python/keras/mixed_precision/experimental:test_util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -1306,7 +1380,6 @@ cuda_py_test(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
-        "//tensorflow/python:layers",
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
@@ -1316,6 +1389,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/keras/layers",
         "@absl_py//absl/testing:parameterized",
     ],
 )

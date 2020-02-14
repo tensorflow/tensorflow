@@ -129,7 +129,7 @@ def broadcast_send(t, shape, dtype, group_size, group_key, instance_key,
         'Parameter group_size to broadcast_send must be at least 2.')
   if t.shape != shape:
     raise ValueError(
-        'Shape of broadcast_send tensor not equal to delcared shape')
+        'Shape of broadcast_send tensor not equal to declared shape')
   if t.dtype != dtype:
     raise ValueError(
         'Type of broadcast_send tensor not equal to declared type')

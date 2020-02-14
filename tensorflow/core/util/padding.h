@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -60,7 +61,7 @@ string GetPaddingAttrStringWithExplicit();
 string GetExplicitPaddingsAttrString();
 
 // Specialization to parse an attribute directly into a Padding enum.
-Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    Padding* value);
 
 // Sets padding value based on the given string padding value.

@@ -322,9 +322,19 @@ py_library(
     srcs = ["saved_model_cli.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":saved_model_aot_compile",
         ":saved_model_utils",
         "//tensorflow/python",
         "//tensorflow/python/debug:local_cli_wrapper",
+    ],
+)
+
+py_library(
+    name = "saved_model_aot_compile",
+    srcs = ["saved_model_aot_compile.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python",
         "//tensorflow/python:tf_optimizer",
     ] + if_xla_available(
         ["//tensorflow/compiler/tf2xla:tf2xla_proto_py"],
@@ -372,6 +382,7 @@ genrule(
         "--target_triple " + target_llvm_triple() +
         " --tag_set serve "
     ),
+    tags = ["no_rocm"],
     tools = [
         ":saved_model_cli",
     ],
@@ -386,6 +397,7 @@ cc_library(
     hdrs = if_xla_available([
         ":compiled_model.h",
     ]),
+    tags = ["no_rocm"],
     deps = if_xla_available([
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
         "//tensorflow/core/platform:types",
@@ -397,6 +409,7 @@ tf_cc_test(
     srcs = if_xla_available([
         "binary_using_aot_compiled_x_plus_y_test.cc",
     ]),
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/core:test_main",
     ] + if_xla_available([

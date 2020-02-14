@@ -18,18 +18,22 @@ value (typically a `tf.Tensor`) modified by a loop. See `tf.while_loop`.
 
 ### Indirect modifications and hidden side effects in TensorFlow control flow
 
-<!-- TODO(mdan) Refine this paragraph well - it's important -->
-Key Point: We recommend using functional style and immutable Python collections.
+Key Point: We recommend using a functional programming style, immutable Python
+collections, TensorFlow ops and collections. Only TensorFlow objects should be
+used for side effects.
 
-#### AutoGraph analyzes code to detect modifications
+#### AutoGraph analyzes code to detect modifications to Python objects
+
+Note: Modifications to TensorFlow objects, such as `tf.Variable`, are tracked
+using a different mechanism (automatic control dependencies) which does not
+rely on code analysis.
 
 One of the most important functions of AutoGraph is to rewrite Python control
 flow statements into equivalent TensorFlow ops. This process requires "wiring"
-variables in the Python code whose values are affected these statements control
-flow into the respective ops.
+variables covered by these control flow statements into the respective ops.
 
 The examples below use a `while` loop, but the same notions extend to all
-control flow: `if` and `for` statements.
+control flow such as `if` and `for` statements.
 
 In the example below, `x` needs to become a loop variable of the
 corresponding `tf.while_loop':
@@ -42,17 +46,18 @@ while x > 0:
 x = tf.while_loop(..., loop_vars=(x,)
 ```
 
-TF control ops support only a limited set of types for loop variable. At the
+TF control ops support only a limited set of types for loop variables. At the
 same time, the efficiency of TensorFlow graphs is influenced by the number of
-loop variables, so we don't want to create them unnecessarily. For this reason,
-AutoGraph only pulls symbols through loop variables if necessary.
+loop variables, so we don't want to create them unnecessarily. AutoGraph pulls
+symbols through loop variables only if necessary to minimize the number of
+loop variables.
 
 Note: If a symbol refers to a nested structure, such as a `dict` of `dict`s,
-then when that symbol is added to the loop variables the entire structure
-becomes part of the loop variables - TensorFlow automatically unpacks it.
+the entire structure is mapped to multiple loop variables - TensorFlow
+automatically unpacks it.
 
 For example, the symbol 'y' below is not wired through the `tf.while_loop`'s
-`loop_vars` because it is not affected by the while loop:
+`loop_vars` because it is not affected by the `while` loop:
 
 ```
 y = 0
@@ -69,7 +74,12 @@ code, in order to transform them into control flow variables. Static analysis
 is generally performed on single functions - Python's dynamic nature limits its
 effectiveness across functions.
 
-#### Modifications are not detected across functions
+#### Modifications of Python objects are not detected across functions
+
+Note: Modifications to TensorFlow objects, such as `tf.Variable`, are tracked
+using a different mechanism (automatic control dependencies). Modifications
+to `tf.Variable` objects are correctly handled even when called in other
+functions.
 
 Because static analysis is limited to single functions, modifications that are
 performed in other functions are not visible to AutoGraph:
@@ -83,9 +93,9 @@ while x > 0:
   change_y()  # Problem -- change made to y is not visible here!
 ```
 
-This can be easily remedied using functional style - writing functions that take
-their inputs as arguments, and return everything they calculate as return
-values:
+This can be easily remedied using a functional programming style - writing
+functions that use argument for all their inputs and return values for all their
+outputs:
 
 ```
 def change(y):
@@ -96,7 +106,43 @@ while x > 0:
   y = change(y)  # Okay -- y can now be properly tracked!
 ```
 
-#### Modifications are not detected in methods
+As noted before, this limitation does not apply to most TensorFlow objects,
+although it is still a good idea to use functional programming style for
+better code readability:
+
+```
+def change(y_var):
+  y_var.assign_add(1)
+
+y = tf.Variable(1)
+while x > 0:
+  change(y)  # This is still okay -- TensorFlow side effects are robust.
+```
+
+Keep in mind however that certain types like `tf.TensorArray` don't support
+side effects and must have their result assigned, otherwise they may raise an
+error:
+
+```
+def change(ta):
+  ta.write(0, 1)  # Incorrect use of TensorArray - will raise an error
+```
+
+In other words, `tf.TensorArray` must be handled using functional programming
+style:
+
+```
+def change(ta):
+  ta = ta.write(0, 1)  # Modifications create a new TensorArray efficiently.
+  return ta
+
+ta = tf.TensorArray(tf.int32, size=0, dynamic_size=True)
+while x > 0:
+  # TensorArray must be handled using functional programming style.
+  ta = change(ta)
+```
+
+#### Modifications of Python objects are not detected in methods
 
 A special case of hidden side effects are methods, which are commonly used
 to change the value of objects:
@@ -212,7 +258,7 @@ for i in tf.range(10):
 An exception from the previous rule is made by Python collections that are
 static, that is, they don't grow in size for the duration of the computation.
 
-Caution: Use functional style when manipulating static collections.
+Caution: Use functional programming style when manipulating static collections.
 
 Examples:
 
@@ -233,8 +279,8 @@ while static_dict['field'] > 0:
   static_dict['field'] -= 1  # Okay -- static_dict does not change structure
 ```
 
-However, remember to use functional style when these collections are used
-inside control flow.
+However, remember to use functional programming style when these collections
+are used inside control flow.
 
 #### Python collections of fixed structure with dynamic index
 
@@ -251,7 +297,7 @@ for i in tf.range(10):
 ```
 
 The code above will raises an "illegal capture" error. To remedy it, write it
-in functional style:
+in functional programming style:
 
 ```
 d = {'a': tf.constant(3)}
@@ -296,7 +342,7 @@ x[4]  # Tracing error! 4 is out of bounds.
 ```
 
 To avoid tracing errors, you can add static shape verifications, which help
-write more robust code:
+make your code more robust:
 
 ```
 if x.shape[0] > 4:
@@ -306,7 +352,7 @@ else:
 ```
 
 In the snippet above, the code is protected against index-out-of-bounds
-errors. The code is also efficient because the verification `s.shape[0] > 4`
+errors. The code is also efficient because the verification `x.shape[0] > 4`
 will not be included in the graph.
 
 But what happens if you try to perform the index verifications using dynamic
@@ -320,8 +366,8 @@ val = tf.cond(
 ```
 
 However, TensorFlow will not let you write code that could result in an error,
-even if that code appeared in a branch of a `tf.cond` that would never
-execute. Remember that the shape of `x` is `(3,)`, so TensorFlow performs
+even if that code appeared in a branch of a `tf.cond` statement that would
+never execute. Remember that the shape of `x` is `(3,)`, so TensorFlow performs
 static shape verification.
 
 This can lead to surprising behavior when using `tf.shape` on tensors with
@@ -421,7 +467,7 @@ a partially dynamic shape.
 In a `tf.while_loop` (and correspondingly, an AutoGraph `while` or `for` loop)
 all loop variables must maintain consistent shape and dtype across iterations.
 That is, every loop variable must have the same shape at the end of the loop
-body as the shape that it had at the beginning of the loop body.
+body as it had at the beginning of the loop body.
 
 Example of illegal shape change in a loop:
 

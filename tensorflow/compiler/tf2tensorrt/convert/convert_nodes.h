@@ -508,6 +508,7 @@ class Converter {
   // dimension which should always be 0.
   Status TransposeTensor(nvinfer1::ITensor* input_tensor,
                          const std::vector<int>& order_with_batch_dim,
+                         absl::string_view name,
                          nvinfer1::ITensor** output_tensor);
 
   // Converts 'input' into 'tensor' with shape specified by 'dims' (which
@@ -520,6 +521,15 @@ class Converter {
                                const nvinfer1::Dims& dims,
                                const bool validation_only,
                                nvinfer1::ITensor** tensor);
+
+  // Helper function to add a squeeze op to the network.
+  //
+  // The trt_axes argument lists those axes that need to be squeezed. Each axis
+  // in the list is numbered according to TRT convention (see ConvertAxis for
+  // details).
+  Status SqueezeTensor(nvinfer1::ITensor* input,
+                       const std::vector<int>& trt_axes,
+                       nvinfer1::ITensor** output);
 
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.

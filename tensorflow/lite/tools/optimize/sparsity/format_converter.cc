@@ -39,6 +39,10 @@ uint64_t GetFlattenedIndex(const std::vector<int>& indices,
 
 std::vector<int> TfLiteIntArrayToVector(const TfLiteIntArray* int_array) {
   std::vector<int> values;
+  if (!int_array) {
+    return values;
+  }
+
   values.resize(int_array->size);
   for (size_t i = 0; i < int_array->size; i++) {
     values[i] = int_array->data[i];
@@ -242,6 +246,7 @@ FormatConverter<T>::FormatConverter(const std::vector<int>& shape,
   int block_dim = 0;
 
   blocked_shape_.resize(original_rank);
+  block_size_.resize(block_map_.size());
   for (int i = 0; i < original_rank; i++) {
     if (block_dim < block_map_.size() && block_map_[block_dim] == i) {
       int orig_dim = traversal_order_[original_rank + block_dim];

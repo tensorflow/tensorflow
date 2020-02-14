@@ -679,6 +679,13 @@ def ngrams(data,
   be prevented by setting `preserve_short_sequences`, which will cause the op
   to always generate at least one ngram per non-empty sequence.
 
+  Examples:
+
+  >>> tf.strings.ngrams(["A", "B", "C", "D"], 2).numpy()
+  array([b'A B', b'B C', b'C D'], dtype=object)
+  >>> tf.strings.ngrams(["TF", "and", "keras"], 1).numpy()
+  array([b'TF', b'and', b'keras'], dtype=object)
+
   Args:
     data: A Tensor or RaggedTensor containing the source data for the ngrams.
     ngram_width: The width(s) of the ngrams to create. If this is a list or

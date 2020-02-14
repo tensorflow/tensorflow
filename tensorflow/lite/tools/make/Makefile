@@ -110,13 +110,15 @@ $(wildcard tensorflow/lite/kernels/*.cc) \
 $(wildcard tensorflow/lite/kernels/internal/*.cc) \
 $(wildcard tensorflow/lite/kernels/internal/optimized/*.cc) \
 $(wildcard tensorflow/lite/kernels/internal/reference/*.cc) \
+$(wildcard tensorflow/lite/tools/optimize/sparsity/*.cc) \
 $(PROFILER_SRCS) \
 tensorflow/lite/tools/make/downloads/farmhash/src/farmhash.cc \
 tensorflow/lite/tools/make/downloads/fft2d/fftsg.c \
+tensorflow/lite/tools/make/downloads/fft2d/fftsg2d.c \
 tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp
 CORE_CC_ALL_SRCS += \
 	$(shell find tensorflow/lite/tools/make/downloads/absl/absl/ \
-	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization | grep -v debugging)
+	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization | grep -v debugging | grep -v hash | grep -v flags)
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
@@ -130,6 +132,7 @@ $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util*.cc) \
+tensorflow/lite/experimental/ruy/tune_tool.cc \
 $(MINIMAL_SRCS)
 
 BUILD_WITH_MMAP ?= true
@@ -145,22 +148,15 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
 endif
 
-BUILD_WITH_NNAPI ?= true
-ifeq ($(BUILD_TYPE),micro)
-	BUILD_WITH_NNAPI=false
+BUILD_WITH_RUY ?= false
+ifeq ($(TARGET_ARCH),aarch64)
+	BUILD_WITH_RUY=true
 endif
-ifeq ($(TARGET),windows)
-	BUILD_WITH_NNAPI=false
+ifeq ($(BUILD_WITH_RUY),true)
+  CXXFLAGS += -DTFLITE_WITH_RUY
 endif
-ifeq ($(TARGET),ios)
-	BUILD_WITH_NNAPI=false
-endif
-ifeq ($(TARGET),rpi)
-	BUILD_WITH_NNAPI=false
-endif
-ifeq ($(TARGET),generic-aarch64)
-	BUILD_WITH_NNAPI=false
-endif
+
+BUILD_WITH_NNAPI ?= false
 ifeq ($(BUILD_WITH_NNAPI),true)
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/quant_lstm_sup.cc
@@ -218,7 +214,8 @@ ALL_SRCS := \
 	$(CMD_LINE_TOOLS_SRCS)
 
 # Where compiled objects are stored.
-GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
+TARGET_OUT_DIR ?= $(TARGET)_$(TARGET_ARCH)
+GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET_OUT_DIR)/
 OBJDIR := $(GENDIR)obj/
 BINDIR := $(GENDIR)bin/
 LIBDIR := $(GENDIR)lib/

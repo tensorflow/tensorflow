@@ -24,13 +24,6 @@ limitations under the License.
 //  . Compound resource operations have already been decomposed.
 //  . Dead functions have already been removed, as resource arguments in dead
 //    functions can cause the pass to fail.
-//
-// TODO(bixia): This pass currently reports any error when it sees ResourceType
-//   as function arguments. That is, this pass assumes resource reads/writes in
-//   functions called by the main function, such as through TF IfOp and WhileOp,
-//   have already been functionalized. This functionalization can be achieved by
-//   either finishing cl/281636304 or enhancing PromoteResourcesToArguments
-//   here.
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -42,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {
 namespace TF {
@@ -200,7 +194,8 @@ void PromoteResourcesToArgsPass::runOnModule() {
     return;
   }
 
-  if (failed(VerifyNoPotentialNestedResourceAccesses(module)) ||
+  if (failed(ResourceLiftingForFunctionalControlFlow(main_func)) ||
+      failed(VerifyNoPotentialNestedResourceAccesses(module)) ||
       failed(PromoteResourcesToArguments(main_func))) {
     return signalPassFailure();
   }

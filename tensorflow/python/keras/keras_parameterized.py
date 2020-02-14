@@ -57,8 +57,8 @@ def run_with_all_saved_model_formats(
   for each Keras saved model format.
 
   The Keras saved model formats include:
-  1. HDF5: 'hdf5', 'h5', 'keras'
-  2. SavedModel: 'tensorflow', 'tf'
+  1. HDF5: 'h5'
+  2. SavedModel: 'tf'
 
   Note: if stacking this decorator with absl.testing's parameterized decorators,
   those should be at the bottom of the stack.
@@ -132,8 +132,8 @@ def run_with_all_saved_model_formats(
   """
   # Exclude h5 save format if H5py isn't available.
   if h5py is None:
-    exclude_formats.append(['hdf5', 'h5', 'keras'])
-  saved_model_formats = ['hdf5', 'h5', 'keras', 'tensorflow', 'tf']
+    exclude_formats.append(['h5'])
+  saved_model_formats = ['h5', 'tf']
   params = [('_%s' % saved_format, saved_format)
             for saved_format in saved_model_formats
             if saved_format not in nest.flatten(exclude_formats)]
@@ -145,9 +145,9 @@ def run_with_all_saved_model_formats(
     @functools.wraps(f)
     def decorated(self, saved_format, *args, **kwargs):
       """A run of a single test case w/ the specified model type."""
-      if saved_format in ['hdf5', 'h5', 'keras']:
+      if saved_format == 'h5':
         _test_h5_saved_model_format(f, self, *args, **kwargs)
-      elif saved_format in ['tensorflow', 'tf']:
+      elif saved_format == 'tf':
         _test_tf_saved_model_format(f, self, *args, **kwargs)
       else:
         raise ValueError('Unknown model type: %s' % (saved_format,))

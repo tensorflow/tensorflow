@@ -100,7 +100,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
       reinterpret_cast<const uint8_t*>(allocation->base()),
       allocation->bytes());
   if (!VerifyModelBuffer(base_verifier)) {
-    error_reporter->Report("The model is not a valid Flatbuffer file");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "The model is not a valid Flatbuffer file");
     return nullptr;
   }
 
@@ -136,7 +137,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
   flatbuffers::Verifier base_verifier(
       reinterpret_cast<const uint8_t*>(caller_owned_buffer), buffer_size);
   if (!VerifyModelBuffer(base_verifier)) {
-    error_reporter->Report("The model is not a valid Flatbuffer buffer");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "The model is not a valid Flatbuffer buffer");
     return nullptr;
   }
 
@@ -563,6 +565,13 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       status = kTfLiteError;
     }
 
+    size_t dims_signature_rank = 0;
+    const int* dims_signature_data = nullptr;
+    if (tensor->shape_signature()) {
+      dims_signature_rank = tensor->shape_signature()->Length();
+      dims_signature_data = tensor->shape_signature()->data();
+    }
+
     bool is_variable = tensor->is_variable();
     if (buffer_ptr) {
       if (is_variable) {
@@ -590,9 +599,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
     } else {
-      if (subgraph->SetTensorParametersReadWrite(i, type, get_name(tensor),
-                                                 dims, quantization,
-                                                 is_variable) != kTfLiteOk) {
+      if (subgraph->SetTensorParametersReadWrite(
+              i, type, get_name(tensor), dims, quantization, is_variable,
+              dims_signature_rank, dims_signature_data) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
                                 i);
         status = kTfLiteError;
@@ -624,6 +633,13 @@ TfLiteStatus InterpreterBuilder::operator()(
   if (!interpreter) {
     error_reporter_->Report(
         "Null output pointer passed to InterpreterBuilder.");
+    return kTfLiteError;
+  }
+
+  if (num_threads < -1) {
+    error_reporter_->Report(
+        "num_threads should be >=0 or just -1 to let TFLite runtime set the "
+        "value.");
     return kTfLiteError;
   }
 

@@ -284,6 +284,7 @@ cuda_py_test(
     name = "ctc_loss_op_test",
     size = "medium",
     srcs = ["ctc_loss_op_test.py"],
+    xla_enable_strict_auto_jit = False,  # b/148153828
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:ctc_ops",
@@ -754,8 +755,9 @@ cuda_py_test(
 
 cuda_py_test(
     name = "matrix_triangular_solve_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["matrix_triangular_solve_op_test.py"],
+    shard_count = 3,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:linalg_ops",
@@ -2997,6 +2999,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["pooling_ops_test.py"],
     shard_count = 4,
+    xla_enable_strict_auto_jit = False,  # Flaky in XLA b/149568654
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

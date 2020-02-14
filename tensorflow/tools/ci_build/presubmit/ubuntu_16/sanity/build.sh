@@ -78,7 +78,7 @@ EOF
 
 
 source tensorflow/tools/ci_build/release/common.sh
-update_bazel_linux
+install_bazelisk
 which bazel
 
 install_pylint

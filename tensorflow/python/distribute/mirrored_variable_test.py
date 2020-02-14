@@ -32,7 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
-from tensorflow.python.layers import core
+from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
@@ -80,6 +80,13 @@ class MirroredVariableCreationTest(test.TestCase):
   @classmethod
   def setUpClass(cls):
     _mimic_two_cpus()
+
+  def assertAllDifferent(self, objs):
+    for i in range(len(objs)):
+      for j in range(len(objs)):
+        if i == j:
+          continue
+        self.assertIsNot(objs[i], objs[j])
 
   # TODO(priyag): Modify more tests to use this helper and check more
   # properties.
@@ -202,17 +209,20 @@ class MirroredVariableCreationTest(test.TestCase):
   def testWithLayers(self, distribution):
 
     def model_fn(features):
-      with variable_scope.variable_scope("common"):
-        layer1 = core.Dense(1)
-        layer1(features)
-        layer2 = core.Dense(1)
-        layer2(features)
-        # This will pause the current thread, and execute the other thread.
-        ds_context.get_replica_context().merge_call(lambda _: _)
-        layer3 = core.Dense(1)
-        layer3(features)
-        return [(layer1.kernel, layer1.bias), (layer2.kernel, layer2.bias),
-                (layer3.kernel, layer3.bias)]
+
+      layer1 = core.Dense(1)
+      layer1(features)
+      layer2 = core.Dense(1)
+      layer2(features)
+      # We rely on names and orders to make sure replica references the same
+      # MirroredVariable. Uniquifying names may involve global states,
+      # merge_call switches threads so we need to test things work after
+      # merge_call.
+      ds_context.get_replica_context().merge_call(lambda _: _)
+      layer3 = core.Dense(1)
+      layer3(features)
+      return [(layer1.kernel, layer1.bias), (layer2.kernel, layer2.bias),
+              (layer3.kernel, layer3.bias)]
 
     iterator = distribution.make_input_fn_iterator(
         lambda _: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10))
@@ -222,12 +232,11 @@ class MirroredVariableCreationTest(test.TestCase):
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(
           model_fn, args=(features,))
-      suffixes = ["", "_1", "_2"]
-      for (kernel, bias), suffix in zip(result, suffixes):
+      for kernel, bias in result:
         self.assertIsInstance(kernel, values.MirroredVariable)
-        self.assertEqual("common/dense" + suffix + "/kernel:0", kernel.name)
+        self.assertAllDifferent(kernel.values)
         self.assertIsInstance(bias, values.MirroredVariable)
-        self.assertEqual("common/dense" + suffix + "/bias:0", bias.name)
+        self.assertAllDifferent(kernel.values)
 
   def testWithVariableAndVariableScope(self, distribution):
 
@@ -477,8 +486,8 @@ class MirroredVariableCreationTest(test.TestCase):
       ]
       all_v_sum[replica_id] = v_sum
       all_v_mean[replica_id] = v_mean
-      c_sum = v_sum.get()
-      c_mean = v_mean.get()
+      c_sum = v_sum._get()
+      c_mean = v_mean._get()
       components_sum[replica_id] = c_sum
       components_mean[replica_id] = c_mean
       self.assertIsNot(v_sum, c_sum)
@@ -528,8 +537,8 @@ class MirroredVariableCreationTest(test.TestCase):
           distribution.extended.read_var(ret_v_sum)))
       self.assertEqual(expected_mean, self.evaluate(
           distribution.extended.read_var(ret_v_mean)))
-      self.assertEqual(expected_sum, self.evaluate(ret_v_sum.get()))
-      self.assertEqual(expected_mean, self.evaluate(ret_v_mean.get()))
+      self.assertEqual(expected_sum, self.evaluate(ret_v_sum._get()))
+      self.assertEqual(expected_mean, self.evaluate(ret_v_mean._get()))
       self.assertEqual(expected_sum, self.evaluate(ret_v_sum))
       self.assertEqual(expected_mean, self.evaluate(ret_v_mean))
 

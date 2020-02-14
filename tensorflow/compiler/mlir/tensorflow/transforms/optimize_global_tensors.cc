@@ -105,15 +105,6 @@ static GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
 
 void FreezeGlobalTensors(ModuleOp module,
                          const GlobalTensorUsesMap& global_tensor_uses_map) {
-  SmallVector<GlobalTensorOp, 4> freezable_global_tensors;
-  for (auto& kv : global_tensor_uses_map) {
-    auto global_tensor = kv.first;
-    const auto& global_tensor_uses = kv.second;
-    if (IsFreezable(global_tensor, global_tensor_uses)) {
-      freezable_global_tensors.push_back(global_tensor);
-    }
-  }
-
   // Remove `is_mutable` attribute from tf_saved_model.global_tensor
   // and update func arguments to match.
   //

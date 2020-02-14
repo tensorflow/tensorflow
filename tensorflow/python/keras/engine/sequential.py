@@ -39,7 +39,7 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.models.Sequential', 'keras.Sequential')
+@keras_export('keras.Sequential', 'keras.models.Sequential')
 class Sequential(training.Model):
   """`Sequential` groups a linear stack of layers into a `tf.keras.Model`.
 
@@ -110,7 +110,6 @@ class Sequential(training.Model):
     """
     super(Sequential, self).__init__(name=name, autocast=False)
     self.supports_masking = True
-    self._build_input_shape = None
     self._compute_output_and_mask_jointly = True
 
     self._layer_call_argspecs = {}

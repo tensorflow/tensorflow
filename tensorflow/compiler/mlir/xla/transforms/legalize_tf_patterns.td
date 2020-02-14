@@ -207,7 +207,8 @@ class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
 
 foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
                          [TF_LogicalOrOp, HLO_OrOp],
-                         [TF_BitwiseOrOp, HLO_OrOp]] in
+                         [TF_BitwiseOrOp, HLO_OrOp],
+                         [TF_BitwiseAndOp, HLO_AndOp]] in
   def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
@@ -344,6 +345,18 @@ def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
           (TF_TransposeOp $b, (TF_ConstOp (Get2DTransposePerm $transpose_b))),
           /*precision_config=*/(NullArrayAttr))>;
 
+
+//===----------------------------------------------------------------------===//
+// SparseMatMul op patterns.
+//===----------------------------------------------------------------------===//
+
+// Ignores the sparseness hints and translates tf.SparseMatMul to tf.MatMul
+// until we will have an implementation that can use the information.
+def SparseMatMulToMatMul : Pat<(TF_SparseMatMulOp $a, $b, $a_sparse, $b_sparse,
+                                $transpose_a, $transpose_b),
+                               (TF_MatMulOp $a, $b, $transpose_a,
+                                $transpose_b)>;
+
 //===----------------------------------------------------------------------===//
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
@@ -400,6 +413,20 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
            (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
           [(CanBeTranslatedToDynamicSlice $input, $starting_indices,
             $slice_sizes)]>;
+
+//===----------------------------------------------------------------------===//
+// PartitionedCall op patterns.
+//===----------------------------------------------------------------------===//
+
+def ArgTypesMatchCallee : Constraint<
+    CPred<"ArgTypesMatchCallee($0[0].getOwner(), $1, $2)">>;
+
+foreach callOp = [TF_PartitionedCallOp, TF_StatefulPartitionedCallOp] in {
+  def : Pat<(callOp:$op $args, FlatSymbolRefAttr:$f,
+             $config, $config_proto, $executor_type),
+            (CallOp $f, $args),
+          [(ArgTypesMatchCallee $op, $args, $f)]>;
+}
 
 //===----------------------------------------------------------------------===//
 // Ternary op patterns.
@@ -485,15 +512,18 @@ def : Pat<(TF_BitcastOp:$res HLO_Tensor:$arg),
           [(BothElementTypesSameWidthIntOrFloat $res, $arg)]>;
 
 //===----------------------------------------------------------------------===//
-// RngUniform.
+// Random ops.
 //===----------------------------------------------------------------------===//
 
-// TODO(misard,phawkins): handle random number generator seeds/states correctly.
-def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
-          (HLO_RngUniformOp
+foreach srcDstOpPair = [[TF_RandomUniformOp, HLO_RngUniformOp],
+                        [TF_RandomStandardNormalOp, HLO_RngNormalOp]] in {
+// TODO(b/148269299): handle random number generator seeds/states correctly.
+def : Pat<(srcDstOpPair[0]:$old $shape, $seed, $seed2),
+          (srcDstOpPair[1]
             (HLO_ConstOp
               (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 0.0)">)),
             (HLO_ConstOp
               (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 1.0)">)),
             (CastValueToI64 $old, $shape)),
-            [(IsShapedTensor $shape)]>;
+          [(IsShapedTensor $shape)]>;
+}

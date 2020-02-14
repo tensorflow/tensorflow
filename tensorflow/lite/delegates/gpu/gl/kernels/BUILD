@@ -304,6 +304,36 @@ cc_test(
 )
 
 cc_library(
+    name = "mean",
+    srcs = ["mean.cc"],
+    hdrs = ["mean.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "mean_test",
+    srcs = ["mean_test.cc"],
+    tags = [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":mean",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "mul",
     srcs = ["mul.cc"],
     hdrs = ["mul.h"],
@@ -600,9 +630,9 @@ cc_test(
 )
 
 cc_library(
-    name = "upsampling_bilinear",
-    srcs = ["upsampling_bilinear.cc"],
-    hdrs = ["upsampling_bilinear.h"],
+    name = "resize",
+    srcs = ["resize.cc"],
+    hdrs = ["resize.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -614,15 +644,15 @@ cc_library(
 )
 
 cc_test(
-    name = "upsampling_bilinear_test",
-    srcs = ["upsampling_bilinear_test.cc"],
+    name = "resize_test",
+    srcs = ["resize_test.cc"],
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
+        ":resize",
         ":test_util",
-        ":upsampling_bilinear",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "@com_google_googletest//:gtest",
     ],
@@ -641,11 +671,12 @@ TFLITE_GPU_BINARY_RELEASE_OPERATORS = [
     "pooling",
     "prelu",
     "relu",
+    "mean",
     "reshape",
+    "resize",
     "slice",
     "softmax",
     "transpose_conv",
-    "upsampling_bilinear",
 ]
 
 NON_TFLITE_GPU_BINARY_RELEASE_OPERATORS = [

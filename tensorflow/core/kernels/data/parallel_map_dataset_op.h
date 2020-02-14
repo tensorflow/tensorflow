@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -33,6 +34,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kOutputShapes = "output_shapes";
   static constexpr const char* const kUseInterOpParallelism =
       "use_inter_op_parallelism";
+  static constexpr const char* const kDeterministic = "deterministic";
   static constexpr const char* const kSloppy = "sloppy";
   static constexpr const char* const kPreserveCardinality =
       "preserve_cardinality";
@@ -45,11 +47,13 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
  private:
   class Dataset;
+  const int op_version_;
   std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   bool sloppy_;
   bool preserve_cardinality_;
+  DeterminismPolicy deterministic_;
 };
 
 class ParallelMapFunctor {
@@ -78,7 +82,7 @@ std::unique_ptr<IteratorBase> NewParallelMapIterator(
     const DatasetBaseIterator::BaseParams& params,
     const DatasetBase* input_dataset,
     std::unique_ptr<ParallelMapFunctor> parallel_map_functor,
-    int32 num_parallel_calls, bool sloppy, bool preserve_cardinality);
+    int64 num_parallel_calls, bool deterministic, bool preserve_cardinality);
 
 }  // namespace data
 }  // namespace tensorflow

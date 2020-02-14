@@ -854,6 +854,8 @@ struct DepthwiseParams {
   // float activation params.
   float float_activation_min;
   float float_activation_max;
+  const int32* output_multiplier_per_channel;
+  const int32* output_shift_per_channel;
 };
 
 struct DequantizationParams {

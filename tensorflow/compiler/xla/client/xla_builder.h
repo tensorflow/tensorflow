@@ -332,6 +332,12 @@ class XlaBuilder {
   // Adds a new input/output alias. Since the input/output shape information are
   // not available until the computation is built, and eventual error in the
   // arguments of this API will be detected only at computation Build() time.
+  //
+  // Note: Aliasing API is 'may-alias' and only donated buffer at runtime will
+  // be aliased with output. If a buffer is not donated at runtime, a copy will
+  // be inserted by XLA to prevent buffer clobbering.
+  //
+  // Only works on TPU backend.
   void SetUpAlias(const ShapeIndex& output_index, int64 param_number,
                   const ShapeIndex& param_index) {
     input_output_aliases_.push_back({output_index, param_number, param_index});
@@ -564,6 +570,9 @@ class XlaBuilder {
   XlaOp RngNormal(XlaOp mu, XlaOp sigma, const Shape& shape);
 
   XlaOp RngUniform(XlaOp a, XlaOp b, const Shape& shape);
+
+  XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
+                        const Shape& shape);
 
   XlaOp While(const XlaComputation& condition, const XlaComputation& body,
               XlaOp init);
@@ -985,6 +994,8 @@ class XlaBuilder {
                    absl::Span<const XlaOp> static_operands);
   friend XlaOp RngNormal(XlaOp mu, XlaOp sigma, const Shape& shape);
   friend XlaOp RngUniform(XlaOp a, XlaOp b, const Shape& shape);
+  friend XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
+                               const Shape& shape);
   friend XlaOp While(const XlaComputation& condition,
                      const XlaComputation& body, XlaOp init);
   friend XlaOp Conditional(XlaOp predicate, XlaOp true_operand,
@@ -1855,6 +1866,11 @@ XlaOp RngNormal(XlaOp mu, XlaOp sigma, const Shape& shape);
 // Enqueues a U(a, b) random number generation instruction onto the
 // computation. Returns values in the semi-open interval [a, b).
 XlaOp RngUniform(XlaOp a, XlaOp b, const Shape& shape);
+
+// Enqueues a B(initial_state) random bit generation instruction onto the
+// computation. Resturns the new key and random bits with the specified shape.
+XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
+                      const Shape& shape);
 
 // Enqueues a while node onto the computation.
 XlaOp While(const XlaComputation& condition, const XlaComputation& body,

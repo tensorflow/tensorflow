@@ -18,8 +18,9 @@ limitations under the License.
 int main(int argc, char** argv) {
   tflite::MicroErrorReporter micro_error_reporter;
   tflite::ErrorReporter* error_reporter = &micro_error_reporter;
-  error_reporter->Report("Number: %d", 42);
-  error_reporter->Report("Badly-formed format string %");
-  error_reporter->Report("Another % badly-formed %% format string");
-  error_reporter->Report("~~~%s~~~", "ALL TESTS PASSED");
+  TF_LITE_REPORT_ERROR(error_reporter, "Number: %d", 42);
+  TF_LITE_REPORT_ERROR(error_reporter, "Badly-formed format string %");
+  TF_LITE_REPORT_ERROR(error_reporter,
+                       "Another % badly-formed %% format string");
+  TF_LITE_REPORT_ERROR(error_reporter, "~~~%s~~~", "ALL TESTS PASSED");
 }

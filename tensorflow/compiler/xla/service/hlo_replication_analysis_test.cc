@@ -123,8 +123,13 @@ ENTRY entry {
   after-all.1 = token[] after-all()
   replica-id = u32[] replica-id()
   partition-id = u32[] partition-id()
-  infeed = (f32[4096,4096]{1,0}, token[]) infeed(after-all.1)
-  get-tuple-element.5 = f32[4096,4096]{1,0} get-tuple-element(infeed), index=0
+  infeed = ((f32[4096,4096]{1,0}, f32[8,8]{1,0}), token[]) infeed(after-all.1),
+    sharding={{maximal device=0}, {replicated}, {maximal device=0}}
+  infeed-data = (f32[4096,4096]{1,0}, f32[8,8]{1,0}) get-tuple-element(infeed),
+    index=0
+  get-tuple-element.5 = f32[4096,4096]{1,0} get-tuple-element(infeed-data),
+    index=0
+  get-tuple-element.6 = f32[8,8]{1,0} get-tuple-element(infeed-data), index=1
   dot = f32[4096,4096]{1,0} dot(get-tuple-element.5, get-tuple-element.3),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
   all-reduce = f32[4096,4096]{1,0} all-reduce(dot), replica_groups={},
@@ -155,6 +160,8 @@ ENTRY entry {
       FindInstruction(module.get(), "get-tuple-element.3"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "get-tuple-element.5"), {}));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "get-tuple-element.6"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "dot"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(

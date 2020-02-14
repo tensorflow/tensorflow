@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/profiler/utils/metadata_matcher.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 
@@ -52,11 +52,14 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
   line.ForEachEvent([&](const XEventVisitor& event) {
     int64 correlation_id = -1;
     int64 group_id = -1;
+    absl::string_view step_name;
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kCorrelationId) {
         correlation_id = stat.IntValue();
       } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
+      } else if (stat.Type() == StatType::kStepName) {
+        step_name = stat.StrValue();
       }
     });
     if (group_id < 0) return;
@@ -68,7 +71,9 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
         device_step_events.find(group_id) == device_step_events.end())
       return;
     Timespan timespan = Timespan(event.TimestampPs(), event.DurationPs());
-    if (IsStepMarker(event.Name())) {
+    // If an explicit step marker is not available, look for an implicit one
+    // which has a step_name stat.
+    if (IsStepMarker(event.Name()) || !step_name.empty()) {
       result[group_id].AddMarker(
           StepMarker(/*device=*/false, event.Name(), timespan));
     } else if (IsRealCpuCompute(event.Name())) {
@@ -84,7 +89,7 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
     const XPlane& host_trace, bool use_device_step_events,
     const StepEvents& device_step_events) {
   StepEvents result;
-  XPlaneVisitor plane(&host_trace);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&host_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     CombineStepEvents(ConvertHostThreadsXLineToStepEvents(
                           line, use_device_step_events, device_step_events),
@@ -98,16 +103,20 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
   line.ForEachEvent([&](const XEventVisitor& event) {
     int64 correlation_id = -1;
     int64 group_id = -1;
+    absl::string_view tensor_shapes = "";
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kCorrelationId) {
         correlation_id = stat.IntValue();
       } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
+      } else if (stat.Type() == StatType::kTensorShapes) {
+        tensor_shapes = stat.StrValue();
       }
     });
+
     if (correlation_id >= 0 && group_id >= 0) {
       EventTypeSpan event_type_span(
-          ClassifyGpuEvent(event.Name()),
+          ClassifyGpuEvent(event.Name(), tensor_shapes),
           Timespan(event.TimestampPs(), event.DurationPs()));
       result[group_id].AddEvent(event_type_span);
     }
@@ -117,7 +126,7 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
 
 StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
   StepEvents result;
-  XPlaneVisitor plane(&device_trace);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     if (IsDerivedThreadId(line.Id())) return;
     CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(line), &result);

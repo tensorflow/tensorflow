@@ -28,7 +28,6 @@ from tensorflow.python.distribute import distribution_strategy_context as ds_con
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -36,7 +35,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
@@ -52,6 +50,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
@@ -74,8 +73,8 @@ _keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
                                         'keras api usage', 'method')
 
 
-@keras_export('keras.models.Model', 'keras.Model')
-class Model(network.Network, version_utils.VersionSelector):
+@keras_export('keras.Model', 'keras.models.Model')
+class Model(network.Network, version_utils.ModelVersionSelector):
   """`Model` groups layers into an object with training and inference features.
 
   There are two ways to instantiate a `Model`:
@@ -236,7 +235,6 @@ class Model(network.Network, version_utils.VersionSelector):
             See `tf.keras.optimizers`.
         loss: String (name of objective function), objective function or
             `tf.keras.losses.Loss` instance. See `tf.keras.losses`.
-
             An objective function is any callable with the signature
             `loss = fn(y_true, y_pred)`, where
             y_true = ground truth values with shape = `[batch_size, d0, .. dN]`,
@@ -244,23 +242,19 @@ class Model(network.Network, version_utils.VersionSelector):
             where shape = `[batch_size, d0, .. dN-1]`.
             y_pred = predicted values with shape = `[batch_size, d0, .. dN]`.
             It returns a weighted loss float tensor.
-
             If a custom `Loss` instance is used and reduction is set to NONE,
             return value has the shape [batch_size, d0, .. dN-1] ie. per-sample
             or per-timestep loss values; otherwise, it is a scalar.
-
             If the model has multiple outputs, you can use a different loss on
             each output by passing a dictionary or a list of losses. The loss
             value that will be minimized by the model will then be the sum of
             all individual losses.
         metrics: List of metrics to be evaluated by the model during training
             and testing.
-
             Each of this can be a string (name of a built-in function), function
             or a `tf.keras.metrics.Metric` instance. See `tf.keras.metrics`.
             Typically you will use `metrics=['accuracy']`. A function is any
             callable with the signature `result = fn(y_true, y_pred)`.
-
             To specify different metrics for different outputs of a
             multi-output model, you could also pass a dictionary, such as
             `metrics={'output_a': 'accuracy', 'output_b': ['accuracy', 'mse']}`.
@@ -290,7 +284,7 @@ class Model(network.Network, version_utils.VersionSelector):
             dictionary or a list of modes.
         weighted_metrics: List of metrics to be evaluated and weighted
             by sample_weight or class_weight during training and testing.
-        **kwargs: Any additional arguments. For eager execution, pass 
+        **kwargs: Any additional arguments. For eager execution, pass
             `run_eagerly=True`.
 
     Raises:
@@ -578,6 +572,8 @@ class Model(network.Network, version_utils.VersionSelector):
 
             For the first two cases, `batch_size` must be provided.
             For the last case, `validation_steps` could be provided.
+            Note that `validation_data` does not support all the data types that
+            are supported in `x`, eg, dict, generator or `keras.utils.Sequence`.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch'). This argument is ignored
             when `x` is a generator. 'batch' is a special option for dealing
@@ -615,17 +611,19 @@ class Model(network.Network, version_utils.VersionSelector):
             the batch size, or 1 if that cannot be determined. If x is a
             `tf.data` dataset, and 'steps_per_epoch'
             is None, the epoch will run until the input dataset is exhausted.
-            This argument is not supported with array inputs.
+            When passing an infinitely repeating dataset, you must specify the
+            `steps_per_epoch` argument. This argument is not supported with
+            array inputs.
         validation_steps: Only relevant if `validation_data` is provided and
             is a `tf.data` dataset. Total number of steps (batches of
             samples) to draw before stopping when performing validation
             at the end of every epoch. If 'validation_steps' is None, validation
             will run until the `validation_data` dataset is exhausted. In the
-            case of a infinite dataset, it will run into a infinite loop.
-            If 'validation_steps' is specified and only part of the dataset
-            will be consumed, the evaluation will start from the beginning of
-            the dataset at each epoch. This ensures that the same validation
-            samples are used every time.
+            case of an infinitely repeated dataset, it will run into an
+            infinite loop. If 'validation_steps' is specified and only part of
+            the dataset will be consumed, the evaluation will start from the
+            beginning of the dataset at each epoch. This ensures that the same
+            validation samples are used every time.
         validation_freq: Only relevant if validation data is provided. Integer
             or `collections_abc.Container` instance (e.g. list, tuple, etc.).
             If an integer, specifies how many training epochs to run before a
@@ -861,7 +859,7 @@ class Model(network.Network, version_utils.VersionSelector):
           (Dataset, generator, Sequence) is given in the `Unpacking behavior
           for iterator-like inputs` section of `Model.fit`.
         batch_size: Integer or `None`.
-            Number of samples per gradient update.
+            Number of samples per batch.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,
@@ -1845,7 +1843,7 @@ class Model(network.Network, version_utils.VersionSelector):
                        'optimizer.')
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # train function even if one exists already. This is because
-    # `_feed_sample_weights` list has been updated on re-copmpile.
+    # `_feed_sample_weights` list has been updated on re-compile.
     if getattr(self, 'train_function', None) is None or has_recompiled:
       # Restore the compiled trainable state.
       current_trainable_state = self._get_trainable_state()
@@ -1887,7 +1885,7 @@ class Model(network.Network, version_utils.VersionSelector):
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # test function even if one exists already. This is because
-    # `_feed_sample_weights` list has been updated on re-copmpile.
+    # `_feed_sample_weights` list has been updated on re-compile.
     if getattr(self, 'test_function', None) is None or has_recompiled:
       inputs = (self._feed_inputs +
                 self._feed_targets +
@@ -2233,21 +2231,14 @@ class Model(network.Network, version_utils.VersionSelector):
         converted_x.append(_convert_scipy_sparse_tensor(a, b))
       x = nest.pack_sequence_as(x, converted_x, expand_composites=False)
 
-      def _type_spec_from_value(value):
-        """Grab type_spec without converting array-likes to tensors."""
-        if isinstance(value, composite_tensor.CompositeTensor):
-          return value._type_spec  # pylint: disable=protected-access
-        # Get a TensorSpec for array-like data without
-        # converting the data to a Tensor
-        if hasattr(value, 'shape') and hasattr(value, 'dtype'):
-          return tensor_spec.TensorSpec(value.shape, value.dtype)
-        else:
-          return type_spec.type_spec_from_value(value)
-
-      x_shapes = nest.map_structure(_type_spec_from_value, x)
+      x_shapes = nest.map_structure(tf_utils.type_spec_from_value, x)
 
     flat_inputs = nest.flatten(x_shapes, expand_composites=False)
-    flat_expected_inputs = nest.flatten(self.inputs, expand_composites=False)
+
+    x_expected_shapes = nest.map_structure(tf_utils.type_spec_from_value,
+                                           self.inputs)
+    flat_expected_inputs = nest.flatten(
+        x_expected_shapes, expand_composites=False)
     for (a, b) in zip(flat_inputs, flat_expected_inputs):
       nest.assert_same_structure(a, b, expand_composites=True)
 

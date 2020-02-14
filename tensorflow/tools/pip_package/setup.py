@@ -245,8 +245,12 @@ else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (
+    list(find_files('*.proto', 'tensorflow_core/compiler')) +
+    list(find_files('*.proto', 'tensorflow_core/core')) +
+    list(find_files('*.proto', 'tensorflow_core/python')) +
     list(find_files('*.h', 'tensorflow_core/compiler')) +
     list(find_files('*.h', 'tensorflow_core/core')) +
+    list(find_files('*.h', 'tensorflow_core/python')) +
     list(find_files('*.h', 'tensorflow_core/stream_executor')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
