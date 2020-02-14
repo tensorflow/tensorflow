@@ -1108,10 +1108,10 @@ static LogicalResult VerifySplitOpOutputTypes(
   for (int64_t i = 0; i < num_splits; ++i) {
     auto expected_output_type = get_expected_output_type(i);
     Value output = op->getResult(i);
-    auto output_type = output.getType().dyn_cast<RankedTensorType>();
-    if (!output_type || output_type != expected_output_type)
+    if (failed(verifyCompatibleShape(output.getType(), expected_output_type)))
       return op->emitOpError()
-             << "output #" << i << " should be " << expected_output_type;
+             << "output #" << i << " should be " << expected_output_type
+             << " instead got " << output.getType();
   }
   return success();
 }
