@@ -93,14 +93,21 @@ StatusOr<py::bytes> GetComputationSerializedProto(
   return py::bytes(result);
 }
 
-// Converts a computation to textual HLO form.
-StatusOr<std::string> GetComputationHloText(const XlaComputation& computation) {
+StatusOr<std::shared_ptr<HloModule>> GetHloModule(
+    const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                       HloModule::CreateModuleConfigFromProto(
                           computation.proto(), GetDebugOptionsFromFlags()));
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
+      std::unique_ptr<HloModule> module,
       HloModule::CreateFromProto(computation.proto(), module_config));
+  return std::shared_ptr<HloModule>(std::move(module));
+}
+
+// Converts a computation to textual HLO form.
+StatusOr<std::string> GetComputationHloText(const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+                      GetHloModule(computation));
   HloPrintOptions options;
   options = HloPrintOptions::ShortParsable();
   options.set_print_large_constants(false);
@@ -110,12 +117,8 @@ StatusOr<std::string> GetComputationHloText(const XlaComputation& computation) {
 // Converts a computation to HLO dot graph form.
 StatusOr<std::string> GetComputationHloDotGraph(
     const XlaComputation& computation) {
-  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
-                      HloModule::CreateModuleConfigFromProto(
-                          computation.proto(), GetDebugOptionsFromFlags()));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(computation.proto(), module_config));
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+                      GetHloModule(computation));
   return RenderGraph(*hlo_module->entry_computation(), /*label=*/"",
                      hlo_module->config().debug_options(),
                      RenderedGraphFormat::kDot);
@@ -123,12 +126,8 @@ StatusOr<std::string> GetComputationHloDotGraph(
 
 // Hashes the HLO module.
 StatusOr<uint64> HashComputation(const XlaComputation& computation) {
-  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
-                      HloModule::CreateModuleConfigFromProto(
-                          computation.proto(), GetDebugOptionsFromFlags()));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(computation.proto(), module_config));
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+                      GetHloModule(computation));
   return hlo_module->Hash();
 }
 
@@ -1040,7 +1039,21 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecuteOnLocalDevices", &PyLocalExecutable::ExecuteOnLocalDevices,
-           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def(
+          "get_hlo_modules",
+          [](const PyLocalExecutable& executable)
+              -> StatusOr<std::vector<std::shared_ptr<HloModule>>> {
+            std::vector<std::shared_ptr<HloModule>> modules;
+            modules.reserve(executable.executables().size());
+            for (const auto& local_exec : executable.executables()) {
+              if (!local_exec->executable()->has_module()) {
+                return InvalidArgument("Executable does not have HLO modules.");
+              }
+              modules.push_back(local_exec->executable()->shared_module());
+            }
+            return std::move(modules);
+          });
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def_property("xla_cpu_enable_fast_math",
@@ -1085,9 +1098,80 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("GetSerializedProto", &GetComputationSerializedProto)
       .def("GetHloText", &GetComputationHloText)
       .def("GetHloDotGraph", &GetComputationHloDotGraph)
-      .def("Hash", &HashComputation);
+      .def("Hash", &HashComputation)
+      .def("get_hlo_module", &GetHloModule);
 
-  py::class_<XlaOp>(m, "XlaOp");
+  py::class_<HloPrintOptions> hlo_print_options_class(m, "HloPrintOptions");
+  hlo_print_options_class.def(py::init<>())
+      .def_static("short_parsable", &HloPrintOptions::ShortParsable)
+      .def_static("canonical", &HloPrintOptions::Canonical)
+      .def_static("fingerprint", &HloPrintOptions::Fingerprint)
+      .def_property("print_large_constants",
+                    &HloPrintOptions::print_large_constants,
+                    &HloPrintOptions::set_print_large_constants)
+      .def_property("print_metadata", &HloPrintOptions::print_metadata,
+                    &HloPrintOptions::set_print_metadata)
+      .def_property("print_backend_config",
+                    &HloPrintOptions::print_backend_config,
+                    &HloPrintOptions::set_print_backend_config)
+      .def_property("print_result_shape", &HloPrintOptions::print_result_shape,
+                    &HloPrintOptions::set_print_result_shape)
+      .def_property("print_operand_shape",
+                    &HloPrintOptions::print_operand_shape,
+                    &HloPrintOptions::set_print_operand_shape)
+      .def_property("print_operand_names",
+                    &HloPrintOptions::print_operand_names,
+                    &HloPrintOptions::set_print_operand_names)
+      .def_property("print_ids", &HloPrintOptions::print_ids,
+                    &HloPrintOptions::set_print_ids)
+      .def_property("print_extra_attributes",
+                    &HloPrintOptions::print_extra_attributes,
+                    &HloPrintOptions::set_print_extra_attributes)
+      .def_property("print_program_shape",
+                    &HloPrintOptions::print_program_shape,
+                    &HloPrintOptions::set_print_program_shape)
+      .def_property("print_percent", &HloPrintOptions::print_percent,
+                    &HloPrintOptions::set_print_percent)
+      .def_property("print_control_dependencies",
+                    &HloPrintOptions::print_control_dependencies,
+                    &HloPrintOptions::set_print_control_dependencies)
+      .def_property("compact_operands", &HloPrintOptions::compact_operands,
+                    &HloPrintOptions::set_compact_operands)
+      .def_property("include_layout_in_shapes",
+                    &HloPrintOptions::include_layout_in_shapes,
+                    &HloPrintOptions::set_include_layout_in_shapes)
+      .def_property("canonicalize_instruction_names",
+                    &HloPrintOptions::canonicalize_instruction_names,
+                    &HloPrintOptions::set_canonicalize_instruction_names)
+      .def_property("canonicalize_computations",
+                    &HloPrintOptions::canonicalize_computations,
+                    &HloPrintOptions::set_canonicalize_computations)
+      .def_property("indent_amount", &HloPrintOptions::indent_amount,
+                    &HloPrintOptions::set_indent_amount)
+      .def_property("is_in_nested_computation",
+                    &HloPrintOptions::is_in_nested_computation,
+                    &HloPrintOptions::set_is_in_nested_computation)
+      .def_property(
+          "leading_and_trailing_instructions_number",
+          &HloPrintOptions::leading_and_trailing_instructions_number,
+          &HloPrintOptions::set_leading_and_trailing_instructions_number);
+
+  py::class_<HloModule, std::shared_ptr<HloModule>> hlo_module_class(
+      m, "HloModule");
+  hlo_module_class.def(
+      "to_string",
+      static_cast<std::string (HloModule::*)(const HloPrintOptions&) const>(
+          &HloModule::ToString),
+      py::arg("options") = HloPrintOptions());
+
+  m.def("hlo_module_to_dot_graph",
+        [](const HloModule& hlo_module) -> StatusOr<std::string> {
+          return RenderGraph(*hlo_module.entry_computation(), /*label=*/"",
+                             hlo_module.config().debug_options(),
+                             RenderedGraphFormat::kDot);
+        });
+
+  py::class_<XlaOp> xla_op_class(m, "XlaOp");
 
   py::class_<XlaBuilder>(m, "XlaBuilder")
       .def(py::init([](const std::string& name) -> std::unique_ptr<XlaBuilder> {
