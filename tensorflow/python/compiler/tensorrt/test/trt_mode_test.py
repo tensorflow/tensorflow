@@ -20,12 +20,12 @@ from __future__ import print_function
 
 from unittest import SkipTest  # pylint: disable=g-importing-member
 
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
-
 
 class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
   """Test squeeze on batch dim and some unary operations in TF-TRT."""
@@ -122,6 +122,11 @@ class ExplicitBatchTest(TrtModeTestBase):
     """
     return ["TRTEngineOp_0"]
 
+  def ShouldRunTest(self, run_params):
+    # Only run for TRT 6 and above.
+    ver = get_linked_tensorrt_version()
+    return ver[0] >= 6
+
 
 class DynamicShapesTest(TrtModeTestBase):
   """Test with dynamic input shapes.
@@ -145,6 +150,11 @@ class DynamicShapesTest(TrtModeTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return ["TRTEngineOp_0"]
+
+  def ShouldRunTest(self, run_params):
+    # Only run for TRT 6 and above.
+    ver = get_linked_tensorrt_version()
+    return ver[0] >= 6
 
 
 if __name__ == "__main__":
