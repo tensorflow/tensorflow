@@ -6,6 +6,8 @@
 ifeq ($(TARGET), xtensa-xpg)
   TARGET_ARCH := xtensa-xpg
 
+$(eval $(call add_third_party_download,$(XTENSA_HIFI4_URL),$(XTENSA_HIFI4_MD5),xa_nnlib,))
+
   PLATFORM_ARGS = \
     -DTF_LITE_MICRO_TENSORS_PREPARED \
     -DTF_LITE_STATIC_MEMORY \
