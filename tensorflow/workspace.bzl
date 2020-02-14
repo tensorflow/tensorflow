@@ -1032,11 +1032,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "pybind11",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/pybind/pybind11/archive/v2.3.0.tar.gz",
-            "https://github.com/pybind/pybind11/archive/v2.3.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/pybind/pybind11/archive/v2.4.3.tar.gz",
+            "https://github.com/pybind/pybind11/archive/v2.4.3.tar.gz",
         ],
-        sha256 = "0f34838f2c8024a6765168227ba587b3687729ebf03dc912f88ff75c7aa9cfe8",
-        strip_prefix = "pybind11-2.3.0",
+        sha256 = "1eed57bc6863190e35637290f97a20c81cfe4d9090ac0a24f3bbf08f265eb71d",
+        strip_prefix = "pybind11-2.4.3",
         build_file = clean_dep("//third_party:pybind11.BUILD"),
     )
 
