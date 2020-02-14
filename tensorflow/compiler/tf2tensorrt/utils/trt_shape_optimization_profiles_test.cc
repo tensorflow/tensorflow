@@ -86,7 +86,7 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
 #endif
   }
 
-  // Define a simple network: output = input1 + input2.
+  // Defines a simple network: output = input1 + input2.
   void DefineNetwork(nvinfer1::INetworkDefinition* network,
                      nvinfer1::Dims3& dims) {
     nvinfer1::ITensor* input1 =

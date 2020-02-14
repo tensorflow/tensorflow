@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-// Create optimization profiles for a list of input shapes. The list of input
+// Creates optimization profiles for a list of input shapes. The list of input
 // shapes are stored in shapes_.
 void TrtShapeOptimizationProfile::InitProfiles() {
   if (input_shapes_.size() == 0) {
