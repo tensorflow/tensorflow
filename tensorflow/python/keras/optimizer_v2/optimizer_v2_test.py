@@ -65,10 +65,8 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testBasic(self):
-    self.skipTest('broken test to be fixed')
     for _, dtype in enumerate([
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
+        dtypes.half, dtypes.float32, dtypes.float64
     ]):
       with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
@@ -90,10 +88,8 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testAdaptiveLearningRate(self):
-    self.skipTest('broken test to be fixed')
     for dtype in [
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
+        dtypes.half, dtypes.float32, dtypes.float64
     ]:
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
       var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
@@ -139,8 +135,7 @@ class OptimizerTest(test.TestCase):
   def testPrecomputedGradient(self):
     self.skipTest('broken test to be fixed')
     for dtype in [
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
+        dtypes.half, dtypes.float32, dtypes.float64
     ]:
       with test_util.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
@@ -210,10 +205,8 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testGradientsAsVariables(self):
-    self.skipTest('broken test to be fixed')
     for i, dtype in enumerate([
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
+        dtypes.half, dtypes.float32, dtypes.float64
     ]):
       with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
@@ -511,13 +504,12 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testOptimizerWithCallbacks(self):
-    self.skipTest('flaky')
     np.random.seed(1331)
     input_np = np.random.random((10, 3))
     output_np = np.random.random((10, 4))
     a = input_layer.Input(shape=(3,), name='input_a')
     model = sequential.Sequential()
-    model.add(core.Dense(4, name='dense'))
+    model.add(core.Dense(4, kernel_initializer='zeros', name='dense'))
     model.add(core.Dropout(0.5, name='dropout'))
     model(a)
     optimizer = gradient_descent.SGD(learning_rate=0.1)
