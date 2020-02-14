@@ -43,11 +43,11 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 template <typename T>
 bool CheckBoxesCoordinates(const Tensor& boxes, int num_boxes){
   typename TTypes<T, 2>::ConstTensor boxes_data = boxes.tensor<T, 2>();
-  for(int i=0; i<num_boxes; ++i){
+  for (int i = 0; i < num_boxes; ++i){
     if(boxes_data(i, 0) == boxes_data(i, 2) || boxes_data(i, 1) == boxes_data(i, 3))
-      return (false);
+      return false;
   }
-  return (true);
+  return true;
 }
 
 static inline void CheckScoreSizes(OpKernelContext* context, int num_boxes,
@@ -534,7 +534,7 @@ class NonMaxSuppressionOp : public OpKernel {
     ParseAndCheckBoxSizes(context, boxes, &num_boxes);
     CheckScoreSizes(context, num_boxes, scores);
     // check if the boxes have logical coordinates
-    OP_REQUIRES(context, CheckBoxesCoordinates<float>(boxes, num_boxes), errors::InvalidArgument("boxes coordinates shouldn't have x1=x2 or y1=y2"));
+    OP_REQUIRES(context, CheckBoxesCoordinates<float>(boxes, num_boxes), errors::InvalidArgument("Boxes are empty (x1 == x2 or y1 == y2)"));
     if (!context->status().ok()) {
       return;
     }
