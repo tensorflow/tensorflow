@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import _memory_checker_test_helper
 from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -49,6 +50,18 @@ class MemoryCheckerTest(test.TestCase):
     memory_checker.assert_no_leak_if_all_possibly_except_one()
 
   def testNoLeak2(self):
+    helper = _memory_checker_test_helper.MemoryCheckerTestHelper()
+    with MemoryChecker() as memory_checker:
+      memory_checker.record_snapshot()
+      helper.list_push_back(10)
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
+
+    memory_checker.report()
+    memory_checker.assert_no_leak_if_all_possibly_except_one()
+
+  def testNoLeak3(self):
     with MemoryChecker() as memory_checker:
       tensors = []
       for i in range(10):
@@ -73,6 +86,20 @@ class MemoryCheckerTest(test.TestCase):
       memory_checker.assert_no_leak_if_all_possibly_except_one()
 
   def testLeak2(self):
+    helper = _memory_checker_test_helper.MemoryCheckerTestHelper()
+    with MemoryChecker() as memory_checker:
+      memory_checker.record_snapshot()
+      helper.list_push_back(10)
+      memory_checker.record_snapshot()
+      helper.list_push_back(11)
+      memory_checker.record_snapshot()
+      memory_checker.record_snapshot()
+
+    memory_checker.report()
+    with self.assertRaises(AssertionError):
+      memory_checker.assert_no_leak_if_all_possibly_except_one()
+
+  def testLeak3(self):
     with MemoryChecker() as memory_checker:
       tensors = []
       for _ in range(10):
