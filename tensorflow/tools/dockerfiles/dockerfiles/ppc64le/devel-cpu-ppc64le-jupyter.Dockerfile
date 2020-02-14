@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         rsync \
         software-properties-common \
-	sudo \
+        sudo \
         unzip \
         zip \
         zlib1g-dev \
@@ -55,6 +55,7 @@ RUN chmod a+w /etc/passwd /etc/group
 RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
 
 ARG USE_PYTHON_3_NOT_2
+# TODO(angerson) Completely remove Python 2 support
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
 ARG PYTHON=python${_PY_SUFFIX}
 ARG PIP=pip${_PY_SUFFIX}
@@ -71,7 +72,7 @@ RUN ${PIP} --no-cache-dir install --upgrade \
     setuptools
 
 # Some TF tools expect a "python" binary
-RUN ln -s $(which ${PYTHON}) /usr/local/bin/python 
+RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
 
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -85,7 +86,6 @@ RUN apt-get update && apt-get install -y \
 RUN ${PIP} --no-cache-dir install \
     Pillow \
     h5py \
-    keras_applications \
     keras_preprocessing \
     matplotlib \
     mock \
@@ -113,6 +113,8 @@ COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
 RUN ${PIP} install jupyter matplotlib
+# Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
+RUN if [[ "${USE_PYTHON_3_NOT_2}" == "1" ]]; then ${PIP} install ipykernel==5.1.1 nbformat==4.4.0; fi
 RUN ${PIP} install jupyter_http_over_ws
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 

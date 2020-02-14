@@ -16,12 +16,29 @@ limitations under the License.
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 
 #include "grpcpp/support/status.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
+
+Status CollectDataToResponse(const ProfileRequest& req,
+                             ProfilerSession* profiler,
+                             ProfileResponse* response) {
+  profiler::XSpace xspace;
+  TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
+  profiler::ConvertXSpaceToProfileResponse(xspace, req, response);
+  return Status::OK();
+}
 
 class ProfilerServiceImpl : public grpc::ProfilerService::Service {
  public:
@@ -32,29 +49,32 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
 
   ::grpc::Status Profile(::grpc::ServerContext* ctx, const ProfileRequest* req,
                          ProfileResponse* response) override {
-    LOG(INFO) << "Received a profile request.";
+    LOG(INFO) << "Received a profile request: " << req->DebugString();
     std::unique_ptr<ProfilerSession> profiler = ProfilerSession::Create();
-    if (!profiler->Status().ok()) {
+    Status status = profiler->Status();
+    if (!status.ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
-                            profiler->Status().error_message());
+                            status.error_message());
     }
 
     Env* env = Env::Default();
     for (size_t i = 0; i < req->duration_ms(); ++i) {
-      env->SleepForMicroseconds(1000);
+      env->SleepForMicroseconds(EnvTime::kMillisToMicros);
       if (ctx->IsCancelled()) {
         return ::grpc::Status::CANCELLED;
       }
     }
 
-    Status s = profiler->SerializeToString(response->mutable_encoded_trace());
-    if (!s.ok()) {
-      return ::grpc::Status(::grpc::StatusCode::INTERNAL, s.error_message());
+    status = CollectDataToResponse(*req, profiler.get(), response);
+    if (!status.ok()) {
+      return ::grpc::Status(::grpc::StatusCode::INTERNAL,
+                            status.error_message());
     }
 
     return ::grpc::Status::OK;
   }
 };
+
 }  // namespace
 
 std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService() {

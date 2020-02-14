@@ -96,7 +96,7 @@ class Normalization(CombinerPreprocessingLayer):
         name=_VARIANCE_NAME,
         shape=mean_and_var_shape,
         dtype=K.floatx(),
-        initializer=init_ops.zeros_initializer)
+        initializer=init_ops.ones_initializer)
     self.count = self._add_state_variable(
         name=_COUNT_NAME,
         shape=(),

@@ -48,13 +48,22 @@ class ElementwiseOneInput : public ElementwiseOperation {
 ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
                                               const OperationType& op_type);
 
+struct BroadcastSettings {
+  bool width;
+  bool height;
+  bool channels;
+};
+
 // Class for simple two input operations without any parameters, for example
 // sub, div and etc.
 class ElementwiseTwoInput : public ElementwiseOperation {
  public:
   explicit ElementwiseTwoInput(const OperationDef& definition,
-                               const OperationType& op_type)
-      : ElementwiseOperation(definition), op_type_(op_type) {}
+                               const OperationType& op_type,
+                               const BroadcastSettings& broadcast)
+      : ElementwiseOperation(definition),
+        op_type_(op_type),
+        broadcast_(broadcast) {}
 
   // Move only
   ElementwiseTwoInput(ElementwiseTwoInput&& operation);
@@ -70,7 +79,12 @@ class ElementwiseTwoInput : public ElementwiseOperation {
  private:
   int link_index_;
   OperationType op_type_;
+  BroadcastSettings broadcast_;
 };
+
+ElementwiseTwoInput CreateElementwiseTwoInput(
+    const OperationDef& definition, const OperationType& op_type,
+    const BroadcastSettings& broadcast);
 
 ElementwiseTwoInput CreateElementwiseTwoInput(const OperationDef& definition,
                                               const OperationType& op_type);

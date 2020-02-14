@@ -40,7 +40,7 @@ StatusOr<bool> RunFileCheck(const std::string& input,
 
   // Invoke FileCheck to check whether input matches `pattern`.
   const char* file_check_path_suffix =
-      "org_tensorflow/external/llvm/FileCheck";
+      "org_tensorflow/external/llvm-project/llvm/FileCheck";
   string file_check_path;
   if (const char* test_srcdir = getenv("TEST_SRCDIR")) {
     file_check_path = JoinPath(test_srcdir, file_check_path_suffix);

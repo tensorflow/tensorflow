@@ -102,7 +102,7 @@ import weakref
 
 import six
 
-from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import device_util
@@ -128,6 +128,7 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
@@ -405,14 +406,19 @@ class InputContext(object):
                        (global_batch_size, self._num_replicas_in_sync))
     return global_batch_size // self._num_replicas_in_sync
 
+  def __str__(self):
+    return "tf.distribute.InputContext(input pipeline id {}, total: {})".format(
+        self.input_pipeline_id, self.num_input_pipelines)
+
 
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.
 
 
+# Base class for v1 Strategy and v2 Strategy classes. For API's specific to
+# v1/v2 Strategy, add to implementing classes of StrategyBase.
 # pylint: disable=line-too-long
-@tf_export("distribute.Strategy", v1=[])
-class Strategy(object):
+class StrategyBase(object):
   """A state & compute distribution policy on a list of devices.
 
   See [the guide](https://www.tensorflow.org/guide/distributed_training)
@@ -629,6 +635,7 @@ class Strategy(object):
 
     # Distribute that dataset
     dist_dataset = strategy.experimental_distribute_dataset(dataset)
+
     # Iterate over the distributed dataset
     for x in dist_dataset:
       # process dataset elements
@@ -652,11 +659,10 @@ class Strategy(object):
     `.shard` operation to the end of the processing pipeline. This will cause
     the entire preprocessing pipeline for all the data to be run on every
     worker, and each worker will do redundant work. We will print a warning
-    if this method of sharding is selected. In this case, consider using
-    `experimental_distribute_datasets_from_function` instead.
+    if this method of sharding is selected.
 
-    You can disable dataset sharding across workers using the `auto_shard`
-    option in `tf.data.experimental.DistributeOptions`.
+    You can disable dataset sharding across workers using the
+    `auto_shard_policy` option in `tf.data.experimental.DistributeOptions`.
 
     Within each worker, we will also split the data among all the worker
     devices (if more than one a present), and this will happen even if
@@ -665,6 +671,32 @@ class Strategy(object):
     If the above batch splitting and dataset sharding logic is undesirable,
     please use `experimental_distribute_datasets_from_function` instead, which
     does not do any automatic splitting or sharding.
+
+    You can also use the `element_spec` property of the distributed dataset
+    returned by this API to query the `tf.TypeSpec` of the elements returned
+    by the iterator. This can be used to set the `input_signature` property
+    of a `tf.function`.
+
+    ```python
+    strategy = tf.distribute.MirroredStrategy()
+
+    # Create a dataset
+    dataset = dataset_ops.Dataset.TFRecordDataset([
+      "/a/1.tfr", "/a/2.tfr", "/a/3.tfr", "/a/4.tfr"])
+
+    # Distribute that dataset
+    dist_dataset = strategy.experimental_distribute_dataset(dataset)
+
+    @tf.function(input_signature=[dist_dataset.element_spec])
+    def train_step(inputs):
+      # train model with inputs
+      return
+
+    # Iterate over the distributed dataset
+    for x in dist_dataset:
+      # process dataset elements
+      strategy.experimental_run_v2(train_step, args=(x,))
+    ```
 
     Args:
       dataset: `tf.data.Dataset` that will be sharded across all replicas using
@@ -715,6 +747,26 @@ class Strategy(object):
     the global batch size.  This may be computed using
     `input_context.get_per_replica_batch_size`.
 
+    To query the `tf.TypeSpec` of the elements in the distributed dataset
+    returned by this API, you need to use the `element_spec` property of the
+    distributed iterator. This `tf.TypeSpec` can be used to set the
+    `input_signature` property of a `tf.function`.
+
+    ```python
+    # If you want to specify `input_signature` for a `tf.function` you must
+    # first create the iterator.
+    iterator = iter(inputs)
+
+    @tf.function(input_signature=[iterator.element_spec])
+    def replica_fn_with_signature(inputs):
+      # train the model with inputs
+      return
+
+    for _ in range(steps):
+      strategy.experimental_run_v2(replica_fn_with_signature,
+          args=(next(iterator),))
+    ```
+
     Args:
       dataset_fn: A function taking a `tf.distribute.InputContext` instance and
         returning a `tf.data.Dataset`.
@@ -755,11 +807,15 @@ class Strategy(object):
       structure can either be "per-replica" `Tensor` objects or `Tensor`s
       (for example, if running on a single replica).
     """
+    if not isinstance(args, (list, tuple)):
+      raise ValueError(
+          "positional args must be a list or tuple, got {}".format(type(args)))
+
     with self.scope():
       # tf.distribute supports Eager functions, so AutoGraph should not be
       # applied when when the caller is also in Eager mode.
-      fn = autograph.tf_convert(fn, ag_ctx.control_status_ctx(),
-                                convert_by_default=False)
+      fn = autograph.tf_convert(
+          fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
   def reduce(self, reduce_op, value, axis):
@@ -841,7 +897,7 @@ class Strategy(object):
         if dim is not None:
           # By returning a python value in the static shape case, we can
           # maybe get a fast path for reducing the denominator.
-          return numer, dim
+          return numer, array_ops.constant(dim, dtype=dtypes.int64)
       elif axis < 0:
         axis = axis + array_ops.rank(v)
       if v.shape.rank == 1:
@@ -953,9 +1009,176 @@ class Strategy(object):
     raise RuntimeError("Must only deepcopy DistributionStrategy.")
 
 
+@tf_export("distribute.Strategy", v1=[])  # pylint: disable=g-missing-docstring
+class Strategy(StrategyBase):
+
+  __doc__ = StrategyBase.__doc__
+
+  def experimental_assign_to_logical_device(self, tensor, logical_device_id):
+    """Adds annotation that `tensor` will be assigned to a logical device.
+
+    NOTE: This API is only supported in TPUStrategy for now.
+    This adds an annotation to `tensor` specifying that operations on
+    `tensor` will be invoked on logical core device id `logical_device_id`.
+    When model parallelism is used, the default behavior is that all ops
+    are placed on zero-th logical device.
+
+    ```python
+
+    # Initializing TPU system with 2 logical devices and 4 replicas.
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tf.config.experimental_connect_to_cluster(resolver)
+    topology = tf.tpu.experimental.initialize_tpu_system(resolver)
+    device_assignment = tf.tpu.experimental.DeviceAssignment.build(
+        topology,
+        computation_shape=[1, 1, 2],
+        num_replicas=4)
+    strategy = tf.distribute.experimental.TPUStrategy(
+        resolver, device_assignment=device_assignment)
+    iterator = iter(inputs)
+
+    @tf.function()
+    def step_fn(inputs):
+      output = tf.add(inputs, inputs)
+
+      // Add operation will be executed on logical device 0.
+      output = strategy.experimental_assign_to_logical_device(output, 0)
+      return output
+
+    strategy.experimental_run_v2(step_fn, args=(next(iterator),))
+    ```
+
+    Args:
+      tensor: Input tensor to annotate.
+      logical_device_id: Id of the logical core to which the tensor will be
+        assigned.
+
+    Raises:
+      ValueError: The logical device id presented is not consistent with total
+      number of partitions specified by the device assignment.
+
+    Returns:
+      Annotated tensor with idential value as `tensor`.
+    """
+    return self._extended._experimental_assign_to_logical_device(  # pylint: disable=protected-access
+        tensor, logical_device_id)
+
+  def experimental_split_to_logical_devices(self, tensor, partition_dimensions):
+    """Adds annotation that `tensor` will be split across logical devices.
+
+    NOTE: This API is only supported in TPUStrategy for now.
+    This adds an annotation to tensor `tensor` specifying that operations on
+    `tensor` will be be split among multiple logical devices. Tensor `tensor`
+    will be split across dimensions specified by `partition_dimensions`.
+    The dimensions of `tensor` must be divisible by corresponding value in
+    `partition_dimensions`.
+
+    For example, for system with 8 logical devices, if `tensor` is an image
+    tensor with shape (batch_size, width, height, channel) and
+    `partition_dimensions` is [1, 2, 4, 1], then `tensor` will be split
+    2 in width dimension and 4 way in height dimension and the split
+    tensor values will be fed into 8 logical devices.
+
+    ```python
+    # Initializing TPU system with 8 logical devices and 1 replica.
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tf.config.experimental_connect_to_cluster(resolver)
+    topology = tf.tpu.experimental.initialize_tpu_system(resolver)
+    device_assignment = tf.tpu.experimental.DeviceAssignment.build(
+        topology,
+        computation_shape=[2, 2, 2],
+        num_replicas=1)
+    strategy = tf.distribute.experimental.TPUStrategy(
+        resolver, device_assignment=device_assignment)
+
+    iterator = iter(inputs)
+
+    @tf.function()
+    def step_fn(inputs):
+      inputs = strategy.experimental_split_to_logical_devices(
+        inputs, [1, 2, 4, 1])
+
+      // model() function will be executed on 8 logical devices with `inputs`
+      // split 2 * 4  ways.
+      output = model(inputs)
+      return output
+
+    strategy.experimental_run_v2(step_fn, args=(next(iterator),))
+    ```
+    Args:
+      tensor: Input tensor to annotate.
+      partition_dimensions: An unnested list of integers with the size equal to
+        rank of `tensor` specifying how `tensor` will be partitioned. The
+        product of all elements in `partition_dimensions` must be equal to the
+        total number of logical devices per replica.
+
+    Raises:
+      ValueError: 1) If the size of partition_dimensions does not equal to rank
+        of `tensor` or 2) if product of elements of `partition_dimensions` does
+        not match the number of logical devices per replica defined by the
+        implementing DistributionStrategy's device specification or
+        3) if a known size of `tensor` is not divisible by corresponding
+        value in `partition_dimensions`.
+
+    Returns:
+      Annotated tensor with idential value as `tensor`.
+    """
+    return self._extended._experimental_split_to_logical_devices(  # pylint: disable=protected-access
+        tensor, partition_dimensions)
+
+  def experimental_replicate_to_logical_devices(self, tensor):
+    """Adds annotation that `tensor` will be replicated to all logical devices.
+
+    NOTE: This API is only supported in TPUStrategy for now.
+    This adds an annotation to tensor `tensor` specifying that operations on
+    `tensor` will be invoked on all logical devices.
+
+    ```python
+    # Initializing TPU system with 2 logical devices and 4 replicas.
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tf.config.experimental_connect_to_cluster(resolver)
+    topology = tf.tpu.experimental.initialize_tpu_system(resolver)
+    device_assignment = tf.tpu.experimental.DeviceAssignment.build(
+        topology,
+        computation_shape=[1, 1, 2],
+        num_replicas=4)
+    strategy = tf.distribute.experimental.TPUStrategy(
+        resolver, device_assignment=device_assignment)
+
+    iterator = iter(inputs)
+
+    @tf.function()
+    def step_fn(inputs):
+      images, labels = inputs
+      images = strategy.experimental_split_to_logical_devices(
+        inputs, [1, 2, 4, 1])
+
+      // model() function will be executed on 8 logical devices with `inputs`
+      // split 2 * 4  ways.
+      output = model(inputs)
+
+      // For loss calculation, all logical devices share the same logits
+      // and labels.
+      labels = strategy.experimental_replicate_to_logical_devices(labels)
+      output = strategy.experimental_replicate_to_logical_devices(output)
+      loss = loss_fn(labels, output)
+
+      return loss
+
+    strategy.experimental_run_v2(step_fn, args=(next(iterator),))
+    ```
+    Args:
+      tensor: Input tensor to annotate.
+
+    Returns:
+      Annotated tensor with idential value as `tensor`.
+    """
+    return self._extended._experimental_replicate_to_logical_devices(tensor)  # pylint: disable=protected-access
+
+
 # TF v1.x version has additional deprecated APIs
 @tf_export(v1=["distribute.Strategy"])
-class StrategyV1(Strategy):
+class StrategyV1(StrategyBase):
   """A list of devices with a state & compute distribution policy.
 
   See [the guide](https://www.tensorflow.org/guide/distribute_strategy)
@@ -1103,7 +1326,7 @@ class StrategyV1(Strategy):
   def reduce(self, reduce_op, value, axis=None):
     return super(StrategyV1, self).reduce(reduce_op, value, axis)
 
-  reduce.__doc__ = Strategy.reduce.__doc__
+  reduce.__doc__ = StrategyBase.reduce.__doc__
 
   def update_config_proto(self, config_proto):
     """Returns a copy of `config_proto` modified for use with this strategy.
@@ -1314,7 +1537,8 @@ class StrategyExtendedV2(object):
 
   def _scope(self, strategy):
     """Implementation of tf.distribute.Strategy.scope()."""
-    def creator_with_resource_vars(*args, **kwargs):
+
+    def creator_with_resource_vars(next_creator, **kwargs):
       """Variable creator to use in `_CurrentDistributionContext`."""
       _require_strategy_scope_extended(self)
       kwargs["use_resource"] = True
@@ -1327,7 +1551,7 @@ class StrategyExtendedV2(object):
       if isinstance(kwargs["initial_value"], trackable.CheckpointInitialValue):
         kwargs["initial_value"] = kwargs["initial_value"].wrapped_value
 
-      return self._create_variable(*args, **kwargs)
+      return self._create_variable(next_creator, **kwargs)
 
     def distributed_getter(getter, *args, **kwargs):
       if not self._allow_variable_partition():
@@ -1347,7 +1571,7 @@ class StrategyExtendedV2(object):
   def _allow_variable_partition(self):
     return False
 
-  def _create_variable(self, next_creator, *args, **kwargs):
+  def _create_variable(self, next_creator, **kwargs):
     # Note: should support "colocate_with" argument.
     raise NotImplementedError("must be implemented in descendants")
 
@@ -1416,11 +1640,12 @@ class StrategyExtendedV2(object):
     Returns:
       A context manager.
     """
-    def create_colocated_variable(next_creator, *args, **kwargs):
+
+    def create_colocated_variable(next_creator, **kwargs):
       _require_strategy_scope_extended(self)
       kwargs["use_resource"] = True
       kwargs["colocate_with"] = colocate_with_variable
-      return next_creator(*args, **kwargs)
+      return next_creator(**kwargs)
 
     _require_strategy_scope_extended(self)
     self._validate_colocate_with_variable(colocate_with_variable)
@@ -1429,6 +1654,19 @@ class StrategyExtendedV2(object):
   def _validate_colocate_with_variable(self, colocate_with_variable):
     """Validate `colocate_with_variable` argument to `colocate_vars_with`."""
     pass
+
+  def _experimental_assign_to_logical_device(self, tensor, logical_device_id):
+    raise NotImplementedError("This method should be overriden by "
+                              "sub-classes which support model parallelism.")
+
+  def _experimental_split_to_logical_devices(self, tensor,
+                                             partition_dimensions):
+    raise NotImplementedError("This method should be overriden by "
+                              "sub-classes which support model parallelism.")
+
+  def _experimental_replicate_to_logical_devices(self, tensor):
+    raise NotImplementedError("This method should be overriden by "
+                              "sub-classes which support model parallelism.")
 
   def _make_dataset_iterator(self, dataset):
     raise NotImplementedError("must be implemented in descendants")
@@ -1539,6 +1777,8 @@ class StrategyExtendedV2(object):
     _require_cross_replica_or_default_context_extended(self)
     if kwargs is None:
       kwargs = {}
+    fn = autograph.tf_convert(
+        fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
     with self._container_strategy().scope():
       return self._update(var, fn, args, kwargs, group)
 
@@ -1563,6 +1803,8 @@ class StrategyExtendedV2(object):
     _require_cross_replica_or_default_context_extended(self)
     if kwargs is None:
       kwargs = {}
+    fn = autograph.tf_convert(
+        fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
     with self._container_strategy().scope():
       return self._update_non_slot(colocate_with, fn, args, kwargs, group)
 
@@ -1756,7 +1998,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
         - last_step_outputs: A dictionary containing tensors set using
         `context.set_last_step_output`. Evaluating this returns the value of
         the tensors after the last iteration.
-        - non_tensor_outputs: A dictionatry containing anything that was set by
+        - non_tensor_outputs: A dictionary containing anything that was set by
           `fn` by calling `context.set_non_tensor_output`.
     """
     _require_cross_replica_or_default_context_extended(self)
@@ -1946,6 +2188,8 @@ class ReplicaContext(object):
     require_replica_context(self)
     if kwargs is None:
       kwargs = {}
+    merge_fn = autograph.tf_convert(
+        merge_fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
     return self._merge_call(merge_fn, args, kwargs)
 
   def _merge_call(self, merge_fn, args, kwargs):
@@ -1969,6 +2213,9 @@ class ReplicaContext(object):
     This identifies the replica that is part of a sync group. Currently we
     assume that all sync groups contain the same number of replicas. The value
     of the replica id can range from 0 to `num_replica_in_sync` - 1.
+
+    NOTE: This is not guaranteed to be the same ID as the XLA replica ID use
+    for low-level operations such as collective_permute.
     """
     require_replica_context(self)
     return self._replica_id_in_sync_group
@@ -2010,6 +2257,9 @@ class ReplicaContext(object):
     Returns:
        A `Tensor` nest with the reduced `value`s from each replica.
     """
+    if isinstance(reduce_op, six.string_types):
+      reduce_op = reduce_util.ReduceOp(reduce_op.upper())
+
     def batch_all_reduce(strategy, *value_flat):
       return strategy.extended.batch_reduce_to(
           reduce_op, [(v, _batch_reduce_destination(v)) for v in value_flat])
@@ -2075,9 +2325,9 @@ class _DefaultDistributionContext(object):
 
   def __init__(self, strategy):
 
-    def creator(next_creator, *args, **kwargs):
+    def creator(next_creator, **kwargs):
       _require_strategy_scope_strategy(strategy)
-      return next_creator(*args, **kwargs)
+      return next_creator(**kwargs)
 
     self._var_creator_scope = variable_scope.variable_creator_scope(creator)
     self._strategy = strategy
@@ -2229,12 +2479,23 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
     def get_next(self):
       return self._iterator.get_next()
 
+    @deprecated(None, "Use the iterator's `initializer` property instead.")
     def initialize(self):
+      """Initialize underlying iterators.
+
+      Returns:
+        A list of any initializer ops that should be run.
+      """
       if eager_context.executing_eagerly():
         self._iterator = self._dataset.make_one_shot_iterator()
         return []
       else:
         return [self._iterator.initializer]
+
+    @property
+    def initializer(self):
+      """Returns a list of ops that initialize the iterator."""
+      return self.initialize()
 
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property

@@ -24,6 +24,7 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
@@ -36,6 +37,7 @@ from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking.util import Checkpoint
 
@@ -47,7 +49,6 @@ except ImportError:
 
 class NetworkConstructionTest(keras_parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_get_updates(self):
 
     class MyLayer(keras.layers.Layer):
@@ -71,45 +72,46 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
                         inputs=True)
         return inputs + 1
 
-    x1 = input_layer_lib.Input(shape=(1,))
-    layer = MyLayer()
-    _ = layer(x1)
+    with ops.Graph().as_default():
+      x1 = input_layer_lib.Input(shape=(1,))
+      layer = MyLayer()
+      _ = layer(x1)
 
-    self.assertEqual(len(layer.updates), 2)
-    self.assertEqual(len(layer.get_updates_for(x1)), 1)
-    self.assertEqual(len(layer.get_updates_for(None)), 1)
+      self.assertEqual(len(layer.updates), 2)
+      self.assertEqual(len(layer.get_updates_for(x1)), 1)
+      self.assertEqual(len(layer.get_updates_for(None)), 1)
 
-    x2 = input_layer_lib.Input(shape=(1,))
-    y2 = layer(x2)
+      x2 = input_layer_lib.Input(shape=(1,))
+      y2 = layer(x2)
 
-    self.assertEqual(len(layer.updates), 3)
-    self.assertEqual(len(layer.get_updates_for(x1)), 1)
-    self.assertEqual(len(layer.get_updates_for(x2)), 1)
-    self.assertEqual(len(layer.get_updates_for(None)), 1)
+      self.assertEqual(len(layer.updates), 3)
+      self.assertEqual(len(layer.get_updates_for(x1)), 1)
+      self.assertEqual(len(layer.get_updates_for(x2)), 1)
+      self.assertEqual(len(layer.get_updates_for(None)), 1)
 
-    network = network_lib.Network(x2, y2)
-    self.assertEqual(len(network.updates), 3)
-    self.assertEqual(len(network.get_updates_for(x2)), 1)
-    self.assertEqual(len(network.get_updates_for(None)), 1)
+      network = network_lib.Network(x2, y2)
+      self.assertEqual(len(network.updates), 3)
+      self.assertEqual(len(network.get_updates_for(x2)), 1)
+      self.assertEqual(len(network.get_updates_for(None)), 1)
 
-    x3 = input_layer_lib.Input(shape=(1,))
-    _ = layer(x3)
-    self.assertEqual(len(network.updates), 4)
+      x3 = input_layer_lib.Input(shape=(1,))
+      _ = layer(x3)
+      self.assertEqual(len(network.updates), 4)
 
-    x4 = input_layer_lib.Input(shape=(1,))
-    _ = network(x4)
-    self.assertEqual(len(network.updates), 5)
-    self.assertEqual(len(network.get_updates_for(x2)), 1)
-    self.assertEqual(len(network.get_updates_for(x4)), 1)
-    self.assertEqual(len(network.get_updates_for(None)), 1)
+      x4 = input_layer_lib.Input(shape=(1,))
+      _ = network(x4)
+      self.assertEqual(len(network.updates), 5)
+      self.assertEqual(len(network.get_updates_for(x2)), 1)
+      self.assertEqual(len(network.get_updates_for(x4)), 1)
+      self.assertEqual(len(network.get_updates_for(None)), 1)
 
-    network.add_update(state_ops.assign_add(layer.a, [[1]]))
-    self.assertEqual(len(network.updates), 6)
-    self.assertEqual(len(network.get_updates_for(None)), 2)
+      network.add_update(state_ops.assign_add(layer.a, [[1]]))
+      self.assertEqual(len(network.updates), 6)
+      self.assertEqual(len(network.get_updates_for(None)), 2)
 
-    network.add_update(state_ops.assign_add(layer.b, x4), inputs=True)
-    self.assertEqual(len(network.updates), 7)
-    self.assertEqual(len(network.get_updates_for(x4)), 2)
+      network.add_update(state_ops.assign_add(layer.b, x4), inputs=True)
+      self.assertEqual(len(network.updates), 7)
+      self.assertEqual(len(network.get_updates_for(x4)), 2)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_get_updates_bn(self):
@@ -120,61 +122,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(len(layer.updates), 2)
     self.assertEqual(len(layer.get_updates_for(x1)), 2)
     self.assertEqual(len(layer.get_updates_for(None)), 0)
-
-  @test_util.run_deprecated_v1
-  def test_get_losses(self):
-
-    class MyLayer(keras.layers.Layer):
-
-      def build(self, input_shape):
-        self.a = self.add_variable('a',
-                                   (1, 1),
-                                   'float32',
-                                   trainable=False)
-        self.b = self.add_variable('b',
-                                   (1, 1),
-                                   'float32',
-                                   trainable=False)
-        self.add_loss(math_ops.reduce_sum(self.a))
-        self.built = True
-
-      def call(self, inputs):
-        self.add_loss(math_ops.reduce_sum(inputs),
-                      inputs=True)
-        return inputs + 1
-
-    x1 = input_layer_lib.Input(shape=(1,))
-    layer = MyLayer()
-    _ = layer(x1)
-
-    self.assertEqual(len(layer.losses), 2)
-    self.assertEqual(len(layer.get_losses_for(x1)), 1)
-    self.assertEqual(len(layer.get_losses_for(None)), 1)
-
-    x2 = input_layer_lib.Input(shape=(1,))
-    y2 = layer(x2)
-
-    self.assertEqual(len(layer.losses), 3)
-    self.assertEqual(len(layer.get_losses_for(x1)), 1)
-    self.assertEqual(len(layer.get_losses_for(x2)), 1)
-    self.assertEqual(len(layer.get_losses_for(None)), 1)
-
-    network = network_lib.Network(x2, y2)
-    self.assertEqual(len(network.losses), 3)
-    self.assertEqual(len(network.get_losses_for(x1)), 1)
-    self.assertEqual(len(network.get_losses_for(x2)), 1)
-    self.assertEqual(len(network.get_losses_for(None)), 1)
-
-    x3 = input_layer_lib.Input(shape=(1,))
-    _ = layer(x3)
-    self.assertEqual(len(network.losses), 4)
-
-    x4 = input_layer_lib.Input(shape=(1,))
-    _ = network(x4)
-    self.assertEqual(len(network.losses), 5)
-    self.assertEqual(len(network.get_losses_for(x2)), 1)
-    self.assertEqual(len(network.get_losses_for(x4)), 1)
-    self.assertEqual(len(network.get_losses_for(None)), 1)
 
   @test_util.run_in_graph_and_eager_modes()
   def testTopologicalAttributes(self):
@@ -273,39 +220,39 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(test_layer.input_shape, [(None, 32), (None, 32)])
     self.assertEqual(test_layer.output_shape, (None, 32))
 
-  @test_util.run_deprecated_v1
   def testBasicNetwork(self):
-    # minimum viable network
-    x = input_layer_lib.Input(shape=(32,))
-    dense = keras.layers.Dense(2)
-    y = dense(x)
-    network = network_lib.Network(x, y, name='dense_network')
+    with ops.Graph().as_default():
+      # minimum viable network
+      x = input_layer_lib.Input(shape=(32,))
+      dense = keras.layers.Dense(2)
+      y = dense(x)
+      network = network_lib.Network(x, y, name='dense_network')
 
-    # test basic attributes
-    self.assertEqual(network.name, 'dense_network')
-    self.assertEqual(len(network.layers), 2)  # InputLayer + Dense
-    self.assertEqual(network.layers[1], dense)
-    self._assertAllIs(network.weights, dense.weights)
-    self._assertAllIs(network.trainable_weights, dense.trainable_weights)
-    self._assertAllIs(network.non_trainable_weights,
-                      dense.non_trainable_weights)
+      # test basic attributes
+      self.assertEqual(network.name, 'dense_network')
+      self.assertEqual(len(network.layers), 2)  # InputLayer + Dense
+      self.assertEqual(network.layers[1], dense)
+      self._assertAllIs(network.weights, dense.weights)
+      self._assertAllIs(network.trainable_weights, dense.trainable_weights)
+      self._assertAllIs(network.non_trainable_weights,
+                        dense.non_trainable_weights)
 
-    # test callability on Input
-    x_2 = input_layer_lib.Input(shape=(32,))
-    y_2 = network(x_2)
-    self.assertEqual(y_2.shape.as_list(), [None, 2])
+      # test callability on Input
+      x_2 = input_layer_lib.Input(shape=(32,))
+      y_2 = network(x_2)
+      self.assertEqual(y_2.shape.as_list(), [None, 2])
 
-    # test callability on regular tensor
-    x_2 = array_ops.placeholder(dtype='float32', shape=(None, 32))
-    y_2 = network(x_2)
-    self.assertEqual(y_2.shape.as_list(), [None, 2])
+      # test callability on regular tensor
+      x_2 = array_ops.placeholder(dtype='float32', shape=(None, 32))
+      y_2 = network(x_2)
+      self.assertEqual(y_2.shape.as_list(), [None, 2])
 
-    # test network `trainable` attribute
-    network.trainable = False
-    self._assertAllIs(network.weights, dense.weights)
-    self.assertEqual(network.trainable_weights, [])
-    self._assertAllIs(network.non_trainable_weights,
-                      dense.trainable_weights + dense.non_trainable_weights)
+      # test network `trainable` attribute
+      network.trainable = False
+      self._assertAllIs(network.weights, dense.weights)
+      self.assertEqual(network.trainable_weights, [])
+      self._assertAllIs(network.non_trainable_weights,
+                        dense.trainable_weights + dense.non_trainable_weights)
 
   @test_util.run_in_graph_and_eager_modes
   def test_trainable_weights(self):
@@ -349,25 +296,25 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertListEqual(model.trainable_weights, [])
     self._assertAllIs(model.non_trainable_weights, weights)
 
-  @test_util.run_deprecated_v1
   def test_layer_call_arguments(self):
-    # Test the ability to pass and serialize arguments to `call`.
-    inp = keras.layers.Input(shape=(2,))
-    x = keras.layers.Dense(3)(inp)
-    x = keras.layers.Dropout(0.5)(x, training=True)
-    model = keras.models.Model(inp, x)
-    # Would be `dropout/cond/Merge` by default
-    self.assertIn('dropout', model.output.op.name)
+    with ops.Graph().as_default():
+      # Test the ability to pass and serialize arguments to `call`.
+      inp = keras.layers.Input(shape=(2,))
+      x = keras.layers.Dense(3)(inp)
+      x = keras.layers.Dropout(0.5)(x, training=True)
+      model = keras.models.Model(inp, x)
+      # Would be `dropout/cond/Merge` by default
+      self.assertIn('dropout', model.output.op.name)
 
-    # Test that argument is kept when applying the model
-    inp2 = keras.layers.Input(shape=(2,))
-    out2 = model(inp2)
-    self.assertIn('dropout', out2.op.name)
+      # Test that argument is kept when applying the model
+      inp2 = keras.layers.Input(shape=(2,))
+      out2 = model(inp2)
+      self.assertIn('dropout', out2.op.name)
 
-    # Test that argument is kept after loading a model
-    config = model.get_config()
-    model = keras.models.Model.from_config(config)
-    self.assertIn('dropout', model.output.op.name)
+      # Test that argument is kept after loading a model
+      config = model.get_config()
+      model = keras.models.Model.from_config(config)
+      self.assertIn('dropout', model.output.op.name)
 
   def test_node_construction(self):
     # test basics
@@ -514,9 +461,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(['out', 'out_1'], model.output_names)
     self.assertAllClose([2., 3.], model(1.))
 
-  @test_util.run_deprecated_v1
   def test_recursion(self):
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       a = keras.layers.Input(shape=(32,), name='input_a')
       b = keras.layers.Input(shape=(32,), name='input_b')
 
@@ -701,44 +647,44 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     with self.assertRaises(Exception):
       keras.models.Model([j, k], [m, n, 0])
 
-  @test_util.run_deprecated_v1
   def test_raw_tf_compatibility(self):
-    # test calling layers/models on TF tensors
-    a = keras.layers.Input(shape=(32,), name='input_a')
-    b = keras.layers.Input(shape=(32,), name='input_b')
+    with ops.Graph().as_default():
+      # test calling layers/models on TF tensors
+      a = keras.layers.Input(shape=(32,), name='input_a')
+      b = keras.layers.Input(shape=(32,), name='input_b')
 
-    dense = keras.layers.Dense(16, name='dense_1')
-    a_2 = dense(a)
-    b_2 = dense(b)
-    merged = keras.layers.concatenate([a_2, b_2], name='merge')
-    c = keras.layers.Dense(64, name='dense_2')(merged)
-    d = keras.layers.Dense(5, name='dense_3')(c)
+      dense = keras.layers.Dense(16, name='dense_1')
+      a_2 = dense(a)
+      b_2 = dense(b)
+      merged = keras.layers.concatenate([a_2, b_2], name='merge')
+      c = keras.layers.Dense(64, name='dense_2')(merged)
+      d = keras.layers.Dense(5, name='dense_3')(c)
 
-    model = keras.models.Model(inputs=[a, b], outputs=[c, d], name='model')
+      model = keras.models.Model(inputs=[a, b], outputs=[c, d], name='model')
 
-    j = keras.layers.Input(shape=(32,), name='input_j')
-    k = keras.layers.Input(shape=(32,), name='input_k')
-    self.assertEqual(len(model.inputs), 2)
-    m, n = model([j, k])
-    self.assertEqual(len(model.inputs), 2)
-    tf_model = keras.models.Model([j, k], [m, n])
+      j = keras.layers.Input(shape=(32,), name='input_j')
+      k = keras.layers.Input(shape=(32,), name='input_k')
+      self.assertEqual(len(model.inputs), 2)
+      m, n = model([j, k])
+      self.assertEqual(len(model.inputs), 2)
+      tf_model = keras.models.Model([j, k], [m, n])
 
-    j_tf = array_ops.placeholder(dtype=dtypes.float32, shape=(None, 32))
-    k_tf = array_ops.placeholder(dtype=dtypes.float32, shape=(None, 32))
-    m_tf, n_tf = tf_model([j_tf, k_tf])
-    self.assertListEqual(m_tf.shape.as_list(), [None, 64])
-    self.assertListEqual(n_tf.shape.as_list(), [None, 5])
+      j_tf = array_ops.placeholder(dtype=dtypes.float32, shape=(None, 32))
+      k_tf = array_ops.placeholder(dtype=dtypes.float32, shape=(None, 32))
+      m_tf, n_tf = tf_model([j_tf, k_tf])
+      self.assertListEqual(m_tf.shape.as_list(), [None, 64])
+      self.assertListEqual(n_tf.shape.as_list(), [None, 5])
 
-    # test merge
-    keras.layers.concatenate([j_tf, k_tf], axis=1)
-    keras.layers.add([j_tf, k_tf])
+      # test merge
+      keras.layers.concatenate([j_tf, k_tf], axis=1)
+      keras.layers.add([j_tf, k_tf])
 
-    # test tensor input
-    x = array_ops.placeholder(shape=(None, 2), dtype=dtypes.float32)
-    keras.layers.InputLayer(input_tensor=x)
+      # test tensor input
+      x = array_ops.placeholder(shape=(None, 2), dtype=dtypes.float32)
+      keras.layers.InputLayer(input_tensor=x)
 
-    x = keras.layers.Input(tensor=x)
-    keras.layers.Dense(2)(x)
+      x = keras.layers.Input(tensor=x)
+      keras.layers.Dense(2)(x)
 
   @test_util.run_in_graph_and_eager_modes()
   def test_basic_masking(self):
@@ -747,7 +693,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model = keras.models.Model(a, b)
     self.assertEqual(model.output_mask.shape.as_list(), [None, 10])
 
-  @test_util.run_deprecated_v1
   def testMaskingSingleInput(self):
 
     class MaskedLayer(keras.layers.Layer):
@@ -785,7 +730,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       y_2 = network(x_2)
       self.assertEqual(y_2.shape.as_list(), [None, 32])
 
-  @test_util.run_deprecated_v1
   def test_activity_regularization_with_model_composition(self):
 
     def reg(x):
@@ -1004,6 +948,54 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
         x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
         y=10 * np.ones((10, 10)),
         batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_composite_call_kwarg_derived_from_keras_layer(self):
+
+    # Create a test layer that accepts composite tensor inputs (note the
+    # 'supports_ragged_inputs = True' in the init method.)
+    class MaybeAdd(keras.layers.Layer):
+
+      def __init__(self, **kwargs):
+        super(MaybeAdd, self).__init__(**kwargs)
+        self._supports_ragged_inputs = True
+
+      def call(self, x1, x2=None):
+        # We need to convert this to a tensor for loss calculations -
+        # losses don't play nicely with ragged tensors yet.
+        if x2 is not None:
+          return (x1 + x2).to_tensor(default_value=0)
+        return x1.to_tensor(default_value=0)
+
+    input1 = keras.Input((None,), ragged=True)
+    input2 = keras.Input((None,), ragged=True)
+    outputs = MaybeAdd()(input1, x2=input2)
+    model = keras.Model([input1, input2], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    input_data = [
+        ragged_factory_ops.constant([[3.0, 3.0], [3.0, 3.0], [3.0]]),
+        ragged_factory_ops.constant([[7.0, 7.0], [7.0, 7.0], [7.0]])
+    ]
+    expected_data = np.array([[10.0, 10.0], [10.0, 10.0], [10.0, 0.0]])
+
+    history = model.fit(x=input_data, y=expected_data)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    model = keras.Model.from_config(
+        model.get_config(), custom_objects={'MaybeAdd': MaybeAdd})
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    history = model.fit(x=input_data, y=expected_data)
     # Check that second input was correctly added to first.
     self.assertEqual(history.history['loss'][0], 0.0)
 
@@ -1363,10 +1355,10 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
     self.assertEqual(output.shape, (1, 3))
 
   @test_util.run_in_graph_and_eager_modes()
-  def testNoneInShapeWithFunctinalAPI(self):
+  def testNoneInShapeWithFunctionalAPI(self):
 
     class BasicBlock(keras.Model):
-      # Inherting from keras.layers.Layer since we are calling this layer
+      # Inheriting from keras.layers.Layer since we are calling this layer
       # inside a model created using functional API.
 
       def __init__(self):
@@ -1460,10 +1452,9 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
 
 class GraphUtilsTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def testGetReachableFromInputs(self):
 
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       pl_1 = array_ops.placeholder(shape=None, dtype='float32')
       pl_2 = array_ops.placeholder(shape=None, dtype='float32')
       pl_3 = array_ops.placeholder(shape=None, dtype='float32')

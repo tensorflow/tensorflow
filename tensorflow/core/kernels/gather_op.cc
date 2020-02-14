@@ -182,7 +182,7 @@ class GatherOp : public OpKernel {
 
  private:
   // The number of batch dimensions, as passed in the batch_dims attribute.
-  // It must be less than rank(indices).
+  // It must be less than or equal to rank(indices).
   int32 batch_dims_ = 0;
 };
 

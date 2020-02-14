@@ -33,12 +33,12 @@ std::string GenerateConvBuffer(
     int y_elements,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator src_tensor(
+      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
+      op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
@@ -163,7 +163,7 @@ std::string GenerateConvBuffer(
       c += "    FLT4 res = TO_FLT4(r" + i_s + ");\n";
       const LinkingContext context{"res", "X + " + x_s, "Y + " + y_s, "Z"};
       c += PostProcess(linked_operations, context);
-      c += "  " + dst_tensor.Write3D("res", "X + " + x_s, "Y + " + y_s, "Z") +
+      c += "  " + dst_tensor.WriteWHS("res", "X + " + x_s, "Y + " + y_s, "Z") +
            "\n";
       c += "  }\n";
     }
@@ -216,7 +216,8 @@ ConvBuffer& ConvBuffer::operator=(ConvBuffer&& operation) {
 }
 
 Status ConvBuffer::Compile(const CreationContext& creation_context) {
-  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
   const std::string code =
       GenerateConvBuffer(definition_, stride_correction, x_elements_,
                          y_elements_, linked_operations_);
@@ -232,8 +233,8 @@ Status ConvBuffer::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int2(dilation_.x * src_[0]->Batch(), dilation_.y)));
@@ -247,7 +248,7 @@ int3 ConvBuffer::GetGridSize() const {
   const int grid_x =
       IntegralDivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(), x_elements_);
   const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), y_elements_);
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

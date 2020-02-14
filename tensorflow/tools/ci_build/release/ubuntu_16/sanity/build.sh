@@ -17,7 +17,7 @@ set -e
 
 # Install latest bazel
 source tensorflow/tools/ci_build/release/common.sh
-update_bazel_linux
+install_bazelisk
 which bazel
 
 # We need py3 lint

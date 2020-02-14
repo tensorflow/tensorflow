@@ -12,6 +12,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/shuffle_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -524,11 +525,11 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
   int cur_iteration = 0;
   const std::vector<int>& breakpoints = test_case.breakpoints;
   for (int breakpoint : breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
+    VariantTensorDataWriter writer;
     TF_EXPECT_OK(iterator_->Save(serialization_ctx.get(), &writer));
-    TF_EXPECT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+    VariantTensorDataReader reader(data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
                                  test_case.dataset_params.iterator_prefix(),
                                  *dataset_, &iterator_));

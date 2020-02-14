@@ -310,7 +310,7 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
 }
 
 // Tries to propagate the sharding information into the instructions that are
-// part of the domain, in a reverse post order manner (users propoagate to
+// part of the domain, in a reverse post order manner (users propagate to
 // instruction).
 StatusOr<int64> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
                                         const HloSharding& domain_sharding) {

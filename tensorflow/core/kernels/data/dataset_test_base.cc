@@ -15,23 +15,74 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
+#include <algorithm>
+#include <complex>
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
 #include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/io/record_writer.h"
-#include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
 namespace data {
@@ -147,6 +198,20 @@ Status IsEqual(const Tensor& t1, const Tensor& t2) {
   return Status::OK();
 }
 
+DatasetOpsTestBase::DatasetOpsTestBase()
+    : device_(DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0")),
+      device_type_(DEVICE_CPU),
+      cpu_num_(kDefaultCPUNum),
+      thread_num_(kDefaultThreadNum) {
+  allocator_ = device_->GetAllocator(AllocatorAttributes());
+}
+
+DatasetOpsTestBase::~DatasetOpsTestBase() {
+  if (dataset_) {
+    dataset_->Unref();
+  }
+}
+
 Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
   switch (a.dtype()) {
 #define CASE(DT)                           \
@@ -239,9 +304,9 @@ Status DatasetOpsTestBase::ExpectEqual(std::vector<Tensor> produced_tensors,
 Status DatasetOpsTestBase::CreateOpKernel(
     const NodeDef& node_def, std::unique_ptr<OpKernel>* op_kernel) {
   OpKernel* kernel;
-  TF_RETURN_IF_ERROR(tensorflow::CreateOpKernel(device_type_, device_.get(),
-                                                allocator_, flr_, node_def,
-                                                TF_GRAPH_DEF_VERSION, &kernel));
+  TF_RETURN_IF_ERROR(tensorflow::CreateOpKernel(
+      device_type_, device_.get(), allocator_, flr_,
+      device_->resource_manager(), node_def, TF_GRAPH_DEF_VERSION, &kernel));
   op_kernel->reset(kernel);
   return Status::OK();
 }
@@ -333,7 +398,7 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
       nullptr /* cluster_flr */);
   flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   if (thread_pool_ == nullptr) {
-    runner_ = [](std::function<void()> fn) { fn(); };
+    runner_ = [](const std::function<void()>& fn) { fn(); };
   } else {
     runner_ = [this](std::function<void()> fn) {
       thread_pool_->Schedule(std::move(fn));
@@ -426,7 +491,6 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
   params->op_kernel = kernel;
   params->resource_manager = resource_mgr_.get();
   params->runner = &runner_;
-  checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
   slice_reader_cache_ =
       absl::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
   params->slice_reader_cache = slice_reader_cache_.get();
@@ -524,6 +588,11 @@ Status DatasetOpsTestBase::CheckIteratorGetNext(
     TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &next, &end_of_sequence));
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
+  // Call GetNext one more time to make sure it still reports
+  // end_of_sequence = True.
+  std::vector<Tensor> unused;
+  TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &unused, &end_of_sequence));
+  EXPECT_TRUE(end_of_sequence);
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, expected_outputs,
                            /*compare_order=*/compare_order));
@@ -593,11 +662,11 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
   int cur_iteration = 0;
   std::vector<Tensor> out_tensors;
   for (int breakpoint : breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
+    VariantTensorDataWriter writer;
     TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
-    TF_RETURN_IF_ERROR(writer.Flush());
-    VariantTensorDataReader reader(&data);
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+    VariantTensorDataReader reader(data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader, iterator_prefix,
                                  *dataset_, &iterator));
 
@@ -819,6 +888,14 @@ RangeDatasetParams::RangeDatasetParams(
 
 RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step)
     : DatasetParams({DT_INT64}, {PartialTensorShape({})}, "range_dataset"),
+      start_(start),
+      stop_(stop),
+      step_(step) {}
+
+RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step,
+                                       DataTypeVector output_dtypes)
+    : DatasetParams(std::move(output_dtypes), {PartialTensorShape({})},
+                    "range_dataset"),
       start_(start),
       stop_(stop),
       step_(step) {}

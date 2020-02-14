@@ -401,7 +401,7 @@ class BaseSaverBuilder(object):
     per_device = collections.defaultdict(lambda: [])
     for saveable in saveables:
       canonical_device = set(
-          pydev.canonical_name(spec.tensor.device) for spec in saveable.specs)
+          pydev.canonical_name(spec.device) for spec in saveable.specs)
       if len(canonical_device) != 1:
         raise ValueError("All tensors of a saveable object must be "
                          "on the same device: %s" % saveable.name)
@@ -1144,6 +1144,7 @@ class Saver(object):
     if os.path.split(latest_filename)[0]:
       raise ValueError("'latest_filename' must not contain path components")
 
+    save_path = compat.as_str(save_path)
     if global_step is not None:
       if not isinstance(global_step, compat.integral_types):
         global_step = training_util.global_step(sess, global_step)
@@ -1654,7 +1655,7 @@ def saver_from_object_based_checkpoint(checkpoint_path,
       `var_list` will be set to all saveable objects.
     builder: a `BaseSaverBuilder` instance. If `None`, a new `BulkSaverBuilder`
       will be created.
-    names_to_keys: dict mapping string tensor names to checkpooint keys. If
+    names_to_keys: dict mapping string tensor names to checkpoint keys. If
       `None`, this dict will be generated from the checkpoint file.
     cached_saver: Cached `Saver` object with remapped variables.
 

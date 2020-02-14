@@ -13,7 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Tests for saving/loading function for keras Model."""
+"""Tests for saving and loading Keras models and layers from SavedModel.
+
+These should ensure that all layer properties are correctly assigned after
+loading from the SavedModel.
+
+Tests that focus on the model structure should go in revive_structure_test.py
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -221,7 +227,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     loaded = keras_load.load(saved_model_dir)
     input_arr = array_ops.ones((4, 3))
 
-    # Run the layer, and use the keras backend learing phase
+    # Run the layer, and use the keras backend learning phase
     keras.backend.set_learning_phase(0)
     self.assertAllEqual(input_arr, loaded(input_arr))
     keras.backend.set_learning_phase(1)
@@ -363,11 +369,18 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.save(saved_model_dir, save_format='tf')
     loaded = keras_load.load(saved_model_dir)
     self.evaluate(variables.variables_initializer(loaded.variables))
-    input_arr_1 = np.array([[11], [12], [13]]).astype('float32')
+    input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
+    input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0])
-    self.evaluate(loaded(input_arr_1, training=True))
+
+    self.evaluate(loaded(input_arr, training=True))
+    if not context.executing_eagerly():
+      self.evaluate(loaded.get_updates_for(input_arr))
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
-    self.evaluate(loaded(input_arr_1, training=False))
+
+    self.evaluate(loaded(input_arr2, training=False))
+    if not context.executing_eagerly():
+      self.evaluate(loaded.get_updates_for(input_arr2))
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0.12])
 
   def testSaveWithSignatures(self):
@@ -412,8 +425,8 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
     self.assertAllClose(
         model.predict(input_arr),
-        loaded.signatures['predict'](
-            ops.convert_to_tensor(input_arr.astype('float32')))['predictions'])
+        loaded.signatures['predict'](ops.convert_to_tensor_v2(
+            input_arr.astype('float32')))['predictions'])
 
     feature = {
         'inputs': feature_pb2.Feature(
@@ -422,7 +435,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     example = example_pb2.Example(
         features=feature_pb2.Features(feature=feature))
     outputs = loaded.signatures['parse_and_predict'](
-        ops.convert_to_tensor([example.SerializeToString()]))
+        ops.convert_to_tensor_v2([example.SerializeToString()]))
     self.assertAllClose(model.predict(input_arr), outputs['predictions'])
     self.assertAllClose(model.layers[0](input_arr), outputs['layer_1_outputs'])
 
@@ -595,7 +608,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
   def _testAddUpdate(self, scope):
     with scope:
-      layer_with_update = LayerWithUpdate()
+      layer_with_update = LayerWithUpdate(dtype=dtypes.int32)
       model = testing_utils.get_model_from_layers([layer_with_update],
                                                   input_shape=(3,),
                                                   input_dtype=dtypes.int32)

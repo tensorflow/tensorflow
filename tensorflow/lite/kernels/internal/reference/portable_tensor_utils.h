@@ -78,6 +78,16 @@ void MatrixBatchVectorMultiplyAccumulate(
 
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vector, const float* scaling_factors,
+    int n_batch, int32_t* scratch, float* __restrict__ result,
+    int result_stride, CpuBackendContext* context) {
+  PortableMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vector,
+                                              scaling_factors, n_batch, result,
+                                              result_stride);
+}
+
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride,
     const float* per_channel_scale, const int32_t* input_offset) {
@@ -144,19 +154,9 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
   PortableApplySigmoid(input, n_batch, n_input, output);
 }
 
-void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  PortableApplyTanh0(input, n_batch, n_input, output);
-}
-
-void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  PortableApplyTanh3(input, n_batch, n_input, output);
-}
-
-void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  PortableApplyTanh4(input, n_batch, n_input, output);
+void ApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+               int32_t n_input, int16_t* output) {
+  PortableApplyTanh(integer_bits, input, n_batch, n_input, output);
 }
 
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
@@ -184,17 +184,6 @@ void CwiseClipping(int16_t* input, const int16_t clipping_value,
 void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
                    int32_t n_input) {
   PortableCwiseClipping(input, clipping_value, n_batch, n_input);
-}
-
-void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                              int v_size, float* result) {
-  PortableVectorVectorCwiseProduct(vector1, vector2, v_size, result);
-}
-
-void VectorVectorCwiseProductAccumulate(const float* vector1,
-                                        const float* vector2, int v_size,
-                                        float* result) {
-  PortableVectorVectorCwiseProductAccumulate(vector1, vector2, v_size, result);
 }
 
 void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,

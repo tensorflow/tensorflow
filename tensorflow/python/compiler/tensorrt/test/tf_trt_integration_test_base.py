@@ -27,13 +27,13 @@ import re
 import shutil
 import tempfile
 import warnings
+
 import numpy as np
 import six
 
 from tensorflow.compiler.tf2tensorrt.wrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import graph_io
@@ -106,34 +106,6 @@ class GraphState(object):
   INFERENCE = 2
 
 
-def OptimizerDisabledRewriterConfig():
-  """Returns a RewriterConfig with all default Grappler optimizers disabled."""
-  rewriter_config = rewriter_config_pb2.RewriterConfig()
-
-  # Turn off all default Grappler optimizers.
-  off = rewriter_config_pb2.RewriterConfig.OFF
-  rewriter_config.layout_optimizer = off
-  rewriter_config.constant_folding = off
-  rewriter_config.shape_optimization = off
-  rewriter_config.remapping = off
-  rewriter_config.arithmetic_optimization = off
-  rewriter_config.dependency_optimization = off
-  rewriter_config.loop_optimization = off
-  rewriter_config.function_optimization = off
-  rewriter_config.debug_stripper = off
-  rewriter_config.disable_model_pruning = True
-  rewriter_config.scoped_allocator_optimization = off
-  rewriter_config.memory_optimization = (
-      rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
-  rewriter_config.pin_to_host_optimization = off
-  rewriter_config.auto_parallel.enable = False
-
-  # Run only once for each enabled optimizer.
-  rewriter_config.meta_optimizer_iterations = (
-      rewriter_config_pb2.RewriterConfig.ONE)
-  return rewriter_config
-
-
 class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   """Class to test Tensorflow-TensorRT integration."""
 
@@ -185,28 +157,88 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     super(TfTrtIntegrationTestBase, self).setUp()
     warnings.simplefilter("always")
 
-  def BuildParams(self, graph_fn, dtype, input_shapes, output_shapes):
-    """Build test parameters when not considering dynamic shapes."""
+  def _GetTensorSpec(self, shape, mask, dtype, name):
+    # Set dimension i to None if mask[i] == False
+    assert len(shape) == len(mask)
+    new_shape = [s if m else None for s, m in zip(shape, mask)]
+    return tensor_spec.TensorSpec(new_shape, dtype, name)
 
-    def _Validate(shapes):
+  def BuildParams(self, graph_fn, dtype, input_shapes, output_shapes):
+    """Build test parameters.
+
+    The input_shapes and output_shapes arguments are known (static) shapes that
+    can be used to generate test data. To define the model, we also specify
+    corresponding input/output TensoSpecs. These are defined using the shape
+    arguments. For each input tensor we define:
+
+    input_spec = [None] + input_shape[1:]
+
+    and similarly for output shapes. This means that we leave the first (batch)
+    dimension unknown, the rest is just copied from the shapes arg.
+
+    Args:
+      graph_fn: The function to build the graph.
+      dtype: The element type.
+      input_shapes: The input shapes.
+      output_shapes: The output shapes.
+
+    Returns:
+      The test parameters.
+    """
+
+    input_mask = [[False] + [True] * (len(shape) - 1) for shape in input_shapes]
+    output_mask = [
+        [False] + [True] * (len(shape) - 1) for shape in output_shapes
+    ]
+
+    return self.BuildParamsWithMask(graph_fn, dtype, input_shapes,
+                                    output_shapes, input_mask, output_mask)
+
+  def BuildParamsWithMask(self, graph_fn, dtype, input_shapes, output_shapes,
+                          input_mask, output_mask):
+    """Build test parameters with static or dynamic input shapes.
+
+    To define dynamic shapes give a boolean mask that describes which
+    dimensions to treat as known. The values in input_mask are interpreted the
+    following way:
+    - True: known dim (use the corresponding value from input_shapes)
+    - False: unknown dim (replace the corresponding value from input_shapes
+             with None)
+    For example, to define the first two dimension with unknown size use
+    input_shapes=[[1,2,1,8]], input_mask=[[False, False, True, True]].
+
+    Args:
+      graph_fn: The function to build the graph.
+      dtype: The element type.
+      input_shapes: The input shapes.
+      output_shapes: The output shapes.
+      input_mask: The input shape masks.
+      output_mask: the output shape masks.
+
+    Returns:
+      The test parameters.
+    """
+
+    def _ValidateShapes(shapes):
       # Make sure all the shapes are fully specified.
       for shape in shapes:
         assert all(shape)
 
-    _Validate(input_shapes)
-    _Validate(output_shapes)
+    _ValidateShapes(input_shapes)
+    _ValidateShapes(output_shapes)
+
+    assert len(input_mask) == len(input_shapes)
+    assert len(output_mask) == len(output_shapes)
 
     return TfTrtIntegrationTestParams(
         graph_fn=graph_fn,
-        # Unset the batch dim of the specs to make sure TRT can tolerate changes
-        # on that.
         input_specs=[
-            tensor_spec.TensorSpec([None] + shape[1:], dtype, "input_%d" % i)
-            for i, shape in enumerate(input_shapes)
+            self._GetTensorSpec(shape, mask, dtype, "input_%d" % i)
+            for i, (shape, mask) in enumerate(zip(input_shapes, input_mask))
         ],
         output_specs=[
-            tensor_spec.TensorSpec([None] + shape[1:], dtype, "output_%d" % i)
-            for i, shape in enumerate(output_shapes)
+            self._GetTensorSpec(shape, mask, dtype, "output_%d" % i)
+            for i, (shape, mask) in enumerate(zip(output_shapes, output_mask))
         ],
         input_dims=[input_shapes],
         expected_output_dims=[output_shapes])
@@ -237,6 +269,20 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         use_calibration=run_params.use_calibration,
         max_batch_size=min(batch_list))
     return conversion_params
+
+  def GetTrtRewriterConfig(self,
+                           run_params,
+                           conversion_params,
+                           disable_non_trt_optimizers=False,
+                           use_implicit_batch=True):
+    rewriter_config = trt_convert.get_tensorrt_rewriter_config(
+        conversion_params=conversion_params,
+        is_v2=run_params.is_v2,
+        disable_non_trt_optimizers=disable_non_trt_optimizers)
+    for optimizer in rewriter_config.custom_optimizers:
+      if optimizer.name == "TensorRTOptimizer":
+        optimizer.parameter_map["use_implicit_batch"].b = use_implicit_batch
+    return rewriter_config
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
@@ -606,7 +652,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             trt_op_names.append(node.name)
     # Remove the function name prefix.
     def _Canonicalize(names):
-      return set([self._ToString(name.split("/")[-1]) for name in names])
+      return set(self._ToString(name.split("/")[-1]) for name in names)
 
     all_op_names = _Canonicalize(all_op_names)
     trt_op_names = _Canonicalize(trt_op_names)

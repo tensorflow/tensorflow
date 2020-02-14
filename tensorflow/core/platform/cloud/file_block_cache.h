@@ -33,6 +33,32 @@ limitations under the License.
 
 namespace tensorflow {
 
+class FileBlockCache;
+
+/// FileBlockCacheStatsInterface allows for instrumentation of the block cache.
+///
+/// FileBlockCacheStatsInterface and its subclasses must be safe to use from
+/// multiple threads concurrently.
+///
+/// WARNING! This is an experimental interface that may change or go away at any
+/// time.
+class FileBlockCacheStatsInterface {
+ public:
+  /// Configure is called to provide instrumentation hooks.
+  ///
+  /// Note: Configure can be called multiple times (e.g. if the block cache is
+  /// re-initialized).
+  virtual void Configure(const FileBlockCache* block_cache) = 0;
+
+  /// RecordBlockLoadRequest is called to record the size of a hit block.
+  virtual void RecordCacheHitBlockSize(size_t bytes_transferred) = 0;
+
+  /// RecordBlockLoadRequest is called to record the size of a missed block.
+  virtual void RecordCacheMissBlockSize(size_t bytes_transferred) = 0;
+
+  virtual ~FileBlockCacheStatsInterface() = default;
+};
+
 /// \brief A block cache of file contents, keyed by {filename, offset}.
 ///
 /// This class should be shared by read-only random access files on a remote
@@ -92,6 +118,20 @@ class FileBlockCache {
   // Returns true if the cache is enabled. If false, the BlockFetcher callback
   // is always executed during Read.
   virtual bool IsCacheEnabled() const = 0;
+
+  void SetStats(FileBlockCacheStatsInterface* stats) {
+    if (stats == nullptr) {
+      LOG(ERROR)
+          << "Attempted to monitor a NULL stats object. This may prevent the "
+             "corresponding monitoring data from being exported";
+      return;
+    }
+    cache_stats_ = stats;
+    cache_stats_->Configure(this);
+  }
+
+ protected:
+  FileBlockCacheStatsInterface* cache_stats_ = nullptr;  // Not owned.
 };
 
 }  // namespace tensorflow

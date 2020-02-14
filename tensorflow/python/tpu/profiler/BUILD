@@ -48,7 +48,7 @@ py_binary(
     name = "capture_tpu_profile_bin",
     srcs = ["capture_tpu_profile.py"],
     main = "capture_tpu_profile.py",
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [
         ":capture_tpu_profile_lib",
         "@absl_py//absl/flags",

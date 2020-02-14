@@ -335,8 +335,8 @@ void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
 
   if (parent() && parent()->has_entry_computation() &&
       parent()->entry_computation() == this) {
-    if (!Shape::Equal()(new_root_instruction->shape(),
-                        root_instruction_->shape())) {
+    if (!Shape::Equal().IgnoreLayout()(new_root_instruction->shape(),
+                                       root_instruction_->shape())) {
       // Rebuild input output alias config now that we have a new output shape.
       parent()->input_output_alias_config() =
           HloInputOutputAliasConfig(new_root_instruction->shape());
@@ -466,6 +466,12 @@ HloComputation::ComputeChannelDependencies() const {
   return channel_dependency_group;
 }
 
+static inline bool HasOnlyTraceUsers(const HloInstruction* instruction) {
+  return absl::c_all_of(instruction->users(), [](HloInstruction* user) {
+    return user->opcode() == HloOpcode::kTrace;
+  });
+}
+
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   auto channel_dependency_group = ComputeChannelDependencies();
   std::vector<HloInstruction*> post_order;
@@ -479,7 +485,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
       // instructions to the post order at the end (necessarily they have no
       // users).
       trace_instructions.push_back(instruction.get());
-    } else if (instruction->users().empty()) {
+    } else if (HasOnlyTraceUsers(instruction.get())) {
       ComputeInstructionPostOrder(channel_dependency_group, &post_order,
                                   instruction.get(), &visited);
     }
@@ -838,7 +844,7 @@ bool HloComputation::Equal(const HloComputation& other,
       continue;
     }
     visited.emplace(pair);
-    // TODO(b/123082518): Avoid recursively invoking == becasue it may
+    // TODO(b/123082518): Avoid recursively invoking == because it may
     // cause a stack overflow with deeply nested subcomputations.
     bool identical_ignoring_operands = pair.first->Identical(
         *pair.second,

@@ -420,6 +420,15 @@ func @gatherV2VectorIndices(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>)
 // CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 1 : i32} : (tensor<1x2x20xf32>, tensor<3x5xi32>) -> tensor<1x3x5x20xf32>
 }
 
+func @gatherV2VectorIndices_I64Axis(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>) -> tensor<1x3x5x20xf32> {
+  %0 = "tf.Const"() { value = dense<[1]> : tensor<1xi64> } : () -> tensor<1xi64>
+  %1 = "tf.GatherV2"(%arg0, %arg1, %0) : (tensor<1x2x20xf32>, tensor<3x5xi32>, tensor<1xi64>) -> tensor<1x3x5x20xf32>
+  return %1 : tensor<1x3x5x20xf32>
+
+// CHECK-LABEL:gatherV2VectorIndices_I64Axis
+// CHECK:  "tfl.gather"(%arg0, %arg1) {axis = 1 : i32} : (tensor<1x2x20xf32>, tensor<3x5xi32>) -> tensor<1x3x5x20xf32>
+}
+
 func @gatherV2VectorIndicesNegAxis(%arg0 : tensor<1x2x20xf32>, %arg1 : tensor<3x5xi32>) -> tensor<1x2x3x5xf32> {
   %0 = "tf.Const"() { value = dense<[-1]> : tensor<1xi32> } : () -> tensor<1xi32>
   %1 = "tf.GatherV2"(%arg0, %arg1, %0) : (tensor<1x2x20xf32>, tensor<3x5xi32>, tensor<1xi32>) -> tensor<1x2x3x5xf32>
@@ -521,21 +530,30 @@ func @select_multidim(%arg0: tensor<8xi1>, %arg1: tensor<8x3xf32>, %arg2: tensor
 // CHECK:  return
 }
 
-func @select_v2(%arg0: tensor<8xi1>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) -> tensor<8xf32> {
+func @select_v2_same_shape(%arg0: tensor<8xi1>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>) -> tensor<8xf32> {
   %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<8xi1>, tensor<8xf32>, tensor<8xf32>) -> tensor<8xf32>
   return %0: tensor<8xf32>
 
-// CHECK-LABEL: select_v2
+// CHECK-LABEL: select_v2_same_shape
 // CHECK:  "tfl.select"(%arg0, %arg1, %arg2)
 // CHECK:  return
 }
 
-func @select_v2_multidim(%arg0: tensor<8xi1>, %arg1: tensor<8x3xf32>, %arg2: tensor<8x3xf32>) -> tensor<8x3xf32> {
-  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<8xi1>, tensor<8x3xf32>, tensor<8x3xf32>) -> tensor<8x3xf32>
+func @select_v2_multidim(%arg0: tensor<3xi1>, %arg1: tensor<8x3xf32>, %arg2: tensor<8x3xf32>) -> tensor<8x3xf32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<8x3xf32>, tensor<8x3xf32>) -> tensor<8x3xf32>
   return %0: tensor<8x3xf32>
 
 // CHECK-LABEL: select_v2_multidim
-// CHECK:  "tfl.select"(%arg0, %arg1, %arg2)
+// CHECK:  "tfl.select_v2"(%arg0, %arg1, %arg2)
+// CHECK:  return
+}
+
+func @select_v2_broadcast(%arg0: tensor<4xi1>, %arg1: tensor<3x4xf32>, %arg2: tensor<8x3x4xf32>) -> tensor<8x3x4xf32> {
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<4xi1>, tensor<3x4xf32>, tensor<8x3x4xf32>) -> tensor<8x3x4xf32>
+  return %0: tensor<8x3x4xf32>
+
+// CHECK-LABEL: select_v2_broadcast
+// CHECK:  "tfl.select_v2"(%arg0, %arg1, %arg2)
 // CHECK:  return
 }
 
@@ -992,16 +1010,14 @@ func @resize_with_bilinear(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>)
   %0 = "tf.ResizeBilinear"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
   // CHECK-LABEL: resize_with_bilinear
-  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = true, half_pixel_centers = false} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
 }
 
-// Note: half_pixel_centers isn't supported by TFLite, so it's not
-// legalized.
 func @resize_with_bilinear_with_half_pixel_centers(%arg0: tensor<1x100x100x3xf32>, %arg1: tensor<4xi32>) -> tensor<?xf32> {
-  %0 = "tf.ResizeBilinear"(%arg0, %arg1) {align_corners = true, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
+  %0 = "tf.ResizeBilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
   // CHECK-LABEL: resize_with_bilinear_with_half_pixel_centers
-  // CHECK: "tf.ResizeBilinear"(%arg0, %arg1) {align_corners = true, half_pixel_centers = true}
+  // CHECK: "tfl.resize_bilinear"(%arg0, %arg1) {align_corners = false, half_pixel_centers = true} : (tensor<1x100x100x3xf32>, tensor<4xi32>) -> tensor<?xf32>
 }
 
 func @strided_slice(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x2x2x5xf32> {
@@ -1065,6 +1081,14 @@ func @cast(%arg0: tensor<1x2x2x5xi32>) -> tensor<1x2x2x5xf32> {
 
   // CHECK-LABEL: cast
   // CHECK: "tfl.cast"(%arg0) : (tensor<1x2x2x5xi32>) -> tensor<1x2x2x5xf32>
+}
+
+func @castComplex(%arg0: tensor<1x2x2x5xf32>) -> tensor<1x2x2x5xcomplex<f32>> {
+  %0 = "tf.Cast"(%arg0) : (tensor<1x2x2x5xf32>) -> tensor<1x2x2x5xcomplex<f32>>
+  return %0 : tensor<1x2x2x5xcomplex<f32>>
+
+  // CHECK-LABEL: castComplex
+  // CHECK: "tfl.cast"(%arg0) : (tensor<1x2x2x5xf32>) -> tensor<1x2x2x5xcomplex<f32>>
 }
 
 func @unique(%arg0: tensor<5xf32>) -> (tensor<?xf32>, tensor<?xi32>) {
@@ -1279,4 +1303,64 @@ func @conv2d_backprop_unsupported_data_format(%arg0: tensor<4xi32>, %arg1: tenso
 
   // CHECK-LABEL: conv2d_backprop_unsupported_data_format
   // CHECK: tf.Conv2DBackpropInput
+}
+
+func @assert_remove(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi1> {
+  %0 = "tf.LessEqual"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
+  "tf.Assert"(%0, %arg1) {summarize = 3} : (tensor<1xi1>, tensor<1xi32>) -> ()
+  return %0 : tensor<1xi1>
+  // CHECK-LABEL: assert_remove
+  // CHECK: tfl.less_equal
+  // CHECK-NOT: Assert
+  // CHECK: return
+}
+
+func @reciprocal_f16(%arg0: tensor<8xf16>) -> tensor<8xf16> {
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xf16>) -> tensor<8xf16>
+  return %0: tensor<8xf16>
+
+// CHECK-LABEL: reciprocal_f16
+// CHECK:  %cst = constant dense<1.000000e+00> : tensor<1xf16>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xf16>, tensor<8xf16>) -> tensor<8xf16>
+// CHECK:  return
+}
+
+func @reciprocal_f32(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
+  return %0: tensor<8xf32>
+
+// CHECK-LABEL: reciprocal_f32
+// CHECK:  %cst = constant dense<1.000000e+00> : tensor<1xf32>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xf32>, tensor<8xf32>) -> tensor<8xf32>
+// CHECK:  return
+}
+
+func @reciprocal_complex_f32(%arg0: tensor<8xcomplex<f32>>) -> tensor<8xcomplex<f32>> {
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xcomplex<f32>>) -> tensor<8xcomplex<f32>>
+  return %0: tensor<8xcomplex<f32>>
+
+// CHECK-LABEL: reciprocal_complex_f32
+// CHECK:  %cst = constant opaque<"tf", "0x746674656E736F722464747970653A2044545F434F4D504C455836342074656E736F725F7368617065207B2064696D207B2073697A653A2031207D207D2074656E736F725F636F6E74656E743A20225C3030305C3030305C3230303F5C3030305C3030305C3030305C30303022"> : tensor<1xcomplex<f32>>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xcomplex<f32>>, tensor<8xcomplex<f32>>) -> tensor<8xcomplex<f32>>
+// CHECK:  return
+}
+
+func @reciprocal_i32(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xi32>) -> tensor<8xi32>
+  return %0: tensor<8xi32>
+
+// CHECK-LABEL: reciprocal_i32
+// CHECK:  %cst = constant dense<1> : tensor<1xi32>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<8xi32>) -> tensor<8xi32>
+// CHECK:  return
+}
+
+func @reciprocal_i64(%arg0: tensor<8xi64>) -> tensor<8xi64> {
+  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xi64>) -> tensor<8xi64>
+  return %0: tensor<8xi64>
+
+// CHECK-LABEL: reciprocal_i64
+// CHECK:  %cst = constant dense<1> : tensor<1xi64>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xi64>, tensor<8xi64>) -> tensor<8xi64>
+// CHECK:  return
 }

@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
@@ -29,6 +28,7 @@ def make_reverse_v2_tests(options):
   """Make a set of tests to do reverse_v2."""
 
   test_parameters = [{
+      "dtype": [tf.float32, tf.bool],
       "base_shape": [[3, 4, 3], [3, 4], [5, 6, 7, 8]],
       "axis": [0, 1, 2, 3],
   }]
@@ -43,12 +43,15 @@ def make_reverse_v2_tests(options):
 
   def build_graph(parameters):
     input_tensor = tf.compat.v1.placeholder(
-        dtype=tf.float32, name=("input"), shape=parameters["base_shape"])
+        dtype=parameters["dtype"],
+        name=("input"),
+        shape=parameters["base_shape"])
     outs = tf.reverse(input_tensor, axis=[get_valid_axis(parameters)])
     return [input_tensor], [outs]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_value = create_tensor_data(np.float32, shape=parameters["base_shape"])
+    input_value = create_tensor_data(
+        parameters["dtype"], shape=parameters["base_shape"])
     return [input_value], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value])))
 

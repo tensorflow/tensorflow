@@ -104,7 +104,7 @@ FailoverCompiler::CompileAheadOfTime(
     const AotCompilationOptions& options) {
   // This is not supported by GPU compiler anyway.
   return Unimplemented(
-      "CompileAheadOfTime not implemeneted in failover compiler!");
+      "CompileAheadOfTime not implemented in failover compiler!");
 }
 
 HloCostAnalysis::ShapeSizeFunction FailoverCompiler::ShapeSizeBytesFunction()

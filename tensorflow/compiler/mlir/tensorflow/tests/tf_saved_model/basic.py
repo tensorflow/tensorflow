@@ -24,6 +24,17 @@ import tensorflow.compat.v2 as tf
 from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common
 
 
+# Verify that the tf.versions attribute exists. It is difficult to enforce
+# contents, since the version numbers change over time. The conversion logic
+# itself is verified in the common graphdef converter, so here just assert
+# it is being invoked.
+# CHECK: module
+# CHECK-SAME: tf.versions
+# CHECK-SAME: bad_consumers
+# CHECK-SAME: min_consumer
+# CHECK-SAME: producer
+
+
 class TestModule(tf.Module):
 
   def __init__(self):

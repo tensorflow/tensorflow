@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/microfrontend/lib/fft.h"
 
-#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/experimental/microfrontend/lib/fft_util.h"
+#include "tensorflow/lite/micro/testing/micro_test.h"
 
 namespace {
 

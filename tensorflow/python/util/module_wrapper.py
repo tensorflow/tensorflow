@@ -173,6 +173,8 @@ class TFModuleWrapper(types.ModuleType):
           attr_map[name] = attr
           return attr
 
+      # Placeholder for Google-internal contrib error
+
       attr = super(TFModuleWrapper, self).__getattribute__(name)
 
       # Return and cache dunders and our own members.
@@ -191,6 +193,8 @@ class TFModuleWrapper(types.ModuleType):
     try:
       attr = getattr(self._tfmw_wrapped_module, name)
     except AttributeError:
+      # Placeholder for Google-internal contrib error
+
       if not self._tfmw_public_apis:
         raise
       if name not in self._tfmw_public_apis:

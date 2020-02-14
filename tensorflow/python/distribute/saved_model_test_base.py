@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -44,9 +45,7 @@ PREDICT_STEPS = 1
 simple_models = [
     model_combinations.simple_functional_model,
     model_combinations.simple_sequential_model,
-
-    # TODO(b/131715604): figure out why subclass model does not work
-    # model_combinations.simple_subclass_model,
+    model_combinations.simple_subclass_model,
 ]
 
 
@@ -58,7 +57,8 @@ strategies = [
     strategy_combinations.mirrored_strategy_with_one_gpu,
     strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
     strategy_combinations.mirrored_strategy_with_two_gpus,
-    strategy_combinations.tpu_strategy
+    strategy_combinations.tpu_strategy,
+    strategy_combinations.central_storage_strategy_with_two_gpus,
 ]
 
 
@@ -142,7 +142,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
   def _save_model(self, model, saved_dir):
     """Save the given model to the given saved_dir.
 
-    This method needs to be implemeted by the subclasses.
+    This method needs to be implemented by the subclasses.
 
     Args:
       model: a keras model object to save.
@@ -195,7 +195,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
 
     saved_dir = os.path.join(self.get_temp_dir(), '0')
 
-    model, output_name = model_and_input.get_model(
+    model = model_and_input.get_model(
         experimental_run_tf_function=experimental_run_tf_function)
     x_train, y_train, x_predict = model_and_input.get_data()
     batch_size = model_and_input.get_batch_size()
@@ -211,7 +211,10 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
           distribution=distribution,
           saved_dir=saved_dir,
           predict_dataset=predict_dataset,
-          output_name=output_name,
+          # Note that subclassed model's output names aren't defined until after
+          # the model is built (in these tests, this occurs when the model is
+          # trained).
+          output_name=getattr(model, 'output_names', [None])[0],
           experimental_run_tf_function=experimental_run_tf_function)
 
     tolerance = get_tolerance(None, distribution)
@@ -225,7 +228,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
     saved_dir = os.path.join(self.get_temp_dir(), '1')
 
     with distribution.scope():
-      model, output_name = model_and_input.get_model(
+      model = model_and_input.get_model(
           experimental_run_tf_function=experimental_run_tf_function)
       x_train, y_train, x_predict = model_and_input.get_data()
       batch_size = model_and_input.get_batch_size()
@@ -245,7 +248,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
         distribution=None,
         saved_dir=saved_dir,
         predict_dataset=predict_dataset,
-        output_name=output_name,
+        output_name=getattr(model, 'output_names', [None])[0],
         experimental_run_tf_function=experimental_run_tf_function)
 
     tolerance = get_tolerance(distribution, None)
@@ -260,7 +263,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
     saved_dir = os.path.join(self.get_temp_dir(), '2')
 
     with distribution_for_saving.scope():
-      model, output_name = model_and_input.get_model(
+      model = model_and_input.get_model(
           experimental_run_tf_function=experimental_run_tf_function)
       x_train, y_train, x_predict = model_and_input.get_data()
       batch_size = model_and_input.get_batch_size()
@@ -282,7 +285,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
           distribution=distribution_for_restoring,
           saved_dir=saved_dir,
           predict_dataset=predict_dataset,
-          output_name=output_name,
+          output_name=getattr(model, 'output_names', [None])[0],
           experimental_run_tf_function=experimental_run_tf_function)
 
     tolerance = get_tolerance(distribution_for_saving,

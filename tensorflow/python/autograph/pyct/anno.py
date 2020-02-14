@@ -24,6 +24,7 @@ from __future__ import print_function
 import enum
 
 # pylint:disable=g-bad-import-order
+
 import gast
 # pylint:enable=g-bad-import-order
 

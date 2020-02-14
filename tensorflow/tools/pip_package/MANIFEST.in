@@ -10,6 +10,7 @@ recursive-include * *.dll
 recursive-include * *.lib
 recursive-include * *.csv
 recursive-include tensorflow_core/include/tensorflow *.h
+recursive-include tensorflow_core/include/tensorflow *.proto
 recursive-include tensorflow_core/include/Eigen *
 recursive-include tensorflow_core/include/absl *
 recursive-include tensorflow_core/include/external *
@@ -18,3 +19,4 @@ recursive-include tensorflow_core/include/google *.inc
 recursive-include tensorflow_core/include/include *.h
 recursive-include tensorflow_core/include/third_party *
 recursive-include tensorflow_core/include/unsupported *
+

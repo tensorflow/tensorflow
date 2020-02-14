@@ -75,7 +75,7 @@ $A$ is a $m \times n$ matrix of quantized activations. <br />
 $B$ is a $n \times p$ matrix of quantized weights. <br />
 Consider multiplying the $j$th row of $A$, $a_j$ by the $k$th column of
 $B$, $b_k$, both of length $n$. The quantized integer values and
-zero-points values are $q_a$, $z_a$ and $q_b$, $q_b$ respectively.
+zero-points values are $q_a$, $z_a$ and $q_b$, $z_b$ respectively.
 
 $$a_j \cdot b_k = \sum_{i=0}^{n} a_{j}^{(i)} b_{k}^{(i)} =
 \sum_{i=0}^{n} (q_{a}^{(i)} - z_a) (q_{b}^{(i)} - z_b) =
@@ -87,9 +87,9 @@ $$a_j \cdot b_k = \sum_{i=0}^{n} a_{j}^{(i)} b_{k}^{(i)} =
 The \\(\sum_{i=0}^{n} q_{a}^{(i)} q_{b}^{(i)}\\) term is unavoidable since it’s
 performing the dot product of the input value and the weight value.
 
-The $$\sum_{i=0}^{n} q_{b}^{(i)} z_a and \sum_{i=0}^{n} z_a z_b$$ terms are made
-up of constants that remain the same per inference invocation, and thus can be
-pre-calculated.
+The $$\sum_{i=0}^{n} q_{b}^{(i)} z_a$$ and $$\sum_{i=0}^{n} z_a z_b$$ terms are
+made up of constants that remain the same per inference invocation, and thus can
+be pre-calculated.
 
 The \\(\sum_{i=0}^{n} q_{a}^{(i)} z_b\\) term needs to be computed every inference
 since the activation changes every inference. By enforcing weights to be

@@ -25,10 +25,11 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -204,6 +205,35 @@ def _enclosing_tpu_device_assignment():
   return strategy.extended._device_assignment  # pylint: disable=protected-access
 
 
+@auto_control_deps.register_acd_resource_resolver
+def tpu_replicated_input_resolver(op, resource_inputs):
+  """Replaces TPUReplicatedInput outputs with its inputs in resource_inputs."""
+  # Ignore TPUReplicatedInput for ACD purposes since we will be directly adding
+  # control deps on the replicated inputs.
+  if op.type == "TPUReplicatedInput":
+    if resource_inputs:
+      resource_inputs.clear()
+      return True
+    else:
+      return False
+  # Replace tensors in `resource_inputs` which are outputs of TPUReplicatedInput
+  # with the actual replicated inputs. This allows ACD to correct add control
+  # deps when there are multiple calls to `experimental_run_v2` in a
+  # `tf.function`.
+  to_remove = []
+  to_add = []
+  for resource in resource_inputs:
+    if resource.op.type == "TPUReplicatedInput":
+      to_remove.append(resource)
+      to_add.extend(resource.op.inputs)
+  if not to_add and not to_remove:
+    return False
+  for t in to_remove:
+    resource_inputs.discard(t)
+  resource_inputs.update(to_add)
+  return True
+
+
 class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   """A `ControlFlowContext` for nodes inside a TPU computation.
 
@@ -223,11 +253,11 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     """An internal class to help manage the TF_Buffer lifetime."""
 
     def __init__(self, buf_string):
-      self._buffer = pywrap_tensorflow.TF_NewBufferFromString(
+      self._buffer = pywrap_tf_session.TF_NewBufferFromString(
           compat.as_bytes(buf_string))
 
     def __del__(self):
-      pywrap_tensorflow.TF_DeleteBuffer(self._buffer)
+      pywrap_tf_session.TF_DeleteBuffer(self._buffer)
 
   def __init__(self, name, num_replicas, pivot):
     """Builds a new TPUReplicateContext.
@@ -259,11 +289,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self,
-                                name,
-                                vars_,
-                                device_map=None,
-                                is_mirrored=False):
+  def get_replicated_var_handle(self, name, vars_, is_mirrored=False):
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
@@ -272,8 +298,6 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     Args:
       name: The common name of the variable.
       vars_: The replicated TPU variables.
-      device_map: The DeviceMap used to create the variables if it is a
-        TPUMirroredVariable.
       is_mirrored: Whether the variables are mirrored, which guarantees the
         values in each replica are always the same.
 
@@ -287,15 +311,25 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if handle is not None:
       return handle
 
-    replicated_vars = []
-    if device_assignment is not None and device_map is not None:
-      job_name = pydev.DeviceSpec.from_string(device_map.all_devices[0]).job
+    if device_assignment is not None:
+      # Find a variable copy for each replica in the device assignment.
+      # Note that the order of devices for replicas for the variable and the
+      # device assignment might not match.
+      job_name = pydev.DeviceSpec.from_string(vars_[0].device).job
+      devices_to_vars = {v.device: v for v in vars_}
+      replicated_vars = []
       for replica_id in range(device_assignment.num_replicas):
-        tpu_device = device_assignment.tpu_device(
-            replica=replica_id, logical_core=0, job=job_name)
-        tpu_device = device_util.canonicalize(tpu_device)
-        replica = device_map.replica_for_device(tpu_device)
-        replicated_vars.append(vars_[replica])
+        for logical_core in range(device_assignment.num_cores_per_replica):
+          device = device_util.canonicalize(
+              device_assignment.tpu_device(
+                  replica=replica_id, logical_core=logical_core, job=job_name))
+          if device in devices_to_vars:
+            replicated_vars.append(devices_to_vars[device])
+            break
+        else:
+          raise ValueError(
+              "Failed to find a variable on any device in replica {} for "
+              "current device assignment".format(replica_id))
     else:
       replicated_vars = vars_
 
@@ -321,8 +355,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def report_unsupported_operations(self):
     if self._unsupported_ops:
-      op_str = "\n".join(["  %s (%s)" % (op.type, op.name)
-                          for op in self._unsupported_ops[:_MAX_WARNING_LINES]])
+      op_str = "\n".join("  %s (%s)" % (op.type, op.name)
+                         for op in self._unsupported_ops[:_MAX_WARNING_LINES])
       logging.warning("%d unsupported operations found: \n%s",
                       len(self._unsupported_ops), op_str)
       if len(self._unsupported_ops) > _MAX_WARNING_LINES:
@@ -334,7 +368,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       self._gradient_colocation_stack.append(op)
       if not self._outside_compilation_cluster:
         try:
-          outside_attr = op.get_attr(_OUTSIDE_COMPILATION_ATTR)
+          outside_attr = op.get_attr(_OUTSIDE_COMPILATION_ATTR).decode("ascii")
           if self._in_gradient_colocation:
             raise NotImplementedError(
                 "Cannot nest gradient colocation operations outside compilation"
@@ -638,6 +672,9 @@ def outside_compilation(computation, *args, **kwargs):
   ops on CPU's. Below usage of outside compilation will place ops in
   `computation_with_string_ops` on CPU.
 
+  Example usage:
+
+  ```python
   def computation_with_string_ops(x):
     # strings types are not supported on TPU's and below ops must
     # run on CPU instead.
@@ -647,6 +684,7 @@ def outside_compilation(computation, *args, **kwargs):
   def tpu_computation():
     # Expected output is 11.
     output = tf.tpu.outside_compilation(computation_with_string_ops, 1)
+  ```
 
   Outside compilation should be called inside TPUReplicateContext. That is,
   `tf.tpu.outside_compilation()` should be called inside a function that is
@@ -1200,7 +1238,7 @@ def split_compile_and_replicate(computation,
 
   if host_compute_core:
     attr_value = attr_value_pb2.AttrValue()
-    attr_value.list.s.extend([compat.as_bytes(x) for x in host_compute_core])
+    attr_value.list.s.extend(compat.as_bytes(x) for x in host_compute_core)
     metadata._set_attr("host_compute_core", attr_value)  # pylint: disable=protected-access
 
   with ops.control_dependencies([metadata]):
@@ -1665,7 +1703,7 @@ def rewrite(computation,
     inputs: A list of input tensors or `None` (equivalent to an empty list).
       Each input can be a nested structure containing values that are
       convertible to tensors. Note that passing an N-dimension list of
-      compatible values will result in a N-dimention list of scalar tensors
+      compatible values will result in a N-dimension list of scalar tensors
       rather than a single Rank-N tensors. If you need different behavior,
       convert part of inputs to tensors with `tf.convert_to_tensor`.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
@@ -1727,20 +1765,22 @@ def under_tpu_inference_context():
 class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
   """A `ControlFlowContext` for nodes inside a TPU inference computation.
 
-  The primary role of `TPUReplicateContext` is to sanity check operators inside
-  a tpu.rewrite_for_inference() computation.
+  The primary role of `_TPUInferenceContext` is to indicate the mode of
+  operation and possibly sanity check operators inside a
+  tpu.rewrite_for_inference() computation.
   """
 
-  def __init__(self, name):
+  def __init__(self, name, check_ops=True):
     super(_TPUInferenceContext, self).__init__()
     self._name = name
+    self._check_ops = check_ops
 
   def AddOp(self, op):
     self._AddOpInternal(op)
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
-    if op.type in _BLACKLISTED_INFERENCE_OPS:
+    if self._check_ops and op.type in _BLACKLISTED_INFERENCE_OPS:
       raise NotImplementedError(
           "Operation of type %s (%s) is not supported on the TPU for inference."
           " Execution will fail if this op is used in the graph. Make sure your"

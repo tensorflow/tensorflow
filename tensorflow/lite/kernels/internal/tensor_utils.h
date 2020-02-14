@@ -97,17 +97,30 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
 // each batch in the batch-vector matrix independently).
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride);
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, int result_stride);
+
+// Same as the function above, but provide a scratch buffer for the
+// int8 x int8 -> int32 and a CpuBackendContext for the accumulator
+// computation.
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    int32_t* __restrict__ scratch, float* __restrict__ result,
+    int result_stride, CpuBackendContext* __restrict__ context);
 
 // Same as the function above except that vector values
 // are quantized with asymmetric quantization per-batch and the matrix
 // is quantized per row.
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride,
-    const float* per_channel_scale, const int32_t* input_offset);
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, int result_stride,
+    const float* __restrict__ per_channel_scale,
+    const int32_t* __restrict__ input_offset);
 
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
@@ -121,10 +134,10 @@ void MatrixBatchVectorMultiplyAccumulate(
 //   1. m_cols is a multiple of 16 so that all blocks are full blocks.
 //   2. m_cols < 254 * 16 so that block index can be represented by uint8.
 void SparseMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
-    const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result,
-    int result_stride);
+    const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
+    const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, int result_stride);
 
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
@@ -233,33 +246,15 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
 
 // Apply Tanh to a quantized vector.
 // Parameters:
+//     - integer_bits: the integer bits of the input.
+//                     Currently supports 0, 1, 2, 3, 4, 5, 6.
 //     - input: batch vector of size n_batch * n_input; 16 bit.
 //     - n_batch: the number of batches.
 //     - n_input: the size for input and output.
 //     - output:  the 16 bit output
-// The input is in Q0.15 format and the output is in Q0.15 format.
-void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output);
-
-// Apply Tanh to a quantized vector.
-// Parameters:
-//     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batches.
-//     - n_input: the size for input and output.
-//     - output:  the 16 bit output
-// The input is in Q3.12 format and the output is in Q0.15 format.
-void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output);
-
-// Apply Tanh to a quantized vector.
-// Parameters:
-//     - input: batch vector of size n_batch * n_input; 16 bit.
-//     - n_batch: the number of batches.
-//     - n_input: the size for input and output.
-//     - output:  the 16 bit output
-// The input is in Q4.11 format and the output is in Q0.15 format.
-void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output);
+// The input is in Qm.15-m format and the output is in Q0.15 format.
+void ApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+               int32_t n_input, int16_t* output);
 
 // Element-wise multiplication of two quantized vectors.
 // Parameters:
@@ -332,14 +327,26 @@ void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
                    int32_t n_input);
 
 // Cwise product of two vectors.
-void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                              int v_size, float* result);
+template <typename T>
+inline void VectorVectorCwiseProduct(const T* __restrict__ vector1,
+                                     const T* __restrict__ vector2, int v_size,
+                                     T* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    *result++ = *vector1++ * *vector2++;
+  }
+}
 
 // Cwise product and accumulate of two vectors. Since it's a MAC opertation, the
 // assumption here is that result array is initialized to valid values.
-void VectorVectorCwiseProductAccumulate(const float* vector1,
-                                        const float* vector2, int v_size,
-                                        float* result);
+template <typename T>
+inline void VectorVectorCwiseProductAccumulate(const T* __restrict__ vector1,
+                                               const T* __restrict__ vector2,
+                                               int v_size,
+                                               T* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    *result++ += *vector1++ * *vector2++;
+  }
+}
 
 // Dot product of two vectors.
 float VectorVectorDotProduct(const float* vector1, const float* vector2,

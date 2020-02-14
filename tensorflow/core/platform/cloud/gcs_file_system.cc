@@ -128,23 +128,8 @@ constexpr char kAllowedBucketLocations[] = "GCS_ALLOWED_BUCKET_LOCATIONS";
 // is running in and restricts to buckets in that region.
 constexpr char kDetectZoneSentinalValue[] = "auto";
 
-// TODO: DO NOT use a hardcoded path
 Status GetTmpFilename(string* filename) {
-#ifndef _WIN32
-  char buffer[] = "/tmp/gcs_filesystem_XXXXXX";
-  int fd = mkstemp(buffer);
-  if (fd < 0) {
-    return errors::Internal("Failed to create a temporary file.");
-  }
-  close(fd);
-#else
-  char buffer[] = "/tmp/gcs_filesystem_XXXXXX";
-  char* ret = _mktemp(buffer);
-  if (ret == nullptr) {
-    return errors::Internal("Failed to create a temporary file.");
-  }
-#endif
-  *filename = buffer;
+  *filename = io::GetTempFilename("");
   return Status::OK();
 }
 
@@ -1743,6 +1728,17 @@ void GcsFileSystem::SetStats(GcsStatsInterface* stats) {
   mutex_lock l(block_cache_lock_);
   stats_ = stats;
   stats_->Configure(this, &throttle_, file_block_cache_.get());
+}
+
+void GcsFileSystem::SetCacheStats(FileBlockCacheStatsInterface* cache_stats) {
+  tf_shared_lock l(block_cache_lock_);
+  if (file_block_cache_ == nullptr) {
+    LOG(ERROR) << "Tried to set cache stats of non-initialized file block "
+                  "cache object. This may result in not exporting the intended "
+                  "monitoring data";
+    return;
+  }
+  file_block_cache_->SetStats(cache_stats);
 }
 
 void GcsFileSystem::SetAuthProvider(

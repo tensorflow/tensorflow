@@ -11,7 +11,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load(
-    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
@@ -63,6 +63,7 @@ cc_library(
             "//tensorflow/stream_executor/platform",
         ],
     ) + tf_additional_cuda_platform_deps() + [
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -605,7 +606,7 @@ tf_cuda_cc_test(
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:kernel",
-        "//tensorflow/stream_executor/gpu:asm_compiler",
+        "//tensorflow/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/stream_executor/gpu:redzone_allocator",
     ],
 )

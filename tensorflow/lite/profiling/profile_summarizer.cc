@@ -85,21 +85,27 @@ OperatorDetails GetOperatorDetails(const tflite::Interpreter& interpreter,
   return details;
 }
 
-tensorflow::StatSummarizerOptions GetProfileSummarizerOptions() {
+tensorflow::StatSummarizerOptions GetProfileSummarizerOptions(
+    bool format_as_csv) {
   auto options = tensorflow::StatSummarizerOptions();
   // Summary will be manually handled per subgraphs in order to keep the
   // compatibility.
   options.show_summary = false;
   options.show_memory = false;
+  options.format_as_csv = format_as_csv;
   return options;
 }
 
 }  // namespace
 
-ProfileSummarizer::ProfileSummarizer() {
+ProfileSummarizer::ProfileSummarizer(bool format_as_csv)
+    : delegate_stats_calculator_(new tensorflow::StatsCalculator(
+          GetProfileSummarizerOptions(format_as_csv))),
+      format_as_csv_(format_as_csv) {
   // Create stats calculator for the primary graph.
   stats_calculator_map_[0] = std::unique_ptr<tensorflow::StatsCalculator>(
-      new tensorflow::StatsCalculator(GetProfileSummarizerOptions()));
+      new tensorflow::StatsCalculator(
+          GetProfileSummarizerOptions(format_as_csv)));
 }
 
 void ProfileSummarizer::ProcessProfiles(
@@ -126,6 +132,7 @@ void ProfileSummarizer::ProcessProfiles(
 
   // Total time will be accumulated per subgraph.
   std::map<uint32_t, int64_t> total_us_per_subgraph_map;
+  int64_t delegate_internal_total_us = 0;
 
   for (auto event : events) {
     const auto subgraph_index = event->event_subgraph_index;
@@ -156,6 +163,17 @@ void ProfileSummarizer::ProcessProfiles(
       stats_calculator->AddNodeStats(node_name_in_stats, type_in_stats,
                                      node_num, start_us, node_exec_time,
                                      0 /*memory */);
+    } else if (event->event_type ==
+               Profiler::EventType::DELEGATE_OPERATOR_INVOKE_EVENT) {
+      const std::string node_name(event->tag);
+      // Append event_metadata to node name because 'stats_calculator' can not
+      // distinguish two nodes w/ the same 'node_name'.
+      const auto node_name_in_stats =
+          "Delegate/" + node_name + ":" + std::to_string(event->event_metadata);
+
+      delegate_stats_calculator_->AddNodeStats(
+          node_name_in_stats, "DelegateOpInvoke", node_num, start_us,
+          node_exec_time, 0 /*memory */);
     } else {
       // TODO(b/139812778) consider use a different stats_calculator to record
       // non-op-invoke events so that these could be separated from
@@ -164,15 +182,18 @@ void ProfileSummarizer::ProcessProfiles(
           event->end_mem_usage - event->begin_mem_usage;
       std::string node_name(event->tag);
       node_name += "/" + std::to_string(event->event_subgraph_index);
-      stats_calculator->AddNodeStats(node_name, "Misc Runtime Ops", node_num,
-                                     start_us, node_exec_time,
-                                     node_mem_usage.total_allocated_bytes);
+      stats_calculator->AddNodeStats(node_name, event->tag, node_num, start_us,
+                                     node_exec_time,
+                                     node_mem_usage.max_rss_kb * 1000.0);
     }
 
     // Add total time except actual delegate ops since the elapsed time of the
     // delegate ops inside are already combined at a fused DELEGATE op.
-    if (strcmp(event->tag, "DelegateOpInvoke") != 0) {
+    if (event->event_type !=
+        Profiler::EventType::DELEGATE_OPERATOR_INVOKE_EVENT) {
       total_us_per_subgraph_map[subgraph_index] += node_exec_time;
+    } else {
+      delegate_internal_total_us += node_exec_time;
     }
     ++node_num;
   }
@@ -182,6 +203,9 @@ void ProfileSummarizer::ProcessProfiles(
         GetStatsCalculator(total_us_per_subgraph_pair.first);
     stats_calculator->UpdateRunTotalUs(total_us_per_subgraph_pair.second);
   }
+  if (delegate_internal_total_us > 0) {
+    delegate_stats_calculator_->UpdateRunTotalUs(delegate_internal_total_us);
+  }
 }
 
 tensorflow::StatsCalculator* ProfileSummarizer::GetStatsCalculator(
@@ -189,7 +213,8 @@ tensorflow::StatsCalculator* ProfileSummarizer::GetStatsCalculator(
   if (stats_calculator_map_.count(subgraph_index) == 0) {
     stats_calculator_map_[subgraph_index] =
         std::unique_ptr<tensorflow::StatsCalculator>(
-            new tensorflow::StatsCalculator(GetProfileSummarizerOptions()));
+            new tensorflow::StatsCalculator(
+                GetProfileSummarizerOptions(format_as_csv_)));
   }
   return stats_calculator_map_[subgraph_index].get();
 }
@@ -217,6 +242,15 @@ std::string ProfileSummarizer::GenerateReport(std::string tag,
     }
     stream << subgraph_stats->GetShortSummary() << std::endl;
   }
+
+  if (delegate_stats_calculator_->num_runs() > 0) {
+    stream << "Delegate internal: " << std::endl;
+    if (include_output_string) {
+      stream << delegate_stats_calculator_->GetOutputString();
+    }
+    stream << delegate_stats_calculator_->GetShortSummary() << std::endl;
+  }
+
   return stream.str();
 }
 

@@ -404,7 +404,7 @@ _RAGGED_REDUCE_MEAN_EXAMPLE = """
     >>> tf.reduce_mean(rt, axis=0).numpy()
     array([3.75, 4.  , 4. ])
     >>> tf.reduce_mean(rt, axis=1).numpy()
-    array([2.6666..., 3.  , 9.  , 4.  ])
+    array([2.66666667, 3.  , 9.  , 4.  ])
 """
 _RAGGED_REDUCE_ALL_EXAMPLE = """
     >>> rt = tf.ragged.constant([[True, True], [True, True, False, True], [False, True]])

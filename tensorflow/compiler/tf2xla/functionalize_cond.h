@@ -213,7 +213,7 @@ class FunctionalizeCond {
   // This populates the state_map_.
   Status DetermineStates(std::vector<Node*> rev_topo_order);
 
-  // Determine the CondState for a given node using the incomming edges
+  // Determine the CondState for a given node using the incoming edges
   // to the node. Note: it is expected that this node's CondState is only
   // determined once its input's CondState is.
   Status DetermineCondState(Node* dst) {

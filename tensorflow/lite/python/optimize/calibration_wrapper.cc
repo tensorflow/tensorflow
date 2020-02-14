@@ -56,6 +56,12 @@ std::unique_ptr<tflite::ModelT> CreateMutableModel(const tflite::Model& model) {
   return copied_model;
 }
 
+bool NoOpModel(const tflite::FlatBufferModel& model) {
+  return model->subgraphs()->size() == 1 &&
+         (!model->subgraphs()->begin()->operators() ||
+          model->subgraphs()->begin()->operators()->size() == 0);
+}
+
 inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
   switch (type) {
     case kTfLiteNoType:
@@ -92,12 +98,14 @@ CalibrationWrapper::CalibrationWrapper(
     std::unique_ptr<tflite::interpreter_wrapper::PythonErrorReporter>
         error_reporter,
     std::unique_ptr<tflite::FlatBufferModel> model,
-    std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader)
+    std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader,
+    std::unique_ptr<std::string> model_str)
     : interpreter_(std::move(interpreter)),
       error_reporter_(std::move(error_reporter)),
       resolver_(std::move(resolver)),
       model_(std::move(model)),
-      reader_(std::move(reader)) {}
+      reader_(std::move(reader)),
+      model_str_(std::move(model_str)) {}
 
 CalibrationWrapper::~CalibrationWrapper() {}
 
@@ -197,6 +205,11 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             int output_py_type,
                                             bool allow_float,
                                             bool enable_mlir_quantizer) {
+  if (NoOpModel(*model_)) {
+    return python_utils::ConvertToPyString(model_str_->data(),
+                                           model_str_->size());
+  }
+
   TfLiteType input_type = python_utils::TfLiteTypeFromPyType(input_py_type);
   TfLiteType output_type = python_utils::TfLiteTypeFromPyType(output_py_type);
   if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
@@ -288,9 +301,16 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
     return nullptr;
   }
 
+  auto model_str = std::make_unique<std::string>(buf, length);
+  // If we are not going to use this string during quantization, reset the
+  // pointer and release the memory.
+  if (!NoOpModel(*model)) {
+    model_str.reset();
+  }
+
   auto wrapper = new CalibrationWrapper(
       std::move(interpreter), std::move(resolver), std::move(error_reporter),
-      std::move(model), std::move(reader));
+      std::move(model), std::move(reader), std::move(model_str));
   return wrapper;
 }
 

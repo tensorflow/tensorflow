@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #endif  // IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
+
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -60,6 +62,11 @@ namespace tensorflow {
 // of the TFE_TensorHandle struct and the python EagerTensor class
 // (unrelated to python TensorHandle).
 class TensorHandle : public core::RefCounted {
+  // Custom devices do many of the same things as physical Devices, but have a
+  // much more restricted interface. We pass around ambiguous pointers since
+  // TensorHandles may be placed either on custom or physical devices.
+  using VariantDevice = absl::variant<Device*, CustomDevice*>;
+
   // TensorHandle for dtype != DT_RESOURCE
   TensorHandle(std::unique_ptr<LocalTensorHandleData> t, DataType dtype,
                Device* d, Device* op_device, EagerContext* ctx);
@@ -67,6 +74,8 @@ class TensorHandle : public core::RefCounted {
   TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
                const ResourceHandle& resource_handle, Device* d,
                Device* op_device, EagerContext* ctx);
+  TensorHandle(std::unique_ptr<LocalTensorHandleData> t, DataType dtype,
+               CustomDevice* d, EagerContext* ctx);
   TensorHandle(std::unique_ptr<EmptyLocalTensorHandleData> t, bool async,
                Device* d, Device* op_device, Device* resource_device,
                DataType dtype, EagerContext* ctx);
@@ -87,6 +96,8 @@ class TensorHandle : public core::RefCounted {
   static Status CreateLocalHandle(const class Tensor& t, Device* d,
                                   Device* op_device, EagerContext* ctx,
                                   TensorHandle** h);
+  static Status CreateLocalHandle(const class Tensor& t, CustomDevice* d,
+                                  EagerContext* ctx, TensorHandle** h);
   static Status CreateEmptyLocalHandle(bool async, Device* d, Device* op_device,
                                        Device* resource_device, DataType dtype,
                                        EagerContext* ctx, TensorHandle** h);
@@ -113,20 +124,36 @@ class TensorHandle : public core::RefCounted {
 
   ~TensorHandle() override { DVLOG(3) << "Deleting TensorHandle " << this; }
 
-  Status Tensor(const tensorflow::Tensor** t);
+  // Return the Tensor from the default device.
+  Status Tensor(const tensorflow::Tensor** t) const;
+  // Return the Tensor from the specified device which could be either the
+  // default device or a local mirror. The device pointer should be nullptr if
+  // requesting the HostCPU.
+  Status TensorFromDevice(const Device* d, const tensorflow::Tensor** t) const;
 
-  Status TensorValue(tensorflow::TensorValue* t);
+  // Return the TensorValue from the specified device which could be either the
+  // default device or a local mirror. The device pointer should be nullptr if
+  // requesting the HostCPU.
+  Status TensorValue(tensorflow::TensorValue* t, const Device* d);
 
-  Device* device() const { return device_; }
+  VariantDevice device() const { return device_; }
   Device* op_device() const { return op_device_; }
   Device* resource_device() const { return resource_device_; }
 
-  Device* DeviceOrHostCPU(EagerContext* ctx) const;
+  VariantDevice DeviceOrHostCPU(const EagerContext& ctx) const;
 
   Status Shape(tensorflow::TensorShape* shape);
-  Status NumDims(int* num_dims);
-  Status Dim(int dim_index, int64* dim);
-  Status NumElements(int64* num_elements);
+  Status NumDims(int* num_dims) const;
+  Status Dim(int dim_index, int64* dim) const;
+  Status NumElements(int64* num_elements) const;
+
+  // Checks if a mirror tensor exists for the specified device. Mirrors are only
+  // maintained for local devices, like CPUs & GPUs. Note a mirror may be empty,
+  // as it is still to be set by an async operation.
+  bool HasLocalMirror(Device* d);
+  // Add an empty mirror placeholder for the specified device. The expectation
+  // is this will be populated by a call to SetTensor.
+  Status AddEmptyLocalMirror(Device* d);
 
 #if !defined(IS_MOBILE_PLATFORM)
   bool HasRemoteMirror(Device* d);
@@ -158,7 +185,7 @@ class TensorHandle : public core::RefCounted {
   // Sets the `tensor` for this async non-ready handle making it ready.
   // This method or Poison must be called exactly once for non-ready async
   // handles to make them ready.
-  Status SetTensor(tensorflow::Tensor&& tensor);
+  Status SetTensor(tensorflow::Tensor&& tensor, const Device* d);
 
   // Poisons this non-ready handle with an error `status`.
   // Poisoning means that the handle will become ready and methods trying
@@ -167,7 +194,7 @@ class TensorHandle : public core::RefCounted {
   // on a non-ready tensor.
   void Poison(Status status);
 
-  Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
+  Status CopyToDevice(const EagerContext& ctx, tensorflow::Device* dstd,
                       tensorflow::Tensor* output);
 
   Status InferenceShape(
@@ -188,21 +215,31 @@ class TensorHandle : public core::RefCounted {
 
   // TODO(b/136608821): Move away from nullptr
   bool OnHostCPU() const {
-    return device_ == nullptr ||
-           (ctx_ != nullptr && ctx_->HostCPU() == device_);
+    return (
+        device_.index() == 0 &&
+        (absl::get<Device*>(device_) == nullptr ||
+         (ctx_ != nullptr && ctx_->HostCPU() == absl::get<Device*>(device_))));
   }
 
   bool IsRemote() const { return is_remote_; }
+  void EnableImplicitMirroring() { implicit_mirroring_ = true; }
+  bool ImplicitMirroring() const { return implicit_mirroring_; }
 
   string DebugString() const;
 
-  void SetResourceHandleDtypeAndShape(
-      std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes);
+  struct ResourceHandleInfo {
+    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
+    std::vector<string> allowed_devices;
+  };
+
+  void SetResourceHandleInfo(ResourceHandleInfo resource_handle_info);
 
   // If this TensorHandle is 1) a local tensor, and 2) a resource handle,
-  // return data types and shapes of the underlying resource.
+  // return data types, shapes and allowed devices of the underlying resource.
+  Status GetResourceHandleInfo(ResourceHandleInfo* result);
   Status GetResourceHandleDtypesAndShapes(
       std::vector<DtypeAndPartialTensorShape>* result);
+  Status GetResourceAllowedDevices(std::vector<string>* result);
 
  private:
   // The TensorHandleData can either represent a local or remote tensor handle.
@@ -214,9 +251,11 @@ class TensorHandle : public core::RefCounted {
   // If the contents of the Tensor pointed to by this handle is yet to be
   // computed by a EagerNode, this function will block till that computation is
   // done and the handle is "ready".
-  Status WaitReady(const char* caller);
+  Status WaitReady(const char* caller) const;
 
-  // TODO(b/136608821): device_ == nullptr iff Host CPU:0
+  Status GetResourceHandleInfoImpl(std::function<void()> set_resource_info);
+
+  // TODO(b/136608821): device_ == nullptr (Device*) iff Host CPU:0
   // This was expedient, but perhaps worth revisiting ('device_' should always
   // be a valid pointer?)
   // This can be done if TFE_NewOp() and the TFE_TensorHandle constructors are
@@ -224,7 +263,7 @@ class TensorHandle : public core::RefCounted {
   //
   // TODO(ashankar): Reference count TFE_Context to ensure that 'device_' of a
   // TFE_TensorHandle does not outlive the TFE_Context from which it came?
-  tensorflow::Device* const device_;
+  VariantDevice const device_;
 
   // Device in which the op producing this tensor was executed. Equals to
   // device_ for constant tensors.
@@ -238,13 +277,15 @@ class TensorHandle : public core::RefCounted {
 
   mutable mutex mu_;
 
+  std::map<const tensorflow::Device*, std::unique_ptr<LocalTensorHandleData>>
+      local_mirrors_ GUARDED_BY(mu_);
+  std::set<const tensorflow::Device*> empty_local_mirrors_ GUARDED_BY(mu_);
 #if !defined(IS_MOBILE_PLATFORM)
   // TODO(yujingzhang): Remove resource_shape_mirrors_ once scalable per-replica
   // variable is ready, since we could get the shape locally without remote copy
   // then.
   std::map<tensorflow::Device*, std::unique_ptr<UnshapedRemoteTensorHandleData>>
       resource_shape_mirrors_ GUARDED_BY(mu_);
-
   // TODO(gjn): Unshaped remote mirrors are long expected to be long-lived.
   // Consider replacing the unshaped_remote_mirrors_ map with something more
   // efficient.
@@ -272,12 +313,13 @@ class TensorHandle : public core::RefCounted {
   Status is_poisoned_;
   const bool is_remote_;
   const bool is_async_;
+  bool implicit_mirroring_;
   bool is_ready_ GUARDED_BY(mu_);
 
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
-  // refers to a remote resource handle, we store data types and shapes for
-  // the underlying resource.
-  std::vector<DtypeAndPartialTensorShape> handle_dtypes_and_shapes_;
+  // refers to a remote resource handle, we store data types, shapes and allowed
+  // devices for the underlying resource.
+  ResourceHandleInfo resource_handle_info_;
 
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, tensor_handle_data_ is immutable.
@@ -285,6 +327,12 @@ class TensorHandle : public core::RefCounted {
 
   PartialTensorShape inference_shape_;
 };
+
+// Checks whether a VariantDevice contains a custom device.
+bool VariantDeviceIsCustom(absl::variant<Device*, CustomDevice*> device);
+
+// Wraps device->DebugString() or CustomDevice->name().
+string VariantDeviceDebugString(absl::variant<Device*, CustomDevice*> device);
 
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);

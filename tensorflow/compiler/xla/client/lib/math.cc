@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/math.h"
 
-// This macro is required to make MSVC defines math constants in math.h
-#define _USE_MATH_DEFINES
-#include <math.h>
+#include <cmath>
 
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -319,6 +317,8 @@ XlaOp Erf(XlaOp x) {
   });
 }
 
+namespace {
+
 // Approximation for the inverse error function from
 //   Giles, M., "Approximating the erfinv function".
 // The approximation has the form:
@@ -331,7 +331,7 @@ XlaOp Erf(XlaOp x) {
 //     p = sum_{i=1}^n gq[i]*w^i
 //   }
 //   return p*x
-XlaOp ErfInv(XlaOp x) {
+XlaOp ErfInv32(XlaOp x) {
   constexpr int kDegree = 9;
   constexpr std::array<float, 9> w_less_than_5_constants = {
       2.81022636e-08f,  3.43273939e-07f, -3.5233877e-06f,
@@ -368,6 +368,101 @@ XlaOp ErfInv(XlaOp x) {
     TF_ASSIGN_OR_RETURN(Shape shape, b.GetShape(x));
     return Select(Eq(Abs(x), ScalarLike(x, 1)),
                   x * MaxValue(&b, shape.element_type()), result);
+  });
+}
+
+XlaOp ErfInv64(XlaOp x) {
+  constexpr std::array<double, 23> w_less_than_6_25_constants = {
+      -3.6444120640178196996e-21, -1.685059138182016589e-19,
+      1.2858480715256400167e-18,  1.115787767802518096e-17,
+      -1.333171662854620906e-16,  2.0972767875968561637e-17,
+      6.6376381343583238325e-15,  -4.0545662729752068639e-14,
+      -8.1519341976054721522e-14, 2.6335093153082322977e-12,
+      -1.2975133253453532498e-11, -5.4154120542946279317e-11,
+      1.051212273321532285e-09,   -4.1126339803469836976e-09,
+      -2.9070369957882005086e-08, 4.2347877827932403518e-07,
+      -1.3654692000834678645e-06, -1.3882523362786468719e-05,
+      0.0001867342080340571352,   -0.00074070253416626697512,
+      -0.0060336708714301490533,  0.24015818242558961693,
+      1.6536545626831027356};
+  constexpr std::array<double, 19> w_less_than_16_constants = {
+      2.2137376921775787049e-09,  9.0756561938885390979e-08,
+      -2.7517406297064545428e-07, 1.8239629214389227755e-08,
+      1.5027403968909827627e-06,  -4.013867526981545969e-06,
+      2.9234449089955446044e-06,  1.2475304481671778723e-05,
+      -4.7318229009055733981e-05, 6.8284851459573175448e-05,
+      2.4031110387097893999e-05,  -0.0003550375203628474796,
+      0.00095328937973738049703,  -0.0016882755560235047313,
+      0.0024914420961078508066,   -0.0037512085075692412107,
+      0.005370914553590063617,    1.0052589676941592334,
+      3.0838856104922207635,
+  };
+  constexpr std::array<double, 17> w_greater_than_16_constants = {
+      -2.7109920616438573243e-11, -2.5556418169965252055e-10,
+      1.5076572693500548083e-09,  -3.7894654401267369937e-09,
+      7.6157012080783393804e-09,  -1.4960026627149240478e-08,
+      2.9147953450901080826e-08,  -6.7711997758452339498e-08,
+      2.2900482228026654717e-07,  -9.9298272942317002539e-07,
+      4.5260625972231537039e-06,  -1.9681778105531670567e-05,
+      7.5995277030017761139e-05,  -0.00021503011930044477347,
+      -0.00013871931833623122026, 1.0103004648645343977,
+      4.8499064014085844221,
+  };
+  // Compute logarithm of (1+arg) using log1p(arg) which is more precise than
+  // log(1+arg) when arg is close to zero. For more details, see
+  // https://en.cppreference.com/w/cpp/numeric/math/log1p
+  auto w = -Log1p(-x * x);
+
+  auto lt_6_25 = Lt(w, ScalarLike(x, 6.25));
+  auto lt_16 = Lt(w, ScalarLike(x, 16));
+  auto coefficient = [&](int i) {
+    auto c = FullLike(x, w_less_than_6_25_constants[i]);
+    if (i < 19) {
+      c = Select(lt_6_25, c, FullLike(x, w_less_than_16_constants[i]));
+    }
+    if (i < 17) {
+      c = Select(lt_16, c, FullLike(x, w_greater_than_16_constants[i]));
+    }
+    return c;
+  };
+  auto sqrt_w = Sqrt(w);
+  w = Select(lt_6_25, w - ScalarLike(x, 3.125),
+             sqrt_w - Select(lt_16, ScalarLike(x, 3.25), ScalarLike(x, 5.0)));
+  auto p = coefficient(0);
+  for (int i = 1; i < 17; ++i) {
+    p = coefficient(i) + p * w;
+  }
+  for (int i = 17; i < 19; ++i) {
+    p = Select(lt_16, coefficient(i) + p * w, p);
+  }
+  for (int i = 19; i < 23; ++i) {
+    p = Select(lt_6_25, coefficient(i) + p * w, p);
+  }
+  // Result modulo edge cases.
+  XlaOp result = p * x;
+
+  // Handle edge cases, namely erfinv(+/-1) = +/-inf.  (The above computation is
+  // indeterminate, and can give nan or -/+inf.)
+  auto& b = *x.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, b.GetShape(x));
+    return Select(Eq(Abs(x), ScalarLike(x, 1)),
+                  x * MaxValue(&b, shape.element_type()), result);
+  });
+}
+
+}  // namespace
+
+XlaOp ErfInv(XlaOp x) {
+  auto& b = *x.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("ErfInv", x));
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(x));
+    if (shape.element_type() == F64) {
+      return ErfInv64(x);
+    }
+    return DoWithUpcastToF32(x, {BF16, F16},
+                             [](XlaOp x) { return ErfInv32(x); });
   });
 }
 
@@ -594,6 +689,211 @@ XlaOp Digamma(XlaOp input) {
   });
 }
 
+// Incomplete gamma functions
+
+namespace {
+
+// Helper function for computing Igamma using a power series.
+XlaOp IgammaSeries(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
+                   xla::PrimitiveType type) {
+  // vals: (enabled, r, c, ans, x)
+  // 'enabled' is a predication mask that says for which elements we should
+  // execute the loop body. Disabled elements have no effect in the loop body.
+  // TODO(phawkins): in general this isn't an optimal implementation on any
+  // backend. For example, on GPU, we should probably vectorize to the warp
+  // size, and then run independent loops for each warp's worth of
+  // data.
+  auto cond = [&](absl::Span<const XlaOp> vals,
+                  XlaBuilder* builder) -> StatusOr<XlaOp> {
+    XlaOp enabled = vals[0];
+    return Any(enabled);
+  };
+  auto body = [&](absl::Span<const XlaOp> vals,
+                  XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+    XlaOp enabled = vals[0];
+    XlaOp r = vals[1];
+    XlaOp c = vals[2];
+    XlaOp ans = vals[3];
+    XlaOp x = vals[4];
+    r = r + ScalarLike(r, 1);
+    c = c * (x / r);
+    ans = ans + c;
+    return std::vector<XlaOp>{
+        And(enabled, Gt(c / ans, Epsilon(builder, type))),
+        Select(enabled, r, vals[1]), Select(enabled, c, vals[2]),
+        Select(enabled, ans, vals[3]), Select(enabled, x, vals[4])};
+  };
+  auto& b = *ax.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    std::vector<XlaOp> vals = {enabled, a, FullLike(a, 1), FullLike(a, 1), x};
+    TF_ASSIGN_OR_RETURN(vals, WhileLoopHelper(cond, body, vals, "igamma", &b));
+    XlaOp ans = vals[3];
+    return (ans * ax) / a;
+  });
+}
+
+// Helper function for computing Igammac using a continued fraction.
+XlaOp IgammacContinuedFraction(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
+                               xla::PrimitiveType type) {
+  // vals: enabled, ans, t, y, z, c, pkm1, qkm1, pkm2, qkm2
+  auto cond = [&](absl::Span<const XlaOp> vals,
+                  XlaBuilder* builder) -> StatusOr<XlaOp> {
+    XlaOp enabled = vals[0];
+    XlaOp c = vals[5];
+    return And(Lt(c, ScalarLike(c, 2000)), Any(enabled));
+  };
+  auto body = [&](absl::Span<const XlaOp> vals,
+                  XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+    XlaOp enabled = vals[0];
+    XlaOp ans = vals[1];
+    XlaOp t = vals[2];
+    XlaOp y = vals[3];
+    XlaOp z = vals[4];
+    XlaOp c = vals[5];
+    XlaOp pkm1 = vals[6];
+    XlaOp qkm1 = vals[7];
+    XlaOp pkm2 = vals[8];
+    XlaOp qkm2 = vals[9];
+    c = c + ScalarLike(c, 1);
+    y = y + ScalarLike(y, 1);
+    z = z + ScalarLike(z, 2);
+    XlaOp yc = y * c;
+    XlaOp pk = pkm1 * z - pkm2 * yc;
+    XlaOp qk = qkm1 * z - qkm2 * yc;
+    XlaOp qk_is_nonzero = Ne(qk, ScalarLike(qk, 0));
+    XlaOp r = pk / qk;
+    t = Select(qk_is_nonzero, Abs((ans - r) / r), FullLike(t, 1));
+    ans = Select(qk_is_nonzero, r, ans);
+    pkm2 = pkm1;
+    pkm1 = pk;
+    qkm2 = qkm1;
+    qkm1 = qk;
+    XlaOp rescale = Gt(Abs(pk), Reciprocal(Epsilon(builder, type)));
+    pkm2 = Select(rescale, pkm2 * Epsilon(builder, type), pkm2);
+    pkm1 = Select(rescale, pkm1 * Epsilon(builder, type), pkm1);
+    qkm2 = Select(rescale, qkm2 * Epsilon(builder, type), qkm2);
+    qkm1 = Select(rescale, qkm1 * Epsilon(builder, type), qkm1);
+    return std::vector<XlaOp>{And(enabled, Gt(t, Epsilon(builder, type))),
+                              Select(enabled, ans, vals[1]),
+                              Select(enabled, t, vals[2]),
+                              Select(enabled, y, vals[3]),
+                              Select(enabled, z, vals[4]),
+                              c,
+                              Select(enabled, pkm1, vals[6]),
+                              Select(enabled, qkm1, vals[7]),
+                              Select(enabled, pkm2, vals[8]),
+                              Select(enabled, qkm2, vals[9])};
+  };
+
+  auto& b = *ax.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    XlaOp y = ScalarLike(a, 1) - a;
+    XlaOp z = x + y + ScalarLike(x, 1);
+    XlaOp c = ScalarLike(x, 0);
+    XlaOp pkm2 = FullLike(x, 1);
+    XlaOp qkm2 = x;
+    XlaOp pkm1 = x + ScalarLike(x, 1);
+    XlaOp qkm1 = z * x;
+    XlaOp ans = pkm1 / qkm1;
+    XlaOp t = FullLike(x, 1);
+    std::vector<XlaOp> vals = {enabled, ans,  t,    y,    z,
+                               c,       pkm1, qkm1, pkm2, qkm2};
+    TF_ASSIGN_OR_RETURN(vals, WhileLoopHelper(cond, body, vals, "igammac", &b));
+    ans = vals[1];
+    return ans * ax;
+  });
+}
+
+}  // namespace
+
+XlaOp Igamma(XlaOp a, XlaOp x) {
+  auto& b = *a.builder();
+  auto doit = [&b](XlaOp a, XlaOp x, PrimitiveType type) -> XlaOp {
+    XlaOp is_nan = Or(IsNan(a), IsNan(x));
+    XlaOp x_is_zero = Eq(x, ScalarLike(x, 0));
+    XlaOp domain_error = Or(Lt(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
+    XlaOp use_igammac = And(Gt(x, ScalarLike(x, 1)), Gt(x, a));
+    XlaOp ax = a * Log(x) - x - Lgamma(a);
+    XlaOp underflow = Lt(ax, -Log(MaxFiniteValue(&b, type)));
+    ax = Exp(ax);
+    XlaOp enabled = Not(Or(Or(Or(x_is_zero, domain_error), underflow), is_nan));
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    XlaOp output = Select(
+        use_igammac,
+        ScalarLike(a, 1) -
+            IgammacContinuedFraction(ax, x, a, And(enabled, use_igammac), type),
+        IgammaSeries(ax, x, a, And(enabled, Not(use_igammac)), type));
+    output = Select(underflow, ZerosLike(output), output);
+    output = Select(x_is_zero, ZerosLike(output), output);
+    output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
+    return output;
+  };
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
+    TF_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
+    if (a_shape != x_shape) {
+      return InvalidArgument(
+          "Arguments to Igamma must have equal shapes and types; got %s and %s",
+          a_shape.ToString(), x_shape.ToString());
+    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igamma", a));
+    bool needs_upcast =
+        a_shape.element_type() == F16 || a_shape.element_type() == BF16;
+
+    if (needs_upcast) {
+      a = ConvertElementType(a, F32);
+      x = ConvertElementType(x, F32);
+    }
+    XlaOp result = doit(a, x, a_shape.element_type());
+    if (needs_upcast) {
+      result = ConvertElementType(result, a_shape.element_type());
+    }
+    return result;
+  });
+}
+
+XlaOp Igammac(XlaOp a, XlaOp x) {
+  auto& b = *a.builder();
+  auto doit = [&b](XlaOp a, XlaOp x, PrimitiveType type) -> XlaOp {
+    XlaOp out_of_range = Or(Le(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
+    XlaOp use_igamma = Or(Lt(x, ScalarLike(x, 1)), Lt(x, a));
+    XlaOp ax = a * Log(x) - x - Lgamma(a);
+    XlaOp underflow = Lt(ax, -Log(MaxFiniteValue(&b, type)));
+    XlaOp enabled = Not(Or(out_of_range, underflow));
+    ax = Exp(ax);
+    XlaOp result =
+        Select(use_igamma,
+               ScalarLike(a, 1) -
+                   IgammaSeries(ax, x, a, And(enabled, use_igamma), type),
+               IgammacContinuedFraction(ax, x, a, And(enabled, Not(use_igamma)),
+                                        type));
+    return Select(underflow, ZerosLike(a),
+                  Select(out_of_range, FullLike(a, 1), result));
+  };
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
+    TF_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
+    if (a_shape != x_shape) {
+      return InvalidArgument(
+          "Arguments to Igammac must have equal shapes and types; "
+          "got %s and %s",
+          a_shape.ToString(), x_shape.ToString());
+    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igammac", a));
+    bool needs_upcast =
+        a_shape.element_type() == F16 || a_shape.element_type() == BF16;
+
+    if (needs_upcast) {
+      a = ConvertElementType(a, F32);
+      x = ConvertElementType(x, F32);
+    }
+    XlaOp result = doit(a, x, a_shape.element_type());
+    if (needs_upcast) {
+      result = ConvertElementType(result, a_shape.element_type());
+    }
+    return result;
+  });
+}
 // Implements Banker's rounding: numbers that are equidistant between two
 // integers are rounded towards even.
 XlaOp RoundToEven(XlaOp x) {
@@ -1172,13 +1472,35 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
   auto& builder = *x.builder();
   return builder.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder.GetShape(a));
+    TF_ASSIGN_OR_RETURN(Shape b_shape, builder.GetShape(b));
+    TF_ASSIGN_OR_RETURN(Shape x_shape, builder.GetShape(x));
+    if (b_shape.element_type() != shape.element_type() ||
+        x_shape.element_type() != shape.element_type()) {
+      return InvalidArgument(
+          "Operands to RegularizedIncompleteBeta must have identical types, "
+          "got shapes %s, %s, and %s",
+          shape.ToString(), b_shape.ToString(), x_shape.ToString());
+    }
+    if (!primitive_util::IsFloatingPointType(shape.element_type())) {
+      return InvalidArgument(
+          "Operands to RegularizedIncompleteBeta must be real-valued "
+          "floating-point, but got %s",
+          PrimitiveType_Name(shape.element_type()));
+    }
+    PrimitiveType element_type = shape.element_type();
+    if (element_type == F16 || element_type == BF16) {
+      element_type = F32;
+      a = ConvertElementType(a, F32);
+      b = ConvertElementType(b, F32);
+      x = ConvertElementType(x, F32);
+    }
 
     // The partial numerator for the incomplete beta function is given
     // here: http://dlmf.nist.gov/8.17.E23 Note that there is a special
     // case: the partial numerator for the first iteration is one.
     auto NthPartialBetaincNumerator =
-        [&shape](XlaOp iteration, absl::Span<const XlaOp> inputs,
-                 XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+        [&](XlaOp iteration, absl::Span<const XlaOp> inputs,
+            XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
       auto a = inputs[0];
       auto b = inputs[1];
       auto x = inputs[2];
@@ -1189,7 +1511,7 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
       auto iteration_is_one = Eq(iteration_bcast, FullLike(iteration_bcast, 1));
       auto iteration_minus_one = iteration_bcast - FullLike(iteration_bcast, 1);
       auto m = iteration_minus_one / FullLike(iteration_minus_one, 2);
-      m = ConvertElementType(m, shape.element_type());
+      m = ConvertElementType(m, element_type);
       auto one = FullLike(a, 1.0);
       auto two = FullLike(a, 2.0);
       // Partial numerator terms.
@@ -1234,7 +1556,7 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
     XlaOp continued_fraction;
 
     // Thresholds and iteration counts taken from Cephes.
-    if (shape.element_type() == F32) {
+    if (element_type == F32) {
       continued_fraction = LentzThompsonBarnettAlgorithm(
           /*num_iterations=*/200,
           /*small=*/std::numeric_limits<float>::epsilon() / 2.0f,
@@ -1243,7 +1565,7 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
           /*nth_partial_denominator=*/NthPartialBetaincDenominator, {a, b, x},
           "Betainc");
     } else {
-      TF_RET_CHECK(shape.element_type() == F64);
+      TF_RET_CHECK(element_type == F64);
       continued_fraction = LentzThompsonBarnettAlgorithm(
           /*num_iterations=*/600,
           /*small=*/std::numeric_limits<double>::epsilon() / 2.0f,
@@ -1261,13 +1583,15 @@ XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
     auto lbeta = Lbeta(a, b);
     auto result =
         continued_fraction * Exp(Log(x) * a + Log1p(-x) * b - lbeta) / a;
-    result =
-        Select(result_is_nan, NanValue(&builder, shape.element_type()), result);
+    result = Select(result_is_nan, NanValue(&builder, element_type), result);
 
     // We have an additional fixup to do if we are taking advantage of the
     // symmetry relation.
-    return Select(converges_rapidly, result,
-                  Sub(FullLike(result, 1.0), result));
+    auto out =
+        Select(converges_rapidly, result, Sub(FullLike(result, 1.0), result));
+    return shape.element_type() == element_type
+               ? out
+               : ConvertElementType(out, shape.element_type());
   });
 }
 

@@ -78,9 +78,9 @@ class WideDeepModelTest(keras_parameterized.TestCase):
       self.evaluate(variables.global_variables_initializer())
       wide_deep_model.fit(inputs, output, epochs=1)
       self.assertAllClose(
-          [[0.3]],
+          [[0.6]],
           self.evaluate(wide_deep_model.linear_model.dense_layers[0].kernel))
-      self.assertAllClose([[0.9]],
+      self.assertAllClose([[1.8]],
                           self.evaluate(
                               wide_deep_model.dnn_model.layers[0].kernel))
 
@@ -112,15 +112,15 @@ class WideDeepModelTest(keras_parameterized.TestCase):
       wide_deep_model = wide_deep.WideDeepModel(linear_model, dnn_model)
       inp_np = np.asarray([[1.]])
       out1, out2 = wide_deep_model(inp_np)
-      # output should be 0.5 * (0.5 + 0.1), and 0.5 * (0.3 - 0.5)
-      self.assertAllClose([[0.3]], out1)
-      self.assertAllClose([[-0.1]], out2)
+      # output should be (0.5 + 0.1), and (0.3 - 0.5)
+      self.assertAllClose([[0.6]], out1)
+      self.assertAllClose([[-0.2]], out2)
 
       wide_deep_model = wide_deep.WideDeepModel(
           linear_model, dnn_model, activation='relu')
       out1, out2 = wide_deep_model(inp_np)
-      # output should be relu(0.5 * (0.5 + 0.1)), and relu(0.5 * (0.3 - 0.5))
-      self.assertAllClose([[0.3]], out1)
+      # output should be relu((0.5 + 0.1)), and relu((0.3 - 0.5))
+      self.assertAllClose([[0.6]], out1)
       self.assertAllClose([[0.]], out2)
 
   def test_wide_deep_model_with_single_optimizer(self):

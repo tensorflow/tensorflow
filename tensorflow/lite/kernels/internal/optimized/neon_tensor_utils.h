@@ -18,6 +18,7 @@ limitations under the License.
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils_impl.h"
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
@@ -39,6 +40,16 @@ void MatrixBatchVectorMultiplyAccumulate(
     int n_batch, float* __restrict__ result, int result_stride) {
   NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
                    vectors, scaling_factors, n_batch, result, result_stride);
+}
+
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, int32_t* scratch, float* __restrict__ result,
+    int result_stride, CpuBackendContext* context) {
+  NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
+                   vectors, scaling_factors, n_batch, scratch, result,
+                   result_stride, context);
 }
 
 void MatrixBatchVectorMultiplyAccumulate(
@@ -110,19 +121,9 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
   NEON_OR_PORTABLE(ApplySigmoid, input, n_batch, n_input, output);
 }
 
-void ApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  NEON_OR_PORTABLE(ApplyTanh0, input, n_batch, n_input, output);
-}
-
-void ApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  NEON_OR_PORTABLE(ApplyTanh3, input, n_batch, n_input, output);
-}
-
-void ApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                int16_t* output) {
-  NEON_OR_PORTABLE(ApplyTanh4, input, n_batch, n_input, output);
+void ApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+               int32_t n_input, int16_t* output) {
+  NEON_OR_PORTABLE(ApplyTanh, integer_bits, input, n_batch, n_input, output);
 }
 
 void CwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
@@ -152,24 +153,12 @@ void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
   NEON_OR_PORTABLE(CwiseClipping, input, clipping_value, n_batch, n_input);
 }
 
-void VectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                              int v_size, float* result) {
-  NEON_OR_PORTABLE(VectorVectorCwiseProduct, vector1, vector2, v_size, result);
-}
-
 void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       const int16_t* vector2, int v_size,
                                       int n_batch, int32_t* result,
                                       int result_stride) {
   return PortableBatchVectorBatchVectorDotProduct(
       vector1, vector2, v_size, n_batch, result, result_stride);
-}
-
-void VectorVectorCwiseProductAccumulate(const float* vector1,
-                                        const float* vector2, int v_size,
-                                        float* result) {
-  NEON_OR_PORTABLE(VectorVectorCwiseProductAccumulate, vector1, vector2, v_size,
-                   result);
 }
 
 void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,

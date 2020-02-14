@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -217,6 +218,16 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     out7 = model.predict(right_padded_input)
 
     np.testing.assert_allclose(out7, out6, atol=1e-5)
+
+  def test_get_initial_states(self):
+    batch_size = 4
+    cell = keras.layers.SimpleRNNCell(20)
+    initial_state = cell.get_initial_state(
+        batch_size=batch_size, dtype=dtypes.float32)
+    _, state = cell(np.ones((batch_size, 20), dtype=np.float32), initial_state)
+    self.assertLen(state, 1)
+    self.assertEqual(state[0].shape, initial_state.shape)
+
 
 if __name__ == '__main__':
   test.main()

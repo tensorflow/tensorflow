@@ -38,7 +38,15 @@ from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
+
+
+# TODO(b/145618471): Remove this dependency.
+# Lazy import to work around circular dependencies
+input_lib = lazy_loader.LazyLoader(
+    'input_lib', globals(),
+    'tensorflow.python.distribute.input_lib')
 
 
 UNSPECIFIED = object()
@@ -46,7 +54,7 @@ UNSPECIFIED = object()
 
 def overload_of(f):
   if f in SUPPORTED_BUILTINS:
-    return BUILTIN_FUINCTIONS_MAP[f.__name__]
+    return BUILTIN_FUNCTIONS_MAP[f.__name__]
   return f
 
 
@@ -295,7 +303,7 @@ def _tf_py_func_print(objects, kwargs):
 
   def print_wrapper(*vals):
     vals = tuple(v.numpy() if tensor_util.is_tensor(v) else v for v in vals)
-    if six.PY3:
+    if not six.PY2:
       # TensorFlow doesn't seem to generate Unicode when passing strings to
       # py_func. This causes the print to add a "b'" wrapper to the output,
       # which is probably never what you want.
@@ -341,6 +349,10 @@ def _py_range(start_or_stop, stop, step):
 def enumerate_(s, start=0):
   if isinstance(s, dataset_ops.DatasetV2):
     return _tf_dataset_enumerate(s, start)
+  if isinstance(
+      s, (input_lib.DistributedIterator, input_lib.DistributedDataset)):
+    raise NotImplementedError(
+        'use a for loop over the dataset and keep a separate counter')
   return _py_enumerate(s, start)
 
 
@@ -429,7 +441,7 @@ def all_(iterable):
   return _py_all(iterable)
 
 
-# all() operation is similiar to any() and could be translated
+# all() operation is similar to any() and could be translated
 # to `filter(False)` then `take(1)`, and check if `False` exists.
 def _tf_dataset_all(iterable):
   # check and make sure iterable.element_spec only consists of one
@@ -455,7 +467,7 @@ SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map,
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
 
-BUILTIN_FUINCTIONS_MAP = {
+BUILTIN_FUNCTIONS_MAP = {
     'abs': abs_,
     'float': float_,
     'int': int_,

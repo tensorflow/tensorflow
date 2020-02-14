@@ -36,7 +36,7 @@ namespace {
 string CreateTestFile(Env* env, const string& filename, int length) {
   string input(length, 0);
   for (int i = 0; i < length; i++) input[i] = i;
-  TF_CHECK_OK(WriteStringToFile(env, filename, input));
+  TF_EXPECT_OK(WriteStringToFile(env, filename, input));
   return input;
 }
 
@@ -319,13 +319,27 @@ class TmpDirFileSystem : public NullFileSystem {
     if (host != "testhost") {
       return errors::FailedPrecondition("host must be testhost");
     }
-    return Env::Default()->CreateDir(io::JoinPath(BaseDir(), path));
+    Status status = Env::Default()->CreateDir(io::JoinPath(BaseDir(), path));
+    if (status.ok()) {
+      // Record that we have created this directory so `IsDirectory` works.
+      created_directories_.push_back(std::string(path));
+    }
+    return status;
+  }
+
+  Status IsDirectory(const string& dir) override {
+    StringPiece scheme, host, path;
+    io::ParseURI(dir, &scheme, &host, &path);
+    for (const auto& existing_dir : created_directories_)
+      if (existing_dir == path) return Status::OK();
+    return errors::NotFound(dir, " not found");
   }
 
   void FlushCaches() override { flushed_ = true; }
 
  private:
   bool flushed_ = false;
+  std::vector<std::string> created_directories_ = {"/"};
 };
 
 REGISTER_FILE_SYSTEM("tmpdirfs", TmpDirFileSystem);

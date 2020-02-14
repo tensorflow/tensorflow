@@ -322,9 +322,9 @@ string Env::GetExecutablePath() {
 #ifdef __APPLE__
   uint32_t buffer_size(0U);
   _NSGetExecutablePath(nullptr, &buffer_size);
-  char unresolved_path[buffer_size];
-  _NSGetExecutablePath(unresolved_path, &buffer_size);
-  CHECK(realpath(unresolved_path, exe_path));
+  std::vector<char> unresolved_path(buffer_size);
+  _NSGetExecutablePath(unresolved_path.data(), &buffer_size);
+  CHECK(realpath(unresolved_path.data(), exe_path));
 #elif defined(__FreeBSD__)
   int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
   size_t exe_path_size = PATH_MAX;

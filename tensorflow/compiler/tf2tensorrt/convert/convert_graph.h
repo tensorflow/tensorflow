@@ -48,6 +48,7 @@ struct ConversionParams {
   // maximum number of cached engines
   int max_cached_engines = 1;
   bool use_calibration = true;
+  bool use_implicit_batch = true;
 };
 
 // Method to call from optimization pass

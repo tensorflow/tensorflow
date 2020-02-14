@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s -dump-input-on-failure
 
 // CHECK-LABEL: func @tfAssertTrue
 func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {
@@ -381,4 +381,18 @@ func @nonIdentityTranspose(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x6x5xf32
   // CHECK: %0 = "tf.Const"() {value = dense<[0, 1, 2, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
   // CHECK: %1 = "tf.Transpose"(%arg0, %0) : (tensor<2x3x4x5x6xf32>, tensor<5xi32>) -> tensor<2x3x4x6x5xf32>
   // CHECK: return %1
+}
+
+// CHECK-LABEL: func @addN
+func @addN(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: return %arg0
+  %0 = "tf.AddN"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @ToBool_0DScalar
+func @ToBool_0DScalar(%arg0: tensor<i1>) -> tensor<i1> {
+  // CHECK: return %arg0
+  %0 = "tf.ToBool"(%arg0) : (tensor<i1>) -> tensor<i1>
+  return %0 : tensor<i1>
 }

@@ -52,6 +52,7 @@ bool ParseAttrValue(StringPiece type, StringPiece text, AttrValue* out);
 
 // Sets *out based on the type of value.
 void SetAttrValue(const string& value, AttrValue* out);
+void SetAttrValue(const tstring& value, AttrValue* out);
 void SetAttrValue(const char* value, AttrValue* out);
 void SetAttrValue(StringPiece value, AttrValue* out);
 void SetAttrValue(int64 value, AttrValue* out);
@@ -68,6 +69,7 @@ void SetAttrValue(const TensorProto& value, AttrValue* out);
 void SetAttrValue(const NameAttrList& value, AttrValue* out);
 
 void SetAttrValue(gtl::ArraySlice<string> value, AttrValue* out);
+void SetAttrValue(gtl::ArraySlice<tstring> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<const char*> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<StringPiece> value, AttrValue* out);
 void SetAttrValue(gtl::ArraySlice<int64> value, AttrValue* out);

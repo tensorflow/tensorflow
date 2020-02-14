@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <fstream>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
@@ -31,10 +32,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_degenerate_dim_remover.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
@@ -97,7 +102,7 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
       "uses routines from libdevice.",
       hlo_module_config);
 
-  // GetCudaRootCandidates always inclues ".", but but if everything fails, we
+  // GetCudaRootCandidates always includes ".", but but if everything fails, we
   // return it anyway.  Better than returning the empty string.
   return ".";
 }
@@ -132,6 +137,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
                                           /*allow_mixed_precision=*/false);
 
     AlgebraicSimplifierOptions options;
+    options.set_cudnn_batchnorm_forward_training_metadata(
+        kCudnnBatchNormForwardTrainingCallTarget);
     pass.AddPass<AlgebraicSimplifier>(options);
   }
 
@@ -156,12 +163,18 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       LayoutAssignment::InstructionCanChangeLayout);
 
   pipeline.AddPass<ReductionDegenerateDimRemover>();
+  pipeline.AddPass<ReductionLayoutNormalizer>();
+  pipeline.AddPass<ReductionDimensionGrouper>();
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+
+  if (hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
+    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>();
+  }
 
   // Pad the dimensions of matrices in dot operations to multiples of 8.
   if (IsVoltaOrLater(*stream_exec)) {
@@ -235,8 +248,8 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
 //
 // Only prints a warning the first time it's called.
 void WarnIfBadDriverJITVersion() {
-  static std::once_flag run_once;
-  std::call_once(run_once, [] {
+  static absl::once_flag run_once;
+  absl::call_once(run_once, [] {
     auto version_or_status = se::cuda::Diagnostician::FindKernelDriverVersion();
     if (!version_or_status.ok()) {
       LOG(WARNING) << "Couldn't read CUDA driver version.";
@@ -271,7 +284,7 @@ void WarnIfBadDriverJITVersion() {
 bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
   // If the xla_gpu_ptx_file options is set, be explicit when a file is used
   // and warn when a file is not used to ease catching typo in filename.
-  std::string prefix = xla::FilenameFor(*module, *ptx);
+  std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
   for (const string filename :
        module->config().debug_options().xla_gpu_ptx_file()) {
@@ -361,7 +374,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
   }
   // Write PTX to IR dump directory, if IR dumping was requested.
   if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "ptx", ptx);
+    DumpToFileInDirOrStdout(*module, "", "ptx", ptx);
   }
 
   std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(
@@ -428,7 +441,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                 "Can't find ptxas binary in ${CUDA_DIR}/bin.  Will back to the "
                 "GPU driver for PTX -> sass compilation.  This is OK so long "
                 "as you don't see a warning below about an out-of-date driver "
-                "version.",
+                "version. Custom ptxas location can be specified using $PATH.",
                 hlo_module_config);
           }
 

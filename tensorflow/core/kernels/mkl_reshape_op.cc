@@ -16,6 +16,8 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include <memory>
+
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -23,13 +25,15 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-
-#include "mkldnn.hpp"
+#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
+
 using mkldnn::stream;
 
 namespace tensorflow {
+
 using CPUDevice = Eigen::ThreadPoolDevice;
+
 template <typename Device, typename T>
 class MklReshapeOp : public OpKernel {
  public:
@@ -43,7 +47,6 @@ class MklReshapeOp : public OpKernel {
   bool SkipReorder(const MklDnnShape& mkl_shape_input,
                    const TensorShape& reshape_to) {
     CHECK_EQ(mkl_shape_input.IsMklTensor(), true);
-    bool ret = false;
 
     // If Tensorflow's data format and the underlying format maintained by
     // MKLDNN are equivalent (both are NHWC or both are NCHW), then we can
@@ -52,12 +55,7 @@ class MklReshapeOp : public OpKernel {
     // blocking_desc_is_equal() for checking all the stride arrays in
     // mkl-dnn/blob/master/src/common/type_helpers.hpp
     auto input_mkl_md = mkl_shape_input.GetMklLayout();
-    if (mkl_shape_input.GetTfDataFormat() == input_mkl_md.data.format &&
-        mkl_shape_input.GetTfDataFormat() != memory::format::blocked) {
-      ret = true;
-    }
-
-    return ret;
+    return SKIP_INPUT_REORDER(mkl_shape_input, input_mkl_md);
   }
 
  public:
@@ -74,7 +72,7 @@ class MklReshapeOp : public OpKernel {
                                              : input_tensor.NumElements();
 
     // Preliminary validation of sizes.
-    OP_REQUIRES(context, IsLegacyVector(sizes.shape()),
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(sizes.shape()),
                 errors::InvalidArgument("sizes input must be 1-D, not shape ",
                                         sizes.shape().DebugString()));
 
@@ -140,7 +138,7 @@ class MklReshapeOp : public OpKernel {
         return;
       } else {
         try {
-          auto cpu_engine = engine(engine::cpu, 0);
+          auto cpu_engine = engine(ENGINE_CPU, 0);
           MklDnnData<T> dnn_data_input(&cpu_engine);
           // Reshape is just a logical view change operation for a tensor.
           // It does not change underlying layout. But MKLDNN may maintain
@@ -162,8 +160,10 @@ class MklReshapeOp : public OpKernel {
             dnn_data_input.SetUsrMem(input_mkl_md, &input_tensor);
             // Get expected Tensorflow layout of input tensor.
             auto output_tf_md = mkl_shape_input.GetTfLayout();
+#ifndef ENABLE_MKLDNN_V1
             auto output_tf_pd =
                 memory::primitive_desc(output_tf_md, cpu_engine);
+#endif  // !ENABLE_MKLDNN_V1
 
             Tensor* output_tensor = nullptr;
             MklDnnShape mkl_shape_output;
@@ -177,7 +177,7 @@ class MklReshapeOp : public OpKernel {
             // shape_from != shape_to), then we just copy input tensor to
             // output tensor with target shape (we cannot forward Mkl layout
             // in such case because shape has changed.)
-            if (dnn_data_input.CheckReorderToOpMem(output_tf_pd,
+            if (dnn_data_input.CheckReorderToOpMem(OUTPUT_TF_MD,
                                                    output_tensor)) {
             } else {
               OP_REQUIRES(
@@ -194,16 +194,18 @@ class MklReshapeOp : public OpKernel {
             auto output_strides = CalculateTFStrides(output_dims);
             auto output_tf_md = MklDnnData<T>::CreateBlockedMemDesc(
                 output_dims, output_strides);
+#ifndef ENABLE_MKLDNN_V1
             auto output_tf_pd =
                 memory::primitive_desc(output_tf_md, cpu_engine);
+#endif  // !ENABLE_MKLDNN_V1
 
             // Set MklDnnShape
             MklDnnShape mkl_shape_output;
             mkl_shape_output.SetMklTensor(true);
-            mkl_shape_output.SetMklLayout(&output_tf_pd);
+            mkl_shape_output.SetMklLayout(&OUTPUT_TF_MD);
             mkl_shape_output.SetElemType(MklDnnType<T>());
             mkl_shape_output.SetTfLayout(output_dims.size(), output_dims,
-                                         memory::format::blocked);
+                                         MKL_TENSOR_FORMAT_BLOCKED);
 
             // We now simply forward input Mkl tensor to output and change its
             // output MklDnnShape object.
@@ -280,7 +282,9 @@ class MklReshapeOp : public OpKernel {
 
 TF_CALL_float(REGISTER_MKL_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_CPU);
+
 #undef REGISTER_MKL_CPU
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

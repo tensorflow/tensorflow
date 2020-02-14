@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
 
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:llvm-project
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
@@ -24,7 +24,7 @@ namespace mlir_gpu {
 
 // Builds MLIR using custom_call that represents a foward convolution.
 //
-// The generated function has the following signautre:
+// The generated function has the following signature:
 // func @<function_name>(%output: memref<physical_layout...>,
 //                       %input: memref<physical_layout...>,
 //                       %filter: memref<physical_layout...>) { ... }

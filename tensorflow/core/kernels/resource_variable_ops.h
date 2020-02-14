@@ -24,16 +24,22 @@ class VarHandleOp : public OpKernel {
  public:
   explicit VarHandleOp(OpKernelConstruction* c);
   void Compute(OpKernelContext* ctx) override;
+  const Tensor* const_tensor() const override {
+    return name_ != ResourceHandle::ANONYMOUS_NAME ? &resource_ : nullptr;
+  }
 
  private:
   // Same fields as in ResourceHandleOp.
+  bool is_anonymous_;
   string container_;
   string name_;
-  mutex mutex_;
   Tensor resource_;
-  std::atomic<bool> initialized_{false};
 
   DtypeAndPartialTensorShape dtype_and_shape_;
+
+  // A set of devices containing the resource variable. Set when the output
+  // ResourceHandle represents a per-replica/partitioned resource variable.
+  std::vector<string> allowed_devices_;
 };
 
 class ReadVariableOp : public OpKernel {

@@ -138,7 +138,7 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   };
 
   // Multi-output fusion kernels share a common parallel loop. The loop
-  // dimenstions are determined by instruction shapes.
+  // dimensions are determined by instruction shapes.
   auto get_loop_shape = [&](const HloInstruction* element_instr) {
     // Special-case reduction-to-vector ops: The loop dimensions are determined
     // by the shape of the first operand.

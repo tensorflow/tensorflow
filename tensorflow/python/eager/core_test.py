@@ -26,7 +26,7 @@ import threading
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
@@ -602,8 +602,8 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testRegisterExceptionClass(self):
     with self.assertRaises(TypeError):
-      pywrap_tensorflow.TFE_Py_RegisterExceptionClass(str)
-    pywrap_tensorflow.TFE_Py_RegisterExceptionClass(core._NotOkStatusException)  # pylint: disable=protected-access
+      pywrap_tfe.TFE_Py_RegisterExceptionClass(str)
+    pywrap_tfe.TFE_Py_RegisterExceptionClass(core._NotOkStatusException)  # pylint: disable=protected-access
 
   # TODO(agarwal): add tests passing incorrect typed values to attrs.
   def testExecuteBasic(self):

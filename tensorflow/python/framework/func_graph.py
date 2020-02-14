@@ -77,7 +77,7 @@ def convert_structure_to_signature(structure, arg_names=None):
 
   Returns:
     Identical structure that has TensorSpec objects instead of Tensors and
-    UknownArgument instead of any unsupported types.
+    UnknownArgument instead of any unsupported types.
   """
   def encode_arg(arg, path):
     """A representation for this argument, for converting into signatures."""
@@ -94,13 +94,13 @@ def convert_structure_to_signature(structure, arg_names=None):
         # of the function argument.
         name = user_specified_name
       else:
-        name = "/".join([str(p) for p in path])
+        name = "/".join(str(p) for p in path)
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, composite_tensor.CompositeTensor):
       # TODO(b/133606651) Do we need to inject arg_name?
       return arg._type_spec  # pylint: disable=protected-access
     if isinstance(arg, resource_variable_ops.BaseResourceVariable):
-      name = "/".join([str(p) for p in path])
+      name = "/".join(str(p) for p in path)
       return resource_variable_ops.VariableSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, (
         int,
@@ -975,6 +975,9 @@ def func_graph_from_py_func(name,
         python_func = tf_decorator.rewrap(python_func, original_func,
                                           converted_func)
 
+      else:
+        _, original_func = tf_decorator.unwrap(python_func)
+
       func_outputs = python_func(*func_args, **func_kwargs)
 
       # invariant: `func_outputs` contains only Tensors, CompositeTensors,
@@ -982,8 +985,8 @@ def func_graph_from_py_func(name,
       func_outputs = nest.map_structure(convert, func_outputs,
                                         expand_composites=True)
 
-      check_mutation(func_args_before, func_args)
-      check_mutation(func_kwargs_before, func_kwargs)
+      check_mutation(func_args_before, func_args, original_func)
+      check_mutation(func_kwargs_before, func_kwargs, original_func)
     finally:
       current_scope.set_use_resource(default_use_recource)
 
@@ -1048,13 +1051,15 @@ def device_stack_has_callable(device_stack):
              for spec in device_stack.peek_objs())
 
 
-def check_mutation(n1, n2):
+def check_mutation(n1, n2, func):
   """Check if two list of arguments are exactly the same."""
-  errmsg = ("Function to be traced should not modify structure of input "
-            "arguments. Check if your function has list and dictionary "
-            "operations that alter input arguments, "
-            "such as `list.pop`, `list.append`")
+  func_name = getattr(func, "__name__", func)
+
+  errmsg = ("{}() should not modify its Python input arguments."
+            " Check if it modifies any lists or dicts passed as"
+            " arguments. Modifying a copy is allowed.".format(func_name))
   try:
+    # TODO(mdan): Compare more robustly so that argument names can be reported.
     nest.assert_same_structure(n1, n2, expand_composites=True)
   except ValueError:
     raise ValueError(errmsg)
@@ -1192,7 +1197,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
                        "either zero or all names have to be specified.")
 
     for arg in flattened:
-      # We have a shape entry for each arg, regadless of whether it's a real
+      # We have a shape entry for each arg, regardless of whether it's a real
       # Tensor or not.  For non-tensor entries it should be None.
       shape = next(shapes_iter)
       if isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec)):

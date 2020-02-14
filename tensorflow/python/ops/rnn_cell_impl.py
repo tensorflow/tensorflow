@@ -1237,7 +1237,7 @@ class MultiRNNCell(RNNCell):
     if not nest.is_sequence(cells):
       raise TypeError("cells must be a list or tuple, but saw: %s." % cells)
 
-    if len(set([id(cell) for cell in cells])) < len(cells):
+    if len(set(id(cell) for cell in cells)) < len(cells):
       logging.log_first_n(
           logging.WARN, "At least two cells provided to MultiRNNCell "
           "are the same object and will share weights.", 1)

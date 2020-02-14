@@ -18,10 +18,7 @@ limitations under the License.
 
 #include <string.h>
 
-#define _USE_MATH_DEFINES
-#include <math.h>
 #include <cmath>
-#undef _USE_MATH_DEFINES
 
 #include <algorithm>
 #include <type_traits>

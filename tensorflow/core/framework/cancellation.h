@@ -143,6 +143,9 @@ class CancellationManager {
   // called.
   bool TryDeregisterCallback(CancellationToken token);
 
+  // Returns true iff cancellation is in progress.
+  bool IsCancelling();
+
  private:
   struct State {
     Notification cancelled_notification;

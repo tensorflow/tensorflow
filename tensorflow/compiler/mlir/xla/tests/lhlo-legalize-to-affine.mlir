@@ -59,7 +59,7 @@ func @float_div_op(%lhs: memref<7xf32>, %rhs: memref<7xf32>,
 // CHECK-LABEL: func @int_div_op
 func @int_div_op(%lhs: memref<7xi32>, %rhs: memref<7xi32>,
                  %result: memref<7xi32>) -> () {
-  // CHECK: divis %{{.*}}, %{{.*}} : i32
+  // CHECK: divi_signed %{{.*}}, %{{.*}} : i32
   "xla_lhlo.div"(%lhs, %rhs, %result) {name = "div.1"}
       : (memref<7xi32>, memref<7xi32>, memref<7xi32>) -> ()
   return

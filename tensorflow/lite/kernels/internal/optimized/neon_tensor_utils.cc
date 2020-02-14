@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <cmath>
@@ -957,16 +956,12 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   using ::tflite::cpu_backend_gemm::Gemm;
   using ::tflite::cpu_backend_gemm::GemmParams;
   using ::tflite::cpu_backend_gemm::MatrixParams;
-  using ::tflite::cpu_backend_gemm::QuantizationFlavor;
-
-  ruy::Matrix<int8_t> ruy_lhs;
-  ruy::Matrix<int8_t> ruy_rhs;
-  ruy::Matrix<int32_t> ruy_dst;
 
   MatrixParams<int8_t> lhs_params;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.rows = n_output;
   lhs_params.cols = n_input;
+  lhs_params.cacheable = true;
 
   MatrixParams<int8_t> rhs_params;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
@@ -978,15 +973,12 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   dst_params.rows = n_output;
   dst_params.cols = n_batch;
 
-  cpu_backend_gemm::detail::MakeRuyMatrix(lhs_params, input_to_gate_weights,
-                                          &ruy_lhs);
-  cpu_backend_gemm::detail::MakeRuyMatrix(rhs_params, input, &ruy_rhs);
-  cpu_backend_gemm::detail::MakeRuyMatrix(dst_params, scratch, &ruy_dst);
-
-  ruy::BasicSpec<int32_t, int32_t> ruy_spec;
-  ruy_spec.bias = bias;
-  ruy::Mul<ruy::kAllPaths>(ruy_lhs, ruy_rhs, ruy_spec, context->ruy_context(),
-                           &ruy_dst);
+  GemmParams<int32, int32> gemm_params;
+  if (bias) {
+    gemm_params.bias = bias;
+  }
+  cpu_backend_gemm::Gemm(lhs_params, input_to_gate_weights, rhs_params, input,
+                         dst_params, scratch, gemm_params, context);
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
@@ -1153,6 +1145,48 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     free(aligned_row_free);
   }
   free(aligned_vec_free);
+}
+
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, int32_t* scratch, float* __restrict__ result,
+    int result_stride, CpuBackendContext* context) {
+  if (m_rows % 4 == 0 && result_stride == 1) {
+    const int32_t* bias = static_cast<const int32_t*>(nullptr);
+    NeonCpuBackendGemm(vectors, bias, matrix, n_batch, m_cols, m_rows,
+                       /*output_zp =*/0, scratch, context);
+
+    // Multiply by float scaling factors and write to result
+    const int total_size = n_batch * m_rows;
+    int i = 0;
+    for (; i <= total_size - 8; i += 8, result += 8 * result_stride) {
+      const float batch_scaling_factor0 = scaling_factors[i / m_rows];
+      const float batch_scaling_factor1 = scaling_factors[(i + 4) / m_rows];
+      const float32x4_t scaling_factor0 = vdupq_n_f32(batch_scaling_factor0);
+      const float32x4_t scaling_factor1 = vdupq_n_f32(batch_scaling_factor1);
+      const int32x4_t scratch_val0 = vld1q_s32(scratch + i);
+      const int32x4_t scratch_val1 = vld1q_s32(scratch + i + 4);
+      const float32x4_t float_val0 = vcvtq_f32_s32(scratch_val0);
+      const float32x4_t float_val1 = vcvtq_f32_s32(scratch_val1);
+      const float32x4_t result0 =
+          vmlaq_f32(vld1q_f32(result), float_val0, scaling_factor0);
+      const float32x4_t result1 = vmlaq_f32(
+          vld1q_f32(result + 4 * result_stride), float_val1, scaling_factor1);
+      vst1q_f32(result, result0);
+      vst1q_f32(result + 4 * result_stride, result1);
+    }
+    scratch += i;
+    for (; i < total_size; i++, result += result_stride) {
+      const float batch_scaling_factor = scaling_factors[i / m_rows];
+      int32_t x = *(scratch++);
+      *result += x * batch_scaling_factor;
+    }
+    return;
+  }
+  NeonMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
+                                          scaling_factors, n_batch, result,
+                                          result_stride);
 }
 
 void NeonMatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
@@ -1514,19 +1548,25 @@ void NeonApplyTanhImpl(const int16_t* input, int32_t n_batch, int32_t n_input,
   }
 }
 
-void NeonApplyTanh0(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
-  NeonApplyTanhImpl<0>(input, n_batch, n_input, output);
-}
-
-void NeonApplyTanh3(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
-  NeonApplyTanhImpl<3>(input, n_batch, n_input, output);
-}
-
-void NeonApplyTanh4(const int16_t* input, int32_t n_batch, int32_t n_input,
-                    int16_t* output) {
-  NeonApplyTanhImpl<4>(input, n_batch, n_input, output);
+void NeonApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
+                   int32_t n_input, int16_t* output) {
+  assert(integer_bits <= 6);
+#define DISPATCH_TANH(i)                                   \
+  case i:                                                  \
+    NeonApplyTanhImpl<i>(input, n_batch, n_input, output); \
+    break;
+  switch (integer_bits) {
+    DISPATCH_TANH(0);
+    DISPATCH_TANH(1);
+    DISPATCH_TANH(2);
+    DISPATCH_TANH(3);
+    DISPATCH_TANH(4);
+    DISPATCH_TANH(5);
+    DISPATCH_TANH(6);
+    default:
+      return;
+  }
+#undef DISPATCH_TANH
 }
 
 void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2, int n_batch,
@@ -1821,54 +1861,6 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
   free(aligned_vec_free);
 }
 
-void NeonVectorVectorCwiseProduct(const float* vector1, const float* vector2,
-                                  int v_size, float* result) {
-  // If v_size is not divisible by the vector size, then we need to process the
-  // final few elements sequentially. postamble_start shows the start index
-  // where this should happen.
-  const int postamble_start =
-      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
-  int v = 0;
-  for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
-    // Load 4 float values from vector1 and vector2.
-    const float32x4_t v1_f32x4 = vld1q_f32(vector1 + v);
-    const float32x4_t v2_f32x4 = vld1q_f32(vector2 + v);
-    // Vector multiply 4 float
-    const float32x4_t mul_32x4 = vmulq_f32(v1_f32x4, v2_f32x4);
-    // Save to result array.
-    vst1q_f32(result + v, mul_32x4);
-  }
-#pragma clang loop vectorize(disable) unroll(disable)
-  for (; v < v_size; v++) {
-    result[v] = vector1[v] * vector2[v];
-  }
-}
-
-void NeonVectorVectorCwiseProductAccumulate(const float* vector1,
-                                            const float* vector2, int v_size,
-                                            float* result) {
-  // If v_size is not divisible by the vector size, then we need to process the
-  // final few elements sequentially. postamble_start shows the start index
-  // where this should happen.
-  const int postamble_start =
-      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
-  int v = 0;
-  for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
-    // Load 4 float values from vector1 and vector2 and accumulator.
-    const float32x4_t v1_f32x4 = vld1q_f32(vector1 + v);
-    const float32x4_t v2_f32x4 = vld1q_f32(vector2 + v);
-    float32x4_t acc_32x4 = vld1q_f32(result + v);
-    // Vector multiply-accumulate 4 float
-    acc_32x4 = vmlaq_f32(acc_32x4, v1_f32x4, v2_f32x4);
-    // Save to result array.
-    vst1q_f32(result + v, acc_32x4);
-  }
-#pragma clang loop vectorize(disable) unroll(disable)
-  for (; v < v_size; v++) {
-    result[v] += vector1[v] * vector2[v];
-  }
-}
-
 void NeonSub1Vector(const float* vector, int v_size, float* result) {
   // If v_size is not divisible by the vector size, then we need to process the
   // final few elements sequentially. postamble_start shows the start index
@@ -1911,9 +1903,15 @@ void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result) {
 namespace {
 
 #if __aarch64__
-inline bool IsAllZero(const uint32x4_t u32x4) {
-  const uint32_t u32 = vmaxvq_u32(u32x4);
+inline bool IsAllZero(const int8x16_t v_s8x16) {
+  const uint32_t u32 = vmaxvq_u32(vreinterpretq_u32_s8(v_s8x16));
   return !u32;
+}
+
+inline bool IsAllZero(const float32x4_t v_f32x4) {
+  const uint32x4_t cmp_result = vceqzq_f32(v_f32x4);
+  const uint32_t u32 = vminvq_u32(cmp_result);
+  return u32;
 }
 #else
 inline bool IsAllZero(const uint32x4_t u32x4) {
@@ -1921,7 +1919,6 @@ inline bool IsAllZero(const uint32x4_t u32x4) {
   const uint64x1_t u64 = vreinterpret_u64_u32(u32x2);
   return !vget_lane_u64(u64, 0);
 }
-#endif
 
 #ifndef __SSE__
 // With Intel NEON-2-SSE translator library, this is a redefinition..
@@ -1936,6 +1933,7 @@ inline bool IsAllZero(const float32x4_t v_f32x4) {
   const uint32x4_t cmp_result = vcagtq_f32(v_f32x4, zero_f32x4);
   return IsAllZero(cmp_result);
 }
+#endif
 
 }  // namespace
 

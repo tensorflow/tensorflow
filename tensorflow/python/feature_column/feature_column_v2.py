@@ -131,6 +131,7 @@ import abc
 import collections
 import math
 
+import re
 import numpy as np
 import six
 
@@ -306,8 +307,14 @@ class _StateManagerImpl(StateManager):
           # specifying a default partitioner for an entire layer. In that case,
           # the default getter for Layers should work.
           getter=variable_scope.get_variable)
-    if isinstance(var, trackable.Trackable):
-      self._layer._track_trackable(var, feature_column.name + '/' + name)  # pylint: disable=protected-access
+    if isinstance(var, variables.PartitionedVariable):
+      for v in var:
+        part_name = name + '/' + str(v._get_save_slice_info().var_offset[0])  # pylint: disable=protected-access
+        self._layer._track_trackable(v, feature_column.name + '/' + part_name)  # pylint: disable=protected-access
+    else:
+      if isinstance(var, trackable.Trackable):
+        self._layer._track_trackable(var, feature_column.name + '/' + name)  # pylint: disable=protected-access
+
     self._cols_to_vars_map[feature_column][name] = var
     return var
 
@@ -375,12 +382,19 @@ class _BaseFeaturesLayer(Layer):
     ValueError: if an item in `feature_columns` doesn't match
       `expected_column_type`.
   """
-  def __init__(self, feature_columns, expected_column_type, trainable, name,
+
+  def __init__(self,
+               feature_columns,
+               expected_column_type,
+               trainable,
+               name,
+               partitioner=None,
                **kwargs):
     super(_BaseFeaturesLayer, self).__init__(
         name=name, trainable=trainable, **kwargs)
     self._feature_columns = _normalize_feature_columns(feature_columns)
     self._state_manager = _StateManagerImpl(self, self.trainable)
+    self._partitioner = partitioner
     for column in self._feature_columns:
       if not isinstance(column, expected_column_type):
         raise ValueError(
@@ -391,8 +405,11 @@ class _BaseFeaturesLayer(Layer):
 
   def build(self, _):
     for column in self._feature_columns:
-      with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
-        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
+      with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
+          self.name,
+          partitioner=self._partitioner):
+        with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
+            _sanitize_column_name_for_variable_scope(column.name)):
           column.create_state(self._state_manager)
     super(_BaseFeaturesLayer, self).build(None)
 
@@ -438,6 +455,8 @@ class _BaseFeaturesLayer(Layer):
     column_configs = serialization.serialize_feature_columns(
         self._feature_columns)
     config = {'feature_columns': column_configs}
+    config['partitioner'] = generic_utils.serialize_keras_object(
+        self._partitioner)
 
     base_config = super(  # pylint: disable=bad-super-call
         _BaseFeaturesLayer, self).get_config()
@@ -450,6 +469,8 @@ class _BaseFeaturesLayer(Layer):
     config_cp = config.copy()
     config_cp['feature_columns'] = serialization.deserialize_feature_columns(
         config['feature_columns'], custom_objects=custom_objects)
+    config_cp['partitioner'] = generic_utils.deserialize_keras_object(
+        config['partitioner'], custom_objects)
 
     return cls(**config_cp)
 
@@ -487,7 +508,8 @@ class _LinearModelLayer(Layer):
     # the ops.
     with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
       for column in self._feature_columns:
-        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
+        with variable_scope._pure_variable_scope(  # pylint: disable=protected-access
+            _sanitize_column_name_for_variable_scope(column.name)):
           # Create the state for each feature column
           column.create_state(self._state_manager)
 
@@ -527,7 +549,8 @@ class _LinearModelLayer(Layer):
       transformation_cache = FeatureTransformationCache(features)
       weighted_sums = []
       for column in self._feature_columns:
-        with ops.name_scope(column.name):
+        with ops.name_scope(
+            _sanitize_column_name_for_variable_scope(column.name)):
           # All the weights used in the linear model are owned by the state
           # manager associated with this Linear Model.
           weight_var = self._state_manager.get_variable(column, 'weights')
@@ -660,7 +683,8 @@ class LinearModel(training.Model):
           }
           ```
 
-        with `sparse_combiner` as "mean", the linear model outputs conceptly are
+        with `sparse_combiner` as "mean", the linear model outputs conceptually
+        are
         ```
         y_0 = 1.0 / 2.0 * ( w_a + w_ b) + w_c + b_0
         y_1 = w_d + 1.0 / 3.0 * ( w_e + w_ f + w_g) + b_1
@@ -750,7 +774,9 @@ def _transform_features_v2(features, feature_columns, state_manager):
       None, default_name='transform_features', values=features.values()):
     transformation_cache = FeatureTransformationCache(features)
     for column in feature_columns:
-      with ops.name_scope(None, default_name=column.name):
+      with ops.name_scope(
+          None,
+          default_name=_sanitize_column_name_for_variable_scope(column.name)):
         outputs[column] = transformation_cache.get(column, state_manager)
   return outputs
 
@@ -825,7 +851,8 @@ def embedding_column(categorical_column,
                      ckpt_to_load_from=None,
                      tensor_name_in_ckpt=None,
                      max_norm=None,
-                     trainable=True):
+                     trainable=True,
+                     use_safe_embedding_lookup=True):
   """`DenseColumn` that converts from sparse, categorical input.
 
   Use this when your inputs are sparse, but you want to convert them to a dense
@@ -886,6 +913,13 @@ def embedding_column(categorical_column,
       `None`.
     max_norm: If not `None`, embedding values are l2-normalized to this value.
     trainable: Whether or not the embedding is trainable. Default is True.
+    use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
+      instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
+      there are no empty rows and all weights and ids are positive at the
+      expense of extra compute cost. This only applies to rank 2 (NxM) shaped
+      input tensors. Defaults to true, consider turning off if the above checks
+      are not needed. Note that having empty rows will not trigger any error
+      though the output result might be 0 or omitted.
 
   Returns:
     `DenseColumn` that converts from sparse input.
@@ -919,7 +953,8 @@ def embedding_column(categorical_column,
       ckpt_to_load_from=ckpt_to_load_from,
       tensor_name_in_ckpt=tensor_name_in_ckpt,
       max_norm=max_norm,
-      trainable=trainable)
+      trainable=trainable,
+      use_safe_embedding_lookup=use_safe_embedding_lookup)
 
 
 @tf_export(v1=['feature_column.shared_embedding_columns'])
@@ -931,7 +966,8 @@ def shared_embedding_columns(categorical_columns,
                              ckpt_to_load_from=None,
                              tensor_name_in_ckpt=None,
                              max_norm=None,
-                             trainable=True):
+                             trainable=True,
+                             use_safe_embedding_lookup=True):
   """List of dense columns that convert from sparse, categorical input.
 
   This is similar to `embedding_column`, except that it produces a list of
@@ -1014,6 +1050,13 @@ def shared_embedding_columns(categorical_columns,
     max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
       than this value, before combining.
     trainable: Whether or not the embedding is trainable. Default is True.
+    use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
+      instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
+      there are no empty rows and all weights and ids are positive at the
+      expense of extra compute cost. This only applies to rank 2 (NxM) shaped
+      input tensors. Defaults to true, consider turning off if the above checks
+      are not needed. Note that having empty rows will not trigger any error
+      though the output result might be 0 or omitted.
 
   Returns:
     A list of dense columns that converts from sparse input. The order of
@@ -1054,19 +1097,21 @@ def shared_embedding_columns(categorical_columns,
     raise ValueError(
         'All categorical_columns must be subclasses of _CategoricalColumn. '
         'Given: {}, of type: {}'.format(c0, type(c0)))
-  if isinstance(c0,
-                (fc_old._WeightedCategoricalColumn, WeightedCategoricalColumn)):  # pylint: disable=protected-access
+  while isinstance(
+      c0, (fc_old._WeightedCategoricalColumn, WeightedCategoricalColumn,  # pylint: disable=protected-access
+           fc_old._SequenceCategoricalColumn, SequenceCategoricalColumn)):  # pylint: disable=protected-access
     c0 = c0.categorical_column
   for c in sorted_columns[1:]:
-    if isinstance(
-        c, (fc_old._WeightedCategoricalColumn, WeightedCategoricalColumn)):  # pylint: disable=protected-access
+    while isinstance(
+        c, (fc_old._WeightedCategoricalColumn, WeightedCategoricalColumn,  # pylint: disable=protected-access
+            fc_old._SequenceCategoricalColumn, SequenceCategoricalColumn)):  # pylint: disable=protected-access
       c = c.categorical_column
     if not isinstance(c, type(c0)):
       raise ValueError(
           'To use shared_embedding_column, all categorical_columns must have '
-          'the same type, or be weighted_categorical_column of the same type. '
-          'Given column: {} of type: {} does not match given column: {} of '
-          'type: {}'.format(c0, type(c0), c, type(c)))
+          'the same type, or be weighted_categorical_column or sequence column '
+          'of the same type. Given column: {} of type: {} does not match given '
+          'column: {} of type: {}'.format(c0, type(c0), c, type(c)))
     if num_buckets != c._num_buckets:  # pylint: disable=protected-access
       raise ValueError(
           'To use shared_embedding_column, all categorical_columns must have '
@@ -1090,7 +1135,8 @@ def shared_embedding_columns(categorical_columns,
             ckpt_to_load_from=ckpt_to_load_from,
             tensor_name_in_ckpt=tensor_name_in_ckpt,
             max_norm=max_norm,
-            trainable=trainable))
+            trainable=trainable,
+            use_safe_embedding_lookup=use_safe_embedding_lookup))
 
   return result
 
@@ -1104,7 +1150,8 @@ def shared_embedding_columns_v2(categorical_columns,
                                 ckpt_to_load_from=None,
                                 tensor_name_in_ckpt=None,
                                 max_norm=None,
-                                trainable=True):
+                                trainable=True,
+                                use_safe_embedding_lookup=True):
   """List of dense columns that convert from sparse, categorical input.
 
   This is similar to `embedding_column`, except that it produces a list of
@@ -1186,6 +1233,13 @@ def shared_embedding_columns_v2(categorical_columns,
     max_norm: If not `None`, each embedding is clipped if its l2-norm is
       larger than this value, before combining.
     trainable: Whether or not the embedding is trainable. Default is True.
+    use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
+      instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
+      there are no empty rows and all weights and ids are positive at the
+      expense of extra compute cost. This only applies to rank 2 (NxM) shaped
+      input tensors. Defaults to true, consider turning off if the above checks
+      are not needed. Note that having empty rows will not trigger any error
+      though the output result might be 0 or omitted.
 
   Returns:
     A list of dense columns that converts from sparse input. The order of
@@ -1226,17 +1280,17 @@ def shared_embedding_columns_v2(categorical_columns,
     raise ValueError(
         'All categorical_columns must be subclasses of CategoricalColumn. '
         'Given: {}, of type: {}'.format(c0, type(c0)))
-  if isinstance(c0, WeightedCategoricalColumn):
+  while isinstance(c0, (WeightedCategoricalColumn, SequenceCategoricalColumn)):
     c0 = c0.categorical_column
   for c in sorted_columns[1:]:
-    if isinstance(c, WeightedCategoricalColumn):
+    while isinstance(c, (WeightedCategoricalColumn, SequenceCategoricalColumn)):
       c = c.categorical_column
     if not isinstance(c, type(c0)):
       raise ValueError(
           'To use shared_embedding_column, all categorical_columns must have '
-          'the same type, or be weighted_categorical_column of the same type. '
-          'Given column: {} of type: {} does not match given column: {} of '
-          'type: {}'.format(c0, type(c0), c, type(c)))
+          'the same type, or be weighted_categorical_column or sequence column '
+          'of the same type. Given column: {} of type: {} does not match given '
+          'column: {} of type: {}'.format(c0, type(c0), c, type(c)))
     if num_buckets != c.num_buckets:
       raise ValueError(
           'To use shared_embedding_column, all categorical_columns must have '
@@ -1250,7 +1304,8 @@ def shared_embedding_columns_v2(categorical_columns,
 
   column_creator = SharedEmbeddingColumnCreator(
       dimension, initializer, ckpt_to_load_from, tensor_name_in_ckpt,
-      num_buckets, trainable, shared_embedding_collection_name)
+      num_buckets, trainable, shared_embedding_collection_name,
+      use_safe_embedding_lookup)
 
   result = []
   for column in categorical_columns:
@@ -1373,6 +1428,7 @@ def bucketized_column(source_column, boundaries):
   features = tf.io.parse_example(
       ..., features=tf.feature_column.make_parse_example_spec(columns))
   dense_tensor = tf.keras.layers.DenseFeatures(columns)(features)
+  ```
 
   `bucketized_column` can also be crossed with another categorical column using
   `crossed_column`:
@@ -1665,7 +1721,7 @@ def categorical_column_with_vocabulary_file_v2(key,
     if not gfile.Exists(vocabulary_file):
       raise ValueError('vocabulary_file in {} does not exist.'.format(key))
 
-    with gfile.GFile(vocabulary_file) as f:
+    with gfile.GFile(vocabulary_file, mode='rb') as f:
       vocabulary_size = sum(1 for _ in f)
     logging.info(
         'vocabulary_size = %d in %s is inferred from the number of elements '
@@ -3054,8 +3110,31 @@ class EmbeddingColumn(
     collections.namedtuple(
         'EmbeddingColumn',
         ('categorical_column', 'dimension', 'combiner', 'initializer',
-         'ckpt_to_load_from', 'tensor_name_in_ckpt', 'max_norm', 'trainable'))):
+         'ckpt_to_load_from', 'tensor_name_in_ckpt', 'max_norm', 'trainable',
+         'use_safe_embedding_lookup'))):
   """See `embedding_column`."""
+
+  def __new__(cls,
+              categorical_column,
+              dimension,
+              combiner,
+              initializer,
+              ckpt_to_load_from,
+              tensor_name_in_ckpt,
+              max_norm,
+              trainable,
+              use_safe_embedding_lookup=True):
+    return super(EmbeddingColumn, cls).__new__(
+        cls,
+        categorical_column=categorical_column,
+        dimension=dimension,
+        combiner=combiner,
+        initializer=initializer,
+        ckpt_to_load_from=ckpt_to_load_from,
+        tensor_name_in_ckpt=tensor_name_in_ckpt,
+        max_norm=max_norm,
+        trainable=trainable,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
 
   @property
   def _is_v2_column(self):
@@ -3128,11 +3207,17 @@ class EmbeddingColumn(
           self.tensor_name_in_ckpt: to_restore
       })
 
+    sparse_id_rank = tensor_shape.dimension_value(
+        sparse_ids.dense_shape.get_shape()[0])
+    embedding_lookup_sparse = embedding_ops.safe_embedding_lookup_sparse
+    if (not self.use_safe_embedding_lookup and sparse_id_rank is not None and
+        sparse_id_rank <= 2):
+      embedding_lookup_sparse = embedding_ops.embedding_lookup_sparse
     # Return embedding lookup result.
-    return embedding_ops.safe_embedding_lookup_sparse(
-        embedding_weights=embedding_weights,
-        sparse_ids=sparse_ids,
-        sparse_weights=sparse_weights,
+    return embedding_lookup_sparse(
+        embedding_weights,
+        sparse_ids,
+        sparse_weights,
         combiner=self.combiner,
         name='%s_weights' % self.name,
         max_norm=self.max_norm)
@@ -3273,6 +3358,8 @@ class EmbeddingColumn(
   @classmethod
   def from_config(cls, config, custom_objects=None, columns_by_name=None):
     """See 'FeatureColumn` base class."""
+    if 'use_safe_embedding_lookup' not in config:
+      config['use_safe_embedding_lookup'] = True
     from tensorflow.python.feature_column.serialization import deserialize_feature_column  # pylint: disable=g-import-not-at-top
     _check_config_keys(config, cls._fields)
     kwargs = _standardize_and_copy_config(config)
@@ -3298,7 +3385,8 @@ class SharedEmbeddingColumnCreator(tracking.AutoTrackable):
                tensor_name_in_ckpt,
                num_buckets,
                trainable,
-               name='shared_embedding_column_creator'):
+               name='shared_embedding_column_creator',
+               use_safe_embedding_lookup=True):
     self._dimension = dimension
     self._initializer = initializer
     self._ckpt_to_load_from = ckpt_to_load_from
@@ -3306,11 +3394,13 @@ class SharedEmbeddingColumnCreator(tracking.AutoTrackable):
     self._num_buckets = num_buckets
     self._trainable = trainable
     self._name = name
+    self._use_safe_embedding_lookup = use_safe_embedding_lookup
     # Map from graph keys to embedding_weight variables.
     self._embedding_weights = {}
 
   def __call__(self, categorical_column, combiner, max_norm):
-    return SharedEmbeddingColumn(categorical_column, self, combiner, max_norm)
+    return SharedEmbeddingColumn(categorical_column, self, combiner, max_norm,
+                                 self._use_safe_embedding_lookup)
 
   @property
   def embedding_weights(self):
@@ -3346,8 +3436,22 @@ class SharedEmbeddingColumn(
     collections.namedtuple(
         'SharedEmbeddingColumn',
         ('categorical_column', 'shared_embedding_column_creator', 'combiner',
-         'max_norm'))):
+         'max_norm', 'use_safe_embedding_lookup'))):
   """See `embedding_column`."""
+
+  def __new__(cls,
+              categorical_column,
+              shared_embedding_column_creator,
+              combiner,
+              max_norm,
+              use_safe_embedding_lookup=True):
+    return super(SharedEmbeddingColumn, cls).__new__(
+        cls,
+        categorical_column=categorical_column,
+        shared_embedding_column_creator=shared_embedding_column_creator,
+        combiner=combiner,
+        max_norm=max_norm,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
 
   @property
   def _is_v2_column(self):
@@ -3398,11 +3502,17 @@ class SharedEmbeddingColumn(
 
       embedding_weights = self.shared_embedding_column_creator.embedding_weights
 
+      sparse_id_rank = tensor_shape.dimension_value(
+          sparse_ids.dense_shape.get_shape()[0])
+      embedding_lookup_sparse = embedding_ops.safe_embedding_lookup_sparse
+      if (not self.use_safe_embedding_lookup and sparse_id_rank is not None and
+          sparse_id_rank <= 2):
+        embedding_lookup_sparse = (embedding_ops.embedding_lookup_sparse)
       # Return embedding lookup result.
-      return embedding_ops.safe_embedding_lookup_sparse(
-          embedding_weights=embedding_weights,
-          sparse_ids=sparse_ids,
-          sparse_weights=sparse_weights,
+      return embedding_lookup_sparse(
+          embedding_weights,
+          sparse_ids,
+          sparse_weights,
           combiner=self.combiner,
           name='%s_weights' % self.name,
           max_norm=self.max_norm)
@@ -4246,16 +4356,14 @@ class IndicatorColumn(
     """See `FeatureColumn` base class."""
     return '{}_indicator'.format(self.categorical_column.name)
 
-  def _transform_id_weight_pair(self, id_weight_pair):
+  def _transform_id_weight_pair(self, id_weight_pair, size):
     id_tensor = id_weight_pair.id_tensor
     weight_tensor = id_weight_pair.weight_tensor
 
     # If the underlying column is weighted, return the input as a dense tensor.
     if weight_tensor is not None:
       weighted_column = sparse_ops.sparse_merge(
-          sp_ids=id_tensor,
-          sp_values=weight_tensor,
-          vocab_size=int(self._variable_shape[-1]))
+          sp_ids=id_tensor, sp_values=weight_tensor, vocab_size=int(size))
       # Remove (?, -1) index.
       weighted_column = sparse_ops.sparse_slice(weighted_column, [0, 0],
                                                 weighted_column.dense_shape)
@@ -4271,10 +4379,7 @@ class IndicatorColumn(
     # One hot must be float for tf.concat reasons since all other inputs to
     # input_layer are float32.
     one_hot_id_tensor = array_ops.one_hot(
-        dense_id_tensor,
-        depth=self._variable_shape[-1],
-        on_value=1.0,
-        off_value=0.0)
+        dense_id_tensor, depth=size, on_value=1.0, off_value=0.0)
 
     # Reduce to get a multi-hot per example.
     return math_ops.reduce_sum(one_hot_id_tensor, axis=[-2])
@@ -4296,13 +4401,15 @@ class IndicatorColumn(
     """
     id_weight_pair = self.categorical_column.get_sparse_tensors(
         transformation_cache, state_manager)
-    return self._transform_id_weight_pair(id_weight_pair)
+    return self._transform_id_weight_pair(id_weight_pair,
+                                          self.variable_shape[-1])
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)
   def _transform_feature(self, inputs):
     id_weight_pair = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
-    return self._transform_id_weight_pair(id_weight_pair)
+    return self._transform_id_weight_pair(id_weight_pair,
+                                          self._variable_shape[-1])
 
   @property
   def parse_example_spec(self):
@@ -4626,3 +4733,9 @@ def _standardize_and_copy_config(config):
       kwargs[k] = tuple(v)
 
   return kwargs
+
+
+def _sanitize_column_name_for_variable_scope(name):
+  """Sanitizes user-provided feature names for use as variable scopes."""
+  invalid_char = re.compile('[^A-Za-z0-9_.\\-]')
+  return invalid_char.sub('_', name)

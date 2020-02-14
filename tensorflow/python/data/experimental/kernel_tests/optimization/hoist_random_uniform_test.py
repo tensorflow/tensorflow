@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import testing
@@ -31,6 +33,36 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
+
+
+def _test_combinations():
+  def random(_):
+    return random_ops.random_uniform([],
+                                     minval=1,
+                                     maxval=10,
+                                     dtype=dtypes.float32,
+                                     seed=42)
+
+  def random_with_assert(x):
+    y = random(x)
+    assert_op = control_flow_ops.Assert(math_ops.greater_equal(y, 1), [y])
+    with ops.control_dependencies([assert_op]):
+      return y
+
+  cases = [
+      ("Increment", lambda x: x + 1, False),
+      ("Random", random, True),
+      ("RandomWithAssert", random_with_assert, True),
+      ("Complex", lambda x: (random(x) + random(x)) / 2, False),
+  ]
+
+  def reduce_fn(x, y):
+    name, map_fn, should_optimize = y
+    return x + combinations.combine(
+        map_fn=combinations.NamedObject(name, map_fn),
+        should_optimize=should_optimize)
+
+  return functools.reduce(reduce_fn, cases, [])
 
 
 class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -51,41 +83,19 @@ class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  def _testHoistFunction(self, function, should_optimize):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         _test_combinations()))
+  def testHoistFunction(self, map_fn, should_optimize):
     dataset = dataset_ops.Dataset.range(5).apply(
         testing.assert_next(
-            ["Zip[0]", "Map"] if should_optimize else ["Map"])).map(function)
+            ["Zip[0]", "Map"] if should_optimize else ["Map"])).map(map_fn)
 
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.hoist_random_uniform = True
     dataset = dataset.with_options(options)
     self._testDataset(dataset)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testNoRandom(self):
-    self._testHoistFunction(lambda x: x + 1, should_optimize=False)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testRandom(self):
-
-    def random(_):
-      return random_ops.random_uniform([],
-                                       minval=1,
-                                       maxval=10,
-                                       dtype=dtypes.float32,
-                                       seed=42)
-
-    def random_with_assert(x):
-      y = random(x)
-      assert_op = control_flow_ops.Assert(math_ops.greater_equal(y, 1), [y])
-      with ops.control_dependencies([assert_op]):
-        return y
-
-    self._testHoistFunction(random, should_optimize=True)
-    self._testHoistFunction(random_with_assert, should_optimize=True)
-    self._testHoistFunction(
-        lambda x: (random(x) + random(x)) / 2, should_optimize=False)
 
   @combinations.generate(test_base.default_test_combinations())
   def testCapturedInputs(self):

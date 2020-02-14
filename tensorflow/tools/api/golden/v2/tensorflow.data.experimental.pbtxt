@@ -146,7 +146,7 @@ tf_module {
   }
   member_method {
     name: "make_saveable_from_iterator"
-    argspec: "args=[\'iterator\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'iterator\', \'external_state_policy\'], varargs=None, keywords=None, defaults=[\'fail\'], "
   }
   member_method {
     name: "map_and_batch"
@@ -158,7 +158,7 @@ tf_module {
   }
   member_method {
     name: "parse_example_dataset"
-    argspec: "args=[\'features\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'1\'], "
+    argspec: "args=[\'features\', \'num_parallel_calls\', \'deterministic\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
   }
   member_method {
     name: "prefetch_to_device"

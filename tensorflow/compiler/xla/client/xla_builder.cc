@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -1752,6 +1753,36 @@ XlaOp XlaBuilder::RngUniform(XlaOp a, XlaOp b, const Shape& shape) {
   return RngOp(RandomDistribution::RNG_UNIFORM, {a, b}, shape);
 }
 
+XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
+                                  XlaOp initial_state, const Shape& shape) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+    TF_ASSIGN_OR_RETURN(Shape state_shape, GetShape(initial_state));
+    Shape output_shape = shape;
+    switch (output_shape.element_type()) {
+      case PrimitiveType::F32:
+      case PrimitiveType::S32:
+      case PrimitiveType::U32:
+        output_shape.set_element_type(PrimitiveType::U32);
+        break;
+      case PrimitiveType::F64:
+      case PrimitiveType::S64:
+      case PrimitiveType::U64:
+        output_shape.set_element_type(PrimitiveType::U64);
+        break;
+      default:
+        return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
+                               PrimitiveType_Name(output_shape.element_type()));
+    }
+    *instr.mutable_shape() =
+        ShapeUtil::MakeTupleShape({state_shape, output_shape}).ToProto();
+    instr.set_rng_algorithm(algorithm);
+    return AddInstruction(std::move(instr), HloOpcode::kRngBitGenerator,
+                          {initial_state});
+  });
+}
+
 XlaOp XlaBuilder::While(const XlaComputation& condition,
                         const XlaComputation& body, XlaOp init) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -2112,7 +2143,8 @@ XlaOp XlaBuilder::CrossReplicaSum(
 
 XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
                             absl::Span<const ReplicaGroup> replica_groups,
-                            const absl::optional<ChannelHandle>& channel_id) {
+                            const absl::optional<ChannelHandle>& channel_id,
+                            const absl::optional<Shape>& shape_with_layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
@@ -2136,9 +2168,31 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
       operand_shapes.push_back(operand_shape);
       operands.push_back(operand);
     }
-    TF_ASSIGN_OR_RETURN(Shape shape,
+
+    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
                         ShapeInference::InferAllReduceShape(operand_shapes));
-    *instr.mutable_shape() = shape.ToProto();
+    if (shape_with_layout) {
+      if (!LayoutUtil::HasLayout(*shape_with_layout)) {
+        return InvalidArgument("shape_with_layout must have the layout set: %s",
+                               shape_with_layout->ToString());
+      }
+      if (!ShapeUtil::Compatible(*shape_with_layout, *operand_shape)) {
+        return InvalidArgument(
+            "Provided shape_with_layout must be compatible with the "
+            "operand shape: %s vs %s",
+            shape_with_layout->ToString(), operand_shape->ToString());
+      }
+      instr.set_constrain_layout(true);
+      if (operand_shape->IsTuple() && !inferred_shape.IsTuple()) {
+        // For a single-element tuple, take the tuple element shape.
+        TF_RET_CHECK(shape_with_layout->tuple_shapes_size() == 1);
+        *instr.mutable_shape() = shape_with_layout->tuple_shapes(0).ToProto();
+      } else {
+        *instr.mutable_shape() = shape_with_layout->ToProto();
+      }
+    } else {
+      *instr.mutable_shape() = inferred_shape.ToProto();
+    }
 
     for (const ReplicaGroup& group : replica_groups) {
       *instr.add_replica_groups() = group;
@@ -2153,10 +2207,10 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
     TF_ASSIGN_OR_RETURN(
         auto all_reduce,
         AddInstruction(std::move(instr), HloOpcode::kAllReduce, operands));
-    if (operand_shape->IsTuple() && !shape.IsTuple()) {
+    if (operand_shape->IsTuple() && !inferred_shape.IsTuple()) {
       // For a single-element tuple, wrap the result into a tuple.
       TF_RET_CHECK(operand_shapes.size() == 1);
-      TF_RET_CHECK(ShapeUtil::Compatible(*operand_shapes[0], shape));
+      TF_RET_CHECK(ShapeUtil::Compatible(*operand_shapes[0], inferred_shape));
       return Tuple({all_reduce});
     }
     return all_reduce;
@@ -3282,9 +3336,10 @@ XlaOp CrossReplicaSum(const XlaOp operand,
 
 XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
                 absl::Span<const ReplicaGroup> replica_groups,
-                const absl::optional<ChannelHandle>& channel_id) {
+                const absl::optional<ChannelHandle>& channel_id,
+                const absl::optional<Shape>& shape_with_layout) {
   return operand.builder()->AllReduce(operand, computation, replica_groups,
-                                      channel_id);
+                                      channel_id, shape_with_layout);
 }
 
 XlaOp AllToAll(const XlaOp operand, int64 split_dimension,
@@ -3434,6 +3489,12 @@ XlaOp RngNormal(const XlaOp mu, const XlaOp sigma, const Shape& shape) {
 
 XlaOp RngUniform(const XlaOp a, const XlaOp b, const Shape& shape) {
   return a.builder()->RngUniform(a, b, shape);
+}
+
+XlaOp RngBitGenerator(RandomAlgorithm algorithm, const XlaOp initial_state,
+                      const Shape& shape) {
+  return initial_state.builder()->RngBitGenerator(algorithm, initial_state,
+                                                  shape);
 }
 
 XlaOp While(const XlaComputation& condition, const XlaComputation& body,

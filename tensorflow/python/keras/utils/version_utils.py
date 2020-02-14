@@ -30,32 +30,47 @@ training = lazy_loader.LazyLoader(
 training_v1 = lazy_loader.LazyLoader(
     "training_v1", globals(),
     "tensorflow.python.keras.engine.training_v1")
+base_layer = lazy_loader.LazyLoader(
+    "base_layer", globals(),
+    "tensorflow.python.keras.engine.base_layer")
+base_layer_v1 = lazy_loader.LazyLoader(
+    "base_layer_v1", globals(),
+    "tensorflow.python.keras.engine.base_layer_v1")
 
 # pylint: enable=g-inconsistent-quotes
 
 
-# TODO(omalleyt): Extend to Layer class once Layer class is split.
-class VersionSelector(object):
+class ModelVersionSelector(object):
   """Chooses between Keras v1 and v2 Model class."""
 
   def __new__(cls, *args, **kwargs):  # pylint: disable=unused-argument
-    new_cls = swap_class(cls, training.Model, training_v1.Model)
-    return object.__new__(new_cls)
+    eager_enabled = ops.executing_eagerly_outside_functions()
+    cls = swap_class(cls, training.Model, training_v1.Model, eager_enabled)
+    return super(ModelVersionSelector, cls).__new__(cls)
 
 
-def swap_class(cls, v2_cls, v1_cls):
+class LayerVersionSelector(object):
+  """Chooses between Keras v1 and v2 Layer class."""
+
+  def __new__(cls, *args, **kwargs):  # pylint: disable=unused-argument
+    eager_enabled = ops.executing_eagerly_outside_functions()
+    cls = swap_class(cls, base_layer.Layer, base_layer_v1.Layer, eager_enabled)
+    return super(LayerVersionSelector, cls).__new__(cls)
+
+
+def swap_class(cls, v2_cls, v1_cls, eager_enabled):
   """Swaps in v2_cls or v1_cls depending on graph mode."""
   if cls == object:
     return cls
 
   if cls in (v2_cls, v1_cls):
-    if ops.executing_eagerly_outside_functions():
+    if eager_enabled:
       return v2_cls
     return v1_cls
 
   # Recursively search superclasses to swap in the right Keras class.
   cls.__bases__ = tuple(
-      swap_class(base, v2_cls, v1_cls) for base in cls.__bases__)
+      swap_class(base, v2_cls, v1_cls, eager_enabled) for base in cls.__bases__)
   return cls
 
 

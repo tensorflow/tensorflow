@@ -164,6 +164,10 @@ OpContext DescribeEinsum(const std::vector<int>& dims_a,
   return op_context;
 }
 
+void DescribeDummyTensor(OpInfo::TensorProperties* tensor) {
+  // Intentionally leave the tensor shape and type information missing.
+}
+
 // Wrangles the minimum number of proto fields to set up a 1D Tensor for cost
 // estimation purposes.
 void DescribeTensor1D(int dim0, OpInfo::TensorProperties* tensor) {
@@ -1712,6 +1716,35 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
                   .execution_time,
               PredictCosts(DescribeXlaEinsum({-1, 50}, {100, 50}, "ik,jk->ij"))
                   .execution_time);
+  }
+}
+
+TEST_F(OpLevelCostEstimatorTest, PredictResourceVariableOps) {
+  TestOpLevelCostEstimator estimator;
+  estimator.SetDeviceInfo(DeviceInfo(/*gigaops=*/1, /*gb_per_sec=*/1));
+
+  {
+    OpContext op_context;
+    op_context.op_info.set_op("AssignVariableOp");
+    DescribeDummyTensor(op_context.op_info.add_inputs());
+    DescribeTensor1D(100, op_context.op_info.add_inputs());
+    auto cost = estimator.PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(400), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(400), cost.execution_time);
+    EXPECT_FALSE(cost.inaccurate);
+  }
+
+  {
+    OpContext op_context;
+    op_context.op_info.set_op("AssignSubVariableOp");
+    DescribeDummyTensor(op_context.op_info.add_inputs());
+    DescribeTensor1D(100, op_context.op_info.add_inputs());
+    auto cost = estimator.PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(400), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(100), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(400), cost.execution_time);
+    EXPECT_FALSE(cost.inaccurate);
   }
 }
 

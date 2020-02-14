@@ -72,7 +72,7 @@ void CheckInputOutputPrimitivetypeAreValid(const HloInstruction* hlo) {
 
   // The last operand is the feature index which must be int64.
   CHECK_EQ(hlo->operand(num_operands - 1)->shape().element_type(), S64)
-      << "Not yet impelemented";
+      << "Not yet implemented";
 
   // Check Outputs.
   if (hlo->shape().IsTuple()) {
@@ -194,7 +194,8 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
   ptrs[2] = output_inv_stddev.opaque();
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(output_tuple_));
-  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, &stream);
+  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, &stream,
+                params.deferred_host_callbacks);
   if (!stream.ok()) {
     return InternalError("BatchNormalizationTraining call failed.");
   }
@@ -264,7 +265,8 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
   ptrs[2] = output_grad_offset.opaque();
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(output_tuple_));
-  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, stream);
+  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, stream,
+                params.deferred_host_callbacks);
 
   if (!stream->ok()) {
     return InternalError("BatchNormalizationBackward call failed.");

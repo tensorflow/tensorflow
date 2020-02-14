@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
+import os
 import time
 
 from six.moves import queue as Queue
@@ -49,6 +51,10 @@ def proc_func_that_return_args_and_kwargs(*args, **kwargs):
 
 
 class MultiProcessRunnerTest(test.TestCase):
+
+  def _worker_idx(self):
+    config_task = json.loads(os.environ['TF_CONFIG'])['task']
+    return config_task['index']
 
   def test_multi_process_runner(self):
     returned_data, _ = multi_process_runner.run(
@@ -139,6 +145,55 @@ class MultiProcessRunnerTest(test.TestCase):
       # If the signal was fired, another message would be added to internal
       # queue, so verifying it's empty.
       mpr._get_process_status_queue().get(block=False)
+
+  def test_termination(self):
+
+    def proc_func():
+      for i in range(0, 10):
+        print('index {}, iteration {}'.format(self._worker_idx(), i))
+        time.sleep(1)
+
+    mpr = multi_process_runner.MultiProcessRunner(
+        proc_func,
+        multi_worker_test_base.create_cluster_spec(num_workers=2),
+        capture_std_stream=True)
+    mpr.start()
+    time.sleep(5)
+    mpr.terminate('worker', 0)
+    std_stream_result = mpr.join()[1]
+
+    # Worker 0 is terminated in the middle, so it should not have iteration 9
+    # printed.
+    self.assertIn('index 0, iteration 0', std_stream_result)
+    self.assertNotIn('index 0, iteration 9', std_stream_result)
+    self.assertIn('index 1, iteration 0', std_stream_result)
+    self.assertIn('index 1, iteration 9', std_stream_result)
+
+  def test_termination_and_start_single_process(self):
+
+    def proc_func():
+      for i in range(0, 10):
+        print('index {}, iteration {}'.format(self._worker_idx(), i))
+        time.sleep(1)
+
+    mpr = multi_process_runner.MultiProcessRunner(
+        proc_func,
+        multi_worker_test_base.create_cluster_spec(num_workers=2),
+        capture_std_stream=True)
+    mpr.start()
+    time.sleep(5)
+    mpr.terminate('worker', 0)
+    mpr.start_single_process('worker', 0)
+    std_stream_result = mpr.join()[1]
+
+    # Worker 0 is terminated in the middle, but a new worker 0 is added, so it
+    # should still have iteration 9 printed. Moreover, iteration 0 of worker 0
+    # should happen twice.
+    self.assertLen(
+        [s for s in std_stream_result if s == 'index 0, iteration 0'], 2)
+    self.assertIn('index 0, iteration 9', std_stream_result)
+    self.assertIn('index 1, iteration 0', std_stream_result)
+    self.assertIn('index 1, iteration 9', std_stream_result)
 
 
 if __name__ == '__main__':

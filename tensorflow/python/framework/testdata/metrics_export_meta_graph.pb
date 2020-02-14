@@ -503,7 +503,8 @@ graph_def {
               size: 2
             }
           }
-          tensor_content: "\000\000\000\000\000\000\200?"
+          float_val: 0.
+          float_val: 1.
         }
       }
     }
@@ -567,7 +568,8 @@ graph_def {
               size: 2
             }
           }
-          tensor_content: "ff\206\300\232\231\021A"
+          float_val: -4.2
+          float_val: 9.1
         }
       }
     }
@@ -631,7 +633,8 @@ graph_def {
               size: 2
             }
           }
-          tensor_content: "\000\000\320@\000\000\000\000"
+          float_val: 6.5
+          float_val: 0.
         }
       }
     }
@@ -695,7 +698,8 @@ graph_def {
               size: 2
             }
           }
-          tensor_content: "\315\314L\300\000\000\200@"
+          float_val: -3.2
+          float_val: 0.
         }
       }
     }
@@ -1158,7 +1162,8 @@ graph_def {
               size: 2
             }
           }
-          tensor_content: "\000\000\000\000\001\000\000\000"
+          int_val: 0
+          int_val: 1
         }
       }
     }

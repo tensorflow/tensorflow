@@ -39,14 +39,16 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+        "//tensorflow/lite/tools/evaluation/proto:preprocessing_steps_cc_proto",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_jpeg_internal",
@@ -103,8 +105,8 @@ cc_library(
     hdrs = ["tflite_inference_stage.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -158,8 +160,8 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":tflite_inference_stage",
-        "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",

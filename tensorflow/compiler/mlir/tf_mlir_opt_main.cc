@@ -17,10 +17,10 @@ limitations under the License.
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
-#include "mlir/Support/MlirOptMain.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "mlir/Support/FileUtilities.h"  // TF:llvm-project
+#include "mlir/Support/MlirOptMain.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"

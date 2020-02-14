@@ -76,6 +76,7 @@ double IdleTimeRatio(const OpMetricsDb& metrics_db) {
 }
 
 uint64 IdleTimePs(const OpMetricsDb& metrics_db) {
+  if (metrics_db.total_time_ps() <= metrics_db.total_op_time_ps()) return 0;
   return metrics_db.total_time_ps() - metrics_db.total_op_time_ps();
 }
 
@@ -89,8 +90,8 @@ void AddIdleOp(OpMetricsDb* db) {
   metrics->set_self_time_ps(idle_time_ps);
 }
 
-OpMetricsDb CreateTfMetricsDbFromHloMetricsDb(
-    const OpMetricsDb& hlo_metrics_db) {
+OpMetricsDb CreateTfMetricsDbFromHloMetricsDb(const OpMetricsDb& hlo_metrics_db,
+                                              bool with_idle) {
   OpMetricsDb tf_op_metrics_db;
   DeviceTfOpMetricsDbBuilder builder(&tf_op_metrics_db);
   for (const auto& hlo_op_metrics : hlo_metrics_db.metrics_db()) {
@@ -100,11 +101,18 @@ OpMetricsDb CreateTfMetricsDbFromHloMetricsDb(
                                                 hlo_op_metrics);
     } else {
       DCHECK_EQ(hlo_op_metrics.name(), "IDLE");
-      builder.UpdateTfOpMetricsWithHloOpMetrics("IDLE", "IDLE", hlo_op_metrics);
+      if (with_idle) {
+        builder.UpdateTfOpMetricsWithHloOpMetrics("IDLE", "IDLE",
+                                                  hlo_op_metrics);
+      }
     }
   }
   tf_op_metrics_db.set_total_op_time_ps(hlo_metrics_db.total_op_time_ps());
-  tf_op_metrics_db.set_total_time_ps(hlo_metrics_db.total_time_ps());
+
+  tf_op_metrics_db.set_total_time_ps(with_idle
+                                         ? hlo_metrics_db.total_time_ps()
+                                         : hlo_metrics_db.total_op_time_ps());
+
   return tf_op_metrics_db;
 }
 }  // namespace profiler

@@ -21,10 +21,47 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
+using namespace tflite;
+
 JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(JNIEnv* env,
-                                                            jclass clazz) {
-  return reinterpret_cast<jlong>(tflite::NnApiDelegate());
+Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
+    JNIEnv* env, jclass clazz, jint preference, jstring accelerator_name,
+    jstring cache_dir, jstring model_token) {
+  StatefulNnApiDelegate::Options options = StatefulNnApiDelegate::Options();
+  options.execution_preference =
+      (StatefulNnApiDelegate::Options::ExecutionPreference)preference;
+  if (accelerator_name) {
+    options.accelerator_name = env->GetStringUTFChars(accelerator_name, NULL);
+  }
+  if (cache_dir) {
+    options.cache_dir = env->GetStringUTFChars(cache_dir, NULL);
+  }
+  if (model_token) {
+    options.model_token = env->GetStringUTFChars(model_token, NULL);
+  }
+
+  auto delegate = new StatefulNnApiDelegate(options);
+
+  if (options.accelerator_name) {
+    env->ReleaseStringUTFChars(accelerator_name, options.accelerator_name);
+  }
+
+  if (options.cache_dir) {
+    env->ReleaseStringUTFChars(cache_dir, options.accelerator_name);
+  }
+
+  if (options.model_token) {
+    env->ReleaseStringUTFChars(model_token, options.accelerator_name);
+  }
+
+  return reinterpret_cast<jlong>(delegate);
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_nnapi_NnApiDelegate_deleteDelegate(JNIEnv* env,
+                                                            jclass clazz,
+                                                            jlong delegate) {
+  delete reinterpret_cast<TfLiteDelegate*>(delegate);
 }
 
 #ifdef __cplusplus

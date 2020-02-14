@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+
 import numpy as np
 
 from tensorflow.python import tf2
@@ -175,8 +176,8 @@ class Model(training_lib.Model):
                 self._compile_time_distribution_strategy)
     if strategy:
       with strategy.scope():
-        return super(Model, self).get_weights()
-    return super(Model, self).get_weights()
+        return network.Network.get_weights(self)
+    return network.Network.get_weights(self)
 
   def load_weights(self, filepath, by_name=False, skip_mismatch=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
@@ -1492,7 +1493,7 @@ class Model(training_lib.Model):
     """
     if not self._is_compiled:
       return
-    if sample_weights and any([s is not None for s in sample_weights]):
+    if sample_weights and any(s is not None for s in sample_weights):
       for endpoint in self._training_endpoints:
         endpoint.sample_weight_mode = (
             endpoint.sample_weight_mode or 'samplewise')
@@ -1994,7 +1995,7 @@ class Model(training_lib.Model):
                        'optimizer.')
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # train function even if one exists already. This is because
-    # `_feed_sample_weights` list has been updated on re-copmpile.
+    # `_feed_sample_weights` list has been updated on re-compile.
     if getattr(self, 'train_function', None) is None or has_recompiled:
       # Restore the compiled trainable state.
       current_trainable_state = self._get_trainable_state()
@@ -2037,7 +2038,7 @@ class Model(training_lib.Model):
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # test function even if one exists already. This is because
-    # `_feed_sample_weights` list has been updated on re-copmpile.
+    # `_feed_sample_weights` list has been updated on re-compile.
     if getattr(self, 'test_function', None) is None or has_recompiled:
       inputs = (self._feed_inputs +
                 self._feed_targets +
@@ -2852,7 +2853,7 @@ class DistributedCallbackModel(Model):
         orig_model_weights)
 
   def __getattr__(self, item):
-    # Whitelisted atttributes of the model that can be accessed by the user
+    # Whitelisted attributes of the model that can be accessed by the user
     # during a callback.
     if item not in ('_setattr_tracking', '_layers'):
       logging.warning('You are accessing attribute ' + item + ' of the '

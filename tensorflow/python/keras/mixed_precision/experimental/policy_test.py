@@ -18,11 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.mixed_precision.experimental import device_compatibility_check
 from tensorflow.python.keras.mixed_precision.experimental import policy as mp_policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.platform import test
@@ -164,6 +166,30 @@ class PolicyTest(test.TestCase):
       with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
         mp_policy.Policy(policy_name, loss_scale=2.)
         mock_warn.assert_not_called()
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_device_compatibility_warning(self):
+    with context.eager_mode():
+      device_compatibility_check._logged_compatibility_check = False
+      with test.mock.patch.object(tf_logging, 'warn') as mock_warn, \
+           test.mock.patch.object(tf_logging, 'info') as mock_info:
+        mp_policy.Policy('mixed_float16')
+      if mock_warn.called:
+        self.assertRegexpMatches(
+            mock_warn.call_args[0][0],
+            r'Mixed precision compatibility check \(mixed_float16\): WARNING.*')
+        mock_info.assert_not_called()
+      else:
+        self.assertRegexpMatches(
+            mock_info.call_args[0][0],
+            r'Mixed precision compatibility check \(mixed_float16\): OK.*')
+
+      # Assert message is only logged once
+      with test.mock.patch.object(tf_logging, 'warn') as mock_warn, \
+           test.mock.patch.object(tf_logging, 'info') as mock_info:
+        mp_policy.Policy('mixed_float16')
+      mock_warn.assert_not_called()
+      mock_info.assert_not_called()
 
   @testing_utils.enable_v2_dtype_behavior
   def test_policy_scope(self):

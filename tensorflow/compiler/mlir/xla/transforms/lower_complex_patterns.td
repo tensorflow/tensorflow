@@ -107,8 +107,8 @@ def : Pat<(HLO_AbsOp HLO_ComplexTensor:$val),
               (NullDenseIntElementsAttr))),
            (HLO_ConstOp (ConstantSplat<"0"> $real)))>;
 
-// Expononetial can be lowered to an exponential on the real component and a
-// sum of sinusoids of the imageinary component, which equates to a normal
+// Exponential can be lowered to an exponential on the real component and a
+// sum of sinusoids of the imaginary component, which equates to a normal
 // exponential operator multiplied by Euler's formula.
 //
 // Exp(a + ib) = Exp(a) * Exp(ib) = Exp(a) * (Cos(b) + iSin(b))

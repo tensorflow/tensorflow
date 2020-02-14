@@ -596,6 +596,27 @@ REGISTER_OP("ParseExampleDataset")
     .Attr("ragged_split_types: list({int32,int64}) >= 0 = []")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ParseExampleDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("num_parallel_calls: int64")
+    .Input("dense_defaults: Tdense")
+    .Output("handle: variant")
+    .Attr("sparse_keys: list(string) >= 0")
+    .Attr("dense_keys: list(string) >= 0")
+    .Attr("sparse_types: list({float,int64,string}) >= 0")
+    .Attr("Tdense: list({float,int64,string}) >= 0")
+    .Attr("dense_shapes: list(shape) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")  // Output components will be
+                                              // sorted by key (dense_keys and
+                                              // sparse_keys combined) here.
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
+    .Attr("ragged_keys: list(string) >= 0 = []")
+    .Attr("ragged_value_types: list({float,int64,string}) >= 0 = []")
+    .Attr("ragged_split_types: list({int32,int64}) >= 0 = []")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalParseExampleDataset")
     .Input("input_dataset: variant")
     .Input("num_parallel_calls: int64")
@@ -823,6 +844,8 @@ REGISTER_OP("SnapshotDataset")
     .Attr("shuffle_on_read: bool = false")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
+    .Attr("mode: string = 'auto'")
+    .Attr("snapshot_name: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // snapshot_path should be a scalar.

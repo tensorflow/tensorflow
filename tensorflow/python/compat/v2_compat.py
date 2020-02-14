@@ -25,12 +25,18 @@ from tensorflow.python.data.experimental.ops import random_ops
 from tensorflow.python.data.experimental.ops import readers as exp_readers
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import variable_scope
 
 from tensorflow.python.util.tf_export import tf_export
+
+# Metrics to track the status of v2_behavior
+_v2_behavior_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/version/v2_behavior",
+    "whether v2_behavior is enabled or disabled", "status")
 
 
 @tf_export(v1=["enable_v2_behavior"])
@@ -45,6 +51,7 @@ def enable_v2_behavior():
   This function is called in the main TensorFlow `__init__.py` file, user should
   not need to call it, except during complex migrations.
   """
+  _v2_behavior_usage_gauge.get_cell("enable").set(True)
   # TF2 behavior is enabled if either 1) enable_v2_behavior() is called or
   # 2) the TF2_BEHAVIOR=1 environment variable is set.  In the latter case,
   # the modules below independently check if tf2.enabled().
@@ -82,7 +89,7 @@ def disable_v2_behavior():
 
   User can call this function to disable 2.x behavior during complex migrations.
   """
-  tf2.disable()
+  _v2_behavior_usage_gauge.get_cell("disable").set(True)
   ops.disable_eager_execution()
   tensor_shape.disable_v2_tensorshape()  # Also switched by tf2
   variable_scope.disable_resource_variables()

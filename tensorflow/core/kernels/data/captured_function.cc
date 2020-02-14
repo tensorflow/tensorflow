@@ -110,6 +110,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
   size_t num_args = args.size();
+  rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
       rets->push_back(args[info.indices[i]]);
@@ -125,6 +126,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
   size_t num_args = args.size();
+  rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
       if (info.can_move[i]) {
@@ -404,9 +406,10 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
 }
 
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+    IteratorContext* ctx, const IteratorBase* parent,
+    const std::vector<Tensor>& input_element, int64 thread_index,
+    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator) {
   std::vector<Tensor> return_values;
 
   TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
@@ -425,7 +428,17 @@ Status MakeIteratorFromInputElement(
 
   // Create an iterator for the dataset that was returned by `f`.
   return returned_dataset->MakeIterator(
-      ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
+      ctx, parent, strings::StrCat(prefix, "[", thread_index, "]"),
+      out_iterator);
+}
+
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const std::vector<Tensor>& input_element,
+    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
+    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+  return MakeIteratorFromInputElement(ctx, /*parent=*/nullptr, input_element,
+                                      thread_index, inst_captured_func, prefix,
+                                      out_iterator);
 }
 
 /* static */
@@ -480,24 +493,23 @@ void FunctionMetadata::ValidateMultiDevice() {
 
 /* static */
 Status CapturedFunction::Create(
-    OpKernelContext* ctx,
-    const std::shared_ptr<const FunctionMetadata> metadata,
+    OpKernelContext* ctx, std::shared_ptr<const FunctionMetadata> metadata,
     const string& argument_name,
     std::unique_ptr<CapturedFunction>* out_function) {
   OpInputList inputs;
   TF_RETURN_IF_ERROR(ctx->input_list(argument_name, &inputs));
   std::vector<Tensor> captured_inputs(inputs.begin(), inputs.end());
-  return Create(ctx, metadata, std::move(captured_inputs), out_function);
+  return Create(ctx, std::move(metadata), std::move(captured_inputs),
+                out_function);
 }
 
 /* static */
 Status CapturedFunction::Create(
-    OpKernelContext* ctx,
-    const std::shared_ptr<const FunctionMetadata> metadata,
+    OpKernelContext* ctx, std::shared_ptr<const FunctionMetadata> metadata,
     std::vector<Tensor>&& captured_inputs,
     std::unique_ptr<CapturedFunction>* out_function) {
   *out_function = absl::WrapUnique(
-      new CapturedFunction(metadata, std::move(captured_inputs)));
+      new CapturedFunction(std::move(metadata), std::move(captured_inputs)));
   return Status::OK();
 }
 
@@ -602,8 +614,7 @@ Status CapturedFunction::Instantiate(
   *instantiated_captured_function =
       absl::WrapUnique<InstantiatedCapturedFunction>(
           new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
-                                           *ctx->runner(),
-                                           ctx->cancellation_manager(), this));
+                                           *ctx->runner(), this));
   return Status::OK();
 }
 
@@ -620,12 +631,11 @@ Status CapturedFunction::CheckExternalState() const {
 InstantiatedCapturedFunction::InstantiatedCapturedFunction(
     FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
     DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
-    CancellationManager* cancellation_manager, CapturedFunction* captured_func)
+    CapturedFunction* captured_func)
     : lib_(lib),
       f_handle_(f_handle),
       ret_types_(std::move(ret_types)),
       captured_runner_(std::move(runner)),
-      captured_cancellation_manager_(cancellation_manager),
       captured_func_(captured_func) {}
 
 // NOTE: We don't release f_handle_ here and instead delegate the function
@@ -664,7 +674,7 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
             "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
+  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](const Status& func_status) {
     s.Update(func_status);
     n.Notify();
   });
@@ -704,7 +714,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
             f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
+  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](const Status& func_status) {
     s.Update(func_status);
     n.Notify();
   });
@@ -728,7 +738,7 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   f_opts.step_container = &step_container;
   f_opts.runner = &captured_runner_;
   f_opts.create_rendezvous = ShouldCreateRendezvous();
-  CancellationManager cancellation_manager(captured_cancellation_manager_);
+  CancellationManager cancellation_manager;
   f_opts.cancellation_manager = &cancellation_manager;
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
@@ -742,7 +752,7 @@ Status InstantiatedCapturedFunction::RunInstantiated(
                             f_opts.step_id, "#");
       },
       profiler::TraceMeLevel::kInfo);
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
+  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](const Status& func_status) {
     s.Update(func_status);
     n.Notify();
   });
@@ -849,9 +859,10 @@ bool InstantiatedCapturedFunction::ShouldCreateRendezvous() const {
 }
 
 CapturedFunction::CapturedFunction(
-    const std::shared_ptr<const FunctionMetadata> metadata,
+    std::shared_ptr<const FunctionMetadata> metadata,
     std::vector<Tensor> captured_inputs)
-    : metadata_(metadata), captured_inputs_(std::move(captured_inputs)) {}
+    : metadata_(std::move(metadata)),
+      captured_inputs_(std::move(captured_inputs)) {}
 
 Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
                                        bool* is_multi_device) {

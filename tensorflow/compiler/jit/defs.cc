@@ -17,6 +17,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+const char* const kXlaMustCompileAttr = "_XlaMustCompile";
+
 const char* const kXlaCompileAttr = "_XlaCompile";
 
 // User-provided through jit_scope APIs. Effective only when auto_jit is OFF.

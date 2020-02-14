@@ -17,13 +17,24 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
 
 namespace tflite {
+
+namespace delegate {
+namespace nnapi {
+class NNAPIDelegateKernel;
+}  // namespace nnapi
+}  // namespace delegate
+
+using tflite::delegate::nnapi::NNAPIDelegateKernel;
 
 // TFliteDelegate to interface with NNAPI.
 class StatefulNnApiDelegate : public TfLiteDelegate {
@@ -74,8 +85,12 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   // Uses default options.
   StatefulNnApiDelegate();
 
+  explicit StatefulNnApiDelegate(const NnApi* nnapi);
+
   // The constructor that accepts options from user.
   explicit StatefulNnApiDelegate(Options options);
+
+  StatefulNnApiDelegate(const NnApi* nnapi, Options options);
 
   ~StatefulNnApiDelegate() = default;
 
@@ -131,6 +146,13 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   struct Data {
     // Preferred Power/perf trade-off.
     Options::ExecutionPreference execution_preference;
+    // Pointer to NNAPI implementation to be used by this delegate as
+    // set when building the StatefulNnApiDelegate instance.
+    // Will generally be the NnApiInstance() singleton but can be overridden
+    // for testing or for users needing to wrap or stub parts of NNAPI.
+    // The ownership of the nnapi instance is left to the caller of
+    // the StatefulNnApiDelegate constructor.
+    const NnApi* nnapi;
     // Selected NNAPI accelerator name.
     std::string accelerator_name;
     // The cache dir for NNAPI model.
@@ -144,6 +166,21 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // Constains a non zero value if any NNAPI method call
     // operation returned a non zero result code.
     int nnapi_errno;
+    // Cache of kernels already built in StatefulNnApiDelegate::DoPrepare
+    // when trying to understand if all nodes are supported by the target
+    // accelerators.
+    // The key is the index of the first node in the partition.
+    // Couldn't use unique_ptr because of problems building on gcc
+    std::unordered_map<int, NNAPIDelegateKernel*> delegate_state_cache;
+
+    ~Data();
+
+    // Caches an initialised NNAPIDelegateKernel.
+    void CacheDelegateKernel(const TfLiteDelegateParams* delegate_params,
+                             NNAPIDelegateKernel* delegate_state);
+    // Returns a cached NNAPIDelegateKernel if available.
+    absl::optional<NNAPIDelegateKernel*> GetCachedDelegateKernel(
+        const TfLiteDelegateParams* delegate_params);
   };
 
   // Implements TfLiteDelegate::Prepare. Please refer to TFLiteDelegate

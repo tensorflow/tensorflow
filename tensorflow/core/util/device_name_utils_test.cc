@@ -277,6 +277,19 @@ TEST(DeviceNameUtilsTest, Basic) {
                                        /*explicitDevice=*/true));
     }
   }
+  {
+    DeviceNameUtils::ParsedName x, y;
+    DeviceNameUtils::ParseFullName("/job:work/replica:1/task:3/device:GPU:*",
+                                   &x);
+    DeviceNameUtils::ParseFullName("/device:CPU:*", &y);
+    EXPECT_FALSE(DeviceNameUtils::AreCompatibleDevNames(x, y));
+  }
+  {
+    DeviceNameUtils::ParsedName x, y;
+    DeviceNameUtils::ParseFullName("/job:work/replica:1/task:3", &x);
+    DeviceNameUtils::ParseFullName("/device:CPU:*", &y);
+    EXPECT_TRUE(DeviceNameUtils::AreCompatibleDevNames(x, y));
+  }
 }
 
 static bool IsCSHelper(StringPiece pattern, StringPiece actual) {
@@ -426,8 +439,6 @@ static void MergeOverrideHelper(const string& target, const string& name,
 }
 
 TEST(DeviceNameUtilsTest, MergeDevNames) {
-  DeviceNameUtils::ParsedName target;
-
   // Idempotence tests.
   MergeDevNamesHelper("", "", "");
   MergeDevNamesHelper("/job:foo/replica:1/task:2/cpu:1",

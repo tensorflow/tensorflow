@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "pybind11/pybind11.h"
+#include "include/pybind11/pybind11.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -28,7 +28,7 @@ namespace tensorflow {
 
 namespace internal {
 
-PyObject* CodeToPyExc(const int code) {
+inline PyObject* CodeToPyExc(const int code) {
   switch (code) {
     case error::Code::INVALID_ARGUMENT:
       return PyExc_ValueError;
@@ -41,11 +41,11 @@ PyObject* CodeToPyExc(const int code) {
   }
 }
 
-PyObject* StatusToPyExc(const Status& status) {
+inline PyObject* StatusToPyExc(const Status& status) {
   return CodeToPyExc(status.code());
 }
 
-PyObject* TFStatusToPyExc(const TF_Status* status) {
+inline PyObject* TFStatusToPyExc(const TF_Status* status) {
   return CodeToPyExc(TF_GetCode(status));
 }
 
@@ -80,6 +80,20 @@ inline void MaybeRaiseFromTFStatus(TF_Status* status) {
 inline void MaybeRaiseRegisteredFromTFStatus(TF_Status* status) {
   TF_Code code = TF_GetCode(status);
   if (code != TF_OK) {
+    PyErr_SetObject(PyExceptionRegistry::Lookup(code),
+                    pybind11::make_tuple(pybind11::none(), pybind11::none(),
+                                         TF_Message(status))
+                        .ptr());
+    throw pybind11::error_already_set();
+  }
+}
+
+inline void MaybeRaiseRegisteredFromTFStatusWithGIL(TF_Status* status) {
+  TF_Code code = TF_GetCode(status);
+  if (code != TF_OK) {
+    // Acquire GIL for throwing exception.
+    pybind11::gil_scoped_acquire acquire;
+
     PyErr_SetObject(PyExceptionRegistry::Lookup(code),
                     pybind11::make_tuple(pybind11::none(), pybind11::none(),
                                          TF_Message(status))
