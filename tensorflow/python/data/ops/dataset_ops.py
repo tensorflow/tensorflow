@@ -1802,21 +1802,11 @@ name=None))
     fewer if there are not enough input elements to fill the window and
     `drop_remainder` evaluates to `False`).
 
-    The `shift` argument determines the number of input elements by which
-    the window moves on each iteration.  The first element in the `k`th window
-    will be element
-
-    ```
-    1 + (k-1) * shift
-    ```
-
+    The `shift` argument determines the number of input elements by which the
+    window moves on each iteration.  If windows and elements are both numbered
+    starting at 0, the first element in window `k` will be element `k * shift`
     of the input dataset. In particular, the first element of the first window
     will always be the first element of the input dataset.
-
-    If the `stride` parameter is greater than 1, then each window will skip
-    `(stride - 1)` input elements between each element that appears in the
-    window. Output windows will still contain `size` elements regardless of
-    the value of `stride`.
 
     The `stride` argument determines the stride of the input elements, and the
     `shift` argument determines the shift of the window.
