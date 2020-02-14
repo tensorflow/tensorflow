@@ -255,7 +255,7 @@ class OptimizerV2(trackable.Trackable):
         raise TypeError("Unexpected keyword argument "
                         "passed to optimizer: " + str(k))
       # checks that all keyword arguments are non-negative.
-      if kwargs[k] < 0:
+      if kwargs[k] is not None and kwargs[k] < 0:
         raise ValueError("Expected {} >= 0, received: {}".format(k, kwargs[k]))
 
     self._use_locking = True
@@ -279,10 +279,15 @@ class OptimizerV2(trackable.Trackable):
     if decay < 0.:
       raise ValueError("decay cannot be less than 0: {}".format(decay))
     self._initial_decay = decay
-    if "clipnorm" in kwargs:
-      self.clipnorm = kwargs.pop("clipnorm")
-    if "clipvalue" in kwargs:
-      self.clipvalue = kwargs.pop("clipvalue")
+
+    # Set the gradient clipping properties
+    self.clipnorm = kwargs.pop("clipnorm", None)
+    self.clipvalue = kwargs.pop("clipvalue", None)
+    if ((self.clipnorm is not None or self.clipvalue is not None)
+        and distribute_ctx.has_strategy()):
+      raise ValueError("Gradient clipping in the optimizer "
+                       "(by setting clipnorm or clipvalue) is currently "
+                       "unsupported when using a distribution strategy.")
 
     self._hypers_created = False
 
@@ -316,6 +321,25 @@ class OptimizerV2(trackable.Trackable):
         loss, var_list=var_list, grad_loss=grad_loss)
 
     return self.apply_gradients(grads_and_vars, name=name)
+
+  def _clip_gradients(self, grads):
+    """Clip gradients according to the clipnorm and clipvalue attributes."""
+    if self.clipnorm is not None:
+      if distribute_ctx.has_strategy():
+        raise ValueError("Gradient clipping in the optimizer "
+                         "(by setting clipnorm or clipvalue) is currently "
+                         "unsupported when using a distribution strategy.")
+      grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
+    if self.clipvalue is not None:
+      if distribute_ctx.has_strategy():
+        raise ValueError("Gradient clipping in the optimizer "
+                         "(by setting clipnorm or clipvalue) is currently "
+                         "unsupported when using a distribution strategy.")
+      grads = [
+          clip_ops.clip_by_value(g, -self.clipvalue, self.clipvalue)
+          for g in grads
+      ]
+    return grads
 
   def _compute_gradients(self, loss, var_list, grad_loss=None):
     """Compute gradients of `loss` for the variables in `var_list`.
@@ -353,14 +377,7 @@ class OptimizerV2(trackable.Trackable):
     var_list = nest.flatten(var_list)
     with backend.name_scope(self._name + "/gradients"):
       grads = tape.gradient(loss_value, var_list, grad_loss)
-
-      if hasattr(self, "clipnorm"):
-        grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
-      if hasattr(self, "clipvalue"):
-        grads = [
-            clip_ops.clip_by_value(g, -self.clipvalue, self.clipvalue)
-            for g in grads
-        ]
+      grads = self._clip_gradients(grads)
 
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes([
@@ -395,13 +412,7 @@ class OptimizerV2(trackable.Trackable):
                            "gradient defined (i.e. are differentiable). "
                            "Common ops without gradient: "
                            "K.argmax, K.round, K.eval.".format(param))
-      if hasattr(self, "clipnorm"):
-        grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
-      if hasattr(self, "clipvalue"):
-        grads = [
-            clip_ops.clip_by_value(g, -self.clipvalue, self.clipvalue)
-            for g in grads
-        ]
+      grads = self._clip_gradients(grads)
     return grads
 
   def apply_gradients(self, grads_and_vars, name=None):
@@ -704,9 +715,9 @@ class OptimizerV2(trackable.Trackable):
         Python dictionary.
     """
     config = {"name": self._name}
-    if hasattr(self, "clipnorm"):
+    if self.clipnorm is not None:
       config["clipnorm"] = self.clipnorm
-    if hasattr(self, "clipvalue"):
+    if self.clipvalue is not None:
       config["clipvalue"] = self.clipvalue
     return config
 
