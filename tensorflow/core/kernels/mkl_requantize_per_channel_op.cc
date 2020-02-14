@@ -141,7 +141,7 @@ class MklRequantizePerChannelOp : public OpKernel {
       std::unique_ptr<mkldnn::primitive> reorder_prim(
           new mkldnn::reorder(reorder_pd));
       reorder_prim->execute(reorder_stream, reorder_args);
-#endif  // ENABLE_MKLDNN_V1
+#endif  // !ENABLE_MKLDNN_V1
 
       Tensor* output_min = nullptr;
       Tensor* output_max = nullptr;
