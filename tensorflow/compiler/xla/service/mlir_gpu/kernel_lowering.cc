@@ -276,6 +276,8 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   pm.addPass(absl::make_unique<FusionToLhloConverter>());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
+  // Deallocates the temporary allocated buffers in the body of the function.
+  pm.addPass(::mlir::xla_hlo::createDeallocsInsertionPass());
   // Remove unnecessary Lhlo copies.
   pm.addPass(::mlir::xla_hlo::createLhloCopyRemovalPass());
   // Transform lhlo operations to LinAlg.

@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/include/mlir/Analysis/Liveness.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
@@ -49,7 +50,7 @@ Operation* FindInsertionPointForCopy(Value value) {
   return nullptr;
 }
 
-Value InsertAllocAndDealloc(Location loc, Value result,
+Value InsertAlloc(Location loc, Value result,
                             ConversionPatternRewriter* rewriter) {
   auto result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type || !result_type.hasStaticShape()) {
@@ -63,13 +64,9 @@ Value InsertAllocAndDealloc(Location loc, Value result,
   auto block = op->getBlock();
 
   OpBuilder allocBuilder(op);
-  allocBuilder.setInsertionPointToStart(block);  // Inserting at the beginning
+  allocBuilder.setInsertionPoint(op);
   auto alloc = allocBuilder.create<AllocOp>(loc, memref_type);
-
   alloc.setAttr(kTempBufferAttr, rewriter->getBoolAttr(true));
-
-  allocBuilder.setInsertionPoint(block, std::prev(block->end()));
-  allocBuilder.create<DeallocOp>(loc, alloc);
 
   return alloc;
 }
@@ -86,8 +83,7 @@ class HloToLhloOpConverter : public ConversionPattern {
     const auto& original_results = op->getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
     for (auto result : original_results) {
-      buffer_args.push_back(
-          InsertAllocAndDealloc(op->getLoc(), result, &rewriter));
+      buffer_args.push_back(InsertAlloc(op->getLoc(), result, &rewriter));
     }
     rewriter.create<LhloOpTy>(op->getLoc(), llvm::None, buffer_args,
                               op->getAttrs());
@@ -115,7 +111,7 @@ struct HloToLHloReduceOpConverter
     const auto& original_results = op.getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
     for (auto result : original_results) {
-      buffer_args.push_back(InsertAllocAndDealloc(loc, result, &rewriter));
+      buffer_args.push_back(InsertAlloc(loc, result, &rewriter));
     }
     auto new_op = rewriter.create<xla_lhlo::ReduceOp>(
         loc, llvm::None, buffer_args, op.getAttrs());
@@ -279,6 +275,44 @@ Type ConvertType(Type t) {
 
 }  // namespace
 
+// Converts the blocks signature and allocate buffers for the block arguments.
+void BlockArgsConversionAndAllocation(FuncOp& funcOp,
+                                      ConversionPatternRewriter& rewriter) {
+  for (auto& block : funcOp.getBlocks()) {
+    if (auto op = dyn_cast<CondBranchOp>(block.getTerminator())) {
+      op.emitOpError() << "Conditional branch operation is not yet supported.";
+    }
+
+    // A buffer must be allocated for each block successors' argument within
+    // the current block. All branches' operands must be copied into and
+    // replaced with the new allocated buffer.
+    if (block.getNumSuccessors() > 0) {
+      auto terminatorOp = block.getTerminator();
+      auto loc = terminatorOp->getLoc();
+      rewriter.setInsertionPoint(terminatorOp);
+
+      for (auto operand : terminatorOp->getOperands()) {
+        auto t = operand.getType().dyn_cast<ShapedType>();
+        auto memrefType = MemRefType::get(t.getShape(), t.getElementType());
+        auto alloc = rewriter.create<AllocOp>(loc, memrefType);
+        alloc.setAttr(kTempBufferAttr, rewriter.getBoolAttr(true));
+        rewriter.create<xla_lhlo::CopyOp>(loc, operand, alloc);
+        terminatorOp->replaceUsesOfWith(operand, alloc);
+      }
+    }
+
+    if (block.isEntryBlock()) continue;
+
+    // All blocks signature must be converted except for the entry block.
+    for (int i = 0; i < block.getNumArguments(); i++) {
+      auto oldArg = block.getArgument(i);
+      auto newArg = block.insertArgument(i, ConvertType(oldArg.getType()));
+      oldArg.replaceAllUsesWith(newArg);
+      block.eraseArgument(i + 1, false);
+    }
+  }
+}
+
 /// Transforms FuncOp arguments and results from tensors to buffers. Tensor
 /// results are converted to memrefs and appended to the argument list.
 class HloToLhloFuncOpConverter : public OpConversionPattern<FuncOp> {
@@ -288,12 +322,6 @@ class HloToLhloFuncOpConverter : public OpConversionPattern<FuncOp> {
   PatternMatchResult matchAndRewrite(
       FuncOp funcOp, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
-    if (funcOp.getBody().getBlocks().size() > 1) {
-      funcOp.emitOpError() << "tensor to buffer conversion expects a single "
-                              "block in the region containing the operation";
-      return matchFailure();
-    }
-
     auto funcType = funcOp.getType();
 
     TypeConverter::SignatureConversion conversion(funcType.getNumInputs());
@@ -308,6 +336,9 @@ class HloToLhloFuncOpConverter : public OpConversionPattern<FuncOp> {
           rewriter.getFunctionType(conversion.getConvertedTypes(), llvm::None));
       rewriter.applySignatureConversion(&funcOp.getBody(), conversion);
     });
+
+    BlockArgsConversionAndAllocation(funcOp, rewriter);
+
     return matchSuccess();
   }
 };
@@ -326,26 +357,18 @@ class StdToLhloReturnOpConverter : public OpConversionPattern<mlir::ReturnOp> {
     auto numFuncArgs = funcOp.getNumArguments();
     auto loc = returnOp.getLoc();
 
+    rewriter.setInsertionPointToEnd(returnOp.getOperation()->getBlock());
     for (auto operand : llvm::enumerate(operands)) {
       auto returnArgNumber = numFuncArgs - numReturnValues + operand.index();
       auto dstBuffer = funcOp.getArgument(returnArgNumber);
       if (dstBuffer == operand.value()) {
         continue;
       }
-
-      auto dealloc = FindInsertionPointForCopy(operand.value());
-
-      if (dealloc == nullptr) {
-        returnOp.emitOpError()
-            << "Missing dealloc for operand " << operand.index();
-        return matchFailure();
-      }
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPoint(dealloc);
       rewriter.create<xla_lhlo::CopyOp>(loc, llvm::None, operand.value(),
-                                        funcOp.getArgument(returnArgNumber));
+                                        dstBuffer);
     }
-    rewriter.replaceOpWithNewOp<xla_lhlo::TerminatorOp>(returnOp);
+    rewriter.create<xla_lhlo::TerminatorOp>(loc);
+    rewriter.eraseOp(returnOp);
     return matchSuccess();
   }
 };
@@ -423,6 +446,39 @@ struct RedundantCopiesRemoval : mlir::FunctionPass<RedundantCopiesRemoval> {
   };
 };
 
+struct DeallocsInsertion : mlir::FunctionPass<DeallocsInsertion> {
+  // Inserts a DeallocOp for the temporary allocated buffer only if its last use
+  // is not in the block terminator.
+  void InsertDealloc(Value memref, Block& block, Liveness& liveness) {
+    auto liveOpList = liveness.resolveLiveness(memref);
+    OpBuilder builder(&block);
+    if (liveOpList.empty()) {
+      builder.setInsertionPointToStart(&block);
+      builder.create<DeallocOp>(memref.getLoc(), memref);
+    } else {
+      if (liveOpList.back() != block.getTerminator()) {
+        builder.setInsertionPointAfter(liveOpList.back());
+        builder.create<DeallocOp>(memref.getLoc(), memref);
+      }
+    }
+  }
+
+  void runOnFunction() override {
+    auto function = getFunction();
+    Liveness liveness(function);
+    for (auto& block : function.getBlocks()) {
+      if (!block.isEntryBlock()) {
+        for (auto blockArg : block.getArguments()) {
+          InsertDealloc(blockArg, block, liveness);
+        }
+      }
+      block.walk([&](AllocOp alloc) {
+        InsertDealloc(alloc.getResult(), block, liveness);
+      });
+    }
+  };
+};
+
 std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeToLhloPass() {
   return absl::make_unique<HloLegalizeToLhlo>();
 }
@@ -431,12 +487,19 @@ std::unique_ptr<OpPassBase<FuncOp>> createLhloCopyRemovalPass() {
   return absl::make_unique<RedundantCopiesRemoval>();
 }
 
+std::unique_ptr<OpPassBase<FuncOp>> createDeallocsInsertionPass() {
+  return absl::make_unique<DeallocsInsertion>();
+}
+
 static PassRegistration<HloLegalizeToLhlo> legalize_pass(
     "hlo-legalize-to-lhlo", "Legalize from HLO dialect to LHLO dialect");
 
 static PassRegistration<RedundantCopiesRemoval> copies_removal_pass(
     "lhlo-redundant-copies-removal",
     "Legalize from HLO dialect to LHLO dialect");
+
+static PassRegistration<DeallocsInsertion> deallocs_insertion_pass(
+    "lhlo-deallocs-insertion", "Deallocates all temporary allocated buffers");
 
 }  // namespace xla_hlo
 }  // namespace mlir

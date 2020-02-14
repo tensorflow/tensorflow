@@ -63,6 +63,9 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass();
 // with LHLO.CopyOp in HLO to LHLO lowering.
 std::unique_ptr<OpPassBase<FuncOp>> createLhloCopyRemovalPass();
 
+// Creates DeaclloOp for each temporary allocated buffer.
+std::unique_ptr<OpPassBase<FuncOp>> createDeallocsInsertionPass();
+
 }  // namespace xla_hlo
 
 namespace xla_lhlo {
