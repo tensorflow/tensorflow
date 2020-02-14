@@ -667,6 +667,26 @@ cc_library(
 )
 
 cc_library(
+    name = "GPUToVulkanTransforms",
+    srcs = [
+        "lib/Conversion/GPUToVulkan/ConvertLaunchFuncToVulkanCalls.cpp",
+    ],
+    hdrs = ["include/mlir/Conversion/GPUToVulkan/ConvertGPUToVulkanPass.h"],
+    includes = ["include"],
+    deps = [
+        ":GPUDialect",
+        ":IR",
+        ":LLVMDialect",
+        ":Pass",
+        ":SPIRVDialect",
+        ":SPIRVSerialization",
+        ":StandardOps",
+        ":Support",
+        "@llvm-project//llvm:support",
+    ],
+)
+
+cc_library(
     name = "GPUToCUDATransforms",
     srcs = [
         "lib/Conversion/GPUToCUDA/ConvertKernelFuncToCubin.cpp",
@@ -1718,6 +1738,7 @@ cc_library(
         ":GPUToNVVMTransforms",
         ":GPUToROCDLTransforms",
         ":GPUToSPIRVTransforms",
+        ":GPUToVulkanTransforms",
         ":GPUTransforms",
         ":IR",
         ":LLVMDialect",
