@@ -359,9 +359,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mul = "Mul";
     csinfo_.squared_difference = "SquaredDifference";
     csinfo_.sub = "Sub";
-// End - element-wise ops. See note above.
+    // End - element-wise ops. See note above.
 
-// NOTE: names are alphabetically sorted.
+    // NOTE: names are alphabetically sorted.
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
@@ -671,18 +671,18 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.requantize, mkl_op_registry::GetMklOpName(csinfo_.requantize),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
-// Disable these two MKL operators for now due to some test failures caused
-// by these two ops
-/*
-rinfo_.push_back({csinfo_.tanh,
-                  mkl_op_registry::GetMklOpName(csinfo_.tanh),
-                  CopyAttrsAll, AlwaysRewrite,
-                  kRewriteForLayoutPropagation});
-rinfo_.push_back({csinfo_.tanh_grad,
-                  mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
-                  CopyAttrsAll, AlwaysRewrite,
-                  kRewriteForLayoutPropagation});
-*/
+    // Disable these two MKL operators for now due to some test failures caused
+    // by these two ops
+    /*
+    rinfo_.push_back({csinfo_.tanh,
+                      mkl_op_registry::GetMklOpName(csinfo_.tanh),
+                      CopyAttrsAll, AlwaysRewrite,
+                      kRewriteForLayoutPropagation});
+    rinfo_.push_back({csinfo_.tanh_grad,
+                      mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
+                      CopyAttrsAll, AlwaysRewrite,
+                      kRewriteForLayoutPropagation});
+    */
     rinfo_.push_back(
         {csinfo_.reshape, mkl_op_registry::GetMklOpName(csinfo_.reshape),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
@@ -1478,9 +1478,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
                  "Eigen op for Dequantize op.";
       return false;
     }
-    // TODO(sriniva2/mabuzain) Enable the op after verifying support for
-    // object detection models
-    return false;
+    return true;
   }
 
   // Rewrite rule for _FusedMatMul.

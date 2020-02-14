@@ -92,10 +92,12 @@ class MklDequantizeOp : public OpKernel {
 
       memory::primitive_desc src_pd =
           memory::primitive_desc(src_md, cpu_engine);
-      memory::desc dst_md = src_mkl_shape.IsMklTensor()
-                                ? src_md
-                                : memory::desc(src_dims, MklDnnType<float>(),
-                                               memory::format::nhwc);
+      memory::desc dst_md =
+          src_mkl_shape.IsMklTensor()
+              ? memory::desc(src_dims, MklDnnType<float>(),
+                             static_cast<memory::format>(src_md.data.format))
+              : memory::desc(src_dims, MklDnnType<float>(),
+                             memory::format::nhwc);
       memory::primitive_desc dst_pd =
           memory::primitive_desc(dst_md, cpu_engine);
 
@@ -150,9 +152,9 @@ class MklDequantizeOp : public OpKernel {
           mkldnn::reorder(reorder_pd, *src.GetUsrMem(), *dst.GetUsrMem()));
       stream(stream::kind::eager).submit(net).wait();
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           ctx, errors::Aborted("Operation received an exception:", error_msg));
     }

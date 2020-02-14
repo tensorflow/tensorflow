@@ -728,9 +728,9 @@ inline Status ConvertMklToTF(OpKernelContext* context,
     }
     return Status::OK();
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + string(e.message) + ", in file " +
-                       string(__FILE__) + ":" + std::to_string(__LINE__);
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       string(e.message) + ", in file " + string(__FILE__) +
+                       ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
 }
@@ -1012,6 +1012,11 @@ memory::data_type MklDnnType<quint8>() {
 }
 
 template <>
+memory::data_type MklDnnType<uint8>() {
+  return memory::data_type::u8;
+}
+
+template <>
 memory::data_type MklDnnType<qint8>() {
   return memory::data_type::s8;
 }
@@ -1250,8 +1255,8 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
   } catch (mkldnn::error& e) {
     return Status(error::Code::INTERNAL,
                   tensorflow::strings::StrCat(
-                      "Failed to create blocked memory descriptor.",
-                      "Status: ", e.status, ", message: ", e.message));
+                      "Failed to create blocked memory descriptor.", "Status: ",
+                      e.status, ", message: ", e.message));
   }
 #else
   // We have to construct memory descriptor in a C style. This is not at all
