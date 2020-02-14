@@ -153,10 +153,9 @@ void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
 
 void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       const int16_t* vector2, int v_size,
-                                      int n_batch, int32_t* result,
-                                      int result_stride) {
-  return PortableBatchVectorBatchVectorDotProduct(
-      vector1, vector2, v_size, n_batch, result, result_stride);
+                                      int n_batch, int32_t* result) {
+  return PortableBatchVectorBatchVectorDotProduct(vector1, vector2, v_size,
+                                                  n_batch, result);
 }
 
 void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,

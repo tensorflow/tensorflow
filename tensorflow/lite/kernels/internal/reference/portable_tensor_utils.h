@@ -200,10 +200,9 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
 
 void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       const int16_t* vector2, int v_size,
-                                      int n_batch, int32_t* result,
-                                      int result_stride) {
-  return PortableBatchVectorBatchVectorDotProduct(
-      vector1, vector2, v_size, n_batch, result, result_stride);
+                                      int n_batch, int32_t* result) {
+  return PortableBatchVectorBatchVectorDotProduct(vector1, vector2, v_size,
+                                                  n_batch, result);
 }
 
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,

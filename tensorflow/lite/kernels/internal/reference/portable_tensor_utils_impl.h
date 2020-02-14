@@ -96,8 +96,7 @@ float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
 void PortableBatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                               const int16_t* vector2,
                                               int v_size, int n_batch,
-                                              int32_t* result,
-                                              int result_stride);
+                                              int32_t* result);
 
 void PortableVectorBatchVectorCwiseProductAccumulate(
     const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,

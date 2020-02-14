@@ -1615,7 +1615,7 @@ TEST(uKernels, BatchVectorBatchVectorDotProductTest) {
                                                -0.1, 0.1,  -0.1, 0.1,  -0.1};
   std::vector<float> output(kBatch);
   BatchVectorBatchVectorDotProduct(input1, input2, kVectorSize, kBatch,
-                                   output.data(), /*result_stride=*/1);
+                                   output.data());
   EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({0.5, 1.75})));
 }
 
@@ -1628,7 +1628,7 @@ TEST(uKernels, BatchVectorBatchVectorDotProductIntegerTest) {
                                                  -1, 1,  -1, 1,  1};
   std::vector<int32_t> output(kBatch);
   BatchVectorBatchVectorDotProduct(input1, input2, kVectorSize, kBatch,
-                                   output.data(), /*result_stride=*/1);
+                                   output.data());
   EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({40, 85})));
 }
 

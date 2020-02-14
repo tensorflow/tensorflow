@@ -506,13 +506,11 @@ inline int32_t VectorVectorDotProduct(const int16_t* vector1,
 void PortableBatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                               const int16_t* vector2,
                                               int v_size, int n_batch,
-                                              int32_t* result,
-                                              int result_stride) {
+                                              int32_t* result) {
   for (int b = 0; b < n_batch; b++) {
-    *result = VectorVectorDotProduct(vector1, vector2, v_size);
+    result[b] = VectorVectorDotProduct(vector1, vector2, v_size);
     vector1 += v_size;
     vector2 += v_size;
-    result += result_stride;
   }
 }
 

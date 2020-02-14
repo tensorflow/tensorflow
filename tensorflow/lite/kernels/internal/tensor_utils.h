@@ -359,29 +359,26 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
 //            y_2_1, y_2_2, ..., y_2_vsize,
 //            ...
 //            y_nbatch_1,..., y_nbatch_vsize]
-// Then result will be a vector of n_batch size which will be saved with a
-// stride of result_stride in memory starting from 'result':
+// Then result will be a vector of n_batch size starting from 'result':
 // [x_1_1 * y_1_1 + x_1_2 * y_1_2 + ... + x_1_vsize * y_1_vsize,
 //  x_2_1 * y_2_1 + x_2_2 * y_2_2 + ... + x_2_vsize * y_2_vsize,
 //  ...
 //  x_nbatch_1 * y_nbatch_1 + ... + x_nbatch_vsize * y_nbatch_vsize]
 template <typename T>
 inline void BatchVectorBatchVectorDotProduct(const T* vector1, const T* vector2,
-                                             int v_size, int n_batch, T* result,
-                                             int result_stride) {
+                                             int v_size, int n_batch,
+                                             T* result) {
   for (int b = 0; b < n_batch; b++) {
-    *result = VectorVectorDotProduct(vector1, vector2, v_size);
+    result[b] = VectorVectorDotProduct(vector1, vector2, v_size);
     vector1 += v_size;
     vector2 += v_size;
-    result += result_stride;
   }
 }
 
 // Same as above but input is 16bit and output is 32bit.
 void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       const int16_t* vector2, int v_size,
-                                      int n_batch, int32_t* result,
-                                      int result_stride);
+                                      int n_batch, int32_t* result);
 
 // Cwise product of a vector and a batch-vector.
 template <typename T>
