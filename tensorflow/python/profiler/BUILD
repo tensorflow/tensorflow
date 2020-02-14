@@ -26,8 +26,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:c_api_util",
-        "//tensorflow/python:pywrap_tf_session",
-        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
 

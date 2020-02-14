@@ -15,9 +15,12 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/memory/memory.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/rpc/client/capture_profile.h"
+#include "tensorflow/core/profiler/rpc/profiler_server.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
 namespace py = ::pybind11;
@@ -48,10 +51,43 @@ class ProfilerSessionWrapper {
 
 }  // namespace
 
-PYBIND11_MODULE(_pywrap_profiler_session, m) {
+PYBIND11_MODULE(_pywrap_profiler, m) {
   py::class_<ProfilerSessionWrapper> profiler_session_class(m,
                                                             "ProfilerSession");
   profiler_session_class.def(py::init<>())
       .def("start", &ProfilerSessionWrapper::Start)
       .def("stop", &ProfilerSessionWrapper::Stop);
+
+  m.def("start_profiler_server", [](int port) {
+    auto profiler_server = absl::make_unique<tensorflow::ProfilerServer>();
+    profiler_server->StartProfilerServer(port);
+    // Intentionally release profiler server. Should transfer ownership to
+    // caller instead.
+    profiler_server.release();
+  });
+
+  m.def("trace", [](const char* service_addr, const char* logdir,
+                    const char* worker_list, bool include_dataset_ops,
+                    int duration_ms, int num_tracing_attempts) {
+    tensorflow::Status status =
+        tensorflow::profiler::ValidateHostPortPair(service_addr);
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+    status = tensorflow::profiler::Trace(service_addr, logdir, worker_list,
+                                         include_dataset_ops, duration_ms,
+                                         num_tracing_attempts);
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+  });
+
+  m.def("monitor", [](const char* service_addr, int duration_ms,
+                      int monitoring_level, bool display_timestamp) {
+    tensorflow::Status status =
+        tensorflow::profiler::ValidateHostPortPair(service_addr);
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+    tensorflow::string content;
+    status = tensorflow::profiler::Monitor(service_addr, duration_ms,
+                                           monitoring_level, display_timestamp,
+                                           &content);
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+    return content;
+  });
 };
