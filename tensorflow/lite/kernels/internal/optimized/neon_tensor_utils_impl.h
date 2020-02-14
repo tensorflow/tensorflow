@@ -154,9 +154,6 @@ void NeonAsymmetricQuantizeFloats(const float* values, const int size,
                                   int8_t* quantized_values,
                                   float* scaling_factor, int32_t* offset);
 
-// Shift left a vector in place with v_size size.
-void NeonVectorShiftLeft(float* vector, int v_size, float shift_value);
-
 // Reduce-sum on a float input vector:
 // input_vector: float pointer to input vector.
 // output_vector: float pointer to vector.

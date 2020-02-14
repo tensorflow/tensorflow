@@ -962,7 +962,7 @@ class NameScopingTest(keras_parameterized.TestCase):
     self.assertEqual(sublayer.active_name_scope, 'MyName2/Sublayer')
 
   def test_name_scope_tf_tensor(self):
-    x = ops.convert_to_tensor(np.ones((10, 10)))
+    x = ops.convert_to_tensor_v2(np.ones((10, 10)))
     layer = keras.layers.Dense(
         10, activation=keras.layers.ReLU(name='MyAct'), name='MyName3')
     layer(x)

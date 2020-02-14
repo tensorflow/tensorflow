@@ -1,10 +1,9 @@
---------------------------------------------------------------------------------
-
-name: TensorFlow Lite Op Request about: Use this template for reporting ops you
-are using or missing. labels: 'comp:lite'
+---
+name: TensorFlow Lite Op Request
+about: Use this template for reporting Lite ops you are using or missing
+labels: 'comp:lite'
 
 ---
-
 
 **System information**
 - OS Platform and Distribution (e.g., Linux Ubuntu 16.04):

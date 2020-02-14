@@ -418,6 +418,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:net",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:types",
         "@com_google_googletest//:gtest",

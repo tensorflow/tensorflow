@@ -157,8 +157,8 @@ cc_library(
         ":lhlo",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:AllPassesAndDialects",  # TODO: only Linalg is needed
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgDialectRegistration",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -193,7 +193,7 @@ cc_library(
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
-        "@llvm-project//mlir:LinalgDialectRegistration",
+        "@llvm-project//mlir:AllPassesAndDialects",  # TODO: only Linalg is needed
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
@@ -359,8 +359,6 @@ cc_library(
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_inc_gen",
         ":xla_canonicalize_inc_gen",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core/platform:protobuf",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",

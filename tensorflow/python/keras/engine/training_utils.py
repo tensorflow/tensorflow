@@ -1010,8 +1010,8 @@ def standardize_weights(y,
           'an appropriate class weight could not be determined.')
       class_sample_weight = math_ops.cast(class_sample_weight, K.floatx())
       if sample_weight is not None:
-        sample_weight = math_ops.cast(ops.convert_to_tensor(sample_weight),
-                                      K.floatx())
+        sample_weight = math_ops.cast(
+            ops.convert_to_tensor_v2(sample_weight), K.floatx())
     else:
       y_classes = y
       if len(y.shape) == 2:
@@ -1357,7 +1357,7 @@ def check_steps_argument(input_data, steps, steps_name):
 
 def cast_single_tensor(x, dtype=None):
   if isinstance(x, np.ndarray):
-    x = ops.convert_to_tensor(x)
+    x = ops.convert_to_tensor_v2(x)
   dtype = dtype or K.floatx()
   if x.dtype.is_floating:
     return math_ops.cast(x, dtype=dtype)
@@ -1383,7 +1383,7 @@ def cast_if_floating_dtype_and_mismatch(targets, outputs):
   new_targets = []
   for target, out in zip(targets, outputs):
     if isinstance(target, np.ndarray):
-      target = ops.convert_to_tensor(target)
+      target = ops.convert_to_tensor_v2(target)
     if target.dtype != out.dtype:
       new_targets.append(cast_single_tensor(target, dtype=out.dtype))
     else:

@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/rpc/client/save_profile.h"
 
 namespace tensorflow {
 namespace profiler {

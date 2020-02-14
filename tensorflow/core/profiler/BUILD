@@ -43,7 +43,7 @@ tf_proto_library(
     cc_grpc_version = 1,
     protodeps = [
         ":profiler_service_monitor_result_proto",
-    ] + tf_additional_all_protos(),
+    ],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],
 )

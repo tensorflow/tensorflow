@@ -33,6 +33,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
@@ -775,22 +776,22 @@ class LSTMV2Test(keras_parameterized.TestCase):
       outputs_trimmed = lstm(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)
 
-  @test_util.run_deprecated_v1
   def test_v1_session_behavior(self):
-    # See b/139132348 for more details.
-    x = np.random.uniform(size=(100, 4, 8))
-    y = np.random.uniform(size=(100, 1))
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        (x, y)).shuffle(100).batch(32)
+    with ops.get_default_graph().as_default():
+      # See b/139132348 for more details.
+      x = np.random.uniform(size=(100, 4, 8))
+      y = np.random.uniform(size=(100, 1))
+      dataset = dataset_ops.Dataset.from_tensor_slices(
+          (x, y)).shuffle(100).batch(32)
 
-    inp = keras.layers.Input(shape=(4, 8))
-    layer = rnn.LSTM(1)(inp)
-    layer = keras.layers.Dense(1)(layer)
+      inp = keras.layers.Input(shape=(4, 8))
+      layer = rnn.LSTM(1)(inp)
+      layer = keras.layers.Dense(1)(layer)
 
-    model = keras.models.Model(inp, layer)
+      model = keras.models.Model(inp, layer)
 
-    model.compile(loss='mse', optimizer='sgd')
-    model.fit(dataset)
+      model.compile(loss='mse', optimizer='sgd')
+      model.fit(dataset)
 
 
 @keras_parameterized.run_all_keras_modes(config=_config)
