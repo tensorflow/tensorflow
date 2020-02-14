@@ -276,6 +276,7 @@ filegroup(
 
 filegroup(
     name = "mkl_util_test_srcs",
+    testonly = 1,
     srcs = [
         "mkl_util_test.cc",
     ],
