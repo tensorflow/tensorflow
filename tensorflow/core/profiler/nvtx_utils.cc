@@ -14,6 +14,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/nvtx_utils.h"
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -73,68 +77,34 @@ const NvtxDomain& GetNvtxTensorFlowCoreDomain() {
 }
 
 // A helper function to decide whether to enable CUDA NVTX profiling ranges.
+bool check_nvtx_envvar(const char* envvar_name){
+  bool is_enabled = false;
+  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(envvar_name,
+                                             /*default_val=*/false,
+                                             &is_enabled));
+  return is_enabled;
+}
+
 bool NvtxRangesEnabled() {
-  static bool is_enabled = [] {
-    bool _is_enabled = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_ENABLE_NVTX_RANGES",
-                                               /*default_val=*/false,
-                                               &_is_enabled));
-    return _is_enabled;
-  }();
+  static bool is_enabled = check_nvtx_envvar("TF_ENABLE_NVTX_RANGES");
   return is_enabled;
 }
 
 // A helper function to decide whether to enable CUDA NVTX profiling ranges
 // with detailed node information.
 bool NvtxRangesDetailedEnabled() {
-  static bool is_enabled = [] {
-    bool _is_enabled = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_ENABLE_NVTX_RANGES_DETAILED",
-                                               /*default_val=*/false,
-                                               &_is_enabled));
-    return _is_enabled;
-  }();
+  static bool is_enabled =  check_nvtx_envvar("TF_ENABLE_NVTX_RANGES_DETAILED");
   return is_enabled;
 }
 
 string DataTypeToNumpyString(DataType dtype) {
-  int dtype_i = static_cast<int>(dtype);
-  bool is_ref = false;
-  if (dtype_i > 100) {
-    is_ref = true;
-    dtype_i -= 100;
-  }
-  const char* ret = "unknown";
-  // clang-format off
-  switch(dtype) {
-    case DT_INVALID: ret = "unknown"; break;
-    case DT_FLOAT: ret = "float32"; break;
-    case DT_DOUBLE: ret = "float64"; break;
-    case DT_INT32: ret = "int32"; break;
-    case DT_UINT8: ret = "uint8"; break;
-    case DT_INT16: ret = "int16"; break;
-    case DT_INT8: ret = "int8"; break;
-    case DT_STRING: ret = "string"; break;
-    case DT_COMPLEX64: ret = "complex64"; break;
-    case DT_INT64: ret = "int64"; break;
-    case DT_BOOL: ret = "bool"; break;
-    case DT_QINT8: ret = "qint8"; break;       // Not an actual Numpy type
-    case DT_QUINT8: ret = "quint8"; break;     // Not an actual Numpy type
-    case DT_QINT32: ret = "qint32"; break;     // Not an actual Numpy type
-    case DT_BFLOAT16: ret = "bfloat32";break;  // Not an actual Numpy type
-    case DT_QINT16: ret = "qint16"; break;
-    case DT_QUINT16: ret = "quint16"; break;
-    case DT_UINT16: ret = "uint16"; break;
-    case DT_COMPLEX128: ret = "complex128"; break;
-    case DT_HALF: ret = "float16"; break;
-    case DT_RESOURCE: ret = "object"; break;
-    case DT_VARIANT: ret = "object"; break;
-    case DT_UINT32: ret = "uint32"; break;
-    case DT_UINT64: ret = "uint64"; break;
-    default: break;
-  }
-  // clang-format on
-  return is_ref ? strings::StrCat(ret, "&") : ret;
+  const bool is_ref = (static_cast<int>(dtype) > 100);
+
+  absl::string_view ret(DataType_Name(dtype).c_str());
+  absl::ConsumePrefix(&ret, "DT_");
+  ret = absl::AsciiStrToLower(ret);
+
+  return is_ref ? strings::StrCat(std::string(ret), "&") : std::string(ret);
 }
 
 // TODO(benbarsdell): This is a bit crude and hacky (and inefficient).
