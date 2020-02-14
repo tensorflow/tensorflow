@@ -125,8 +125,19 @@ string AttrValueToJson(const AttrValue& attr_value) {
       if (attr_value.shape().unknown_rank()) return "null";
       return PartialTensorShape::DebugString(attr_value.shape());
     }
-    case AttrValue::kTensor:
+    case AttrValue::kTensor: {
+      const TensorProto& tensor_proto = attr_value.tensor();
+      const TensorShapeProto& proto_shape = tensor_proto.tensor_shape();
+      if (!TensorShape::IsValid(proto_shape)) {
+        return strings::StrCat("\"", tensor_proto.ShortDebugString(), "\"");
+      }
+      TensorShape shape(proto_shape);
+      const int64 N = shape.num_elements();
+      if (N > 1024 * 128) {
+        return strings::StrCat("\"", tensor_proto.ShortDebugString(), "\"");
+      }
       return strings::StrCat("\"", SummarizeAttrValue(attr_value), "\"");
+    }
     case AttrValue::kList: {
       std::vector<string> pieces;
       if (attr_value.list().s_size() > 0) {
