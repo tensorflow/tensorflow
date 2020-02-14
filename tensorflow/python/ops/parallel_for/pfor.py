@@ -50,6 +50,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
@@ -3619,3 +3620,29 @@ def _convert_partitioned_call(pfor_input):
         wrap(call_output, func_output.is_stacked,
              func_output.is_sparse_stacked))
   return outputs
+
+
+# spectral_ops
+
+
+@RegisterPForWithArgs("FFT", gen_spectral_ops.fft)
+@RegisterPForWithArgs("FFT2D", gen_spectral_ops.fft2d)
+@RegisterPForWithArgs("FFT3D", gen_spectral_ops.fft3d)
+@RegisterPForWithArgs("IFFT", gen_spectral_ops.ifft)
+@RegisterPForWithArgs("IFFT2D", gen_spectral_ops.ifft2d)
+@RegisterPForWithArgs("IFFT3D", gen_spectral_ops.ifft3d)
+def _convert_fft(pfor_input, _, op_func):
+  return wrap(op_func(pfor_input.stacked_input(0)), True)
+
+
+@RegisterPForWithArgs("RFFT", gen_spectral_ops.rfft, "Tcomplex")
+@RegisterPForWithArgs("RFFT2D", gen_spectral_ops.rfft2d, "Tcomplex")
+@RegisterPForWithArgs("RFFT3D", gen_spectral_ops.rfft3d, "Tcomplex")
+@RegisterPForWithArgs("IRFFT", gen_spectral_ops.irfft, "Treal")
+@RegisterPForWithArgs("IRFFT2D", gen_spectral_ops.irfft2d, "Treal")
+@RegisterPForWithArgs("IRFFT3D", gen_spectral_ops.irfft3d, "Treal")
+def _convert_rfft(pfor_input, _, op_func, attr_name):
+  inp = pfor_input.stacked_input(0)
+  fft_length = pfor_input.unstacked_input(1)
+  attr = pfor_input.get_attr(attr_name)
+  return wrap(op_func(inp, fft_length, attr), True)
