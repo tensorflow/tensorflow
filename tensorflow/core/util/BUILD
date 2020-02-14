@@ -28,51 +28,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# Export all files for which we do not yet provide a dedicated build rule.
-# This avoids breading all the rules in tensorflow/core/BUILD.
-exports_files(
-    srcs = [
-        "activation_mode.h",
-        "batch_util.h",
-        "bcast.h",
-        "command_line_flags.h",
-        "debug_events_writer.h",
-        "device_name_utils.h",
-        "dump_graph.h",
-        "equal_graph_def.h",
-        "events_writer.h",
-        "example_proto_fast_parsing.h",
-        "example_proto_helper.h",
-        "gpu_kernel_helper.h",
-        "gpu_launch_config.h",
-        "guarded_philox_random.h",
-        "matmul_autotune.h",
-        "matmul_bcast.h",
-        "memmapped_file_system.h",
-        "memmapped_file_system_writer.h",
-        "mirror_pad_mode.h",
-        "mkl_util.h",
-        "permutation_input_iterator.h",
-        "permutation_output_iterator.h",
-        "port.h",
-        "reporter.h",
-        "saved_tensor_slice_util.h",
-        "stat_summarizer.h",
-        "stat_summarizer_options.h",
-        "stats_calculator.h",
-        "strided_slice_op.h",
-        "tensor_slice_reader.h",
-        "tensor_slice_reader_cache.h",
-        "tensor_slice_set.h",
-        "tensor_slice_writer.h",
-        "use_cudnn.h",
-        "util.h",
-        "work_sharder.h",
-        "xla_config_registry.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
 # List of exported proto source files.
 exports_files(
     srcs = [
