@@ -1379,6 +1379,7 @@ cc_library(
         full = [],
         lite = ["TENSORFLOW_LITE_PROTOS"],
     ) + if_chromiumos(["IS_MOBILE_PLATFORM"]) + tf_defines_nortti_if_lite_protos(),
+    linkopts = if_android(["-lz"]),
     tags = [
         "manual",
         "notap",
