@@ -1007,7 +1007,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       model.load_weights(fname)
 
   def test_no_graph_pollution(self):
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       graph = ops.Graph()
       with graph.as_default(), self.session(graph) as session:
         model = SubclassedModel()
