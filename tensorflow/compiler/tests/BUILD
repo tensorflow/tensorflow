@@ -292,6 +292,18 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "searchsorted_op_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["searchsorted_op_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "svd_op_test",
     size = "medium",
     srcs = ["svd_op_test.py"],
