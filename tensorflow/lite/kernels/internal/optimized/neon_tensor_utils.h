@@ -65,19 +65,17 @@ void MatrixBatchVectorMultiplyAccumulate(
 void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
-    float* __restrict__ result, int result_stride) {
+    float* __restrict__ result) {
   NEON_OR_PORTABLE(SparseMatrixBatchVectorMultiplyAccumulate, matrix, ledger,
-                   m_rows, m_cols, vector, n_batch, result, result_stride);
+                   m_rows, m_cols, vector, n_batch, result);
 }
 
 void SparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result,
-    int result_stride) {
+    const float* scaling_factors, int n_batch, float* __restrict__ result) {
   NEON_OR_PORTABLE(SparseMatrixBatchVectorMultiplyAccumulate, matrix, ledger,
-                   m_rows, m_cols, vectors, scaling_factors, n_batch, result,
-                   result_stride);
+                   m_rows, m_cols, vectors, scaling_factors, n_batch, result);
 }
 
 void MatrixBatchVectorMultiplyAccumulate(

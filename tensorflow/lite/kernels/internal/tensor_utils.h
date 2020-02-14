@@ -76,8 +76,7 @@ void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
 // sparse row format with block pattern 1x16 which consists of two arrays:
 //   1. A matrix array stores non-zero blocks of the matrix in row major.
 //   2. A ledger array stores nrows groups, one group per row. Each group starts
-//   with
-//      an integer representing the number of non-zero blocks for the
+//      with an integer representing the number of non-zero blocks for the
 //      corresponding row and follows with column indexes of the first element
 //      of each non-zero block.
 // This function assumes that
@@ -86,7 +85,7 @@ void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
 void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
-    float* __restrict__ result, int result_stride);
+    float* __restrict__ result);
 
 // Same as the function above, but for values quantized using symmetric
 // quantization (e.g. by calling SymmetricQuantizeFloats).
@@ -126,8 +125,7 @@ void MatrixBatchVectorMultiplyAccumulate(
 // sparse row format with block pattern 1x16 which consists of two arrays:
 //   1. A matrix array stores non-zero blocks of the matrix in row major.
 //   2. A ledger array stores nrows groups, one group per row. Each group starts
-//   with
-//      an integer representing the number of non-zero blocks for the
+//      with an integer representing the number of non-zero blocks for the
 //      corresponding row followed by column index of the first element of
 //      each non-zero block.
 // This function assumes that
@@ -137,7 +135,7 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, int result_stride);
+    float* __restrict__ result);
 
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
