@@ -60,10 +60,6 @@ def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
-def HLO_DimensionTensor : ShapedContainerType<
-    [Index], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
-    "a 1D tensor of dimensions">;
-
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
 def HLO_StaticShapeTensor : StaticShapeTensorOf<[
@@ -778,7 +774,7 @@ def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
       [NoSideEffect]>, BASE_HLO_DynamicBroadcastInDimOp {
   let arguments = (ins
     HLO_Tensor:$operand,
-    HLO_DimensionTensor:$output_dimensions,
+    HLO_BASE_DimensionTensor:$output_dimensions,
     BroadcastDimAttr:$broadcast_dimensions
   );
 
