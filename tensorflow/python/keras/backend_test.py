@@ -1956,10 +1956,9 @@ class BackendGraphTests(test.TestCase):
     output_values = f([None, None])
     self.assertEqual(output_values, [5., 6.])
 
-  @test_util.run_deprecated_v1
   def test_function_tf_feed_symbols(self):
     # Test Keras backend functions with TF tensor inputs.
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       # Test feeding a resource variable to `function`.
       x1 = keras.backend.placeholder(shape=())
       x2 = keras.backend.placeholder(shape=())
@@ -1990,14 +1989,13 @@ class BackendGraphTests(test.TestCase):
       outs = f([y5, y2, None])
       self.assertEqual(outs, [11., 2.])
 
-  @test_util.run_deprecated_v1
   def test_function_tf_fetches(self):
     # Additional operations can be passed to tf.compat.v1.Session().run() via
     # its `fetches` arguments. In contrast to `updates` argument of
     # keras.backend.function() these do not have control dependency on `outputs`
     # so they can run in parallel. Also they should not contribute to output of
     # keras.backend.function().
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       x = keras.backend.variable(0.)
       y = keras.backend.variable(0.)
       x_placeholder = keras.backend.placeholder(shape=())
@@ -2013,14 +2011,13 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(keras.backend.get_session().run(fetches=[x, y]),
                        [11., 5.])
 
-  @test_util.run_deprecated_v1
   def test_function_tf_feed_dict(self):
     # Additional substitutions can be passed to `tf.compat.v1.Session().run()`
     # via its `feed_dict` arguments. Note that the feed_dict is passed once in
     # the constructor but we can modify the values in the dictionary. Through
     # this feed_dict we can provide additional substitutions besides Keras
     # inputs.
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       x = keras.backend.variable(0.)
       y = keras.backend.variable(0.)
       x_placeholder = keras.backend.placeholder(shape=())
@@ -2046,9 +2043,8 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(keras.backend.get_session().run(fetches=[x, y]),
                        [30., 40.])
 
-  @test_util.run_deprecated_v1
   def test_function_tf_run_options_with_run_metadata(self):
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       x_placeholder = keras.backend.placeholder(shape=())
       y_placeholder = keras.backend.placeholder(shape=())
 
@@ -2072,7 +2068,6 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(output1, [30.])
       self.assertEqual(len(run_metadata.partition_graphs), 0)
 
-  @test_util.run_deprecated_v1
   def test_function_fetch_callbacks(self):
 
     class CallbackStub(object):
@@ -2085,7 +2080,7 @@ class BackendGraphTests(test.TestCase):
         self.times_called += 1
         self.callback_result = result
 
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       callback = CallbackStub()
       x_placeholder = keras.backend.placeholder(shape=())
       y_placeholder = keras.backend.placeholder(shape=())

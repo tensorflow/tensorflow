@@ -26,7 +26,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
@@ -166,9 +166,8 @@ class TestSequential(keras_parameterized.TestCase):
 
   # TODO(kaftan) This test fails w/ run_with_all_keras_modes. File ticket
   @parameterized.parameters((True,), (False,))
-  @tf_test_util.run_deprecated_v1
   def test_training_and_eval_methods_on_symbolic_tensors(self, deferred):
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
 
       def get_model():
         if deferred:
