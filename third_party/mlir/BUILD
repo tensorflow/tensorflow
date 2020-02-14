@@ -81,15 +81,14 @@ cc_library(
     ]),
     hdrs = glob([
         "include/mlir/Pass/*.h",
-    ]) + [
-        "include/mlir/Analysis/Verifier.h",
-    ],
+    ]),
     includes = ["include"],
     linkopts = [
         "-lm",
         "-lpthread",
     ],
     deps = [
+        ":Analysis",
         ":IR",
         ":Support",
         "@llvm-project//llvm:support",
@@ -1477,7 +1476,6 @@ cc_library(
         ":IR",
         ":InferTypeOpInterfaceIncGen",
         ":LoopOps",
-        ":Pass",
         ":StandardOps",
         ":Support",
         "@llvm-project//llvm:support",
