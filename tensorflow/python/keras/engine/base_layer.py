@@ -523,8 +523,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Check that either the only argument in the `__init__` is  `self`,
     # or that `get_config` has been overridden:
     if len(extra_args) > 1 and hasattr(self.get_config, '_is_default'):
-      raise NotImplementedError('Layers with arguments in `__init__` must '
-                                'override `get_config`.')
+      raise NotImplementedError('Layer %s has arguments in `__init__` and '
+                                'therefore must override `get_config`.' %
+                                self.__class__.__name__)
     return config
 
   @classmethod
@@ -570,24 +571,22 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # with the shape the Layer will be called on (these users will have to
       # implement `compute_output_shape` themselves).
       self._maybe_build(input_shape)
-      with context.graph_mode():
-        graph = func_graph.FuncGraph('graph')
-        with graph.as_default():
-          input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
-          def _make_placeholder_like(shape):
-            ph = backend.placeholder(shape=shape, dtype=self.dtype)
-            ph._keras_mask = None
-            return ph
-          inputs = nest.map_structure(_make_placeholder_like, input_shape)
-          try:
-            outputs = self(inputs, training=False)
-          except TypeError as e:
-            six.raise_from(
-                NotImplementedError(
-                    'We could not automatically infer the static shape of the '
-                    'layer\'s output. Please implement the '
-                    '`compute_output_shape` method on your layer (%s).' %
-                    self.__class__.__name__), e)
+      with func_graph.FuncGraph('graph').as_default():
+        input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
+        def _make_placeholder_like(shape):
+          ph = backend.placeholder(shape=shape, dtype=self.dtype)
+          ph._keras_mask = None
+          return ph
+        inputs = nest.map_structure(_make_placeholder_like, input_shape)
+        try:
+          outputs = self(inputs, training=False)
+        except TypeError as e:
+          six.raise_from(
+              NotImplementedError(
+                  'We could not automatically infer the static shape of the '
+                  'layer\'s output. Please implement the '
+                  '`compute_output_shape` method on your layer (%s).' %
+                  self.__class__.__name__), e)
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError
 

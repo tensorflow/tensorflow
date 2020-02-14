@@ -1063,8 +1063,9 @@ class LSTMPerformanceTest(test.Benchmark):
                  ' of normal LSTM, got {0:.2f}'.format(v2_vs_normal))
 
   def benchmark_performance_graph(self):
-    with context.graph_mode(), session_lib.Session(config=_config):
-      self._benchmark_performance_with_standard_cudnn_impl()
+    with ops.get_default_graph().as_default():
+      with session_lib.Session(config=_config):
+        self._benchmark_performance_with_standard_cudnn_impl()
 
   def benchmark_performance_eager(self):
     with context.eager_mode():

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 

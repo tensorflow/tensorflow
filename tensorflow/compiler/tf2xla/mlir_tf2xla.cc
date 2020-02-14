@@ -107,7 +107,7 @@ Status ConvertGraphDefToXlaViaMlir(GraphDef graph_def,
   TF_RETURN_IF_ERROR(PruneGraphDefInto(config, graph_def, &pruned_graph_def));
 
   GraphImportConfig specs;
-  specs.prune_unused_nodes = true;
+  specs.prune_unused_nodes = false;
   specs.convert_legacy_fed_inputs = false;
   specs.graph_as_function = false;
   specs.upgrade_legacy = false;

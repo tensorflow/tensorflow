@@ -39,6 +39,10 @@ tf_cc_test(
         "ops_history_v*/*.pbtxt",
         "ops_history.v*.pbtxt",
     ]),
+    tags = [
+        "no_oss",  # TODO(b/149575105): Reenable when fix lands.
+        "notap",  # TODO(b/149575105): Reenable when fix lands.
+    ],
     deps = [
         ":op_compatibility_lib",
         "//tensorflow/core:framework",

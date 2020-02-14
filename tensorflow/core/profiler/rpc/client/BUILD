@@ -12,7 +12,6 @@ cc_library(
         "//tensorflow:grpc++",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/profiler:profiler_analysis_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
         "@com_google_absl//absl/strings",

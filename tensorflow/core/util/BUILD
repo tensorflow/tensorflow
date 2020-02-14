@@ -259,6 +259,7 @@ filegroup(
 
 filegroup(
     name = "test_hdrs",
+    testonly = 1,
     srcs = [
         "reporter.h",
     ],
@@ -275,6 +276,7 @@ filegroup(
 
 filegroup(
     name = "mkl_util_test_srcs",
+    testonly = 1,
     srcs = [
         "mkl_util_test.cc",
     ],
@@ -283,6 +285,7 @@ filegroup(
 
 filegroup(
     name = "android_test_hdrs",
+    testonly = 1,
     srcs = [
         "reporter.h",
     ],
@@ -291,6 +294,7 @@ filegroup(
 
 filegroup(
     name = "android_test_srcs",
+    testonly = 1,
     srcs = [
         "reporter.cc",
         ":android_test_hdrs",

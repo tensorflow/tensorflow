@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/python/tools/compiled_model.h"
+#include "tensorflow/python/tools/aot_compiled_x_plus_y.h"
 
 namespace tensorflow {
 namespace {

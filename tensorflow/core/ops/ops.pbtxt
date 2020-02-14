@@ -52023,6 +52023,14 @@ op {
     name: "shape"
     type: "shape"
   }
+  attr {
+    name: "allowed_devices"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
   is_stateful: true
 }
 op {

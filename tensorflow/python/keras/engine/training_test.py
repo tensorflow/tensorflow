@@ -154,7 +154,7 @@ class CompileTest(keras_parameterized.TestCase):
     self.assertAllEqual(model._loss_weights_list, [1., 2.])
 
   def test_compile_with_multi_output_and_loss_weights_dict(self):
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       model = self._get_multi_output_model()
       loss_weights = {'dense_1': 1., 'dense_2': 2.}
       model.compile(optimizer='adam', loss='mse', loss_weights=loss_weights)
@@ -2142,7 +2142,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
 
   def test_sample_weight_tensor(self):
     """Tests that sample weight may be defined as a tensor in the graph."""
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       # Create a simple pass-through model
       input_layer = keras.layers.Input(shape=1, name='input_layer')
       model = keras.Model(inputs=input_layer, outputs=input_layer)

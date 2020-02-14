@@ -373,6 +373,8 @@ def _optimize_graph(meta_graph_def, signature_def):
   new_meta_graph_def.collection_def['train_op'].CopyFrom(fetch_collection)
 
   config = config_pb2.ConfigProto()
+  rewrite_options = config.graph_options.rewrite_options
+  rewrite_options.min_graph_nodes = -1  # do not skip small graphs
   return tf_optimizer.OptimizeGraph(config, new_meta_graph_def)
 
 

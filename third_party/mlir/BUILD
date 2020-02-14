@@ -81,15 +81,14 @@ cc_library(
     ]),
     hdrs = glob([
         "include/mlir/Pass/*.h",
-    ]) + [
-        "include/mlir/Analysis/Verifier.h",
-    ],
+    ]),
     includes = ["include"],
     linkopts = [
         "-lm",
         "-lpthread",
     ],
     deps = [
+        ":Analysis",
         ":IR",
         ":Support",
         "@llvm-project//llvm:support",
@@ -663,6 +662,26 @@ cc_library(
         ":Pass",
         ":ROCDLDialect",
         ":Transforms",
+    ],
+)
+
+cc_library(
+    name = "GPUToVulkanTransforms",
+    srcs = [
+        "lib/Conversion/GPUToVulkan/ConvertLaunchFuncToVulkanCalls.cpp",
+    ],
+    hdrs = ["include/mlir/Conversion/GPUToVulkan/ConvertGPUToVulkanPass.h"],
+    includes = ["include"],
+    deps = [
+        ":GPUDialect",
+        ":IR",
+        ":LLVMDialect",
+        ":Pass",
+        ":SPIRVDialect",
+        ":SPIRVSerialization",
+        ":StandardOps",
+        ":Support",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -1316,8 +1335,8 @@ cc_library(
         ":AffineToStandardTransforms",
         ":GPUDialect",
         ":IR",
-        ":LinalgTransforms",
         ":LoopOps",
+        ":Pass",
         ":StandardOps",
         ":Support",
         ":TransformUtils",
@@ -1457,7 +1476,6 @@ cc_library(
         ":IR",
         ":InferTypeOpInterfaceIncGen",
         ":LoopOps",
-        ":Pass",
         ":StandardOps",
         ":Support",
         "@llvm-project//llvm:support",
@@ -1718,6 +1736,7 @@ cc_library(
         ":GPUToNVVMTransforms",
         ":GPUToROCDLTransforms",
         ":GPUToSPIRVTransforms",
+        ":GPUToVulkanTransforms",
         ":GPUTransforms",
         ":IR",
         ":LLVMDialect",

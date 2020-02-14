@@ -2,7 +2,7 @@
 #   Tools for manipulating TensorFlow graphs.
 
 load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
-load("//tensorflow/compiler/aot:tfcompile.bzl", "target_llvm_triple")
+load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -362,46 +362,15 @@ py_test(
     ],
 )
 
-genrule(
-    name = "aot_compiled_x_plus_y_gen",
-    srcs = [
-        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
-        "//tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo/saved_model.pb",
-    ],
-    outs = [
-        "compiled_model.h",
-        "compiled_model.o",
-        "compiled_model_metadata.o",
-        "compiled_model_makefile.inc",
-    ],
-    cmd = (
-        "$(location :saved_model_cli) aot_compile_cpu " +
-        "--dir \"$$(dirname $(location //tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo/saved_model.pb))\" " +
-        "--output_prefix $(@D)/compiled_model " +
-        "--cpp_class CompiledModel " +
-        "--target_triple " + target_llvm_triple() +
-        " --tag_set serve "
-    ),
-    tags = ["no_rocm"],
-    tools = [
-        ":saved_model_cli",
-    ],
-)
-
-cc_library(
+saved_model_compile_aot(
     name = "aot_compiled_x_plus_y",
-    srcs = if_xla_available([
-        ":compiled_model.o",
-        ":compiled_model_metadata.o",
-    ]),
-    hdrs = if_xla_available([
-        ":compiled_model.h",
-    ]),
+    cpp_class = "CompiledModel",
+    directory = "//tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo",
+    filegroups = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    force_without_xla_support_flag = False,
     tags = ["no_rocm"],
-    deps = if_xla_available([
-        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
-        "//tensorflow/core/platform:types",
-    ]),
 )
 
 tf_cc_test(

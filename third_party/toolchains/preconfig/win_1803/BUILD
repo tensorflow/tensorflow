@@ -15,7 +15,7 @@ platform(
         "@bazel_tools//platforms:windows",
     ],
     exec_properties = {
-        "container-image": "docker://gcr.io/tensorflow-testing/tf-win-rbe@sha256:484be79f239e9d2eac7c388d7717b8f6f57affaf76d83609a2c70821b34ceefb",
+        "container-image": "docker://gcr.io/tensorflow-testing/tf-win-rbe@sha256:f109576c7c0c8a1783ff22b666e8923b52dbbe7933f69a1c7a7275202c304a12",
         "OSFamily": "Windows",
     },
 )

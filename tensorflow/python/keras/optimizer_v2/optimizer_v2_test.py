@@ -607,7 +607,7 @@ class OptimizerTest(test.TestCase):
     self.assertLen(var_list(), 4)
 
   def testVarKey(self):
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       a = variables.Variable([1., 2.], name='var')
       b = variables.Variable([1.], name='var')
       self.assertTrue(a._in_graph_mode)
@@ -618,7 +618,7 @@ class OptimizerTest(test.TestCase):
       self.assertEqual('var_1', var_key)
 
   def testVarName(self):
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       var = variables.Variable([1., 2.], name='var')
       loss = var + 1.
       opt = adam.Adam()

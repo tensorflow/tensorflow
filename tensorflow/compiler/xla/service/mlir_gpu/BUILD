@@ -183,15 +183,11 @@ cc_library(
     testonly = True,
     srcs = if_cuda_is_configured(["mlir_irgen_test_base.cc"]),
     hdrs = if_cuda_is_configured(["mlir_irgen_test_base.h"]),
-    deps = if_cuda_is_configured([
+    deps = [
         ":emission_context",
         ":failover_compiler",
         ":inject_errors_pass",
         ":mlir_compiler",
-        "@com_google_absl//absl/memory",
-        "//third_party/llvm/llvm-project/llvm:support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/tests:codegen_test_base",
@@ -199,5 +195,9 @@ cc_library(
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:test",
-    ]),
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
 )
