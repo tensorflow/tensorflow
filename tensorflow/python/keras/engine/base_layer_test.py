@@ -535,7 +535,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
     # `__init__` includes kwargs but `get_config` is not overridden, so
     # an error should be thrown:
-    with self.assertRaises(NotImplementedError):
+    with self.assertRaisesRegexp(NotImplementedError, 'Layer MyLayer has'):
       MyLayer('custom').get_config()
 
     class MyLayerNew(keras.layers.Layer):

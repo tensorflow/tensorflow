@@ -523,8 +523,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Check that either the only argument in the `__init__` is  `self`,
     # or that `get_config` has been overridden:
     if len(extra_args) > 1 and hasattr(self.get_config, '_is_default'):
-      raise NotImplementedError('Layers with arguments in `__init__` must '
-                                'override `get_config`.')
+      raise NotImplementedError('Layer %s has arguments in `__init__` and '
+                                'therefore must override `get_config`.' %
+                                self.__class__.__name__)
     return config
 
   @classmethod
