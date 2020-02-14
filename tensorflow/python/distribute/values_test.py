@@ -38,7 +38,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -71,22 +70,6 @@ class DistributedValuesTest(test.TestCase):
       self.assertEqual(one, v._get())
       with distribute_lib.ReplicaContext(None, 1):
         self.assertEqual(two, v._get())
-
-  def testIsTensorLike(self):
-    with context.graph_mode(), ops.Graph().as_default():
-      one = constant_op.constant(1)
-      two = constant_op.constant(2)
-      v = values.DistributedValues((one, two))
-      self.assertTrue(v.is_tensor_like)
-      self.assertTrue(tensor_util.is_tensor(v))
-
-  def testIsTensorLikeWithAConstant(self):
-    with context.graph_mode(), ops.Graph().as_default():
-      one = constant_op.constant(1)
-      two = 2.0
-      v = values.DistributedValues((one, two))
-      self.assertFalse(v.is_tensor_like)
-      self.assertFalse(tensor_util.is_tensor(v))
 
 
 class DistributedDelegateTest(test.TestCase):
@@ -1409,7 +1392,7 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
     vals = (constant_op.constant(1.), constant_op.constant([5., 6.0]),)
     per_replica = values.PerReplica(vals)
 
-    # Note: nest.map_structutre exercises nest.flatten and
+    # Note: nest.map_structure exercises nest.flatten and
     # nest.pack_sequence_as.
     result = nest.map_structure(
         lambda t: t + 10, per_replica, expand_composites=True)

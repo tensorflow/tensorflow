@@ -38,6 +38,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -145,11 +146,16 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
   if grad_fn is None:
     return [None] * num_inputs
 
-  if forward_pass_name_scope:
-    gradient_name_scope = "gradients/" + forward_pass_name_scope
+  # This does not work with v1 TensorArrays.
+  if ops.executing_eagerly_outside_functions(
+  ) or control_flow_util.EnableControlFlowV2(ops.get_default_graph()):
+    if forward_pass_name_scope:
+      gradient_name_scope = "gradient_tape/" + forward_pass_name_scope + "/"
+    else:
+      gradient_name_scope = "gradient_tape/"
+    with ops.name_scope(gradient_name_scope):
+      return grad_fn(mock_op, *out_grads)
   else:
-    gradient_name_scope = "gradients"
-  with ops.name_scope(gradient_name_scope):
     return grad_fn(mock_op, *out_grads)
 
 

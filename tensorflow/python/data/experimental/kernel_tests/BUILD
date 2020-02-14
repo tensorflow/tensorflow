@@ -476,6 +476,7 @@ tf_py_test(
     name = "parse_example_dataset_test",
     size = "small",
     srcs = ["parse_example_dataset_test.py"],
+    shard_count = 4,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",

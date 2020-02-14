@@ -1699,7 +1699,7 @@ class BaseStagingArea(object):
 
     Returns:
       A (tensors, indices) tuple where `tensors` is a list of `Tensor` objects
-      and `indices` is a list of indices associed with the tensors.
+      and `indices` is a list of indices associated with the tensors.
 
     Raises:
       ValueError: If `vals` or `indices` is invalid.

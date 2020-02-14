@@ -59,7 +59,7 @@ def _ConcatGradHelper(op, grad, start_value_index, end_value_index, dim_index):
       each output of the op.
     start_value_index: An integer index of the first value in the op.inputs.
     end_value_index: An integer index of the last value in the op.inputs.
-    dim_index: An interger index of concat_dim or axis parameter in op.inputs.
+    dim_index: An integer index of concat_dim or axis parameter in op.inputs.
 
   Returns:
     Tensors representing the partial gradients with respect to each input
@@ -651,7 +651,7 @@ def _GatherV2Grad(op, grad):
     params_grad = ops.IndexedSlices(values, indices, params_shape)
   else:
     # Handle axis by transposing the axis dimension to be the first non-batch
-    # dimension, compute the gradiend and transpose the result back.
+    # dimension, compute the gradient and transpose the result back.
     outer_shape = params_shape[:axis]
     inner_shape = params_shape[axis:][1:]
     values_shape = array_ops.concat([outer_shape, [-1], inner_shape], 0)
@@ -1135,7 +1135,7 @@ def _BroadcastToGrad(op, grad):
   input_value = op.inputs[0]
   broadcast_shape = op.inputs[1]
   input_value_shape = array_ops.shape(input_value)
-  if not context.executing_eagerly():
+  if not isinstance(broadcast_shape, ops.EagerTensor):
     broadcast_shape_static = tensor_shape.TensorShape(
         pywrap_tf_session.TF_TryEvaluateConstant_wrapper(
             broadcast_shape.graph._c_graph, broadcast_shape._as_tf_output()))  # pylint: disable=protected-access

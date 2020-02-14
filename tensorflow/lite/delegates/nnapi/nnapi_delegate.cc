@@ -2253,17 +2253,8 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinDepthToSpace: {
       const TfLiteType input_type =
           context->tensors[node->inputs->data[0]].type;
-      if (version <= 1 &&
-          (input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
-           input_type == kTfLiteInt8)) {
-        return [](const NNAPIOpMappingArgs& mapping_args)
-                   -> ANeuralNetworksOperationType {
-          auto builtin = reinterpret_cast<TfLiteDepthToSpaceParams*>(
-              mapping_args.node->builtin_data);
-          mapping_args.builder->AddScalarInt32Operand(builtin->block_size);
-          return ANEURALNETWORKS_DEPTH_TO_SPACE;
-        };
-      }
+      EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteUInt8,
+                           kTfLiteInt8);
     } break;
     case kTfLiteBuiltinReduceProd:
     case kTfLiteBuiltinSum: {
@@ -2806,10 +2797,12 @@ TfLiteStatus NNAPIDelegateKernel::Map(
         // Configuring the copy from the activation, state outputs
         // to their associated inputs
         mapping_args.feedback_loops->push_back(std::make_tuple(
-            0 /*kOutputActivation*/, 1 /*kInputPrevActivation*/));
+            mapping_args.node->outputs->data[0 /*kOutputActivation*/],
+            mapping_args.node->inputs->data[1 /*kInputPrevActivation*/]));
 
-        mapping_args.feedback_loops->push_back(
-            std::make_tuple(1 /*kOutputState*/, 4 /*kInputPrevState*/));
+        mapping_args.feedback_loops->push_back(std::make_tuple(
+            mapping_args.node->outputs->data[1 /*kOutputState*/],
+            mapping_args.node->inputs->data[4 /*kInputPrevState*/]));
 
         // OUTPUTS
         // Setting only the first two since the remaining ones are
@@ -2818,9 +2811,7 @@ TfLiteStatus NNAPIDelegateKernel::Map(
             mapping_args.node->outputs->data[1 /* kOutputState */], 0);
 
         mapping_args.builder->AddTensorOutput(
-            mapping_args.node->outputs
-                ->data[0 /* kOutputkOutputActivationState */],
-            0);
+            mapping_args.node->outputs->data[0 /* kOutputActivation */], 0);
 
         *nn_op_type = ANEURALNETWORKS_QUANTIZED_16BIT_LSTM;
       } else {
@@ -3008,6 +2999,12 @@ TfLiteStatus NNAPIDelegateKernel::Map(
           mapping_args.node->builtin_data);
       mapping_args.builder->AddScalarBoolOperand(builtin->keep_dims);
       *nn_op_type = ANEURALNETWORKS_REDUCE_MAX;
+    } break;
+    case kTfLiteBuiltinDepthToSpace: {
+      auto builtin = reinterpret_cast<TfLiteDepthToSpaceParams*>(
+          mapping_args.node->builtin_data);
+      mapping_args.builder->AddScalarInt32Operand(builtin->block_size);
+      *nn_op_type = ANEURALNETWORKS_DEPTH_TO_SPACE;
     } break;
     case kTfLiteBuiltinReduceProd: {
       auto builtin = reinterpret_cast<TfLiteReducerParams*>(
@@ -3392,12 +3389,10 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
     int output_tensor_idx;
     int input_tensor_idx;
     std::tie(output_tensor_idx, input_tensor_idx) = feedback_loop;
-    TfLiteTensor* src =
-        &context->tensors[node->outputs->data[output_tensor_idx]];
-    TfLiteTensor* dest =
-        &context->tensors[node->inputs->data[input_tensor_idx]];
+    TfLiteTensor& src = context->tensors[output_tensor_idx];
+    TfLiteTensor& dest = context->tensors[input_tensor_idx];
 
-    memcpy(dest->data.raw, src->data.raw, src->bytes);
+    memcpy(dest.data.raw, src.data.raw, src.bytes);
   }
 
   return kTfLiteOk;
@@ -3677,11 +3672,11 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
     // Get op type and operands
     // Fails if the Validate function failed
     int nn_op_type;
-    TF_LITE_ENSURE_STATUS(Map(context, reg->builtin_code, reg->version,
-                              target_sdk_version,
-                              {context, &builder, node, &model_state_outputs_,
-                               &model_state_tfl_inputs_, &feedback_loops_},
-                              &nn_op_type));
+    TF_LITE_ENSURE_STATUS(
+        Map(context, reg->builtin_code, reg->version, target_sdk_version,
+            {context, &builder, node, &model_state_outputs_,
+             &model_state_tfl_inputs_, &feedback_loops_, nnapi_errno},
+            &nn_op_type));
 
     // Map outputs to NN API tensor indices.
     int output_tensor_flags = 0;

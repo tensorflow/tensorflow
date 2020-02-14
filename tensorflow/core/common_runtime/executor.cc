@@ -661,7 +661,6 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     if (!s.ok()) {
       item->kernel = nullptr;
       s = AttachDef(s, *n);
-      LOG(ERROR) << "Executor failed to create kernel. " << s;
       return s;
     }
     CHECK(item->kernel);
@@ -1899,7 +1898,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         };
         nodestats::SetOpStart(stats);
         {
-          profiler::TraceMe activity(
+          profiler::AnnotatedTraceMe activity(
               [&] {
                 return op_kernel->TraceString(
                     &state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());

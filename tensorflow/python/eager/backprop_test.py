@@ -1515,7 +1515,9 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
   def testNameScope(self):
     def fn(x):
       with ops.name_scope('my_scope'):
-        return math_ops.cos(x)
+        a = math_ops.cos(x)
+        b = math_ops.cos(x)
+        return math_ops.add(a, b)
 
     @function.defun
     def grad_fn(x):
@@ -1523,12 +1525,12 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
     grad_ops = grad_fn.get_concrete_function(
         constant_op.constant(1.0)).graph.get_operations()
-    found_sin = False
+    num_sin_ops_found = 0
     for op in grad_ops:
       if op.type == 'Sin':
-        found_sin = True
-        self.assertIn('gradients/my_scope', op.name)
-    self.assertEqual(found_sin, True)
+        num_sin_ops_found += 1
+        self.assertIn('gradient_tape/my_scope/', op.name)
+    self.assertEqual(num_sin_ops_found, 2)
 
 
 class JacobianTest(test.TestCase):

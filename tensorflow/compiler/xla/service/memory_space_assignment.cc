@@ -411,9 +411,8 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
                         : "alt");
         allocation_sequence->push_back(
             absl::make_unique<MemorySpaceAssignment::Allocation>(
-                value->defining_instruction(), value->defining_position(),
-                aliased_allocation->memory_space(), aliased_allocation->chunk(),
-                definition_time, definition_time));
+                value->defining_position(), aliased_allocation->memory_space(),
+                aliased_allocation->chunk(), definition_time, definition_time));
       }
 
       // Iterate over the uses.
@@ -661,14 +660,6 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     int64 latest_prefetch_time, HloPosition defining_position, HloUse use,
     const HloValue* buffer, int64 size,
     MemorySpaceAssignment::AllocationSequence* allocations) {
-  HloInstruction* operand =
-      use.instruction->mutable_operand(use.operand_number);
-  // If the operand is a bitcast, we look at bitcast's operand until we find a
-  // non-bitcast operand.
-  HloInstruction* non_bitcast_operand = operand;
-  while (non_bitcast_operand->opcode() == HloOpcode::kBitcast) {
-    non_bitcast_operand = non_bitcast_operand->mutable_operand(0);
-  }
   // Create an alternate memory interval that starts at the earliest
   // possible position, given by max_prefetch_interval.
   BufferInterval alternate_mem_interval;
@@ -692,12 +683,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
           << ") latest prefetch = " << latest_prefetch_time
           << " last use = " << last_use_time << " use = " << use.ToString()
           << ". Size = " << size
-          << ", def pos = " << defining_position.ToString()
-          << ", operand = " << operand->ToShortString()
-          << (non_bitcast_operand != operand
-                  ? ", non_bitcast_operand = " +
-                        non_bitcast_operand->ToShortString()
-                  : "");
+          << ", def pos = " << defining_position.ToString();
   CHECK_LE(start_time, end_time);
 
   // There could be a requirement to pin this buffer to default memory either
@@ -712,7 +698,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   if (!in_default_mem_at_start && !in_default_mem_at_end &&
       TryAllocatingInAlternateMemoryNoCopy(
           start_time, end_time, last_use_time, defining_position, use,
-          alternate_mem_interval, non_bitcast_operand, allocations)) {
+          alternate_mem_interval, allocations)) {
     return true;
   }
 
@@ -737,7 +723,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
 
     int64 preferred_eviction_end_time = std::max(
         options_.prefetch_interval_picker->PreferredEvictionEndTime(
-            non_bitcast_operand->shape(), eviction_start_time, end_time),
+            buffer->instruction()->shape(), eviction_start_time, end_time),
         eviction_end_time);
 
     BufferInterval eviction_mem_interval;
@@ -815,8 +801,8 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     prev_allocation_in_default_mem_it = allocations->rbegin();
   } else if (prev_allocation_in_default_mem_it == allocations->rend()) {
     allocations->push_back(absl::make_unique<MemorySpaceAssignment::Allocation>(
-        non_bitcast_operand, defining_position, MemorySpace::kDefault,
-        kDummyChunk, start_time, end_time));
+        defining_position, MemorySpace::kDefault, kDummyChunk, start_time,
+        end_time));
     prev_allocation_in_default_mem_it = allocations->rbegin();
   }
 
@@ -960,7 +946,7 @@ bool AlternateMemoryBestFitHeap::ViolatesAsyncCopyOrdering(
 bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
     int64 start_time, int64 end_time, int64 last_use_time,
     HloPosition defining_position, HloUse use,
-    BufferInterval alternate_mem_interval, HloInstruction* non_bitcast_operand,
+    BufferInterval alternate_mem_interval,
     MemorySpaceAssignment::AllocationSequence* allocations) {
   MemorySpaceAssignment::Allocation* prev_allocation = nullptr;
   bool can_eliminate_copy = false;
@@ -982,7 +968,7 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
   }
 
   if (!options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
-          non_bitcast_operand->shape(), start_time + 1, end_time)) {
+          defining_position.instruction->shape(), start_time + 1, end_time)) {
     return false;
   }
 
@@ -1031,7 +1017,8 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
             << ", heap_size = " << chunk_candidate->heap_size
             << ", prefetch picker = "
             << options_.prefetch_interval_picker->ToNoCopyDebugString(
-                   non_bitcast_operand->shape(), start_time, end_time);
+                   defining_position.instruction->shape(), start_time,
+                   end_time);
     AddToPendingChunks(alternate_mem_interval, *chunk_candidate);
 
     // If there was a previous allocation, the buffer location is the
@@ -1043,7 +1030,7 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
     } else {
       allocations->push_back(
           absl::make_unique<MemorySpaceAssignment::Allocation>(
-              non_bitcast_operand, defining_position, MemorySpace::kAlternate,
+              defining_position, MemorySpace::kAlternate,
               chunk_candidate->chunk, start_time, end_time));
     }
     allocations->back()->AddUse(use);
@@ -1320,11 +1307,8 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
       HloOpcode::kCopyStart, producing_instruction));
   copy_done_ = computation->AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
-  // Update the allocation with the copy done instruction so that if there
-  // are further copies from it, it can find the correct instruction.
-  instruction_ = copy_done_;
-
-  // Also update the defining position.
+  // Update the allocation position with the copy done instruction so that if
+  // there are further copies from it, it can find the correct position.
   defining_position_ = HloPosition{copy_done_, {}};
 
   // Replace all the uses with the new copy instruction.
@@ -1362,10 +1346,8 @@ Status MemorySpaceAssignment::Process() {
     for (auto& allocation : value_and_sequence.sequence) {
       TF_RETURN_IF_ERROR(allocation->Process(this));
       // Add the offset and size of the allocation in the alternate memory to
-      // the output map. Special case for bitcast: since bitcast doesn't define
-      // its own buffer, that shouldn't be exported as a preset chunk.
-      if (allocation->memory_space() == MemorySpace::kAlternate &&
-          allocation->instruction()->opcode() != HloOpcode::kBitcast) {
+      // the output map.
+      if (allocation->memory_space() == MemorySpace::kAlternate) {
         preset_assignments_->add_chunk(allocation->defining_position(),
                                        allocation->chunk());
         alternate_memory_size =
@@ -1551,7 +1533,7 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
           copy_allocation->copy_start_schedule_after();
       // Accessing flattened_instructions_ here without checking if it is
       // nullptr is safe because this method is called before SimplifyGraph.
-      while (copy_allocation->instruction()->parent() !=
+      while (copy_allocation->defining_position().instruction->parent() !=
              flattened_instructions_[copy_start_schedule_after]->parent()) {
         VLOG(4) << "Delaying CopyStart (" << copy_start_schedule_after << " to "
                 << (copy_start_schedule_after + 1) << ") for "

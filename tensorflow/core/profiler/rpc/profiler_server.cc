@@ -27,20 +27,22 @@ limitations under the License.
 
 namespace tensorflow {
 
-std::unique_ptr<Thread> StartProfilerServer(int32 port) {
-  Env* env = Env::Default();
-  return WrapUnique(env->StartThread({}, "profiler server", [port]() {
-    string server_address = absl::StrCat("0.0.0.0:", port);
-    std::unique_ptr<grpc::ProfilerService::Service> service =
-        CreateProfilerService();
-    ::grpc::ServerBuilder builder;
-    builder.AddListeningPort(server_address,
-                             ::grpc::InsecureServerCredentials());
-    builder.RegisterService(service.get());
-    std::unique_ptr<::grpc::Server> server(builder.BuildAndStart());
-    LOG(INFO) << "Profiling Server listening on " << server_address;
-    server->Wait();
-  }));
+void ProfilerServer::StartProfilerServer(int32 port) {
+  string server_address = absl::StrCat("0.0.0.0:", port);
+  std::unique_ptr<grpc::ProfilerService::Service> service =
+      CreateProfilerService();
+  ::grpc::ServerBuilder builder;
+  builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials());
+  builder.RegisterService(service.get());
+  server_ = builder.BuildAndStart();
+  LOG(INFO) << "Profiling Server listening on " << server_address;
+}
+
+ProfilerServer::~ProfilerServer() {
+  if (server_) {
+    server_->Shutdown();
+    server_->Wait();
+  }
 }
 
 }  // namespace tensorflow

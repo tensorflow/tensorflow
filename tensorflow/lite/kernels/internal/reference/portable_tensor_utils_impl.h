@@ -169,9 +169,6 @@ void PortableVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
 void PortableClipVector(const float* vector, int v_size, float abs_limit,
                         float* result);
 
-// Shift left a vector in place with v_size size.
-void PortableVectorShiftLeft(float* vector, int v_size, float shift_value);
-
 // Reduce-sum on a float input vector:
 // input_vector: float pointer to input vector.
 // output_vector: float pointer to vector.

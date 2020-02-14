@@ -658,7 +658,7 @@ class DebugIdentityV2OpTest(dumping_callback_test_lib.DumpingCallbackTestBase):
               tensor_id=x._id,
               output_dtype=dtypes.float64)), x._id
 
-    # Assert the same op is returns a consistant value
+    # Assert the same op is returns a consistent value
     x = np.zeros([100, 100], dtype=np.float16)
     x[32, 47] = np.nan
     x[0:4, 3] = np.inf

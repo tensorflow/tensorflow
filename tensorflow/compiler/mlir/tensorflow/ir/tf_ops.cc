@@ -1549,13 +1549,14 @@ static LogicalResult Verify(ParseExampleV2Op op) {
 template <class OpClass>
 static LogicalResult VerifyPartitionedCall(OpClass op) {
   auto module = op.template getParentOfType<ModuleOp>();
-  FlatSymbolRefAttr func = op.getAttr("f").template cast<FlatSymbolRefAttr>();
+  SymbolRefAttr func = op.getAttr("f").template cast<SymbolRefAttr>();
 
-  auto function = module.template lookupSymbol<FuncOp>(func.getValue());
+  auto function =
+      dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
 
   if (!function) {
     return op.emitError("'f' attribute refers to an undefined function: ")
-           << func.getValue();
+           << func;
   }
 
   FunctionType function_ty = function.getType();
@@ -1564,8 +1565,8 @@ static LogicalResult VerifyPartitionedCall(OpClass op) {
 
   if (arg_count != func_arg_count) {
     return op.emitError() << "argument count mismatch: 'args' has " << arg_count
-                          << " arguments, but '" << func.getValue()
-                          << "' expects " << func_arg_count;
+                          << " arguments, but '" << func << "' expects "
+                          << func_arg_count;
   }
 
   return success();
@@ -2355,15 +2356,23 @@ static LogicalResult BuildDenseSliceSpec(const SparseSliceSpec &sparse,
   dense->end_mask = 0;
   dense->shrink_axis_mask = 0;
 
+  // Count number of new_axis after ellipsis. This helps in calculating the
+  // number of dimensions ellipsis represents in the sparse spec.
+  bool ellipsis_seen = false;
+  int num_new_axis_after_ellipsis = 0;
+  for (int sparse_index = 0; sparse_index < sparse.dims; ++sparse_index) {
+    if (ellipsis_seen && IsSet(sparse.new_axis_mask, sparse_index))
+      num_new_axis_after_ellipsis++;
+    if (IsSet(sparse.ellipsis_mask, sparse_index)) ellipsis_seen = true;
+  }
+
   int dense_index = 0;
   for (int sparse_index = 0; sparse_index < sparse.dims; ++sparse_index) {
-    if (IsSet(sparse.new_axis_mask, sparse_index)) {
-      // TODO(b/146512589): Add support for new_axis_mask.
-      continue;
-    }
+    if (IsSet(sparse.new_axis_mask, sparse_index)) continue;
     if (IsSet(sparse.ellipsis_mask, sparse_index)) {
-      auto next_index =
-          std::min(dense->dims - (sparse.dims - sparse_index) + 1, dense->dims);
+      auto next_index = std::min(dense->dims - (sparse.dims - sparse_index) +
+                                     1 + num_new_axis_after_ellipsis,
+                                 dense->dims);
       // Expand ellipsis into the appropriate dense indices. From current index
       // until next_index, all dimensions would have begin and end masks set and
       // stride 1, i.e., get all elements in those dimensions.
@@ -2460,8 +2469,6 @@ static void CalculateSlicedShapeAndBoundRanges(
 bool StridedSliceOp::GetSlicedBoundRanges(
     SmallVectorImpl<int64_t> *begin_indices,
     SmallVectorImpl<int64_t> *end_indices, SmallVectorImpl<int64_t> *strides) {
-  if (this->new_axis_mask().getZExtValue())
-    return false;  // TODO(b/146512589): support these masks
   // TODO(hinsu): Support lowering for ops with dynamic begin and end values
   // when it is possible to derive indices based on mask attributes.
   DenseIntElementsAttr sparse_begin_attr, sparse_end_attr, sparse_strides_attr;

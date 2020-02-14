@@ -430,7 +430,7 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
     self.assertIn("one_over_x = 1.0 / x", message)
 
   @test_util.run_in_graph_and_eager_modes
-  def testInfInCustomKerasLayerWithoutTfFuntionPredictCall(self):
+  def testInfInCustomKerasLayerWithoutTfFunctionPredictCall(self):
     """Test catching Infinity in a custom layer, w/o tf.function."""
     check_numerics_callback.enable_check_numerics()
 
@@ -483,7 +483,7 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
     check_numerics_callback.enable_check_numerics()
 
     def generate_nan(x):
-      """Intetionally generates NaNs by taking log of negative number."""
+      """Intentionally generates NaNs by taking log of negative number."""
       casted_x = math_ops.cast(x, dtypes.float32)
       return math_ops.log([[-1.0, 1.0], [3.0, 5.0]]) + casted_x
 
@@ -503,7 +503,7 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
         message)
 
   @test_util.run_in_graph_and_eager_modes
-  def testCustomGradietWithNaNWithTfFunction(self):
+  def testCustomGradientWithNaNWithTfFunction(self):
     """Test that callback catches NaN in a gradient function during backprop."""
     check_numerics_callback.enable_check_numerics()
 

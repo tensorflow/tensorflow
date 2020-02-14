@@ -467,7 +467,7 @@ def find_lib(repository_ctx, paths, check_soname = True):
             if not any([soname == path.basename for soname in sonames]):
                 mismatches.append(str(path))
                 continue
-        return path
+        return str(path)
     if mismatches:
         auto_configure_fail(
             "None of the libraries match their SONAME: " + ", ".join(mismatches),
@@ -843,6 +843,22 @@ def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
 def _tpl_path(repository_ctx, filename):
     return repository_ctx.path(Label("//third_party/gpus/%s.tpl" % filename))
 
+def _basename(repository_ctx, path_str):
+    """Returns the basename of a path of type string.
+
+    This method is different from path.basename in that it also works if
+    the host platform is different from the execution platform
+    i.e. linux -> windows.
+    """
+
+    num_chars = len(path_str)
+    is_win = is_windows(repository_ctx)
+    for i in range(num_chars):
+        r_i = num_chars - 1 - i
+        if (is_win and path_str[r_i] == "\\") or path_str[r_i] == "/":
+            return path_str[r_i + 1:]
+    return path_str
+
 def _create_local_cuda_repository(repository_ctx):
     """Creates the repository containing files set up to build with CUDA."""
 
@@ -910,8 +926,8 @@ def _create_local_cuda_repository(repository_ctx):
     cuda_lib_srcs = []
     cuda_lib_outs = []
     for path in cuda_libs.values():
-        cuda_lib_srcs.append(str(path))
-        cuda_lib_outs.append("cuda/lib/" + path.basename)
+        cuda_lib_srcs.append(path)
+        cuda_lib_outs.append("cuda/lib/" + _basename(repository_ctx, path))
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "cuda-lib",
@@ -961,17 +977,17 @@ def _create_local_cuda_repository(repository_ctx):
         "cuda/BUILD",
         tpl_paths["cuda:BUILD"],
         {
-            "%{cuda_driver_lib}": cuda_libs["cuda"].basename,
-            "%{cudart_static_lib}": cuda_libs["cudart_static"].basename,
+            "%{cuda_driver_lib}": _basename(repository_ctx, cuda_libs["cuda"]),
+            "%{cudart_static_lib}": _basename(repository_ctx, cuda_libs["cudart_static"]),
             "%{cudart_static_linkopt}": _cudart_static_linkopt(cuda_config.cpu_value),
-            "%{cudart_lib}": cuda_libs["cudart"].basename,
-            "%{cublas_lib}": cuda_libs["cublas"].basename,
-            "%{cusolver_lib}": cuda_libs["cusolver"].basename,
-            "%{cudnn_lib}": cuda_libs["cudnn"].basename,
-            "%{cufft_lib}": cuda_libs["cufft"].basename,
-            "%{curand_lib}": cuda_libs["curand"].basename,
-            "%{cupti_lib}": cuda_libs["cupti"].basename,
-            "%{cusparse_lib}": cuda_libs["cusparse"].basename,
+            "%{cudart_lib}": _basename(repository_ctx, cuda_libs["cudart"]),
+            "%{cublas_lib}": _basename(repository_ctx, cuda_libs["cublas"]),
+            "%{cusolver_lib}": _basename(repository_ctx, cuda_libs["cusolver"]),
+            "%{cudnn_lib}": _basename(repository_ctx, cuda_libs["cudnn"]),
+            "%{cufft_lib}": _basename(repository_ctx, cuda_libs["cufft"]),
+            "%{curand_lib}": _basename(repository_ctx, cuda_libs["curand"]),
+            "%{cupti_lib}": _basename(repository_ctx, cuda_libs["cupti"]),
+            "%{cusparse_lib}": _basename(repository_ctx, cuda_libs["cusparse"]),
             "%{copy_rules}": "\n".join(copy_rules),
         },
     )
@@ -1057,12 +1073,8 @@ def _create_local_cuda_repository(repository_ctx):
         # bazel's header check failing.
         cuda_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
 
-        nvcc_path = str(
-            repository_ctx.path("%s/nvcc%s" % (
-                cuda_config.config["cuda_binary_dir"],
-                ".exe" if is_windows(repository_ctx) else "",
-            )),
-        )
+        file_ext = ".exe" if is_windows(repository_ctx) else ""
+        nvcc_path = "%s/nvcc%s" % (cuda_config.config["cuda_binary_dir"], file_ext)
         cuda_defines["%{compiler_deps}"] = ":crosstool_wrapper_driver_is_not_gcc"
         cuda_defines["%{win_compiler_deps}"] = ":windows_msvc_wrapper_files"
 

@@ -188,7 +188,8 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
     details.set_host_to_device_ms(GetTimeInMs(type_ps, HOST_TO_DEVICE) +
                                   GetTimeInMs(type_ps, DEVICE_WAIT_HOST));
     details.set_output_ms(GetTimeInMs(type_ps, DEVICE_TO_HOST));
-    details.set_device_compute_ms(GetTimeInMs(type_ps, DEVICE_COMPUTE));
+    details.set_device_compute_ms(GetTimeInMs(type_ps, DEVICE_COMPUTE_16) +
+                                  GetTimeInMs(type_ps, DEVICE_COMPUTE_32));
     details.set_device_to_device_ms(GetTimeInMs(type_ps, DEVICE_TO_DEVICE) +
                                     GetTimeInMs(type_ps, DEVICE_WAIT_DEVICE));
     details.set_host_compute_ms(GetTimeInMs(type_ps, HOST_COMPUTE));
@@ -343,20 +344,20 @@ double RatioOfHostToDeviceTimeToStepTime(
   return 0.0;
 }
 
-void KernelLaunchAnalysis(double kernel_launch_percent, int* observation_index,
+void KernelLaunchAnalysis(double kernel_launch_percent,
                           string* kernel_launch_classification,
                           string* kernel_launch_statement) {
   string percent_str = absl::StrFormat("%.1lf", kernel_launch_percent);
   if (kernel_launch_percent >= kHighlyKernelLaunchBoundThresholdInPercent) {
     *kernel_launch_classification = "high";
     *kernel_launch_statement = absl::StrCat(
-        "(", ++*observation_index, ") ", percent_str,
+        percent_str,
         " % of the total step time sampled is spent on Kernel Launch.");
   } else if (kernel_launch_percent >=
              kModeratelyKernelLaunchBoundThresholdInPercent) {
     *kernel_launch_classification = "moderate";
     *kernel_launch_statement = absl::StrCat(
-        "(", ++*observation_index, ") ", percent_str,
+        percent_str,
         " % of the total step time sampled is spent on Kernel Launch.");
   } else {
     *kernel_launch_classification = "no";
@@ -364,19 +365,19 @@ void KernelLaunchAnalysis(double kernel_launch_percent, int* observation_index,
   }
 }
 
-void AllOtherAnalysis(double all_other_percent, int* observation_index,
+void AllOtherAnalysis(double all_other_percent,
                       string* all_other_classification,
                       string* all_other_statement) {
   string percent_str = absl::StrFormat("%.1lf", all_other_percent);
   if (all_other_percent >= kHighlyAllOtherBoundThresholdInPercent) {
     *all_other_classification = "high";
     *all_other_statement = absl::StrCat(
-        "(", ++*observation_index, ") ", percent_str,
+        percent_str,
         " % of the total step time sampled is spent on All Others time.");
   } else if (all_other_percent >= kModeratelyAllOtherBoundThresholdInPercent) {
     *all_other_classification = "moderate";
     *all_other_statement = absl::StrCat(
-        "(", ++*observation_index, ") ", percent_str,
+        percent_str,
         " % of the total step time sampled is spent on All Others time.");
   } else {
     *all_other_classification = "no";
@@ -548,21 +549,19 @@ InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
   return result;
 }
 
-void InfeedAnalysis(double infeed_percent, int* observation_index,
-                    string* input_classification, string* input_statement) {
+void InfeedAnalysis(double infeed_percent, string* input_classification,
+                    string* input_statement) {
   absl::string_view non_input_time = "other time";
   string infeed_percent_str = absl::StrFormat("%.1lf", infeed_percent);
   if (infeed_percent >= kHighlyInfeedBoundThresholdInPercent) {
     *input_classification = "host";
     *input_statement = absl::StrCat(
-        "(", ++*observation_index, ") ",
         "Your program is HIGHLY input-bound because ", infeed_percent_str,
-        "% of the total step time sampled is waiting for input. Therefore, "
-        "you should first focus on reducing the input time.");
+        "% of the total step time sampled is waiting for input. Therefore, you "
+        "should first focus on reducing the input time.");
   } else if (infeed_percent >= kModeratelyInfeedBoundThresholdInPercent) {
     *input_classification = "both";
     *input_statement = absl::StrCat(
-        "(", ++*observation_index, ") ",
         "Your program is MODERATELY input-bound because ", infeed_percent_str,
         "% of the total step time sampled is waiting for input. Therefore, "
         "you would need to reduce both the input time and ",
@@ -570,7 +569,6 @@ void InfeedAnalysis(double infeed_percent, int* observation_index,
   } else {
     *input_classification = "device";
     *input_statement = absl::StrCat(
-        "(", ++*observation_index, ") ",
         "Your program is NOT input-bound because only ", infeed_percent_str,
         "% of the total step time sampled is waiting for "
         "input. Therefore, you should focus on "
@@ -626,21 +624,19 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
   double kernel_launch_percent =
       100.0 * total_host_prepare_ms / total_step_time_ms;
   double all_other_percent = 100.0 * total_unknown_ms / total_step_time_ms;
-  int observation_index = 0;
   string input_classification;
   string input_statement;
-  InfeedAnalysis(input_percent, &observation_index, &input_classification,
-                 &input_statement);
+  InfeedAnalysis(input_percent, &input_classification, &input_statement);
 
   string kernel_launch_classification;
   string kernel_launch_statement;
-  KernelLaunchAnalysis(kernel_launch_percent, &observation_index,
-                       &kernel_launch_classification, &kernel_launch_statement);
+  KernelLaunchAnalysis(kernel_launch_percent, &kernel_launch_classification,
+                       &kernel_launch_statement);
 
   string all_other_classification;
   string all_other_statement;
-  AllOtherAnalysis(all_other_percent, &observation_index,
-                   &all_other_classification, &all_other_statement);
+  AllOtherAnalysis(all_other_percent, &all_other_classification,
+                   &all_other_statement);
 
   BottleneckAnalysis analysis;
   analysis.set_input_classification(input_classification);

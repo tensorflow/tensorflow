@@ -1224,7 +1224,11 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     if self._cached_nrows is not None:
       return math_ops.cast(self._cached_nrows, out_type)
     with ops.name_scope(name, "RaggedNRows", [self]):
-      return array_ops.shape(self.row_splits, out_type=out_type)[0] - 1
+      nsplits = tensor_shape.dimension_at_index(self.row_splits.shape, 0)
+      if nsplits.value is None:
+        return array_ops.shape(self.row_splits, out_type=out_type)[0] - 1
+      else:
+        return constant_op.constant(nsplits.value - 1, dtype=out_type)
 
   def row_starts(self, name=None):
     """Returns the start indices for rows in this ragged tensor.
@@ -1688,7 +1692,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
         # If the padding isn't a scalar, then require that all values in the
         # padding match each item in the tensor.  After this block of code,
         # `has_default.shape = tensor.shape[:2]`.  (Unfortunately, we can't just
-        # use reduce_all for both cases, becaue when you pass an empty `axis`
+        # use reduce_all for both cases, because when you pass an empty `axis`
         # list to reduce_all, it reduces all axes; but we want it to reduce no
         # axes -- i.e., to be a no-op.)
         tensor_rank = array_ops.rank(tensor)

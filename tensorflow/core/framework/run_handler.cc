@@ -194,40 +194,27 @@ class ThreadWorkSource {
       t = task_queue->PushFront(std::move(t));
     }
 
-    // Only wake up the thread that can take tasks from both blocking and
-    // non-blocking queues. The rational is that we don't want to wake up more
-    // threads than the available physical cores for them to compete for
-    // resource. The non-blocking threads are used only to compensate for
-    // threads that may be blocked on some tasks. There is less need to
-    // proactively wake up those threads.
-    static int max_rank_to_wakeup = static_cast<int>(
-        ParamFromEnvWithDefault("TF_RUN_HANDLER_MAX_RANK_TO_WAKE_UP",
-                                static_cast<int32>(ParamFromEnvWithDefault(
-                                    "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
-                                    kMaxConcurrentHandlers))));
-    if (max_rank_to_wakeup > 0 &&
-        rank_.load(std::memory_order_relaxed) <= max_rank_to_wakeup) {
-      Waiter* w = nullptr;
-      bool use_sub_thread_pool = ParamFromEnvBoolWithDefault(
-          "TF_RUN_HANDLER_USE_SUB_THREAD_POOL", false);
+    Waiter* w = nullptr;
+    bool use_sub_thread_pool = ParamFromEnvBoolWithDefault(
+        "TF_RUN_HANDLER_USE_SUB_THREAD_POOL", false);
 
-      Waiter* waiter_queue;
-      mutex* waiter_queue_mu;
-      if (use_sub_thread_pool) {
-        // When we use multiple sub thread pools, free threads wait on sub
-        // thread pool waiting queues. Wake up threads from sub thread waiting
-        // queues.
-        // The waiting queues are defined at RunHandlerPool.
-        // Get the waiter_queue and coresponding mutex. Note, the thread work
-        // source may change afterwards if a new request comes or an old request
-        // finishes.
-        tf_shared_lock lock(run_handler_waiter_mu_);
-        waiter_queue = sub_thread_pool_waiter_;
-        waiter_queue_mu = sub_thread_pool_waiter_mu_;
-      } else {
-        waiter_queue = &queue_waiters_;
-        waiter_queue_mu = &waiters_mu_;
-      }
+    Waiter* waiter_queue;
+    mutex* waiter_queue_mu;
+    if (use_sub_thread_pool) {
+      // When we use multiple sub thread pools, free threads wait on sub
+      // thread pool waiting queues. Wake up threads from sub thread waiting
+      // queues.
+      // The waiting queues are defined at RunHandlerPool.
+      // Get the waiter_queue and coresponding mutex. Note, the thread work
+      // source may change afterwards if a new request comes or an old request
+      // finishes.
+      tf_shared_lock lock(run_handler_waiter_mu_);
+      waiter_queue = sub_thread_pool_waiter_;
+      waiter_queue_mu = sub_thread_pool_waiter_mu_;
+    } else {
+      waiter_queue = &queue_waiters_;
+      waiter_queue_mu = &waiters_mu_;
+    }
 
       {
         mutex_lock l(*waiter_queue_mu);
@@ -253,7 +240,6 @@ class ThreadWorkSource {
         // period of time in case a notification is missed.
         w->cv.notify_one();
       }
-    }
     VLOG(3) << "Added " << (is_blocking ? "inter" : "intra") << " work from "
             << traceme_id_.load(std::memory_order_relaxed);
     return t;
@@ -297,7 +283,6 @@ class ThreadWorkSource {
   int64 GetTracemeId() { return traceme_id_.load(std::memory_order_relaxed); }
 
   void SetTracemeId(int64 value) { traceme_id_ = value; }
-  void SetRank(int64 value) { rank_ = value; }
 
   void SetWaiter(uint64 version, Waiter* waiter, mutex* mutex) {
     {
@@ -368,7 +353,6 @@ class ThreadWorkSource {
   mutex waiters_mu_;
   Waiter queue_waiters_ GUARDED_BY(waiters_mu_);
   std::atomic<int64> traceme_id_;
-  std::atomic<int64> rank_;
 
   mutex run_handler_waiter_mu_;
   uint64 version_ GUARDED_BY(run_handler_waiter_mu_);
@@ -906,6 +890,9 @@ class RunHandlerPool::Impl {
             "TF_RUN_HANDLER_SUB_THREAD_POOL_END_REQUEST_PERCENTAGE",
             std::vector<double>({1}))) {
     VLOG(1) << "Creating a RunHandlerPool with max handlers: " << max_handlers_;
+    free_handlers_.reserve(max_handlers_);
+    sorted_active_handlers_.reserve(max_handlers_);
+    handlers_.reserve(max_handlers_);
     for (int i = 0; i < max_handlers_; ++i) {
       handlers_.emplace_back(new RunHandler::Impl(this));
       free_handlers_.push_back(handlers_.back().get());
@@ -943,8 +930,13 @@ class RunHandlerPool::Impl {
 
   std::unique_ptr<RunHandler> Get(int64 step_id, int64 timeout_in_ms)
       LOCKS_EXCLUDED(mu_) {
-    std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
-        thread_work_sources;
+    thread_local std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
+        thread_work_sources =
+            std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>(
+                new Eigen::MaxSizeVector<ThreadWorkSource*>(
+                    static_cast<int32>(ParamFromEnvWithDefault(
+                        "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
+                        kMaxConcurrentHandlers))));
     uint64 version;
     int num_active_requests;
     RunHandler::Impl* handler_impl;
@@ -976,13 +968,9 @@ class RunHandlerPool::Impl {
       free_handlers_.pop_back();
 
       num_active_requests = sorted_active_handlers_.size();
-      thread_work_sources =
-          std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>(
-              new Eigen::MaxSizeVector<ThreadWorkSource*>(num_active_requests));
       thread_work_sources->resize(num_active_requests);
       for (int i = 0; i < num_active_requests; ++i) {
         (*thread_work_sources)[i] = sorted_active_handlers_[i]->tws();
-        (*thread_work_sources)[i]->SetRank(i);
       }
       version = ++version_;
     }

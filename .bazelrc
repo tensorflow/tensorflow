@@ -222,6 +222,11 @@ build --define=grpc_no_ares=true
 # archives in -whole_archive -no_whole_archive.
 build --noincompatible_remove_legacy_whole_archive
 
+# These are bazel 2.0's incompatible flags. Tensorflow needs to use bazel 2.0.0
+# to use cc_shared_library, as part of the Tensorflow Build Improvements RFC:
+# https://github.com/tensorflow/community/pull/179
+build --noincompatible_prohibit_aapt1
+
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS

@@ -40,8 +40,8 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
   am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_YELLOW);
   am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_GREEN);
   if (is_new_command) {
-    error_reporter->Report("Heard %s (%d) @%dms", found_command, score,
-                           current_time);
+    TF_LITE_REPORT_ERROR(error_reporter, "Heard %s (%d) @%dms", found_command,
+                         score, current_time);
     if (found_command[0] == 'y') {
       am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_YELLOW);
     }

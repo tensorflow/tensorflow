@@ -153,7 +153,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     return cpu_tensor;
 #else
     CHECK(false);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
 
   Tensor CPUToGPU(const Tensor& cpu_tensor) {
@@ -178,7 +178,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     return device_tensor;
 #else
     CHECK(false);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
 
   Status RunWithRuntime(
@@ -479,7 +479,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRParallelTest) {
 }
 
 bool IsCUDATensor(const Tensor& t) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA
   cudaPointerAttributes attributes;
   cudaError_t err =
       cudaPointerGetAttributes(&attributes, t.tensor_data().data());

@@ -3496,6 +3496,8 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
+  let verifier = [{ return Verify(*this); }];
+
   let hasCanonicalizer = 1;
 }
 

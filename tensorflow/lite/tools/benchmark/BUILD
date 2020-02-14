@@ -139,7 +139,7 @@ cc_library(
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
-        "//tensorflow:ios": [],
+        "//tensorflow:fuchsia": [],
         "//conditions:default": [
             ":xnnpack_delegate_provider",
         ],
