@@ -4093,6 +4093,7 @@ Status ConvertBinary(OpConverterParams* params) {
   nvinfer1::ILayer* layer = params->converter->network()->addElementWise(
       *tensor_l, *tensor_r, op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
 
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
