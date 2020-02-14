@@ -545,11 +545,16 @@ class TraceMeContextManager {
   void Enter() {
     if (IsEnabled()) {
       std::string name(name_);
-      if (!kwargs_.empty()) {
+      // TODO(skye): we can use kwargs_.empty() once we upgrade to pybind11 2.4
+      // in workspace.bzl
+      if (kwargs_.size() != 0) {
         absl::StrAppend(&name, "#");
+        bool first = true;
         for (const auto& entry : kwargs_) {
-          absl::StrAppend(&name, std::string(py::str(entry.first)), "=",
+          absl::StrAppend(&name, first ? "" : ",",
+                          std::string(py::str(entry.first)), "=",
                           std::string(py::str(entry.second)));
+          first = false;
         }
         absl::StrAppend(&name, "#");
       }
