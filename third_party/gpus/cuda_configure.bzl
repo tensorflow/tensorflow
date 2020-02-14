@@ -39,6 +39,7 @@ load(
 )
 load(
     "//third_party/remote_config:common.bzl",
+    "err_out",
     "get_bash_bin",
     "get_cpu_value",
     "get_python_bin",
@@ -273,20 +274,21 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
         sysroot += ["--sysroot", tf_sysroot]
     result = raw_exec(repository_ctx, [cc, "-E", "-x" + lang, "-", "-v"] +
                                       sysroot)
-    index1 = result.stderr.find(_INC_DIR_MARKER_BEGIN)
+    stderr = err_out(result)
+    index1 = stderr.find(_INC_DIR_MARKER_BEGIN)
     if index1 == -1:
         return []
-    index1 = result.stderr.find("\n", index1)
+    index1 = stderr.find("\n", index1)
     if index1 == -1:
         return []
-    index2 = result.stderr.rfind("\n ")
+    index2 = stderr.rfind("\n ")
     if index2 == -1 or index2 < index1:
         return []
-    index2 = result.stderr.find("\n", index2 + 1)
+    index2 = stderr.find("\n", index2 + 1)
     if index2 == -1:
-        inc_dirs = result.stderr[index1 + 1:]
+        inc_dirs = stderr[index1 + 1:]
     else:
-        inc_dirs = result.stderr[index1 + 1:index2].strip()
+        inc_dirs = stderr[index1 + 1:index2].strip()
 
     return [
         _normalize_include_path(repository_ctx, _cxx_inc_convert(p))
@@ -346,7 +348,7 @@ def _cuda_include_path(repository_ctx, cuda_config):
     cmd = "%s -v /dev/null -o /dev/null ; [ $? -eq 1 ]" % str(nvcc_path)
     result = raw_exec(repository_ctx, [get_bash_bin(repository_ctx), "-c", cmd])
     target_dir = ""
-    for one_line in result.stderr.splitlines():
+    for one_line in err_out(result).splitlines():
         if one_line.startswith("#$ _TARGET_DIR_="):
             target_dir = (
                 cuda_config.cuda_toolkit_path + "/" + one_line.replace(
@@ -600,7 +602,7 @@ def find_cuda_config(repository_ctx, script_path, cuda_libraries):
         script_path,
     ] + cuda_libraries)
     if exec_result.return_code:
-        auto_configure_fail("Failed to run find_cuda_config.py: %s" % exec_result.stderr)
+        auto_configure_fail("Failed to run find_cuda_config.py: %s" % err_out(exec_result))
 
     # Parse the dict from stdout.
     return dict([tuple(x.split(": ")) for x in exec_result.stdout.splitlines()])

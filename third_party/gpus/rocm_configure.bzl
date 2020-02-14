@@ -21,6 +21,7 @@ load(
 )
 load(
     "//third_party/remote_config:common.bzl",
+    "err_out",
     "execute",
     "files_exist",
     "get_bash_bin",
@@ -116,20 +117,21 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
         "-",
         "-v",
     ])
-    index1 = result.stderr.find(_INC_DIR_MARKER_BEGIN)
+    stderr = err_out(result)
+    index1 = stderr.find(_INC_DIR_MARKER_BEGIN)
     if index1 == -1:
         return []
-    index1 = result.stderr.find("\n", index1)
+    index1 = stderr.find("\n", index1)
     if index1 == -1:
         return []
-    index2 = result.stderr.rfind("\n ")
+    index2 = stderr.rfind("\n ")
     if index2 == -1 or index2 < index1:
         return []
-    index2 = result.stderr.find("\n", index2 + 1)
+    index2 = stderr.find("\n", index2 + 1)
     if index2 == -1:
-        inc_dirs = result.stderr[index1 + 1:]
+        inc_dirs = stderr[index1 + 1:]
     else:
-        inc_dirs = result.stderr[index1 + 1:index2].strip()
+        inc_dirs = stderr[index1 + 1:index2].strip()
 
     return [
         str(repository_ctx.path(_cxx_inc_convert(p)))
