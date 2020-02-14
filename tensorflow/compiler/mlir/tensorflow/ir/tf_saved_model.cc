@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // TF:llvm-project
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace tf_saved_model {
@@ -64,6 +65,13 @@ static LogicalResult Verify(GlobalTensorOp global_tensor) {
           global_tensor.type(), global_tensor.value().Attribute::getType()))) {
     return global_tensor.emitError() << "'type' and 'value' attributes should "
                                         "have compatible tensor types";
+  }
+  if (!global_tensor.is_mutable()) {
+    if (!global_tensor.type().cast<TensorType>().hasStaticShape()) {
+      return global_tensor.emitError()
+             << "'type' attribute for immutable 'tf_saved_model.global_tensor' "
+                "should have a static shape";
+    }
   }
   return success();
 }
@@ -104,6 +112,14 @@ static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
   return mlir::success();
 }
 
+// Return true if `type` is a tensor of `!tf.resource`. This is the type that is
+// used to represent mutable variables on exported functions' bound inputs.
+static bool IsResourceVarType(Type type) {
+  TensorType tensor_type = type.dyn_cast<TensorType>();
+  if (!tensor_type) return false;
+  return tensor_type.getElementType().isa<TF::ResourceType>();
+}
+
 LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     Operation *op, unsigned region_index, unsigned arg_index,
     NamedAttribute named_attr) {
@@ -120,7 +136,20 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
                                 "reference a valid symbol, got invalid symbol '"
                              << symbol_name << "'";
     }
-    // TODO(silvasean): Check that argument type matches with the value.
+    auto arg_type = cast<FuncOp>(op).getArgument(arg_index).getType();
+    if (global_tensor.is_mutable()) {
+      if (!IsResourceVarType(arg_type)) {
+        return op->emitError()
+               << "bound inputs for mutable 'tf_saved_model.global_tensor's "
+                  "must be tensors of '!tf.resource'";
+      }
+    } else {
+      if (arg_type != global_tensor.type()) {
+        return op->emitError() << "bound input for immutable "
+                                  "'tf_saved_model.global_tensor' must "
+                                  "match the global tensor's type";
+      }
+    }
     return success();
   }
   if (named_attr.first == "tf_saved_model.index_path") {
@@ -140,6 +169,22 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionResultAttribute(
 
   return op->emitError() << "unknown tf_saved_model dialect result attribute '"
                          << named_attr.first << "'";
+}
+
+static bool HasAnyTfSavedModelArgAttr(FuncOp func) {
+  for (int i = 0, e = func.getNumArguments(); i < e; i++) {
+    if (func.getArgAttr(i, "tf_saved_model.index_path") ||
+        func.getArgAttr(i, "tf_saved_model.bound_input")) {
+      return true;
+    }
+  }
+  for (int i = 0, e = func.getNumResults(); i < e; i++) {
+    if (func.getResultAttr(i, "tf_saved_model.index_path") ||
+        func.getResultAttr(i, "tf_saved_model.bound_input")) {
+      return true;
+    }
+  }
+  return false;
 }
 
 static LogicalResult VerifySavedModelModule(
@@ -169,8 +214,17 @@ static LogicalResult VerifySavedModelModule(
       }
     }
   }
+  for (auto func : module.getOps<FuncOp>()) {
+    if (HasAnyTfSavedModelArgAttr(func)) {
+      if (!IsExported(func)) {
+        return func.emitError()
+               << "can only apply 'tf_saved_model' argument attributes "
+                  "to exported functions";
+      }
+    }
+  }
   SymbolTable symbol_table(module);
-  auto symbol_uses = SymbolTable::getSymbolUses(module);
+  auto symbol_uses = SymbolTable::getSymbolUses(&module.getBodyRegion());
   if (!symbol_uses.hasValue()) {
     return module.emitError() << "modules with 'tf_saved_model.semantics' must "
                                  "have analyzable symbol uses";

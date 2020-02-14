@@ -188,19 +188,18 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
-    float* __restrict__ result, int result_stride) {
+    float* __restrict__ result) {
   const int kBlockSize = 16;
   TFLITE_DCHECK_EQ(  // NOLINT
       m_cols % kBlockSize, 0);
-  float* result_in_batch = result;
-  for (int b = 0; b < n_batch; b++) {
+  for (int batch = 0; batch < n_batch; batch++) {
     const float* matrix_ptr = matrix;
     const uint8_t* ledger_ptr = ledger;
-    for (int r = 0; r < m_rows; r++) {
+    for (int row = 0; row < m_rows; row++) {
       float dot_prod = 0.0f;
       int num_nonzero_blocks = *ledger_ptr++;
       if (num_nonzero_blocks > 0) {
-        const float* vector_in_batch = vector + b * m_cols;
+        const float* vector_in_batch = vector + batch * m_cols;
         for (int i = 0; i < num_nonzero_blocks; i++) {
           const int block_start_index = *ledger_ptr++ * kBlockSize;
           const float* vector_block_in_batch_ptr =
@@ -210,8 +209,7 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
           }
         }
       }
-      *result_in_batch += dot_prod;
-      result_in_batch += result_stride;
+      result[batch * m_rows + row] += dot_prod;
     }
   }
 }
@@ -219,8 +217,7 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result,
-    int result_stride) {
+    const float* scaling_factors, int n_batch, float* __restrict__ result) {
   static const int kBlockSize = 16;
   TFLITE_DCHECK_EQ(  // NOLINT
       m_cols % kBlockSize, 0);
@@ -229,7 +226,7 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const uint8_t* ledger_ptr = ledger;
     // Get the address of the first row.
     const int8_t* row_ptr = matrix;
-    for (int row = 0; row < m_rows; ++row, result += result_stride) {
+    for (int row = 0; row < m_rows; ++row) {
       // Initialize the dot product sum for the row to 0.
       int32_t dotprod = 0;
 #if defined(__GNUC__)
@@ -245,7 +242,7 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
           dotprod += (*row_ptr++) * (*vector_block_ptr++);
         }  // for block
       }    // for num_nonzero_blocks
-      *result += dotprod * batch_scaling_factor;
+      result[batch * m_rows + row] += dotprod * batch_scaling_factor;
     }  // for row
   }    // for batch
 }
@@ -305,7 +302,9 @@ void PortableApplyLayerNorm(const int16_t* input,
                             const int32_t* bias, int32_t layer_norm_scale_a,
                             int32_t layer_norm_scale_b, int32_t variance_limit,
                             int n_batch, int n_input, int16_t* output) {
-  static const int kOverflowGuard = 1 << 20;
+  // The square of std::pow(2, 10), which is the extra factor that makes sure
+  // normalized values has enough resolution.
+  static const int kTwoToPower20 = 1 << 20;
   for (int i = 0; i < n_batch; ++i) {
     int64_t sum = 0;
     int64_t sum_sq = 0;
@@ -318,10 +317,10 @@ void PortableApplyLayerNorm(const int16_t* input,
     int32_t mean =
         static_cast<int32_t>(static_cast<int64_t>(sum) * 1024 / n_input);
     // TODO(jianlijianli): Avoids overflow but only works for POT n_input.
-    int32 temp = kOverflowGuard / n_input;
+    int32 temp = kTwoToPower20 / n_input;
     int64_t variance =
         sum_sq * temp - static_cast<int64_t>(mean) * static_cast<int64_t>(mean);
-    int32_t variance2 = static_cast<int32>(variance / kOverflowGuard);
+    int32_t variance2 = static_cast<int32>(variance / kTwoToPower20);
     if (variance2 < 1) {
       variance2 = variance_limit;
     }
@@ -507,13 +506,11 @@ inline int32_t VectorVectorDotProduct(const int16_t* vector1,
 void PortableBatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                               const int16_t* vector2,
                                               int v_size, int n_batch,
-                                              int32_t* result,
-                                              int result_stride) {
+                                              int32_t* result) {
   for (int b = 0; b < n_batch; b++) {
-    *result = VectorVectorDotProduct(vector1, vector2, v_size);
+    result[b] = VectorVectorDotProduct(vector1, vector2, v_size);
     vector1 += v_size;
     vector2 += v_size;
-    result += result_stride;
   }
 }
 

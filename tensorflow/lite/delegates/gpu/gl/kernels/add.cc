@@ -56,7 +56,7 @@ class Add : public NodeShader {
             /*workgroup=*/uint3(),
             /*source_code=*/
             "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ + "
-            "          $input_data_1[gid.z]$;",
+            "          $input_data_1[0, 0, gid.z]$;",
             /*input=*/IOStructure::ONLY_DEFINITIONS,
             /*output=*/IOStructure::AUTO,
         };

@@ -115,7 +115,7 @@ TfLiteStatus MatMulOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   const auto& matmul_out_max = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
 
   // Quantize the MatMul output to quint8.
-  auto* quantize_matmul_op = graph_builder_->AddNode();
+  auto* quantize_matmul_op = graph_builder_->AddNode(GetTFLiteNodeID());
   quantize_matmul_op->SetOpType(OP_QuantizeDownAndShrinkRange_32to8);
   quantize_matmul_op->AddInput(matmul_out);
   quantize_matmul_op->AddInput(matmul_out_min);
@@ -145,7 +145,7 @@ TfLiteStatus MatMulOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
       quant_bound_shape, reinterpret_cast<char*>(&bias_max_),
       sizeof(bias_max_));
   // Quantize bias
-  auto* quantize_bias_op = graph_builder_->AddNode();
+  auto* quantize_bias_op = graph_builder_->AddNode(GetTFLiteNodeID());
   quantize_bias_op->SetOpType(OP_QuantizeDownAndShrinkRange_32to8);
   quantize_bias_op->AddInput(
       graph_builder_->GetHexagonTensorId(bias_tensor_id));
@@ -173,7 +173,7 @@ TfLiteStatus MatMulOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
       sizeof(output_max_));
 
   // MatMul + Bias.
-  auto* bias_add_op = graph_builder_->AddNode();
+  auto* bias_add_op = graph_builder_->AddNode(GetTFLiteNodeID());
   bias_add_op->SetOpType(OP_QuantizedAdd_8p8to8);
   bias_add_op->AddInput(quantized_matmul_out);
   bias_add_op->AddInput(quantized_bias_out);

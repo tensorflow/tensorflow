@@ -1,0 +1,23 @@
+path: "tensorflow.distribute.RunOptions"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.RunOptions\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.RunOptions\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "experimental_bucketizing_dynamic_shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_enable_dynamic_batch_size"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

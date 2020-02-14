@@ -559,6 +559,13 @@ enum RandomDistribution {
   // Next: 4
 }
 
+enum RandomAlgorithm {
+  RNG_DEFAULT = 0;  // Backend dependent default algorithm.
+  RNG_THREE_FRY = 1;
+  RNG_PHILOX = 2;
+  // Next: 2
+}
+
 message TriangularSolveOptions {
   // If true, solves ax = b. If false, solves xa = b.
   bool left_side = 1;

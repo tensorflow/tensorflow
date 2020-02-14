@@ -1,6 +1,10 @@
 path: "tensorflow.config.experimental"
 tf_module {
   member {
+    name: "ClusterDeviceFilters"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "VirtualDeviceConfiguration"
     mtype: "<type \'type\'>"
   }

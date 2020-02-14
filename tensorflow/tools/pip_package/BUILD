@@ -32,6 +32,26 @@ transitive_hdrs(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor",
+        # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
+        # reserves the right to change APIs and other header-level interfaces.  If your custom
+        # op uses these headers, it may break when users upgrade their version of tensorflow.
+        # NOTE(ebrevdo): None of the python symbols are exported by libtensorflow_framework.so.
+        # Code that relies on these headers should dynamically link to
+        # _pywrap_tensorflow_internal.so as well.
+        "//tensorflow/python:model_analyzer_lib",
+        "//tensorflow/python:py_exception_registry",
+        "//tensorflow/python:pybind11_absl",
+        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python:pybind11_status",
+        "//tensorflow/python:pybind11_proto",
+        "//tensorflow/python:kernel_registry",
+        "//tensorflow/python:cpp_python_util",
+        "//tensorflow/python:py_func_lib",
+        "//tensorflow/python:py_seq_tensor",
+        "//tensorflow/python:py_util",
+        "//tensorflow/python:py_record_reader_lib",
+        "//tensorflow/python:python_op_gen",
+        "//tensorflow/python:tf_session_helper",
         "//third_party/eigen3",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
@@ -57,6 +77,7 @@ COMMON_PIP_DEPS = [
     "setup.py",
     ":included_headers",
     "//tensorflow:tensorflow_py",
+    "//tensorflow/core:protos_all_proto_srcs",
     "//tensorflow/examples/saved_model/integration_tests:mnist_util",
     "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
@@ -82,11 +103,12 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/distribute:multi_process_runner",
     "//tensorflow/python/eager:eager_pip",
-    "//tensorflow/python/keras:model_subclassing_test_util",
     "//tensorflow/python/keras/layers/preprocessing:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
+    "//tensorflow/python/keras/tests:model_subclassing_test_util",
+    "//tensorflow/python/keras/tests:model_architectures",
     "//tensorflow/python/kernel_tests:cudnn_deterministic_base",
     "//tensorflow/python/kernel_tests:bias_op_base",
     "//tensorflow/python/kernel_tests/random:util",

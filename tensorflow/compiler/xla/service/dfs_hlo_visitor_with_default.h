@@ -116,6 +116,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleRng(HloInstructionPtr random) override {
     return DefaultAction(random);
   }
+  Status HandleRngBitGenerator(HloInstructionPtr random) override {
+    return DefaultAction(random);
+  }
   Status HandleRngGetAndUpdateState(HloInstructionPtr random) override {
     return DefaultAction(random);
   }

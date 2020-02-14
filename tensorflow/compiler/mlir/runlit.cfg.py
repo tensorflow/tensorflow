@@ -53,7 +53,8 @@ tool_dirs = config.mlir_tf_tools_dirs + [
 ]
 tool_names = [
     'mlir-opt', 'mlir-translate', 'tf-opt', 'tf_tfl_translate',
-    'flatbuffer_to_string', 'flatbuffer_translate', 'tf-mlir-translate'
+    'flatbuffer_to_string', 'flatbuffer_translate', 'tf-mlir-translate',
+    'mlir-tflite-runner'
 ]
 tools = [ToolSubst(s, unresolved='ignore') for s in tool_names]
 llvm_config.add_tool_substitutions(tools, tool_dirs)

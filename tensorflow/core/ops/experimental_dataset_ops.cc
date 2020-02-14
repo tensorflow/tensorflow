@@ -596,6 +596,27 @@ REGISTER_OP("ParseExampleDataset")
     .Attr("ragged_split_types: list({int32,int64}) >= 0 = []")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ParseExampleDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("num_parallel_calls: int64")
+    .Input("dense_defaults: Tdense")
+    .Output("handle: variant")
+    .Attr("sparse_keys: list(string) >= 0")
+    .Attr("dense_keys: list(string) >= 0")
+    .Attr("sparse_types: list({float,int64,string}) >= 0")
+    .Attr("Tdense: list({float,int64,string}) >= 0")
+    .Attr("dense_shapes: list(shape) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")  // Output components will be
+                                              // sorted by key (dense_keys and
+                                              // sparse_keys combined) here.
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
+    .Attr("ragged_keys: list(string) >= 0 = []")
+    .Attr("ragged_value_types: list({float,int64,string}) >= 0 = []")
+    .Attr("ragged_split_types: list({int32,int64}) >= 0 = []")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalParseExampleDataset")
     .Input("input_dataset: variant")
     .Input("num_parallel_calls: int64")

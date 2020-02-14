@@ -167,6 +167,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
+        "no_oss",  # TODO(b/148108508): Re-enable this test in OSS.
         "optonly",  # Times out frequently in fastbuild mode.
     ],
     deps = [
@@ -240,7 +241,10 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["cholesky_op_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -288,6 +292,18 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "searchsorted_op_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["searchsorted_op_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "svd_op_test",
     size = "medium",
     srcs = ["svd_op_test.py"],
@@ -297,7 +313,10 @@ tf_xla_py_test(
         "cpu_ondemand",
     ],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -382,7 +401,10 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["concat_ops_test.py"],
     python_version = "PY3",
-    tags = ["many_xla_args"],
+    tags = [
+        "many_xla_args",
+        "no_rocm",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -568,7 +590,10 @@ tf_xla_py_test(
     srcs = ["fft_test.py"],
     python_version = "PY3",
     shard_count = 6,
-    tags = ["optonly"],
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -845,7 +870,10 @@ tf_xla_py_test(
     srcs = ["unstack_test.py"],
     python_version = "PY3",
     shard_count = 5,
-    tags = ["optonly"],
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1066,7 +1094,10 @@ tf_xla_py_test(
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
     python_version = "PY3",
-    tags = ["config-cuda-only"],
+    tags = [
+        "config-cuda-only",
+        "v1only",
+    ],
     use_xla_device = False,
     deps = [
         ":xla_test",
@@ -1292,6 +1323,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["jit_test.py"],
     shard_count = 5,
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":test_utils",
@@ -1312,6 +1344,7 @@ cuda_py_test(
     name = "dense_layer_test",
     size = "medium",
     srcs = ["dense_layer_test.py"],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":test_utils",
@@ -1365,16 +1398,17 @@ tf_cuda_cc_test(
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:xla_kernel_creator",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_testutil",
-        "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -1396,6 +1430,7 @@ py_library(
 cuda_py_test(
     name = "lstm_test",
     srcs = ["lstm_test.py"],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":lstm",
@@ -1498,6 +1533,10 @@ tf_xla_py_test(
     srcs = ["conv_node_name_test.py"],
     python_version = "PY3",
     shard_count = 5,
+    tags = [
+        "no_oss",  # TODO(b/148108508): Re-enable this test in OSS.
+        "no_rocm",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1533,24 +1572,15 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "determinant_ops_test",
+    name = "special_math_test",
     size = "medium",
-    srcs = ["determinant_ops_test.py"],
-    disabled_backends = [
-        "cpu_ondemand",
-        "cpu",
-        "gpu",
-    ],
-    python_version = "PY3",
-    tags = [
-        "optonly",
-    ],
+    srcs = ["special_math_test.py"],
+    shard_count = 5,
+    tags = ["optonly"],
     deps = [
         ":xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:linalg_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:standard_ops",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

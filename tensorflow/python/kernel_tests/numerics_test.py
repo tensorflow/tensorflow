@@ -130,7 +130,7 @@ class NumericsTest(test.TestCase):
         r"or `tf.while_loop\(\)`\."):
       numerics.add_check_numerics_ops()
 
-  def testCheckNumericsV2OpNegativeAndPositveInf(self):
+  def testCheckNumericsV2OpNegativeAndPositiveInf(self):
     """Test that CheckNumericsV2 op distinguishes negative and positive infs."""
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([-1.0, 1.0])
@@ -145,7 +145,7 @@ class NumericsTest(test.TestCase):
       self.assertIn("had -Inf and +Inf values", caught.message)
       self.assertIn("pass through test", caught.message)
 
-  def testCheckNumericsV2OpNegativeAndPositveInfAndNaN(self):
+  def testCheckNumericsV2OpNegativeAndPositiveInfAndNaN(self):
     """CheckNumericsV2 op distinguishes - & + infs when nan is present."""
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([-1.0, 1.0, 0.0])
@@ -160,7 +160,7 @@ class NumericsTest(test.TestCase):
       self.assertIn("had -Inf, +Inf, and NaN values", caught.message)
       self.assertIn("pass through test", caught.message)
 
-  def testCheckNumericsV2PositveInfAndNaN(self):
+  def testCheckNumericsV2PositiveInfAndNaN(self):
     """Test that CheckNumericsV2 op shows sign of inf when nan is present."""
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([0.0, 1.0])

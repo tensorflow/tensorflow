@@ -58,7 +58,7 @@ namespace {
 // direction. Longterm solution is to add a function attribute to maintain the
 // original HLO naming.
 string SanitizeFunctionName(llvm::StringRef name) {
-  string output = name;
+  string output(name);
   llvm::for_each(output, [](char& x) { x = x == '-' ? '_' : x; });
   return output;
 }
@@ -241,6 +241,23 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       }
       MakeAndReturn(BroadcastInDimOp);
     }
+#define MakeAndReturnBatchNormOp(batch_norm_op)                         \
+  {                                                                     \
+    attributes.push_back(builder_->getNamedAttr(                        \
+        "epsilon", builder_->getF32FloatAttr(instruction->epsilon()))); \
+    attributes.push_back(builder_->getNamedAttr(                        \
+        "feature_index",                                                \
+        builder_->getI64IntegerAttr(instruction->feature_index())));    \
+    MakeAndReturn(batch_norm_op);                                       \
+  }
+    case HloOpcode::kBatchNormGrad:
+      MakeAndReturnBatchNormOp(BatchNormGradOp);
+    case HloOpcode::kBatchNormInference:
+      MakeAndReturnBatchNormOp(BatchNormInferenceOp);
+    case HloOpcode::kBatchNormTraining:
+      MakeAndReturnBatchNormOp(BatchNormTrainingOp);
+#undef MakeAndReturnBatchNormOp
+
     case HloOpcode::kDot: {
       attributes.push_back(ConvertPrecisionConfig(instruction));
 
@@ -303,6 +320,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           builder_->getBoolAttr(gather_instruction->indices_are_sorted())));
 
       MakeAndReturn(GatherOp);
+    }
+    case HloOpcode::kDynamicSlice: {
+      std::vector<int64_t> slice_sizes(
+          instruction->dynamic_slice_sizes().begin(),
+          instruction->dynamic_slice_sizes().end());
+      attributes.push_back(
+          builder_->getNamedAttr("slice_sizes", Convert(slice_sizes)));
+      MakeAndReturn(DynamicSliceOp);
     }
     case HloOpcode::kDynamicUpdateSlice: {
       return func_builder
@@ -525,12 +550,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // broadcast dimensions are never added here because they don't exist as
       // part of the HLO instruction. They are only a convenience in the XLA
       // builder API.
+      NoAttributeCase(kAbs, AbsOp);
       NoAttributeCase(kAdd, AddOp);
       NoAttributeCase(kAfterAll, AfterAllOp);
       NoAttributeCase(kAnd, AndOp);
       NoAttributeCase(kAtan2, Atan2Op);
       NoAttributeCase(kBitcastConvert, BitcastConvertOp);
       NoAttributeCase(kConvert, ConvertOp);
+      NoAttributeCase(kCeil, CeilOp);
       NoAttributeCase(kClamp, ClampOp);
       NoAttributeCase(kComplex, ComplexOp);
       NoAttributeCase(kCos, CosOp);
@@ -538,6 +565,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kExp, ExpOp);
       NoAttributeCase(kExpm1, Expm1Op);
       NoAttributeCase(kFloor, FloorOp);
+      NoAttributeCase(kIsFinite, IsFiniteOp);
       NoAttributeCase(kImag, ImagOp);
       NoAttributeCase(kLog, LogOp);
       NoAttributeCase(kLog1p, Log1pOp);
@@ -562,7 +590,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kShiftLeft, ShiftLeftOp);
       NoAttributeCase(kShiftRightArithmetic, ShiftRightArithmeticOp);
       NoAttributeCase(kShiftRightLogical, ShiftRightLogicalOp);
+      NoAttributeCase(kSign, SignOp);
       NoAttributeCase(kSin, SinOp);
+      NoAttributeCase(kSqrt, SqrtOp);
       NoAttributeCase(kSubtract, SubOp);
       NoAttributeCase(kTanh, TanhOp);
       NoAttributeCase(kTuple, TupleOp);

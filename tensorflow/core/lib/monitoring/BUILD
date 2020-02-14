@@ -1,3 +1,8 @@
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+
 package(
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
@@ -16,6 +21,17 @@ cc_library(
         "types.h",
     ],
     deps = [
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "timed",
+    hdrs = [
+        "timed.h",
+    ],
+    deps = [
+        "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:types",
     ],
 )
@@ -205,6 +221,7 @@ filegroup(
         "mobile_gauge.h",
         "mobile_sampler.h",
         "sampler.h",
+        "timed.h",
         "types.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -220,6 +237,7 @@ filegroup(
         "metric_def.h",
         "percentile_sampler.h",
         "sampler.h",
+        "timed.h",
         "types.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

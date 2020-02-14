@@ -61,6 +61,7 @@ from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.utils import ag_logging as logging
+from tensorflow.python.eager import function
 from tensorflow.python.util import tf_inspect
 
 
@@ -166,7 +167,7 @@ class _UnboundInstanceCache(_FunctionCache):
 
 
 # Using a re-entrant lock to guard against the unlikely possibility that the
-# conversion process tiggers additional code execution.
+# conversion process triggers additional code execution.
 _CACHE_LOCK = threading.RLock()
 
 
@@ -252,7 +253,7 @@ def _wrap_into_dynamic_factory(nodes, entity_name, factory_factory_name,
 
 def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
   """Returns a (possibly cached) factory for the converted result of entity."""
-  # The cache subkey encompases any conversion options on which the generated
+  # The cache subkey encompasses any conversion options on which the generated
   # code may depend.
   # The cached factory includes the necessary definitions to distinguish
   # between the global and non-global free variables. For this reason, the
@@ -433,6 +434,8 @@ def is_whitelisted(
     # longer be whitelisted.
 
     owner_class = inspect_utils.getmethodclass(o)
+    if owner_class is function.TfMethodTarget:
+      owner_class = o.__self__.target_class
     if owner_class is not None:
       if issubclass(owner_class, unittest.TestCase):
         logging.log(2, 'Whitelisted: %s: method of TestCase subclass', o)

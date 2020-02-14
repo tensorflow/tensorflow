@@ -168,7 +168,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         IteratorContext iter_ctx = ContextWithAggregator(ctx);
-        return dataset()->input_->MakeIterator(&iter_ctx, prefix(),
+        return dataset()->input_->MakeIterator(&iter_ctx, this, prefix(),
                                                &input_impl_);
       }
 

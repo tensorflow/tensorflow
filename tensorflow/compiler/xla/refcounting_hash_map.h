@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
@@ -113,7 +114,7 @@ class RefcountingHashMap {
 
   std::function<std::unique_ptr<V>(const K&)> value_factory_;
   absl::Mutex mu_;
-  absl::node_hash_map<K, std::weak_ptr<V>> map_ GUARDED_BY(mu_);
+  absl::node_hash_map<K, std::weak_ptr<V>> map_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla

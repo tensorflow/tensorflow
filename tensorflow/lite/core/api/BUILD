@@ -1,5 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library", "micro_copts")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -22,7 +22,7 @@ cc_library(
         "tensor_utils.h",
     ],
     build_for_embedded = True,
-    copts = tflite_copts(),
+    copts = tflite_copts() + micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",

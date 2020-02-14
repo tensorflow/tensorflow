@@ -193,7 +193,7 @@ def create_in_process_cluster(num_workers,
         protocol=rpc_layer)
   except errors.UnknownError as e:
     if 'Could not start gRPC server' in e.message:
-      test.TestCase.SkipTest('Cannot start std servers.')
+      test.TestCase.skipTest('Cannot start std servers.')
     else:
       raise
   return cluster

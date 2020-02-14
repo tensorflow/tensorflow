@@ -1,6 +1,10 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = [
@@ -109,6 +113,7 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
@@ -296,6 +301,22 @@ cc_library(
 )
 
 cc_library(
+    name = "resource_loader",
+    testonly = 1,
+    srcs = ["resource_loader.cc"],
+    hdrs = ["//tensorflow/core/platform:resource_loader.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "@bazel_tools//tools/cpp/runfiles",
+    ],
+)
+
+cc_library(
     name = "rocm_rocdl_path",
     srcs = ["rocm_rocdl_path.cc"],
     hdrs = ["//tensorflow/core/platform:rocm_rocdl_path.h"],
@@ -315,11 +336,6 @@ cc_library(
 cc_library(
     name = "stacktrace",
     hdrs = ["stacktrace.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
@@ -330,11 +346,7 @@ cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
     hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
+    linkstatic = 1,
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:stacktrace",
@@ -406,6 +418,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:net",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:types",
         "@com_google_googletest//:gtest",
@@ -504,6 +517,8 @@ filegroup(
         "mutex.h",
         "mutex_data.h",
         "notification.h",
+        "subprocess.cc",
+        "subprocess.h",
         "unbounded_work_queue.cc",
         "unbounded_work_queue.h",
     ],

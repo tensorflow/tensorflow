@@ -41,7 +41,7 @@ std::string GenerateConvolutionTransposedCode(
       op_def.dst_tensors[0]);
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
-  const std::string batch_id = op_def.batch_support ? "B" : "";
+  const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
 
   switch (op_def.precision) {
@@ -69,7 +69,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size              \n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X = linear_id / dst_size.w;\n";
     c += "  int B = linear_id % dst_size.w;\n";
@@ -172,7 +172,7 @@ std::string GenerateConvolutionTransposedCode(
         c += "  {\n";
         c += "    FLT4 result = TO_FLT4(r" + layer + "[" + std::to_string(y) +
              "][" + std::to_string(x) + "]) + bias_val;\n";
-        const std::string x_3dcoord = op_def.batch_support
+        const std::string x_3dcoord = op_def.IsBatchSupported()
                                           ? "(" + x_coord + ") * dst_size.w + B"
                                           : x_coord;
         const LinkingContext context{"result", x_3dcoord, y_coord, layer};

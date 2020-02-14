@@ -275,7 +275,7 @@ class ResizeAreaOp : public OpKernel {
 
  private:
   static EIGEN_ALWAYS_INLINE int64 Bound(int64 val, int64 limit) {
-    return std::min(limit - 1ll, std::max(int64{0}, val));
+    return std::min(limit - 1, std::max(int64{0}, val));
   }
 
   bool align_corners_;

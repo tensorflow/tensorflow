@@ -202,6 +202,24 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       val = inplace_ops.empty((1, 2), dtypes.string, init=False).eval()
       self.assertEqual(val.tolist(), [[b"", b""]])
 
+  @test_util.run_deprecated_v1
+  def testInplaceOpOnEmptyTensors(self):
+    op_fns = [
+        inplace_ops.inplace_add,
+        inplace_ops.inplace_sub,
+        inplace_ops.inplace_update,
+    ]
+    for dtype in [dtypes.float32, dtypes.int32, dtypes.int64]:
+      for op_fn in op_fns:
+        with self.cached_session(use_gpu=True):
+          x = array_ops.zeros([7, 0], dtype)
+          y = np.zeros([7, 0], dtype.as_numpy_dtype)
+          self.assertAllClose(x.eval(), y)
+          x = op_fn(x, [3], array_ops.ones([1, 0], dtype))
+          self.assertAllClose(x.eval(), y)
+          x = op_fn(x, None, array_ops.ones([1, 0], dtype))
+          self.assertAllClose(x.eval(), y)
+
 
 if __name__ == "__main__":
   test_lib.main()

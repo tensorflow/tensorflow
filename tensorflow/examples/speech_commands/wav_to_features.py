@@ -53,7 +53,7 @@ def wav_to_features(sample_rate, clip_duration_ms, window_size_ms,
     sample_rate: Expected sample rate of the wavs.
     clip_duration_ms: Expected duration in milliseconds of the wavs.
     window_size_ms: How long each spectrogram timeslice is.
-    window_stride_ms: How far to move in time between spectogram timeslices.
+    window_stride_ms: How far to move in time between spectrogram timeslices.
     feature_bin_count: How many bins to use for the feature fingerprint.
     quantize: Whether to train the model for eight-bit deployment.
     preprocess: Spectrogram processing mode; "mfcc", "average" or "micro".
@@ -153,7 +153,8 @@ if __name__ == '__main__':
       '--window_stride_ms',
       type=float,
       default=10.0,
-      help='How far to move in time between spectogram timeslices.',)
+      help='How far to move in time between spectrogram timeslices.',
+  )
   parser.add_argument(
       '--feature_bin_count',
       type=int,

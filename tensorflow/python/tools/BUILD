@@ -1,7 +1,8 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
-load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test")
+load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
+load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -321,9 +322,19 @@ py_library(
     srcs = ["saved_model_cli.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":saved_model_aot_compile",
         ":saved_model_utils",
         "//tensorflow/python",
         "//tensorflow/python/debug:local_cli_wrapper",
+    ],
+)
+
+py_library(
+    name = "saved_model_aot_compile",
+    srcs = ["saved_model_aot_compile.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python",
         "//tensorflow/python:tf_optimizer",
     ] + if_xla_available(
         ["//tensorflow/compiler/tf2xla:tf2xla_proto_py"],
@@ -343,10 +354,36 @@ py_test(
         "no-internal-py3",
         "nosan",
     ],
-    # Force-include XLA dependencies of saved_model_cli_lib to ensure we test
-    # the AOT compilation.
     deps = [
         ":saved_model_cli_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
+)
+
+saved_model_compile_aot(
+    name = "aot_compiled_x_plus_y",
+    cpp_class = "CompiledModel",
+    directory = "//tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo",
+    filegroups = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    force_without_xla_support_flag = False,
+    tags = ["no_rocm"],
+)
+
+tf_cc_test(
+    name = "binary_using_aot_compiled_x_plus_y_test",
+    srcs = if_xla_available([
+        "binary_using_aot_compiled_x_plus_y_test.cc",
+    ]),
+    tags = ["no_rocm"],
+    deps = [
+        "//tensorflow/core:test_main",
+    ] + if_xla_available([
+        ":aot_compiled_x_plus_y",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:logging",
+    ]),
 )

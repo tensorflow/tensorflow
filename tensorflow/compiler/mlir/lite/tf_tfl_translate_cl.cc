@@ -79,5 +79,13 @@ opt<std::string> quant_stats_file_name("quant-stats",
 
 // NOLINTNEXTLINE
 opt<bool> inline_functions(
-    "inline", llvm::cl::desc("Inline function calls within the main function "
-                             "before legalization to TFLite."));
+    "inline",
+    llvm::cl::desc("Inline function calls within the main function "
+                   "before legalization to TFLite."),
+    llvm::cl::init(true));
+
+// NOLINTNEXTLINE
+opt<bool> legalize_while(
+    "legalize-tf-while",
+    llvm::cl::desc("Whether to legalize TF While to TFL While."),
+    llvm::cl::init(false));

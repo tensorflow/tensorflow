@@ -57,7 +57,8 @@ strategies = [
     strategy_combinations.mirrored_strategy_with_one_gpu,
     strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
     strategy_combinations.mirrored_strategy_with_two_gpus,
-    strategy_combinations.tpu_strategy
+    strategy_combinations.tpu_strategy,
+    strategy_combinations.central_storage_strategy_with_two_gpus,
 ]
 
 
@@ -141,7 +142,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
   def _save_model(self, model, saved_dir):
     """Save the given model to the given saved_dir.
 
-    This method needs to be implemeted by the subclasses.
+    This method needs to be implemented by the subclasses.
 
     Args:
       model: a keras model object to save.

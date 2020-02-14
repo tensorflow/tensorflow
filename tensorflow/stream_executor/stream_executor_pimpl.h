@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
@@ -685,7 +686,7 @@ class StreamExecutor {
   std::unique_ptr<rng::RngSupport> rng_ GUARDED_BY(mu_);
 
   // Slot to cache the owned DeviceDescription for the underlying device
-  // once it has been quieried from DeviceDescription().
+  // once it has been queried from DeviceDescription().
   mutable std::unique_ptr<DeviceDescription> device_description_
       GUARDED_BY(mu_);
 

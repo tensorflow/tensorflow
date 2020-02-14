@@ -891,7 +891,10 @@ inline float32x4_t DivideSumForMeanImpl(
 }
 
 inline int32x4_t RoundToNearest(const float32x4_t input) {
-#if !defined(__aarch64__) && !defined(__SSE4_1__)
+#if defined(__aarch64__) || defined(__SSSE3__)
+  // Note: vcvtnq_s32_f32 is not available in ARMv7
+  return vcvtnq_s32_f32(input);
+#else
   static const float32x4_t zero_val_dup = vdupq_n_f32(0.0f);
   static const float32x4_t point5_val_dup = vdupq_n_f32(0.5f);
   static const float32x4_t minus_point5_val_dup = vdupq_n_f32(-0.5f);
@@ -900,20 +903,18 @@ inline int32x4_t RoundToNearest(const float32x4_t input) {
   const float32x4_t round =
       vbslq_f32(mask, minus_point5_val_dup, point5_val_dup);
   return vcvtq_s32_f32(vaddq_f32(input, round));
-#else
-  return vcvtnq_s32_f32(input);
-#endif  // !defined(__aarch64__)
+#endif  // defined(__aarch64__) || defined(__SSSE3__)
 }
 
 inline uint32x4_t RoundToNearestUnsigned(const float32x4_t input) {
-#if defined(__aarch64__) && !defined(__SSE4_1__)
-  // Note that vcvtnq_u32_f32 is not available on the arm_neon_sse.h.
+#if defined(__aarch64__)
+  // Note that vcvtnq_u32_f32 is not available in ARMv7 or in arm_neon_sse.h.
   return vcvtnq_u32_f32(input);
 #else
   static const float32x4_t point5_val_dup = vdupq_n_f32(0.5f);
 
   return vcvtq_u32_f32(vaddq_f32(input, point5_val_dup));
-#endif  // defined(__aarch64__) && !defined(__SSE4_1__)
+#endif  // defined(__aarch64__)
 }
 
 #endif  // USE_NEON
@@ -1246,8 +1247,10 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
                        const RuntimeShape& filter_shape,
                        const int8_t* filter_data,
                        const RuntimeShape& bias_shape, const float* bias_data,
-                       const RuntimeShape& output_shape, float* output_data,
-                       const RuntimeShape& im2col_shape, int8_t* im2col_data) {
+                       const RuntimeShape& accum_scratch_shape,
+                       int32_t* accum_scratch, const RuntimeShape& output_shape,
+                       float* output_data, const RuntimeShape& im2col_shape,
+                       int8_t* im2col_data, CpuBackendContext* context) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const float output_activation_min = params.float_activation_min;
@@ -1310,11 +1313,19 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
 
   std::fill_n(output_data, output_rows * output_cols, 0.0f);
 
+#ifdef TFLITE_WITH_RUY_GEMV
+  // The scratch buffer must have the same size as the output.
+  TFLITE_DCHECK_EQ(accum_scratch_shape.FlatSize(), output_shape.FlatSize());
+  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+      filter_data, filter_rows, filter_cols, gemm_input_data,
+      scaling_factors_ptr, /*n_batch=*/gemm_input_rows, accum_scratch,
+      output_data, /*result_stride=*/1, context);
+#else
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, filter_rows, filter_cols, gemm_input_data,
       scaling_factors_ptr, /*n_batch=*/gemm_input_rows, output_data,
       /*result_stride=*/1);
-
+#endif
   AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
                                    bias_shape, bias_data, output_shape,
                                    output_data);
@@ -1591,7 +1602,7 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
                             const float* input_data,
                             const RuntimeShape& output_shape,
-                            float* output_data) {
+                            float* output_data, float epsilon = 1e-6) {
   ruy::profiler::ScopeLabel label("L2Normalization");
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
@@ -1604,7 +1615,8 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
       const float val = input_data[c];
       squared_l2_norm += val * val;
     }
-    const float l2_norm = std::sqrt(squared_l2_norm);
+    float l2_norm = std::sqrt(squared_l2_norm);
+    l2_norm = std::max(l2_norm, epsilon);
     for (int c = 0; c < depth; ++c) {
       *output_data = *input_data / l2_norm;
       ++output_data;
@@ -3002,6 +3014,8 @@ inline void LstmCell(
   tflite::FullyConnectedParams fc_params;
   fc_params.float_activation_min = std::numeric_limits<float>::lowest();
   fc_params.float_activation_max = std::numeric_limits<float>::max();
+  fc_params.lhs_cacheable = false;
+  fc_params.rhs_cacheable = false;
   FullyConnected(fc_params, concat_temp_shape, concat_temp_data, weights_shape,
                  weights_data, bias_shape, bias_data, activ_temp_shape,
                  activ_temp_data, cpu_backend_context);
