@@ -414,7 +414,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       # The default tolerance (1e-3) results in a tiny fraction (<1%) of
       # miscompares on ROCm platform, and hence the tolerance bump
       tol = 2e-3 if test.is_built_with_rocm else 1e-3
-      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
+      self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
 
   # TODO: enable these tests when cuDNN is upgraded to >= 7.6.2. Same with the
   # test_conv3d() below.
@@ -502,7 +502,7 @@ class AutoMixedPrecisionTest(test.TestCase):
       # The default tolerance (1e-3) results in a tiny fraction (<1%) of
       # miscompares on ROCm platform, and hence the tolerance bump
       tol = 2e-3 if test.is_built_with_rocm else 1e-3
-      self.assertAllClose(output_val_ref, output_val, atol=2e-3, rtol=2e-3)
+      self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
