@@ -74,6 +74,7 @@ cc_library(
     hdrs = ["tf_op_utils.h"],
     deps = [
         "//tensorflow/core:regexp_internal",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
 )
