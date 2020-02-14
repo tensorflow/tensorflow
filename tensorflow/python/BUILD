@@ -7877,10 +7877,7 @@ cuda_py_test(
         "grappler/auto_mixed_precision_test.py",
     ],
     python_version = "PY3",
-    tags = [
-        "grappler",
-        "no_rocm",
-    ],
+    tags = ["grappler"],
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
     deps = [
