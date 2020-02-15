@@ -17,6 +17,19 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("AssertCardinalityDataset")
+    .Input("input_dataset: variant")
+    .Input("cardinality: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // cardinality should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("AssertNextDataset")
     .Input("input_dataset: variant")
     .Input("transformations: string")
