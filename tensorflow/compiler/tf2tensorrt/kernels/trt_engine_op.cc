@@ -699,7 +699,6 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                << ", but only 1 context is present.";
     return kRetry;
   }
-  auto& execution_context = engine_context->execution_context;
   const int num_binding = cuda_engine->getNbBindings();
   std::vector<void*> buffers(num_binding);
 

@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
+
 class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
   """Test squeeze on batch dim and some unary operations in TF-TRT."""
 

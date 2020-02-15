@@ -37,7 +37,8 @@ std::vector<TensorShape> DimVecToShapeVec(std::vector<nvinfer1::Dims3> dimvec) {
   std::vector<TensorShape> shapevec(dimvec.size());
   for (int i = 0; i < dimvec.size(); i++) {
     TensorShape shape;
-    TensorShapeUtils::MakeShape(dimvec[i].d, dimvec[i].nbDims, &shape);
+    TF_CHECK_OK(TensorShapeUtils::MakeShape(dimvec[i].d, dimvec[i].nbDims,
+                                            &shape));
     shapevec[i] = shape;
   }
   return shapevec;
@@ -116,10 +117,11 @@ class TrtShapeOptimizationProfileTest : public ::testing::Test {
   std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> exec_context_;
   // The order is important: exec_context_ must be destroyed first, and logger
   // at last.
-
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   const uint32_t flags_ =
       1U << static_cast<int>(
           nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+#endif
 };
 
 TEST_F(TrtShapeOptimizationProfileTest, Static) {
@@ -141,7 +143,7 @@ TEST_F(TrtShapeOptimizationProfileTest, Static) {
       builder_->buildCudaEngine(*network_));
 #endif
   EXPECT_NE(nullptr, engine);
-  profile.CreateExecutionContexts(engine.get(), exec_context_);
+  TF_CHECK_OK(profile.CreateExecutionContexts(engine.get(), exec_context_));
   // A single execution context should be created for a graph with static input
   ASSERT_EQ(exec_context_.size(), 1);
   EXPECT_NE(nullptr, exec_context_[0]);

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_SHAPE_OPTIMIZATION_PROFILES_H_
-#define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_SHAPE_OPTIMIZATION_PROFILES_H_
+#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_SHAPE_OPTIMIZATION_PROFILES_H_
+#define TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_SHAPE_OPTIMIZATION_PROFILES_H_
 
 #include <list>
 #include <string>
@@ -117,7 +117,7 @@ struct OptimizationProfileConfig {
 // before the engine is created.
 class TrtShapeOptimizationProfile {
  public:
-  TrtShapeOptimizationProfile(){};
+  TrtShapeOptimizationProfile(){}
 
   // Stores input shape information during profile_generation_mode
   void AddShape(std::vector<TensorShape> shapes) {
@@ -175,4 +175,4 @@ class TrtShapeOptimizationProfile {
 
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
-#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_SHAPE_OPTIMIZATION_PROFILES_H_
+#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_SHAPE_OPTIMIZATION_PROFILES_H_

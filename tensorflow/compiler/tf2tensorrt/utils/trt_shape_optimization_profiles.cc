@@ -68,9 +68,9 @@ Status TrtShapeOptimizationProfile::AddProfiles(
       VLOG(1) << "Added optimization profile " << profiles_[i].DebugString()
               << " to builder config.";
     } else {
-      VLOG(ERROR) << "Failed to add optimization profile "
-                  << profiles_[i].DebugString()
-                  << ". This usually happens when profile is invalid.";
+      LOG(ERROR) << "Failed to add optimization profile "
+                 << profiles_[i].DebugString()
+                 << ". This usually happens when profile is invalid.";
     }
   }
   if (config->getNbOptimizationProfiles() == 0) {
@@ -85,7 +85,7 @@ Status TrtShapeOptimizationProfile::AddProfiles(
 Status TrtShapeOptimizationProfile::ConfigureBuilder(
     nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
     const nvinfer1::INetworkDefinition* network) {
-  AddProfiles(builder, config, network);
+  TF_RETURN_IF_ERROR(AddProfiles(builder, config, network));
   return Status::OK();
 }
 #endif
@@ -140,10 +140,16 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
 Status TrtShapeOptimizationProfile::RestoreProfiles(
     const nvinfer1::ICudaEngine* engine) {
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  if (!engine || engine->hasImplicitBatchDimension()) {
+  if (!engine) {
+    // We do not need to restore profiles for an empty engine
+    return Status::OK();
+  }
+#if IS_TRT_VERSION_GE(7, 0, 0, 0)
+  if (engine->hasImplicitBatchDimension()) {
     // Nothing to do, we cannot have profiles in implicit batch mode
     return Status::OK();
   }
+#endif
   int n_profiles = engine->getNbOptimizationProfiles();
   int n_inputs = GetNumberOfEngineInputs(engine);
   VLOG(2) << "Attempting to restore " << n_profiles << " profiles, each with "
