@@ -466,6 +466,7 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:interleave_ops",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "@six_archive//:six",
