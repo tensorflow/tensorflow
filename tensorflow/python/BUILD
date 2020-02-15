@@ -218,6 +218,11 @@ tf_py_build_info_genrule(
 )
 
 py_library(
+    name = "platform_build_info",
+    srcs = ["platform/build_info.py"],
+)
+
+py_library(
     name = "platform",
     srcs = glob(
         [
@@ -238,8 +243,8 @@ py_library(
         ":pywrap_tfe",
         ":util",
         "//tensorflow/core:protos_all_py",
-        "@absl_py//absl:app",
         "@absl_py//absl/flags",
+        "@rules_python//python/runfiles",
         "@six_archive//:six",
     ],
 )
@@ -285,7 +290,14 @@ tf_py_test(
     name = "resource_loader_test",
     size = "small",
     srcs = ["platform/resource_loader_test.py"],
+    data = [
+        "platform/resource_loader.py",
+    ],
     python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":platform",
         ":platform_test",
@@ -1994,6 +2006,25 @@ py_library(
     ],
 )
 
+py_library(
+    name = "memory_checker",
+    srcs = [
+        "framework/memory_checker.py",
+        "framework/python_memory_checker.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [":_python_memory_checker_helper"],
+)
+
+tf_python_pybind_extension(
+    name = "_python_memory_checker_helper",
+    srcs = ["framework/python_memory_checker_helper.cc"],
+    module_name = "_python_memory_checker_helper",
+    deps = [
+        "@pybind11",
+    ],
+)
+
 tf_py_test(
     name = "framework_constant_op_test",
     size = "small",
@@ -2512,6 +2543,37 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "framework_memory_checker_test",
+    size = "medium",
+    srcs = ["framework/memory_checker_test.py"],
+    main = "framework/memory_checker_test.py",
+    python_version = "PY3",
+    shard_count = 8,
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        ":framework_test_lib",
+        # TODO(kkb): Find more appropriate place to add `memory_checker` as deps
+        # Adding directly to `framework_test_lib` caused a Colab binary size
+        # regression b/149433910 .
+        ":memory_checker",
+        ":_memory_checker_test_helper",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_memory_checker_test_helper",
+    srcs = ["framework/memory_checker_test_helper.cc"],
+    module_name = "_memory_checker_test_helper",
+    deps = [
+        "@pybind11",
     ],
 )
 
@@ -4369,7 +4431,7 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "rnn_grad_test",
     srcs = ["ops/rnn_grad_test.py"],
     python_version = "PY3",
@@ -5009,7 +5071,10 @@ cuda_py_test(
     kernels = [
         "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
     ],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_oss",  # TODO(b/149565560)
+        "no_windows_gpu",
+    ],
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
@@ -5684,6 +5749,10 @@ tf_py_wrap_cc(
         ":py_exception_registry",
         ":py_func_lib",
         ":py_record_reader_lib",
+        ":pybind11_absl",
+        ":pybind11_lib",
+        ":pybind11_status",
+        ":pybind11_proto",
         ":python_op_gen",
         ":tf_session_helper",
         "//third_party/python_runtime:headers",
@@ -5759,6 +5828,7 @@ filegroup(
         "//tensorflow/core/grappler/clusters:single_machine",  # tf_cluster
         "//tensorflow/core/grappler/clusters:utils",  # tf_optimizer
         "//tensorflow/core/grappler/clusters:virtual_cluster",  # tf_cluster
+        "//tensorflow/core/grappler/costs:analytical_cost_estimator",  # cost analyzer
         "//tensorflow/core/grappler/costs:graph_memory",  # tf_cluster
         "//tensorflow/core/grappler/costs:graph_properties",  # tf_item
         "//tensorflow/core/grappler/costs:measuring_cost_estimator",  # tf_cluster
@@ -5770,7 +5840,7 @@ filegroup(
         "//tensorflow/core/profiler/internal:annotation_stack_impl",  # profiler
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/internal:traceme_recorder_impl",  # profiler
-        "//tensorflow/core/profiler/lib:profiler_session",  # tfe
+        "//tensorflow/core/profiler/lib:profiler_session_impl",  # profiler
         "//tensorflow/core/util:port",  # util_port
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
@@ -5778,7 +5848,11 @@ filegroup(
         "//tensorflow/python/eager:pywrap_tfe_lib",  # pywrap_tfe_lib
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
-    ],
+    ] + if_xla_available([
+        "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
+        "//tensorflow/compiler/xla:status_macros",  # tfcompile
+        "//tensorflow/compiler/xla/service:hlo",  # tfcompile
+    ]),
     visibility = ["//visibility:private"],
 )
 
@@ -7950,8 +8024,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/framework:pywrap_required_hdrs",
-        "//tensorflow/core/profiler/internal:pywrap_required_hdrs",
-        "//tensorflow/core/profiler/lib:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
     ],
     module_name = "_pywrap_tfe",
@@ -7971,7 +8043,6 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:platform",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ] + if_static(
         extra_deps = [
             "//tensorflow/compiler/jit:flags",

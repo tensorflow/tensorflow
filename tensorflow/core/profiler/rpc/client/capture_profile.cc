@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -69,9 +68,21 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
   return request;
 }
 
-bool ShouldRetryTracing(Status status) {
+inline Status FromGrpcStatus(const ::grpc::Status& s) {
+  return s.ok() ? Status::OK()
+                : Status(static_cast<error::Code>(s.error_code()),
+                         s.error_message());
+}
+
+inline bool ShouldRetryTracing(Status status) {
   return status.code() == error::Code::UNAVAILABLE ||
-         status.code() == error::Code::ALREADY_EXISTS;
+         status.code() == error::Code::ALREADY_EXISTS ||
+         // When auto-reconnecting to a remote TensorFlow worker after it
+         // restarts, gRPC can return an UNKNOWN error code with a "Stream
+         // removed" error message. This should not be treated as an
+         // unrecoverable error.
+         (status.code() == error::Code::UNKNOWN &&
+          status.error_message() == "Stream removed");
 }
 
 // Returns whether the returned trace is empty.
@@ -156,23 +167,6 @@ Status NewSession(const string& service_addr,
   return Status::OK();
 }
 
-// Creates an empty event file if not already exists, which indicates that we
-// have a plugins/profile/ directory in the current logdir.
-Status MaybeCreateEmptyEventFile(const string& logdir) {
-  // Suffix for an empty event file.  it should be kept in sync with
-  // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
-  constexpr char kProfileEmptySuffix[] = ".profile-empty";
-  std::vector<string> children;
-  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));
-  for (const string& child : children) {
-    if (absl::EndsWith(child, kProfileEmptySuffix)) {
-      return Status::OK();
-    }
-  }
-  EventsWriter event_writer(io::JoinPath(logdir, "events"));
-  return event_writer.InitWithSuffix(kProfileEmptySuffix);
-}
-
 MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
                                       bool timestamp) {
   MonitorRequest request;
@@ -211,8 +205,6 @@ Status Trace(const string& service_addr, const string& logdir,
   if (!workers_list.empty()) {
     hostnames = absl::StrSplit(workers_list, ',');
   }
-
-  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
 
   Status status = Status::OK();
   int remaining_attempts = num_tracing_attempts;

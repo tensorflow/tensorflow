@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/InitAllDialects.h"  // TF:llvm-project
+#include "mlir/InitAllPasses.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -20,6 +22,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 namespace mlir {
+
+static bool auto_init = []() {
+  registerAllDialects();
+  registerAllPasses();
+
+  return true;
+}();
 
 // Static initialization for TF dialect registration.
 static DialectRegistration<TFControlFlow::TFControlFlowDialect>

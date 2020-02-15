@@ -74,6 +74,8 @@ enum HostEventType {
   kWhileOpStartBody,
   kForOp,
   kPartitionedCallOp,
+  // tf.data related.
+  kIteratorGetNextOp,
   // GPU related.
   kKernelLaunch,
   kKernelExecute,
@@ -104,6 +106,7 @@ enum StatType {
   kBytesAvailable,
   kFragmentation,
   kPeakBytesInUse,
+  kRequestedBytes,
   kTensorShapes,
   // Device trace arguments.
   kDeviceId,

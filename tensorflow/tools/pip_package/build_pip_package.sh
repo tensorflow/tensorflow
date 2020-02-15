@@ -165,35 +165,6 @@ function prepare_src() {
 
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so.[0-9].*
-
-  # In order to break the circular dependency between tensorflow and
-  # tensorflow_estimator which forces us to do a multi-step release, we are
-  # creating a virtual python package called tensorflow and moving all the tf
-  # code into another python package called tensorflow_core:
-  #
-  #   * move code from tensorflow to tensorflow_core
-  #   * create the virtual pip package: create folder and __init__.py file with
-  #     needed code for transparent forwarding
-  #
-  # This is transparent to internal code or to code not using the pip packages.
-  mv "${TMPDIR}/tensorflow" "${TMPDIR}/tensorflow_core"
-  mkdir "${TMPDIR}/tensorflow"
-  mv "${TMPDIR}/tensorflow_core/virtual_root.__init__.py" "${TMPDIR}/tensorflow/__init__.py"
-
-  # In V1 API, we need to remove deprecation warnings from
-  # ${TMPDIR}/tensorflow_core/__init__.py as those exists in
-  # ${TMPDIR}/tensorflow/__init__.py which does an import* and if these don't
-  # get removed users get 6 deprecation warning just on
-  #
-  #   import tensorflow as tf
-  #
-  # which is not ok. We disable deprecation by using sed to toggle the flag
-  # TODO(mihaimaruseac): When we move the API to root, remove this hack
-  # Note: Can't do in place sed that works on all OS, so use a temp file instead
-  sed \
-    "s/deprecation=True/deprecation=False/g" \
-    "${TMPDIR}/tensorflow_core/__init__.py" > "${TMPDIR}/tensorflow_core/__init__.out"
-  mv "${TMPDIR}/tensorflow_core/__init__.out" "${TMPDIR}/tensorflow_core/__init__.py"
 }
 
 function build_wheel() {

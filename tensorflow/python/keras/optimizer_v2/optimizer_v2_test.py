@@ -61,14 +61,17 @@ from tensorflow.python.training import momentum
 from tensorflow.python.training import training_util
 
 
+_DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
+# TODO(b/141710709): complex support in NVCC and ROCM.
+if (not test_util.IsBuiltWithNvcc() and not test.is_built_with_rocm()):
+  _DATA_TYPES += [dtypes.complex64, dtypes.complex128]
+
+
 class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testBasic(self):
-    for _, dtype in enumerate([
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
-    ]):
+    for dtype in _DATA_TYPES:
       with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
@@ -89,10 +92,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testAdaptiveLearningRate(self):
-    for dtype in [
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
-    ]:
+    for dtype in _DATA_TYPES:
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
       var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
 
@@ -135,10 +135,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testPrecomputedGradient(self):
-    for dtype in [
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
-    ]:
+    for dtype in _DATA_TYPES:
       with test_util.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
@@ -162,10 +159,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNoGradients(self):
-    for _, dtype in enumerate([
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
-    ]):
+    for dtype in _DATA_TYPES:
       with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
@@ -177,10 +171,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_Minimize(self):
-    for _, dtype in enumerate([
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
-    ]):
+    for dtype in _DATA_TYPES:
       with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
@@ -193,10 +184,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_ApplyGradients(self):
-    for _, dtype in enumerate([
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
-    ]):
+    for dtype in _DATA_TYPES:
       with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
@@ -207,10 +195,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testGradientsAsVariables(self):
-    for i, dtype in enumerate([
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
-    ]):
+    for i, dtype in enumerate(_DATA_TYPES):
       with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
@@ -250,7 +235,7 @@ class OptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testComputeGradientsWithTensors(self):
     with test_util.use_gpu():
-      x = ops.convert_to_tensor(1.0)
+      x = ops.convert_to_tensor_v2(1.0)
 
       def f():
         return x * x
@@ -512,7 +497,7 @@ class OptimizerTest(test.TestCase):
     output_np = np.random.random((10, 4))
     a = input_layer.Input(shape=(3,), name='input_a')
     model = sequential.Sequential()
-    model.add(core.Dense(4, name='dense'))
+    model.add(core.Dense(4, kernel_initializer='zeros', name='dense'))
     model.add(core.Dropout(0.5, name='dropout'))
     model(a)
     optimizer = gradient_descent.SGD(learning_rate=0.1)
@@ -602,7 +587,7 @@ class OptimizerTest(test.TestCase):
     self.assertLen(var_list(), 4)
 
   def testVarKey(self):
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       a = variables.Variable([1., 2.], name='var')
       b = variables.Variable([1.], name='var')
       self.assertTrue(a._in_graph_mode)
@@ -613,7 +598,7 @@ class OptimizerTest(test.TestCase):
       self.assertEqual('var_1', var_key)
 
   def testVarName(self):
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       var = variables.Variable([1., 2.], name='var')
       loss = var + 1.
       opt = adam.Adam()
@@ -1071,7 +1056,7 @@ def make_model():
                           | Dense |
                           ---------
 
-  This topology is chosen because it excercises both dense and sparse update
+  This topology is chosen because it exercises both dense and sparse update
   paths.
 
   Returns:

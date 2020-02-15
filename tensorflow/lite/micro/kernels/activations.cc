@@ -107,9 +107,8 @@ TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     default: {
-      context->ReportError(context,
-                           "Only float32 is supported currently, got %s",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Only float32 is supported currently, got %s",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
     }
   }
@@ -149,9 +148,8 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     default: {
-      context->ReportError(context,
-                           "Only float32 is supported currently, got %s",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Only float32 is supported currently, got %s",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
     }
   }

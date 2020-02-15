@@ -39,7 +39,9 @@ load(
 )
 load(
     "//third_party/remote_config:common.bzl",
+    "err_out",
     "get_bash_bin",
+    "get_cpu_value",
     "get_python_bin",
     "is_windows",
     "raw_exec",
@@ -272,20 +274,21 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
         sysroot += ["--sysroot", tf_sysroot]
     result = raw_exec(repository_ctx, [cc, "-E", "-x" + lang, "-", "-v"] +
                                       sysroot)
-    index1 = result.stderr.find(_INC_DIR_MARKER_BEGIN)
+    stderr = err_out(result)
+    index1 = stderr.find(_INC_DIR_MARKER_BEGIN)
     if index1 == -1:
         return []
-    index1 = result.stderr.find("\n", index1)
+    index1 = stderr.find("\n", index1)
     if index1 == -1:
         return []
-    index2 = result.stderr.rfind("\n ")
+    index2 = stderr.rfind("\n ")
     if index2 == -1 or index2 < index1:
         return []
-    index2 = result.stderr.find("\n", index2 + 1)
+    index2 = stderr.find("\n", index2 + 1)
     if index2 == -1:
-        inc_dirs = result.stderr[index1 + 1:]
+        inc_dirs = stderr[index1 + 1:]
     else:
-        inc_dirs = result.stderr[index1 + 1:index2].strip()
+        inc_dirs = stderr[index1 + 1:index2].strip()
 
     return [
         _normalize_include_path(repository_ctx, _cxx_inc_convert(p))
@@ -345,7 +348,7 @@ def _cuda_include_path(repository_ctx, cuda_config):
     cmd = "%s -v /dev/null -o /dev/null ; [ $? -eq 1 ]" % str(nvcc_path)
     result = raw_exec(repository_ctx, [get_bash_bin(repository_ctx), "-c", cmd])
     target_dir = ""
-    for one_line in result.stderr.splitlines():
+    for one_line in err_out(result).splitlines():
         if one_line.startswith("#$ _TARGET_DIR_="):
             target_dir = (
                 cuda_config.cuda_toolkit_path + "/" + one_line.replace(
@@ -418,20 +421,6 @@ def compute_capabilities(repository_ctx):
             auto_configure_fail("Invalid compute capability: %s" % capability)
     return capabilities
 
-def get_cpu_value(repository_ctx):
-    """Returns the name of the host operating system.
-
-      Args:
-        repository_ctx: The repository context.
-
-      Returns:
-        A string containing the name of the host operating system.
-      """
-    if is_windows(repository_ctx):
-        return "Windows"
-    result = raw_exec(repository_ctx, ["uname", "-s"])
-    return result.stdout.strip()
-
 def lib_name(base_name, cpu_value, version = None, static = False):
     """Constructs the platform-specific name of a library.
 
@@ -480,7 +469,7 @@ def find_lib(repository_ctx, paths, check_soname = True):
             if not any([soname == path.basename for soname in sonames]):
                 mismatches.append(str(path))
                 continue
-        return path
+        return str(path)
     if mismatches:
         auto_configure_fail(
             "None of the libraries match their SONAME: " + ", ".join(mismatches),
@@ -613,7 +602,7 @@ def find_cuda_config(repository_ctx, script_path, cuda_libraries):
         script_path,
     ] + cuda_libraries)
     if exec_result.return_code:
-        auto_configure_fail("Failed to run find_cuda_config.py: %s" % exec_result.stderr)
+        auto_configure_fail("Failed to run find_cuda_config.py: %s" % err_out(exec_result))
 
     # Parse the dict from stdout.
     return dict([tuple(x.split(": ")) for x in exec_result.stdout.splitlines()])
@@ -856,6 +845,22 @@ def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
 def _tpl_path(repository_ctx, filename):
     return repository_ctx.path(Label("//third_party/gpus/%s.tpl" % filename))
 
+def _basename(repository_ctx, path_str):
+    """Returns the basename of a path of type string.
+
+    This method is different from path.basename in that it also works if
+    the host platform is different from the execution platform
+    i.e. linux -> windows.
+    """
+
+    num_chars = len(path_str)
+    is_win = is_windows(repository_ctx)
+    for i in range(num_chars):
+        r_i = num_chars - 1 - i
+        if (is_win and path_str[r_i] == "\\") or path_str[r_i] == "/":
+            return path_str[r_i + 1:]
+    return path_str
+
 def _create_local_cuda_repository(repository_ctx):
     """Creates the repository containing files set up to build with CUDA."""
 
@@ -923,8 +928,8 @@ def _create_local_cuda_repository(repository_ctx):
     cuda_lib_srcs = []
     cuda_lib_outs = []
     for path in cuda_libs.values():
-        cuda_lib_srcs.append(str(path))
-        cuda_lib_outs.append("cuda/lib/" + path.basename)
+        cuda_lib_srcs.append(path)
+        cuda_lib_outs.append("cuda/lib/" + _basename(repository_ctx, path))
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "cuda-lib",
@@ -974,17 +979,17 @@ def _create_local_cuda_repository(repository_ctx):
         "cuda/BUILD",
         tpl_paths["cuda:BUILD"],
         {
-            "%{cuda_driver_lib}": cuda_libs["cuda"].basename,
-            "%{cudart_static_lib}": cuda_libs["cudart_static"].basename,
+            "%{cuda_driver_lib}": _basename(repository_ctx, cuda_libs["cuda"]),
+            "%{cudart_static_lib}": _basename(repository_ctx, cuda_libs["cudart_static"]),
             "%{cudart_static_linkopt}": _cudart_static_linkopt(cuda_config.cpu_value),
-            "%{cudart_lib}": cuda_libs["cudart"].basename,
-            "%{cublas_lib}": cuda_libs["cublas"].basename,
-            "%{cusolver_lib}": cuda_libs["cusolver"].basename,
-            "%{cudnn_lib}": cuda_libs["cudnn"].basename,
-            "%{cufft_lib}": cuda_libs["cufft"].basename,
-            "%{curand_lib}": cuda_libs["curand"].basename,
-            "%{cupti_lib}": cuda_libs["cupti"].basename,
-            "%{cusparse_lib}": cuda_libs["cusparse"].basename,
+            "%{cudart_lib}": _basename(repository_ctx, cuda_libs["cudart"]),
+            "%{cublas_lib}": _basename(repository_ctx, cuda_libs["cublas"]),
+            "%{cusolver_lib}": _basename(repository_ctx, cuda_libs["cusolver"]),
+            "%{cudnn_lib}": _basename(repository_ctx, cuda_libs["cudnn"]),
+            "%{cufft_lib}": _basename(repository_ctx, cuda_libs["cufft"]),
+            "%{curand_lib}": _basename(repository_ctx, cuda_libs["curand"]),
+            "%{cupti_lib}": _basename(repository_ctx, cuda_libs["cupti"]),
+            "%{cusparse_lib}": _basename(repository_ctx, cuda_libs["cusparse"]),
             "%{copy_rules}": "\n".join(copy_rules),
         },
     )
@@ -1070,12 +1075,8 @@ def _create_local_cuda_repository(repository_ctx):
         # bazel's header check failing.
         cuda_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
 
-        nvcc_path = str(
-            repository_ctx.path("%s/nvcc%s" % (
-                cuda_config.config["cuda_binary_dir"],
-                ".exe" if is_windows(repository_ctx) else "",
-            )),
-        )
+        file_ext = ".exe" if is_windows(repository_ctx) else ""
+        nvcc_path = "%s/nvcc%s" % (cuda_config.config["cuda_binary_dir"], file_ext)
         cuda_defines["%{compiler_deps}"] = ":crosstool_wrapper_driver_is_not_gcc"
         cuda_defines["%{win_compiler_deps}"] = ":windows_msvc_wrapper_files"
 

@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -34,9 +35,9 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import index_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
-from tensorflow.python.keras.saving import saved_model_experimental as saving
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 
 
@@ -315,12 +316,18 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(max_tokens=None)
+    layer = get_layer_class()()
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
+
+  def test_output_shape(self):
+    input_data = keras.Input(shape=(4,), dtype=dtypes.string)
+    layer = get_layer_class()()
+    int_data = layer(input_data)
+    self.assertAllEqual(int_data.shape[1:], input_data.shape[1:])
 
   def test_int_output_no_reserved_zero(self):
     vocab_data = ["earth", "wind", "and", "fire"]
@@ -329,8 +336,53 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     expected_output = [[1, 2, 3, 4], [4, 3, 1, 0]]
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(max_tokens=None, reserve_zero=False)
+    layer = get_layer_class()(reserve_zero=False)
     layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_int_output_explicit_vocab(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(vocabulary=vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+
+@keras_parameterized.run_all_keras_modes
+class IndexLookupVocabularyTest(keras_parameterized.TestCase,
+                                preprocessing_test_utils.PreprocessingLayerTest
+                               ):
+
+  def test_int_output_explicit_vocab(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(vocabulary=vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_int_output_explicit_vocab_from_file(self):
+    vocab_data = resource_loader.get_path_to_datafile("testdata/vocab.txt")
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(vocabulary=vocab_data)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
@@ -350,6 +402,17 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllClose(expected_output, output_dataset)
+
+  def test_non_unique_vocab_fails(self):
+    vocab_data = ["earth", "wind", "and", "fire", "fire"]
+    with self.assertRaisesRegex(ValueError, ".*repeated term.*fire.*"):
+      _ = get_layer_class()(vocabulary=vocab_data)
+
+  def test_non_unique_vocab_from_file_fails(self):
+    vocab_data = resource_loader.get_path_to_datafile(
+        "testdata/repeated_vocab.txt")
+    with self.assertRaisesRegex(ValueError, ".*repeated term.*earth.*"):
+      _ = get_layer_class()(vocabulary=vocab_data)
 
 
 @keras_parameterized.run_all_keras_modes
@@ -451,43 +514,7 @@ class IndexLookupErrorTest(keras_parameterized.TestCase,
 class IndexLookupSavingTest(keras_parameterized.TestCase,
                             preprocessing_test_utils.PreprocessingLayerTest):
 
-  def test_saving_errors(self):
-    vocab_data = ["earth", "wind", "and", "fire"]
-
-    # Build and validate a golden model.
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(max_tokens=None)
-    layer.set_vocabulary(vocab_data)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-
-    # Save the model to disk.
-    output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
-
-    with self.assertRaisesRegex(NotImplementedError, ".*Saving is not yet.*"):
-      model.save(output_path, save_format="tf")
-
-  def test_saving_errors_when_nested(self):
-    vocab_data = ["earth", "wind", "and", "fire"]
-
-    # Build and validate a golden model.
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(max_tokens=None)
-    layer.set_vocabulary(vocab_data)
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-
-    outer_input = keras.Input(shape=(None,), dtype=dtypes.string)
-    outer_output = model(outer_input)
-    outer_model = keras.Model(inputs=outer_input, outputs=outer_output)
-
-    # Save the model to disk.
-    output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
-
-    with self.assertRaisesRegex(NotImplementedError, ".*Saving is not yet.*"):
-      outer_model.save(output_path, save_format="tf")
-
-  def DISABLED_test_vocabulary_persistence_across_saving(self):
+  def test_vocabulary_persistence_across_saving(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
@@ -505,7 +532,14 @@ class IndexLookupSavingTest(keras_parameterized.TestCase,
     # Save the model to disk.
     output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
     model.save(output_path, save_format="tf")
-    loaded_model = saving.load_from_saved_model(
+
+    # Delete the session and graph to ensure that the loaded model is generated
+    # from scratch.
+    # TODO(b/149526183): Can't clear session when TF2 is disabled.
+    if tf2.enabled():
+      keras.backend.clear_session()
+
+    loaded_model = keras.models.load_model(
         output_path, custom_objects={"IndexLookup": get_layer_class()})
 
     # Ensure that the loaded model is unique (so that the save/load is real)
@@ -514,46 +548,6 @@ class IndexLookupSavingTest(keras_parameterized.TestCase,
     # Validate correctness of the new model.
     new_output_dataset = loaded_model.predict(input_array)
     self.assertAllEqual(new_output_dataset, expected_output)
-
-  def DISABLED_test_vocabulary_persistence_across_saving_with_tfidf(self):
-    vocab_data = ["earth", "wind", "and", "fire"]
-    tfidf_data = [.5, .25, .2, .125]
-    input_array = np.array([["earth", "wind", "and", "earth"],
-                            ["ohio", "fire", "earth", "michigan"]])
-
-    # pyformat: disable
-    # pylint: disable=bad-whitespace
-    expected_output = [[ 0,  1, .25, .2,    0],
-                       [.1, .5,   0,  0, .125]]
-    # pylint: enable=bad-whitespace
-    # pyformat: enable
-
-    # Build and validate a golden model.
-    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
-    layer = get_layer_class()(
-        max_tokens=5,
-        standardize=None,
-        split=None,
-        output_mode=index_lookup.TFIDF)
-    layer.set_vocabulary(vocab_data, df_data=tfidf_data, oov_df_value=.05)
-
-    int_data = layer(input_data)
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllClose(output_dataset, expected_output)
-
-    # Save the model to disk.
-    output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
-    model.save(output_path, save_format="tf")
-    loaded_model = saving.load_from_saved_model(
-        output_path, custom_objects={"IndexLookup": get_layer_class()})
-
-    # Ensure that the loaded model is unique (so that the save/load is real)
-    self.assertIsNot(model, loaded_model)
-
-    # Validate correctness of the new model.
-    new_output_dataset = loaded_model.predict(input_array)
-    self.assertAllClose(new_output_dataset, expected_output)
 
 
 @keras_parameterized.run_all_keras_modes

@@ -142,7 +142,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
   def _save_model(self, model, saved_dir):
     """Save the given model to the given saved_dir.
 
-    This method needs to be implemeted by the subclasses.
+    This method needs to be implemented by the subclasses.
 
     Args:
       model: a keras model object to save.

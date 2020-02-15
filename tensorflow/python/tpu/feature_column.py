@@ -148,7 +148,7 @@ def embedding_column(categorical_column,
       learning_rate_fn=learning_rate_fn,
       use_safe_embedding_lookup=use_safe_embedding_lookup)
   # For Embedding column, the initializer is hidden inside the creator Fn, which
-  # is not accessiable later. So, we attach it to a speicial field. Also note
+  # is not accessible later. So, we attach it to a special field. Also note
   # that non-TPU Embedding column and non-TPU shared Embedding column handle the
   # initializer differently. See shared_embedding_columns for details.
   column._tpu_initializer = initializer

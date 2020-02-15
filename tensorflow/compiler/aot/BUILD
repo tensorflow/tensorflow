@@ -143,6 +143,7 @@ tf_library(
     config = "test_graph_tfadd.config.pbtxt",
     cpp_class = "AddComp",
     graph = "test_graph_tfadd.pbtxt",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -169,6 +170,7 @@ tf_library(
     config = "test_graph_tfunknownop.config.pbtxt",
     cpp_class = "UnknownOpAddComp",
     graph = "test_graph_tfunknownop.pbtxt",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -195,6 +197,7 @@ tf_library(
     config = "test_graph_tfunknownop2.config.pbtxt",
     cpp_class = "UnknownOpAddComp",
     graph = "test_graph_tfunknownop.pbtxt",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -220,6 +223,7 @@ tf_library(
     config = "test_graph_tfunknownop3.config.pbtxt",
     cpp_class = "UnknownOpAddComp",
     graph = "test_graph_tfunknownop.pbtxt",
+    mlir_components = "None",
     tags = [
         "manual",
     ],

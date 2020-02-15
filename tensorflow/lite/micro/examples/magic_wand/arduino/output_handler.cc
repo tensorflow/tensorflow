@@ -34,17 +34,20 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, int kind) {
   }
   // Print some ASCII art for each gesture
   if (kind == 0) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "WING:\n\r*         *         *\n\r *       * *       "
         "*\n\r  *     *   *     *\n\r   *   *     *   *\n\r    * *       "
         "* *\n\r     *         *\n\r");
   } else if (kind == 1) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "RING:\n\r          *\n\r       *     *\n\r     *         *\n\r "
         "   *           *\n\r     *         *\n\r       *     *\n\r      "
         "    *\n\r");
   } else if (kind == 2) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "SLOPE:\n\r        *\n\r       *\n\r      *\n\r     *\n\r    "
         "*\n\r   *\n\r  *\n\r * * * * * * * *\n\r");
   }

@@ -205,6 +205,9 @@ class OpKernel {
   // necessary for cost analysis.
   virtual string TraceString(OpKernelContext* ctx, bool verbose);
 
+ protected:
+  string GetTraceArgument(OpKernelContext* ctx);
+
  private:
   const std::unique_ptr<const NodeDef> def_;
   const DataTypeVector input_types_;

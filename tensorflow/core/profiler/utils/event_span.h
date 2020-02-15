@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
@@ -49,12 +50,14 @@ enum EventType {
   DEVICE_TO_DEVICE = 7,
   // Device-to-host communication.
   DEVICE_TO_HOST = 8,
-  // Device is computing.
-  DEVICE_COMPUTE = 9,
+  // Device is computing with 32-bit precision.
+  DEVICE_COMPUTE_32 = 9,
+  // Device is computing with 16-bit precision.
+  DEVICE_COMPUTE_16 = 10,
   // Device is waiting for another device.
-  DEVICE_WAIT_DEVICE = 10,
+  DEVICE_WAIT_DEVICE = 11,
   // Device is waiting for host.
-  DEVICE_WAIT_HOST = 11,
+  DEVICE_WAIT_HOST = 12,
   LAST_EVENT_TYPE = DEVICE_WAIT_HOST
 };
 
@@ -134,8 +137,9 @@ bool operator==(const StepEvents& a, const StepEvents& b);
 // Returns the event type of the given CPU event.
 EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id);
 
-// Returns the event type of the given GPU event.
-EventType ClassifyGpuEvent(absl::string_view event_name);
+// Returns the event type of the given GPU event and tensor shapes.
+EventType ClassifyGpuEvent(absl::string_view event_name,
+                           absl::string_view tensor_shapes);
 
 // Returns the name of the given EventType.
 std::string PrintEventType(EventType event_type);
@@ -152,8 +156,12 @@ std::string PrintStepEvents(const StepEvents& step_events);
 // Combines the src StepEvents into dst.
 void CombineStepEvents(const StepEvents& src, StepEvents* dst);
 
-// Converts from overlapped step-events to non-overlapped step-events.
+// Converts from overlapped step-events to non-overlapped step events.
 StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events);
+
+// Returns the precision stats of the given non-overlapped step events.
+PrecisionStats ComputePrecisionStats(
+    const StepEvents& nonoverlapped_step_events);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -31,8 +31,9 @@ namespace {
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() = default;
-  void Init(tflite::StatefulNnApiDelegate::Options options) {
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options));
+  void Init(const NnApi* nnapi,
+            tflite::StatefulNnApiDelegate::Options options) {
+    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
     auto* delegate = stateful_delegate_.get();
     this->SetApplyDelegate([delegate, this](Interpreter* interpreter) {
       compilation_status_ = interpreter->ModifyGraphWithDelegate(delegate);
@@ -54,11 +55,11 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
 class FloatAddOpModel : public SingleOpModelWithNNAPI {
  public:
   FloatAddOpModel() = default;
-  void Init(tflite::StatefulNnApiDelegate::Options options,
+  void Init(const NnApi* nnapi, tflite::StatefulNnApiDelegate::Options options,
             const TensorData& input1, const TensorData& input2,
             const TensorData& output, ActivationFunctionType activation_type,
             bool allow_fp32_relax_to_fp16 = false) {
-    SingleOpModelWithNNAPI::Init(options);
+    SingleOpModelWithNNAPI::Init(nnapi, options);
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
@@ -85,26 +86,23 @@ struct NnApiDeviceSelectionTest
     : ::tflite::delegate::nnapi::NnApiDelegateMockTest {
   void SetUp() override {
     ::tflite::delegate::nnapi::NnApiDelegateMockTest::SetUp();
-    nnapi_->ANeuralNetworks_getDeviceCount = [](uint32_t* numDevices) -> int {
-      *numDevices = 3;
-      return ANEURALNETWORKS_NO_ERROR;
-    };
-    nnapi_->ANeuralNetworks_getDevice =
+    nnapi_mock_->GetDeviceCountReturnsCount<3>();
+    nnapi_mock_->StubGetDeviceWith(
         [](uint32_t devIndex, ANeuralNetworksDevice** device) -> int {
-      *device = reinterpret_cast<ANeuralNetworksDevice*>(devIndex + 1);
-      return 0;
-    };
-    nnapi_->ANeuralNetworksDevice_getName =
+          *device = reinterpret_cast<ANeuralNetworksDevice*>(devIndex + 1);
+          return 0;
+        });
+    nnapi_mock_->StubGetDeviceNameWith(
         [](const ANeuralNetworksDevice* device, const char** name) -> int {
-      if (device == reinterpret_cast<ANeuralNetworksDevice*>(1)) {
-        *name = "dsp";
-      } else if (device == reinterpret_cast<ANeuralNetworksDevice*>(2)) {
-        *name = "gpu";
-      } else {
-        *name = "nnapi-reference";
-      }
-      return ANEURALNETWORKS_NO_ERROR;
-    };
+          if (device == reinterpret_cast<ANeuralNetworksDevice*>(1)) {
+            *name = "dsp";
+          } else if (device == reinterpret_cast<ANeuralNetworksDevice*>(2)) {
+            *name = "gpu";
+          } else {
+            *name = "nnapi-reference";
+          }
+          return ANEURALNETWORKS_NO_ERROR;
+        });
     nnapi_mock_->StubGetSupportedOperationsForDevicesWith(
         [](const ANeuralNetworksModel* model,
            const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
@@ -114,7 +112,7 @@ struct NnApiDeviceSelectionTest
         });
   }
   void InitWithOptions(tflite::StatefulNnApiDelegate::Options options) {
-    m.Init(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+    m.Init(nnapi_mock_->GetNnApi(), options, {TensorType_FLOAT32, {1, 2, 2, 1}},
            {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {}},
            ActivationFunctionType_NONE);
     m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
@@ -191,17 +189,8 @@ TEST_F(NnApiDeviceSelectionTest, DisallowsCPUBasedOnOptions) {
 TEST_F(NnApiDeviceSelectionTest,
        DoesNotDelegateIfOnlyReferenceDeviceIsAvailable_CpuEnabled) {
   // Only nnapi-reference is available on device
-  nnapi_->ANeuralNetworks_getDeviceCount = [](uint32_t* numDevices) -> int {
-    *numDevices = 1;
-    return ANEURALNETWORKS_NO_ERROR;
-  };
-  nnapi_->ANeuralNetworksDevice_getName =
-      [](const ANeuralNetworksDevice* device, const char** name) -> int {
-    if (device == reinterpret_cast<ANeuralNetworksDevice*>(1)) {
-      *name = "nnapi-reference";
-    }
-    return ANEURALNETWORKS_NO_ERROR;
-  };
+  nnapi_mock_->GetDeviceCountReturnsCount<1>();
+  nnapi_mock_->GetDeviceNameReturnsName("nnapi-reference");
 
   tflite::StatefulNnApiDelegate::Options options;
   options.disallow_nnapi_cpu = false;
@@ -214,17 +203,8 @@ TEST_F(NnApiDeviceSelectionTest,
 TEST_F(NnApiDeviceSelectionTest,
        DoesNotDelegateIfOnlyReferenceDeviceIsAvailable_CpuDisabled) {
   // Only nnapi-reference is available on device
-  nnapi_->ANeuralNetworks_getDeviceCount = [](uint32_t* numDevices) -> int {
-    *numDevices = 1;
-    return ANEURALNETWORKS_NO_ERROR;
-  };
-  nnapi_->ANeuralNetworksDevice_getName =
-      [](const ANeuralNetworksDevice* device, const char** name) -> int {
-    if (device == reinterpret_cast<ANeuralNetworksDevice*>(1)) {
-      *name = "nnapi-reference";
-    }
-    return ANEURALNETWORKS_NO_ERROR;
-  };
+  nnapi_mock_->GetDeviceCountReturnsCount<1>();
+  nnapi_mock_->GetDeviceNameReturnsName("nnapi-reference");
 
   tflite::StatefulNnApiDelegate::Options options;
   options.disallow_nnapi_cpu = true;
@@ -243,18 +223,19 @@ class AcceleratedModel {
 
  protected:
   // build a delegate with a target accelerator name.
-  explicit AcceleratedModel(const std::string& accelerator_name) {
+  explicit AcceleratedModel(const NnApi* nnapi,
+                            const std::string& accelerator_name) {
     StatefulNnApiDelegate::Options options;
     options.accelerator_name = accelerator_name.c_str();
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options));
+    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
   }
 
   // build a delegate with no target accelerator name, can disable the NNAPI CPU
   // fallback implementation using the disallow_nnapi_cpu flag.
-  explicit AcceleratedModel(bool disallow_nnapi_cpu) {
+  explicit AcceleratedModel(const NnApi* nnapi, bool disallow_nnapi_cpu) {
     StatefulNnApiDelegate::Options options;
     options.disallow_nnapi_cpu = disallow_nnapi_cpu;
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options));
+    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
   }
 
  private:
@@ -264,14 +245,16 @@ class AcceleratedModel {
 class ArgMaxOpModel : public SingleOpModel, public AcceleratedModel {
  public:
   ArgMaxOpModel(std::initializer_list<int> input_shape, TensorType input_type,
-                int axis_value, TensorType output_type, const char* device_name)
-      : SingleOpModel(), AcceleratedModel(device_name) {
+                int axis_value, TensorType output_type, const NnApi* nnapi,
+                const char* device_name)
+      : SingleOpModel(), AcceleratedModel(nnapi, device_name) {
     Init(input_shape, input_type, axis_value, output_type);
   }
 
   ArgMaxOpModel(std::initializer_list<int> input_shape, TensorType input_type,
-                int axis_value, TensorType output_type, bool disallow_nnapi_cpu)
-      : SingleOpModel(), AcceleratedModel(disallow_nnapi_cpu) {
+                int axis_value, TensorType output_type, const NnApi* nnapi,
+                bool disallow_nnapi_cpu)
+      : SingleOpModel(), AcceleratedModel(nnapi, disallow_nnapi_cpu) {
     Init(input_shape, input_type, axis_value, output_type);
   }
 
@@ -302,9 +285,19 @@ TEST_F(UnsupportedOperationOnDeviceTest,
        ShouldUseDeviceFeatureLevelWhenSpecifyingTargetDevice) {
   nnapi_mock_->SetAndroidSdkVersion(29);
   nnapi_mock_->SetNnapiSupportedDevice("test-device", /* feature_level=*/28);
+  // Setting this here because I want the delegate not to be applied in the
+  // first case because the feature level is not high enough and not because the
+  // operations are not supported by the device.
+  nnapi_mock_->StubGetSupportedOperationsForDevicesWith(
+      [](const ANeuralNetworksModel* model,
+         const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+         bool* supportedOps) -> int {
+        std::fill(supportedOps, supportedOps + 1, true);
+        return ANEURALNETWORKS_NO_ERROR;
+      });
 
   ArgMaxOpModel m({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                  TensorType_INT32, "test-device");
+                  TensorType_INT32, nnapi_mock_->GetNnApi(), "test-device");
   m.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
   m.Invoke();
 
@@ -312,10 +305,12 @@ TEST_F(UnsupportedOperationOnDeviceTest,
       << "Expected Max not to be delegates since it not supported before NNAPI "
          "1.2 and device declares to support only NNAPI 1.1.";
 
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "First part of test done");
+
   nnapi_mock_->SetNnapiSupportedDevice("test-device", /* feature_level=*/29);
 
   ArgMaxOpModel m1({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                   TensorType_INT32, "test-device");
+                   TensorType_INT32, nnapi_mock_->GetNnApi(), "test-device");
   m1.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
   m1.Invoke();
 
@@ -327,9 +322,20 @@ TEST_F(UnsupportedOperationOnDeviceTest,
        ShouldUseDeviceFeatureLevelWhenDisablingCPU) {
   nnapi_mock_->SetAndroidSdkVersion(29);
   nnapi_mock_->SetNnapiSupportedDevice("test-device", /* feature_level=*/28);
+  // Setting this here because I want the delegate not to be applied in the
+  // first case because the feature level is not high enough and not because the
+  // operations are not supported by the device.
+  nnapi_mock_->StubGetSupportedOperationsForDevicesWith(
+      [](const ANeuralNetworksModel* model,
+         const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+         bool* supportedOps) -> int {
+        std::fill(supportedOps, supportedOps + 1, true);
+        return ANEURALNETWORKS_NO_ERROR;
+      });
 
   ArgMaxOpModel m({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                  TensorType_INT32, /*disallow_nnapi_cpu=*/true);
+                  TensorType_INT32, nnapi_mock_->GetNnApi(),
+                  /*disallow_nnapi_cpu=*/true);
   m.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
   m.Invoke();
 
@@ -338,7 +344,8 @@ TEST_F(UnsupportedOperationOnDeviceTest,
          "1.2 and device declares to support only NNAPI 1.1.";
 
   ArgMaxOpModel m1({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                   TensorType_INT32, /*disallow_nnapi_cpu=*/false);
+                   TensorType_INT32, nnapi_mock_->GetNnApi(),
+                   /*disallow_nnapi_cpu=*/false);
   m1.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
   m1.Invoke();
 
@@ -349,7 +356,8 @@ TEST_F(UnsupportedOperationOnDeviceTest,
   nnapi_mock_->SetNnapiSupportedDevice("test-device", /* feature_level=*/29);
 
   ArgMaxOpModel m2({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                   TensorType_INT32, /*disallow_nnapi_cpu=*/true);
+                   TensorType_INT32, nnapi_mock_->GetNnApi(),
+                   /*disallow_nnapi_cpu=*/true);
   m2.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
   m2.Invoke();
 
@@ -371,9 +379,10 @@ class AddSubOpsAcceleratedModel : public MultiOpModel, public AcceleratedModel {
   AddSubOpsAcceleratedModel(const TensorData& input1, const TensorData& input2,
                             const TensorData& input3, const TensorData& output,
                             ActivationFunctionType activation_type,
+                            const NnApi* nnapi,
                             const std::string& accelerator_name,
                             bool allow_fp32_relax_to_fp16 = false)
-      : MultiOpModel(), AcceleratedModel(accelerator_name) {
+      : MultiOpModel(), AcceleratedModel(nnapi, accelerator_name) {
     auto* delegate = GetDelegate();
     this->SetApplyDelegate([delegate](Interpreter* interpreter) {
       interpreter->ModifyGraphWithDelegate(delegate);
@@ -450,7 +459,8 @@ TEST_F(UnsupportedOperationOnDeviceTest,
   AddSubOpsAcceleratedModel m(
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {}},
-      ActivationFunctionType_NONE, /*accelerator_name=*/"test-device");
+      ActivationFunctionType_NONE, nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device");
   std::vector<float> input1{-2.0, 0.2, 0.7, 0.9};
   std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
   m.PopulateTensor<float>(m.input1(), input1);
@@ -479,7 +489,8 @@ TEST_F(UnsupportedOperationOnDeviceTest, ShouldRunOnCpuIfDeviceSupportsNoOps) {
   AddSubOpsAcceleratedModel m(
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {}},
-      ActivationFunctionType_NONE, /*accelerator_name=*/"test-device");
+      ActivationFunctionType_NONE, nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device");
   std::vector<float> input1{-2.0, 0.2, 0.7, 0.9};
   std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
   m.PopulateTensor<float>(m.input1(), input1);
@@ -511,7 +522,8 @@ TEST_F(UnsupportedOperationOnDeviceTest, ShouldCacheModelCompilation) {
   AddSubOpsAcceleratedModel m(
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {}},
-      ActivationFunctionType_NONE, /*accelerator_name=*/"test-device");
+      ActivationFunctionType_NONE, nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device");
   std::vector<float> input1{-2.0, 0.2, 0.7, 0.9};
   std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
   m.PopulateTensor<float>(m.input1(), input1);

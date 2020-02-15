@@ -55,7 +55,7 @@ def random_normal(shape,
   >>> tf.random.normal([4], 0, 1, tf.float32)
   <tf.Tensor: shape=(4,), dtype=float32, numpy=..., dtype=float32)>
 
-  Example that outputs a reproduceable result:
+  Example that outputs a reproducible result:
 
   >>> tf.random.set_seed(5);
   >>> tf.random.normal([2,2], 0, 1, tf.float32, seed=1)
@@ -64,7 +64,7 @@ def random_normal(shape,
         [-0.169515   ,  1.0824056 ]], dtype=float32)>
 
   In this case, we are setting both the global and operation-level seed to
-  ensure this result is reproduceable.  See `tf.random.set_seed` for more
+  ensure this result is reproducible.  See `tf.random.set_seed` for more
   information.
 
   Args:

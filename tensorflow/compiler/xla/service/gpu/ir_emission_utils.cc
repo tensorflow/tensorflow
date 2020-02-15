@@ -133,7 +133,8 @@ std::array<int64, 3> GetReductionTiling(
       CHECK_EQ(reduction_dimensions.dimensions[0], 1);
       return {tile_z, 1, 16};
     }
-    if (reduction_dimensions.dimensions[2] % (kWarpSize * 64) == 0) {
+    if (reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
+        0) {
       return {tile_z, 1, 64};
     }
     return {tile_z, 1, 8};

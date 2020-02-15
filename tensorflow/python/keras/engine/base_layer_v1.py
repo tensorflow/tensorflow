@@ -535,7 +535,7 @@ class Layer(base_layer.Layer):
       # with the shape the Layer will be called on (these users will have to
       # implement `compute_output_shape` themselves).
       self._maybe_build(input_shape)
-      with context.graph_mode():
+      with ops.get_default_graph().as_default():
         graph = func_graph.FuncGraph('graph')
         with graph.as_default():
           input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
@@ -666,10 +666,10 @@ class Layer(base_layer.Layer):
     # Accept NumPy and scalar inputs by converting to Tensors.
     if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
       def _convert_non_tensor(x):
-        # Don't call `ops.convert_to_tensor` on all `inputs` because
+        # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
         # `SparseTensors` can't be converted to `Tensor`.
         if isinstance(x, (np.ndarray, float, int)):
-          return ops.convert_to_tensor(x)
+          return ops.convert_to_tensor_v2(x)
         return x
       inputs = nest.map_structure(_convert_non_tensor, inputs)
       input_list = nest.flatten(inputs)
@@ -1025,7 +1025,7 @@ class Layer(base_layer.Layer):
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
-        loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
       return loss
 
@@ -1040,7 +1040,7 @@ class Layer(base_layer.Layer):
       if loss is None:
         continue
       if not tensor_util.is_tensor(loss):
-        loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
       # TF Functions should take the eager path.
       if (tf_utils.is_symbolic_tensor(loss) and
           not base_layer_utils.is_in_tf_function()):
@@ -1200,7 +1200,7 @@ class Layer(base_layer.Layer):
       elif hasattr(x, 'op'):
         update = x.op
       else:
-        update = ops.convert_to_tensor(x)
+        update = ops.convert_to_tensor_v2(x)
 
       reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, [update])
       update._unconditional_update = update not in reachable

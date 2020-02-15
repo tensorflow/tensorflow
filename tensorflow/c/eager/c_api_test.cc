@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -365,7 +366,8 @@ TEST(CAPI, TensorHandleCopyBetweenTwoGPUDevicesAsync) {
 
 void TensorHandleSilentCopy(bool async,
                             TFE_ContextDevicePlacementPolicy global_policy,
-                            TFE_ContextDevicePlacementPolicy thread_policy) {
+                            TFE_ContextDevicePlacementPolicy thread_policy,
+                            bool cpu_op) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
@@ -376,26 +378,46 @@ void TensorHandleSilentCopy(bool async,
     TFE_ContextSetThreadLocalDevicePlacementPolicy(ctx, thread_policy);
   }
   TFE_DeleteContextOptions(opts);
-  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
 
   TFE_TensorHandle* hcpu = TestMatrixTensorHandle();
   TF_Tensor* t = TFE_TensorHandleResolve(hcpu, status.get());
-  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
 
   // Disable the test if no GPU is present.
   string gpu_device_name;
   if (GetDeviceName(ctx, &gpu_device_name, "GPU")) {
     TFE_TensorHandle* hgpu = TFE_TensorHandleCopyToDevice(
         hcpu, ctx, gpu_device_name.c_str(), status.get());
-    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+    ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
 
     TFE_Op* matmul = MatMulOp(ctx, hcpu, hgpu);
-    TFE_OpSetDevice(matmul, gpu_device_name.c_str(), status.get());
-    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+    if (cpu_op) {
+      string cpu_device_name;
+      ASSERT_TRUE(GetDeviceName(ctx, &cpu_device_name, "CPU"));
+      TFE_OpSetDevice(matmul, cpu_device_name.c_str(), status.get());
+    } else {
+      TFE_OpSetDevice(matmul, gpu_device_name.c_str(), status.get());
+    }
+    ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
+
     TFE_TensorHandle* retvals[1];
     int num_retvals = 1;
     TFE_Execute(matmul, &retvals[0], &num_retvals, status.get());
-    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+    ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
+
+    // Validate if the input was replaced with a different TensorHandle
+    auto arg0 = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
+                    hcpu->handle.get())
+                    ->Handle();
+    auto arg1 = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
+                    hgpu->handle.get())
+                    ->Handle();
+
+    // The input handles should never change since they have been mirrored.
+    ASSERT_EQ(matmul->operation.Inputs()[0], arg0);
+    ASSERT_EQ(matmul->operation.Inputs()[1], arg1);
+
     TFE_DeleteOp(matmul);
     TFE_DeleteTensorHandle(retvals[0]);
     TFE_DeleteTensorHandle(hgpu);
@@ -411,19 +433,19 @@ void TensorHandleSilentCopy(bool async,
 }
 TEST(CAPI, TensorHandleSilentCopy) {
   TensorHandleSilentCopy(false, TFE_DEVICE_PLACEMENT_SILENT,
-                         TFE_DEVICE_PLACEMENT_SILENT);
+                         TFE_DEVICE_PLACEMENT_SILENT, false);
 }
 TEST(CAPI, TensorHandleSilentCopyAsync) {
   TensorHandleSilentCopy(true, TFE_DEVICE_PLACEMENT_SILENT,
-                         TFE_DEVICE_PLACEMENT_SILENT);
+                         TFE_DEVICE_PLACEMENT_SILENT, false);
 }
 TEST(CAPI, TensorHandleSilentCopyLocalPolicy) {
   TensorHandleSilentCopy(false, TFE_DEVICE_PLACEMENT_EXPLICIT,
-                         TFE_DEVICE_PLACEMENT_SILENT);
+                         TFE_DEVICE_PLACEMENT_SILENT, false);
 }
 TEST(CAPI, TensorHandleSilentCopyLocalPolicyAsync) {
   TensorHandleSilentCopy(true, TFE_DEVICE_PLACEMENT_EXPLICIT,
-                         TFE_DEVICE_PLACEMENT_SILENT);
+                         TFE_DEVICE_PLACEMENT_SILENT, false);
 }
 
 void SetAndGetOpDevices(bool async) {

@@ -105,7 +105,6 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -123,7 +122,6 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -137,7 +135,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -168,5 +165,4 @@ cc_library(
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorToLoops",
     ],
-    alwayslink = 1,
 )

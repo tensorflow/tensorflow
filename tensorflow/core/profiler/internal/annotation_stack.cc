@@ -19,12 +19,12 @@ namespace tensorflow {
 namespace profiler {
 namespace internal {
 
-std::atomic<bool> g_annotation_enabled(false);
+std::atomic<int> g_annotation_enabled(0);
 
 // g_annotation_enabled implementation must be lock-free for faster execution of
 // the ScopedAnnotation API. This can be commented (if compilation is failing)
 // but execution might be slow (even when tracing is disabled).
-static_assert(ATOMIC_BOOL_LOCK_FREE == 2, "Assumed atomic<bool> was lock free");
+static_assert(ATOMIC_INT_LOCK_FREE == 2, "Assumed atomic<int> was lock free");
 
 }  // namespace internal
 

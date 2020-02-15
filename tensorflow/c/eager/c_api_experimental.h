@@ -37,32 +37,6 @@ TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Op* op_to_reset,
 TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
                                               TF_Status* status);
 
-// A profiler which will start profiling when creating the object and will stop
-// when the object is destroyed. It will profile all operations run under the
-// given TFE_Context. Multiple instance of it can be created, but at most one
-// of them will profile for each TFE_Context.
-// Thread-safety: TFE_Profiler is thread-safe.
-typedef struct TFE_Profiler TFE_Profiler;
-
-TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler();
-TF_CAPI_EXPORT extern bool TFE_ProfilerIsOk(TFE_Profiler* profiler);
-TF_CAPI_EXPORT extern void TFE_DeleteProfiler(TFE_Profiler* profiler);
-
-// The output string is a binary string of tensorflow.tpu.Trace. User can write
-// the string to file for offline analysis by tensorboard.
-TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Profiler* profiler,
-                                                         TF_Buffer* buf,
-                                                         TF_Status* status);
-
-// Start a profiler grpc server which listens to specified port. It will start
-// the server on its own thread. It can be shutdown by terminating tensorflow.
-// It can be used in both Eager mode and graph mode. Creating multiple profiler
-// server is allowed. The service defined in
-// tensorflow/contrib/tpu/profiler/tpu_profiler.proto. Please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile to capture trace file
-// following https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern void TFE_StartProfilerServer(int port);
-
 // Enables only graph collection in RunMetadata on the functions executed from
 // this context.
 TF_CAPI_EXPORT extern void TFE_ContextEnableGraphCollection(TFE_Context* ctx);
@@ -70,29 +44,6 @@ TF_CAPI_EXPORT extern void TFE_ContextEnableGraphCollection(TFE_Context* ctx);
 // Disables only graph collection in RunMetadata on the functions executed from
 // this context.
 TF_CAPI_EXPORT extern void TFE_ContextDisableGraphCollection(TFE_Context* ctx);
-
-// Send a grpc request to profiler server (service_addr) to perform on-demand
-// profiling and save the result into logdir which can be visualized by
-// TensorBoard. worker_list is the list of worker TPUs separated by ','. Set
-// include_dataset_opts to false to profile longer traces. It will block the
-// caller thread until receives tracing result.
-// This API is designed for TensorBoard, for end user, please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile instead following
-// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern bool TFE_ProfilerClientStartTracing(
-    const char* service_addr, const char* logdir, const char* worker_list,
-    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
-    TF_Status* status);
-
-// Send a grpc request to profiler server (service_addr) to perform on-demand
-// monitoring and return the result in a string. It will block the
-// caller thread until receiving the monitoring result.
-// This API is designed for TensorBoard, for end user, please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile instead following
-// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern void TFE_ProfilerClientMonitor(
-    const char* service_addr, int duration_ms, int monitoring_level,
-    bool display_timestamp, TF_Buffer* result, TF_Status* status);
 
 // TODO(fishx): Move these monitoring APIs into a separate file.
 // -----------------------------------------------------------------------------
@@ -437,6 +388,12 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 // Clear pending streaming requests and error statuses on remote executors.
 TF_CAPI_EXPORT extern void TFE_ContextClearRemoteExecutors(TFE_Context* ctx,
                                                            TF_Status* status);
+
+// If the TensorHandle is copied to another device as part of an op execution,
+// the copy is destroyed after the op has executed. Enabling implicit mirroring
+// causes the copy to be held as a mirror for the lifetime of the TensorHandle.
+TF_CAPI_EXPORT extern void TFE_TensorHandleEnableImplicitMirroring(
+    TFE_TensorHandle*, TF_Status*);
 
 // This function will block till the operation that produces `h` has
 // completed. This is only valid on local TFE_TensorHandles. The pointer

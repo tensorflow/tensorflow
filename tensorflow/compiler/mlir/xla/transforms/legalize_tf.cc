@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/client/padding.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
@@ -574,9 +575,10 @@ static void BuildArgMinMaxReductionBody(Type input_element_type,
 // Verify that the arguments to be passed into the function are the same types
 // as the function paramter types.
 static bool ArgTypesMatchCallee(mlir::Operation *op, OperandRange args,
-                                FlatSymbolRefAttr func) {
+                                SymbolRefAttr func) {
   auto module = op->getParentOfType<ModuleOp>();
-  auto function = module.lookupSymbol<FuncOp>(func.getValue());
+  auto function =
+      dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
   FunctionType function_ty = function.getType();
 
   for (auto arg_in : llvm::zip(args, function_ty.getInputs())) {
@@ -3470,6 +3472,67 @@ class ConvertVariableShapeOp : public OpRewritePattern<TF::VariableShapeOp> {
   }
 };
 
+// Converts an XlaSharding op to a XLA HLO shard op with sharding attributes.
+class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::XlaShardingOp op,
+                                     PatternRewriter &rewriter) const override {
+    // TODO(b/148313088): define sharding attribute struct in MLIR intead of
+    // using a string.
+    auto sharding = op.getAttrOfType<StringAttr>("_XlaSharding");
+    if (!sharding) {
+      return matchFailure();
+    }
+
+    // _XlaSharding attribute in TF is a serialized string of the OpSharding
+    // proto, so convert to a text form here.
+    ::xla::OpSharding sharding_proto;
+    std::string sharding_str;
+    if (!sharding_proto.ParseFromString(sharding.getValue().str())) {
+      return matchFailure();
+    }
+    if (!::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
+                                                           &sharding_str)) {
+      return matchFailure();
+    }
+
+    auto custom_call = rewriter.create<xla_hlo::CustomCallOp>(
+        op.getLoc(), op.getType(), op.input(),
+        /*call_target_name=*/rewriter.getStringAttr("Sharding"),
+        /*has_side_effect=*/rewriter.getBoolAttr(false),
+        /*backend_config=*/rewriter.getStringAttr(""));
+    custom_call.setAttr("xla_hlo.sharding",
+                        rewriter.getStringAttr(sharding_str));
+    rewriter.replaceOp(op, custom_call.getResult());
+
+    return matchSuccess();
+  }
+};
+
+// Converts a TF XlaDynamicUpdateSlice op to DynamicUpdateSlice HLO.
+class ConvertXlaDynamicUpdateSliceOp
+    : public OpRewritePattern<TF::XlaDynamicUpdateSliceOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::XlaDynamicUpdateSliceOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto indices_type = op.indices().getType().dyn_cast<RankedTensorType>();
+    if (!indices_type) return matchFailure();
+
+    SmallVector<Type, 2> unpacked_indices_type(
+        2, RankedTensorType::get({}, indices_type.getElementType()));
+    auto unpacked_indices = rewriter.create<TF::UnpackOp>(
+        op.getLoc(), unpacked_indices_type, op.indices(),
+        IntegerAttr::get(rewriter.getIntegerType(64), 0));
+    rewriter.replaceOpWithNewOp<xla_hlo::DynamicUpdateSliceOp>(
+        op, op.getType(), op.input(), op.update(), unpacked_indices.output());
+    return matchSuccess();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -3499,7 +3562,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
       ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
-      ConvertRandomShuffleOp, ConvertVariableShapeOp>(op->getContext());
+      ConvertRandomShuffleOp, ConvertVariableShapeOp, ConvertXlaShardingOp,
+      ConvertXlaDynamicUpdateSliceOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

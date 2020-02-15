@@ -68,6 +68,15 @@ REGISTER_OP("StatelessRandomUniformInt")
       return StatelessShape(c);
     });
 
+REGISTER_OP("StatelessRandomUniformFullInt")
+    .Input("shape: T")
+    .Input("seed: Tseed")
+    .Output("output: dtype")
+    .Attr("dtype: {int32, int64, uint32, uint64} = DT_UINT64")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .Attr("Tseed: {int32, int64, uint32, uint64} = DT_INT64")
+    .SetShapeFn(StatelessShape);
+
 REGISTER_OP("StatelessMultinomial")
     .Input("logits: T")
     .Input("num_samples: int32")
@@ -103,6 +112,17 @@ REGISTER_OP("StatelessRandomBinomial")
     .Attr("Tseed: {int32, int64} = DT_INT64")
     .Attr("T: {half, float, double, int32, int64} = DT_DOUBLE")
     .Attr("dtype: {half, float, double, int32, int64} = DT_INT64")
+    .SetShapeFn(StatelessShape);
+
+REGISTER_OP("StatelessRandomPoisson")
+    .Input("shape: T")
+    .Input("seed: Tseed")
+    .Input("lam: Rtype")
+    .Output("output: dtype")
+    .Attr("Rtype: {float16, float32, float64, int32, int64}")
+    .Attr("dtype: {float16, float32, float64, int32, int64}")
+    .Attr("T: {int32, int64}")
+    .Attr("Tseed: {int32, int64} = DT_INT64")
     .SetShapeFn(StatelessShape);
 
 REGISTER_OP("StatelessRandomGammaV2")

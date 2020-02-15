@@ -52,12 +52,12 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
                HostEventType::kExecutorStateProcess, 20, 20,
                {{StatType::kStepId, 0}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
-               {{StatType::kCorrelationId, 100}, {StatType::kDeviceId, 1}});
+               {{StatType::kCorrelationId, 100}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 320, 20,
                {{StatType::kStepId, 1}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 330, 10,
-               {{StatType::kCorrelationId, 200}, {StatType::kDeviceId, 1}});
+               {{StatType::kCorrelationId, 200}});
 
   XPlane* device_plane = space.add_planes();
   XPlaneBuilder device_plane_builder(device_plane);

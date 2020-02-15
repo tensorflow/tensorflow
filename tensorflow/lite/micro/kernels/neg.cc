@@ -97,7 +97,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
 
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Neg only currently supports float32 and int8, got %d.",
           input->type);
       return kTfLiteError;

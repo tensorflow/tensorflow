@@ -1465,7 +1465,7 @@ class PoolingTest(test.TestCase):
     # The functionality associated with TF_ENABLE_NANPROP is currently
     # not supported on the ROCm platform, so skip this part of the test
     # NANs in input lead to non-deterministic results, and hence skipping
-    # the remaining tests altogeher on the ROCm platform
+    # the remaining tests altogether on the ROCm platform
     if test.is_built_with_rocm():
       return
 
@@ -1552,7 +1552,7 @@ class PoolingTest(test.TestCase):
     # The functionality associated with TF_ENABLE_NANPROP is currently
     # not supported on the ROCm platform, so skip this part of the test
     # NANs in input lead to non-deterministic results, and hence skipping
-    # the remaining tests altogeher on the ROCm platform
+    # the remaining tests altogether on the ROCm platform
     if test.is_built_with_rocm():
       return
 

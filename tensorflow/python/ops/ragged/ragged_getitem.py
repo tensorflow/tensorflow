@@ -56,7 +56,7 @@ def ragged_tensor_getitem(self, key):
         `Tensor`s
       * `Ellipsis`
       * `tf.newaxis`
-      * `tuple` containing any of the above (for multidimentional indexing)
+      * `tuple` containing any of the above (for multidimensional indexing)
 
   Returns:
     A `Tensor` or `RaggedTensor` object.  Values that include at least one

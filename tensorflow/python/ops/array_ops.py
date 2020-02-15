@@ -42,6 +42,7 @@ from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint:
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
@@ -2657,7 +2658,22 @@ def _constant_if_small(value, shape, dtype, name):
   return None
 
 
+def _tag_zeros_tensor(fun):
+  """ Tags the result of function by setting _is_zeros_tensor attribute.
+
+  This is useful to compute Hessians of fused ops such as cross_entropy.
+  """
+
+  def wrapped(*args, **kwargs):
+    tensor = fun(*args, **kwargs)
+    tensor._is_zeros_tensor = True
+    return tensor
+
+  return tf_decorator.make_decorator(fun, wrapped)
+
+
 @tf_export("zeros")
+@_tag_zeros_tensor
 def zeros(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to zero.
 
@@ -2790,6 +2806,7 @@ def zeros_like_v2(
   return zeros_like_impl(input, dtype, name, optimize=True)
 
 
+@_tag_zeros_tensor
 def zeros_like_impl(tensor, dtype, name, optimize=True):
   """Internal implementation for the v1/v2 zeros_like API calls."""
   with ops.name_scope(name, "zeros_like", [tensor]) as name:

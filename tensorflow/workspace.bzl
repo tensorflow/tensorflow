@@ -144,11 +144,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "6d89aa7b967201f262211e0819c23fa079dac5a6d2a00e17da5f28b420ee213b",
-        strip_prefix = "XNNPACK-022c659288e3522bf0132d4a9464b4cfd88c20dc",
+        sha256 = "ee54bd30c86d3d959f9367d5a969ba20ca58eea7fe865785d358d5f776b99b2f",
+        strip_prefix = "XNNPACK-5b5a0624a80655e40aff8e96de97706aeb008281",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/022c659288e3522bf0132d4a9464b4cfd88c20dc.zip",
-            "https://github.com/google/XNNPACK/archive/022c659288e3522bf0132d4a9464b4cfd88c20dc.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/5b5a0624a80655e40aff8e96de97706aeb008281.zip",
+            "https://github.com/google/XNNPACK/archive/5b5a0624a80655e40aff8e96de97706aeb008281.zip",
         ],
     )
 
@@ -595,8 +595,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "6bfc45cf60d2a82e659d3911c26169ad02cf78c0"
-    LLVM_SHA256 = "c19ca04ac647f903ed56e7c23c5dc031e4ecba2c9a9860dc6592a2f55f2ae2ce"
+    LLVM_COMMIT = "fe36127982e0a5889cc0653718e62ba6acccf7c4"
+    LLVM_SHA256 = "d103d295c4825de37ea5adedd4ce28cbbca3ced59e445e4ab979219f83a0bd89"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -686,11 +686,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "nccl_archive",
         build_file = clean_dep("//third_party:nccl/archive.BUILD"),
         patch_file = clean_dep("//third_party/nccl:archive.patch"),
-        sha256 = "9a7633e224982e2b60fa6b397d895d20d6b7498e3e02f46f98a5a4e187c5a44c",
-        strip_prefix = "nccl-0ceaec9cee96ae7658aa45686853286651f36384",
+        sha256 = "7ff66aca18392b162829612e02c00b123a58ec35869334f72d7e5afaf5ea4a13",
+        strip_prefix = "nccl-3701130b3c1bcdb01c14b3cb70fe52498c1e82b7",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nvidia/nccl/archive/0ceaec9cee96ae7658aa45686853286651f36384.tar.gz",
-            "https://github.com/nvidia/nccl/archive/0ceaec9cee96ae7658aa45686853286651f36384.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nvidia/nccl/archive/3701130b3c1bcdb01c14b3cb70fe52498c1e82b7.tar.gz",
+            "https://github.com/nvidia/nccl/archive/3701130b3c1bcdb01c14b3cb70fe52498c1e82b7.tar.gz",
         ],
     )
 
@@ -905,6 +905,15 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "rules_python",
+        sha256 = "aa96a691d3a8177f3215b14b0edc9641787abaaa30363a080165d06ab65e1161",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_python/releases/download/0.0.1/rules_python-0.0.1.tar.gz",
+            "https://github.com/bazelbuild/rules_python/releases/download/0.0.1/rules_python-0.0.1.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
         name = "build_bazel_rules_android",
         sha256 = "cd06d15dd8bb59926e4d65f9003bfc20f9da4b2519985c27e190cddc8b7a7806",
         strip_prefix = "rules_android-0.1.1",
@@ -1023,11 +1032,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "pybind11",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/pybind/pybind11/archive/v2.3.0.tar.gz",
-            "https://github.com/pybind/pybind11/archive/v2.3.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/pybind/pybind11/archive/v2.4.3.tar.gz",
+            "https://github.com/pybind/pybind11/archive/v2.4.3.tar.gz",
         ],
-        sha256 = "0f34838f2c8024a6765168227ba587b3687729ebf03dc912f88ff75c7aa9cfe8",
-        strip_prefix = "pybind11-2.3.0",
+        sha256 = "1eed57bc6863190e35637290f97a20c81cfe4d9090ac0a24f3bbf08f265eb71d",
+        strip_prefix = "pybind11-2.4.3",
         build_file = clean_dep("//third_party:pybind11.BUILD"),
     )
 

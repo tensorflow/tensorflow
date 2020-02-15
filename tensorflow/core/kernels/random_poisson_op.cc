@@ -68,13 +68,6 @@ struct PoissonComputeType {
 
 namespace functor {
 
-template <typename Device, typename T, typename U>
-struct PoissonFunctor {
-  void operator()(OpKernelContext* ctx, const Device& d, const T* rate_flat,
-                  int num_rate, int num_samples,
-                  const random::PhiloxRandom& rng, U* samples_flat);
-};
-
 template <typename T, typename U>
 struct PoissonFunctor<CPUDevice, T, U> {
   void operator()(OpKernelContext* ctx, const CPUDevice& d, const T* rate_flat,
@@ -329,11 +322,12 @@ TF_CALL_half(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 
-#define REGISTER_V2(RTYPE, OTYPE)                              \
-  REGISTER_KERNEL_BUILDER(Name("RandomPoissonV2")              \
-                              .Device(DEVICE_CPU)              \
-                              .TypeConstraint<RTYPE>("R")      \
-                              .TypeConstraint<OTYPE>("dtype"), \
+#define REGISTER_V2(RTYPE, OTYPE)                                   \
+  template struct functor::PoissonFunctor<CPUDevice, RTYPE, OTYPE>; \
+  REGISTER_KERNEL_BUILDER(Name("RandomPoissonV2")                   \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<RTYPE>("R")           \
+                              .TypeConstraint<OTYPE>("dtype"),      \
                           RandomPoissonOp<RTYPE, OTYPE>);
 
 #define REGISTER_ALL(RTYPE)        \

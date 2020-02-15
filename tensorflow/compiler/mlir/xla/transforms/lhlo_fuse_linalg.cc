@@ -19,8 +19,8 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "absl/memory/memory.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"  // TF:llvm-project
-#include "mlir/EDSC/Helpers.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
 
 namespace mlir {
 namespace xla_lhlo {

@@ -29,7 +29,7 @@ namespace profiling {
 // Creates a summary of operator invocations in the interpreter.
 class ProfileSummarizer {
  public:
-  ProfileSummarizer();
+  explicit ProfileSummarizer(bool format_as_csv = false);
   virtual ~ProfileSummarizer() {}
 
   // Process profile events to update statistics for operator invocations.
@@ -65,6 +65,9 @@ class ProfileSummarizer {
 
   // GenerateReport returns the report of subgraphs in a string format.
   std::string GenerateReport(std::string tag, bool include_output_string);
+
+  // Whether output is formatted as CSV.
+  bool format_as_csv_ = false;
 };
 
 }  // namespace profiling

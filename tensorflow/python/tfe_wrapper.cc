@@ -42,7 +42,6 @@ namespace py = pybind11;
 PYBIND11_MAKE_OPAQUE(TFE_Executor);
 PYBIND11_MAKE_OPAQUE(TFE_ContextOptions);
 PYBIND11_MAKE_OPAQUE(TFE_CancellationManager);
-PYBIND11_MAKE_OPAQUE(TFE_Profiler);
 
 PYBIND11_MAKE_OPAQUE(TFE_MonitoringCounter0);
 PYBIND11_MAKE_OPAQUE(TFE_MonitoringCounter1);
@@ -318,7 +317,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       m, "TFE_MonitoringSampler2");
   py::class_<TFE_CancellationManager> TFE_CancellationManager_class(
       m, "TFE_CancellationManager");
-  py::class_<TFE_Profiler> TFE_Profiler_class(m, "TFE_Profiler");
 
   py::class_<TF_DeviceList> TF_DeviceList_class(m, "TF_DeviceList");
   py::class_<TF_Function> TF_Function_class(m, "TF_Function");
@@ -503,41 +501,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       },
       py::return_value_policy::reference);
 
-  // Profiler Logic
-  m.def("TFE_NewProfiler", &TFE_NewProfiler,
-        py::return_value_policy::reference);
-  m.def("TFE_ProfilerIsOk", &TFE_ProfilerIsOk);
-  m.def("TFE_DeleteProfiler", &TFE_DeleteProfiler);
-  m.def("TFE_ProfilerSerializeToString",
-        [](TFE_Profiler& profiler, TF_Buffer& buf) {
-          tensorflow::Safe_TF_StatusPtr status =
-              tensorflow::make_safe(TF_NewStatus());
-          TFE_ProfilerSerializeToString(&profiler, &buf, status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        });
-  m.def("TFE_StartProfilerServer", &TFE_StartProfilerServer);
-  m.def(
-      "TFE_ProfilerClientStartTracing",
-      [](const char* service_addr, const char* logdir, const char* worker_list,
-         bool include_dataset_ops, int duration_ms, int num_tracing_attempts) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        bool output = TFE_ProfilerClientStartTracing(
-            service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
-            num_tracing_attempts, status.get());
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      });
-  m.def("TFE_ProfilerClientMonitor",
-        [](const char* service_addr, int duration_ms, int monitoring_level,
-           bool display_timestamp, TF_Buffer& result) {
-          tensorflow::Safe_TF_StatusPtr status =
-              tensorflow::make_safe(TF_NewStatus());
-          TFE_ProfilerClientMonitor(service_addr, duration_ms, monitoring_level,
-                                    display_timestamp, &result, status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        });
-
   m.def("TFE_OpNameGetAttrType",
         [](py::handle& ctx, const char* op_or_function_name,
            const char* attr_name) {
@@ -595,9 +558,11 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
   m.def("TFE_Py_RecordGradient",
         [](const py::handle& op_name, const py::handle& inputs,
-           const py::handle& attrs, const py::handle& results) {
+           const py::handle& attrs, const py::handle& results,
+           const py::handle& forward_pass_name_scope) {
           return tensorflow::pyo_or_throw(TFE_Py_RecordGradient(
-              op_name.ptr(), inputs.ptr(), attrs.ptr(), results.ptr()));
+              op_name.ptr(), inputs.ptr(), attrs.ptr(), results.ptr(),
+              forward_pass_name_scope.ptr()));
         });
   m.def("TFE_Py_UID", []() { return tensorflow::pyo_or_throw(TFE_Py_UID()); });
 
