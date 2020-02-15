@@ -3245,6 +3245,22 @@ tf_cc_tests(
     ],
 )
 
+tf_cc_test(
+    name = "non_max_suppression_op_benchmark_test",
+    srcs = ["non_max_suppression_op_benchmark_test.cc"],
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "resize_bilinear_op_test",
     srcs = ["resize_bilinear_op_test.cc"],
