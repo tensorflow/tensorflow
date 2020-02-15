@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <gtest/gtest.h>
+
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -68,6 +69,49 @@ TEST(NegOpModel, NegInt64) {
   m.SetInput<int64_t>({-2, -1, 0, 1, 2, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<int64_t>(), ElementsAreArray({2, 1, 0, -1, -2, -3}));
+}
+
+class QuantizedNegOpModel : public NegOpModel {
+ public:
+  using NegOpModel::NegOpModel;
+
+  int input() { return input_; }
+
+  template <typename integer_dtype>
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<integer_dtype>(ExtractVector<integer_dtype>(output_),
+                                     GetScale(output_), GetZeroPoint(output_));
+  }
+};
+
+constexpr float GetToleranceInt8(float min, float max) {
+  float kQuantizedStep = (max - min) / 255.0;
+  return kQuantizedStep;
+}
+
+constexpr float GetToleranceInt16(float min, float max) {
+  float kQuantizedStep = (max - min) / std::numeric_limits<int16_t>::max();
+  return kQuantizedStep;
+}
+
+// input_quantization_buffer: buffer used for the quantization data
+TEST(QuantizedNegOpModel, NegQuantizedInt8) {
+  constexpr auto min = -6.0f;
+  constexpr auto max = 6.0f;
+  constexpr auto quantized_tolerance = GetToleranceInt8(min, max);
+
+  const auto expected_output =
+      std::vector<float>{3.5f, 2.0f, 1.0f, 0.0f, -1.0f, -2.0f, -3.0f, -3.5f};
+
+  QuantizedNegOpModel model{{TensorType_INT8, {1, 2, 2, 2, 1}, min, max},
+                            {TensorType_INT8, {1, 2, 2, 2, 1}, min, max}};
+  model.QuantizeAndPopulate<int8_t>(
+      model.input(), {-3.5f, -2.f, -1.f, 0.f, 1.f, 2.f, 3.f, 3.5f});
+  model.Invoke();
+
+  EXPECT_THAT(
+      model.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear(expected_output, quantized_tolerance)));
 }
 
 }  // namespace
