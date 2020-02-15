@@ -61,13 +61,17 @@ from tensorflow.python.training import momentum
 from tensorflow.python.training import training_util
 
 
+_DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
+# TODO(b/141710709): complex support in NVCC and ROCM.
+if (not test_util.IsBuiltWithNvcc() and not test.is_built_with_rocm()):
+  _DATA_TYPES += [dtypes.complex64, dtypes.complex128]
+
+
 class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testBasic(self):
-    for _, dtype in enumerate([
-        dtypes.half, dtypes.float32, dtypes.float64
-    ]):
+    for dtype in _DATA_TYPES:
       with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
@@ -88,9 +92,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testAdaptiveLearningRate(self):
-    for dtype in [
-        dtypes.half, dtypes.float32, dtypes.float64
-    ]:
+    for dtype in _DATA_TYPES:
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
       var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
 
@@ -133,10 +135,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testPrecomputedGradient(self):
-    self.skipTest('broken test to be fixed')
-    for dtype in [
-        dtypes.half, dtypes.float32, dtypes.float64
-    ]:
+    for dtype in _DATA_TYPES:
       with test_util.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
@@ -160,10 +159,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNoGradients(self):
-    for _, dtype in enumerate([
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
-    ]):
+    for dtype in _DATA_TYPES:
       with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
@@ -175,10 +171,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_Minimize(self):
-    for _, dtype in enumerate([
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
-    ]):
+    for dtype in _DATA_TYPES:
       with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
@@ -191,10 +184,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_ApplyGradients(self):
-    for _, dtype in enumerate([
-        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
-        dtypes.complex128
-    ]):
+    for dtype in _DATA_TYPES:
       with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
@@ -205,9 +195,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testGradientsAsVariables(self):
-    for i, dtype in enumerate([
-        dtypes.half, dtypes.float32, dtypes.float64
-    ]):
+    for i, dtype in enumerate(_DATA_TYPES):
       with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
