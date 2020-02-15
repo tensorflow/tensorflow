@@ -243,11 +243,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
 
       // Check if src and weight data need to be reordered.
       Tinput* src_data = nullptr;
-#ifdef ENABLE_MKLDNN_V1
       if (IS_SRC_REORDER_NEEDED(src_md, matmul_fwd_pd, matmul_fwd)) {
-#else
-      if (src_md.data.format != matmul_fwd->GetSrcMemoryFormat()) {
-#endif
         src.SetUsrMem(src_md, &src_tensor);
         src.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
             matmul_fwd_pd.get()->PRIMITIVE_DESC_SRC, this->cpu_engine_));
@@ -258,11 +254,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
       }
 
       Tweight* weight_data = nullptr;
-#ifdef ENABLE_MKLDNN_V1
       if (IS_WEIGHTS_REORDER_NEEDED(weight_md, matmul_fwd_pd, matmul_fwd)) {
-#else
-      if (weight_md.data.format != matmul_fwd->GetweightMemoryFormat()) {
-#endif
         bool is_weight_cached = false;
         // For batch size 1, MKL-DNN expects that weight format is OI whereas
         // TF default format is IO. So in that case convert weight from IO
@@ -280,7 +272,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
               context, static_cast<int32>(weight_mkl_shape.GetTfDataFormat()));
 #else
           weight_data = GetCachedWeight(
-              context, static_cast<int32>(matmul_fwd->GetweightMemoryFormat()));
+              context, static_cast<int32>(matmul_fwd->GetWeightMemoryFormat()));
 #endif
           is_weight_cached = (weight_data != nullptr);
         }
@@ -554,14 +546,10 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
     OP_REQUIRES_OK(context, context->allocate_persistent(
                                 DT_INT32, weight_mkl_format, &weight_oi_md,
                                 &weight_md_tensor_ptr));
-#ifdef ENABLE_MKLDNN_V1
-    // Using the logic from filter caching in mkl_conv_ops.cc
     weight_md_tensor_ptr->scalar<int32>()() =
-        static_cast<int32>(weight_mkl_shape.GetTfDataFormat());
-#else
-    weight_md_tensor_ptr->scalar<int32>()() =
-        matmul_fwd_pd.get()->weights_primitive_desc().desc().data.format;
-#endif  // ENABLE_MKLDNN_V1
+        static_cast<int32>(GET_TF_DATA_FORMAT(
+            weight_mkl_shape,
+            matmul_fwd_pd.get()->weights_primitive_desc().desc()));
   }
 
   Tweight* GetCachedWeight(OpKernelContext* context, int32 weight_mf)

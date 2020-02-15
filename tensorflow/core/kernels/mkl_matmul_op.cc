@@ -268,10 +268,10 @@ class MklMatMulOp : public OpKernel {
 // TODO(inteltf) Consider template specialization when adding/removing
 // additional types
 TF_CALL_float(REGISTER_CPU);
-#ifndef ENABLE_MKLDNN_V1
+#if !defined(ENABLE_MKLDNN_V1) || defined(ENABLE_MKLDNN_V1_2)
 // MKLDNNv1 does not have support for bfloat16 GEMM. Only V1.2 has that support.
 TF_CALL_bfloat16(REGISTER_CPU);
-#endif  // ENABLE_MKLDNN_V1
+#endif  // !defined(ENABLE_MKLDNN_V1) || defined(ENABLE_MKLDNN_V1_2)
 
 #ifndef INTEL_MKL_DNN_ONLY
 TF_CALL_double(REGISTER_CPU);

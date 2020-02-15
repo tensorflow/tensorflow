@@ -187,7 +187,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
 
   void ExtendMklDnnMatMulFwdParams(OpKernelContext* ctx,
                                    MklDnnMatMulFwdParams& params) {
-#ifndef ENABLE_MKL_DNN_V1
+#ifndef ENABLE_MKLDNN_V1
     if (fused_ops_.size() == 2) {
       string post_op = fused_ops_[1];
 
@@ -203,7 +203,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
                      "Unsupported post-argument in MklFusedMatMul: ", post_op));
       }
     }
-#endif
+#endif  // !ENABLE_MKLDNN_V1
   }
 
  private:

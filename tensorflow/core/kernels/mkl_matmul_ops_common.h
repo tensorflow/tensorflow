@@ -97,11 +97,8 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
 
 #ifdef ENABLE_MKLDNN_V1
-    DCHECK_EQ(context_.fwd_primitives.size(), context_.net_args.size());
-    for (size_t i = 0; i < context_.fwd_primitives.size(); ++i) {
-      context_.fwd_primitives.at(i).execute(*context_.fwd_stream,
-                                            context_.net_args.at(i));
-    }
+    execute_primitives(context_.fwd_primitives, context_.fwd_stream,
+                       context_.net_args);
 #else
     context_.fwd_stream->submit(context_.fwd_primitives);
 #endif  // ENABLE_MKLDNN_V1
@@ -117,7 +114,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   // In MKL-DNN v1.x, memory format tags only provide a partial description
   // of the memory layout. Hence, these functions are disabled for v1.x.
   memory::format GetSrcMemoryFormat() const { return context_.src_fmt; }
-  memory::format GetweightMemoryFormat() const { return context_.weight_fmt; }
+  memory::format GetWeightMemoryFormat() const { return context_.weight_fmt; }
 #endif  // ENABLE_MKLDNN_V1
 
   std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>
@@ -132,7 +129,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     // Expected memory format for this primitive instance
     MEMORY_FORMAT src_fmt;
     MEMORY_FORMAT weight_fmt;
-#endif  // ENABLE_MKLDNN_V1
+#endif  // !ENABLE_MKLDNN_V1
 
     // MKL-DNN memory.
     std::shared_ptr<mkldnn::memory> src_mem;
@@ -164,7 +161,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 #ifndef ENABLE_MKLDNN_V1
           src_fmt(MEMORY_FORMAT::any),
           weight_fmt(MEMORY_FORMAT::any),
-#endif  // ENABLE_MKLDNN_V1
+#endif  // !ENABLE_MKLDNN_V1
           src_mem(nullptr),
           weight_mem(nullptr),
           bias_mem(nullptr),

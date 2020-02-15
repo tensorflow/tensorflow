@@ -174,122 +174,105 @@ class BatchMatMulMkl : public OpKernel {
       }
     }
 
-    MklCblasGemmBatch(CblasRowMajor, adj_x_, adj_y_, m_array, n_array, k_array,
-                      &a_array[0], lda_array, &b_array[0], ldb_array,
-                      &c_array[0], ldc_array, 1, group_size);
+    MklCblasGemmBatch<Scalar>(
+        CblasRowMajor, adj_x_, adj_y_, m_array, n_array, k_array,
+        reinterpret_cast<const void**>(&a_array[0]), lda_array,
+        reinterpret_cast<const void**>(&b_array[0]), ldb_array,
+        reinterpret_cast<void**>(&c_array[0]), ldc_array, 1, group_size);
   }
 
  private:
   bool adj_x_;
   bool adj_y_;
 
+  template <typename T,
+            typename std::enable_if<(std::is_same<T, float>::value ||
+                                     std::is_same<T, double>::value),
+                                    int>::type = 0>
   void MklCblasGemmBatch(
       const CBLAS_LAYOUT Layout, const bool TransA, const bool TransB,
       const std::vector<MKL_INT>& M_Array, const std::vector<MKL_INT>& N_Array,
-      const std::vector<MKL_INT>& K_Array, const float** A_Array,
-      const std::vector<MKL_INT>& lda_Array, const float** B_Array,
-      const std::vector<MKL_INT>& ldb_Array, float** C_Array,
+      const std::vector<MKL_INT>& K_Array, const void** A_Array,
+      const std::vector<MKL_INT>& lda_Array, const void** B_Array,
+      const std::vector<MKL_INT>& ldb_Array, void** C_Array,
       const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
       const std::vector<MKL_INT>& group_size) {
     std::vector<CBLAS_TRANSPOSE> TransA_Array(
         group_size[0], TransA ? CblasTrans : CblasNoTrans);
     std::vector<CBLAS_TRANSPOSE> TransB_Array(
         group_size[0], TransB ? CblasTrans : CblasNoTrans);
-    std::vector<float> alpha_Array(group_size[0], 1.0);
-    std::vector<float> beta_Array(group_size[0], 0.0);
-    cblas_sgemm_batch(Layout, &TransA_Array[0], &TransB_Array[0], &M_Array[0],
-                      &N_Array[0], &K_Array[0], &alpha_Array[0], A_Array,
-                      &lda_Array[0], B_Array, &ldb_Array[0], &beta_Array[0],
-                      C_Array, &ldc_Array[0], group_count, &group_size[0]);
+    if (std::is_same<T, float>::value) {
+      std::vector<float> alpha_Array(group_size[0], 1.0);
+      std::vector<float> beta_Array(group_size[0], 0.0);
+      cblas_sgemm_batch(Layout, &TransA_Array[0], &TransB_Array[0], &M_Array[0],
+                        &N_Array[0], &K_Array[0], &alpha_Array[0],
+                        reinterpret_cast<const float**>(A_Array), &lda_Array[0],
+                        reinterpret_cast<const float**>(B_Array), &ldb_Array[0],
+                        &beta_Array[0], reinterpret_cast<float**>(C_Array),
+                        &ldc_Array[0], group_count, &group_size[0]);
+    } else {
+      std::vector<double> alpha_Array(group_size[0], 1.0);
+      std::vector<double> beta_Array(group_size[0], 0.0);
+      cblas_dgemm_batch(
+          Layout, &TransA_Array[0], &TransB_Array[0], &M_Array[0], &N_Array[0],
+          &K_Array[0], &alpha_Array[0],
+          reinterpret_cast<const double**>(A_Array), &lda_Array[0],
+          reinterpret_cast<const double**>(B_Array), &ldb_Array[0],
+          &beta_Array[0], reinterpret_cast<double**>(C_Array), &ldc_Array[0],
+          group_count, &group_size[0]);
+    }
   }
 
-#ifdef ENABLE_MKLDNN_V1_2
+  template <typename T,
+            typename std::enable_if<(std::is_same<T, complex64>::value ||
+                                     std::is_same<T, complex128>::value),
+                                    int>::type = 0>
   void MklCblasGemmBatch(
       const CBLAS_LAYOUT Layout, const bool TransA, const bool TransB,
       const std::vector<MKL_INT>& M_Array, const std::vector<MKL_INT>& N_Array,
-      const std::vector<MKL_INT>& K_Array, const bfloat16** A_Array,
-      const std::vector<MKL_INT>& lda_Array, const bfloat16** B_Array,
-      const std::vector<MKL_INT>& ldb_Array, bfloat16** C_Array,
+      const std::vector<MKL_INT>& K_Array, const void** A_Array,
+      const std::vector<MKL_INT>& lda_Array, const void** B_Array,
+      const std::vector<MKL_INT>& ldb_Array, void** C_Array,
+      const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
+      const std::vector<MKL_INT>& group_size) {
+    std::vector<CBLAS_TRANSPOSE> TransA_array(
+        group_size[0], TransA ? CblasConjTrans : CblasNoTrans);
+    std::vector<CBLAS_TRANSPOSE> TransB_array(
+        group_size[0], TransB ? CblasConjTrans : CblasNoTrans);
+    std::vector<T> alpha_Array(group_size[0], {1.0f, 0.0f});
+    std::vector<T> beta_Array(group_size[0], {0.0f, 0.0f});
+    auto gemm_fn = (std::is_same<T, complex64>::value) ? cblas_cgemm_batch
+                                                       : cblas_zgemm_batch;
+    gemm_fn(Layout, &TransA_array[0], &TransB_array[0], &M_Array[0],
+            &N_Array[0], &K_Array[0], static_cast<const void*>(&alpha_Array[0]),
+            reinterpret_cast<const void**>(A_Array), &lda_Array[0],
+            reinterpret_cast<const void**>(B_Array), &ldb_Array[0],
+            static_cast<const void*>(&beta_Array[0]),
+            reinterpret_cast<void**>(C_Array), &ldc_Array[0], group_count,
+            &group_size[0]);
+  }
+
+#ifdef ENABLE_MKLDNN_V1_2
+  void MklCblasGemmBatch<bfloat16>(
+      const CBLAS_LAYOUT Layout, const bool TransA, const bool TransB,
+      const std::vector<MKL_INT>& M_Array, const std::vector<MKL_INT>& N_Array,
+      const std::vector<MKL_INT>& K_Array, const void** A_Array,
+      const std::vector<MKL_INT>& lda_Array, const void** B_Array,
+      const std::vector<MKL_INT>& ldb_Array, void** C_Array,
       const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
       const std::vector<MKL_INT>& group_size) {
     std::vector<CBLAS_TRANSPOSE> TransA_Array(group_size[0], TransA);
     std::vector<CBLAS_TRANSPOSE> TransB_Array(group_size[0], TransB);
     std::vector<float> alpha_Array(group_size[0], 1.0);
     std::vector<float> beta_Array(group_size[0], 0.0);
-    dnnl_gemm_batch<bfloat16>(Layout, TransA_Array, TransB_Array, M_Array,
-                              N_Array, K_Array, alpha_Array, A_Array, lda_Array,
-                              B_Array, ldb_Array, beta_Array, C_Array,
-                              ldc_Array, group_count, group_size);
+    dnnl_gemm_batch<bfloat16>(
+        Layout, TransA_Array, TransB_Array, M_Array, N_Array, K_Array,
+        alpha_Array, reinterpret_cast<const bfloat16**>(A_Array), lda_Array,
+        reinterpret_cast<const bfloat16**>(B_Array), ldb_Array, beta_Array,
+        reinterpret_cast<bfloat16**>(C_Array), ldc_Array, group_count,
+        group_size);
   }
 #endif  // ENABLE_MKLDNN_V1_2
-
-  void MklCblasGemmBatch(
-      const CBLAS_LAYOUT Layout, const bool TransA, const bool TransB,
-      const std::vector<MKL_INT>& M_Array, const std::vector<MKL_INT>& N_Array,
-      const std::vector<MKL_INT>& K_Array, const double** A_Array,
-      const std::vector<MKL_INT>& lda_Array, const double** B_Array,
-      const std::vector<MKL_INT>& ldb_Array, double** C_Array,
-      const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
-      const std::vector<MKL_INT>& group_size) {
-    std::vector<CBLAS_TRANSPOSE> TransA_array(
-        group_size[0], TransA ? CblasTrans : CblasNoTrans);
-    std::vector<CBLAS_TRANSPOSE> TransB_array(
-        group_size[0], TransB ? CblasTrans : CblasNoTrans);
-    std::vector<double> alpha_Array(group_size[0], 1.0);
-    std::vector<double> beta_Array(group_size[0], 0.0);
-    cblas_dgemm_batch(Layout, &TransA_array[0], &TransB_array[0], &M_Array[0],
-                      &N_Array[0], &K_Array[0], &alpha_Array[0], A_Array,
-                      &lda_Array[0], B_Array, &ldb_Array[0], &beta_Array[0],
-                      C_Array, &ldc_Array[0], group_count, &group_size[0]);
-  }
-
-  void MklCblasGemmBatch(
-      const CBLAS_LAYOUT Layout, const bool TransA, const bool TransB,
-      const std::vector<MKL_INT>& M_Array, const std::vector<MKL_INT>& N_Array,
-      const std::vector<MKL_INT>& K_Array, const complex64** A_Array,
-      const std::vector<MKL_INT>& lda_Array, const complex64** B_Array,
-      const std::vector<MKL_INT>& ldb_Array, complex64** C_Array,
-      const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
-      const std::vector<MKL_INT>& group_size) {
-    std::vector<CBLAS_TRANSPOSE> TransA_array(
-        group_size[0], TransA ? CblasConjTrans : CblasNoTrans);
-    std::vector<CBLAS_TRANSPOSE> TransB_array(
-        group_size[0], TransB ? CblasConjTrans : CblasNoTrans);
-    std::vector<complex64> alpha_Array(group_size[0], {1.0f, 0.0f});
-    std::vector<complex64> beta_Array(group_size[0], {0.0f, 0.0f});
-    cblas_cgemm_batch(Layout, &TransA_array[0], &TransB_array[0], &M_Array[0],
-                      &N_Array[0], &K_Array[0],
-                      static_cast<const void*>(&alpha_Array[0]),
-                      reinterpret_cast<const void**>(A_Array), &lda_Array[0],
-                      reinterpret_cast<const void**>(B_Array), &ldb_Array[0],
-                      static_cast<const void*>(&beta_Array[0]),
-                      reinterpret_cast<void**>(C_Array), &ldc_Array[0],
-                      group_count, &group_size[0]);
-  }
-
-  void MklCblasGemmBatch(
-      const CBLAS_LAYOUT Layout, const bool TransA, const bool TransB,
-      const std::vector<MKL_INT>& M_Array, const std::vector<MKL_INT>& N_Array,
-      const std::vector<MKL_INT>& K_Array, const complex128** A_Array,
-      const std::vector<MKL_INT>& lda_Array, const complex128** B_Array,
-      const std::vector<MKL_INT>& ldb_Array, complex128** C_Array,
-      const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
-      const std::vector<MKL_INT>& group_size) {
-    std::vector<CBLAS_TRANSPOSE> TransA_array(
-        group_size[0], TransA ? CblasConjTrans : CblasNoTrans);
-    std::vector<CBLAS_TRANSPOSE> TransB_array(
-        group_size[0], TransB ? CblasConjTrans : CblasNoTrans);
-    std::vector<complex128> alpha_Array(group_size[0], {1.0f, 0.0f});
-    std::vector<complex128> beta_Array(group_size[0], {0.0f, 0.0f});
-    cblas_zgemm_batch(Layout, &TransA_array[0], &TransB_array[0], &M_Array[0],
-                      &N_Array[0], &K_Array[0],
-                      static_cast<const void*>(&alpha_Array[0]),
-                      reinterpret_cast<const void**>(A_Array), &lda_Array[0],
-                      reinterpret_cast<const void**>(B_Array), &ldb_Array[0],
-                      static_cast<const void*>(&beta_Array[0]),
-                      reinterpret_cast<void**>(C_Array), &ldc_Array[0],
-                      group_count, &group_size[0]);
-  }
 };
 
 #define REGISTER_BATCH_MATMUL_MKL(TYPE)                                       \
