@@ -218,6 +218,11 @@ tf_py_build_info_genrule(
 )
 
 py_library(
+    name = "platform_build_info",
+    srcs = ["platform/build_info.py"],
+)
+
+py_library(
     name = "platform",
     srcs = glob(
         [
