@@ -77,21 +77,23 @@ class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
   // TODO: rename Dilated to Strided?
-  enum IndexingOrder { LinearIndexingX, DilatedIndexingX, VectorizedCoalescedIndexingX };
+  enum IndexingOrder { LinearIndexingX, DilatedIndexingX, LinearDilatedIndexingX };
 
   KernelMappingScheme(absl::Span<const int64> dims_in_elems,
                       absl::Span<const int64> tile_sizes, int64 num_threads_y,
-                      int64 num_threads_x, IndexingOrder indexing_order)
+                      int64 num_threads_x, IndexingOrder indexing_order,
+                      int vector_size)
       : dims_in_elems_{dims_in_elems[0], dims_in_elems[1], dims_in_elems[2]},
         tile_sizes_{tile_sizes[0], tile_sizes[1], tile_sizes[2]},
         num_threads_x_(num_threads_x),
         num_threads_y_(num_threads_y),
-        indexing_order_(indexing_order) {
+        indexing_order_(indexing_order),
+        vector_size_(vector_size){
     CHECK_EQ(tile_sizes[1] % num_threads_y_, 0);
     CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
     VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
     if (indexing_order != LinearIndexingX) {
-      // DilatedIndexingX, and VectorizedCoalescedIndexingX
+      // DilatedIndexingX, and LinearDilatedIndexingX
       // is for the purpose of vectorization, which requires
       // GetTileSizeFor(DimX) to be a multiplier of num_threads_x_.
       CHECK_EQ(GetTileSizeFor(DimX) % num_threads_x_, 0);
@@ -125,6 +127,9 @@ class KernelMappingScheme {
   IndexingOrder GetIndexingOrder() const {
     return indexing_order_;
   }
+  int GetVectorSize() const {
+    return vector_size_;
+  }
 
  private:
   // The number of elements in each dimension.
@@ -145,9 +150,16 @@ class KernelMappingScheme {
   // the value LinearIndexingX, the n elements processed by a thread
   // are contiguous. When the value is DilatedIndexingX, the n
   // elements are dilated by a factor of num_threads_x. When the value
-  // is VectorizedCoalescedIndexingX, it is a mix of both to enable
-  // vectorizing while keeping memory coalescing.
+  // is LinearDilatedIndexingX, it is a mix of both to enable
+  // vectorizing while keeping memory coalescing. It reads
+  // vector_size_ elements, then do a step to the next vector_size_
+  // elements.
   const IndexingOrder indexing_order_;
+  // vector_size_ only supported for row reduction.
+  // Must be a divisor of tile_sizes_[2]/num_threads_x.
+  // Interesting values are 2 and 4 to trigger vectorized loads on GPUs
+  // While keeping memory coalescing.
+  const int vector_size_;
 };
 
 // Information to support the code generation for a tiled reduction kernel.
