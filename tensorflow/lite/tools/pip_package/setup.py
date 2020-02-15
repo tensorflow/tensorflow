@@ -139,7 +139,6 @@ ext = Extension(
                '-I%s' % TENSORFLOW_DIR,
                '-module', 'interpreter_wrapper',
                '-outdir', PACKAGE_NAME],
-    extra_compile_args=['-std=c++11'],
     include_dirs=[TENSORFLOW_DIR,
                   os.path.join(TENSORFLOW_DIR, 'tensorflow', 'lite', 'tools',
                                'pip_package'),
