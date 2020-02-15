@@ -311,8 +311,7 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
                 for n in signature_def.outputs.values()
             ],
             variable_names_blacklist=[
-                name for (name, node_modified) in all_variables.items()
-                if node_modified[1]
+                n.name for n, _ in variable_nodes_to_feed
             ],
         ))
 

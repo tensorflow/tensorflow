@@ -27,6 +27,11 @@ def saved_model_compile_aot(
     SavedModel and generates a cc_library with an AOT compiled model.
     For extra details, see the help for saved_model_cli's aot_compile_cpu help.
 
+    **NOTE** Any variables passed to `variables_to_feed` *must be set by the
+    user*.  These variables will NOT be frozen and their values will be
+    uninitialized in the compiled object (this applies to all input
+    arguments from the signature as well).
+
     Example usage:
 
     ```
@@ -77,6 +82,11 @@ def saved_model_compile_aot(
       variables_to_feed: (optional) The names of the variables to feed, a comma
         separated string, or 'all'.  If empty, all variables will be frozen and none
         may be fed at runtime.
+
+        **NOTE** Any variables passed to `variables_to_feed` *must be set by
+        the user*.  These variables will NOT be frozen and their values will be
+        uninitialized in the compiled object (this applies to all input
+        arguments from the signature as well).
       target_triple: The LLVM target triple to use (defaults to current build's
         target architecture's triple).
       force_without_xla_support_flag: Whether to compile even when
