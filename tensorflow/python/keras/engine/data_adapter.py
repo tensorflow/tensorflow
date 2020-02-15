@@ -1071,10 +1071,10 @@ def _process_numpy_inputs(inputs):
     return flat_inputs[0]
 
   def _convert_non_tensor(x):
-    # Don't call `ops.convert_to_tensor` on all `inputs` because
+    # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
     # `SparseTensors` can't be converted to `Tensor`.
     if isinstance(x, np.ndarray):
-      return ops.convert_to_tensor(x)
+      return ops.convert_to_tensor_v2(x)
     return x
 
   inputs = nest.map_structure(_convert_non_tensor, inputs)
@@ -1279,7 +1279,7 @@ def _make_class_weight_map_fn(class_weight):
         "than the number of classes, found {}").format(class_weight)
     raise ValueError(error_msg)
 
-  class_weight_tensor = ops.convert_to_tensor(
+  class_weight_tensor = ops.convert_to_tensor_v2(
       [class_weight[c] for c in class_ids])
 
   def _class_weights_map_fn(*data):
@@ -1349,7 +1349,7 @@ def train_validation_split(arrays, validation_split, shuffle=True):
 
   # Assumes all arrays have the same batch shape or are `None`.
   batch_dim = int(first_non_none.shape[0])
-  indices = ops.convert_to_tensor(range(batch_dim))
+  indices = ops.convert_to_tensor_v2(range(batch_dim))
   if shuffle:
     indices = random_ops.random_shuffle(indices)
   split_at = int(math.floor(batch_dim * (1. - validation_split)))
@@ -1359,7 +1359,7 @@ def train_validation_split(arrays, validation_split, shuffle=True):
   def _split(t, indices):
     if t is None:
       return t
-    t = ops.convert_to_tensor(t)
+    t = ops.convert_to_tensor_v2(t)
     return array_ops.gather_v2(t, indices)
 
   train_arrays = nest.map_structure(

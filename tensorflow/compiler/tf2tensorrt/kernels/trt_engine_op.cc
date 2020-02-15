@@ -677,9 +677,11 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   }
 
   const bool kRetry = true;
-  auto& execution_context = engine_context->execution_context;
   const int num_binding = cuda_engine->getNbBindings();
   std::vector<void*> buffers(num_binding);
+
+  mutex_lock lock(engine_context->mu);
+  auto& execution_context = engine_context->execution_context;
 
   // Setup engine inputs.
   for (int i = 0; i < ctx->num_inputs(); i++) {
@@ -835,7 +837,6 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
 
   // nvinfer1::IExecutionContext::enqueue is not thread safe and we need a mutex
   // for it.
-  mutex_lock lock(engine_context->mu);
   bool ret = false;
   if (use_implicit_batch_) {
     const int num_batch = ctx->input(0).shape().dim_size(0);

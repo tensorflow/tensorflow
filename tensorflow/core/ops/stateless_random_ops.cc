@@ -68,6 +68,15 @@ REGISTER_OP("StatelessRandomUniformInt")
       return StatelessShape(c);
     });
 
+REGISTER_OP("StatelessRandomUniformFullInt")
+    .Input("shape: T")
+    .Input("seed: Tseed")
+    .Output("output: dtype")
+    .Attr("dtype: {int32, int64, uint32, uint64} = DT_UINT64")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .Attr("Tseed: {int32, int64, uint32, uint64} = DT_INT64")
+    .SetShapeFn(StatelessShape);
+
 REGISTER_OP("StatelessMultinomial")
     .Input("logits: T")
     .Input("num_samples: int32")

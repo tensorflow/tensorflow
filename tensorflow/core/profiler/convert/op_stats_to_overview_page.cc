@@ -144,8 +144,8 @@ OverviewPageRecommendation ComputeGenericRecommendation(
 
 OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   OverviewPageAnalysis analysis;
-  OpMetricsDb metrics_db =
-      CreateTfMetricsDbFromHloMetricsDb(op_stats.device_op_metrics_db());
+  OpMetricsDb metrics_db = CreateTfMetricsDbFromHloMetricsDb(
+      op_stats.device_op_metrics_db(), /*with_idle=*/false);
   uint64 total_device_time_ps = metrics_db.total_time_ps();
   constexpr int kNumTopOpsShown = 10;
   double device_cumulative_fraction = 0.0;

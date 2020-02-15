@@ -332,6 +332,12 @@ class XlaBuilder {
   // Adds a new input/output alias. Since the input/output shape information are
   // not available until the computation is built, and eventual error in the
   // arguments of this API will be detected only at computation Build() time.
+  //
+  // Note: Aliasing API is 'may-alias' and only donated buffer at runtime will
+  // be aliased with output. If a buffer is not donated at runtime, a copy will
+  // be inserted by XLA to prevent buffer clobbering.
+  //
+  // Only works on TPU backend.
   void SetUpAlias(const ShapeIndex& output_index, int64 param_number,
                   const ShapeIndex& param_index) {
     input_output_aliases_.push_back({output_index, param_number, param_index});

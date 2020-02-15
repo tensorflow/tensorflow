@@ -22,6 +22,7 @@ from __future__ import print_function
 import functools
 import itertools
 import threading
+import unittest
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -29,6 +30,13 @@ import numpy as np
 
 from tensorflow.compiler.xla.python import custom_call_for_test
 from tensorflow.compiler.xla.python import xla_client
+
+# pylint: disable=g-import-not-at-top
+try:
+  import portpicker
+except ImportError:
+  portpicker = None
+# pylint: enable=g-import-not-at-top
 
 bfloat16 = xla_client.bfloat16
 
@@ -2151,6 +2159,27 @@ class BufferProtocolTest(parameterized.TestCase):
     # It is still legal to access `y`; the array view must keep it alive.
     np.testing.assert_array_equal(x, y)
     self.assertEqual(y.__array_interface__["data"][0], buffer_ptr)
+
+
+class ProfilerTest(absltest.TestCase):
+
+  def testTraceMe(self):
+    # TODO(phawkins): These tests just check that the TraceMe context manager
+    # acts like a context manager and doesn't explode. Ideally we'd check that
+    # the profiler saw the traceme too.
+    with xla_client.profiler.TraceMe("test1"):
+      pass
+    with xla_client.profiler.TraceMe("test2", foo=123):
+      pass
+    with self.assertRaises(ValueError):
+      with xla_client.profiler.TraceMe("test3"):
+        raise ValueError("test")
+
+  @unittest.skipIf(portpicker is None, "Test requires portpicker")
+  def testStartServer(self):
+    port = portpicker.pick_unused_port()
+    server = xla_client.profiler.start_server(port)
+    del server
 
 
 if __name__ == "__main__":

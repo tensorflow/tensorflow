@@ -52,7 +52,7 @@ class CategoryCrossingTest(keras_parameterized.TestCase):
     self.assertAllClose(np.asarray([[0, 0], [1, 0], [1, 1]]), output.indices)
     self.assertAllEqual([b'a_X_d', b'b_X_e', b'c_X_e'], output.values)
 
-  def test_crossing_hashed_basic(self):
+  def test_crossing_sparse_inputs(self):
     layer = categorical_crossing.CategoryCrossing(num_bins=1)
     inputs_0 = sparse_tensor.SparseTensor(
         indices=[[0, 0], [1, 0], [1, 1]],
@@ -63,6 +63,24 @@ class CategoryCrossingTest(keras_parameterized.TestCase):
     output = layer([inputs_0, inputs_1])
     self.assertAllClose(np.asarray([[0, 0], [1, 0], [1, 1]]), output.indices)
     self.assertAllClose([0, 0, 0], output.values)
+
+  def test_crossing_sparse_inputs_with_hash_key(self):
+    layer = categorical_crossing.CategoryCrossing(num_bins=2, hash_key=133)
+    inputs_0 = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 0], [1, 1]],
+        values=['a', 'b', 'c'],
+        dense_shape=[2, 2])
+    inputs_1 = sparse_tensor.SparseTensor(
+        indices=[[0, 1], [1, 2]], values=['d', 'e'], dense_shape=[2, 3])
+    output = layer([inputs_0, inputs_1])
+    self.assertAllClose(np.asarray([[0, 0], [1, 0], [1, 1]]), output.indices)
+    self.assertAllClose([1, 0, 1], output.values)
+
+    layer_2 = categorical_crossing.CategoryCrossing(num_bins=2, hash_key=137)
+    output = layer_2([inputs_0, inputs_1])
+    self.assertAllClose(np.asarray([[0, 0], [1, 0], [1, 1]]), output.indices)
+    # Note the output is different with above.
+    self.assertAllClose([0, 1, 0], output.values)
 
   def test_crossing_sparse_inputs_depth_int(self):
     layer = categorical_crossing.CategoryCrossing(depth=1)
@@ -258,6 +276,10 @@ class CategoryCrossingTest(keras_parameterized.TestCase):
     output_spec = layer.compute_output_signature(input_specs)
     self.assertEqual(output_spec.shape.dims[0], input_shapes[0].dims[0])
     self.assertEqual(output_spec.dtype, dtypes.int64)
+
+  def test_crossing_with_invalid_hash_key(self):
+    with self.assertRaises(ValueError):
+      _ = categorical_crossing.CategoryCrossing(hash_key=133)
 
   @tf_test_util.run_v2_only
   def test_config_with_custom_name(self):

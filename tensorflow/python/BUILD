@@ -1915,7 +1915,6 @@ py_library(
         ":errors",
         ":framework_for_generated_wrappers",
         ":gpu_util",
-        ":memory_checker",
         ":platform",
         ":platform_test",
         ":pywrap_tf_session",
@@ -2551,10 +2550,15 @@ tf_py_test(
     shard_count = 8,
     tags = [
         "no_oss_py2",
+        "no_pip",
         "no_windows",
     ],
     deps = [
         ":framework_test_lib",
+        # TODO(kkb): Find more appropriate place to add `memory_checker` as deps
+        # Adding directly to `framework_test_lib` caused a Colab binary size
+        # regression b/149433910 .
+        ":memory_checker",
     ],
 )
 
@@ -4412,7 +4416,7 @@ py_library(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "rnn_grad_test",
     srcs = ["ops/rnn_grad_test.py"],
     python_version = "PY3",
@@ -5727,6 +5731,10 @@ tf_py_wrap_cc(
         ":py_exception_registry",
         ":py_func_lib",
         ":py_record_reader_lib",
+        ":pybind11_absl",
+        ":pybind11_lib",
+        ":pybind11_status",
+        ":pybind11_proto",
         ":python_op_gen",
         ":tf_session_helper",
         "//third_party/python_runtime:headers",

@@ -16,6 +16,8 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include <memory>
+
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -23,13 +25,15 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-
-#include "mkldnn.hpp"
+#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
+
 using mkldnn::stream;
 
 namespace tensorflow {
+
 using CPUDevice = Eigen::ThreadPoolDevice;
+
 template <typename Device, typename T>
 class MklReshapeOp : public OpKernel {
  public:
@@ -43,7 +47,6 @@ class MklReshapeOp : public OpKernel {
   bool SkipReorder(const MklDnnShape& mkl_shape_input,
                    const TensorShape& reshape_to) {
     CHECK_EQ(mkl_shape_input.IsMklTensor(), true);
-    bool ret = false;
 
     // If Tensorflow's data format and the underlying format maintained by
     // MKLDNN are equivalent (both are NHWC or both are NCHW), then we can
@@ -52,12 +55,7 @@ class MklReshapeOp : public OpKernel {
     // blocking_desc_is_equal() for checking all the stride arrays in
     // mkl-dnn/blob/master/src/common/type_helpers.hpp
     auto input_mkl_md = mkl_shape_input.GetMklLayout();
-    if (mkl_shape_input.GetTfDataFormat() == input_mkl_md.data.format &&
-        mkl_shape_input.GetTfDataFormat() != memory::format::blocked) {
-      ret = true;
-    }
-
-    return ret;
+    return SKIP_INPUT_REORDER(mkl_shape_input, input_mkl_md);
   }
 
  public:
@@ -140,18 +138,15 @@ class MklReshapeOp : public OpKernel {
         return;
       } else {
         try {
-          auto cpu_engine = engine(engine::cpu, 0);
+          auto cpu_engine = engine(ENGINE_CPU, 0);
           MklDnnData<T> dnn_data_input(&cpu_engine);
           // Reshape is just a logical view change operation for a tensor.
           // It does not change underlying layout. But MKLDNN may maintain
           // tensor data in different layout than that specified by Tensorflow.
           // If MKLDNN maintains input tensor in different layout than that
           // specified by Tensorflow, we will need to reorder tensor and then
-          // put it in the shape expected by Tensorflow. But if MKLDNN has
-          // maintained input tensor in the same layout as it is expected by
-          // Tensorflow, we don't need to reorder tensor contents, we just
-          // need to update MklDnnShape object associated with the input
-          // tensor to reflect the shape change expected by reshape.
+          // put it in the shape expected by Tensorflow.
+
           // If dimensions that are being expanded or collapsed are not
           // maintained contiguously by MKLDNN, then we use reorder.
 
@@ -161,7 +156,9 @@ class MklReshapeOp : public OpKernel {
           dnn_data_input.SetUsrMem(input_mkl_md, &input_tensor);
           // Get expected Tensorflow layout of input tensor.
           auto output_tf_md = mkl_shape_input.GetTfLayout();
+#ifndef ENABLE_MKLDNN_V1
           auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine);
+#endif  // !ENABLE_MKLDNN_V1
 
           Tensor* output_tensor = nullptr;
           MklDnnShape mkl_shape_output;
@@ -175,7 +172,7 @@ class MklReshapeOp : public OpKernel {
           // shape_from != shape_to), then we just copy input tensor to
           // output tensor with target shape (we cannot forward Mkl layout
           // in such case because shape has changed.)
-          if (dnn_data_input.CheckReorderToOpMem(output_tf_pd, output_tensor)) {
+          if (dnn_data_input.CheckReorderToOpMem(OUTPUT_TF_MD, output_tensor)) {
           } else {
             OP_REQUIRES(context,
                         output_tensor->CopyFrom(input_tensor, shape_to),
@@ -251,7 +248,9 @@ class MklReshapeOp : public OpKernel {
 
 TF_CALL_float(REGISTER_MKL_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_CPU);
+
 #undef REGISTER_MKL_CPU
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL
