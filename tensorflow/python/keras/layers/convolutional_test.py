@@ -54,11 +54,15 @@ class Conv1DTest(keras_parameterized.TestCase):
       ('padding_causal', {'padding': 'causal'}, (None, 7, 2)),
       ('strides', {'strides': 2}, (None, 3, 2)),
       ('dilation_rate', {'dilation_rate': 2}, (None, 3, 2)),
+      # Only runs on GPU with CUDA, groups are not supported on CPU.
+      # https://github.com/tensorflow/tensorflow/issues/29005
+      ('group', {'groups': 3, 'filters': 6}, (None, 5, 6), True),
   )
-  def test_conv1d(self, kwargs, expected_output_shape):
-    kwargs['filters'] = 2
+  def test_conv1d(self, kwargs, expected_output_shape, requires_gpu=False):
+    kwargs['filters'] = kwargs.get('filters', 2)
     kwargs['kernel_size'] = 3
-    self._run_test(kwargs, expected_output_shape)
+    if not requires_gpu or test.is_gpu_available(cuda_only=True):
+      self._run_test(kwargs, expected_output_shape)
 
   def test_conv1d_regularizers(self):
     kwargs = {
@@ -134,12 +138,15 @@ class Conv2DTest(keras_parameterized.TestCase):
       ('dilation_rate', {'dilation_rate': (2, 2)}, (None, 3, 2, 2)),
       # Only runs on GPU with CUDA, channels_first is not supported on CPU.
       # TODO(b/62340061): Support channels_first on CPU.
-      ('data_format', {'data_format': 'channels_first'}),
+      ('data_format', {'data_format': 'channels_first'}, None, True),
+      # Only runs on GPU with CUDA, groups are not supported on CPU.
+      # https://github.com/tensorflow/tensorflow/issues/29005
+      ('group', {'groups': 3, 'filters': 6}, (None, 5, 4, 6), True),
   )
-  def test_conv2d(self, kwargs, expected_output_shape=None):
-    kwargs['filters'] = 2
+  def test_conv2d(self, kwargs, expected_output_shape=None, requires_gpu=False):
+    kwargs['filters'] = kwargs.get('filters', 2)
     kwargs['kernel_size'] = (3, 3)
-    if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
+    if not requires_gpu or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, expected_output_shape)
 
   def test_conv2d_regularizers(self):
@@ -207,12 +214,15 @@ class Conv3DTest(keras_parameterized.TestCase):
       ('dilation_rate', {'dilation_rate': (2, 2, 2)}, (None, 1, 3, 2, 2)),
       # Only runs on GPU with CUDA, channels_first is not supported on CPU.
       # TODO(b/62340061): Support channels_first on CPU.
-      ('data_format', {'data_format': 'channels_first'}),
+      ('data_format', {'data_format': 'channels_first'}, None, True),
+      # Only runs on GPU with CUDA, groups are not supported on CPU.
+      # https://github.com/tensorflow/tensorflow/issues/29005
+      ('group', {'groups': 3, 'filters': 6}, (None, 3, 5, 4, 6), True),
   )
-  def test_conv3d(self, kwargs, expected_output_shape=None):
-    kwargs['filters'] = 2
+  def test_conv3d(self, kwargs, expected_output_shape=None, requires_gpu=False):
+    kwargs['filters'] = kwargs.get('filters', 2)
     kwargs['kernel_size'] = (3, 3, 3)
-    if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
+    if not requires_gpu or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, expected_output_shape)
 
   def test_conv3d_regularizers(self):

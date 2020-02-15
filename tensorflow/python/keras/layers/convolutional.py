@@ -77,6 +77,16 @@ class Conv(Layer):
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
+    groups: Integer, the number of channel groups controlling the connections
+      between inputs and outputs. Input channels and `filters` must both be
+      divisible by `groups`. For example,
+        - At `groups=1`, all inputs are convolved to all outputs.
+        - At `groups=2`, the operation becomes equivalent to having two
+          convolutional layers side by side, each seeing half the input
+          channels, and producing half the output channels, and both
+          subsequently concatenated.
+        - At `groups=input_channels`, each input channel is convolved with its
+          own set of filters, of size `input_channels / filters`
     activation: Activation function to use.
       If you don't specify anything, no activation is applied.
     use_bias: Boolean, whether the layer uses a bias.
@@ -106,6 +116,7 @@ class Conv(Layer):
                padding='valid',
                data_format=None,
                dilation_rate=1,
+               groups=1,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -127,6 +138,11 @@ class Conv(Layer):
     if filters is not None and not isinstance(filters, int):
       filters = int(filters)
     self.filters = filters
+    self.groups = groups
+    if filters and filters % self.groups != 0:
+      raise ValueError(
+          'The number of filters is not divisible by the number groups. '
+          '{} % {} = {}'.format(filters, groups, filters % groups))
     self.kernel_size = conv_utils.normalize_tuple(
         kernel_size, rank, 'kernel_size')
     if not all(self.kernel_size):
@@ -154,7 +170,12 @@ class Conv(Layer):
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_channel = self._get_input_channel(input_shape)
-    kernel_shape = self.kernel_size + (input_channel, self.filters)
+    if input_channel % self.groups != 0:
+      raise ValueError(
+          'The number of input channels is not divisible by the number of '
+          'channel group. {} % {} = {}'.format(input_channel, self.groups,
+                                               input_channel % self.groups))
+    kernel_shape = self.kernel_size + (input_channel // self.groups, self.filters)
 
     self.kernel = self.add_weight(
         name='kernel',
@@ -262,6 +283,7 @@ class Conv(Layer):
         'padding': self.padding,
         'data_format': self.data_format,
         'dilation_rate': self.dilation_rate,
+        'groups': self.groups,
         'activation': activations.serialize(self.activation),
         'use_bias': self.use_bias,
         'kernel_initializer': initializers.serialize(self.kernel_initializer),
@@ -374,6 +396,16 @@ class Conv1D(Conv):
         2.1](https://arxiv.org/abs/1609.03499).
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
+    groups: Integer, the number of channel groups controlling the connections
+      between inputs and outputs. Input channels and `filters` must both be
+      divisible by `groups`. For example,
+        - At `groups=1`, all inputs are convolved to all outputs.
+        - At `groups=2`, the operation becomes equivalent to having two
+          convolutional layers side by side, each seeing half the input
+          channels, and producing half the output channels, and both
+          subsequently concatenated.
+        - At `groups=input_channels`, each input channel is convolved with its
+          own set of filters, of size `input_channels / filters`
     dilation_rate: an integer or tuple/list of a single integer, specifying
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
@@ -420,6 +452,7 @@ class Conv1D(Conv):
                padding='valid',
                data_format='channels_last',
                dilation_rate=1,
+               groups=1,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -438,6 +471,7 @@ class Conv1D(Conv):
         padding=padding,
         data_format=data_format,
         dilation_rate=dilation_rate,
+        groups=groups,
         activation=activations.get(activation),
         use_bias=use_bias,
         kernel_initializer=initializers.get(kernel_initializer),
@@ -524,6 +558,16 @@ class Conv2D(Conv):
       all spatial dimensions.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
+    groups: Integer, the number of channel groups controlling the connections
+      between inputs and outputs. Input channels and `filters` must both be
+      divisible by `groups`. For example,
+        - At `groups=1`, all inputs are convolved to all outputs.
+        - At `groups=2`, the operation becomes equivalent to having two
+          convolutional layers side by side, each seeing half the input
+          channels, and producing half the output channels, and both
+          subsequently concatenated.
+        - At `groups=input_channels`, each input channel is convolved with its
+          own set of filters, of size `input_channels / filters`
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
@@ -573,6 +617,7 @@ class Conv2D(Conv):
                padding='valid',
                data_format=None,
                dilation_rate=(1, 1),
+               groups=1,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -591,6 +636,7 @@ class Conv2D(Conv):
         padding=padding,
         data_format=data_format,
         dilation_rate=dilation_rate,
+        groups=groups,
         activation=activations.get(activation),
         use_bias=use_bias,
         kernel_initializer=initializers.get(kernel_initializer),
@@ -662,6 +708,16 @@ class Conv3D(Conv):
       all spatial dimensions.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
+    groups: Integer, the number of channel groups controlling the connections
+      between inputs and outputs. Input channels and `filters` must both be
+      divisible by `groups`. For example,
+        - At `groups=1`, all inputs are convolved to all outputs.
+        - At `groups=2`, the operation becomes equivalent to having two
+          convolutional layers side by side, each seeing half the input
+          channels, and producing half the output channels, and both
+          subsequently concatenated.
+        - At `groups=input_channels`, each input channel is convolved with its
+          own set of filters, of size `input_channels / filters`
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
@@ -717,6 +773,7 @@ class Conv3D(Conv):
                padding='valid',
                data_format=None,
                dilation_rate=(1, 1, 1),
+               groups=1,
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -735,6 +792,7 @@ class Conv3D(Conv):
         padding=padding,
         data_format=data_format,
         dilation_rate=dilation_rate,
+        groups=groups,
         activation=activations.get(activation),
         use_bias=use_bias,
         kernel_initializer=initializers.get(kernel_initializer),

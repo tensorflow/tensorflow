@@ -1063,12 +1063,12 @@ class Convolution(object):
       input_channels_dim = tensor_shape.dimension_at_index(input_shape, 1)
       spatial_dims = range(2, num_spatial_dims + 2)
 
-    if not input_channels_dim.is_compatible_with(
-        filter_shape[num_spatial_dims]):
+    filter_dim = tensor_shape.dimension_at_index(filter_shape, num_spatial_dims)
+    if not (input_channels_dim % filter_dim).is_compatible_with(0):
       raise ValueError(
-          "number of input channels does not match corresponding dimension of "
-          "filter, {} != {}".format(input_channels_dim,
-                                    filter_shape[num_spatial_dims]))
+          "number of input channels is not divisible by corresponding "
+          "dimension of filter, {} % {} != 0".format(input_channels_dim,
+                                                     filter_dim))
 
     strides, dilation_rate = _get_strides_and_dilation_rate(
         num_spatial_dims, strides, dilation_rate)
