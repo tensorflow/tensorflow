@@ -23,6 +23,8 @@ To cross compile TensorFlow Lite, first install the toolchain and libs:
 ```bash
 sudo apt-get update
 sudo apt-get install crossbuild-essential-armhf
+# The following is only needed for Pi Zero build.
+sudo apt-get install crossbuild-essential-armel
 ```
 
 If you are using Docker, you may not use `sudo`.
@@ -41,6 +43,8 @@ Note that you only need to do this once.
 
 You should then be able to compile:
 
+To build ARMv7 binary for Raspberry Pi 2, 3 and 4:
+
 ```bash
 ./tensorflow/lite/tools/make/build_rpi_lib.sh
 ```
@@ -48,6 +52,14 @@ You should then be able to compile:
 This should compile a static library in:
 `tensorflow/lite/tools/make/gen/rpi_armv7l/lib/libtensorflow-lite.a`.
 
+To build ARMv6 binary for Raspberry Pi Zero:
+
+```bash
+TARGET_ARCH=armv6 ./tensorflow/lite/tools/make/build_rpi_lib.sh
+```
+
+This should compile a static library in:
+`tensorflow/lite/tools/make/gen/rpi_armv6/lib/libtensorflow-lite.a`.
 
 ## Compile natively on Raspberry Pi
 

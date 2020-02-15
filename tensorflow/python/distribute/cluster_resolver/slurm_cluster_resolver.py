@@ -190,7 +190,7 @@ class SlurmClusterResolver(ClusterResolver):
     defaults to None.
 
     Returns:
-      A string specifying job name the process belongs to and an integner
+      A string specifying job name the process belongs to and an integer
         specifying the task index the process belongs to in that job.
     """
     return self.task_type, self.task_id
@@ -200,7 +200,7 @@ class SlurmClusterResolver(ClusterResolver):
 
     Args:
       task_type: (Optional) Overrides the default auto-selected task type.
-      task_id: (Optional) Overrides the default auto-slected task index.
+      task_id: (Optional) Overrides the default auto-selected task index.
       rpc_layer: (Optional) Overrides the default RPC protocol TensorFlow uses
         to communicate across nodes.
 

@@ -1328,6 +1328,8 @@ renames = {
         'tf.compat.v1.to_int64',
     'tf.tpu.CrossShardOptimizer':
         'tf.compat.v1.tpu.CrossShardOptimizer',
+    'tf.tpu.PaddingSpec':
+        'tf.compat.v1.tpu.PaddingSpec',
     'tf.tpu.batch_parallel':
         'tf.compat.v1.tpu.batch_parallel',
     'tf.tpu.bfloat16_scope':

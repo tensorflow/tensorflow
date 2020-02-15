@@ -242,6 +242,16 @@ def LHLO_BroadcastInDimOp : LHLO_Op<"broadcast_in_dim",
   );
 }
 
+def HLO_DynamicBroadcastInDimOp : LHLO_Op<"dynamic_broadcast_in_dim",
+      [NoSideEffect]>, BASE_HLO_DynamicBroadcastInDimOp {
+  let arguments = (ins
+    LHLO_Buffer:$operand,
+    HLO_BASE_DimensionTensor:$output_dimensions,
+    LHLO_Buffer:$output,
+    BroadcastDimAttr:$broadcast_dimensions
+  );
+}
+
 def LHLO_ClampOp : LHLO_Op<"clamp", []>, BASE_HLO_ClampOp {
   let arguments = (ins
     LHLO_Buffer:$min,

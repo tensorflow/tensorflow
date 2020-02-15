@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -534,7 +535,7 @@ class TextVectorizationPreprocessingTest(
   def test_splitting_with_invalid_split_arg(self):
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
     layer = get_layer_class()()
-    layer._split = "unsuppported"
+    layer._split = "unsupported"
     with self.assertRaisesRegex(ValueError, ".*is not a supported splitting.*"):
       _ = layer(input_data)
 
@@ -1371,8 +1372,11 @@ class TextVectorizationSavingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
-  def test_saving_errors(self):
+  def test_saving(self):
     vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
 
     # Build and validate a golden model.
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
@@ -1388,11 +1392,23 @@ class TextVectorizationSavingTest(
     # Save the model to disk.
     output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
 
-    with self.assertRaisesRegex(NotImplementedError, ".*Saving is not yet.*"):
-      model.save(output_path, save_format="tf")
+    model.save(output_path, save_format="tf")
 
-  def test_saving_errors_when_nested(self):
+    # Delete the session and graph to ensure that the loaded model is generated
+    # from scratch.
+    # TODO(b/149526183): Can't clear session when TF2 is disabled.
+    if tf2.enabled():
+      keras.backend.clear_session()
+
+    loaded_model = keras.models.load_model(
+        output_path, custom_objects={"TextVectorization": get_layer_class()})
+    self.assertAllEqual(loaded_model.predict(input_array), expected_output)
+
+  def test_saving_when_nested(self):
     vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
 
     # Build and validate a golden model.
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
@@ -1411,9 +1427,17 @@ class TextVectorizationSavingTest(
 
     # Save the model to disk.
     output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
+    outer_model.save(output_path, save_format="tf")
 
-    with self.assertRaisesRegex(NotImplementedError, ".*Saving is not yet.*"):
-      outer_model.save(output_path, save_format="tf")
+    # Delete the session and graph to ensure that the loaded model is generated
+    # from scratch.
+    # TODO(b/149526183): Can't clear session when TF2 is disabled.
+    if tf2.enabled():
+      keras.backend.clear_session()
+
+    loaded_model = keras.models.load_model(
+        output_path, custom_objects={"TextVectorization": get_layer_class()})
+    self.assertAllEqual(loaded_model.predict(input_array), expected_output)
 
   def test_serialization_with_custom_callables(self):
     input_array = np.array([["earth>wind>and Fire"],

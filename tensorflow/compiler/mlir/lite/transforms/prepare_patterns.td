@@ -26,6 +26,20 @@ def NonOpaqueElementsAttr : ElementsAttrBase<
 def : Pat<(TF_ConstOp:$res NonOpaqueElementsAttr:$value), (ConstantOp $value),
           [(AnyStaticShapeTensor $res)]>;
 
+// Convert the legacy BatchNormWithGlobalNormalization to other ops.
+def : Pat<
+  (TF_BatchNormWithGlobalNormalizationOp
+    $t, $m, $v, $beta, $gamma, F32Attr:$variance_epsilon, ConstBoolAttrFalse:$scale_after_normalization),
+  (TF_AddOp
+    (TF_MulOp $t, (TF_RsqrtOp:$rsqrt (TF_AddOp $v, (TF_ConstOp $variance_epsilon)))),
+    (TF_SubOp $beta, (TF_MulOp $m, $rsqrt)))>;
+def : Pat<
+  (TF_BatchNormWithGlobalNormalizationOp
+    $t, $m, $v, $beta, $gamma, F32Attr:$variance_epsilon, ConstBoolAttrTrue:$scale_after_normalization),
+  (TF_AddOp
+    (TF_MulOp $t, (TF_MulOp:$mul (TF_RsqrtOp (TF_AddOp $v, (TF_ConstOp $variance_epsilon))), $gamma)),
+    (TF_SubOp $beta, (TF_MulOp $m, $mul)))>;
+
 // Converts tf.FusedBatchNorm & tf.FusedBatchNormV3 into a sequence of more primitive arithmetic
 // operations. Specifically, performs the following calculation:
 //

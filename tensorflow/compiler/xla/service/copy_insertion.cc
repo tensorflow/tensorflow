@@ -703,6 +703,9 @@ class CopyRemover {
       if (next_dest != nullptr) {
         // Live range of 'from' value (s_x) must be before 'next_dest' (d_1);
         if (!LiveRangeBefore(*src, *next_dest)) {
+          VLOG(2) << "Not removing the copy: live range of "
+                  << src->value->ToShortString() << " is not before "
+                  << next_dest->value->ToShortString();
           return false;
         }
       }
@@ -713,6 +716,9 @@ class CopyRemover {
         ValueNode* last_dest = dest->prev;
         DCHECK(IsTail(*last_dest));
         if (!LiveRangeBefore(*last_dest, *next_src)) {
+          VLOG(2) << "Not removing the copy: live range of "
+                  << last_dest->value->ToShortString() << " is not before "
+                  << next_src->value->ToShortString();
           return false;
         }
       }
@@ -743,12 +749,18 @@ class CopyRemover {
       DCHECK(IsHead(*first_src));
       if (!LiveRangeBefore(*prev_dest, *first_src)) {
         // Live range of value d_{y-1} is not before s_0.
+        VLOG(2) << "Not removing the copy: live range of "
+                << prev_dest->value->ToShortString() << " is not before "
+                << first_src->value->ToShortString();
         return false;
       }
       ValueNode* next_dest = Next(*dest);
       if (next_dest != nullptr) {
         if (!LiveRangeBefore(*src, *next_dest)) {
           // Live range of value s_n is not before d_{y+1}.
+          VLOG(2) << "Not removing the copy: live range of "
+                  << src->value->ToShortString() << " is not before "
+                  << next_dest->value->ToShortString();
           return false;
         }
       }

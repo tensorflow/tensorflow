@@ -17,5 +17,11 @@ END
   summary: "Joins the strings in the given list of string tensors into one tensor;"
   description: <<END
 with the given separator (default is an empty separator).
+
+Examples:
+
+>>> s = ["hello", "world", "tensorflow"]
+>>> tf.strings.join(s, " ")
+<tf.Tensor: shape=(), dtype=string, numpy=b'hello world tensorflow'>
 END
 }

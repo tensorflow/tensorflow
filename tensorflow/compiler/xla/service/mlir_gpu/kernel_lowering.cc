@@ -276,6 +276,8 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   pm.addPass(absl::make_unique<FusionToLhloConverter>());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
+  // Remove unnecessary Lhlo copies.
+  pm.addPass(::mlir::xla_hlo::createLhloCopyRemovalPass());
   // Transform lhlo operations to LinAlg.
   pm.addPass(::mlir::xla_lhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations. This will yield a single tiled loop nest where

@@ -120,8 +120,8 @@ class AutoCastVariable(variables.Variable):
       raise ValueError(
           'Incompatible type conversion requested to type {!r} for variable '
           'of type {!r}'.format(dtype.name, self.dtype.name))
-    val = ops.convert_to_tensor(
-        self._variable, self._variable.dtype, name, as_ref=False)
+    val = ops.convert_to_tensor_v2(
+        self._variable, dtype=self._variable.dtype, name=name)
     return math_ops.cast(val, self.dtype)
 
   def _should_act_as_resource_variable(self):
@@ -149,7 +149,7 @@ class AutoCastVariable(variables.Variable):
   # reasons:
   #   * 'count_up_to': This method only applies to int variables, which cannot
   #     be wrapped with an AutoCastVariable.
-  #   * 'experimental_ref': Instead we inherit the definition from Variable.
+  #   * 'ref': Instead we inherit the definition from Variable.
   #     If we defined and delegated to Variable, the ref of an AutoCastVariable
   #     would be the same as the ref of the underlying variable, which would be
   #     strange as they are different Python objects.

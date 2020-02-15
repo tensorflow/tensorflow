@@ -364,7 +364,13 @@ class RandomGammaOp : public OpKernel {
       Name("RandomGamma").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),        \
       RandomGammaOp<TYPE>)
 
+#define REGISTER_FULL_INT(IntType)           \
+  template struct functor::FillPhiloxRandom< \
+      CPUDevice,                             \
+      random::UniformFullIntDistribution<random::PhiloxRandom, IntType>>
+
 #define REGISTER_INT(IntType)                                                 \
+  REGISTER_FULL_INT(IntType);                                                 \
   template struct functor::FillPhiloxRandom<                                  \
       CPUDevice, random::UniformDistribution<random::PhiloxRandom, IntType>>; \
   REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")                            \
@@ -381,9 +387,12 @@ TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 TF_CALL_int32(REGISTER_INT);
 TF_CALL_int64(REGISTER_INT);
+TF_CALL_uint32(REGISTER_FULL_INT);
+TF_CALL_uint64(REGISTER_FULL_INT);
 
 #undef REGISTER
 #undef REGISTER_INT
+#undef REGISTER_FULL_INT
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -415,7 +424,13 @@ TF_CALL_int64(REGISTER_INT);
           random::TruncatedNormalDistribution<                                 \
               random::SingleSampleAdapter<random::PhiloxRandom>, TYPE>>);
 
+#define REGISTER_FULL_INT(IntType)           \
+  template struct functor::FillPhiloxRandom< \
+      GPUDevice,                             \
+      random::UniformFullIntDistribution<random::PhiloxRandom, IntType>>
+
 #define REGISTER_INT(IntType)                                                 \
+  REGISTER_FULL_INT(IntType);                                                 \
   template struct functor::FillPhiloxRandom<                                  \
       GPUDevice, random::UniformDistribution<random::PhiloxRandom, IntType>>; \
   REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")                            \
@@ -432,9 +447,12 @@ TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 TF_CALL_int32(REGISTER_INT);
 TF_CALL_int64(REGISTER_INT);
+TF_CALL_uint32(REGISTER_FULL_INT);
+TF_CALL_uint64(REGISTER_FULL_INT);
 
 #undef REGISTER
 #undef REGISTER_INT
+#undef REGISTER_FULL_INT
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

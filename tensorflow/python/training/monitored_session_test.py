@@ -2011,7 +2011,7 @@ class MonitoredSessionTest(test.TestCase):
     with ops.Graph().as_default():
       var = resource_variable_ops.ResourceVariable(0.0)
 
-      # This test higlights the interaction of hooks with
+      # This test highlights the interaction of hooks with
       # `Monitoredsession.run_step_fn`.  The order of execution of operations
       # below is:
       #   0.  stage_0
@@ -2025,7 +2025,7 @@ class MonitoredSessionTest(test.TestCase):
       # are complete.  To obtain a consistent result of adding two different
       # constants to `var`, we rely on a control dependency and
       # `ResourceVariable`.  Otherwise, it is possible that one of the
-      # additions overwites the result of the other addition.
+      # additions overwrites the result of the other addition.
       with ops.control_dependencies([stage_1_0]):
         stage_1_1 = state_ops.assign_add(var, 0.5)
       stage_2 = state_ops.assign_add(var, 1.1)

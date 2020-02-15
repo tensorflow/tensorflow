@@ -224,3 +224,15 @@ filegroup(
         "testdata/VarsAndArithmeticObjectGraph/**",
     ]),
 )
+
+exports_files(
+    glob([
+        "testdata/half_plus_two_pbtxt/**",
+        "testdata/half_plus_two_main_op/**",
+        "testdata/half_plus_two/**",
+        "testdata/half_plus_two_v2/**",
+        "testdata/x_plus_y_v2_debuginfo/**",
+        "testdata/CyclicModule/**",
+        "testdata/VarsAndArithmeticObjectGraph/**",
+    ]),
+)

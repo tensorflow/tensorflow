@@ -536,6 +536,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -647,12 +648,14 @@ tf_cuda_cc_test(
     deps = [
         ":c_api",
         ":kernels",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/kernels:ops_testutil",
+        "//third_party/eigen3",
         "@com_google_absl//absl/container:inlined_vector",
     ],
 )

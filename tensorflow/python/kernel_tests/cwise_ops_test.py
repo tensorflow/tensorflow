@@ -1228,6 +1228,12 @@ class PolyvalTest(test.TestCase):
       tf_val = math_ops.polyval(coeffs, x)
       self.assertAllClose(np_val, self.evaluate(tf_val))
 
+  def test_coeffs_raise(self):
+    x = np.random.rand(2, 2).astype(np.float32)
+    coeffs = {}
+    with self.assertRaisesRegexp(ValueError, "Argument coeffs must be list"):
+      math_ops.polyval(coeffs, x)
+
 
 class SingularGradientOpTest(test.TestCase):
 

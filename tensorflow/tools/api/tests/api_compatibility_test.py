@@ -79,8 +79,10 @@ _VERBOSE_DIFFS_HELP = """
      false, only print which libraries have differences.
 """
 
-_API_GOLDEN_FOLDER_V1 = resource_loader.get_path_to_datafile('../golden/v1')
-_API_GOLDEN_FOLDER_V2 = resource_loader.get_path_to_datafile('../golden/v2')
+_API_GOLDEN_FOLDER_V1 = os.path.join(
+    resource_loader.get_data_files_path(), '..', 'golden', 'v1')
+_API_GOLDEN_FOLDER_V2 = os.path.join(
+    resource_loader.get_data_files_path(), '..', 'golden', 'v2')
 _TEST_README_FILE = resource_loader.get_path_to_datafile('README.txt')
 _UPDATE_WARNING_FILE = resource_loader.get_path_to_datafile(
     'API_UPDATE_WARNING.txt')

@@ -296,8 +296,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* weights_time =
       GetInput(context, node, kWeightsTimeTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
-  TfLiteTensor* activation_state =
-      &context->tensors[node->inputs->data[kInputActivationStateTensor]];
+  const TfLiteTensor* activation_state =
+      GetInput(context, node, kInputActivationStateTensor);
 
   // Define input constants based on input tensor definition above:
   const int rank = params->rank;
@@ -309,8 +309,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int memory_size = weights_time->dims->data[1];
 
   if (input->type != kTfLiteInt8) {
-    context->ReportError(context,
-                         "HiFi Mini kernel SVDF only supports full integer.");
+    TF_LITE_KERNEL_LOG(context,
+                       "HiFi Mini kernel SVDF only supports full integer.");
     return kTfLiteError;
   }
 
@@ -409,7 +409,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetInput(context, node, kWeightsTimeTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* activation_state =
-      &context->tensors[node->inputs->data[kInputActivationStateTensor]];
+      GetVariableInput(context, node, kInputActivationStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActRelu);
 

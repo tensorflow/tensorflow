@@ -212,7 +212,7 @@ class DeviceSpecV2(object):
   def make_merged_spec(self, dev):
     """Returns a new DeviceSpec which incorporates `dev`.
 
-    When combining specs, `dev` will take precidence over the current spec.
+    When combining specs, `dev` will take precedence over the current spec.
     So for instance:
     ```
     first_spec = tf.DeviceSpec(job=0, device_type="CPU")
@@ -253,7 +253,7 @@ class DeviceSpecV2(object):
         job=self.job, replica=self.replica, task=self.task,
         device_type=self.device_type, device_index=self.device_index)
 
-    # Explicitly provided kwargs take precidence.
+    # Explicitly provided kwargs take precedence.
     init_kwargs.update(kwargs)
     return self.__class__(**init_kwargs)
 

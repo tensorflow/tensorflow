@@ -400,7 +400,6 @@ cc_library(
     ]),
 )
 
-# Linked into libtensorflow_framework.so via :framework_internal_impl.
 cc_library(
     name = "traceme_recorder_impl",
     srcs = [
@@ -408,7 +407,7 @@ cc_library(
         "traceme_recorder.h",
     ],
     visibility = [
-        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/profiler:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
     deps = [
@@ -449,7 +448,6 @@ cc_library(
     ]),
 )
 
-# Linked into libtensorflow_framework.so via :framework_internal_impl.
 cc_library(
     name = "profiler_factory_impl",
     srcs = [
@@ -457,7 +455,7 @@ cc_library(
         "profiler_factory.h",
     ],
     visibility = [
-        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/profiler:__pkg__",
     ],
     deps = [
         ":profiler_interface",
@@ -491,7 +489,6 @@ cc_library(
     ]),
 )
 
-# Linked into libtensorflow_framework.so via :framework_internal_impl.
 cc_library(
     name = "annotation_stack_impl",
     srcs = [
@@ -499,7 +496,7 @@ cc_library(
         "annotation_stack.h",
     ],
     visibility = [
-        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/profiler:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
     deps = [

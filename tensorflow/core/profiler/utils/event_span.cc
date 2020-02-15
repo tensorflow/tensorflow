@@ -136,16 +136,35 @@ void CombineStepDetails(const StepDetails& src, StepDetails* dst) {
   dst->AppendEvents(src.Events());
 }
 
+EventType ClassifyDeviceCompute(absl::string_view event_name,
+                                absl::string_view tensor_shapes) {
+  if (tensor_shapes.empty()) {
+    // Deduces the precision from the name.
+    if (absl::StrContains(event_name, "half") ||
+        absl::StrContains(event_name, "fp16"))
+      return DEVICE_COMPUTE_16;
+    else
+      return DEVICE_COMPUTE_32;
+  } else {
+    // Deduces the precision from the shapes.
+    if (absl::StrContains(tensor_shapes, "half"))
+      return DEVICE_COMPUTE_16;
+    else
+      return DEVICE_COMPUTE_32;
+  }
+}
+
 }  // namespace
 
-EventType ClassifyGpuEvent(absl::string_view event_name) {
+EventType ClassifyGpuEvent(absl::string_view event_name,
+                           absl::string_view tensor_shapes) {
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoD"))
     return HOST_TO_DEVICE;
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYDtoH"))
     return DEVICE_TO_HOST;
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYDtoD"))
     return DEVICE_TO_DEVICE;
-  return DEVICE_COMPUTE;
+  return ClassifyDeviceCompute(event_name, tensor_shapes);
 }
 
 EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id) {
@@ -182,8 +201,10 @@ std::string PrintEventType(EventType event_type) {
       return "device_to_device";
     case DEVICE_TO_HOST:
       return "device_to_host";
-    case DEVICE_COMPUTE:
-      return "device_compute";
+    case DEVICE_COMPUTE_32:
+      return "device_compute_32";
+    case DEVICE_COMPUTE_16:
+      return "device_compute_16";
     case DEVICE_WAIT_DEVICE:
       return "device_wait_device";
     case DEVICE_WAIT_HOST:
@@ -315,6 +336,30 @@ bool operator==(const StepEvents& a, const StepEvents& b) {
     if (a_details != *b_details) return false;
   }
   return true;
+}
+
+PrecisionStats ComputePrecisionStats(
+    const StepEvents& nonoverlapped_step_events) {
+  int64 compute_32bit_ps = 0;
+  int64 compute_16bit_ps = 0;
+  for (const auto& id_details : nonoverlapped_step_events) {
+    for (const auto& event : id_details.second.Events()) {
+      switch (event.type) {
+        case DEVICE_COMPUTE_32:
+          compute_32bit_ps += event.span.duration_ps();
+          break;
+        case DEVICE_COMPUTE_16:
+          compute_16bit_ps += event.span.duration_ps();
+          break;
+        default:
+          break;
+      }
+    }
+  }
+  PrecisionStats precision_stats;
+  precision_stats.set_compute_32bit_ps(compute_32bit_ps);
+  precision_stats.set_compute_16bit_ps(compute_16bit_ps);
+  return precision_stats;
 }
 
 }  // namespace profiler

@@ -31,7 +31,9 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Diagnostics.h"  // TF:llvm-project
 #include "mlir/IR/Dialect.h"  // TF:llvm-project
+#include "mlir/IR/Visitors.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/core/platform/logging.h"
@@ -151,11 +153,14 @@ llvm::SmallVector<tf_executor::IslandOp, 8> ExpandReplicateIntoReplicas(
 // %6:2 = tf_executor.island(%3#2) {
 //   tf_executor.yield %0#0 : tensor<i1>
 // }
-void CreateIslandsFromReplicate(const Dialect* tf_dialect,
-                                tf_executor::IslandOp island_op,
-                                tf_device::ReplicateOp replicate_op) {
+LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
+                                         tf_executor::IslandOp island_op,
+                                         tf_device::ReplicateOp replicate_op) {
   OpBuilder builder(island_op);
   const int num_replicas = replicate_op.n().getLimitedValue();
+  if (!replicate_op.GetBody().getOps<tf_device::ParallelExecuteOp>().empty())
+    return replicate_op.emitError()
+           << "TPU computation with multiple logical cores is not supported.";
 
   // Create islands per replica.
   llvm::SmallVector<tf_executor::IslandOp, 8> replicas =
@@ -196,17 +201,21 @@ void CreateIslandsFromReplicate(const Dialect* tf_dialect,
   island_op.replaceAllUsesWith(island_sink);
 
   island_op.erase();
+  return success();
 }
 
 // Finds islands with a single `tf_device.replicate` and create individual
 // islands per replica of the replicate.
-void LowerSingleIslandReplicateToIslands(const Dialect* tf_dialect,
-                                         tf_executor::IslandOp island_op) {
-  if (!has_single_element(island_op.GetBody().without_terminator())) return;
+LogicalResult LowerSingleIslandReplicateToIslands(
+    const Dialect* tf_dialect, tf_executor::IslandOp island_op) {
+  if (!has_single_element(island_op.GetBody().without_terminator()))
+    return success();
 
   if (auto replicate_op =
           llvm::dyn_cast<tf_device::ReplicateOp>(&island_op.GetBody().front()))
-    CreateIslandsFromReplicate(tf_dialect, island_op, replicate_op);
+    return CreateIslandsFromReplicate(tf_dialect, island_op, replicate_op);
+
+  return success();
 }
 
 void ReplicateToIslandPass::runOnFunction() {
@@ -216,9 +225,13 @@ void ReplicateToIslandPass::runOnFunction() {
     getFunction().emitError() << "'tf' dialect is not registered";
   }
 
-  getFunction().walk([&](tf_executor::IslandOp island_op) {
-    LowerSingleIslandReplicateToIslands(tf_dialect, island_op);
+  auto result = getFunction().walk([&](tf_executor::IslandOp island_op) {
+    if (failed(LowerSingleIslandReplicateToIslands(tf_dialect, island_op)))
+      return WalkResult::interrupt();
+    return WalkResult::advance();
   });
+
+  if (result.wasInterrupted()) return signalPassFailure();
 }
 }  // anonymous namespace
 

@@ -3,7 +3,7 @@
     package="org.tensorflow.lite">
 
     <uses-sdk
-        android:targetSdkVersion="19" />
+        android:minSdkVersion="19" />
 
     <application />
 

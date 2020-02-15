@@ -68,6 +68,8 @@ constexpr char kFullNameRandomHex[] = "60d899aa0d8ce4351e7c3b419e92d25b";
 constexpr char kPipe[] = "|";
 constexpr char kColon[] = ":";
 
+constexpr char kTFDataResourceTag[] = "tfdata";
+
 class DatasetBase;
 class SerializationContext;
 

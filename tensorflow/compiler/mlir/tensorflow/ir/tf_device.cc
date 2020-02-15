@@ -149,15 +149,27 @@ void ParallelExecuteOp::build(Builder* builder, OperationState& state,
   state.addTypes(output_types);
 }
 
-Operation::result_range ParallelExecuteOp::getRegionOutputs(
+std::vector<OpResult> ParallelExecuteOp::GetRegionOutputs(
     unsigned region_index) {
-  auto& region = getRegionWithIndex(region_index);
-  return region.getTerminator()->getOpResults();
+  int num_region_results =
+      GetRegionBlockWithIndex(region_index).getTerminator()->getNumResults();
+  std::vector<OpResult> results;
+  results.reserve(num_region_results);
+
+  int return_value_offset = 0;
+  for (int region_id = 0; region_id < region_index; ++region_id)
+    return_value_offset +=
+        GetRegionBlockWithIndex(region_id).getTerminator()->getNumResults();
+
+  for (int i = 0; i < num_region_results; ++i)
+    results.emplace_back(getOperation()->getOpResult(return_value_offset + i));
+
+  return results;
 }
 
 LogicalResult ParallelExecuteOp::verify() { return Verify(*this); }
 
-Block& ParallelExecuteOp::getRegionWithIndex(unsigned index) {
+Block& ParallelExecuteOp::GetRegionBlockWithIndex(unsigned index) {
   return getOperation()->getRegion(index).front();
 }
 

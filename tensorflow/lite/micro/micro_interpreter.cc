@@ -57,7 +57,8 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   const flatbuffers::Vector<flatbuffers::Offset<SubGraph>>* subgraphs =
       model->subgraphs();
   if (subgraphs->size() != 1) {
-    error_reporter->Report("Only 1 subgraph is currently supported.\n");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Only 1 subgraph is currently supported.\n");
     initialization_status_ = kTfLiteError;
     return;
   }

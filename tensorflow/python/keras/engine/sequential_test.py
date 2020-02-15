@@ -26,7 +26,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
@@ -166,9 +166,8 @@ class TestSequential(keras_parameterized.TestCase):
 
   # TODO(kaftan) This test fails w/ run_with_all_keras_modes. File ticket
   @parameterized.parameters((True,), (False,))
-  @tf_test_util.run_deprecated_v1
   def test_training_and_eval_methods_on_symbolic_tensors(self, deferred):
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
 
       def get_model():
         if deferred:
@@ -215,23 +214,6 @@ class TestSequential(keras_parameterized.TestCase):
     with self.assertRaises(TypeError):
       model = keras.models.Sequential()
       model.add(None)
-
-    # Added layers cannot have multiple outputs
-    class MyLayer(keras.layers.Layer):
-
-      def call(self, inputs):
-        return [3 * inputs, 2 * inputs]
-
-      def compute_output_shape(self, input_shape):
-        return [input_shape, input_shape]
-
-    with self.assertRaises(ValueError):
-      model = keras.models.Sequential()
-      model.add(MyLayer(input_shape=(3,)))
-    with self.assertRaises(TypeError):
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(1, input_dim=1))
-      model.add(MyLayer())
 
   @keras_parameterized.run_all_keras_modes
   def test_nested_sequential_trainability(self):
@@ -405,6 +387,17 @@ class TestSequential(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(
         ValueError, 'should have a single output tensor'):
       keras.Sequential([MultiOutputLayer(input_shape=(3,))])
+
+    with self.assertRaisesRegexp(
+        ValueError, 'should have a single output tensor'):
+      keras.Sequential([
+          keras.layers.Dense(1, input_shape=(3,)),
+          MultiOutputLayer()])
+
+    # Should also raise error in a deferred build mode
+    with self.assertRaisesRegexp(
+        ValueError, 'should have a single output tensor'):
+      keras.Sequential([MultiOutputLayer()])(np.zeros((10, 10)))
 
   @keras_parameterized.run_all_keras_modes
   def test_layer_add_after_compile_deferred(self):
