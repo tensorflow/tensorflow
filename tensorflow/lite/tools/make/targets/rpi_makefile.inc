@@ -55,7 +55,7 @@ ifeq ($(TARGET),rpi)
   endif
 
   LIBS := \
-    -atomic \
+    -latomic \
     -lstdc++ \
     -lpthread \
     -lm \
