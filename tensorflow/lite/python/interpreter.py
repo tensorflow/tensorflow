@@ -184,7 +184,7 @@ class Interpreter(object):
                model_path=None,
                model_content=None,
                experimental_delegates=None,
-               num_threads=1):
+               num_threads=None):
     """Constructor.
 
     Args:
@@ -221,6 +221,11 @@ class Interpreter(object):
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
 
+    if num_threads:
+      if not isinstance(num_threads, int):
+        raise ValueError('type of num_threads should be int')
+      self._interpreter.SetNumThreads(num_threads)
+
     # Each delegate is a wrapper that owns the delegates that have been loaded
     # as plugins. The interpreter wrapper will be using them, but we need to
     # hold them in a list so that the lifetime is preserved at least as long as
@@ -231,8 +236,6 @@ class Interpreter(object):
       for delegate in self._delegates:
         self._interpreter.ModifyGraphWithDelegate(
             delegate._get_native_delegate_pointer())  # pylint: disable=protected-access
-
-    self._interpreter.SetNumThreads(num_threads)
 
   def __del__(self):
     # Must make sure the interpreter is destroyed before things that
