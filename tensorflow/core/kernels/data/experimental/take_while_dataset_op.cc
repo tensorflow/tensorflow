@@ -122,7 +122,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+            dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
         return dataset()->captured_func_->Instantiate(
             ctx, &instantiated_captured_func_);
       }
@@ -132,16 +132,16 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
                              bool* end_of_sequence) override {
         {
           tf_shared_lock l(mu_);
-          if (!input_impl_) {
+          if (!DatasetBaseIterator::input_impl_) {
             *end_of_sequence = true;
             return Status::OK();
           }
           TF_RETURN_IF_ERROR(
-              input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+              DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
         }
         if (*end_of_sequence) {
           mutex_lock l(mu_);
-          input_impl_.reset();
+          DatasetBaseIterator::input_impl_.reset();
           return Status::OK();
         }
         std::vector<Tensor> result;
@@ -169,8 +169,8 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        if (input_impl_)
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        if (DatasetBaseIterator::input_impl_)
+          TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
         else
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
@@ -181,15 +181,15 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (reader->Contains(full_name("input_impls_empty")))
-          input_impl_.reset();
+          DatasetBaseIterator::input_impl_.reset();
         else
-          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
         return Status::OK();
       }
 
      private:
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 

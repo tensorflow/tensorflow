@@ -151,7 +151,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+            dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
         return dataset()->captured_func_->Instantiate(
             ctx, &instantiated_captured_func_);
       }
@@ -163,7 +163,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
         std::vector<Tensor> next_element;
         TF_RETURN_IF_ERROR(
-            input_impl_->GetNext(ctx, &next_element, end_of_sequence));
+            DatasetBaseIterator::input_impl_->GetNext(ctx, &next_element, end_of_sequence));
         if (*end_of_sequence) {
           return Status::OK();
         }
@@ -240,7 +240,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
         if (!state_.empty()) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("state_size"), state_.size()));
@@ -255,7 +255,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
         if (reader->Contains(full_name("state_size"))) {
           int64 size;
           TF_RETURN_IF_ERROR(
@@ -271,7 +271,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
       std::vector<Tensor> state_ GUARDED_BY(mu_);
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };

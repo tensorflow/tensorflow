@@ -203,7 +203,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   // `staging_indices_` as output iterators (run by the worker threads) are
   // exhausted.
   //
-  // `input_impl_` is the input iterator that generates arguments for the
+  // `DatasetBaseIterator::input_impl_` is the input iterator that generates arguments for the
   // flat-map function (`captured_func_`). It is set to an iterator at
   // Iterator construction, and is fixed until we consume all input elements.
   // Once it is exhausted, we reset the unique_ptr to eagerly deallocate
@@ -211,10 +211,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
   //
   // A few invariants are maintained:
   //  1. No element in interleave_indices_ should be a -1 unless
-  //     `staging_indices_` is empty and `input_impl_` is empty.
+  //     `staging_indices_` is empty and `DatasetBaseIterator::input_impl_` is empty.
   //  2. Every `worker_` element is pointed to by at most one element of the
   //     union of `interleave_indices_` and `staging_indices_`.
-  //  3. Unless `input_impl_` is empty, every `worker_` must be pointed to by
+  //  3. Unless `DatasetBaseIterator::input_impl_` is empty, every `worker_` must be pointed to by
   //     an element in `interleave_indices_` or `staging_indices_`.
   class Iterator : public DatasetIterator<Dataset> {
    public:
@@ -234,7 +234,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+          dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -295,13 +295,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           } else if (!current_worker->is_producing) {
             // This iterator has reached end of input.
             interleave_indices_[index] = -1;
-            if (input_impl_) {
+            if (DatasetBaseIterator::input_impl_) {
               // Start prefetching a new iterator.
               std::vector<Tensor> args;
               bool end_of_input = false;
-              Status s = input_impl_->GetNext(ctx, &args, &end_of_input);
+              Status s = DatasetBaseIterator::input_impl_->GetNext(ctx, &args, &end_of_input);
               if (end_of_input) {
-                input_impl_.reset();
+                DatasetBaseIterator::input_impl_.reset();
               } else {
                 current_worker->SetInputs(s, std::move(args));
                 staging_indices_.emplace_back(current_worker_index);
@@ -324,7 +324,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           }
         }
 
-        if (!can_produce_elements && !input_impl_) {
+        if (!can_produce_elements && !DatasetBaseIterator::input_impl_) {
           // No potential for future values.
           *end_of_sequence = true;
           return Status::OK();
@@ -356,8 +356,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // The order of locking is important here to avoid deadlock.
       mutex_lock l(mu_);
       mutex_lock ckpt_l(ckpt_mu_);
-      if (input_impl_) {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      if (DatasetBaseIterator::input_impl_) {
+        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
       } else {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputExhausted), ""));
       }
@@ -400,9 +400,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       mutex_lock ckpt_l(ckpt_mu_);
       if (!reader->Contains(full_name(kInputExhausted))) {
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
       } else {
-        input_impl_.reset();
+        DatasetBaseIterator::input_impl_.reset();
       }
       int64 temp;
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNextIndex), &temp));
@@ -564,9 +564,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         for (int64 i = 0; i < dataset()->num_threads(); ++i) {
           std::vector<Tensor> args;
           bool end_of_input = false;
-          Status s = input_impl_->GetNext(ctx, &args, &end_of_input);
+          Status s = DatasetBaseIterator::input_impl_->GetNext(ctx, &args, &end_of_input);
           if (end_of_input) {
-            input_impl_.reset();
+            DatasetBaseIterator::input_impl_.reset();
             return Status::OK();
           }
           workers_[i].SetInputs(s, std::move(args));
@@ -1008,8 +1008,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // The iterator producing elements which are converted to datasets by
     // the dataset()->captured_func_ then interleaved together.
-    // input_impl_ is reset when we have exhausted its input.
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    // DatasetBaseIterator::input_impl_ is reset when we have exhausted its input.
+    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
 
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
 

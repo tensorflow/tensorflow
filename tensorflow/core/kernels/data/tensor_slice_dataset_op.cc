@@ -118,6 +118,9 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       out_tensors->reserve(dataset()->tensors_.size());
       for (int i = 0; i < dataset()->tensors_.size(); ++i) {
         const Tensor& t = dataset()->tensors_[i];
+        t.dtype();
+        TensorShape(dataset()->shapes_[i].dim_sizes());
+        ctx->allocator({});
         out_tensors->emplace_back(
             ctx->allocator({}), t.dtype(),
             TensorShape(dataset()->shapes_[i].dim_sizes()));

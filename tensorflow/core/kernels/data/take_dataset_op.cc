@@ -106,19 +106,19 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
       : DatasetIterator<TakeDataset>(params), i_(0) {}
 
   Status Initialize(IteratorContext* ctx) override {
-    return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+    return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
   }
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
     mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
-    if (!input_impl_) {
+    if (!DatasetBaseIterator::input_impl_) {
       *end_of_sequence = true;
       return Status::OK();
     }
     while (dataset()->count_ < 0 || i_ < dataset()->count_) {
       TF_RETURN_IF_ERROR(
-          input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+          DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
       if (!*end_of_sequence) {
         ++i_;
         return Status::OK();
@@ -126,7 +126,7 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
       break;
     }
     *end_of_sequence = true;
-    input_impl_.reset();
+    DatasetBaseIterator::input_impl_.reset();
     return Status::OK();
   }
 
@@ -140,8 +140,8 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
   Status SaveInternal(IteratorStateWriter* writer) override {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
-    if (input_impl_) {
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+    if (DatasetBaseIterator::input_impl_) {
+      TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
     } else {
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
     }
@@ -153,9 +153,9 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &i_));
     if (!reader->Contains(full_name(kInputImplEmpty))) {
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
     } else {
-      input_impl_.reset();
+      DatasetBaseIterator::input_impl_.reset();
     }
     return Status::OK();
   }
@@ -163,7 +163,7 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
  private:
   mutex mu_;
   int64 i_ GUARDED_BY(mu_);
-  std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+  //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
 };
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level

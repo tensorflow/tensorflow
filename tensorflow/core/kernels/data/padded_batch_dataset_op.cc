@@ -174,7 +174,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -185,7 +185,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       std::vector<std::vector<Tensor>> batch_elements;
       {
         mutex_lock l(mu_);
-        if (!input_impl_) {
+        if (!DatasetBaseIterator::input_impl_) {
           *end_of_sequence = true;
           return Status::OK();
         } else {
@@ -194,14 +194,14 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
           for (int i = 0; i < dataset()->batch_size_ && !*end_of_sequence;
                ++i) {
             std::vector<Tensor> batch_element_tuple;
-            TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &batch_element_tuple,
+            TF_RETURN_IF_ERROR(DatasetBaseIterator::input_impl_->GetNext(ctx, &batch_element_tuple,
                                                     end_of_sequence));
             if (!*end_of_sequence) {
               batch_elements.push_back(std::move(batch_element_tuple));
             }
           }
           if (*end_of_sequence) {
-            input_impl_.reset();
+            DatasetBaseIterator::input_impl_.reset();
           }
         }
       }
@@ -338,8 +338,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      if (input_impl_)
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      if (DatasetBaseIterator::input_impl_)
+        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
       else
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kExhausted), ""));
       return Status::OK();
@@ -349,18 +349,18 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       if (reader->Contains(full_name(kExhausted))) {
-        input_impl_.reset();
+        DatasetBaseIterator::input_impl_.reset();
       } else {
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+            dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
       }
       return Status::OK();
     }
 
    private:
     mutex mu_;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
   };
 
   const int64 batch_size_;

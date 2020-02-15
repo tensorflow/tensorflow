@@ -110,7 +110,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+          dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -119,7 +119,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       // NOTE(mrry): This method is thread-safe as long as
-      // `input_impl_` and `f` are thread-safe. However, if multiple
+      // `DatasetBaseIterator::input_impl_` and `f` are thread-safe. However, if multiple
       // threads enter this method, outputs may be observed in a
       // non-deterministic order.
       auto stats_aggregator = ctx->stats_aggregator();
@@ -127,16 +127,16 @@ class FilterDatasetOp::Dataset : public DatasetBase {
       do {
         {
           tf_shared_lock l(mu_);
-          if (!input_impl_) {
+          if (!DatasetBaseIterator::input_impl_) {
             *end_of_sequence = true;
             return Status::OK();
           }
           TF_RETURN_IF_ERROR(
-              input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+              DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
         }
         if (*end_of_sequence) {
           mutex_lock l(mu_);
-          input_impl_.reset();
+          DatasetBaseIterator::input_impl_.reset();
           return Status::OK();
         }
 
@@ -195,8 +195,8 @@ class FilterDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      if (input_impl_)
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      if (DatasetBaseIterator::input_impl_)
+        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
       else
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kInputImplsEmpty), ""));
@@ -211,9 +211,9 @@ class FilterDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       if (reader->Contains(full_name(kInputImplsEmpty)))
-        input_impl_.reset();
+        DatasetBaseIterator::input_impl_.reset();
       else
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kFilteredElements),
                                             &filtered_elements_));
       TF_RETURN_IF_ERROR(
@@ -223,7 +223,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
     int64 filtered_elements_ GUARDED_BY(mu_);
     int64 dropped_elements_ GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;

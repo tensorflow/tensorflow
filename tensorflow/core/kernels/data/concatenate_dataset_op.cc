@@ -111,30 +111,30 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       return dataset()->input_->MakeIterator(
-          ctx, strings::StrCat(prefix(), "[0]"), &input_impl_);
+          ctx, strings::StrCat(prefix(), "[0]"), &(DatasetBaseIterator::input_impl_));
     }
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
-      if (!input_impl_) {
+      if (!DatasetBaseIterator::input_impl_) {
         *end_of_sequence = true;
         return Status::OK();
       }
       while (i_ < 2) {
         TF_RETURN_IF_ERROR(
-            input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+            DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
         if (!*end_of_sequence) {
           return Status::OK();
         }
         if (++i_ < 2) {
           TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
-              ctx, strings::StrCat(prefix(), "[1]"), &input_impl_));
+              ctx, strings::StrCat(prefix(), "[1]"), &(DatasetBaseIterator::input_impl_)));
         }
       }
       *end_of_sequence = true;
-      input_impl_.reset();
+      DatasetBaseIterator::input_impl_.reset();
       return Status::OK();
     }
 
@@ -148,8 +148,8 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIndex), i_));
-      if (input_impl_) {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      if (DatasetBaseIterator::input_impl_) {
+        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
       } else {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kInputImplUninitialized), ""));
@@ -162,19 +162,19 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kIndex), &i_));
       if (reader->Contains(full_name(kInputImplUninitialized))) {
-        input_impl_.reset();
+        DatasetBaseIterator::input_impl_.reset();
         return Status::OK();
       }
       if (!TF_PREDICT_TRUE(i_ >= 0 && i_ <= 2))
         return errors::InvalidArgument("i_ must be in range [0, 2].");
       if (i_ == 1) {
         TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
-            ctx, strings::StrCat(prefix(), "[1]"), &input_impl_));
+            ctx, strings::StrCat(prefix(), "[1]"), &(DatasetBaseIterator::input_impl_)));
       } else if (i_ == 2) {
-        input_impl_.reset();
+        DatasetBaseIterator::input_impl_.reset();
       }
-      if (input_impl_) {
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      if (DatasetBaseIterator::input_impl_) {
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
       }
       return Status::OK();
     }
@@ -182,7 +182,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
    private:
     mutex mu_;
     int64 i_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
   };
 
   static PartialTensorShape MostSpecificCompatibleShape(

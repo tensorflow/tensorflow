@@ -302,6 +302,31 @@ Status MakeIteratorFromInputElement(
       ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
 }
 
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const std::vector<Tensor>& input_element, string index,
+    const InstantiatedCapturedFunction& inst_captured_func,
+    const string& prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+  std::vector<Tensor> return_values;
+
+  TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
+                                                            &return_values));
+
+  if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
+        TensorShapeUtils::IsScalar(return_values[0].shape()))) {
+    return errors::InvalidArgument(
+        "Function must return a single scalar of dtype DT_VARIANT.");
+  }
+
+  // Retrieve the dataset that was created in `f`.
+  DatasetBase* returned_dataset;
+  TF_RETURN_IF_ERROR(
+      GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
+
+  // Create an iterator for the dataset that was returned by `f`.
+  return returned_dataset->MakeIterator(
+      ctx, strings::StrCat(prefix, "[", index, "]"), out_iterator);
+}
+
 /* static */
 Status FunctionMetadata::Create(
     OpKernelConstruction* ctx, const string& func_name, Params params,

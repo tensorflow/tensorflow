@@ -124,7 +124,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params), i_(0) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -132,7 +132,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
 
-      if (!input_impl_) {
+      if (!DatasetBaseIterator::input_impl_) {
         *end_of_sequence = true;
         return Status::OK();
       }
@@ -144,10 +144,10 @@ class SkipDatasetOp::Dataset : public DatasetBase {
         // Fetch and throw away Tensors.
         std::vector<Tensor> dummy_out_tensors;
         TF_RETURN_IF_ERROR(
-            input_impl_->GetNext(ctx, &dummy_out_tensors, end_of_sequence));
+            DatasetBaseIterator::input_impl_->GetNext(ctx, &dummy_out_tensors, end_of_sequence));
         if (*end_of_sequence) {
           // We reached the end before the count was reached.
-          input_impl_.reset();
+          DatasetBaseIterator::input_impl_.reset();
           return Status::OK();
         }
 
@@ -156,9 +156,9 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
       // Return GetNext() on the underlying iterator.
       TF_RETURN_IF_ERROR(
-          input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+          DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
       if (*end_of_sequence) {
-        input_impl_.reset();
+        DatasetBaseIterator::input_impl_.reset();
       }
       return Status::OK();
     }
@@ -173,8 +173,8 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
-      if (input_impl_) {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      if (DatasetBaseIterator::input_impl_) {
+        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
       } else {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       }
@@ -186,9 +186,9 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &i_));
       if (!reader->Contains(full_name(kInputImplEmpty))) {
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
       } else {
-        input_impl_.reset();
+        DatasetBaseIterator::input_impl_.reset();
       }
       return Status::OK();
     }
@@ -196,7 +196,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
    private:
     mutex mu_;
     int64 i_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
   };
 
   const int64 count_;

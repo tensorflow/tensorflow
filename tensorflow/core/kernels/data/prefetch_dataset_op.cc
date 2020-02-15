@@ -140,7 +140,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -187,7 +187,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             stats_utils::BufferCapacityScalarName(dataset()->node_name()),
             static_cast<float>(auto_tuner_.buffer_limit()), num_elements());
       }
-      return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+      return DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
     }
 
    protected:
@@ -203,7 +203,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // all GetNext threads are blocked.
       mutex_lock parent_l(parent_mu_);
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kBufferSize), buffer_.size()));
       for (size_t i = 0; i < buffer_.size(); i++) {
@@ -228,7 +228,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       mutex_lock parent_l(parent_mu_);
       mutex_lock l(mu_);
       buffer_.clear();
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
       size_t buffer_size;
       {
         int64 temp;
@@ -372,7 +372,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         mutex_lock parent_l(parent_mu_);
         bool end_of_sequence;
         BufferElement buffer_element;
-        buffer_element.status = input_impl_->GetNext(
+        buffer_element.status = DatasetBaseIterator::input_impl_->GetNext(
             ctx.get(), &buffer_element.value, &end_of_sequence);
         if (buffer_element.status.ok() && end_of_sequence) {
           mutex_lock l(mu_);
@@ -437,7 +437,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // accessing the parent iterator. We keep this separate from `mu_` to
     // allow prefetching to run in parallel with GetNext calls.
     mutex parent_mu_ ACQUIRED_BEFORE(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(parent_mu_);
+    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(parent_mu_);
     condition_variable cond_var_;
     PrefetchAutotuner auto_tuner_ GUARDED_BY(mu_);
     std::deque<BufferElement> buffer_ GUARDED_BY(mu_);

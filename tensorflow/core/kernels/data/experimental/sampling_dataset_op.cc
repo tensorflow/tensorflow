@@ -109,7 +109,7 @@ class SamplingDatasetOp : public UnaryDatasetOpKernel {
             generator_(&parent_generator_) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -119,16 +119,16 @@ class SamplingDatasetOp : public UnaryDatasetOpKernel {
         do {
           {
             tf_shared_lock l(mu_);
-            if (!input_impl_) {
+            if (!DatasetBaseIterator::input_impl_) {
               *end_of_sequence = true;
               return Status::OK();
             }
             TF_RETURN_IF_ERROR(
-                input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+                DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
           }
           if (*end_of_sequence) {
             mutex_lock l(mu_);
-            input_impl_.reset();
+            DatasetBaseIterator::input_impl_.reset();
             return Status::OK();
           }
 
@@ -162,8 +162,8 @@ class SamplingDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(this->full_name("seed2"), seed2_));
 
-        if (input_impl_) {
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        if (DatasetBaseIterator::input_impl_) {
+          TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
         } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
@@ -183,9 +183,9 @@ class SamplingDatasetOp : public UnaryDatasetOpKernel {
         ResetRngs();
 
         if (!reader->Contains(full_name("input_impl_empty"))) {
-          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
         } else {
-          input_impl_.reset();
+          DatasetBaseIterator::input_impl_.reset();
         }
         return Status::OK();
       }
@@ -195,7 +195,7 @@ class SamplingDatasetOp : public UnaryDatasetOpKernel {
       int64 seed2_ GUARDED_BY(mu_);
 
      private:
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
 
       float Random() {
         mutex_lock l(mu_);

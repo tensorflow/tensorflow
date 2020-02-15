@@ -114,7 +114,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         : DatasetIterator<T>(params),
           seed_(seed),
           seed2_(seed2),
-          input_impl_(nullptr),
+          //DatasetBaseIterator::input_impl_(nullptr),
           epoch_(0),
           num_elements_(0),
           parent_generator_(seed, seed2),
@@ -122,6 +122,29 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       buffer_ = absl::make_unique<std::vector<Tensor>[]>(
           params.dataset->buffer_size_);
       slices_.push_back(absl::make_unique<Slice>(0, 0));
+      /*
+      std::vector<EparallaxTensorIndex*> buffered_indices;
+      DatasetBaseIterator::RestoreProcessedIndicesFromCheckpoint("buffered_index",
+                                                                 &buffered_indices);
+      for (auto it=DatasetBaseIterator::processed_indices_.begin();
+           it<DatasetBaseIterator::processed_indices_.end(); it++) {
+        for (auto it2=buffered_indices.begin(); it2<buffered_indices.end(); it2++) {
+          if (*it == *it2) {
+            DatasetBaseIterator::processed_indices_.erase(it);
+          }
+        }
+      }*/
+    }
+
+    ~Iterator() {/*
+      for(int64 i=0; i<num_elements_; i++) {
+        LOG(INFO) << "addr" << &buffer_[i];
+        LOG(INFO) << "tensor" << &buffer_[i][0];
+        EparallaxTensorIndex* buffered_index = buffer_[i][0].GetGlobalIndex();
+        LOG(INFO) << "XX" << *buffered_index;
+        DatasetBaseIterator::StoreValueToCheckpoint<EparallaxTensorIndex>(
+            *buffered_index, "buffered_index");
+      }*/
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -131,12 +154,12 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       int64 start_micros = ctx->env()->NowMicros();
       int64 num_log_entries = 0;
       bool first_call = false;
-      if (!input_impl_ && epoch_ == 0) {
+      if (!DatasetBaseIterator::input_impl_ && epoch_ == 0) {
         first_call = true;
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-            ctx, this->prefix(), &input_impl_));
+            ctx, this->prefix(), &(DatasetBaseIterator::input_impl_)));
       }
-      while (input_impl_ && num_elements_ < this->dataset()->buffer_size_) {
+      while (DatasetBaseIterator::input_impl_ && num_elements_ < this->dataset()->buffer_size_) {
         if (ctx->env()->NowMicros() >
             ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
           num_log_entries++;
@@ -147,7 +170,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         bool end_of_input_sequence = false;
         while (this->dataset()->count_ == -1 ||
                epoch_ < this->dataset()->count_) {
-          TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &input_element,
+          TF_RETURN_IF_ERROR(DatasetBaseIterator::input_impl_->GetNext(ctx, &input_element,
                                                   &end_of_input_sequence));
           if (!end_of_input_sequence) {
             first_call = false;
@@ -165,7 +188,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           int64 n = slices_.back()->end;
           slices_.push_back(absl::make_unique<Slice>(n, n));
           TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-              ctx, this->prefix(), &input_impl_));
+              ctx, this->prefix(), &(DatasetBaseIterator::input_impl_)));
         }
         if (!end_of_input_sequence) {
           if (num_elements_ == 0) {
@@ -178,7 +201,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           num_elements_++;
           slices_.back()->end++;
         } else {
-          input_impl_.reset();
+          DatasetBaseIterator::input_impl_.reset();
         }
         if (slices_.size() > kMaxEpochsInBuffer) {
           // When the elements stored in `buffer_` span more than
@@ -215,7 +238,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         slices_.front()->start++;
         num_elements_--;
       } else {
-        DCHECK(input_impl_ == nullptr);
+        DCHECK(DatasetBaseIterator::input_impl_ == nullptr);
         *end_of_sequence = true;
       }
       return Status::OK();
@@ -246,11 +269,11 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
       // Save input iterator if it hasn't been exhausted else write
       // "end_of_input_sequence".
-      if (!input_impl_) {
+      if (!DatasetBaseIterator::input_impl_) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(this->full_name(kEndOfInputSequence), ""));
       } else {
-        TF_RETURN_IF_ERROR(this->SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(this->SaveInput(writer, DatasetBaseIterator::input_impl_));
       }
 
       // Save the epoch counter, buffer, and buffer slices.
@@ -298,10 +321,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       // Restore the input iterator if it wasn't already exhausted.
       if (!reader->Contains(this->full_name(kEndOfInputSequence))) {
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-            ctx, this->prefix(), &input_impl_));
-        TF_RETURN_IF_ERROR(this->RestoreInput(ctx, reader, input_impl_));
+            ctx, this->prefix(), &(DatasetBaseIterator::input_impl_)));
+        TF_RETURN_IF_ERROR(this->RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
       } else {
-        input_impl_.reset();
+        DatasetBaseIterator::input_impl_.reset();
       }
 
       // Restore the epoch counter, buffer, and buffer slices.
@@ -373,7 +396,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     }
 
     std::unique_ptr<std::vector<Tensor>[]> buffer_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+//std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY
     int64 epoch_ GUARDED_BY(mu_);
     int64 num_elements_ GUARDED_BY(mu_);
     std::deque<std::unique_ptr<Slice>> slices_ GUARDED_BY(mu_);

@@ -111,7 +111,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+          dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -121,7 +121,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
       do {
-        if (!input_impl_) {
+        if (!DatasetBaseIterator::input_impl_) {
           *end_of_sequence = true;
           return Status::OK();
         }
@@ -144,12 +144,15 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
         // Get the next element from the input dataset.
         captured_func_inputs_.clear();
-        TF_RETURN_IF_ERROR(
-            input_impl_->GetNext(ctx, &captured_func_inputs_, end_of_sequence));
-        if (*end_of_sequence) {
-          input_impl_.reset();
-          return Status::OK();
-        }
+        do {
+          TF_RETURN_IF_ERROR(
+              DatasetBaseIterator::input_impl_->GetNext(ctx, &captured_func_inputs_, end_of_sequence));
+          element_index_++;
+          if (*end_of_sequence) {
+            DatasetBaseIterator::input_impl_.reset();
+            return Status::OK();
+          }
+        } while (captured_func_inputs_.empty());
 
         TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx));
       } while (true);
@@ -163,8 +166,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      if (input_impl_) {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      if (DatasetBaseIterator::input_impl_) {
+        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kElementIndex), element_index_));
         if (current_element_iterator_) {
@@ -190,14 +193,14 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      input_impl_.reset();
+      DatasetBaseIterator::input_impl_.reset();
       element_index_ = 0;
       current_element_iterator_.reset();
       captured_func_inputs_.clear();
       if (!reader->Contains(full_name(kExhausted))) {
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+            dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
         {
           int64 temp;
           TF_RETURN_IF_ERROR(
@@ -232,14 +235,17 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
    private:
     Status BuildCurrentElementIteratorLocked(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      EparallaxTensorIndex* id = DatasetBaseIterator::input_impl_->GetGlobalIndex();
+      string s = id->ToString();
+      delete id;
       return MakeIteratorFromInputElement(
-          ctx, captured_func_inputs_, element_index_++,
-          *instantiated_captured_func_, prefix(), &current_element_iterator_);
+          ctx, captured_func_inputs_, s, *instantiated_captured_func_, prefix(),
+          &current_element_iterator_);
     }
 
     mutex mu_;
-    size_t element_index_ GUARDED_BY(mu_) = 0;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    int64 element_index_ GUARDED_BY(mu_) = 0;
+    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> current_element_iterator_ GUARDED_BY(mu_);
     std::vector<Tensor> captured_func_inputs_ GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;

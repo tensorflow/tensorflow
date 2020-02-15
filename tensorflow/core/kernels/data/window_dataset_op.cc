@@ -130,7 +130,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -143,25 +143,25 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       Status status = Status::OK();
       {
         mutex_lock l(mu_);
-        if (!input_impl_ && buffer_.empty()) {
+        if (!DatasetBaseIterator::input_impl_ && buffer_.empty()) {
           *end_of_sequence = true;
           return Status::OK();
         }
 
         // Add elements to the buffer.
         size_t target_size = TargetBufferSize(window_size, window_stride);
-        if (input_impl_) {
+        if (DatasetBaseIterator::input_impl_) {
           *end_of_sequence = false;
           for (size_t i = buffer_.size(); i < target_size && !*end_of_sequence;
                ++i) {
             std::vector<Tensor> element;
             Status status =
-                input_impl_->GetNext(ctx, &element, end_of_sequence);
+                DatasetBaseIterator::input_impl_->GetNext(ctx, &element, end_of_sequence);
             if (!*end_of_sequence) {
               RecordBufferEnqueue(ctx, element);
               buffer_.emplace_back(std::move(element), status);
             } else {
-              input_impl_.reset();
+              DatasetBaseIterator::input_impl_.reset();
             }
           }
         }
@@ -187,13 +187,13 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         // Shift the window, discarding elements if necessary.
         int buffer_size = buffer_.size();
         if (window_shift >= buffer_size) {
-          for (size_t i = buffer_size; input_impl_ && i < window_shift; ++i) {
+          for (size_t i = buffer_size; DatasetBaseIterator::input_impl_ && i < window_shift; ++i) {
             bool end_of_input;
             std::vector<Tensor> element;
             // Ignore non-error status of discarded elements.
-            input_impl_->GetNext(ctx, &element, &end_of_input).IgnoreError();
+            DatasetBaseIterator::input_impl_->GetNext(ctx, &element, &end_of_input).IgnoreError();
             if (end_of_input) {
-              input_impl_.reset();
+              DatasetBaseIterator::input_impl_.reset();
             }
           }
           for (size_t i = 0; i < buffer_.size(); ++i) {
@@ -249,10 +249,10 @@ class WindowDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      if (!input_impl_) {
+      if (!DatasetBaseIterator::input_impl_) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       } else {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
       }
       // Save buffer.
       TF_RETURN_IF_ERROR(
@@ -275,9 +275,9 @@ class WindowDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       if (!reader->Contains(full_name(kInputImplEmpty))) {
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
       } else {
-        input_impl_.reset();
+        DatasetBaseIterator::input_impl_.reset();
       }
       // Restore buffer.
       int64 buffer_size = 0;
@@ -353,7 +353,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
 
     mutex mu_;
     std::deque<InvocationResult> buffer_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
   };
 
   const DatasetBase* const input_;

@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 
 #include <unordered_map>
+#include <fstream>
+#include <iostream>
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
@@ -410,13 +412,94 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
   return status;
 }
 
+bool DatasetBaseIterator::AlreadyProcessed(EparallaxTensorIndex* index) {
+  for (auto it=processed_indices_.begin(); it!=processed_indices_.end(); it++) {
+    EparallaxTensorIndex* processed_index = *it;
+    //LOG(INFO) << "Found processed index: " << *processed_index;
+    if (*index == *processed_index) {
+      LOG(INFO) << "Index is already processed; Skipping.";
+      LOG(INFO) << *index << " == " << *processed_index;
+      //processed_indices_.erase(it);
+      return true;
+    } else {
+      //LOG(INFO) << *index << " != " << *processed_index;
+    }
+  }
+  return false;
+}
+
+void DatasetBaseIterator::InitializeOrIncrementLocalIndex() {
+  std::vector<EparallaxTensorIndex*>* parent_indices = GetGlobalIndex()->parent_indices();
+  int64 last_local_index = -1;
+  for (auto i=processed_indices_.begin(); i!=processed_indices_.end(); i++) {
+    if (*(*i)->parent_indices() == *parent_indices &&
+        (*i)->local_index() > last_local_index) {
+      last_local_index = (*i)->local_index();
+    }
+  }
+  local_index_ = last_local_index + 1;
+  delete parent_indices;
+}
+
+void DatasetBaseIterator::UpdateLocalIndex() {
+  if (input_impl_ == nullptr) {
+    local_index_++;
+  } else {
+    InitializeOrIncrementLocalIndex();
+  }
+}
+
+EparallaxTensorIndex* DatasetBaseIterator::GetGlobalIndex() {
+  if (input_impl_ == nullptr) {
+    return new EparallaxTensorIndex(prefix(), nullptr, local_index_);
+  } else {
+    return new EparallaxTensorIndex(prefix(),
+                                    input_impl_->GetAccumulatedIndices(),
+                                    local_index_);
+  }
+}
+
+std::vector<EparallaxTensorIndex*>* DatasetBaseIterator::GetAccumulatedIndices() {
+  std::vector<EparallaxTensorIndex*>* v = new std::vector<EparallaxTensorIndex*> {};
+  for (auto it=accumulated_indices_.begin(); it!=accumulated_indices_.end(); it++) {
+    v->push_back(*it);
+  }
+  gai_called_ = true;
+  return v;
+}
+
 Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     std::vector<Tensor>* out_tensors,
                                     bool* end_of_sequence) {
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
   RecordStart(ctx, /*stop_output=*/true);
-  Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+  Status s;
+  EparallaxTensorIndex* global_index;
+  s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+  if (!s.ok() || *end_of_sequence || out_tensors->empty()) {
+    return s;
+  }
+  if (last_index_ != nullptr) {
+    LOG(INFO) << "Processing done:      " << *last_index_;
+    processed_indices_.push_back(last_index_);
+  }
+  UpdateLocalIndex();
+  global_index = GetGlobalIndex();
+  if (AlreadyProcessed(global_index)) {
+    out_tensors->clear();
+    delete global_index;
+    return s;
+  }
+  last_index_ = global_index;
+  if (gai_called_) {
+    accumulated_indices_.clear();
+    gai_called_ = false;
+  }
+  accumulated_indices_.push_back(global_index);
+
+  LOG(INFO) << "Fetched tensor index: " << *global_index;
+
   if (s.ok() && !*end_of_sequence) RecordElement(ctx);
   RecordStop(ctx, /*start_output=*/true);
   if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {

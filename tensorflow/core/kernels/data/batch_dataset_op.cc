@@ -128,7 +128,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -139,7 +139,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       std::vector<std::vector<Tensor>> batch_elements;
       {
         mutex_lock l(mu_);
-        if (!input_impl_) {
+        if (!DatasetBaseIterator::input_impl_) {
           *end_of_sequence = true;
           return Status::OK();
         }
@@ -148,11 +148,11 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         for (int i = 0; i < dataset()->batch_size_ && !*end_of_sequence; ++i) {
           std::vector<Tensor> batch_element_tuple;
           TF_RETURN_IF_ERROR(
-              input_impl_->GetNext(ctx, &batch_element_tuple, end_of_sequence));
+              DatasetBaseIterator::input_impl_->GetNext(ctx, &batch_element_tuple, end_of_sequence));
           if (!*end_of_sequence) {
             batch_elements.emplace_back(std::move(batch_element_tuple));
           } else {
-            input_impl_.reset();
+            DatasetBaseIterator::input_impl_.reset();
           }
         }
       }
@@ -248,10 +248,10 @@ class BatchDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      if (!input_impl_) {
+      if (!DatasetBaseIterator::input_impl_) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       } else {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
       }
       return Status::OK();
     }
@@ -260,16 +260,16 @@ class BatchDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       if (!reader->Contains(full_name(kInputImplEmpty))) {
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
       } else {
-        input_impl_.reset();
+        DatasetBaseIterator::input_impl_.reset();
       }
       return Status::OK();
     }
 
    private:
     mutex mu_;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
   };
 
   const int64 batch_size_;

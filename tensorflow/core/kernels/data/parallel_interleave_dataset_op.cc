@@ -244,7 +244,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         num_parallel_calls_->value = dataset()->cycle_length_;
       }
       TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+          dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -291,7 +291,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
       DCHECK_EQ(current_num_calls_, 0);
       DCHECK_EQ(future_num_calls_, 0);
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kBlockIndex), block_index_));
       TF_RETURN_IF_ERROR(
@@ -310,7 +310,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kBlockIndex), &block_index_));
       TF_RETURN_IF_ERROR(
@@ -649,7 +649,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       auto element = std::make_shared<Element>();
       element->id = element_id_counter_++;
       Status status =
-          input_impl_->GetNext(ctx.get(), &element->inputs, &end_of_input_);
+          DatasetBaseIterator::input_impl_->GetNext(ctx.get(), &element->inputs, &end_of_input_);
       if (!status.ok()) {
         auto result = std::make_shared<Result>();
         result->is_ready = true;
@@ -908,7 +908,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     const bool sloppy_;
 
     // Iterator for input elements.
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(*mu_);
+    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(*mu_);
 
     // Identifies position in the interleave cycle.
     int64 block_index_ GUARDED_BY(*mu_) = 0;

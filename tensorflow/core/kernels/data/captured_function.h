@@ -44,6 +44,11 @@ Status MakeIteratorFromInputElement(
     int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
     StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
 
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const std::vector<Tensor>& input_element,
+    string index, const InstantiatedCapturedFunction& inst_captured_func,
+    const string& prefix, std::unique_ptr<IteratorBase>* out_iterator);
+
 // `InstantiatedCapturedFunction` encapsulates all the runtime support needed
 // to execute a tensorflow function.
 //

@@ -69,20 +69,34 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     captured_state = iterator_state_;
   }
   if (captured_state->iterator) {
-    IteratorContext::Params params(ctx);
-    params.flr = captured_state->flr;
-    params.function_handle_cache = captured_state->function_handle_cache.get();
-    params.resource_mgr = &captured_state->resource_mgr;
-    params.thread_factory = unbounded_thread_pool_.get_thread_factory();
-    params.thread_pool = &unbounded_thread_pool_;
-    params.cancellation_manager = &captured_state->cancellation_manager;
-    std::function<void()> deregister_fn;
-    TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
-                                                   params.cancellation_manager,
-                                                   &deregister_fn));
-    auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
-    return captured_state->iterator->GetNext(IteratorContext(std::move(params)),
-                                             out_tensors, end_of_sequence);
+    Status s;
+again:
+    do {
+      IteratorContext::Params params(ctx);
+      params.flr = captured_state->flr;
+      params.function_handle_cache = captured_state->function_handle_cache.get();
+      params.resource_mgr = &captured_state->resource_mgr;
+      params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+      params.thread_pool = &unbounded_thread_pool_;
+      params.cancellation_manager = &captured_state->cancellation_manager;
+      std::function<void()> deregister_fn;
+      TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
+                                                     params.cancellation_manager,
+                                                     &deregister_fn));
+      auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
+      s = captured_state->iterator->GetNext(IteratorContext(std::move(params)),
+                                            out_tensors, end_of_sequence);
+    } while (s.ok() && !*end_of_sequence && out_tensors->empty());
+    
+    if (first_run_ && !captured_state->iterator->processed_indices().empty()) {
+      LOG(INFO) << "Discard first result-----------------------------------";
+      out_tensors->clear();
+      first_run_ = false;
+      goto again;
+    }
+    first_run_ = false;
+    //captured_state->iterator->NotifyFinished();
+    return s;
   }
   return errors::FailedPrecondition(
       "GetNext() failed because the iterator has not been initialized. Ensure "

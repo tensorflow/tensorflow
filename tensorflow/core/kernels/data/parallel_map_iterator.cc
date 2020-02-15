@@ -63,7 +63,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
         num_parallel_calls_(std::make_shared<model::SharedState>(
             params.num_parallel_calls, mu_, cond_var_)),
         sloppy_(params.sloppy),
-        preserve_cardinality_(params.preserve_cardinality) {
+        preserve_cardinality_(params.preserve_cardinality),
+        ep_next_index_(0) {
     key_prefix_ = base_params.dataset->node_name();
   }
 
@@ -91,7 +92,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
       num_parallel_calls_->value = ctx->runner_threadpool_size();
     }
     TF_RETURN_IF_ERROR(
-        input_dataset_->MakeIterator(ctx, prefix(), &input_impl_));
+        input_dataset_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
     return parallel_map_functor_->InitFunc(ctx);
   }
 
@@ -130,7 +131,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
       cond_var_->wait(l);
     }
     CHECK_EQ(num_calls_, 0);
-    TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+    TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
     TF_RETURN_IF_ERROR(writer->WriteScalar(
         full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
         invocation_results_.size()));
@@ -160,7 +161,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
     mutex_lock l(*mu_);
-    TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+    TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
     int64 invocation_results_size;
     TF_RETURN_IF_ERROR(reader->ReadScalar(
         full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
@@ -242,7 +243,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
     // Get the next input element.
     std::vector<Tensor> input_element;
     result->status =
-        input_impl_->GetNext(ctx.get(), &input_element, &result->end_of_input);
+        DatasetBaseIterator::input_impl_->GetNext(ctx.get(), &input_element, &result->end_of_input);
     if (result->end_of_input || !result->status.ok()) {
       CallCompleted(ctx, result);
       return;
@@ -416,7 +417,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
   const bool preserve_cardinality_;
   // Counts the number of outstanding calls.
   int64 num_calls_ GUARDED_BY(*mu_) = 0;
-  std::unique_ptr<IteratorBase> input_impl_;
+  uint64 ep_next_index_ GUARDED_BY(*mu_);
+  //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_;
   // Buffer for storing the invocation results.
   std::deque<std::shared_ptr<InvocationResult>> invocation_results_
       GUARDED_BY(*mu_);

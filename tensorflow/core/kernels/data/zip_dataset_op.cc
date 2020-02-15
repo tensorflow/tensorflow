@@ -188,7 +188,19 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       }
       return Status::OK();
     }
+    
+    void UpdateLocalIndex() final {
+      DatasetBaseIterator::InitializeOrIncrementLocalIndex();
+    }
 
+    EparallaxTensorIndex* GetGlobalIndex() final {
+      std::vector<EparallaxTensorIndex*>* v = new std::vector<EparallaxTensorIndex*> {};
+      for (const auto& input_impl : input_impls_) {
+        v->push_back(input_impl->GetGlobalIndex());
+      }
+      return new EparallaxTensorIndex(prefix(), v, local_index());
+    }
+   
    private:
     mutex mu_;
     std::vector<std::unique_ptr<IteratorBase>> input_impls_ GUARDED_BY(mu_);

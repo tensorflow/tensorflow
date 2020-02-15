@@ -333,7 +333,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+            dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
 
         for (int i = 0; i < dataset()->captured_funcs_.size(); ++i) {
           TF_RETURN_IF_ERROR(dataset()->captured_funcs_[i]->Instantiate(
@@ -395,7 +395,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       // from scratch.
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("experiment_counter"),
                                                experiment_counter_));
         TF_RETURN_IF_ERROR(
@@ -414,7 +414,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("experiment_counter"),
                                               &experiment_counter_));
         TF_RETURN_IF_ERROR(
@@ -495,7 +495,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
         params.node_name = strings::StrCat(params.type_string, branch_index);
         DatasetBase* temp_dataset =
             new WrapperDataset(std::move(params), &dataset()->output_types_,
-                               &dataset()->output_shapes_, input_impl_.get());
+                               &dataset()->output_shapes_, DatasetBaseIterator::input_impl_.get());
 
         if (is_experiment) {
           // When running experiment iterations, we add a TakeDataset in between
@@ -525,7 +525,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       }
 
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
       std::vector<std::unique_ptr<InstantiatedCapturedFunction>>
           instantiated_captured_funcs_ GUARDED_BY(mu_);
 

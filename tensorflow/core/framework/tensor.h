@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <type_traits>
+#include <iostream>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_shape.h"

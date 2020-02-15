@@ -120,7 +120,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
         IteratorContext::Params params(ctx);
         params.model = model_;
         return dataset()->input_->MakeIterator(
-            IteratorContext(std::move(params)), prefix(), &input_impl_);
+            IteratorContext(std::move(params)), prefix(), &(DatasetBaseIterator::input_impl_));
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -132,7 +132,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(EnsureOptimizeThreadStarted(ctx));
           params.model = model_;
         }
-        return input_impl_->GetNext(IteratorContext(std::move(params)),
+        return DatasetBaseIterator::input_impl_->GetNext(IteratorContext(std::move(params)),
                                     out_tensors, end_of_sequence);
       }
 
@@ -145,14 +145,14 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
         return Status::OK();
       }
 
@@ -205,7 +205,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       std::shared_ptr<model::Model> model_;
       std::unique_ptr<Thread> optimize_thread_ GUARDED_BY(mu_);
       bool cancelled_ GUARDED_BY(mu_) = false;
-      std::unique_ptr<IteratorBase> input_impl_;
+      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_;
     };
 
     const DatasetBase* input_;

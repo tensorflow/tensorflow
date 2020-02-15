@@ -757,7 +757,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           metadata.set_finalized(false);
           TF_RETURN_IF_ERROR(WriteMetadataFile(hash_dir_, metadata));
 
-          return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+          return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
         }
 
         Status GetNextInternal(IteratorContext* ctx,
@@ -838,7 +838,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         Status FillBuffer(IteratorContext* ctx) LOCKS_EXCLUDED(mu_) {
           BufferElement elem;
           TF_RETURN_IF_ERROR(
-              input_impl_->GetNext(ctx, &elem.value, &elem.end_of_sequence));
+              DatasetBaseIterator::input_impl_->GetNext(ctx, &elem.value, &elem.end_of_sequence));
 
           mutex_lock l(mu_);
           next_elem_ = std::move(elem);
@@ -1018,7 +1018,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         condition_variable cond_var_;
 
         BufferElement next_elem_ GUARDED_BY(mu_);
-        std::unique_ptr<IteratorBase> input_impl_;
+        //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_;
 
         const string hash_dir_;
         string run_id_ GUARDED_BY(mu_);
@@ -1045,17 +1045,17 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             : DatasetIterator<Dataset>(params) {}
 
         Status Initialize(IteratorContext* ctx) override {
-          return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+          return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
         }
 
         Status GetNextInternal(IteratorContext* ctx,
                                std::vector<Tensor>* out_tensors,
                                bool* end_of_sequence) override {
-          return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+          return DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
         }
 
        private:
-        std::unique_ptr<IteratorBase> input_impl_;
+        //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_;
       };
 
       string hash_dir_ GUARDED_BY(mu_);
