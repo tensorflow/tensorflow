@@ -178,21 +178,4 @@ Status IOError(const string& context, int err_number) {
   return Status(code, strings::StrCat(context, "; ", strerror(err_number)));
 }
 
-#if defined(_WIN32)
-namespace internal {
-
-std::string GetWindowsErrorMessage(DWORD err) {
-  LPSTR buffer = NULL;
-  DWORD flags = FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-                FORMAT_MESSAGE_IGNORE_INSERTS;
-  FormatMessageA(flags, NULL, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                 reinterpret_cast<LPSTR>(&buffer), 0, NULL);
-  std::string message = buffer;
-  LocalFree(buffer);
-  return message;
-}
-
-}  // namespace internal
-#endif
-
 }  // namespace tensorflow

@@ -23,6 +23,7 @@ limitations under the License.
 #define TF_OP_BASE
 
 include "mlir/IR/OpBase.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TensorFlow dialect definitions
@@ -70,7 +71,7 @@ class TF_Op<string mnemonic, list<OpTrait> traits = []> :
 
 // Any tensor element type defined in the TensorFlow dialect
 def TF_TFDialectType :
-    Type<CPred<"$_self.isa<TensorFlowType>()">, "TensorFlow type">;
+    Type<CPred<"$_self.isa<mlir::TF::TensorFlowType>()">, "TensorFlow type">;
 
 // Class for any TensorFlow dialect specific type
 class TF_TensorFlowType <string name, string description> :

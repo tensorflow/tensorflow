@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/window_dataset_op.h"
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/window_dataset.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 namespace data {
@@ -50,7 +52,11 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         window_stride_(window_stride),
         drop_remainder_(drop_remainder),
         output_dtypes_(input_->output_dtypes().size(), {DT_VARIANT}),
-        output_shapes_(input_->output_shapes().size(), TensorShape({})) {
+        output_shapes_(input_->output_shapes().size(), TensorShape({})),
+        traceme_metadata_(
+            {{"window_size", strings::Printf("%lld", window_size)},
+             {"window_shift", strings::Printf("%lld", window_shift)},
+             {"window_stride", strings::Printf("%lld", window_stride)}}) {
     input_->Ref();
   }
 
@@ -128,14 +134,8 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
-    string BuildTraceMeName() override {
-      return strings::StrCat(prefix(), "#window_size=", dataset()->window_size_,
-                             ",window_shift=", dataset()->window_shift_,
-                             ",window_stride=", dataset()->window_stride_, "#");
-    }
-
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -305,6 +305,10 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      return dataset()->traceme_metadata_;
+    }
+
    private:
     struct InvocationResult {
       InvocationResult() = default;
@@ -369,6 +373,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
   const bool drop_remainder_;
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
+  const TraceMeMetadata traceme_metadata_;
 };
 
 WindowDatasetOp::WindowDatasetOp(OpKernelConstruction* ctx)

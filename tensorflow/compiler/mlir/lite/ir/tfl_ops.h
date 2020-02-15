@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {
+#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.h.inc"
 namespace TFL {
 
 class TensorFlowLiteDialect : public Dialect {

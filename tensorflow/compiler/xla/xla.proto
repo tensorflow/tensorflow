@@ -260,14 +260,14 @@ message DebugOptions {
 
   // Guarantee run-to-run determinism from reductions on XLA:GPU.
   bool xla_gpu_deterministic_reductions = 130;
-  // Next id: 133
+  // Next id: 134
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
 
-  reserved 117;  // was xla_dump_to
-  reserved 5;    // Was xla_hlo_dump_as_graphdef
+  reserved 5, 117, 133;  // were xla_hlo_dump_as_graphdef, xla_dump_to, and
+                         // xla_gpu_use_horizontal_fusion
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings

@@ -139,7 +139,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params), i_(0) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -158,7 +158,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         }
         ++i_;
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+            dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
       }
       *end_of_sequence = true;
       input_impl_.reset();
@@ -210,7 +210,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -219,8 +219,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       do {
         if (!input_impl_) {
-          TF_RETURN_IF_ERROR(
-              dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+          TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+              ctx, this, prefix(), &input_impl_));
         }
         Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
         DCHECK(!*end_of_sequence || out_tensors->empty());
@@ -266,7 +266,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         first_call_ = true;
       } else {
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+            dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         first_call_ = false;
       }

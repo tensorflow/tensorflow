@@ -47,8 +47,10 @@ namespace monitoring {
 // This class is thread-safe.
 class PercentileSamplerCell {
  public:
-  PercentileSamplerCell(std::vector<double> percentiles, size_t max_samples)
-      : percentiles_(std::move(percentiles)),
+  PercentileSamplerCell(UnitOfMeasure unit_of_measure,
+                        std::vector<double> percentiles, size_t max_samples)
+      : unit_of_measure_(unit_of_measure),
+        percentiles_(std::move(percentiles)),
         samples_(max_samples),
         num_samples_(0),
         next_position_(0),
@@ -72,6 +74,7 @@ class PercentileSamplerCell {
                                  long double* accumulator) const;
 
   mutable mutex mu_;
+  UnitOfMeasure unit_of_measure_;
   const std::vector<double> percentiles_;
   std::vector<Sample> samples_ GUARDED_BY(mu_);
   size_t num_samples_ GUARDED_BY(mu_);
@@ -106,11 +109,13 @@ class PercentileSampler {
   // Example;
   // auto* sampler_with_label =
   // PercentileSampler<1>::New({"/tensorflow/sampler",
-  //   "Tensorflow sampler", "MyLabelName"}, {10.0, 20.0, 30.0}, 1024);
+  //   "Tensorflow sampler", "MyLabelName"}, {10.0, 20.0, 30.0}, 1024,
+  //   UnitOfMeasure::kTime);
   static PercentileSampler* New(
       const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
           metric_def,
-      std::vector<double> percentiles, size_t max_samples);
+      std::vector<double> percentiles, size_t max_samples,
+      UnitOfMeasure unit_of_measure);
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
@@ -124,8 +129,10 @@ class PercentileSampler {
 
   PercentileSampler(const MetricDef<MetricKind::kCumulative, Percentiles,
                                     NumLabels>& metric_def,
-                    std::vector<double> percentiles, size_t max_samples)
+                    std::vector<double> percentiles, size_t max_samples,
+                    UnitOfMeasure unit_of_measure)
       : metric_def_(metric_def),
+        unit_of_measure_(unit_of_measure),
         percentiles_(std::move(percentiles)),
         max_samples_(max_samples),
         registration_handle_(CollectionRegistry::Default()->Register(
@@ -165,6 +172,8 @@ class PercentileSampler {
   // register it for collection.
   const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels> metric_def_;
 
+  UnitOfMeasure unit_of_measure_ = UnitOfMeasure::kNumber;
+
   // The percentiles samples required for this metric.
   const std::vector<double> percentiles_;
 
@@ -187,9 +196,10 @@ template <int NumLabels>
 PercentileSampler<NumLabels>* PercentileSampler<NumLabels>::New(
     const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
         metric_def,
-    std::vector<double> percentiles, size_t max_samples) {
+    std::vector<double> percentiles, size_t max_samples,
+    UnitOfMeasure unit_of_measure) {
   return new PercentileSampler<NumLabels>(metric_def, std::move(percentiles),
-                                          max_samples);
+                                          max_samples, unit_of_measure);
 }
 
 template <int NumLabels>
@@ -212,7 +222,8 @@ PercentileSamplerCell* PercentileSampler<NumLabels>::GetCell(
   return &(cells_
                .emplace(std::piecewise_construct,
                         std::forward_as_tuple(label_array),
-                        std::forward_as_tuple(percentiles_, max_samples_))
+                        std::forward_as_tuple(unit_of_measure_, percentiles_,
+                                              max_samples_))
                .first->second);
 }
 

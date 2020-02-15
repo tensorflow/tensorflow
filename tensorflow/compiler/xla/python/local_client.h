@@ -71,7 +71,7 @@ class Device {
 
   const std::string& platform_name() const { return platform_name_; }
 
-  virtual std::string DebugString() const = 0;
+  virtual std::string DebugString() const;
 
  private:
   const int id_;
@@ -80,47 +80,9 @@ class Device {
   const std::string platform_name_;
 };
 
-class CpuDevice : public Device {
- public:
-  using Device::Device;
-  std::string DebugString() const override;
-};
-
-class GpuDevice : public Device {
- public:
-  using Device::Device;
-  std::string DebugString() const override;
-};
-
-struct AllocatorConfig {
-  enum class Kind {
-    kDefault,   // Client picks the best option for the platform.
-    kPlatform,  // The platform's default.
-    kBFC,  // Allocator using a "Best-Fit with Coalescing" algorithm. Currently
-           // only available for GPU.
-  };
-  Kind kind = Kind::kDefault;
-
-  // Only used if kind == kBFC. The maximum fraction of available memory to
-  // allocate.
-  double memory_fraction = 0.9;
-
-  // Only used if kind == kBFC. If true, the allocator will immediately allocate
-  // the maximum amount allowed by `memory_fraction`. This reduces
-  // fragmentation, allowing more of the total memory to be used. If false, the
-  // allocator will allocate more memory as allocations are requested.
-  bool preallocate = true;
-};
-
 // Encapsulates the state of Python session with XLA.
 class PyLocalClient {
  public:
-  // Initializes a local XLA client for `platform_name`. Returns an error if no
-  // such platform exists, or if the platform has no visible devices.
-  static StatusOr<std::shared_ptr<PyLocalClient>> Get(
-      const std::string& platform_name, const std::string& xla_platform_name,
-      bool asynchronous, const AllocatorConfig& allocator_config);
-
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PyLocalClient(
       std::string platform_name, LocalClient* client,
@@ -325,8 +287,16 @@ class PyLocalExecutable {
     return size;
   }
 
+  const std::vector<std::shared_ptr<LocalExecutable>>& executables() const {
+    return executables_;
+  }
+
   const DeviceAssignment& device_assignment() const {
     return *device_assignment_;
+  }
+
+  const std::vector<std::pair<int, int>>& local_logical_device_ids() const {
+    return local_logical_device_ids_;
   }
 
   const std::vector<std::shared_ptr<Device>>& local_devices() const {
@@ -370,13 +340,13 @@ class PyLocalExecutable {
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas
-  // (i.e. local_logical_devices_[i] = (i, 0)), but this may not be the case on
-  // multi-host platforms.
+  // (i.e. local_logical_device_ids_[i] = (i, 0)), but this may not be the case
+  // on multi-host platforms.
   // If there are 4 replicas and 2 partitions on a single host platform, size of
-  // local_logical_devices_ is 4*2 = 8.
-  std::vector<std::pair<int, int>> local_logical_devices_;
+  // local_logical_device_ids_ is 4*2 = 8.
+  std::vector<std::pair<int, int>> local_logical_device_ids_;
 
-  // local_devices_[i] is the Device to which local_logical_devices_[i] is
+  // local_devices_[i] is the Device to which local_logical_device_ids_[i] is
   // assigned.
   // shared_ptrs instead of unique_ptrs to play well with the Python bindings
   // (see xla.cc).

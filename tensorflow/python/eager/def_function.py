@@ -65,7 +65,7 @@ class _CallCounter(object):
         break
 
   def called_without_tracing(self):
-    # We don't count tracing when users load a concrete function dicretly or
+    # We don't count tracing when users load a concrete function directly or
     # call get_concrete_function, so the first call can be not a tracing call.
     if not self._calls_per_tracings:
       self._calls_per_tracings = [0]
@@ -380,7 +380,7 @@ class Function(object):
         tensorflow.autograph.Feature values. Allows enabling additional
         conversion options when autograph is set to True.
       experimental_relax_shapes: When true, argument shapes may be relaxed to
-        avoid unecessary retracing.
+        avoid unnecessary retracing.
       experimental_compile: If false, execute the function in a regular way. The
         function is optimized by some graph rewrite passes (some ops might be
         clustered into a single op) and interpreted by the standard TensorFlow
@@ -723,10 +723,12 @@ class Function(object):
       return
 
     # Note: using defun here avoids an infinite recursion.
-    @function_lib.defun
+    # Most of the code in this function runs eagerly with init_scope, where
+    # autograph is not necessary.
+    @function_lib.defun(autograph=False)
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
-      # Stack all the var_is_initialized values into one tensor and intepret the
+      # Stack all the var_is_initialized values into one tensor and interpret the
       # numpy value. This will reduce the number of RPCs between client and
       # worker in the remote case.
       with ops.init_scope():

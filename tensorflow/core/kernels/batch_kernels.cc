@@ -365,7 +365,8 @@ class BatchResource : public ResourceBase {
         if (padding_source.shape().dim_size(0) == 0) {
           return errors::InvalidArgument(
               "Cannot use an empty tensor with zero rows as padding when "
-              "batching.");
+              "batching. (Input ",
+              i, " got shape ", padding_source.shape().DebugString(), ".)");
         }
         if (padding_source.shape().dim_size(0) == 1) {
           padding = padding_source;

@@ -71,8 +71,7 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"tensorflow::|"
                         r"toco::|"
                         r"functor::|"
-                        r"perftools::gputools|"
-                        r"grpc::")
+                        r"perftools::gputools")
 
 # We want to identify data members explicitly in the DEF file, so that no one
 # can implicitly link against the DLL if they use one of the variables exported

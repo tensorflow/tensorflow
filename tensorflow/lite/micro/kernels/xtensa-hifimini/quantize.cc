@@ -146,9 +146,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   op_params.scale = static_cast<double>(output->params.scale);
 
   if (input->type != kTfLiteInt16 && output->type != kTfLiteInt8) {
-    context->ReportError(context, "Input %s, output %s not supported.",
-                         TfLiteTypeGetName(input->type),
-                         TfLiteTypeGetName(output->type));
+    TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
+                       TfLiteTypeGetName(input->type),
+                       TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
 

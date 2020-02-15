@@ -483,6 +483,7 @@ tf_cc_test(
         ":dataset_test_base",
         ":dataset_utils",
         ":iterator_ops",
+        ":name_utils",
         ":parallel_map_dataset_op",
         ":range_dataset_op",
         ":stats_utils",
@@ -1129,6 +1130,7 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -1214,6 +1216,7 @@ tf_cc_test(
         ":iterator_ops",
         ":tensor_slice_dataset_op",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

@@ -14,11 +14,13 @@ package(
 cc_library(
     name = "pywrap_tfe_lib",
     srcs = [
+        "pywrap_gradient_exclusions.cc",
         "pywrap_tensor.cc",
         "pywrap_tensor_conversion.cc",
         "pywrap_tfe_src.cc",
     ],
     hdrs = [
+        "pywrap_gradient_exclusions.h",
         "pywrap_tensor.h",
         "pywrap_tensor_conversion.h",
         "pywrap_tfe.h",
@@ -52,6 +54,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -202,10 +205,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        "//tensorflow/python:c_api_util",
-        "//tensorflow/python:pywrap_tf_session",
-        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
 
@@ -217,6 +218,7 @@ cuda_py_test(
         ":profiler",
         ":test",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python/profiler:traceme",
     ],
 )
 
@@ -224,11 +226,12 @@ py_library(
     name = "profiler_client",
     srcs = ["profiler_client.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/core/profiler:internal",
+    ],
     deps = [
-        "//tensorflow/python:c_api_util",
-        "//tensorflow/python:pywrap_tf_session",
-        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
 
@@ -238,7 +241,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
-    visibility = ["//tensorflow:internal"],
     deps = [
         ":profiler_client",
         ":test",
@@ -512,6 +514,7 @@ py_library(
         ":tape",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -885,5 +888,39 @@ cuda_py_test(
         ":remote",
         ":test",
         "//tensorflow/python:resource_variable_ops",
+    ],
+)
+
+py_binary(
+    name = "gradient_input_output_exclusions",
+    srcs = ["gradient_input_output_exclusions.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+# Needed for the test below.
+exports_files([
+    "pywrap_gradient_exclusions.cc",
+])
+
+py_test(
+    name = "gradient_input_output_exclusions_test",
+    srcs = ["gradient_input_output_exclusions_test.py"],
+    data = [
+        "//tensorflow/python/eager:pywrap_gradient_exclusions.cc",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_pip",  # No point linking the gen script in the pip package.
+    ],
+    deps = [
+        ":gradient_input_output_exclusions",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
     ],
 )

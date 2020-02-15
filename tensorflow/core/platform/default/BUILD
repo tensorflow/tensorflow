@@ -113,6 +113,7 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
@@ -300,6 +301,20 @@ cc_library(
 )
 
 cc_library(
+    name = "resource",
+    srcs = ["resource.cc"],
+    hdrs = ["//tensorflow/core/platform:resource.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+cc_library(
     name = "resource_loader",
     testonly = 1,
     srcs = ["resource_loader.cc"],
@@ -335,11 +350,6 @@ cc_library(
 cc_library(
     name = "stacktrace",
     hdrs = ["stacktrace.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
@@ -350,11 +360,7 @@ cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
     hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
+    linkstatic = 1,
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:stacktrace",
@@ -426,6 +432,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:net",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:types",
         "@com_google_googletest//:gtest",
@@ -509,6 +516,7 @@ filegroup(
         "port.cc",
         "posix_file_system.cc",
         "posix_file_system.h",
+        "resource.cc",
         "stacktrace.h",
         "tracing_impl.h",
     ],

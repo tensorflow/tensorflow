@@ -256,7 +256,6 @@ Optionally, you could also pass in the `--num_interpreter_threads` &
 
 ```
 bazel run -c opt \
-  --cxxopt='--std=c++11' \
   -- \
   //tensorflow/lite/tools/evaluation/tasks/coco_object_detection:run_eval \
   --model_file=/path/to/ssd_mobilenet_v1_float.tflite \

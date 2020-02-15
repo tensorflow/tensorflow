@@ -720,7 +720,7 @@ def _to_tensor(x, dtype):
   Returns:
       A tensor.
   """
-  return ops.convert_to_tensor(x, dtype=dtype)
+  return ops.convert_to_tensor_v2(x, dtype=dtype)
 
 
 @keras_export('keras.backend.is_sparse')
@@ -3783,7 +3783,7 @@ class EagerExecutionFunction(object):
           raise ValueError(
               'You must feed a value for placeholder %s' % (tensor,))
       if not isinstance(value, ops.Tensor):
-        value = ops.convert_to_tensor(value, dtype=tensor.dtype)
+        value = ops.convert_to_tensor_v2(value, dtype=tensor.dtype)
       if value.dtype != tensor.dtype:
         # Temporary workaround due to `convert_to_tensor` not casting floats.
         # See b/119637405
@@ -4547,12 +4547,11 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
      [0.5  0.89 0.6 ]
      [0.05 0.01 0.94]], shape=(3, 3), dtype=float32)
   >>> loss = tf.keras.backend.categorical_crossentropy(a, b)
-  >>> print(loss)
-  tf.Tensor([0.10536055 0.8046684  0.06187541], shape=(3,), dtype=float32)
+  >>> print(np.around(loss, 5))
+  [0.10536 0.80467 0.06188]
   >>> loss = tf.keras.backend.categorical_crossentropy(a, a)
-  >>> print(loss)
-  tf.Tensor([1.1920929e-07 1.1920929e-07 1.1920930e-07], shape=(3,),
-  dtype=float32)
+  >>> print(np.around(loss, 5))
+  [0. 0. 0.]
 
   """
   target.shape.assert_is_compatible_with(output.shape)

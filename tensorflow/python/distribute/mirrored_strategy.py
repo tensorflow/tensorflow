@@ -260,7 +260,7 @@ def _group_device_list(devices):
 
   Returns:
     a dict of list of device strings mapping from task_type to a list of devices
-    for the task_type in the asceding order of task_id.
+    for the task_type in the ascending order of task_id.
   """
   assert not _is_device_list_single_worker(devices)
   device_dict = {}
@@ -838,7 +838,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     if isinstance(replica_local_var, values.SyncOnReadVariable):
       return replica_local_var._get_cross_replica()  # pylint: disable=protected-access
     assert isinstance(replica_local_var, values.Mirrored)
-    return array_ops.identity(replica_local_var.get())
+    return array_ops.identity(replica_local_var._get())  # pylint: disable=protected-access
 
   def _local_results(self, val):
     if isinstance(val, values.DistributedValues):

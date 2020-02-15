@@ -20,8 +20,6 @@ limitations under the License.
 namespace tensorflow {
 
 #ifdef ENABLE_MKLDNN_V1
-// TODO(mdfaijul): Temporarily commenting out redefining mkldnn type.
-// typedef uint16_t mkldnn_bfloat16_t;
 #define ADD_MD add_md
 #define ALGORITHM mkldnn::algorithm
 #define ALGORITHM_UNDEF ALGORITHM::undef
@@ -35,6 +33,7 @@ namespace tensorflow {
   md, tensor, net, net_args, engine
 #define GET_DESC get_desc()
 #define GET_FORMAT_FROM_SHAPE(src_mkl_shape) MklTensorFormat::FORMAT_BLOCKED
+#define GET_BLOCK_STRIDES(strides, idx) strides
 #define GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm) \
   { {dims}, MklDnnType<type>(), fm }
 #define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) mem_ptr->get_desc()
@@ -77,6 +76,7 @@ namespace tensorflow {
   memory::desc({dims}, MklDnnType<type>(), fm)
 #define MEMORY_PD_WITHOUT_DATA(md, engine) md, engine
 #define MEMORY_PRIMITIVE_DESC memory::desc
+#define MEMORY_PD_CONSTRUCTOR_2_PARAMS(md, engine) MEMORY_PRIMITIVE_DESC(md)
 #define MKL_FMT_TAG mkl_fmt_tag
 #define MKL_TENSOR_FORMAT MklTensorFormat
 #define MKL_TENSOR_FORMAT_BLOCKED MklTensorFormat::FORMAT_BLOCKED
@@ -109,6 +109,7 @@ namespace tensorflow {
 #define SUMMAND_MD summand_md
 #define TENSOR_FORMAT MKL_TENSOR_FORMAT
 #define TENSOR_FORMAT_NHWC MKL_TENSOR_FORMAT_NHWC
+#define TENSOR_MAX_DIMS MKLDNN_MAX_NDIMS
 
 #else
 
@@ -127,6 +128,7 @@ namespace tensorflow {
 #define GET_DESC get_primitive_desc()
 #define GET_FORMAT_FROM_SHAPE(src_mkl_shape) \
   static_cast<memory::format>(src_mkl_shape.GetMklLayout().data.format)
+#define GET_BLOCK_STRIDES(strides, idx) strides[(idx)]
 #define GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm) \
   { {dims}, MklDnnType<type>(), fm }
 #define GET_SRC_DESC_FROM_OP_PD(op_pd) op_pd.get()->src_primitive_desc()
@@ -169,6 +171,8 @@ namespace tensorflow {
   memory::primitive_desc(GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm), engine)
 #define MEMORY_PD_WITHOUT_DATA(pd, engine) pd
 #define MEMORY_PRIMITIVE_DESC memory::primitive_desc
+#define MEMORY_PD_CONSTRUCTOR_2_PARAMS(md, engine) \
+  MEMORY_PRIMITIVE_DESC(md, engine)
 #define MKL_FMT_TAG tf_fmt
 #define MKL_TENSOR_FORMAT memory::format
 #define MKL_TENSOR_FORMAT_BLOCKED memory::format::blocked

@@ -54,6 +54,8 @@ namespace xla {
 template <typename T>
 class Array4D : public Array<T> {
  public:
+  Array4D() : Array<T>(std::vector<int64>{0, 0, 0, 0}) {}
+
   // Creates a 4D array, uninitialized values.
   Array4D(int64 planes, int64 depth, int64 height, int64 width)
       : Array<T>(std::vector<int64>{planes, depth, height, width}) {}

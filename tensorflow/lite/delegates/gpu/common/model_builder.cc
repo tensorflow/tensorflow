@@ -1701,13 +1701,15 @@ class Resize2DOperationParser : public TFLiteOperationParser {
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
     RETURN_IF_ERROR(
         CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
 
     RETURN_IF_ERROR(CheckOnlyUpsamplingIsSupported(context, tflite_node));
     bool align_corners;
     RETURN_IF_ERROR(GetAlignCornersValue(tflite_node, &align_corners));
+    bool half_pixel_centers;
+    RETURN_IF_ERROR(GetHalfPixelCentersValue(tflite_node, &half_pixel_centers));
     return OkStatus();
   }
 
@@ -1723,6 +1725,8 @@ class Resize2DOperationParser : public TFLiteOperationParser {
 
     Resize2DAttributes attr;
     RETURN_IF_ERROR(GetAlignCornersValue(tflite_node, &attr.align_corners));
+    RETURN_IF_ERROR(
+        GetHalfPixelCentersValue(tflite_node, &attr.half_pixel_centers));
     attr.type = sampling_type_;
     attr.new_shape.CopyAllDefinedAxis(
         graph->FindOutputs(node->id)[0]->tensor.shape);
@@ -1755,6 +1759,25 @@ class Resize2DOperationParser : public TFLiteOperationParser {
       return InternalError("Missing tflite params");
     }
     *align_corners = tf_options->align_corners;
+    return OkStatus();
+  }
+
+  Status GetHalfPixelCentersValue(const TfLiteNode* tflite_node,
+                                  bool* half_pixel_centers) {
+    if (sampling_type_ == SamplingType::BILINEAR) {
+      const auto* tf_options = reinterpret_cast<TfLiteResizeBilinearParams*>(
+          tflite_node->builtin_data);
+      if (!tf_options) {
+        return InternalError("Missing tflite params for ResizeBilinear op");
+      }
+      if (tf_options->align_corners && tf_options->half_pixel_centers) {
+        return InternalError(
+            "If half_pixel_centers is True, align_corners must be False.");
+      }
+      *half_pixel_centers = tf_options->half_pixel_centers;
+    } else {
+      *half_pixel_centers = false;
+    }
     return OkStatus();
   }
 
@@ -2713,11 +2736,10 @@ TfLiteIntArray* GetOpsToReplaceFromGraphWithDequantize(TfLiteContext* context) {
         // TODO(eignasheva): resolve sub operation support for metal delegate
         // registration->builtin_code != kTfLiteBuiltinSub &&
         IsAllFloatTensors(context, node->inputs) &&
-        IsAllFloatTensors(context, node->outputs)) {
-      if (errors.empty()) {
-        replace_node = true;
-        ops_to_replace.push_back(i);
-      }
+        IsAllFloatTensors(context, node->outputs) && errors.empty()) {
+      // Node is supported and there were no previous errors.
+      replace_node = true;
+      ops_to_replace.push_back(i);
     } else {
       // Unable to replace this node. Restore the inputs to the original
       // if they were modified.

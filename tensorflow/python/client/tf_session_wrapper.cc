@@ -71,7 +71,7 @@ TF_Buffer* ProtoStringToTFBuffer(PyObject* input) {
 tensorflow::NameVector ConvertPyListToNameVector(
     const std::vector<py::bytes>& py_vector) {
   tensorflow::NameVector temp;
-  for (int i = 0; i < py_vector.size(); ++i) {
+  for (size_t i = 0; i < py_vector.size(); ++i) {
     const char* string_elem = PyBytes_AsString(py_vector.at(i).ptr());
     temp.push_back(string_elem);
   }
@@ -231,7 +231,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
     // Create a python list from InlinedVector
     py::list py_list;
-    for (int i = 0; i < result.size(); ++i) {
+    for (size_t i = 0; i < result.size(); ++i) {
       py_list.append(py::cast(result[i]));
     }
 
@@ -296,7 +296,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
           // Convert shapes nested vector
           std::vector<std::vector<int64_t>> shapes_local;
-          for (int i = 0; i < shapes.size(); ++i) {
+          for (size_t i = 0; i < shapes.size(); ++i) {
             std::vector<int64_t> dims;
             std::vector<int64_t> item =
                 shapes[i].has_value() ? shapes[i].value() : dims;
@@ -455,7 +455,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       PyErr_SetString(PyExc_MemoryError, "Failed to create a list.");
       throw py::error_already_set();
     }
-    for (int i = 0; i < py_outputs.size(); ++i) {
+    for (size_t i = 0; i < py_outputs.size(); ++i) {
       PyList_SET_ITEM(result, i, py_outputs.at(i));
     }
 
@@ -505,7 +505,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       PyErr_SetString(PyExc_MemoryError, "Failed to create a list.");
       throw py::error_already_set();
     }
-    for (int i = 0; i < py_outputs.size(); ++i) {
+    for (size_t i = 0; i < py_outputs.size(); ++i) {
       PyList_SET_ITEM(result, i, py_outputs.at(i));
     }
 
@@ -539,7 +539,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
     // Return out_values
     py::list py_list;
-    for (int i = 0; i < out_values.size(); ++i) {
+    for (size_t i = 0; i < out_values.size(); ++i) {
       py::object obj = tensorflow::pyo(out_values.at(i));
       py_list.append(obj);
     }
@@ -725,7 +725,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       "TF_AddInputList", [](TF_OperationDescription* desc, py::handle& inputs) {
         std::vector<TF_Output> vec;
         size_t size = PyList_Size(inputs.ptr());
-        for (int i = 0; i < size; ++i) {
+        for (size_t i = 0; i < size; ++i) {
           TF_Output item = py::cast<TF_Output>(PyList_GetItem(inputs.ptr(), i));
           vec.push_back(item);
         }

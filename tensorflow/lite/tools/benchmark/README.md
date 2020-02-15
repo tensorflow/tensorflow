@@ -34,6 +34,8 @@ and the following optional parameters:
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
+*   `use_xnnpack`: `bool` (default=false) \
+    Whether to use the XNNPack delegate.
 *   `use_hexagon`: `bool` (default=false) \
     Whether to use the Hexagon delegate. Not all devices may support the Hexagon
     delegate, refer to the TensorFlow Lite documentation for more information
@@ -72,6 +74,11 @@ and the following optional parameters:
     blank, passive mode is used by default.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
+*   `hexagon_profiling`: `bool` (default=false) \
+    Whether to profile ops running on hexagon. Needs to be combined with
+    `enable_op_profiling`. When this is set to true the profile of ops
+    on hexagon DSP will be added to the profile table.
+    Note that, the reported data on hexagon is in cycles, not in ms like on cpu.
 
 ## To build/install/run
 

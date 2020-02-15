@@ -24,6 +24,8 @@ import numpy as np
 
 from absl.testing import parameterized
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -37,8 +39,8 @@ from tensorflow.python.platform import test
 class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase,
                                parameterized.TestCase):
 
-  def _make_shape_tuple(self, batch_size, channel_count, data_rank, data_dim,
-                        data_layout):
+  def _makeShapeTuple(self, batch_size, channel_count, data_rank, data_dim,
+                      data_layout):
     data_dims = data_rank * (data_dim,)
     if data_layout == 'channels_first':
       shape = (batch_size,) + (channel_count,) + data_dims
@@ -48,7 +50,7 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase,
       raise ValueError('Unknown data format')
     return shape
 
-  def _data_format_from_data_layout(self, data_layout=None):
+  def _dataFormatFromDataLayout(self, data_layout=None):
     if data_layout == 'channels_first':
       return 'NCHW'
     elif data_layout == 'channels_last':
@@ -56,59 +58,82 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase,
     else:
       raise ValueError('Unknown data_layout')
 
-  def _random_data_op(self, shape, data_type):
-    return constant_op.constant(
-        2 * np.random.random_sample(shape) - 1, dtype=data_type)
-
-  def _random_ndarray(self, shape):
+  def _randomNDArray(self, shape):
     return 2 * np.random.random_sample(shape) - 1
 
-  def _assert_reproducible(self, operation, feed_dict={}):
-    with self.cached_session(force_gpu=True):
-      result_a = operation[0].eval(feed_dict=feed_dict)
-      result_b = operation[0].eval(feed_dict=feed_dict)
-      self.assertAllEqual(result_a, result_b)
+  def _randomDataOp(self, shape, data_type):
+    return constant_op.constant(self._randomNDArray(shape), dtype=data_type)
 
-  # TODO(duncanriach): add test coverage for deterministic gradients
-  #   in eager mode
   @parameterized.named_parameters(
       *test_util.generate_combinations_with_testcase_name(
+          # With the selected layer configuration, at least in TensorFlow
+          # version 2.0, when data_layout='channels_last', bias_add operates
+          # deterministically by default. I don't know if this is true for
+          # all layer configurations. These cases are still being tested here,
+          # for completeness.
           data_layout=['channels_first', 'channels_last'],
           data_rank=[1, 2, 3],
           data_type=[dtypes.float16, dtypes.float32, dtypes.float64]))
-  @test_util.run_deprecated_v1
+  @test_util.run_in_graph_and_eager_modes
   @test_util.run_cuda_only
   def testDeterministicGradients(self, data_layout, data_rank, data_type):
-    seed = (
-        hash(data_layout) % 256 + hash(data_rank) % 256 + hash(data_type) % 256)
-    np.random.seed(seed)
-    batch_size = 10
-    channel_count = 8
-    data_dim = 14
-    in_shape = self._make_shape_tuple(batch_size, channel_count, data_rank,
-                                      data_dim, data_layout)
-    bias_shape = (channel_count,)
-    out_shape = in_shape
-    in_op = self._random_data_op(in_shape, data_type)
-    bias_op = self._random_data_op(bias_shape, data_type)
-    data_format = self._data_format_from_data_layout(data_layout)
-    bias_add_op = nn_ops.bias_add(in_op, bias_op, data_format=data_format)
-    upstream_gradients = array_ops.placeholder(
-        data_type, shape=out_shape, name='upstream_gradients')
-    gradient_injector_op = bias_add_op * upstream_gradients
-    # The gradient function behaves as if grad_ys is multiplied by the op
-    # gradient result, not passing the upstram gradients through the op's
-    # gradient generation graph. This is the reason for using the
-    # gradient_injector_op
-    grad_ys = None
-    bias_gradients_op = gradients_impl.gradients(
-        gradient_injector_op,
-        bias_op,
-        grad_ys=grad_ys,
-        colocate_gradients_with_ops=True)
-    for i in range(5):
-      feed_dict = {upstream_gradients: self._random_ndarray(out_shape)}
-      self._assert_reproducible(bias_gradients_op, feed_dict=feed_dict)
+    with self.session(force_gpu=True):
+      # Using a cached_session with force_gpu=True does not work at the time
+      # of writing (2019-12-10). Before the @parameterized.named_parameters
+      # decorator was added, this non-cached session context was set outside
+      # the iteration loops for the parameter combinations, and so was re-used.
+      seed = (
+          hash(data_layout) % 256 + hash(data_rank) % 256 +
+          hash(data_type) % 256)
+      np.random.seed(seed)
+      batch_size = 10
+      channel_count = 8
+      data_dim = 14
+      input_shape = self._makeShapeTuple(batch_size, channel_count, data_rank,
+                                         data_dim, data_layout)
+      bias_shape = (channel_count,)
+      output_shape = input_shape
+      input_val = self._randomDataOp(input_shape, data_type)
+      bias_val = self._randomDataOp(bias_shape, data_type)
+      data_format = self._dataFormatFromDataLayout(data_layout)
+      repeat_count = 5
+      if context.executing_eagerly():
+
+        def bias_gradients(local_seed):
+          np.random.seed(local_seed)
+          upstream_gradients = self._randomDataOp(output_shape, data_type)
+          with backprop.GradientTape(persistent=True) as tape:
+            tape.watch(bias_val)
+            bias_add_output = nn_ops.bias_add(
+                input_val, bias_val, data_format=data_format)
+            gradient_injector_output = bias_add_output * upstream_gradients
+          return tape.gradient(gradient_injector_output, bias_val)
+
+        for i in range(repeat_count):
+          local_seed = seed + i  # select different upstream gradients
+          result_a = bias_gradients(local_seed)
+          result_b = bias_gradients(local_seed)
+          self.assertAllEqual(result_a, result_b)
+      else:  # graph mode
+        upstream_gradients = array_ops.placeholder(
+            data_type, shape=output_shape, name='upstream_gradients')
+        bias_add_output = nn_ops.bias_add(
+            input_val, bias_val, data_format=data_format)
+        gradient_injector_output = bias_add_output * upstream_gradients
+        # The gradient function behaves as if grad_ys is multiplied by the op
+        # gradient result, not passing the upstram gradients through the op's
+        # gradient generation graph. This is the reason for using the
+        # gradient injector
+        bias_gradients = gradients_impl.gradients(
+            gradient_injector_output,
+            bias_val,
+            grad_ys=None,
+            colocate_gradients_with_ops=True)[0]
+        for i in range(repeat_count):
+          feed_dict = {upstream_gradients: self._randomNDArray(output_shape)}
+          result_a = bias_gradients.eval(feed_dict=feed_dict)
+          result_b = bias_gradients.eval(feed_dict=feed_dict)
+          self.assertAllEqual(result_a, result_b)
 
   # TODO(duncanriach): Re-enable the following three tests for the error checks
   #   after deterministic functionality is implemented at the CUDA kernel level.

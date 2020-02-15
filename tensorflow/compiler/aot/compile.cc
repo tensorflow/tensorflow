@@ -107,12 +107,11 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   if (flags.mlir_components == "Bridge") {
     TF_RETURN_IF_ERROR(
         ConvertGraphDefToXlaViaMlir(graph_def, config, &computation));
-  } else {
-    if (!flags.mlir_components.empty()) {
-      return errors::Unknown("Unknown mlir_components ", flags.mlir_components);
-    }
+  } else if (flags.mlir_components.empty() || flags.mlir_components == "None") {
     TF_RETURN_IF_ERROR(ConvertGraphDefToXla(std::move(graph_def), config,
                                             client, &computation));
+  } else {
+    return errors::Unknown("Unknown mlir_components ", flags.mlir_components);
   }
   if (!flags.out_session_module.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloSnapshot> module,

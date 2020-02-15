@@ -30,6 +30,7 @@ import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
@@ -243,6 +244,7 @@ class Network(base_layer.Layer):
     # A Network does not create weights of its own, thus it is already
     # built.
     self.built = True
+    self._build_input_shape = nest.map_structure(lambda x: x.shape, inputs)
     self._compute_output_and_mask_jointly = True
     self._is_graph_network = True
     # `_expects_training_arg` is True since the `training` argument is always
@@ -355,6 +357,7 @@ class Network(base_layer.Layer):
     self.outputs = []
     self.inputs = []
     self.built = False
+    self._build_input_shape = None
 
   @property
   @trackable_layer_utils.cache_recursive_attribute('dynamic')
@@ -618,7 +621,7 @@ class Network(base_layer.Layer):
       on real tensor data.
     """
     if self._is_graph_network:
-      self.built = True
+      super(Network, self).build(input_shape)
       return
 
     # If subclass network
@@ -683,7 +686,7 @@ class Network(base_layer.Layer):
                            'model, `call` your model on real tensor data (of '
                            'the correct dtype).')
 
-    self.built = True
+    super(Network, self).build(input_shape)
 
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
@@ -876,7 +879,9 @@ class Network(base_layer.Layer):
 
           # Map Keras tensors in kwargs to their computed value.
           def _map_tensor_if_from_keras_layer(t):
-            if isinstance(t, ops.Tensor) and hasattr(t, '_keras_history'):
+            if (isinstance(t,
+                           (ops.Tensor, composite_tensor.CompositeTensor)) and
+                hasattr(t, '_keras_history')):
               t_id = str(id(t))
               return tensor_dict[t_id].pop()
             return t
@@ -1466,8 +1471,9 @@ class Network(base_layer.Layer):
           kwargs = copy.copy(node.arguments) if node.arguments else {}
 
           for tensor in nest.flatten(kwargs):
-            if isinstance(tensor, ops.Tensor) and hasattr(tensor,
-                                                          '_keras_history'):
+            if (isinstance(tensor,
+                           (ops.Tensor, composite_tensor.CompositeTensor)) and
+                hasattr(tensor, '_keras_history')):
               tensor_usage_count[str(id(tensor))] += 1
 
           for tensor in nest.flatten(node.input_tensors):

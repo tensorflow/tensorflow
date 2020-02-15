@@ -100,10 +100,24 @@ _ALL_BLACKLISTED_OPS = (
     set(ASYNC_STATEFUL_OPS) | set(LEGACY_RANDOM_OPS)
     | set(_ORDER_INSENSITIVE_STATEFUL_OPS))
 
+# Op types that are marked as stateless, but should be whitelisted to add auto
+# control dependencies.
+_WHITELIST_STATELESS_OPS = [
+    # As TPU collective ops are blocking, if there are more than one collective
+    # op in the function, we need to make sure different collectives ops are
+    # scheduled in certain orders. Otherwise if at the same time all the
+    # replicas are launching different collective ops/programs, it may cause
+    # deadlock.
+    "AllToAll",
+    "CrossReplicaSum",
+    "CollectivePermute",
+]
+
 
 def op_is_stateful(op):
   # pylint: disable=protected-access
-  return op._is_stateful and op.type not in _ALL_BLACKLISTED_OPS
+  return (op._is_stateful and op.type not in _ALL_BLACKLISTED_OPS) or (
+      op.type in _WHITELIST_STATELESS_OPS)
 
 
 class AutomaticControlDependencies(object):

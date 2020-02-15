@@ -60,6 +60,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import traceback
 
 import numpy as np
 
@@ -772,7 +773,7 @@ class _PythonLoopChecker(object):
     self.check_op_count_after_iteration = False
     self.ops_before_iteration = None
 
-  def _verify_ineffcient_unroll(self):
+  def _verify_inefficient_unroll(self):
     """Checks for possibly-inefficient creation of ops in a Python loop."""
     assert self.ops_before_iteration is not None
     ops_after_iteration = self._get_ops()
@@ -782,15 +783,17 @@ class _PythonLoopChecker(object):
     if len(new_ops) < INEFFICIENT_UNROLL_MIN_OPS:
       return False
 
-    # TODO(mdan): Add location information.
     ag_logging.warn(
         'Large unrolled loop detected. Did you mean to use a TF loop?'
-        ' The following ops were created after iteration %s: %s\n.'
-        'See'
+        ' The following ops were created after iteration %s: %s'
+        '\nSee'
         ' https://github.com/tensorflow/tensorflow/blob/master/'
         'tensorflow/python/autograph/g3doc/reference/common_errors.md'
         '#warning-large-unrolled-loop-detected'
-        '', self.iterations, new_ops)
+        '\n'
+        'Location:'
+        '\n%s'
+        '', self.iterations, new_ops, '\n'.join(traceback.format_stack()))
     return True
 
   def before_iteration(self):
@@ -807,7 +810,7 @@ class _PythonLoopChecker(object):
     self._check_unroll_limits()
 
     if self.check_op_count_after_iteration:
-      did_warn = self._verify_ineffcient_unroll()
+      did_warn = self._verify_inefficient_unroll()
       if did_warn:
         self._stop_checking_inefficient_unroll()  # Only warn once.
       elif self.iterations > INEFFICIENT_UNROLL_MIN_ITERATIONS + 3:

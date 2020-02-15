@@ -39,18 +39,12 @@ void CreateStatMetadata(XPlane* plane) {
 // Returns event type if it is a KernelLaunch or KernelExecute event.
 absl::optional<int64> GetKernelEventType(const XPlaneVisitor& visitor,
                                          const XEvent& event) {
-  bool found_correlation_id = false;
-  bool found_device_id = false;
   for (const auto& stat : event.stats()) {
     if (visitor.GetStatType(stat) == StatType::kCorrelationId) {
-      found_correlation_id = true;
-    } else if (visitor.GetStatType(stat) == StatType::kDeviceId) {
-      found_device_id = true;
+      // TODO(b/149095099): avoid string comparison.
+      return visitor.Name() == kHostThreads ? HostEventType::kKernelLaunch
+                                            : HostEventType::kKernelExecute;
     }
-  }
-  if (found_correlation_id) {
-    return found_device_id ? HostEventType::kKernelLaunch
-                           : HostEventType::kKernelExecute;
   }
   return absl::nullopt;
 }
@@ -206,13 +200,11 @@ void CreateEventGroup(const std::vector<int64 /*EventType*/>& root_event_types,
         if (root_event_node->GetGroupId()) continue;
         int64 group_id = next_group_id++;
         root_event_node->PropagateGroupId(group_id);
+        std::string group_name = root_event_node->GetGroupName();
+        // TODO(jihochoi): change event name instead.
+        root_event_node->AddStepName(group_name);
         if (event_group_name_map) {
-          (*event_group_name_map)[group_id] = root_event_node->GetGroupName();
-          // Add step_name stat if it is a TraceContext event.
-          // TODO(jihochoi): change event name instead.
-          if (root_event_type == HostEventType::kTraceContext) {
-            root_event_node->AddStepName((*event_group_name_map)[group_id]);
-          }
+          (*event_group_name_map)[group_id] = std::move(group_name);
         }
       }
     }
@@ -242,6 +234,9 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
        {HostEventType::kSessionRun,
         HostEventType::kExecutorStateProcess,
         {StatType::kStepId}},
+       {HostEventType::kExecutorStateProcess,
+        HostEventType::kIteratorGetNextOp,
+        {StatType::kStepId, kIterNum}},
        {HostEventType::kKernelLaunch,
         HostEventType::kKernelExecute,
         {StatType::kCorrelationId}}});

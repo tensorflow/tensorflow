@@ -1645,8 +1645,8 @@ class RNNTest(keras_parameterized.TestCase):
 
     # Must raise error when unroll is set to True
     unroll_rnn_layer = layer(3, unroll=True)
-    with self.assertRaisesRegexp(
-        ValueError, 'The input received constains RaggedTensors *'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'The input received contains RaggedTensors *'):
       unroll_rnn_layer(inputs)
 
     # Check if return sequences outputs are correct
@@ -1666,7 +1666,7 @@ class RNNTest(keras_parameterized.TestCase):
     model_2 = keras.models.Model(x_dense, y_dense)
     dense_data = ragged_data.to_tensor()
     output_dense = model_2.predict(dense_data, steps=1)
-    # Convert the output here to ragged for value comparision
+    # Convert the output here to ragged for value comparison
     output_dense = ragged_tensor.RaggedTensor.from_tensor(
         output_dense, lengths=row_lengths)
     self.assertAllClose(output_ragged, output_dense)

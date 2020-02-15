@@ -78,13 +78,14 @@ TfLiteStatus GenerateSimpleFeatures(tflite::ErrorReporter* error_reporter,
                                     int output_size, uint8_t* output) {
   // Ensure our input and output data arrays are valid.
   if (input_size > kMaxAudioSampleSize) {
-    error_reporter->Report("Input size %d larger than %d", input_size,
-                           kMaxAudioSampleSize);
+    TF_LITE_REPORT_ERROR(error_reporter, "Input size %d larger than %d",
+                         input_size, kMaxAudioSampleSize);
     return kTfLiteError;
   }
   if (output_size != kFeatureSliceSize) {
-    error_reporter->Report("Requested output size %d doesn't match %d",
-                           output_size, kFeatureSliceSize);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Requested output size %d doesn't match %d",
+                         output_size, kFeatureSliceSize);
     return kTfLiteError;
   }
 

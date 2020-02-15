@@ -161,6 +161,21 @@ REGISTER_OP("ParallelMapDataset")
     .Attr("preserve_cardinality: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ParallelMapDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("other_arguments: Targuments")
+    .Input("num_parallel_calls: int64")
+    .Output("handle: variant")
+    .Attr("f: func")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_inter_op_parallelism: bool = true")
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
+    .Attr("preserve_cardinality: bool = false")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("PrefetchDataset")
     .Input("input_dataset: variant")
     .Input("buffer_size: int64")
@@ -217,6 +232,24 @@ REGISTER_OP("ParallelInterleaveDatasetV3")
     .Input("other_arguments: Targuments")
     .Input("cycle_length: int64")
     .Input("block_length: int64")
+    .Input("num_parallel_calls: int64")
+    .Output("handle: variant")
+    .Attr("f: func")
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+// Like V3, but adds buffer_output_elements and prefetch_input_elements.
+REGISTER_OP("ParallelInterleaveDatasetV4")
+    .Input("input_dataset: variant")
+    .Input("other_arguments: Targuments")
+    .Input("cycle_length: int64")
+    .Input("block_length: int64")
+    .Input("buffer_output_elements: int64")
+    .Input("prefetch_input_elements: int64")
     .Input("num_parallel_calls: int64")
     .Output("handle: variant")
     .Attr("f: func")

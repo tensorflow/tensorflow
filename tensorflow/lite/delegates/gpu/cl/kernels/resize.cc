@@ -27,6 +27,7 @@ namespace {
 
 std::string GetResizeCode(
     const OperationDef& op_def, SamplingType sampling_type,
+    bool half_pixel_centers,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor(
       "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
@@ -66,11 +67,18 @@ std::string GetResizeCode(
     }
     c += "  FLT4 r0 = " + src_tensor.ReadWHS("coord.x", "coord.y", "Z") + ";\n";
   } else {
-    c += "  float2 f_coords = (float2)(X, Y) * scale_factor;\n";
+    if (half_pixel_centers) {
+      c += "  float2 f_coords = ((float2)(X, Y) + 0.5f) * scale_factor - "
+           "0.5f;\n";
+    } else {
+      c += "  float2 f_coords = (float2)(X, Y) * scale_factor;\n";
+    }
+    c += "  float2 f_coords_floor = floor(f_coords);\n";
+    c += "  int2 coords_floor = (int2)(f_coords_floor.x, f_coords_floor.y);\n";
     c += "  int4 st;\n";
-    c += "  st.xy = (int2)(f_coords.x, f_coords.y);\n";
-    c += "  st.zw = min(st.xy + (int2)(1, 1), border);\n";
-    c += "  float2 t = f_coords - (float2)(st.x, st.y);\n";
+    c += "  st.xy = max(coords_floor, (int2)(0, 0));\n";
+    c += "  st.zw = min(coords_floor + (int2)(1, 1), border);\n";
+    c += "  float2 t = f_coords - f_coords_floor;\n";
     if (op_def.IsBatchSupported()) {
       c += "  st.x = st.x * src_size.w + B;\n";
       c += "  st.z = st.z * src_size.w + B;\n";
@@ -202,7 +210,8 @@ Resize& Resize::operator=(Resize&& operation) {
 }
 
 Status Resize::Compile(const CreationContext& creation_context) {
-  const auto code = GetResizeCode(definition_, attr_.type, linked_operations_);
+  const auto code = GetResizeCode(definition_, attr_.type,
+                                  attr_.half_pixel_centers, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);

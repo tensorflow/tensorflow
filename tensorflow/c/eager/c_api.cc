@@ -103,7 +103,12 @@ const tensorflow::OpDef* GetOpDef(TFE_Op* op, TF_Status* status) {
   return op_def;
 }
 
-bool IsCPU(const tensorflow::Device* d) {
+bool IsCPU(
+    absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> variant) {
+  if (VariantDeviceIsCustom(variant)) {
+    return false;
+  }
+  tensorflow::Device* d = absl::get<tensorflow::Device*>(variant);
   return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
 }
 
@@ -878,6 +883,15 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 #endif  // !IS_MOBILE_PLATFORM
 }
 
+TF_CAPI_EXPORT extern void TFE_ContextClearRemoteExecutors(TFE_Context* ctx,
+                                                           TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM)
+  status->status = tensorflow::Status::OK();
+#else   // !defined(IS_MOBILE_PLATFORM)
+  status->status = ctx->context->ClearRemoteExecutors();
+#endif  // !IS_MOBILE_PLATFORM
+}
+
 void TFE_ContextSetThreadLocalDevicePlacementPolicy(
     TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy) {
   ctx->context->SetThreadLocalDevicePlacementPolicy(
@@ -1009,6 +1023,9 @@ const char* tensorflow::TensorHandleInterface::DeviceName(
   if (!IsValid(status)) {
     return nullptr;
   }
+  if (VariantDeviceIsCustom(handle_->device())) {
+    return absl::get<CustomDevice*>(handle_->device())->name().c_str();
+  }
   tensorflow::Device* d = handle_->op_device();
   return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
                         : d->name().c_str();
@@ -1029,9 +1046,15 @@ const char* tensorflow::TensorHandleInterface::BackingDeviceName(
   if (!IsValid(status)) {
     return nullptr;
   }
-  tensorflow::Device* d = handle_->device();
-  return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
-                        : d->name().c_str();
+  if (VariantDeviceIsCustom(handle_->device())) {
+    return absl::get<tensorflow::CustomDevice*>(handle_->device())
+        ->name()
+        .c_str();
+  } else {
+    tensorflow::Device* d = absl::get<tensorflow::Device*>(handle_->device());
+    return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
+                          : d->name().c_str();
+  }
 }
 
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopySharingTensor(
@@ -1051,6 +1074,10 @@ AbstractTensorHandleInterface* tensorflow::TensorHandleInterface::Copy() {
   return new TensorHandleInterface(handle_);
 }
 
+void tensorflow::TensorHandleInterface::EnableImplicitMirroring() {
+  handle_->EnableImplicitMirroring();
+}
+
 TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr) {
     status->status = tensorflow::errors::InvalidArgument(
@@ -1064,6 +1091,18 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
 TF_Tensor* tensorflow::TensorHandleInterface::Resolve(Status* status) {
   if (!IsValid(status)) {
     return nullptr;
+  }
+  if (VariantDeviceIsCustom(handle_->device())) {
+    tensorflow::CustomDevice* custom_device =
+        absl::get<tensorflow::CustomDevice*>(handle_->device());
+    tensorflow::TensorHandle* copy;
+    *status = custom_device->CopyTensorFromDevice(
+        handle_, "/job:localhost/task:0/replica:0/device:CPU:0", &copy);
+    if (status->ok()) {
+      return TensorHandleInterface(copy).Resolve(status);
+    } else {
+      return nullptr;
+    }
   }
 
   // TODO(agarwal): move this implementation inside TFE_TensorHandle.
@@ -1110,6 +1149,11 @@ void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {
   tensorflow::TensorHandle* handle =
       tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
           ->Handle();
+  if (VariantDeviceIsCustom(handle->device())) {
+    const tensorflow::Tensor* t;
+    status->status = handle->Tensor(&t);
+    return t->data();
+  }
 
   if (handle->IsRemote()) {
     status->status = tensorflow::errors::InvalidArgument(
@@ -1117,8 +1161,9 @@ void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {
         "handle.");
     return nullptr;
   }
-  if (handle->device() != nullptr) {
-    status->status = handle->device()->Sync();
+  tensorflow::Device* device(absl::get<tensorflow::Device*>(handle->device()));
+  if (device != nullptr) {
+    status->status = device->Sync();
     if (!status->status.ok()) {
       return nullptr;
     }
@@ -1137,12 +1182,17 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
     const int64_t* dims, int num_dims, void* data, size_t len,
     void (*deallocator)(void* data, size_t len, void* arg),
     void* deallocator_arg, TF_Status* status) {
-  tensorflow::Device* device;
+  tensorflow::Device* device = nullptr;
   tensorflow::EagerContext* context = ctx->context;
   status->status = context->FindDeviceFromName(device_name, &device);
+  tensorflow::CustomDevice* custom_device = nullptr;
   if (!status->status.ok()) {
-    deallocator(data, len, deallocator_arg);
-    return nullptr;
+    status->status =
+        context->FindCustomDeviceFromName(device_name, &custom_device);
+    if (!status->status.ok()) {
+      deallocator(data, len, deallocator_arg);
+      return nullptr;
+    }
   }
   std::vector<tensorflow::int64> dimvec(num_dims);
   for (int i = 0; i < num_dims; ++i) {
@@ -1166,8 +1216,13 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
                        tensorflow::TensorShape(dimvec), buf);
   buf->Unref();
   tensorflow::TensorHandle* ret_handle;
-  status->status = tensorflow::TensorHandle::CreateLocalHandle(
-      t, device, context, &ret_handle);
+  if (custom_device == nullptr) {
+    status->status = tensorflow::TensorHandle::CreateLocalHandle(
+        t, device, context, &ret_handle);
+  } else {
+    status->status = tensorflow::TensorHandle::CreateLocalHandle(
+        t, custom_device, context, &ret_handle);
+  }
   if (!status->status.ok()) {
     return nullptr;
   }
@@ -1508,8 +1563,42 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   tensorflow::EagerContext* context = ctx->context;
   status->status = context->FindDeviceFromName(device_name, &device);
   if (!status->status.ok()) {
+    tensorflow::CustomDevice* dev;
+    status->status = context->FindCustomDeviceFromName(device_name, &dev);
+    if (status->status.ok()) {
+      status->status = dev->CopyTensorToDevice(
+          tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
+              h->handle.get())
+              ->Handle(),
+          &handle);
+      if (status->status.ok()) {
+        return new TFE_TensorHandle{
+            std::make_unique<tensorflow::TensorHandleInterface>(handle)};
+      }
+    }
     return nullptr;
   }
+  // Handle tensor handles currently in custom devices
+  const char* handle_device_name = h->handle->DeviceName(&status->status);
+  if (!status->status.ok()) {
+    return nullptr;
+  }
+  tensorflow::CustomDevice* dev;
+  status->status = context->FindCustomDeviceFromName(handle_device_name, &dev);
+  if (status->status.ok()) {
+    status->status = dev->CopyTensorFromDevice(
+        tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
+            h->handle.get())
+            ->Handle(),
+        device_name, &handle);
+    if (status->status.ok()) {
+      return new TFE_TensorHandle{
+          std::make_unique<tensorflow::TensorHandleInterface>(handle)};
+    }
+    return nullptr;
+  }
+
+  // Handle regular case.
   status->status = tensorflow::EagerCopyToDevice(
       tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
           ->Handle(),
@@ -1648,3 +1737,96 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
   }
 }
 }  // namespace tensorflow
+
+namespace {
+class CustomDeviceAPI : public tensorflow::CustomDevice {
+ public:
+  CustomDeviceAPI(TFE_CustomDevice device, void* info, string name)
+      : device_(device), info_(info), name_(name) {}
+
+  ~CustomDeviceAPI() override { device_.delete_device(info_); }
+
+  const string& name() override { return name_; }
+
+  tensorflow::Status CopyTensorToDevice(
+      tensorflow::TensorHandle* tensor,
+      tensorflow::TensorHandle** result) override {
+    tensor->Ref();
+    TFE_TensorHandle tensor_handle{
+        std::make_unique<tensorflow::TensorHandleInterface>(tensor)};
+    TF_Status status;
+    TFE_TensorHandle* result_handle =
+        device_.copy_tensor_to_device(&tensor_handle, &status, info_);
+    if (!status.status.ok()) return status.status;
+    *result = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
+                  result_handle->handle.get())
+                  ->Handle();
+    (*result)->Ref();
+    delete result_handle;
+    return status.status;
+  }
+
+  tensorflow::Status CopyTensorFromDevice(
+      tensorflow::TensorHandle* tensor,
+      const tensorflow::string& target_device_name,
+      tensorflow::TensorHandle** result) override {
+    TF_Status status;
+    tensor->Ref();
+    TFE_TensorHandle tensor_handle{
+        std::make_unique<tensorflow::TensorHandleInterface>(tensor)};
+    TFE_TensorHandle* result_handle = device_.copy_tensor_from_device(
+        &tensor_handle, target_device_name.c_str(), &status, info_);
+    if (!status.status.ok()) return status.status;
+    *result = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
+                  result_handle->handle.get())
+                  ->Handle();
+    (*result)->Ref();
+    delete result_handle;
+    return status.status;
+  }
+
+  tensorflow::Status Execute(tensorflow::EagerOperation* op,
+                             tensorflow::TensorHandle** retvals,
+                             int* num_retvals) override {
+    std::vector<TFE_TensorHandle*> inputs;
+    inputs.reserve(op->Inputs().size());
+    for (int i = 0; i < op->Inputs().size(); ++i) {
+      op->Inputs()[i]->Ref();
+      inputs.push_back(new TFE_TensorHandle{
+          std::make_unique<tensorflow::TensorHandleInterface>(
+              op->Inputs()[i])});
+    }
+    std::vector<TFE_TensorHandle*> outputs(*num_retvals);
+    // TODO(allenl): figure out how to get attrs from EagerOperation
+    TF_Status status;
+    device_.execute(inputs.size(), inputs.data(), op->Name().c_str(),
+                    num_retvals, outputs.data(), &status, info_);
+    if (status.status.ok()) {
+      for (int i = 0; i < *num_retvals; ++i) {
+        retvals[i] = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
+                         outputs[i]->handle.get())
+                         ->Handle();
+        retvals[i]->Ref();
+        delete outputs[i];
+      }
+    }
+
+    for (auto inp : inputs) {
+      delete inp;
+    }
+    return status.status;
+  }
+
+ private:
+  TFE_CustomDevice device_;
+  void* info_;
+  string name_;
+};
+}  // namespace
+
+void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
+                              const char* device_name, void* device_info) {
+  auto custom_device =
+      std::make_unique<CustomDeviceAPI>(device, device_info, device_name);
+  ctx->context->RegisterCustomDevice(device_name, std::move(custom_device));
+}

@@ -79,6 +79,12 @@ void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
   // requires C++11.
   std::stringstream sstm;
   sstm << "cpu w/ " << params.Get<int32_t>("num_threads") << " threads";
+
+  // Handle cases run on CPU w/ the xnnpack delegate
+  if (params.Get<bool>("use_xnnpack")) {
+    sstm << " (xnnpack)";
+  }
+
   current_run_name_ = sstm.str();
 }
 
@@ -238,6 +244,7 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
 #if defined(TFLITE_ENABLE_HEXAGON)
   single_option_run_params_->Set<bool>("use_hexagon", false);
 #endif
+  single_option_run_params_->Set<bool>("use_xnnpack", false);
 }
 
 void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
@@ -260,6 +267,13 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
       BenchmarkParams params;
       params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(count));
       all_run_params_.emplace_back(std::move(params));
+
+      BenchmarkParams xnnpack_params;
+      xnnpack_params.AddParam("use_xnnpack",
+                              BenchmarkParam::Create<bool>(true));
+      xnnpack_params.AddParam("num_threads",
+                              BenchmarkParam::Create<int32_t>(count));
+      all_run_params_.emplace_back(std::move(xnnpack_params));
     }
   }
 

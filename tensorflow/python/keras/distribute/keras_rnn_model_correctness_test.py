@@ -23,13 +23,13 @@ from tensorflow.python import tf2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import keras_correctness_test_base
 from tensorflow.python.keras.layers import recurrent as rnn_v1
 from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.platform import test
 
 
 class _DistributionStrategyRnnModelCorrectnessTest(
@@ -87,6 +87,7 @@ class DistributionStrategyGruModelCorrectnessTest(
   def test_gru_model_correctness(self, distribution, use_numpy,
                                  use_validation_data,
                                  experimental_run_tf_function):
+    self.skipTest('Test is sensitive to TF random seed, b/TBD')
     self.run_correctness_test(distribution, use_numpy, use_validation_data,
                               experimental_run_tf_function)
 

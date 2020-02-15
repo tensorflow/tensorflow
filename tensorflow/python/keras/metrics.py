@@ -148,12 +148,12 @@ class Metric(base_layer.Layer):
   def __new__(cls, *args, **kwargs):
     obj = super(Metric, cls).__new__(cls)
 
-    # TODO(psv): We are excluding wrapping `update_state` of built-in metrics
-    # with function here because of b/121302287. With this, built-in metrics
-    # will continue to work with TPUs and custom metrics will not, however
-    # users writing custom metrics need not worry about control dependencies
-    # and returning ops.
-    if cls.__module__ == Metric.__module__:
+    # If `update_state` is not in eager/tf.function and it is not from a
+    # built-in metric, wrap it in `tf.function`. This is so that users writing
+    # custom metrics in v1 need not worry about control dependencies and
+    # return ops.
+    if (base_layer_utils.is_in_eager_or_tf_function() or
+        cls.__module__ == Metric.__module__):
       update_state_fn = obj.update_state
     else:
       update_state_fn = def_function.function(obj.update_state)
@@ -178,7 +178,10 @@ class Metric(base_layer.Layer):
     def replica_local_fn(*args, **kwargs):
       """Updates the state of the metric in a replica-local context."""
       update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
-      with ops.control_dependencies([update_op]):
+      update_ops = []
+      if update_op is not None:
+        update_ops.append(update_op)
+      with ops.control_dependencies(update_ops):
         result_t = self.result()  # pylint: disable=not-callable
 
         # We are adding the metric object as metadata on the result tensor.
@@ -225,9 +228,6 @@ class Metric(base_layer.Layer):
          All update ops added to the graph by this function will be executed.
       As a result, code should generally work the same way with graph or
       eager execution.
-
-    Please use `tf.config.experimental_run_functions_eagerly(True)` to execute
-    this function eagerly for debugging or profiling.
 
     Args:
       *args:
@@ -917,7 +917,7 @@ class _ConfusionMatrixConditionCount(Metric):
       result = self.accumulator[0]
     else:
       result = self.accumulator
-    return ops.convert_to_tensor(result)
+    return ops.convert_to_tensor_v2(result)
 
   def reset_states(self):
     num_thresholds = len(to_list(self.thresholds))
@@ -1848,7 +1848,7 @@ class AUC(Metric):
           summation_method)
     super(AUC, self).__init__(name=name, dtype=dtype)
 
-    # Handle multilable arguments.
+    # Handle multilabel arguments.
     self.multi_label = multi_label
     if label_weights is not None:
       label_weights = constant_op.constant(label_weights, dtype=self.dtype)
@@ -1864,7 +1864,9 @@ class AUC(Metric):
       self.label_weights = None
 
     self._built = False
-    if not self.multi_label:
+    if self.multi_label:
+      self._num_labels = None
+    else:
       self._build(None)
 
   def _build(self, shape):
@@ -1873,8 +1875,10 @@ class AUC(Metric):
       if shape.ndims != 2:
         raise ValueError('`y_true` must have rank=2 when `multi_label` is '
                          'True. Found rank %s.' % shape.ndims)
+      self._num_labels = shape[1]
       variable_shape = tensor_shape.TensorShape(
-          [tensor_shape.Dimension(self.num_thresholds), shape[1]])
+          [tensor_shape.Dimension(self.num_thresholds), self._num_labels])
+
     else:
       variable_shape = tensor_shape.TensorShape(
           [tensor_shape.Dimension(self.num_thresholds)])
@@ -1922,7 +1926,7 @@ class AUC(Metric):
     """
     deps = []
     if not self._built:
-      self._build(y_true.shape)
+      self._build(y_pred.shape)
 
     if self.multi_label or (self.label_weights is not None):
       # y_true should have shape (number of examples, number of labels).
@@ -1937,7 +1941,7 @@ class AUC(Metric):
                        (self.false_positives, ('T', 'L')),
                        (self.false_negatives, ('T', 'L'))])
       if self.label_weights is not None:
-        # label_weights should be of lenght equal to the number of labels.
+        # label_weights should be of length equal to the number of labels.
         shapes.append((self.label_weights, ('L',)))
       deps = [
           check_ops.assert_shapes(
@@ -2101,8 +2105,13 @@ class AUC(Metric):
           name=self.name)
 
   def reset_states(self):
-    K.batch_set_value(
-        [(v, np.zeros((self.num_thresholds,))) for v in self.variables])
+    if self.multi_label:
+      K.batch_set_value([(v, np.zeros((self.num_thresholds, self._num_labels)))
+                         for v in self.variables])
+    else:
+      K.batch_set_value([
+          (v, np.zeros((self.num_thresholds,))) for v in self.variables
+      ])
 
   def get_config(self):
     if is_tensor_or_variable(self.label_weights):
@@ -3115,8 +3124,8 @@ def sparse_categorical_accuracy(y_true, y_pred):
   Returns:
     Sparse categorical accuracy values.
   """
-  y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
-  y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
+  y_pred_rank = ops.convert_to_tensor_v2(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor_v2(y_true).shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
       K.int_shape(y_true)) == len(K.int_shape(y_pred))):
@@ -3161,8 +3170,8 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   Returns:
     Sparse top K categorical accuracy value.
   """
-  y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
-  y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
+  y_pred_rank = ops.convert_to_tensor_v2(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor_v2(y_true).shape.ndims
   # Flatten y_pred to (batch_size, num_samples) and y_true to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None):
     if y_pred_rank > 2:

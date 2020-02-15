@@ -1,6 +1,11 @@
 # Description:
 #   MLIR-GPU-specific components in XLA service implementation.
 
+load(
+    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+
 package(
     default_visibility = [":friends"],
     licenses = ["notice"],  # Apache 2.0
@@ -53,13 +58,21 @@ cc_library(
 
 cc_library(
     name = "mlir_compiler",
-    srcs = ["mlir_compiler.cc"],
-    hdrs = ["mlir_compiler.h"],
-    deps = [
+    srcs = if_cuda_is_configured(["mlir_compiler.cc"]),
+    hdrs = if_cuda_is_configured(["mlir_compiler.h"]),
+    deps = if_cuda_is_configured([
         ":emission_context",
         ":failover_compiler",
         ":kernel_lowering",
         ":lhlo_dialect_emitter",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TargetNVVMIR",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:compiler",
@@ -80,14 +93,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/gpu:asm_compiler",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TargetNVVMIR",
-    ],
+    ]),
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -151,25 +157,22 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
-        "@llvm-project//mlir:AffineDialectRegistration",
+        "@llvm-project//mlir:AffineToStandardTransforms",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:GPUDialectRegistration",
         "@llvm-project//mlir:GPUToNVVMTransforms",
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LLVMTransforms",
-        "@llvm-project//mlir:LinalgDialectRegistration",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgToLLVM",
         "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:LoopDialectRegistration",
         "@llvm-project//mlir:LoopOps",
         "@llvm-project//mlir:LoopsToGPUPass",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardDialectRegistration",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
@@ -178,9 +181,10 @@ cc_library(
 cc_library(
     name = "mlir_irgen_test_base",
     testonly = True,
-    srcs = ["mlir_irgen_test_base.cc"],
-    hdrs = ["mlir_irgen_test_base.h"],
+    srcs = if_cuda_is_configured(["mlir_irgen_test_base.cc"]),
+    hdrs = if_cuda_is_configured(["mlir_irgen_test_base.h"]),
     deps = [
+        ":emission_context",
         ":failover_compiler",
         ":inject_errors_pass",
         ":mlir_compiler",

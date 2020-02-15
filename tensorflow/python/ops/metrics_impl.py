@@ -284,7 +284,7 @@ def _aggregate_across_replicas(metrics_collections, metric_value_fn, *args):
     if hasattr(distribution.extended, '_outer_control_flow_context'):
       # If there was an outer context captured before this method was called,
       # then we enter that context to create the metric value op. If the
-      # caputred context is `None`, ops.control_dependencies(None) gives the
+      # captured context is `None`, ops.control_dependencies(None) gives the
       # desired behavior. Else we use `Enter` and `Exit` to enter and exit the
       # captured context.
       # This special handling is needed because sometimes the metric is created
@@ -629,7 +629,7 @@ def _aggregate_variable(v, collections):
 @tf_export(v1=['metrics.auc'])
 @deprecated(None,
             'The value of AUC returned by this may race with the update so '
-            'this is deprected. Please use tf.keras.metrics.AUC instead.')
+            'this is deprecated. Please use tf.keras.metrics.AUC instead.')
 def auc(labels,
         predictions,
         weights=None,

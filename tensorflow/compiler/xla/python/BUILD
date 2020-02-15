@@ -176,19 +176,15 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:allocator",
-        "//tensorflow/core:bfc_allocator",
-        "//tensorflow/core:gpu_mem_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/stream_executor:tf_allocator_adapter",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -280,6 +276,33 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "cpu_device",
+    srcs = ["cpu_device.cc"],
+    hdrs = ["cpu_device.h"],
+    deps = [
+        ":local_client",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/service:platform_util",
+    ],
+)
+
+cc_library(
+    name = "nvidia_gpu_device",
+    srcs = ["nvidia_gpu_device.cc"],
+    hdrs = ["nvidia_gpu_device.h"],
+    deps = [
+        ":local_client",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/core:bfc_allocator",
+        "//tensorflow/core:gpu_mem_allocator",
+        "//tensorflow/stream_executor:tf_allocator_adapter",
+    ],
+)
+
 config_setting(
     name = "enable_gpu",
     values = {"define": "xla_python_enable_gpu=true"},
@@ -298,8 +321,10 @@ pybind_extension(
     module_name = "xla_extension",
     deps = [
         ":bfloat16",
+        ":cpu_device",
         ":dlpack",
         ":local_client",
+        ":nvidia_gpu_device",
         ":shared_device_buffer",
         ":python_ref_manager",
         ":types",
@@ -346,6 +371,9 @@ pybind_extension(
         # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
         # not require Tensorflow.
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
+        "//tensorflow/core/profiler/lib:profiler_backends",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/rpc:profiler_server",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:platform",
     ] + select({

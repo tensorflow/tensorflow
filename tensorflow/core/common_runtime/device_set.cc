@@ -32,6 +32,7 @@ DeviceSet::DeviceSet() {}
 DeviceSet::~DeviceSet() {}
 
 void DeviceSet::AddDevice(Device* device) {
+  mutex_lock l(devices_mu_);
   devices_.push_back(device);
   prioritized_devices_.clear();
   prioritized_device_types_.clear();
@@ -104,21 +105,6 @@ void DeviceSet::SortPrioritizedDeviceTypeVector(
   std::sort(vector->begin(), vector->end(), device_sort);
 }
 
-const PrioritizedDeviceTypeVector& DeviceSet::prioritized_device_types() const {
-  if (prioritized_device_types_.size() == devices_.size()) {
-    return prioritized_device_types_;
-  }
-
-  std::set<DeviceType> seen;
-  for (const std::pair<Device*, int32>& p : prioritized_devices()) {
-    DeviceType t(p.first->device_type());
-    if (seen.insert(t).second) {
-      prioritized_device_types_.emplace_back(t, p.second);
-    }
-  }
-  return prioritized_device_types_;
-}
-
 void DeviceSet::SortPrioritizedDeviceVector(PrioritizedDeviceVector* vector) {
   auto device_sort = [](const std::pair<Device*, int32>& a,
                         const std::pair<Device*, int32>& b) {
@@ -140,19 +126,46 @@ void DeviceSet::SortPrioritizedDeviceVector(PrioritizedDeviceVector* vector) {
   std::sort(vector->begin(), vector->end(), device_sort);
 }
 
+namespace {
+
+void UpdatePrioritizedVectors(
+    const std::vector<Device*>& devices,
+    PrioritizedDeviceVector* prioritized_devices,
+    PrioritizedDeviceTypeVector* prioritized_device_types) {
+  if (prioritized_devices->size() != devices.size()) {
+    for (Device* d : devices) {
+      prioritized_devices->emplace_back(
+          d, DeviceSet::DeviceTypeOrder(DeviceType(d->device_type())));
+    }
+    DeviceSet::SortPrioritizedDeviceVector(prioritized_devices);
+  }
+
+  if (prioritized_device_types != nullptr &&
+      prioritized_device_types->size() != devices.size()) {
+    std::set<DeviceType> seen;
+    for (const std::pair<Device*, int32>& p : *prioritized_devices) {
+      DeviceType t(p.first->device_type());
+      if (seen.insert(t).second) {
+        prioritized_device_types->emplace_back(t, p.second);
+      }
+    }
+  }
+}
+
+}  // namespace
+
 const PrioritizedDeviceVector& DeviceSet::prioritized_devices() const {
-  if (prioritized_devices_.size() == devices_.size()) {
-    return prioritized_devices_;
-  }
-
-  for (Device* d : devices_) {
-    prioritized_devices_.emplace_back(
-        d, DeviceSet::DeviceTypeOrder(DeviceType(d->device_type())));
-  }
-
-  DeviceSet::SortPrioritizedDeviceVector(&prioritized_devices_);
-
+  mutex_lock l(devices_mu_);
+  UpdatePrioritizedVectors(devices_, &prioritized_devices_,
+                           /* prioritized_device_types */ nullptr);
   return prioritized_devices_;
+}
+
+const PrioritizedDeviceTypeVector& DeviceSet::prioritized_device_types() const {
+  mutex_lock l(devices_mu_);
+  UpdatePrioritizedVectors(devices_, &prioritized_devices_,
+                           &prioritized_device_types_);
+  return prioritized_device_types_;
 }
 
 }  // namespace tensorflow

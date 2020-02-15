@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
+#include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
@@ -371,6 +372,23 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
   return output;
 }
 
+// Returns an OpSharding proto from the "sharding" attribute of the op. If the
+// op doesn't have a sharding attribute or the sharding attribute is invalid,
+// returns absl::nullopt.
+static absl::optional<xla::OpSharding> CreateOpShardingFromAttribute(
+    mlir::Operation* op) {
+  auto sharding = op->getAttrOfType<mlir::StringAttr>("xla_hlo.sharding");
+  if (!sharding) {
+    return absl::nullopt;
+  }
+  ::xla::OpSharding sharding_proto;
+  if (!::tensorflow::protobuf::TextFormat::ParseFromString(
+          sharding.getValue().str(), &sharding_proto)) {
+    return absl::nullopt;
+  }
+  return sharding_proto;
+}
+
 namespace mlir {
 namespace {
 class ConvertToHloModule {
@@ -515,6 +533,11 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
+  // This op has no expression in the legacy export format.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
   xla::XlaComputation true_branch;
   xla::XlaComputation false_branch;
@@ -553,6 +576,21 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   value_map[op] = xla::CustomCall(
       ctx.builder, std::string(op.call_target_name()), GetTuple(op.args(), ctx),
       xla::TypeToShape(op.getType()), std::string(op.backend_config()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(DequantizeOp op, OpLoweringContext ctx) {
+  xla::QuantizedRange range(ConvertAPFloat(op.min_range()),
+                            ConvertAPFloat(op.max_range()));
+  auto& value_map = *ctx.values;
+  auto casted = xla::ConvertElementType(value_map[op.input()], xla::U32);
+  if (op.is_16bits()) {
+    value_map[op] = xla::Dequantize<uint16>(
+        casted, range, ConvertStringRef(op.mode()), op.transpose_output());
+  } else {
+    value_map[op] = xla::Dequantize<uint8>(
+        casted, range, ConvertStringRef(op.mode()), op.transpose_output());
+  }
   return success();
 }
 

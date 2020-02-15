@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -162,11 +163,9 @@ Status OpKernel::OutputRange(StringPiece output_name, int* start,
   }
 }
 
-string OpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
-  string trace_string = strings::StrCat(name_view(), ":", type_string_view());
-  if (!verbose) return trace_string;
+string OpKernel::GetTraceArgument(OpKernelContext* ctx) {
   int num_inputs = ctx->num_inputs();
-  if (num_inputs == 0) return trace_string;
+  if (num_inputs == 0) return "";
   std::vector<string> tensor_shapes;
   tensor_shapes.reserve(num_inputs);
   for (int i = 0; i < num_inputs; i++) {
@@ -183,8 +182,15 @@ string OpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
     tensor_shapes.emplace_back(strings::StrCat(
         DataTypeString(input_dtype), ctx->input(i).shape().DebugString()));
   }
-  return strings::StrCat(trace_string, "#shape=(",
-                         absl::StrJoin(tensor_shapes, ";"), ")#");
+  return strings::StrCat("shape=(", absl::StrJoin(tensor_shapes, ";"), ")");
+}
+
+string OpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
+  string trace_string = strings::StrCat(name_view(), ":", type_string_view());
+  if (!verbose) return trace_string;
+  string trace_args = GetTraceArgument(ctx);
+  if (trace_args.empty()) return trace_string;
+  return strings::StrCat(trace_string, "#", trace_args, "#");
 }
 
 void AsyncOpKernel::Compute(OpKernelContext* context) {
@@ -1389,6 +1395,7 @@ Status FindKernelDef(
       device_type, node_name, has_experimental_debug_info,
       experimental_debug_info, node_op, node_attrs, &reg, &was_attr_mismatch));
   if (reg == nullptr) {
+    std::string device_str = DeviceTypeString(device_type);
     Status s = errors::NotFound(
         "No registered '", node_op, "' OpKernel for ",
         DeviceTypeString(device_type), " devices compatible with node ",
@@ -1400,8 +1407,14 @@ Status FindKernelDef(
           "Requested Attributes: ",
           SummarizeAttrsHelper(node_attrs, node_device));
     }
-    errors::AppendToMessage(&s,
-                            ".  Registered:", KernelsRegisteredForOp(node_op));
+
+    // Do not print kernel registrations for other devices when using _JIT
+    // devices for compilation.
+    if (!absl::StrContains(device_str, "JIT")) {
+      errors::AppendToMessage(
+          &s, ".  Registered:", KernelsRegisteredForOp(node_op));
+    }
+
     return s;
   }
   if (def != nullptr) *def = &reg->def;
