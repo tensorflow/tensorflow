@@ -130,7 +130,7 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
 #endif
     }
     exec_context.push_back(
-        std::move(TrtUniquePtrType<nvinfer1::IExecutionContext>(ctx)));
+        TrtUniquePtrType<nvinfer1::IExecutionContext>(ctx));
     i++;
   } while (i < profiles_.size());
 
