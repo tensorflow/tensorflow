@@ -110,7 +110,7 @@ Status HostTracer::CollectData(RunMetadata* run_metadata) {
 
   constexpr char kUserMetadataMarker = '#';
   for (TraceMeRecorder::ThreadEvents& thread : events_) {
-    int32 thread_id = thread.thread.tid;
+    uint32_t thread_id = thread.thread.tid;
     thread_names->insert({thread_id, thread.thread.name});
     for (TraceMeRecorder::Event& event : thread.events) {
       if (event.start_time && event.end_time) {
