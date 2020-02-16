@@ -3080,7 +3080,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   // For fusion with multiple inputs, use the smallest input dtype to
   // select the reduction_tiling.
   int smallest_input_dtype_bits = get_dtype_bits(first_reduce->operand(0));
-  for (auto input: unnested_hlo->operands()) {
+  for (xla::HloInstruction* input: unnested_hlo->operands()) {
     smallest_input_dtype_bits = std::min(get_dtype_bits(input),
                                          smallest_input_dtype_bits);
   }
