@@ -581,9 +581,14 @@ class RNN(Layer):
       # initial_state was passed in call, check compatibility
       self._validate_state_spec(state_size, self.state_spec)
     else:
+      def get_state_spec(dim):
+        if isinstance(dim, ops.Tensor):
+          return dim.shape
+        else:
+          return tensor_shape.as_shape(dim)
       self.state_spec = [
-          InputSpec(shape=[None] + tensor_shape.as_shape(dim).as_list())
-          for dim in state_size
+        InputSpec(shape=[None] + get_state_spec(dim).as_list())
+        for dim in state_size
       ]
     if self.stateful:
       self.reset_states()
