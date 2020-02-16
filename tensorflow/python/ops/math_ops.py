@@ -396,21 +396,22 @@ _mul.__doc__ = (
 @tf_export("math.subtract", "subtract")
 @dispatch.add_dispatch_support
 def subtract(x, y, name=None):
-  """Returns 'x' - 'y' element wise
+  """Returns 'x' - 'y' element wise.
   
   For example:
+  
   >>> x = tf.constant([32])
   >>> y = tf.constant([34])
   >>> tf.math.subtract(x, y)
   <tf.Tensor: shape=(1,), dtype=float32, numpy=array([-2.], dtype=float32)>
   
   Args:
-  'x': A 'Tensor'. Must be one of the following types:
+    'x': A 'Tensor'. Must be one of the following types:
     'bfloat16', 'half', 'float32', 'float64',
     'uint8', 'int8', 'uint16', 'int16',
     'int32', 'int64', 'complex64', 'complex128'.
-  'y': A 'Tensor'. Must have the same type as 'x'
-  'name': A name for the operation (optional)
+    'y': A 'Tensor'. Must have the same type as 'x'
+    'name': A name for the operation (optional)
   
   Returns:
   A 'Tensor'. Has same type as 'x'.
@@ -466,6 +467,7 @@ def scalar_mul(scalar, x, name=None):
   multiply with arbitrary tensors.
   
   For example:
+
   >>> tf.math.scalar_mul(32, tf.constant([34,35]))
   <tf.Tensor: shape=(2,), dtype=int32, numpy=array([1088, 1120], dtype=int32)>
 
@@ -508,11 +510,15 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
   corresponding elements in `x` and `y`. For example:
 
-  ```python
-  x = tf.constant([[2, 2], [3, 3]])
-  y = tf.constant([[8, 16], [2, 3]])
-  tf.pow(x, y)  # [[256, 65536], [9, 27]]
-  ```
+  For example:
+  
+  >>> x = tf.constant([[2, 2], [3, 3]])
+  >>> y = tf.constant([[8, 16], [2, 3]])
+  >>> tf.pow(x, y)
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  array([[  256, 65536],
+         [    9,    27]], dtype=int32)>
+  
 
   Args:
     x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, `int64`,
@@ -542,13 +548,14 @@ def complex(real, imag, name=None):
   The input tensors `real` and `imag` must have the same shape.
 
   For example:
-
-  ```python
-  real = tf.constant([2.25, 3.25])
-  imag = tf.constant([4.75, 5.75])
-  tf.complex(real, imag)  # [[2.25 + 4.75j], [3.25 + 5.75j]]
-  ```
-
+  
+  >>> real = tf.constant([2.25, 3.25])
+  >>> imag = tf.constant([4.75, 5.75])
+  >>> tf.complex(real, imag)
+  <tf.Tensor: shape=(2,), dtype=complex64, 
+  numpy=array([2.25+4.75j, 3.25+5.75j], 
+  dtype=complex64)>
+  
   Args:
     real: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     imag: A `Tensor`. Must have the same type as `real`.
@@ -623,11 +630,10 @@ def real(input, name=None):
   is the real part of each element in `input` considered as a complex number.
 
   For example:
-
-  ```python
-  x = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
-  tf.math.real(x)  # [-2.25, 3.25]
-  ```
+  
+  >>> x = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
+  >>> tf.math.real(x)
+  <tf.Tensor: shape=(2,), dtype=float64, numpy=array([-2.25,  3.25])>
 
   If `input` is already real, it is returned unchanged.
 
@@ -658,11 +664,10 @@ def imag(input, name=None):
   number. If `input` is real, a tensor of all zeros is returned.
 
   For example:
-
-  ```python
-  x = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
-  tf.math.imag(x)  # [4.75, 5.75]
-  ```
+  
+  >>> x = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
+  >>> tf.math.imag(x)
+  <tf.Tensor: shape=(2,), dtype=float64, numpy=array([4.75, 5.75])>
 
   Args:
     input: A `Tensor`. Must be one of the following types: `float`, `double`,
@@ -698,11 +703,11 @@ def angle(input, name=None):
 
   For example:
 
-  ```
-  input = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j], dtype=tf.complex64)
-  tf.math.angle(input).numpy()
-  # ==> array([2.0131705, 1.056345 ], dtype=float32)
-  ```
+  >>> input = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j], dtype=tf.complex64)
+  >>> tf.math.angle(input)
+  <tf.Tensor: shape=(2,), dtype=float32, 
+  numpy=array([2.0131705, 1.056345 ], 
+  dtype=float32)>
 
   Args:
     input: A `Tensor`. Must be one of the following types: `float`, `double`,
@@ -732,10 +737,12 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
   according to the current system rounding mode use tf::cint.
   For example:
 
-  ```python
-  x = tf.constant([0.9, 2.5, 2.3, 1.5, -4.5])
-  tf.round(x)  # [ 1.0, 2.0, 2.0, 2.0, -4.0 ]
-  ```
+  >>> x = tf.constant([0.9, 2.5, 2.3, 1.5, -4.5])
+  >>> tf.round(x)
+  <tf.Tensor: shape=(5,), dtype=float32, 
+  numpy=array([ 1.,  2.,  2.,  2., -4.], 
+  dtype=float32)>
+ 
 
   Args:
     x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, or `int64`.
@@ -1160,6 +1167,7 @@ def truediv(x, y, name=None):
   and `int64` (matching the behavior of Numpy).
   
   For example:
+  
   >>> num = tf.constant([16, 8])
   >>> den = tf.constant([32, 64])
   >>> tf.math.truediv(num, den)
@@ -1210,8 +1218,9 @@ def div(x, y, name=None):
 @dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
   """Computes a safe divide which returns 0 if the y is zero.
-  
+
   For example:
+
   >>> x = 32.0
   >>> y = 0.0
   >>> tf.math.divide_no_nan(x, y)
@@ -1238,6 +1247,7 @@ def multiply_no_nan(x, y, name=None):
   """Computes the product of x and y and returns 0 if the y is zero, even if x is NaN or infinite.
   
   For example:
+
   >>> x = tf.constant(float('nan'))
   >>> y = 0.0
   >>> tf.math.multiply_no_nan(x, y)
@@ -1286,6 +1296,7 @@ def floordiv(x, y, name=None):
   as well.
   
   For example:
+  
   >>> x = 32.0
   >>> y = 31.0
   >>> tf.math.floordiv(x, y)
@@ -1466,7 +1477,7 @@ def equal(x, y, name=None):
   boolean values.
 
   For example:
-  
+
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant(2)
   >>> tf.math.equal(x, y)
@@ -1502,6 +1513,7 @@ def not_equal(x, y, name=None):
   of boolean values.
 
   For example:
+
   >>> x = tf.constant([2, 4])
   >>> y = tf.constant(2)
   >>> tf.math.not_equal(x, y)
@@ -1568,7 +1580,7 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
   `range(n) = range(0, n)`.
 
   For example:
-  
+
   >>> start = 3
   >>> limit = 18
   >>> delta = 3
@@ -1704,22 +1716,6 @@ def reduce_sum_v1(input_tensor,
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
-
-  For example:
-  
-  >>> x = tf.constant([[1, 1, 1], [1, 1, 1]])
-  >>> tf.reduce_sum(x)
-  <tf.Tensor: shape=(), dtype=int32, numpy=6>
-  >>> tf.reduce_sum(x, 0)
-  <tf.Tensor: shape=(3,), dtype=int32, numpy=array([2, 2, 2], dtype=int32)>
-  >>> tf.reduce_sum(x, 1)
-  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([3, 3], dtype=int32)>
-  >>> tf.reduce_sum(x, 1, keepdims=True)
-  <tf.Tensor: shape=(2, 1), dtype=int32, numpy=
-  array([[3],
-       [3]], dtype=int32)>
-  >>> tf.reduce_sum(x, [0, 1])
-  <tf.Tensor: shape=(), dtype=int32, numpy=6>
   
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -1733,6 +1729,22 @@ def reduce_sum_v1(input_tensor,
 
   Returns:
     The reduced tensor, of the same dtype as the input_tensor.
+
+  For example:
+
+  >>> x = tf.constant([[1, 1, 1], [1, 1, 1]])
+  >>> tf.reduce_sum(x)
+  <tf.Tensor: shape=(), dtype=int32, numpy=6>
+  >>> tf.reduce_sum(x, 0)
+  <tf.Tensor: shape=(3,), dtype=int32, numpy=array([2, 2, 2], dtype=int32)>
+  >>> tf.reduce_sum(x, 1)
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([3, 3], dtype=int32)>
+  >>> tf.reduce_sum(x, 1, keepdims=True)
+  <tf.Tensor: shape=(2, 1), dtype=int32, numpy=
+  array([[3],
+       [3]], dtype=int32)>
+  >>> tf.reduce_sum(x, [0, 1])
+  <tf.Tensor: shape=(), dtype=int32, numpy=6>
 
   @compatibility(numpy)
   Equivalent to np.sum apart the fact that numpy upcast uint8 and int32 to
@@ -1761,12 +1773,22 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
+
   >>> x = tf.constant([[1, 1, 1], [1, 1, 1]])
-  >>> tf.reduce_sum(x)  # 6
-  >>> tf.reduce_sum(x, 0)  # [2, 2, 2]
-  >>> tf.reduce_sum(x, 1)  # [3, 3]
-  >>> tf.reduce_sum(x, 1, keepdims=True)  # [[3], [3]]
-  >>> tf.reduce_sum(x, [0, 1])  # 6
+  >>> tf.reduce_sum(x)
+  <tf.Tensor: shape=(), dtype=int32, numpy=6>
+  >>> tf.reduce_sum(x, 0)
+  <tf.Tensor: shape=(3,), 
+  dtype=int32, numpy=array([2, 2, 2], dtype=int32)>
+  >>> tf.reduce_sum(x, 1)
+  <tf.Tensor: shape=(2,), dtype=int32, 
+  numpy=array([3, 3], dtype=int32)>
+  >>> tf.reduce_sum(x, 1, keepdims=True)
+  <tf.Tensor: shape=(2, 1), dtype=int32, numpy=
+  array([[3],
+         [3]], dtype=int32)>
+  >>> tf.reduce_sum(x, [0, 1])
+  <tf.Tensor: shape=(), dtype=int32, numpy=6>
   
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
@@ -1813,6 +1835,7 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
+
   >>> x = tf.constant([[1, 2, 3], [1, 1, 1]])
   >>> tf.math.reduce_euclidean_norm(x)
   <tf.Tensor: shape=(), dtype=int32, numpy=4>
@@ -1875,12 +1898,20 @@ def count_nonzero(input_tensor=None,
   the nonzero check.
 
   For example:
+
   >>> x = tf.constant([[0, 1, 0], [1, 1, 0]])
-  >>> tf.math.count_nonzero(x)  # 3
-  >>> tf.math.count_nonzero(x, 0)  # [1, 2, 0]
-  >>> tf.math.count_nonzero(x, 1)  # [1, 2]
-  >>> tf.math.count_nonzero(x, 1, keepdims=True)  # [[1], [2]]
-  >>> tf.math.count_nonzero(x, [0, 1])  # 3
+  >>> tf.math.count_nonzero(x)
+  <tf.Tensor: shape=(), dtype=int64, numpy=3>
+  >>> tf.math.count_nonzero(x, 0)
+  <tf.Tensor: shape=(3,), dtype=int64, numpy=array([1, 2, 0])>
+  >>> tf.math.count_nonzero(x, 1)
+  <tf.Tensor: shape=(2,), dtype=int64, numpy=array([1, 2])>
+  >>> tf.math.count_nonzero(x, 1, keepdims=True)
+  <tf.Tensor: shape=(2, 1), dtype=int64, numpy=
+  array([[1],
+         [2]])>
+  >>> tf.math.count_nonzero(x, [0, 1])
+  <tf.Tensor: shape=(), dtype=int64, numpy=3>
 
   **NOTE** Strings are compared against zero-length empty string `""`. Any
   string with a size greater than zero is already considered as nonzero.
@@ -1941,12 +1972,20 @@ def count_nonzero_v2(
   the nonzero check.
 
   For example:
+
   >>> x = tf.constant([[0, 1, 0], [1, 1, 0]])
-  >>> tf.math.count_nonzero(x)  # 3
-  >>> tf.math.count_nonzero(x, 0)  # [1, 2, 0]
-  >>> tf.math.count_nonzero(x, 1)  # [1, 2]
-  >>> tf.math.count_nonzero(x, 1, keepdims=True)  # [[1], [2]]
-  >>> tf.math.count_nonzero(x, [0, 1])  # 3
+  >>> tf.math.count_nonzero(x)
+  <tf.Tensor: shape=(), dtype=int64, numpy=3>
+  >>> tf.math.count_nonzero(x, 0)
+  <tf.Tensor: shape=(3,), dtype=int64, numpy=array([1, 2, 0])>
+  >>> tf.math.count_nonzero(x, 1)
+  <tf.Tensor: shape=(2,), dtype=int64, numpy=array([1, 2])>
+  >>> tf.math.count_nonzero(x, 1, keepdims=True)
+  <tf.Tensor: shape=(2, 1), dtype=int64, numpy=
+  array([[1],
+         [2]])>
+  >>> tf.math.count_nonzero(x, [0, 1])
+  <tf.Tensor: shape=(), dtype=int64, numpy=3>
 
   **NOTE** Strings are compared against zero-length empty string `""`. Any
   string with a size greater than zero is already considered as nonzero.
@@ -2002,7 +2041,7 @@ def reduce_mean_v1(input_tensor,
   element is returned.
 
   For example:
-  
+
   >>> x = tf.constant([[1., 1.], [2., 2.]])
   >>> tf.reduce_mean(x)
   <tf.Tensor: shape=(), dtype=float32, numpy=1.5>
@@ -2064,6 +2103,7 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
   element is returned.
 
   For example:
+
   >>> x = tf.constant([[1., 1.], [2., 2.]])
   >>> tf.reduce_mean(x)
   <tf.Tensor: shape=(), dtype=float32, numpy=1.5>
@@ -2121,6 +2161,7 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
+
   >>> x = tf.constant([[1., 2.], [3., 4.]])
   >>> tf.reduce_variance(x)  
   <tf.Tensor: shape=(), dtype=float32, numpy=1.25>
@@ -2169,6 +2210,7 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
+
   >>> x = tf.constant([[1., 2.], [3., 4.]])
   >>> tf.math.reduce_std(x)
   <tf.Tensor: shape=(), dtype=float32, numpy=1.118034>
@@ -2216,6 +2258,7 @@ def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
   
   For example:
+
   >>> ten = tf.constant([32, 36])
   >>> tf.math.reduce_prod(ten, axis=None, keepdims=True)
   <tf.Tensor: shape=(1,), dtype=int32, numpy=array([1152], dtype=int32)>
@@ -2347,7 +2390,7 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
   
   For example:
-  
+
   >>> tf.math.reduce_min(tf.constant([32, 36]), axis=None, keepdims=True)
   <tf.Tensor: shape=(1,), dtype=int32, numpy=array([32], dtype=int32)>
   
@@ -2508,6 +2551,7 @@ def reduce_all_v1(input_tensor,
   tensor with a single element is returned.
 
   For example:
+
   >>> x = tf.constant([[True,  True], [False, False]])
   >>> tf.reduce_all(x)
   <tf.Tensor: shape=(), dtype=bool, numpy=False>
@@ -2555,7 +2599,7 @@ def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
-  
+
   >>> x = tf.constant([[True,  True], [False, False]])
   >>> tf.reduce_all(x)
   <tf.Tensor: shape=(), dtype=bool, numpy=False>
@@ -2608,7 +2652,7 @@ def reduce_any_v1(input_tensor,
   tensor with a single element is returned.
 
   For example:
-  
+
   >>> x = tf.constant([[True,  True], [False, False]])
   >>> tf.reduce_any(x)
   <tf.Tensor: shape=(), dtype=bool, numpy=True>
@@ -2656,7 +2700,7 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
   tensor with a single element is returned.
 
   For example:
-  
+
   >>> x = tf.constant([[True,  True], [False, False]])
   >>> tf.reduce_any(x)
   <tf.Tensor: shape=(), dtype=bool, numpy=True>
@@ -2713,7 +2757,7 @@ def reduce_logsumexp_v1(input_tensor,
   taking the log of small inputs.
 
   For example:
-  
+
   >>> x = tf.constant([[0., 0., 0.], [0., 0., 0.]])
   >>> tf.reduce_logsumexp(x)
   <tf.Tensor: shape=(), dtype=float32, numpy=1.79...>
@@ -2766,7 +2810,7 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
   taking the log of small inputs.
 
   For example:
-  
+
   >>> x = tf.constant([[0., 0., 0.], [0., 0., 0.]])
   >>> tf.reduce_logsumexp(x)
   <tf.Tensor: shape=(), dtype=float32, numpy=1.79...>
@@ -2828,23 +2872,22 @@ def trace(x, name=None):
 
   For example:
 
-  ```python
-  x = tf.constant([[1, 2], [3, 4]])
-  tf.linalg.trace(x)  # 5
-
-  x = tf.constant([[1, 2, 3],
+  >>> x = tf.constant([[1, 2], [3, 4]])
+  >>> tf.linalg.trace(x)
+  <tf.Tensor: shape=(), dtype=int32, numpy=5>
+  >>> x = tf.constant([[1, 2, 3],
                    [4, 5, 6],
                    [7, 8, 9]])
-  tf.linalg.trace(x)  # 15
-
-  x = tf.constant([[[1, 2, 3],
+  >>> tf.linalg.trace(x)
+  <tf.Tensor: shape=(), dtype=int32, numpy=15>
+  >>> x = tf.constant([[[1, 2, 3],
                     [4, 5, 6],
                     [7, 8, 9]],
                    [[-1, -2, -3],
                     [-4, -5, -6],
                     [-7, -8, -9]]])
-  tf.linalg.trace(x)  # [15, -15]
-  ```
+  >>> tf.linalg.trace(x)
+  <tf.Tensor: shape=(2,), dtype=int32, numpy=array([ 15, -15], dtype=int32)>
 
   Args:
     x: tensor.
@@ -3319,15 +3362,18 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
 
   For example:
 
-  ```python
-  a = tf.constant([[1, 2], [3, 4]])
-  b = tf.constant([[5, 0], [0, 6]])
-  tf.math.accumulate_n([a, b, a])  # [[7, 4], [6, 14]]
-
-  # Explicitly pass shape and type
-  tf.math.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
-                                                                 # [[7,  4],
-                                                                 #  [6, 14]]
+  >>> a = tf.constant([[1, 2], [3, 4]])
+  >>> b = tf.constant([[5, 0], [0, 6]])
+  >>> tf.math.accumulate_n([a, b, a])
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  array([[ 7,  4],
+         [ 6, 14]], dtype=int32)>
+  >>> tf.math.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  array([[ 7,  4],
+         [ 6, 14]], dtype=int32)>
+  
+                                                                 
   ```
 
   Args:
@@ -3449,6 +3495,7 @@ def log_sigmoid(x, name=None):
   we use `y = -tf.nn.softplus(-x)`.
   
   For example:
+
   >>> tf.math.log_sigmoid(tf.constant(1.0, tf.float32))
   <tf.Tensor: shape=(), dtype=float32, numpy=-0.31...>
 
@@ -3763,9 +3810,11 @@ def conj(x, name=None):
   The complex conjugate returned by this operation is of the form \\(a - bj\\).
 
   For example:
-
-      # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-      tf.math.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+  
+  >>> input = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
+  >>> tf.math.conj(input)
+  <tf.Tensor: shape=(2,), dtype=complex128, 
+  numpy=array([-2.25-4.75j,  3.25-5.75j])>
 
   If `x` is real, it is returned unchanged.
 
@@ -3878,7 +3927,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   be added to the sum of the segment.
   
   For example:
-  
+
   >>> x = tf.constant([1, 2, 3, 4])
   >>> y = tf.constant(2, dtype=tf.int32)
   >>> tf.math.unsorted_segment_mean(x, y, num_segments=3)
@@ -3937,6 +3986,7 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   be added to the sum of the segment.
   
   For example:
+
   >>> x = tf.constant([1.0, 2.0, 3.0, 4.0])
   >>> y = tf.constant(1, dtype=tf.int32)
   >>> tf.math.unsorted_segment_sqrt_n(x, y, num_segments=2)
@@ -4474,8 +4524,6 @@ def polyval(coeffs, x, name=None):
   >>> w = tf.Variable(tf.constant(1, dtype=tf.int32))
   >>> tf.math.polyval(coefficients, w)
   <tf.Tensor: shape=(), dtype=int32, numpy=99>
-
-            x * coeffs[0]))
  
   Usage Example:
 
@@ -4533,10 +4581,11 @@ def reciprocal_no_nan(x, name=None):
   also set to zero.
 
   For example:
-  ```python
+
   x = tf.constant([2.0, 0.5, 0, 1], dtype=tf.float32)
-  tf.math.reciprocal_no_nan(x)  # [ 0.5, 2, 0.0, 1.0 ]
-  ```
+  tf.math.reciprocal_no_nan(x)
+  <tf.Tensor: shape=(4,), dtype=float32, 
+  numpy=array([0.5, 2. , 0. , 1. ], dtype=float32)>
 
   Args:
     x: A `Tensor` of type `float16`, `float32`, `float64` `complex64` or
