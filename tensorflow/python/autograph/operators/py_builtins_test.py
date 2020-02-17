@@ -33,6 +33,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -372,6 +373,40 @@ class PyBuiltinsTest(test.TestCase):
     dataset_mixed = dataset_ops.DatasetV2.zip((dataset_3, dataset_4))
     with self.assertRaises(ValueError):
       py_builtins.all_(dataset_mixed)
+
+  def test_sorted(self):
+    self.assertListEqual(py_builtins.sorted_([2, 3, 1]), [1, 2, 3])
+    self.assertListEqual(
+        py_builtins.sorted_([2, 3, 1], key=lambda x: -x), [3, 2, 1])
+    self.assertListEqual(
+        py_builtins.sorted_([2, 3, 1], reverse=True), [3, 2, 1])
+    self.assertListEqual(
+        py_builtins.sorted_([2, 3, 1], key=lambda x: -x, reverse=True),
+        [1, 2, 3])
+    self.assertListEqual(
+        py_builtins.sorted_([[4, 3], [2, 1]], key=lambda x: sum(x)),
+        [[2, 1], [4, 3]])
+
+  def test_sorted_tensor(self):
+    iterable_1 = constant_op.constant([2, 3, 1])
+    self.assertListEqual(list(self.evaluate(
+        py_builtins.sorted_(iterable_1))), [1, 2, 3])
+    self.assertListEqual(list(self.evaluate(
+        py_builtins.sorted_(iterable_1, key=lambda x: -x))), [3, 2, 1])
+    self.assertListEqual(list(self.evaluate(
+        py_builtins.sorted_(iterable_1, reverse=True))), [3, 2, 1])
+    self.assertListEqual(list(self.evaluate(
+        py_builtins.sorted_(iterable_1, key=lambda x: -x, reverse=True))),
+        [1, 2, 3])
+
+    iterable_2 = constant_op.constant([[4, 3], [2, 1]])
+    with self.assertRaises(ValueError):
+      py_builtins.sorted_(iterable_2)
+    with self.assertRaises(ValueError):
+      py_builtins.sorted_(iterable_2, key=lambda x: -x)
+    self.assertListEqual(list(self.evaluate(
+        py_builtins.sorted_(iterable_2, key=lambda x: math_ops.reduce_sum(x)))),
+        [[2, 1], [4, 3]])
 
 
 if __name__ == '__main__':
