@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
@@ -183,6 +184,7 @@ class OpsTestBase : public ::testing::Test {
 
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(OpsTestBase);
