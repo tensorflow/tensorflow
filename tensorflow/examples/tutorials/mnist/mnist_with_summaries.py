@@ -50,7 +50,7 @@ def train():
 
   # Create a multilayer model.
 
-  # Input placehoolders
+  # Input placeholders
   with tf.name_scope('input'):
     x = tf.placeholder(tf.float32, [None, 784], name='x-input')
     image_shaped_input = tf.reshape(x, [-1, 28, 28, 1])
