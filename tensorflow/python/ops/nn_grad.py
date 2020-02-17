@@ -21,11 +21,6 @@ from __future__ import print_function
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-<<<<<<< HEAD
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.platform import build_info
-=======
->>>>>>> master
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops

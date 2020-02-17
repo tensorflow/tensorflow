@@ -120,8 +120,6 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -130,16 +128,12 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/core:test",
-<<<<<<< HEAD
     ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-     ])
-     + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-     ]),
-=======
+       "@local_config_cuda//cuda:cuda_headers",
+    ])
+    + if_rocm_is_configured([
+       "@local_config_rocm//rocm:rocm_headers",
     ]),
->>>>>>> master
 )
 
 cc_library(
@@ -819,17 +813,8 @@ cc_library(
 
 cc_library(
     name = "cusolver_rewriter",
-<<<<<<< HEAD
-    srcs = if_cuda_is_configured([
-        "cusolver_rewriter.cc"
-    ]),
-    hdrs = if_cuda_is_configured([
-        "cusolver_rewriter.h",
-    ]),
-=======
     srcs = if_cuda_is_configured(["cusolver_rewriter.cc"]),
     hdrs = if_cuda_is_configured(["cusolver_rewriter.h"]),
->>>>>>> master
     deps = if_cuda_is_configured([
         ":cusolver_context",
         ":ir_emission_utils",
@@ -844,10 +829,6 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory_allocator",
-<<<<<<< HEAD
-        "@com_google_absl//absl/types:optional",
-=======
->>>>>>> master
     ]),
 )
 

@@ -607,13 +607,8 @@ def gpu_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask, time_major,
 
   if build_info.is_cuda_build:
     # Note that the gate order for CuDNN is different from the canonical format.
-<<<<<<< HEAD
-    # canonical format is [z, r, h], whereas CuDNN is [r, z, h]. The swap need to
-    # be done for kernel, recurrent_kernel, input_bias, recurrent_bias.
-=======
     # canonical format is [z, r, h], whereas CuDNN is [r, z, h]. The swap need
     # to be done for kernel, recurrent_kernel, input_bias, recurrent_bias.
->>>>>>> master
     # z is update gate weights.
     # r is reset gate weights.
     # h is output gate weights.
@@ -1378,10 +1373,6 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
   full_bias = array_ops.concat((array_ops.zeros_like(bias), bias), 0)
 
   if build_info.is_rocm_build:
-<<<<<<< HEAD
-    units = int(int(kernel.get_shape()[1]) / 4)
-=======
->>>>>>> master
     # ROCm MIOpen's weight sequence for LSTM is different from both canonical
     # and Cudnn format
     # MIOpen: [i, f, o, c] Cudnn/Canonical: [i, f, c, o]
@@ -1389,33 +1380,10 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
     # f is forget gate weights.
     # o is output gate weights.
     # c is cell gate weights.
-<<<<<<< HEAD
-    weights=[
-        kernel[:, :units],
-        kernel[:, units:units * 2],
-        kernel[:, units * 3:],
-        kernel[:, units * 2:units * 3],
-        recurrent_kernel[:, :units],
-        recurrent_kernel[:, units:units * 2],
-        recurrent_kernel[:, units * 3:],
-        recurrent_kernel[:, units * 2:units * 3],
-    ]
-    full_bias=[
-        full_bias[:units],
-        full_bias[units:units * 2],
-        full_bias[units * 3:units * 4],
-        full_bias[units * 2:units * 3],
-        full_bias[units * 4:units * 5],
-        full_bias[units * 5:units * 6],
-        full_bias[units * 7:],
-        full_bias[units * 6:units * 7],
-    ]
-=======
     weights = [weights[x] for x in (0, 1, 3, 2, 4, 5, 7, 6)]
     # full_bias is a tensor of shape (8*n,)
     full_bias = array_ops.split(full_bias, 8, axis=0)
     full_bias = [full_bias[x] for x in (0, 1, 3, 2, 4, 5, 7, 6)]
->>>>>>> master
 
   params = _canonical_to_params(
       weights=weights,

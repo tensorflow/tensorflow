@@ -47,13 +47,8 @@ class GRULayerTest(keras_parameterized.TestCase):
 
   @tf_test_util.run_v2_only
   def test_float64_GRU(self):
-<<<<<<< HEAD
-    if test.is_built_with_rocm:
-      self.skipTest("Double type is yet not supported in ROCm")
-=======
     if test.is_built_with_rocm():
       self.skipTest('Double type is yet not supported in ROCm')
->>>>>>> master
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -139,13 +134,8 @@ class GRULayerTest(keras_parameterized.TestCase):
     gru_model.predict(x_train)
 
   def test_with_masking_layer_GRU(self):
-<<<<<<< HEAD
-    if test.is_built_with_rocm:
-      self.skipTest("MIOpen only supports packed input output")
-=======
     if test.is_built_with_rocm():
       self.skipTest('MIOpen only supports packed input output')
->>>>>>> master
     layer_class = keras.layers.GRU
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
@@ -161,13 +151,8 @@ class GRULayerTest(keras_parameterized.TestCase):
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_statefulness_GRU(self):
-<<<<<<< HEAD
-    if test.is_built_with_rocm:
-      self.skipTest("MIOpen only supports packed input output")
-=======
     if test.is_built_with_rocm():
       self.skipTest('MIOpen only supports packed input output')
->>>>>>> master
     num_samples = 2
     timesteps = 3
     embedding_dim = 4

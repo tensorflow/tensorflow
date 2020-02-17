@@ -297,27 +297,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self._assertAllIs(model.non_trainable_weights, weights)
 
   def test_layer_call_arguments(self):
-<<<<<<< HEAD
-    if test.is_built_with_rocm:
-      self.skipTest('ROCm Dropout used MIOpen backend')
-    # Test the ability to pass and serialize arguments to `call`.
-    inp = keras.layers.Input(shape=(2,))
-    x = keras.layers.Dense(3)(inp)
-    x = keras.layers.Dropout(0.5)(x, training=True)
-    model = keras.models.Model(inp, x)
-    # Would be `dropout/cond/Merge` by default
-    self.assertIn('dropout', model.output.op.name)
-
-    # Test that argument is kept when applying the model
-    inp2 = keras.layers.Input(shape=(2,))
-    out2 = model(inp2)
-    self.assertIn('dropout', out2.op.name)
-
-    # Test that argument is kept after loading a model
-    config = model.get_config()
-    model = keras.models.Model.from_config(config)
-    self.assertIn('dropout', model.output.op.name)
-=======
     with ops.Graph().as_default():
       # Test the ability to pass and serialize arguments to `call`.
       inp = keras.layers.Input(shape=(2,))
@@ -336,7 +315,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       config = model.get_config()
       model = keras.models.Model.from_config(config)
       self.assertIn('dropout', model.output.op.name)
->>>>>>> master
 
   def test_node_construction(self):
     # test basics
