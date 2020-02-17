@@ -17,6 +17,7 @@ kilobytes of Flash.
 
 -   [Getting started](#getting-started)
 -   [Deploy to Arduino](#deploy-to-arduino)
+-   [Deploy to ESP32](#deploy-to-esp32)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
@@ -84,17 +85,18 @@ If you don't see any output, repeat the process again.
 
 ## Deploy to ESP32
 
-The following instructions will help you build and deploy this sample to
-[ESP32](https://www.espressif.com/en/products/hardware/esp32/overview) devices
-using the [ESP IDF](https://github.com/espressif/esp-idf).
+The following instructions will help you build and deploy this sample
+to [ESP32](https://www.espressif.com/en/products/hardware/esp32/overview)
+devices using the [ESP IDF](https://github.com/espressif/esp-idf).
 
-The sample has been tested on ESP-IDF version 4.0 with the following devices: -
-[ESP32-DevKitC](http://esp-idf.readthedocs.io/en/latest/get-started/get-started-devkitc.html) -
-[ESP-EYE](https://github.com/espressif/esp-who/blob/master/docs/en/get-started/ESP-EYE_Getting_Started_Guide.md)
+The sample has been tested on ESP-IDF version 4.0 with the following devices:
+- [ESP32-DevKitC](http://esp-idf.readthedocs.io/en/latest/get-started/get-started-devkitc.html)
+- [ESP-EYE](https://github.com/espressif/esp-who/blob/master/docs/en/get-started/ESP-EYE_Getting_Started_Guide.md)
 
 ESP-EYE is a board which has a built-in microphone which can be used to run this
 example , if you want to use other esp boards you will have to connect
-microphone externally and write your own +audio_provider.cc+.
+microphone externally and write your own [audio_provider.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech/esp/audio_provider.cc).
+You can also edit the [command_responder.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech/command_responder.cc) to define your own actions after detecting command.
 
 ### Install the ESP IDF
 

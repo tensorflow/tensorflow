@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+ifeq ($(TARGET), esp)
+
 # Adding some esp specific files in the main CMakeLists.txt
 ESP_PERSON_DETECTION_SRCS := \
 tensorflow/lite/micro/examples/person_detection/esp/app_camera_esp.c
@@ -43,3 +45,5 @@ $(PRJDIR)person_detection/esp-idf/main/person_model_grayscale/%: $(MODEL_DOWNLOA
         --is_example_source \
         --source_path="$(patsubst $(MODEL_DOWNLOADS_DIR)/%,$(MODEL_EXAMPLES_DIR)/%,$<)" \
         < $< > $@
+
+endif
