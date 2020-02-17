@@ -39,12 +39,12 @@ namespace {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-// This function checks that all boxes have coherant ccordinates
 template <typename T>
 bool CheckBoxesCoordinates(const Tensor& boxes, int num_boxes){
   typename TTypes<T, 2>::ConstTensor boxes_data = boxes.tensor<T, 2>();
   for (int i = 0; i < num_boxes; ++i){
-    if(boxes_data(i, 0) == boxes_data(i, 2) || boxes_data(i, 1) == boxes_data(i, 3))
+    if (boxes_data(i, 0) == boxes_data(i, 2) ||
+        boxes_data(i, 1) == boxes_data(i, 3))
       return false;
   }
   return true;
@@ -533,8 +533,9 @@ class NonMaxSuppressionOp : public OpKernel {
     int num_boxes = 0;
     ParseAndCheckBoxSizes(context, boxes, &num_boxes);
     CheckScoreSizes(context, num_boxes, scores);
-    // check if the boxes have logical coordinates
-    OP_REQUIRES(context, CheckBoxesCoordinates<float>(boxes, num_boxes), errors::InvalidArgument("Boxes are empty (x1 == x2 or y1 == y2)"));
+    OP_REQUIRES(
+          context, CheckBoxesCoordinates<float>(boxes, num_boxes), 
+          errors::InvalidArgument("Boxes are empty (x1 == x2 or y1 == y2)"));
     if (!context->status().ok()) {
       return;
     }
