@@ -379,7 +379,7 @@ class MklDnnMatMulOpBase : public OpKernel {
   // inside the function.
   inline bool IsWeightCacheEmpty(OpKernelContext* context) LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
-    return (weight_oi.NumElements() == 0);
+    return (weight_oi_.NumElements() == 0);
   }
 
   // Cache the converted weight in a persistent tensor.
@@ -392,9 +392,9 @@ class MklDnnMatMulOpBase : public OpKernel {
       MklDnnData<Tweight>& weight, const memory::desc& weight_md)
       LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
-    const Tensor& weight_t = *weight_oi.AccessTensor(context);
+    const Tensor& weight_t = *weight_oi_.AccessTensor(context);
 
-    // if the weights are already cahced, there's nothing to do
+    // If the weights are already cached, there's nothing to do
     if (weight_t.NumElements() > 0) {
       return;
     }
@@ -413,7 +413,7 @@ class MklDnnMatMulOpBase : public OpKernel {
 
     OP_REQUIRES_OK(context, context->allocate_persistent(
                                 DataTypeToEnum<Tweight>::value, weight_tf_shape,
-                                &weight_oi, &weight_tensor_ptr));
+                                &weight_oi_, &weight_tensor_ptr));
 
     void* weight_oi_t_data = weight.GetTensorBuffer(weight_tensor_ptr);
     size_t weight_size = weight.GetOpMem().get_primitive_desc().get_size();
@@ -425,7 +425,7 @@ class MklDnnMatMulOpBase : public OpKernel {
     weight_mkl_format.AddDim(1);
 
     OP_REQUIRES_OK(context, context->allocate_persistent(
-                                DT_INT32, weight_mkl_format, &weight_oi_md,
+                                DT_INT32, weight_mkl_format, &weight_oi_md_,
                                 &weight_md_tensor_ptr));
     weight_md_tensor_ptr->scalar<int32>()() =
         matmul_fwd_pd.get()->weights_primitive_desc().desc().data.format;
@@ -435,8 +435,8 @@ class MklDnnMatMulOpBase : public OpKernel {
                            const memory::format& weight_mf)
       LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
-    const Tensor& weight_t = *weight_oi.AccessTensor(context);
-    const Tensor& weight_md_t = *weight_oi_md.AccessTensor(context);
+    const Tensor& weight_t = *weight_oi_.AccessTensor(context);
+    const Tensor& weight_md_t = *weight_oi_md_.AccessTensor(context);
 
     // Check if the  memory descriptor of the cached weight is same as
     // weight_mf. if so use the cached memory, else return NULL
@@ -453,8 +453,8 @@ class MklDnnMatMulOpBase : public OpKernel {
  protected:
   // Tensor to save reordered weight
   mutex mu_;
-  PersistentTensor weight_oi GUARDED_BY(mu_);
-  PersistentTensor weight_oi_md GUARDED_BY(mu_);
+  PersistentTensor weight_oi_ GUARDED_BY(mu_);
+  PersistentTensor weight_oi_md_ GUARDED_BY(mu_);
 
   bool is_weight_const_;
 
