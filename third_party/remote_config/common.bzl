@@ -260,3 +260,19 @@ def realpath(repository_ctx, path, bash_bin = None):
         bash_bin = get_bash_bin(repository_ctx)
 
     return execute(repository_ctx, [bash_bin, "-c", "realpath %s" % path]).stdout.strip()
+
+def err_out(result):
+    """Returns stderr if set, else stdout.
+
+    This function is a workaround for a bug in RBE where stderr is returned as stdout. Instead
+    of using result.stderr use err_out(result) instead.
+
+    Args:
+      result: the exec_result.
+
+    Returns:
+      The stderr if set, else stdout
+    """
+    if len(result.stderr) == 0:
+        return result.stdout
+    return result.stderr

@@ -112,7 +112,8 @@ bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
 
 // Returns the number of inputs for the engine, which also correspends to the
 // number of input tensors for the network. This can differ from the number of
-// input bindings, because each profile has a set of bindings.
+// input bindings, because the number of total input bindings equals the number
+// of profiles times the number of engine inputs.
 int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine *engine);
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

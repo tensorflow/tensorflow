@@ -186,6 +186,7 @@ TEST_F(TRTEngineOpTestBase, DynamicEngines) {
   EXPECT_EQ(1, cache->count({TensorShape({10, 10})}));
 }
 
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 TEST_F(TRTEngineOpTestBase, ExplicitBatch) {
   // Test inference in explicit batch mode with static input shapes. Static
   // shapes in this context means that the TensorRT knows all the input shapes
@@ -262,6 +263,7 @@ TYPED_TEST(TRTEngineOpTest, Basic) {
                                   output->NumElements()),
       ElementsAre(TypeParam(0.0f), TypeParam(2.0f)));
 }
+#endif
 
 }  // namespace tensorrt
 }  // namespace tensorflow

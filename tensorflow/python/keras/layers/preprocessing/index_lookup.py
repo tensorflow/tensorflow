@@ -161,13 +161,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     # counting code in the Model object doesn't throw an attribute error.
     tracked_table.shape = tensor_shape.TensorShape((0,))
 
-    # This is a workaround for saving not working yet for MutableHashTables.
-    # By replacing the existing function call by an explicit failure, we
-    # can provide a more user-friendly error message.
-    def fail(_):
-      raise NotImplementedError(
-          "Saving is not yet supported for IndexLookup layers.")
-    self._table._list_extra_dependencies_for_serialization = fail  # pylint: disable=protected-access
     self._inverse_table = None
 
     if vocabulary is not None:

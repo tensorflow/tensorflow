@@ -213,6 +213,12 @@ class XlaCompiler {
 
     // True when we should add XLA input & output to the graph/function.
     bool add_token_input_output = false;
+
+    // Resource updates are converted into input / output of xla. The two
+    // buffers are aliased with other if this option is true.
+    //
+    // Currently only supports TPU.
+    bool alias_resource_update = false;
   };
 
   struct OutputDescription {
@@ -367,7 +373,6 @@ class XlaCompiler {
   Status CompileGraph(
       const CompileOptions& options, string const& name,
       std::unique_ptr<Graph> graph, absl::Span<const Argument> args,
-      absl::Span<const xla::XlaBuilder::InputOutputAlias> user_aliases,
       CompilationResult* result);
 
   // Compiles a single Op, given by `node_def`, into an

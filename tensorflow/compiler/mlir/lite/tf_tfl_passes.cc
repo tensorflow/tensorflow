@@ -104,6 +104,16 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
   }
 
+  // Legalize while early to allow further constant folding.
+  // TODO(jpienaar): This may not actually matter as we do canonicalization
+  // after the legalize below, for now it needs to be below the above passes
+  // that work on TF dialect and before inliner so that the function calls in
+  // body and cond are inlined for optimization.
+  if (pass_config.legalize_tf_while) {
+    pass_manager->addNestedPass<mlir::FuncOp>(
+        mlir::TFL::CreateLegalizeTFWhilePass());
+  }
+
   // TODO(jpienaar): Revise post dialect constants.
   pass_manager->addPass(mlir::TF::CreateDecodeConstantPass());
   // Canonicalization includes const folding, which is utilized here to optimize

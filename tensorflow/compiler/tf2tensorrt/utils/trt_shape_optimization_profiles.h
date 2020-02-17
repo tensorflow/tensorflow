@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_SHAPE_OPTIMIZATION_PROFILES_H_
-#define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_SHAPE_OPTIMIZATION_PROFILES_H_
+#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_SHAPE_OPTIMIZATION_PROFILES_H_
+#define TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_SHAPE_OPTIMIZATION_PROFILES_H_
 
 #include <list>
 #include <string>
@@ -57,7 +57,7 @@ struct OptimizationProfileConfig {
   }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  // Set the stored min/opt/max dimensions for profile.
+  // Sets the stored min/opt/max dimensions for profile.
   //
   // Parameters:
   // network - TensorRT network, used to enumerate all the input tensors
@@ -81,15 +81,15 @@ struct OptimizationProfileConfig {
 
   // Returns true if profile range completely includes the given shapes.
   bool IncludesShapes(const std::vector<TensorShape>& shapes) const {
-    // min, max, and opt must have the same size which,
-    // already verified in SetDimensions.
+    // min, max, and opt must have the same size which is already verified in
+    // SetDimensions.
     if (min.size() != shapes.size()) {
       return false;
     }
     for (int i = 0; i < shapes.size(); i++) {
       auto current_shape = shapes[i];
-      // min, max, and opt must have the same nbDims, which is
-      // already verified in SetDimensions.
+      // min, max, and opt must have the same nbDims, which is already verified
+      // in SetDimensions.
       if (min[i].nbDims != current_shape.dims()) {
         return false;
       }
@@ -117,7 +117,7 @@ struct OptimizationProfileConfig {
 // before the engine is created.
 class TrtShapeOptimizationProfile {
  public:
-  TrtShapeOptimizationProfile(){};
+  TrtShapeOptimizationProfile(){}
 
   // Stores input shape information during profile_generation_mode
   void AddShape(std::vector<TensorShape> shapes) {
@@ -144,14 +144,14 @@ class TrtShapeOptimizationProfile {
       nvinfer1::ICudaEngine* engine,
       std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>& exec_context);
 
-  /// Map input vector shapes to TRT Optimization profiles (min, max, opt)
-  // i.e. maps input_shapes_ to profiles_
+  // Maps input vector shapes to TRT Optimization profiles (min, max, opt) i.e.
+  // maps input_shapes_ to profiles_
   void InitProfiles();
 
   // Returns number of created profiles.
   int GetNumProfiles() const;
 
-  // Restore profiles from the engine (used after deserialization)
+  // Restores profiles from the engine (used after deserialization)
   Status RestoreProfiles(const nvinfer1::ICudaEngine* engine);
 
  private:
@@ -163,7 +163,7 @@ class TrtShapeOptimizationProfile {
   std::vector<OptimizationProfileConfig> profiles_;
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  /// Add optimization profiles to the builder config
+  /// Adds optimization profiles to the builder config
   Status AddProfiles(nvinfer1::IBuilder* builder,
                      nvinfer1::IBuilderConfig* config,
                      const nvinfer1::INetworkDefinition* network);
@@ -175,4 +175,4 @@ class TrtShapeOptimizationProfile {
 
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
-#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_SHAPE_OPTIMIZATION_PROFILES_H_
+#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_SHAPE_OPTIMIZATION_PROFILES_H_

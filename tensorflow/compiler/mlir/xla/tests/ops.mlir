@@ -872,14 +872,6 @@ func @dequantize_wrong_mode(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
 
 // -----
 
-func @custom_call_invalid_sharding(%input0: tensor<16x16xf32>) -> tensor<16x16xf32> {
-  // expected-error @+1 {{Invalid sharding: some-invalid-sharding}}
-  %0 = "xla_hlo.custom_call"(%input0) {backend_config = "", call_target_name = "Sharding", xla_hlo.sharding = "some-invalid-sharding"} : (tensor<16x16xf32>) -> tensor<16x16xf32>
-  return %0 : tensor<16x16xf32>
-}
-
-// -----
-
 func @reshape_invalid_shapes(%operand: tensor<2x4xf32>) -> tensor<3x3xf32> {
   // expected-error @+1 {{number of output elements (9) doesn't match expected number of elements (8)}}
   %0 = "xla_hlo.reshape"(%operand) : (tensor<2x4xf32>) -> tensor<3x3xf32>

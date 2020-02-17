@@ -93,7 +93,7 @@ class TRTEngineOp : public AsyncOpKernel {
       LRUCache<std::vector<TensorShape>, std::unique_ptr<EngineContext>,
                VectorTensorShapeHasher>;
 
-  // Execute calibration.
+  // Executes calibration.
   void ExecuteCalibration(OpKernelContext* ctx,
                           TRTEngineCacheResource* cache_res,
                           AsyncHelper* helper);
@@ -104,15 +104,15 @@ class TRTEngineOp : public AsyncOpKernel {
   Status ConstructFunctionHandle(FunctionLibraryRuntime* lib,
                                  const string& device_name);
 
-  // Execute replaced native segment as function Op.
+  // Executes replaced native segment as function Op.
   void ExecuteNativeSegment(OpKernelContext* ctx, AsyncHelper* helper);
 
-  // Execute the tensorrt engine. Returns whether we need to retry by running
+  // Executes the tensorrt engine. Returns whether we need to retry by running
   // the native segment.
   bool ExecuteTrtEngine(OpKernelContext* ctx, EngineContext* engine_context,
                         int trt_context_idx);
 
-  // Allocate necessary resources for calibration.
+  // Allocates necessary resources for calibration.
   Status AllocateCalibrationResources(OpKernelContext* ctx,
                                       TRTEngineCacheResource* cache_res);
 
@@ -553,8 +553,8 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
 
   if (!use_implicit_batch_) {
     if (profile_generation_mode_) {
-      // Collecting new shapes for profiles can be only done once. After
-      // the shapes are converted to TRT profiles, no shapes can be collected
+      // Collecting new shapes for profiles can be only done once. After the
+      // shapes are converted to TRT profiles, no shapes can be collected
       // anymore.
       OP_REQUIRES(ctx, cache_res->profiles_.GetNumProfiles() == 0,
                   errors::Unimplemented("Cannot collect new shapes when "
@@ -662,9 +662,11 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                << "contexts are present.";
     return kRetry;
   }
-  auto& execution_context = engine_context->execution_context[trt_context_idx];
   const int num_binding = cuda_engine->getNbBindings();
   std::vector<void*> buffers(num_binding);
+
+  mutex_lock lock(engine_context->mu);
+  auto& execution_context = engine_context->execution_context;
 
   // Setup engine inputs.
   for (int i = 0; i < ctx->num_inputs(); i++) {
@@ -820,7 +822,6 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
 
   // nvinfer1::IExecutionContext::enqueue is not thread safe and we need a mutex
   // for it.
-  mutex_lock lock(engine_context->mu);
   bool ret = false;
   if (use_implicit_batch_) {
     const int num_batch = ctx->input(0).shape().dim_size(0);

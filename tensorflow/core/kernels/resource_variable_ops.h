@@ -36,6 +36,10 @@ class VarHandleOp : public OpKernel {
   Tensor resource_;
 
   DtypeAndPartialTensorShape dtype_and_shape_;
+
+  // A set of devices containing the resource variable. Set when the output
+  // ResourceHandle represents a per-replica/partitioned resource variable.
+  std::vector<string> allowed_devices_;
 };
 
 class ReadVariableOp : public OpKernel {
