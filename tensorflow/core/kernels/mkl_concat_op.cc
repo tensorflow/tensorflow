@@ -291,12 +291,8 @@ class MklConcatFwdPrimitive : public MklPrimitive {
     }
 
 #ifdef ENABLE_MKLDNN_V1
-    DCHECK_EQ(context_.fwd_primitives.size(),
-              context_.fwd_primitives_args.size());
-    for (size_t i = 0; i < context_.fwd_primitives.size(); ++i) {
-      context_.fwd_primitives.at(i).execute(*context_.fwd_stream,
-                                            context_.fwd_primitives_args.at(i));
-    }
+    execute_primitives(context_.fwd_primitives, *context_.fwd_stream,
+                       context_.fwd_primitives_args.at(i));
 #else
     context_.fwd_stream->submit(context_.fwd_primitives);
 #endif  // ENABLE_MKLDNN_V1
@@ -319,7 +315,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
     std::vector<mkldnn::memory::primitive_desc> src_pd;
     std::vector<std::shared_ptr<mkldnn::memory::primitive_desc>> src_pd_shdptr;
     std::shared_ptr<mkldnn::memory::primitive_desc> dst_pd;
-#endif  // ENABLE_MKLDNN_V1
+#endif  // !ENABLE_MKLDNN_V1
 
 // MKL-DNN memory
 #ifdef ENABLE_MKLDNN_V1
@@ -657,11 +653,7 @@ class MklConcatOp : public OpKernel {
             if (input_tensors[k].NumElements() == 0) continue;
             auto src_md = mkl_input_shapes[k].GetMklLayout();
             srcs[k].SetUsrMem(src_md, &input_tensors[k]);
-#ifdef ENABLE_MKLDNN_V1
-            auto src_mpd = srcs[k].GetUsrMemDesc();
-#else
-            auto src_mpd = srcs[k].GetUsrMemPrimDesc();
-#endif  // ENABLE_MKLDNN_V1
+            auto src_mpd = GET_USR_MEM_PRIM_DESC(srcs[k]);
             srcs_pd.push_back(src_mpd);
             inputs.push_back(srcs[k].GetOpMem());
           }
@@ -679,11 +671,8 @@ class MklConcatOp : public OpKernel {
               src_md =
                   memory::desc(src_dims, MklDnnType<T>(), mkl_common_format);
             }
-#ifdef ENABLE_MKLDNN_V1
-            srcs_pd.push_back(memory::desc(src_md));
-#else
-            srcs_pd.push_back(memory::primitive_desc(src_md, cpu_engine));
-#endif  // ENABLE_MKLDNN_V1
+            srcs_pd.push_back(
+                MEMORY_PD_CONSTRUCTOR_2_PARAMS(src_md, cpu_engine));
           }
         }
       } else {  // All TF inputs
@@ -705,11 +694,7 @@ class MklConcatOp : public OpKernel {
               memory::desc(src_dims, MklDnnType<T>(), mkl_common_format);
 
           srcs[k].SetUsrMem(src_md, &input_tensors[k]);
-#ifdef ENABLE_MKLDNN_V1
-          auto src_mpd = srcs[k].GetUsrMemDesc();
-#else
-          auto src_mpd = srcs[k].GetUsrMemPrimDesc();
-#endif  // ENABLE_MKLDNN_V1
+          auto src_mpd = GET_USR_MEM_PRIM_DESC(srcs[k]);
           srcs_pd.push_back(src_mpd);
           inputs.push_back(srcs[k].GetOpMem());
           src_dims_pt.push_back(src_dims);
@@ -765,11 +750,8 @@ class MklConcatOp : public OpKernel {
       if (isMklReorderNeeded) {
         for (int k = 0; k < input_tensors.size(); k++) {
           if (input_tensors[k].NumElements() > 0) {
-#ifdef ENABLE_MKLDNN_V1
-            srcs[k].CheckReorderToOpMem(srcs_pd[k], cpu_engine);
-#else
-            srcs[k].CheckReorderToOpMem(srcs_pd[k]);
-#endif  // ENABLE_MKLDNN_V1
+            srcs[k].CheckReorderToOpMem(
+                MEMORY_PD_WITHOUT_DATA(srcs_pd[k], cpu_engine));
             inputs.push_back(srcs[k].GetOpMem());
           }
         }
@@ -787,12 +769,8 @@ class MklConcatOp : public OpKernel {
 
       if (!inputs.empty()) {
         if (are_all_mkl_inputs) {
-#ifdef ENABLE_MKLDNN_V1
-          auto concat_pd =
-              concat::primitive_desc(concat_dim, srcs_pd, cpu_engine);
-#else
-          auto concat_pd = concat::primitive_desc(concat_dim, srcs_pd);
-#endif  // ENABLE_MKLDNN_V1
+          auto concat_pd = concat::primitive_desc(
+              concat_dim, MEMORY_PD_WITHOUT_DATA(srcs_pd, cpu_engine));
           auto dst_pd = concat_pd.PRIMITIVE_DESC_DST;
 
           MklDnnShape dnn_shape_dst;
