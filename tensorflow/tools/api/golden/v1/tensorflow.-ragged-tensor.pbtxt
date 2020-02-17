@@ -28,6 +28,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "uniform_row_length"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "values"
     mtype: "<type \'property\'>"
   }

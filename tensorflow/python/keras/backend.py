@@ -720,7 +720,7 @@ def _to_tensor(x, dtype):
   Returns:
       A tensor.
   """
-  return ops.convert_to_tensor(x, dtype=dtype)
+  return ops.convert_to_tensor_v2(x, dtype=dtype)
 
 
 @keras_export('keras.backend.is_sparse')
@@ -3783,7 +3783,7 @@ class EagerExecutionFunction(object):
           raise ValueError(
               'You must feed a value for placeholder %s' % (tensor,))
       if not isinstance(value, ops.Tensor):
-        value = ops.convert_to_tensor(value, dtype=tensor.dtype)
+        value = ops.convert_to_tensor_v2(value, dtype=tensor.dtype)
       if value.dtype != tensor.dtype:
         # Temporary workaround due to `convert_to_tensor` not casting floats.
         # See b/119637405

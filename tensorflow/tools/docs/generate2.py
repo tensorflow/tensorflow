@@ -36,7 +36,7 @@ import textwrap
 from absl import app
 from absl import flags
 
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
 from tensorflow_docs.api_generator import doc_controls
 from tensorflow_docs.api_generator import doc_generator_visitor
@@ -116,7 +116,7 @@ def generate_raw_ops_doc():
       has_gradient = "\N{CROSS MARK}"
     link = (
         '<a id={op_name} href="{FLAGS.site_path}/api_docs/python/tf/raw_ops">'
-        '{op_name}</a>').format(op_name=op_name, FLAGS=FLAGS.site_path)
+        '{op_name}</a>').format(op_name=op_name, FLAGS=FLAGS)
     parts.append(
         "| {link} | {has_gradient} |".format(link=link,
                                              has_gradient=has_gradient))
@@ -178,7 +178,7 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
     search_hints: Bool. Include meta-data search hints at the top of each file.
   """
   # The custom page will be used for raw_ops.md not the one generated above.
-  doc_controls.custom_page_content(tf.raw_ops, generate_raw_ops_doc())
+  doc_controls.set_custom_page_content(tf.raw_ops, generate_raw_ops_doc())
 
   _hide_layer_and_module_methods()
 

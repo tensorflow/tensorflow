@@ -252,17 +252,14 @@ void GetInputProperties(const grappler::GraphProperties& graph_properties,
 
 // This function checks if a tensor is compatible with TRT.
 //
-// We check that the shape and datatype is compatible with TensorRT. We also
+// We check that the shape and datatype are compatible with TensorRT. We also
 // return the corresponding trt_dtype, the trt_dims and the batch_size (latter
 // is only needed in implicit batch mode).
 //
 // The return status indicates wether the tensor is compatible.
 //
-// If validation_only == false, then we make an additional check. In implicit
-// batch mode we check that all inputs for the network has static shape (as
-// required by the TensorRT). The only exception is the batch size, which
-// could be unknown. In contrast, using explicit batch mode this test is not
-// necessary, since any dimension could be unknown in explicit batch mode.
+// For implicit batch mode, when validation_only == false, we also check that
+// all input dimensions (besides the batch dimension) are known dimensions.
 Status ValidateTensorProperties(const string& producer_node_type,
                                 const DataType dtype,
                                 const PartialTensorShape& shape,

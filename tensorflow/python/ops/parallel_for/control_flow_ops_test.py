@@ -23,6 +23,7 @@ import functools
 import time
 
 from absl import flags
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.example import example_pb2
@@ -58,6 +59,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_control_flow_ops
 from tensorflow.python.ops.parallel_for.test_util import PForTestCase
+from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
@@ -1600,6 +1602,65 @@ class PartitionedCallTest(PForTestCase):
       return out, g.gradient(out, z_i)
 
     self._test_loop_fn(loop_fn, 4)
+
+
+class SpectralTest(PForTestCase, parameterized.TestCase):
+
+  @parameterized.parameters(
+      (fft_ops.fft,),
+      (fft_ops.fft2d,),
+      (fft_ops.fft3d,),
+      (fft_ops.ifft,),
+      (fft_ops.ifft2d,),
+      (fft_ops.ifft3d,),
+  )
+  def test_fft(self, op_func):
+    shape = [2, 3, 4, 3, 4]
+    x = np.random.uniform(size=shape) + 1j * np.random.uniform(size=shape)
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      return op_func(x_i)
+
+    self._test_loop_fn(loop_fn, 2)
+
+  @parameterized.parameters(
+      (fft_ops.rfft,),
+      (fft_ops.rfft2d,),
+      (fft_ops.rfft3d,),
+  )
+  def test_rfft(self, op_func):
+    for dtype in (dtypes.float32, dtypes.float64):
+      x = random_ops.random_uniform([2, 3, 4, 3, 4], dtype=dtype)
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        x_i = array_ops.gather(x, i)
+        return op_func(x_i)
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 2)
+
+  @parameterized.parameters(
+      (fft_ops.irfft,),
+      (fft_ops.irfft2d,),
+      (fft_ops.irfft3d,),
+  )
+  def test_irfft(self, op_func):
+    for dtype in (dtypes.complex64, dtypes.complex128):
+      shape = [2, 3, 4, 3, 4]
+      x = np.random.uniform(size=shape) + 1j * np.random.uniform(size=shape)
+      x = math_ops.cast(x, dtype=dtype)
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        x_i = array_ops.gather(x, i)
+        return op_func(x_i)
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 2)
 
 
 class VariableTest(PForTestCase):

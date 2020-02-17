@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import function_deserialization
@@ -324,6 +325,10 @@ class Loader(object):
       if restore_ops:
         if resource_variable_ops.is_resource_variable(obj):
           obj._initializer_op = restore_ops
+        elif isinstance(obj, lookup_ops.LookupInterface):
+          # We don't need to check for eager execution here, since this code
+          # path should only be taken if we are restoring in graph mode.
+          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, restore_ops)
         else:
           raise NotImplementedError(
               ("Missing functionality to restore state of object "

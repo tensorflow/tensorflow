@@ -1216,6 +1216,7 @@ tf_cc_test(
         ":iterator_ops",
         ":tensor_slice_dataset_op",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

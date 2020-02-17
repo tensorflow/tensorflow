@@ -477,6 +477,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(a1, a2)
     self.assertEqual(a1.shape.as_list(), [8, 2])
     self.assertEqual(a2.shape.as_list(), [8, 2])
+    self.assertAllEqual(a1.uniform_row_length, 2)
 
     b1 = RaggedTensor.from_uniform_row_length(a1, 2)
     b2 = RaggedTensor.from_uniform_row_length(a1, 2, 4)
@@ -485,6 +486,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(b1, b2)
     self.assertEqual(b1.shape.as_list(), [4, 2, 2])
     self.assertEqual(b2.shape.as_list(), [4, 2, 2])
+    self.assertAllEqual(b1.uniform_row_length, 2)
 
     c1 = RaggedTensor.from_uniform_row_length(b1, 2)
     c2 = RaggedTensor.from_uniform_row_length(b1, 2, 2)
@@ -493,11 +495,13 @@ class RaggedTensorTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(c1, c2)
     self.assertEqual(c1.shape.as_list(), [2, 2, 2, 2])
     self.assertEqual(c2.shape.as_list(), [2, 2, 2, 2])
+    self.assertAllEqual(c1.uniform_row_length, 2)
 
   def testFromUniformRowLengthWithEmptyValues(self):
     empty_values = []
     a = RaggedTensor.from_uniform_row_length(empty_values, 0, nrows=10)
     self.assertEqual(a.shape.as_list(), [10, 0])
+    self.assertAllEqual(a.uniform_row_length, 0)
 
     b = RaggedTensor.from_uniform_row_length(a, 2)
     self.assertEqual(b.shape.as_list(), [5, 2, 0])

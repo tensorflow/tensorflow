@@ -1996,6 +1996,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "StatelessRandomNormal",
                                      "StatelessRandomUniform",
                                      "StatelessRandomUniformInt",
+                                     "StatelessRandomUniformFullInt",
                                      "StatelessTruncatedNormal",
                                      "StatelessWhile",
                                      "Svd",

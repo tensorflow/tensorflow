@@ -52,10 +52,6 @@ class XlaHloDialect : public Dialect {
 
   // Prints a type registered to this dialect.
   void printType(Type type, DialectAsmPrinter &os) const override;
-
-  // Verify an attribute from this dialect on the given operation.
-  LogicalResult verifyOperationAttribute(Operation *op,
-                                         NamedAttribute attribute) override;
 };
 
 namespace HLOTypes {

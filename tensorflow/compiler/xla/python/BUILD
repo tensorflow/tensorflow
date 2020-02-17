@@ -371,6 +371,9 @@ pybind_extension(
         # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
         # not require Tensorflow.
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
+        "//tensorflow/core/profiler/lib:profiler_backends",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/rpc:profiler_server",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:platform",
     ] + select({
