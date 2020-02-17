@@ -197,14 +197,32 @@ class SummaryWriter(object):
   """Interface representing a stateful summary writer object."""
 
   @abc.abstractmethod
-  def set_as_default(self):
-    """Enables this summary writer for the current thread."""
+  def set_as_default(self, step=None):
+    """Enables this summary writer for the current thread.
+
+    For the `step` argument, see `tf.summary.experimental.set_step()`.
+
+    Args:
+      step: An `int64`-castable default step value, or `None`.
+        When not `None`, the current step is modified to the given value.
+        When `None`, the current step is not modified.
+    """
     raise NotImplementedError()
 
   @abc.abstractmethod
   @tf_contextlib.contextmanager
-  def as_default(self):
-    """Returns a context manager that enables summary writing."""
+  def as_default(self, step=None):
+    """Returns a context manager that enables summary writing.
+
+    For the `step` argument, see `tf.summary.experimental.set_step()`.
+
+    Args:
+      step: An `int64`-castable default step value, or `None`.
+        When not `None`, the current step is captured, replaced by a given one,
+        and the original one is restored when the context manager exists.
+        When `None`, the current step is not modified (and not restored
+        when the context manager exits).
+    """
     raise NotImplementedError()
 
   def init(self):
@@ -243,26 +261,52 @@ class ResourceSummaryWriter(SummaryWriter):
     else:
       ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, self._init_op)
 
-  def set_as_default(self):
-    """Enables this summary writer for the current thread."""
+  def set_as_default(self, step=None):
+    """Enables this summary writer for the current thread.
+
+    For the `step` argument, see `tf.summary.experimental.set_step()`.
+
+    Args:
+      step: An `int64`-castable default step value, or `None`.
+        When not `None`, the current step is modified to the given value.
+        When `None`, the current step is not modified.
+    """
     if self._v2 and context.executing_eagerly() and self._closed:
       raise RuntimeError("SummaryWriter is already closed")
     _summary_state.writer = self
+    if step is not None:
+      _summary_state.step = step
 
   @tf_contextlib.contextmanager
-  def as_default(self):
-    """Returns a context manager that enables summary writing."""
+  def as_default(self, step=None):
+    """Returns a context manager that enables summary writing.
+
+    For the `step` argument, see `tf.summary.experimental.set_step()`.
+
+    Args:
+      step: An `int64`-castable default step value, or `None`.
+        When not `None`, the current step is captured, replaced by a given one,
+        and the original one is restored when the context manager exists.
+        When `None`, the current step is not modified (and not restored
+        when the context manager exits).
+    """
     if self._v2 and context.executing_eagerly() and self._closed:
       raise RuntimeError("SummaryWriter is already closed")
     old = _summary_state.writer
+    if step is not None:
+      old_step = _summary_state.step
     try:
       _summary_state.writer = self
+      if step is not None:
+        _summary_state.step = step
       yield self
       # Flushes the summary writer in eager mode or in graph functions, but
       # not in legacy graph mode (you're on your own there).
       self.flush()
     finally:
       _summary_state.writer = old
+      if step is not None:
+        _summary_state.step = old_step
 
   def init(self):
     """Initializes the summary writer."""
@@ -295,11 +339,11 @@ class ResourceSummaryWriter(SummaryWriter):
 class NoopSummaryWriter(SummaryWriter):
   """A summary writer that does nothing, for create_noop_writer()."""
 
-  def set_as_default(self):
+  def set_as_default(self, step=None):
     pass
 
   @tf_contextlib.contextmanager
-  def as_default(self):
+  def as_default(self, step=None):
     yield
 
   def init(self):
