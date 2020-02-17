@@ -937,7 +937,7 @@ def ctc_loss_dense(labels,
     The dense implementation supports both CPU, GPU and TPU. A fast path is
     provided that significantly improves memory use for large vocabulary if the
     caller preprocesses label sequences to get unique label indices on the CPU
-    (eg. in the data input pipeline) using ctc_ops.unique and simplies this in
+    (eg. in the data input pipeline) using ctc_ops.unique and simplifies this in
     the optional "unique" kwarg. This is especially useful for TPU and GPU but
     also works with if used on CPU.
 

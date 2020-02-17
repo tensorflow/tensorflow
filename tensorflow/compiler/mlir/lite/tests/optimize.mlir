@@ -717,6 +717,31 @@ func @expandDimsToReshape(%arg0: tensor<6x6x256xf32>) -> tensor<6x6x256x1xf32> {
   // CHECK: return %[[RESULT]]
 }
 
+// CHECK-LABEL: convertTrivialTransposeToReshape
+func @convertTrivialTransposeToReshape(%arg0: tensor<6x6x256x1xf32>) -> tensor<1x6x6x256xf32> {
+  %cst = constant dense<[3, 0, 1, 2]> : tensor<4xi32>
+  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<6x6x256x1xf32>, tensor<4xi32>) -> tensor<1x6x6x256xf32>
+  return %0 : tensor<1x6x6x256xf32>
+
+  // CHECK: [[CONST:.*]] = constant dense<[1, 6, 6, 256]> : tensor<4xi32>
+  // CHECK: %[[RESULT:.*]] = "tfl.reshape"(%arg0, %[[CONST:.*]]) : (tensor<6x6x256x1xf32>, tensor<4xi32>) -> tensor<1x6x6x256xf32>
+  // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: doNotConvertNonTrivialTransposeToReshape
+func @doNotConvertNonTrivialTransposeToReshape(%arg0: tensor<6x6x256x1xf32>) -> tensor<1x6x6x256xf32> {
+  // Note: The dimension 0 and 1 are swapped, so it's not trivial
+  // (elements are not in the same order).
+  %cst = constant dense<[3, 1, 0, 2]> : tensor<4xi32>
+  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<6x6x256x1xf32>, tensor<4xi32>) -> tensor<1x6x6x256xf32>
+  return %0 : tensor<1x6x6x256xf32>
+
+  // CHECK: [[CONST:.*]] = constant dense<[3, 1, 0, 2]> : tensor<4xi32>
+  // CHECK: %[[RESULT:.*]] = "tfl.transpose"(%arg0, %[[CONST:.*]])
+  // CHECK: return %[[RESULT]]
+}
+
+
 // CHECK-LABEL: Relu1
 func @Relu1(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   %cst = constant dense<-1.0> : tensor<f32>

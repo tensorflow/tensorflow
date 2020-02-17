@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/acceleration_test_util.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
+#include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -163,7 +164,8 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   builder_.Finish(CreateModel(builder_, TFLITE_SCHEMA_VERSION, opcodes,
                               subgraphs_flatbuffer, description, buffers));
 
-  auto* model = GetModel(builder_.GetBufferPointer());
+  uint8_t* buffer_pointer = builder_.GetBufferPointer();
+  UpdateOpVersion(buffer_pointer);
 
   if (!resolver_) {
     auto resolver = new ops::builtin::BuiltinOpResolver();
@@ -172,8 +174,8 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
     }
     resolver_ = std::unique_ptr<OpResolver>(resolver);
   }
-  CHECK(InterpreterBuilder(model, *resolver_)(&interpreter_, num_threads) ==
-        kTfLiteOk);
+  CHECK(InterpreterBuilder(GetModel(buffer_pointer), *resolver_)(
+            &interpreter_, num_threads) == kTfLiteOk);
 
   CHECK(interpreter_ != nullptr);
 

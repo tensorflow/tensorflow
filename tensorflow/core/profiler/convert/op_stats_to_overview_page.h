@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 
@@ -34,7 +35,8 @@ void SetCommonRecommendation(const string& input_classification,
                              OverviewPageRecommendation* re);
 
 OverviewPageRecommendation ComputeGenericRecommendation(
-    const BottleneckAnalysis& bottleneck);
+    const BottleneckAnalysis& bottleneck,
+    const PrecisionStats& precision_stats);
 
 OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats);
 
@@ -43,6 +45,8 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
 
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           HardwareType hardware_type);
+
+void SetRemarks(const OpStats& op_stats, OverviewPageAnalysis* analysis);
 
 }  // namespace profiler
 }  // namespace tensorflow

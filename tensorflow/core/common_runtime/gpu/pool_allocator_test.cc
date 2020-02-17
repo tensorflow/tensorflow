@@ -17,10 +17,14 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 
+#include "gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
+<<<<<<< HEAD
 #include "gpu_init.h"
+=======
+>>>>>>> master
 namespace tensorflow {
 namespace {
 

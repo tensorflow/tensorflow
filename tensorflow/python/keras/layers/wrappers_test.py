@@ -129,7 +129,8 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
     with self.assertRaisesRegexp(
         ValueError,
-        'Please initialize `TimeDistributed` layer with a `Layer` instance.'):
+        'Please initialize `TimeDistributed` layer with a '
+        '`tf.keras.layers.Layer` instance.'):
       keras.layers.TimeDistributed(x)
 
   def test_timedistributed_conv2d(self):

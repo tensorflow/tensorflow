@@ -39,4 +39,11 @@ public final class DataTypeTest {
       assertThat(DataType.fromC(dataType.c())).isEqualTo(dataType);
     }
   }
+
+  @Test
+  public void testINT8AndUINT8() {
+    assertThat(DataType.INT8.toStringName()).isEqualTo("byte");
+    assertThat(DataType.UINT8.toStringName()).isEqualTo("byte");
+    assertThat(DataType.INT8.toStringName()).isEqualTo(DataType.UINT8.toStringName());
+  }
 }

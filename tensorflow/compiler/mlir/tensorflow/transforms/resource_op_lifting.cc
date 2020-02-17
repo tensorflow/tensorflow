@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Block.h"  // TF:llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
@@ -48,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 
 namespace mlir {
-namespace TFDevice {
 
 namespace {
 
@@ -352,6 +352,7 @@ LogicalResult HoistResourceOpsFromLaunchOp(tf_device::LaunchOp launch_op) {
 struct ResourceArgUseInfo {
   bool used;
   Type data_type;
+  bool updated;
 };
 
 // Finds the ResourceArgUseInfo for each resource argument. Forwarding to the
@@ -365,6 +366,7 @@ LogicalResult FindResourceArgUseInfo(
     if (!getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>()) continue;
     auto& info = (*result)[arg.getArgNumber()];
     info.used = false;
+    info.updated = false;
     for (auto user : arg.getUsers()) {
       if (user == return_op) continue;
       if (auto read = llvm::dyn_cast<TF::ReadVariableOp>(user)) {
@@ -374,6 +376,7 @@ LogicalResult FindResourceArgUseInfo(
       }
       if (auto assign = llvm::dyn_cast<TF::AssignVariableOp>(user)) {
         info.used = true;
+        info.updated = true;
         info.data_type = assign.value().getType();
         continue;
       }
@@ -397,6 +400,7 @@ llvm::SmallDenseMap<int64_t, ResourceArgUseInfo> MergeArgResourceUseInfo(
     auto& info1_entry = *infos1.find(entry.getFirst());
     if (info1_entry.getSecond().used) {
       entry.getSecond().used = true;
+      entry.getSecond().updated |= info1_entry.getSecond().updated;
       entry.getSecond().data_type = info1_entry.getSecond().data_type;
     }
   }
@@ -571,10 +575,9 @@ LogicalResult HanldeWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
   for (auto arg : body.getArguments()) {
     if (!getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>()) continue;
     if (return_op->getOperand(arg.getArgNumber()) != arg) {
-      return_op->emitError(
+      return return_op->emitError(
           "Resource used in while loop is only supported when the resource "
           "input and output alias each other in the loop body.");
-      return failure();
     }
   }
   // FindResourceArgUseInfo will check supported resource ops (read and assign),
@@ -663,6 +666,151 @@ LogicalResult HanldeWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
   return success();
 }
 
+// Lifts loads/stores from an IfOp's branches.
+LogicalResult HanldeIfOP(TF::IfOp if_op, FuncOp then_branch,
+                         FuncOp else_branch) {
+  // Remove identity nodes to avoid aliasing.
+  RemoveIdentity(&then_branch.front());
+  RemoveIdentity(&else_branch.front());
+  // Sanity check: branch return of resources should be aliases of inputs. If
+  // so, replace the output uses with the input so that we can remove these
+  // outputs.
+  for (auto entry : llvm::enumerate(
+           llvm::zip(then_branch.front().getTerminator()->getOperands(),
+                     else_branch.front().getTerminator()->getOperands()))) {
+    auto then_retval = std::get<0>(entry.value());
+    auto else_retval = std::get<1>(entry.value());
+    assert(then_retval.getType() == else_retval.getType());
+    if (!getElementTypeOrSelf(then_retval.getType()).isa<TF::ResourceType>()) {
+      continue;
+    }
+    auto then_aliasing_arg = then_retval.dyn_cast<BlockArgument>();
+    auto else_aliasing_arg = else_retval.dyn_cast<BlockArgument>();
+    if (!then_aliasing_arg || !else_aliasing_arg ||
+        then_aliasing_arg.getArgNumber() != else_aliasing_arg.getArgNumber()) {
+      return if_op.emitOpError(
+          "Unsupported tf.IfOp output: resource does not alias a single "
+          "input.");
+    }
+    if_op.getResult(entry.index())
+        .replaceAllUsesWith(
+            if_op.getOperand(then_aliasing_arg.getArgNumber() + 1));
+  }
+  // Erase the resource outputs from the branches.
+  int64_t non_resource_results = 0;
+  llvm::SmallVector<int64_t, 4> old_to_new_output_indices;
+  llvm::SmallVector<Attribute, 4> new_output_shapes;
+  for (auto result : if_op.getResults()) {
+    if (!getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
+      old_to_new_output_indices.push_back(non_resource_results++);
+      if (!if_op.output_shapes().getValue().empty()) {
+        new_output_shapes.push_back(
+            if_op.output_shapes().getValue()[result.getResultNumber()]);
+      }
+      continue;
+    }
+    old_to_new_output_indices.push_back(-1);
+    then_branch.front().getTerminator()->eraseOperand(non_resource_results);
+    else_branch.front().getTerminator()->eraseOperand(non_resource_results);
+  }
+
+  llvm::SmallDenseMap<int64_t, ResourceArgUseInfo> then_use_info;
+  llvm::SmallDenseMap<int64_t, ResourceArgUseInfo> else_use_info;
+  if (failed(FindResourceArgUseInfo(then_branch, &then_use_info)) ||
+      failed(FindResourceArgUseInfo(else_branch, &else_use_info))) {
+    return failure();
+  }
+  // A resource is considered used as long as it is used in either branch.
+  auto resource_arg_uses =
+      MergeArgResourceUseInfo(then_use_info, else_use_info);
+  if (resource_arg_uses.empty()) return success();
+  // Remove unused resources in functions.
+  llvm::SmallDenseMap<int64_t, Type> remaining_resource_data_types;
+  RemoveUnusedResourceArgumentsAndForwardedRetvals(
+      resource_arg_uses, then_branch, /*old_to_new_arg_indices=*/nullptr,
+      &remaining_resource_data_types);
+  RemoveUnusedResourceArgumentsAndForwardedRetvals(resource_arg_uses,
+                                                   else_branch);
+  // Forward resource inputs updated in any branch to the outputs of both
+  // branches. First prepare the mapping from arg to new update output.
+  llvm::SmallDenseMap<int64_t, int64_t> resource_arg_to_new_output;
+  {
+    int64_t removed_args = 0;
+    for (const auto& entry : resource_arg_uses) {
+      if (!entry.getSecond().used) {
+        removed_args++;
+        continue;
+      }
+      if (!entry.getSecond().updated) continue;
+      int64_t new_output_index =
+          non_resource_results + resource_arg_to_new_output.size();
+      resource_arg_to_new_output[entry.getFirst() - removed_args] =
+          new_output_index;
+    }
+  }
+  // Append resource updates to the return ops: now they are just forwarded
+  // input resources, but will be replaced by the data value in
+  // LiftArgRetResourcesForFunction().
+  for (auto branch : {then_branch, else_branch}) {
+    auto new_retvals =
+        llvm::to_vector<4>(branch.front().getTerminator()->getOperands());
+    for (const auto& entry : resource_arg_to_new_output) {
+      new_retvals.push_back(branch.getArgument(entry.getFirst()));
+    }
+    auto old_return = branch.front().getTerminator();
+    OpBuilder builder(old_return);
+    auto new_return =
+        builder.create<ReturnOp>(old_return->getLoc(), new_retvals);
+    old_return->erase();
+    LiftArgRetResourcesForFunction(
+        branch, remaining_resource_data_types, [&](int64_t index, Value value) {
+          new_return.setOperand(resource_arg_to_new_output[index], value);
+        });
+  }
+
+  // Recreate the if op.
+  OpBuilder builder(if_op);
+  // Now use the filtered original operands, which will be replaced by
+  // AddLoadsStoresOutsideControlFlowOp().
+  auto new_operands =
+      FilterRange<Value, OperandRange>(if_op.input(), resource_arg_uses);
+  new_operands.insert(new_operands.begin(), if_op.cond());
+  auto new_if = builder.create<TF::IfOp>(if_op.getLoc(),
+                                         then_branch.getType().getResults(),
+                                         new_operands, if_op.getAttrs());
+  // Prepare for AddLoadsStoresOutsideControlFlowOp() and update
+  // new_output_shapes.
+  llvm::SmallDenseMap<int64_t, std::pair<Type, int64_t>>
+      arg_data_type_and_updated_output_index;
+  for (const auto& entry : remaining_resource_data_types) {
+    auto new_output_it = resource_arg_to_new_output.find(entry.getFirst());
+    int64_t update_index = new_output_it == resource_arg_to_new_output.end()
+                               ? -1
+                               : new_output_it->getSecond();
+    arg_data_type_and_updated_output_index[entry.getFirst() + 1] = {
+        entry.getSecond(), update_index};
+    if (!if_op.output_shapes().getValue().empty() && update_index >= 0) {
+      tensorflow::TensorShapeProto shape_proto;
+      tensorflow::ConvertTypeToTensorShape(entry.getSecond())
+          .AsProto(&shape_proto);
+      new_output_shapes.push_back(builder.getStringAttr(
+          tensorflow::mangling_util::MangleShape(shape_proto)));
+    }
+  }
+  AddLoadsStoresOutsideControlFlowOp(new_if,
+                                     arg_data_type_and_updated_output_index);
+  new_if.setAttr("output_shapes", builder.getArrayAttr(new_output_shapes));
+  // Replace uses.
+  for (int64_t i = 0; i < old_to_new_output_indices.size(); ++i) {
+    if (old_to_new_output_indices[i] >= 0) {
+      if_op.getResult(i).replaceAllUsesWith(
+          new_if.getResult(old_to_new_output_indices[i]));
+    }
+  }
+  if_op.erase();
+  return success();
+}
+
 // Hoists resource loads/stores from control flow ops in `block` outside the
 // body/cond/branch functions.
 LogicalResult HoistForFunctionalControlFlow(Block* block, ModuleOp module) {
@@ -675,13 +823,18 @@ LogicalResult HoistForFunctionalControlFlow(Block* block, ModuleOp module) {
       HoistForFunctionalControlFlow(&cond.front(), module);
       if (failed(HanldeWhileLoop(while_op, body, cond))) return failure();
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-      // TODO(yuanzx): Add support for IfOp.
+      auto then_branch =
+          llvm::cast<FuncOp>(module.lookupSymbol(if_op.then_branch()));
+      auto else_branch =
+          llvm::cast<FuncOp>(module.lookupSymbol(if_op.else_branch()));
+      // Recursively handle the nested control flow.
+      HoistForFunctionalControlFlow(&then_branch.front(), module);
+      HoistForFunctionalControlFlow(&else_branch.front(), module);
+      if (failed(HanldeIfOP(if_op, then_branch, else_branch))) return failure();
     }
   }
   return success();
 }
-
-}  // namespace
 
 // Lifts resource operation from tf_device.launch_func ops nested in `op`
 // outside. Returns failure if there are remaining resource-type values that can
@@ -702,13 +855,55 @@ void ResourceOpLiftingPass::runOnModule() {
   }
 }
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceOpLiftingPass() {
-  return std::make_unique<ResourceOpLiftingPass>();
+struct ResourceOpLiftingForMainFunctionPass
+    : public ModulePass<ResourceOpLiftingForMainFunctionPass> {
+  void runOnModule() override;
+};
+
+void ResourceOpLiftingForMainFunctionPass::runOnModule() {
+  ModuleOp module = getModule();
+  FuncOp main_func = module.lookupSymbol<FuncOp>("main");
+  if (!main_func) {
+    return;
+  }
+
+  if (failed(TF::ResourceLiftingForFunctionalControlFlow(main_func))) {
+    return signalPassFailure();
+  }
 }
+
+static PassRegistration<ResourceOpLiftingForMainFunctionPass>
+    lift_main_func_pass(
+        "tf-resource-op-lifting-for-main-function",
+        "Lifting resource operations out of control flow statements for the "
+        "main function");
 
 static PassRegistration<ResourceOpLiftingPass> pass(
     "tf-resource-op-lifting",
     "Lifting resource operations out of device computation");
 
+}  // namespace
+
+namespace TFDevice {
+std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceOpLiftingPass() {
+  return std::make_unique<ResourceOpLiftingPass>();
+}
 }  // namespace TFDevice
+
+namespace TF {
+LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
+  // This routine should only be called when control flow operations are still
+  // represented with TF IfOp and WhileOp operations. In this case, there should
+  // be only one basic blocks in the MLIR representation.
+  if (!has_single_element(function.getBlocks())) {
+    return function.emitError()
+           << "expect the function to have 1 block while it has "
+           << function.getBlocks().size();
+  }
+
+  return HoistForFunctionalControlFlow(&function.front(),
+                                       cast<ModuleOp>(function.getParentOp()));
+}
+}  // namespace TF
+
 }  // namespace mlir

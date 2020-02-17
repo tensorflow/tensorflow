@@ -47,7 +47,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
 
     y_t = [array_ops.ones((10, 1)), array_ops.zeros((10, 1))]
     y_p = [array_ops.ones((10, 1)), array_ops.ones((10, 1))]
-    sw = ops.convert_to_tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     total_loss = loss_container(y_t, y_p, sample_weight=sw)
 
@@ -80,7 +80,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
 
     y_t = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.zeros((10, 1))}
     y_p = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.ones((10, 1))}
-    sw = ops.convert_to_tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     total_loss = loss_container(y_t, y_p, sample_weight=sw)
 
@@ -106,7 +106,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
 
     y_t = [array_ops.ones((10, 1)), array_ops.zeros((10, 1))]
     y_p = [array_ops.ones((10, 1)), array_ops.ones((10, 1))]
-    sw = ops.convert_to_tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     total_loss = loss_container(y_t, y_p, sample_weight=sw)
 
@@ -129,7 +129,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
 
     y_t = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.zeros((10, 1))}
     y_p = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.ones((10, 1))}
-    sw = ops.convert_to_tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     total_loss = loss_container(y_t, y_p, sample_weight=sw)
 
@@ -164,7 +164,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
               array_ops.zeros((10, 1))],
         'a': array_ops.ones((10, 1))
     }
-    sw = ops.convert_to_tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     total_loss = loss_container(y_t, y_p, sample_weight=sw)
     self.assertEqual(total_loss.numpy(), 0.75)
@@ -187,7 +187,7 @@ class LossesContainerTest(keras_parameterized.TestCase):
 
     y_t = [array_ops.ones((10, 1)), array_ops.zeros((10, 1))]
     y_p = [array_ops.ones((10, 1)), array_ops.ones((10, 1))]
-    sw = ops.convert_to_tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     total_loss = loss_container(y_t, y_p, sample_weight=sw)
     self.assertEqual(total_loss.numpy(), 0.5)
@@ -239,7 +239,7 @@ class MetricsContainerTest(keras_parameterized.TestCase):
 
     y_t = [array_ops.ones((10, 1)), array_ops.zeros((10, 1))]
     y_p = [array_ops.ones((10, 1)), 2 * array_ops.ones((10, 1))]
-    sw = ops.convert_to_tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
     metric_container.update_state(y_t, y_p, sample_weight=sw)
     self.assertLen(metric_container.metrics, 4)
 
@@ -274,7 +274,7 @@ class MetricsContainerTest(keras_parameterized.TestCase):
 
     y_t = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.zeros((10, 1))}
     y_p = {'out1': array_ops.ones((10, 1)), 'out2': 2 * array_ops.ones((10, 1))}
-    sw = ops.convert_to_tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
     metric_container.update_state(y_t, y_p, sample_weight=sw)
 
     mse_metric = metric_container.metrics[0]
@@ -299,7 +299,7 @@ class MetricsContainerTest(keras_parameterized.TestCase):
 
     y_t = [array_ops.ones((10, 1)), array_ops.zeros((10, 1))]
     y_p = [array_ops.ones((10, 1)), array_ops.ones((10, 1))]
-    sw = ops.convert_to_tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     metric_container.update_state(y_t, y_p, sample_weight=sw)
     self.assertLen(metric_container.metrics, 1)
@@ -316,7 +316,7 @@ class MetricsContainerTest(keras_parameterized.TestCase):
 
     y_t = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.zeros((10, 1))}
     y_p = {'out1': array_ops.ones((10, 1)), 'out2': array_ops.ones((10, 1))}
-    sw = ops.convert_to_tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     metric_container.update_state(y_t, y_p, sample_weight=sw)
     self.assertLen(metric_container.metrics, 1)
@@ -346,7 +346,7 @@ class MetricsContainerTest(keras_parameterized.TestCase):
               array_ops.zeros((10, 1))],
         'a': array_ops.ones((10, 1))
     }
-    sw = ops.convert_to_tensor([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
 
     metric_container.update_state(y_t, y_p, sample_weight=sw)
     self.assertLen(metric_container.metrics, 3)
@@ -407,9 +407,9 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     metric_container = compile_utils.MetricsContainer(
         metrics=['mae'], weighted_metrics=['mae'])
 
-    y_t = ops.convert_to_tensor([[0], [3], [0]])
-    y_p = ops.convert_to_tensor([[0], [0], [0]])
-    sw = ops.convert_to_tensor([[1], [0], [1]])
+    y_t = ops.convert_to_tensor_v2([[0], [3], [0]])
+    y_p = ops.convert_to_tensor_v2([[0], [0], [0]])
+    sw = ops.convert_to_tensor_v2([[1], [0], [1]])
 
     metric_container.update_state(y_t, y_p, sample_weight=sw)
     self.assertLen(metric_container.metrics, 2)

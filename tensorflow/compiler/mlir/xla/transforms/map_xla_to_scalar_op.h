@@ -44,6 +44,11 @@ struct ScalarOp<xla_lhlo::CompareOp> {
   using IOp = ::mlir::CmpIOp;
 };
 template <>
+struct ScalarOp<xla_hlo::CompareOp> {
+  using FOp = ::mlir::CmpFOp;
+  using IOp = ::mlir::CmpIOp;
+};
+template <>
 struct ScalarOp<xla_lhlo::DivOp> {
   using FOp = ::mlir::DivFOp;
   using IOp = ::mlir::SignedDivIOp;
@@ -84,16 +89,24 @@ struct ScalarOp<xla_hlo::SubOp> {
   using IOp = ::mlir::SubIOp;
 };
 
-template <typename LHLO_BinaryOp>
-using ScalarFOp = typename ScalarOp<LHLO_BinaryOp>::FOp;
-template <typename LHLO_BinaryOp>
-using ScalarIOp = typename ScalarOp<LHLO_BinaryOp>::IOp;
+template <typename XLA_BinaryOp>
+using ScalarFOp = typename ScalarOp<XLA_BinaryOp>::FOp;
+template <typename XLA_BinaryOp>
+using ScalarIOp = typename ScalarOp<XLA_BinaryOp>::IOp;
 
 template <typename... Args>
 struct MapXlaOpToStdScalarOpImpl {
   Value operator()(Location loc, ArrayRef<Type> result_types,
                    ArrayRef<Value> args, OpBuilder* b) {
     return nullptr;
+  }
+};
+
+template <typename StdScalarOp>
+struct MapXlaOpToStdScalarOpImpl<StdScalarOp> {
+  Value operator()(Location loc, ArrayRef<Type> result_types,
+                   ArrayRef<Value> args, OpBuilder* b) {
+    return b->template create<StdScalarOp>(loc, result_types, args, mlir::None);
   }
 };
 
@@ -154,7 +167,8 @@ inline Value MapXlaOpToStdScalarOp<xla_hlo::AndOp>(xla_hlo::AndOp xla_op,
       xla_op.getLoc(), result_types, args, b);
 }
 
-inline CmpFPredicate getFloatCmpPredicate(StringRef xla_comparison_direction) {
+inline Optional<CmpFPredicate> getFloatCmpPredicate(
+    StringRef xla_comparison_direction) {
   return llvm::StringSwitch<CmpFPredicate>(xla_comparison_direction)
       .Case("EQ", CmpFPredicate::OEQ)
       .Case("NE", CmpFPredicate::ONE)
@@ -177,10 +191,10 @@ inline Optional<CmpIPredicate> getIntCmpPredicate(
       .Default(llvm::None);
 }
 
-template <>
-inline Value MapXlaOpToStdScalarOp<xla_lhlo::CompareOp>(
-    xla_lhlo::CompareOp xla_op, ArrayRef<Type> result_types,
-    ArrayRef<Value> args, OpBuilder* b) {
+template <typename XLACompareOpTy>
+inline Value MapXlaCompareOpToStdScalarOp(XLACompareOpTy xla_op,
+                                          ArrayRef<Type> result_types,
+                                          ArrayRef<Value> args, OpBuilder* b) {
   const auto& lhs = args[0];
   const auto& rhs = args[1];
   Type element_type = lhs.getType();
@@ -188,21 +202,44 @@ inline Value MapXlaOpToStdScalarOp<xla_lhlo::CompareOp>(
     Optional<CmpIPredicate> predicate =
         getIntCmpPredicate(xla_op.comparison_direction());
     assert(predicate.hasValue() && "expected valid comparison direction");
-    return b->create<ScalarIOp<xla_lhlo::CompareOp>>(
-        xla_op.getLoc(), predicate.getValue(), lhs, rhs);
+    return b->create<ScalarIOp<XLACompareOpTy>>(xla_op.getLoc(),
+                                                predicate.getValue(), lhs, rhs);
   }
   if (element_type.isa<FloatType>()) {
-    return b->create<ScalarFOp<xla_lhlo::CompareOp>>(
-        xla_op.getLoc(), getFloatCmpPredicate(xla_op.comparison_direction()),
-        lhs, rhs);
+    Optional<CmpFPredicate> predicate =
+        getFloatCmpPredicate(xla_op.comparison_direction());
+    assert(predicate.hasValue() && "expected valid comparison direction");
+    return b->create<ScalarFOp<XLACompareOpTy>>(xla_op.getLoc(),
+                                                predicate.getValue(), lhs, rhs);
   }
   return nullptr;
+}
+template <>
+inline Value MapXlaOpToStdScalarOp<xla_lhlo::CompareOp>(
+    xla_lhlo::CompareOp xla_op, ArrayRef<Type> result_types,
+    ArrayRef<Value> args, OpBuilder* b) {
+  return MapXlaCompareOpToStdScalarOp<xla_lhlo::CompareOp>(xla_op, result_types,
+                                                           args, b);
+}
+template <>
+inline Value MapXlaOpToStdScalarOp<xla_hlo::CompareOp>(
+    xla_hlo::CompareOp xla_op, ArrayRef<Type> result_types,
+    ArrayRef<Value> args, OpBuilder* b) {
+  return MapXlaCompareOpToStdScalarOp<xla_hlo::CompareOp>(xla_op, result_types,
+                                                          args, b);
 }
 
 template <>
 inline Value MapXlaOpToStdScalarOp<xla_lhlo::CopyOp>(
     xla_lhlo::CopyOp xla_op, ArrayRef<Type> result_types, ArrayRef<Value> args,
     OpBuilder* b) {
+  return args.front();
+}
+template <>
+inline Value MapXlaOpToStdScalarOp<xla_hlo::CopyOp>(xla_hlo::CopyOp xla_op,
+                                                    ArrayRef<Type> result_types,
+                                                    ArrayRef<Value> args,
+                                                    OpBuilder* b) {
   return args.front();
 }
 
@@ -364,8 +401,15 @@ template <>
 inline Value MapXlaOpToStdScalarOp<xla_lhlo::SelectOp>(
     xla_lhlo::SelectOp xla_op, ArrayRef<Type> result_types,
     ArrayRef<Value> args, OpBuilder* b) {
-  return b->create<::mlir::SelectOp>(xla_op.getLoc(), result_types, args,
-                                     mlir::None);
+  return MapXlaOpToStdScalarOpImpl<::mlir::SelectOp>{}(xla_op.getLoc(),
+                                                       result_types, args, b);
+}
+template <>
+inline Value MapXlaOpToStdScalarOp<xla_hlo::SelectOp>(
+    xla_hlo::SelectOp xla_op, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapXlaOpToStdScalarOpImpl<::mlir::SelectOp>{}(xla_op.getLoc(),
+                                                       result_types, args, b);
 }
 
 template <>

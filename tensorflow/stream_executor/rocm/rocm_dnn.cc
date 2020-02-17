@@ -2352,7 +2352,11 @@ bool MIOpenSupport::DoRnnBackwardImpl(
 
   // workaround for missing initialization support in MIOpen.
   // TODO: remove this when MIOpen is ready.
+<<<<<<< HEAD
   auto type_size = std::is_same<T,Eigen::half>::value ? 2 : sizeof(T);
+=======
+  auto type_size = std::is_same<T, Eigen::half>::value ? 2 : sizeof(T);
+>>>>>>> master
   auto size_data = input_desc.seq_length() * input_desc.batch_size() *
                    input_desc.data_size();
   if ((size_data > 0) && (input_backprop_data->opaque() != nullptr))
@@ -2367,6 +2371,7 @@ bool MIOpenSupport::DoRnnBackwardImpl(
               input_c_desc.data_size();
   if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr))
     stream->ThenMemZero(input_c_backprop_data, size_data * type_size);
+<<<<<<< HEAD
 
   std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
   const bool is_profiling = output_profile_result != nullptr;
@@ -2380,6 +2385,8 @@ bool MIOpenSupport::DoRnnBackwardImpl(
       return false;
     }
   }
+=======
+>>>>>>> master
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(

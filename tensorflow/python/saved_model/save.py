@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import os
 
 from tensorflow.core.framework import versions_pb2
@@ -263,9 +264,11 @@ class _SaveableView(object):
 
     for node_id, obj in enumerate(self.nodes):
       if isinstance(obj, tracking.CapturableResource):
+        new_obj = object_map[obj] = copy.copy(obj)
         # pylint: disable=protected-access
         with ops.device(obj._resource_device):
-          new_resource = obj._create_resource()
+          new_resource = new_obj._create_resource()
+        new_obj._resource_handle = new_resource
         # pylint: enable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id

@@ -214,6 +214,8 @@ class TargetVerifierMetadata {
 
   virtual std::unique_ptr<ShapeVerifier> GetVerifier() const = 0;
 
+  virtual bool IsLayoutSensitive() const = 0;
+
   TargetVerifierMetadata() {}
   virtual ~TargetVerifierMetadata() {}
 
@@ -244,6 +246,8 @@ class DefaultVerifierMetadata : public TargetVerifierMetadata {
     return absl::make_unique<ShapeVerifier>(
         layout_sensitive_, allow_mixed_precision_, shape_size_function_);
   }
+
+  bool IsLayoutSensitive() const override { return layout_sensitive_; }
 
  private:
   bool layout_sensitive_;

@@ -205,6 +205,10 @@ tf_module {
     argspec: "args=[\'condition\', \'data\', \'summarize\', \'name\'], varargs=None, keywords=None, defaults=[\'3\', \'None\'], "
   }
   member_method {
+    name: "AssertCardinalityDataset"
+    argspec: "args=[\'input_dataset\', \'cardinality\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "AssertNextDataset"
     argspec: "args=[\'input_dataset\', \'transformations\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1977,6 +1981,10 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "LegacyParallelInterleaveDatasetV2"
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'buffer_output_elements\', \'prefetch_input_elements\', \'f\', \'output_types\', \'output_shapes\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'None\'], "
+  }
+  member_method {
     name: "Less"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2649,8 +2657,16 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'None\'], "
   }
   member_method {
+    name: "ParallelInterleaveDatasetV4"
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'buffer_output_elements\', \'prefetch_input_elements\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'None\'], "
+  }
+  member_method {
     name: "ParallelMapDataset"
     argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'sloppy\', \'preserve_cardinality\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "ParallelMapDatasetV2"
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'deterministic\', \'preserve_cardinality\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'default\', \'False\', \'None\'], "
   }
   member_method {
     name: "ParameterizedTruncatedNormal"
@@ -2663,6 +2679,10 @@ tf_module {
   member_method {
     name: "ParseExampleDataset"
     argspec: "args=[\'input_dataset\', \'num_parallel_calls\', \'dense_defaults\', \'sparse_keys\', \'dense_keys\', \'sparse_types\', \'dense_shapes\', \'output_types\', \'output_shapes\', \'sloppy\', \'ragged_keys\', \'ragged_value_types\', \'ragged_split_types\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'[]\', \'[]\', \'[]\', \'None\'], "
+  }
+  member_method {
+    name: "ParseExampleDatasetV2"
+    argspec: "args=[\'input_dataset\', \'num_parallel_calls\', \'dense_defaults\', \'sparse_keys\', \'dense_keys\', \'sparse_types\', \'dense_shapes\', \'output_types\', \'output_shapes\', \'deterministic\', \'ragged_keys\', \'ragged_value_types\', \'ragged_split_types\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'[]\', \'[]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "ParseExampleV2"
@@ -4311,6 +4331,10 @@ tf_module {
   member_method {
     name: "StatelessRandomUniform"
     argspec: "args=[\'shape\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "StatelessRandomUniformFullInt"
+    argspec: "args=[\'shape\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'uint64\'>\", \'None\'], "
   }
   member_method {
     name: "StatelessRandomUniformInt"

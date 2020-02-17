@@ -44,7 +44,7 @@ c) (To be implemented in a future CL) Enter an instruction loop to let an
 3) The callback handles the request and returns a OnSessionInitResponse
    object with an action field, directing the wrapper session what to do next.
 
-If the action field in the OnSessionInitResponse is PROCEED, the constuctor
+If the action field in the OnSessionInitResponse is PROCEED, the constructor
 returns. Control is released back to the caller of the constructor, which can
 invoke run() method of wrapper session with the same syntax as a non-wrapped
 session, e.g.,:
@@ -69,7 +69,7 @@ A1) Right at the start of each run() call, the on_run_start() callback is
 
 A2) Right before the run() returns, the on_run_end() callback is invoked,
     with an OnRunEndRequest object as the argument, which carries information
-    including the actual action performed in the warpper run() call and the
+    including the actual action performed in the wrapper run() call and the
     run_metadata from the run() call.
 
 However, if the action field in OnSessionInitResponse is

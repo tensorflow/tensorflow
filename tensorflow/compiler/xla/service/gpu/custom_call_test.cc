@@ -16,12 +16,16 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+<<<<<<< HEAD
 #include "third_party/gpus/cuda/includes/cuda_headers/third_party/gpus/cuda/include/driver_types.h"
 #define PLATFORM "CUDA"
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/include/hip/hip_runtime.h"
 #define PLATFORM "ROCM"
 #endif
+=======
+#include "third_party/gpus/cuda/include/driver_types.h"
+>>>>>>> master
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"

@@ -28,11 +28,8 @@ import six
 
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.lib.io import tf_record
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
-
-prefix_path = resource_loader.get_path_to_datafile("../../../core/lib")
 
 TFRecordCompressionType = tf_record.TFRecordCompressionType
 

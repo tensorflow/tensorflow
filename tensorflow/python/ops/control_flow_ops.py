@@ -573,7 +573,7 @@ def _EnforceShapeInvariant(merge_var, next_var):
 
   Raises:
     ValueError: If any tensor in `merge_var` has a more specific shape than
-      its correspnding tensor in `next_var`.
+      its corresponding tensor in `next_var`.
   """
   if isinstance(merge_var, ops.Tensor):
     m_shape = merge_var.get_shape()

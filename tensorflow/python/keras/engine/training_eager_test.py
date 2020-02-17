@@ -237,7 +237,12 @@ class CorrectnessTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
-  def test_loss_correctness(self):
+  @parameterized.named_parameters([
+      ('', dict()),
+      ('_clipvalue_inf', {'clipvalue': 999999}),
+      ('_clipnorm_inf', {'clipnorm': 999999}),
+  ])
+  def test_loss_correctness(self, optimizer_kwargs):
     # Test that training loss is the same in eager and graph
     # (by comparing it to a reference value in a deterministic case)
     layers = [
@@ -247,7 +252,7 @@ class CorrectnessTest(keras_parameterized.TestCase):
     model = testing_utils.get_model_from_layers(layers, input_shape=(4,))
     model.compile(
         loss='sparse_categorical_crossentropy',
-        optimizer=rmsprop.RMSprop(learning_rate=0.001),
+        optimizer=rmsprop.RMSprop(learning_rate=0.001, **optimizer_kwargs),
         run_eagerly=testing_utils.should_run_eagerly(),
         experimental_run_tf_function=testing_utils.should_run_tf_function())
     x = np.ones((100, 4))
@@ -255,6 +260,30 @@ class CorrectnessTest(keras_parameterized.TestCase):
     y = np.random.randint(0, 1, size=(100, 1))
     history = model.fit(x, y, epochs=1, batch_size=10)
     self.assertAlmostEqual(history.history['loss'][-1], 0.5836, 4)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_loss_correctness_clipvalue_zero(self):
+    # Test that training loss is the same in eager and graph
+    # (by comparing it to a reference value in a deterministic case)
+    # And confirm that setting clipvalue to zero stops all training
+    layers = [
+        keras.layers.Dense(3, activation='relu',
+                           kernel_initializer='ones'),
+        keras.layers.Dense(2, activation='softmax', kernel_initializer='ones')]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(4,))
+    model.compile(
+        loss='sparse_categorical_crossentropy',
+        optimizer=rmsprop.RMSprop(learning_rate=0.001, clipvalue=0.0),
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    x = np.ones((100, 4))
+    np.random.seed(123)
+    y = np.random.randint(0, 1, size=(100, 1))
+    history = model.fit(x, y, epochs=3, batch_size=10)
+    self.assertAlmostEqual(history.history['loss'][-3], 0.6931, 4)
+    self.assertAlmostEqual(history.history['loss'][-2], 0.6931, 4)
+    self.assertAlmostEqual(history.history['loss'][-1], 0.6931, 4)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes

@@ -433,7 +433,7 @@ static LogicalResult Verify(BroadcastOp op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(BroadcastInDimOp op) {
-  auto operandType = op.operand().getType().cast<RankedTensorType>();
+  auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
   auto operandRank = operandType.getRank();
   if (!op.broadcast_dimensions()) {
     if (operandRank == 0) {
@@ -485,6 +485,89 @@ static LogicalResult Verify(BroadcastInDimOp op) {
                         "1 or size of result dimension {2} ({3})",
                         i, dimSize, dimIndex, resultDimSize));
     }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicBroadcastInDimOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(DynamicBroadcastInDimOp op) {
+  auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
+  auto resultType = op.getResult().getType().dyn_cast<RankedTensorType>();
+
+  // If either the operand or result are unranked, there is very little
+  // to verify statically.
+  if (!operandType || !resultType) {
+    return success();
+  }
+
+  auto outputDimensionsType =
+      op.output_dimensions().getType().cast<RankedTensorType>();
+  auto outputDimensionsSize = outputDimensionsType.getDimSize(0);
+  auto operandRank = operandType.getRank();
+  auto resultRank = resultType.getRank();
+
+  if (!op.broadcast_dimensions()) {
+    if (operandRank == 0) {
+      return success();
+    }
+    return op.emitOpError(
+        llvm::formatv("broadcast_dimensions is absent, but required because "
+                      "operand has non-zero rank ({0})",
+                      operandRank));
+  }
+
+  // Verify broadcast_dimensions.
+  auto bcastDimensions = *op.broadcast_dimensions();
+  auto bcastDimensionsType = op.broadcast_dimensions()->getType();
+  auto bcastDimensionsRank = bcastDimensionsType.getRank();
+  // TODO(laurenzo): Update the BroadcastDimAttr to constrain its rank to 1.
+  if (bcastDimensionsRank != 1) {
+    return op.emitOpError(
+        llvm::formatv("broadcast_dimensions has rank {0} instead of rank 1",
+                      bcastDimensionsRank));
+  }
+
+  auto bcastDimensionsSize = bcastDimensionsType.getNumElements();
+  if (bcastDimensionsSize != operandRank) {
+    return op.emitOpError(llvm::formatv(
+        "broadcast_dimensions size ({0}) does not match operand rank ({1})",
+        bcastDimensionsSize, operandRank));
+  }
+
+  if (resultRank < operandRank) {
+    return op.emitOpError(
+        llvm::formatv("result rank ({0}) is less than operand rank ({1})",
+                      resultRank, operandRank));
+  }
+
+  for (int i = 0; i != bcastDimensionsSize; ++i) {
+    auto dimIndex = bcastDimensions.getValue<int64_t>(i);
+    if (dimIndex >= resultRank) {
+      return op.emitOpError(
+          llvm::formatv("broadcast_dimensions contains invalid value {0} for "
+                        "result result with rank {1}",
+                        dimIndex, resultRank));
+    }
+
+    auto dimSize = operandType.getDimSize(i);
+    auto resultDimSize = resultType.getDimSize(dimIndex);
+    if (dimSize != 1 && dimSize != resultDimSize) {
+      return op.emitOpError(
+          llvm::formatv("size of operand dimension {0} ({1}) is not equal to "
+                        "1 or size of result dimension {2} ({3})",
+                        i, dimSize, dimIndex, resultDimSize));
+    }
+  }
+
+  if (outputDimensionsSize != resultRank) {
+    return op.emitOpError(
+        llvm::formatv("result rank ({0}) is not equal to number of output "
+                      "dimensions ({1})",
+                      resultRank, outputDimensionsSize));
   }
 
   return success();
@@ -914,6 +997,27 @@ static LogicalResult Verify(PadOp op) {
     }
   }
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ReshapeOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(ReshapeOp op) {
+  auto operand_ty = op.operand().getType().cast<TensorType>();
+  if (!operand_ty || !operand_ty.hasStaticShape()) return success();
+  int64_t num_input_elements = operand_ty.getNumElements();
+
+  auto out_ty = op.getType().cast<RankedTensorType>();
+  if (out_ty && out_ty.hasStaticShape()) {
+    int64_t num_output_elements = out_ty.getNumElements();
+    if (num_input_elements != num_output_elements)
+      return op.emitOpError()
+             << "number of output elements (" << num_output_elements
+             << ") doesn't match expected number of elements ("
+             << num_input_elements << ")";
+  }
   return success();
 }
 

@@ -101,7 +101,7 @@ class ModelsTest(test.TestCase):
       with self.assertRaises(Exception) as e:
         models.create_model(fingerprint_input, model_settings,
                             "bad_architecture", True)
-      self.assertTrue("not recognized" in str(e.exception))
+      self.assertIn("not recognized", str(e.exception))
 
   @test_util.run_deprecated_v1
   def testCreateModelTinyConvTraining(self):

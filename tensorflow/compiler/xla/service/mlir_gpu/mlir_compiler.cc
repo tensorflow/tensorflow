@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // TF:llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // TF:llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:llvm-project
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
@@ -26,6 +27,8 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/Value.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Target/NVVMIR.h"  // TF:llvm-project
@@ -212,8 +215,20 @@ static absl::optional<int64> getLaunchBound(const mlir::gpu::KernelDim3& dim) {
   return get_constant(dim.x.getDefiningOp(), "x");
 }
 
+namespace {
+
+// Indexes of a range of arguments in a GPU function. This is used to keep the
+// range of arguments that correspond to a lowered kernel argument of
+// (previously) memref type.
+struct LaunchFuncArgument {
+  int kernel_argument_begin;
+  int kernel_argument_size;
+};
+
+}  // end namespace
+
 using OperandToValueMap =
-    absl::flat_hash_map<const HloInstruction*, std::vector<BlockArgument>>;
+    absl::flat_hash_map<const HloInstruction*, std::vector<LaunchFuncArgument>>;
 
 static StatusOr<std::vector<const HloInstruction*>> ComputeOperandToValueMap(
     OperandToValueMap* operand_to_value_map, const HloInstruction* instr,
@@ -221,6 +236,10 @@ static StatusOr<std::vector<const HloInstruction*>> ComputeOperandToValueMap(
   auto operands = instr->operands();
   std::vector<const HloInstruction*> ordered_operands;
   bool has_failed = false;
+  // A memref will expand into multiple kernel operands, accumulate their number
+  // in order to find them later.
+  int cur_operand_position = 0;
+
   for (int kernel_index = 0; kernel_index < launchOp.getNumKernelOperands();
        ++kernel_index) {
     auto launchop_operand =
@@ -229,6 +248,13 @@ static StatusOr<std::vector<const HloInstruction*>> ComputeOperandToValueMap(
       launchOp.emitError("argument to kernel is not a function input");
       has_failed = true;
       continue;
+    }
+    auto memref_type =
+        launchop_operand.getType().dyn_cast<::mlir::MemRefType>();
+    if (!memref_type) {
+      launchOp.emitError("only memref-typed arguments are supported");
+      has_failed = true;
+      break;
     }
     // host_index is the argument position to the surrounding function that
     // contains the launch. This index corresponds to HLO operand indices
@@ -240,10 +266,13 @@ static StatusOr<std::vector<const HloInstruction*>> ComputeOperandToValueMap(
     if (!operand_to_value_map->count(operand)) {
       ordered_operands.push_back(operand);
     }
-    // Associate the HLO operand with the argument value of the kernel
+    // Associate the HLO operand with the argument values of the kernel
     // function.
+    int num_unpacked =
+        mlir::MemRefDescriptor::getNumUnpackedValues(memref_type);
     (*operand_to_value_map)[operand].push_back(
-        kernel.getArgument(kernel_index));
+        {cur_operand_position, num_unpacked});
+    cur_operand_position += num_unpacked;
   }
   if (has_failed) {
     return InternalError("Mapping operands to kernel arguments has failed.");
@@ -268,27 +297,13 @@ Status InsertBufferLoadPreduleIntoKernel(
   kernel.setAttr(kernel.getTypeAttrName(),
                  mlir::TypeAttr::get(LLVMType::getFunctionTy(
                      void_type, new_arg_types, /*isVarArg=*/false)));
+  std::vector<Value> original_args(kernel.args_begin(), kernel.args_end());
 
   std::vector<mlir::Type> as_mlir_types(new_arg_types.begin(),
                                         new_arg_types.end());
   auto new_args = kernel.front().addArguments(as_mlir_types);
   std::vector<Value> buffer_args(new_args.begin(), new_args.end());
 
-  auto zero = builder.create<mlir::LLVM::ConstantOp>(
-      loc, offset_type, builder.getI64IntegerAttr(0));
-  auto one = builder.create<mlir::LLVM::ConstantOp>(
-      loc, offset_type, builder.getI64IntegerAttr(1));
-  auto baseIndex = builder.create<mlir::LLVM::ConstantOp>(
-      loc, LLVMType::getInt32Ty(llvm_dialect), builder.getI32IntegerAttr(0));
-  auto dataIndex = builder.create<mlir::LLVM::ConstantOp>(
-      loc, LLVMType::getInt32Ty(llvm_dialect), builder.getI32IntegerAttr(1));
-  auto offsetIndex = builder.create<mlir::LLVM::ConstantOp>(
-      loc, LLVMType::getInt32Ty(llvm_dialect), builder.getI32IntegerAttr(2));
-  auto shapeIndex = builder.create<mlir::LLVM::ConstantOp>(
-      loc, LLVMType::getInt32Ty(llvm_dialect), builder.getI32IntegerAttr(3));
-  auto strideIndex = builder.create<mlir::LLVM::ConstantOp>(
-      loc, LLVMType::getInt32Ty(llvm_dialect), builder.getI32IntegerAttr(4));
-  // Inject code to map from buffers to input/result values.
   for (auto operand : ordered_operands) {
     TF_ASSIGN_OR_RETURN(auto slice,
                         assignment->GetUniqueTopLevelSlice(operand));
@@ -297,77 +312,56 @@ Status InsertBufferLoadPreduleIntoKernel(
     auto offset = builder.create<mlir::LLVM::ConstantOp>(
         loc, offset_type, builder.getI64IntegerAttr(slice.offset()));
     auto ptr = buffer_args[index];
-    // TODO(b/137624192) Add support for indices into tuples.
-    for (auto value : operand_to_value_map.at(operand)) {
-      // Allocate space for a descriptor. We use the type of the value here,
-      // which is expected to be a pointer to a struct of the form
-      //   { baseptr, dataptr, offset, shape_vect, stride_vect }
-      // where shape_vect and stride_vect are integer vectors with length
-      // matching the rank of the tensor.
-      auto target_type = value.getType().cast<LLVMType>();
-      auto struct_type = target_type.getPointerElementTy();
-      auto descPtr =
-          builder.create<mlir::LLVM::AllocaOp>(loc, target_type, one, 0);
-      // Fill the base and aligned pointers.
+
+    // Replace uses of function arguments pertaining to memref descriptors with
+    // values derived from HLO buffers. The instructions inserting these values
+    // into memref descriptors were already introduced during the lowering phase
+    // as per MLIR calling convention.
+    for (auto arg : operand_to_value_map.at(operand)) {
+      mlir::MemRefDescriptorView original(
+          mlir::ValueRange(original_args)
+              .slice(arg.kernel_argument_begin, arg.kernel_argument_size));
+
+      // Allocated and aligned pointers are the same.
       auto casted = builder.create<mlir::LLVM::BitcastOp>(
-          loc, struct_type.getStructElementType(0), llvm::ArrayRef<Value>{ptr});
-      auto structPtrAddr = builder.create<mlir::LLVM::GEPOp>(
-          loc, struct_type.getStructElementType(0), descPtr,
-          llvm::ArrayRef<Value>{zero, baseIndex});
-      builder.create<mlir::LLVM::StoreOp>(loc, casted, structPtrAddr);
-      casted = builder.create<mlir::LLVM::BitcastOp>(
-          loc, struct_type.getStructElementType(1), llvm::ArrayRef<Value>{ptr});
-      structPtrAddr = builder.create<mlir::LLVM::GEPOp>(
-          loc, struct_type.getStructElementType(1), descPtr,
-          llvm::ArrayRef<Value>{zero, dataIndex});
-      builder.create<mlir::LLVM::StoreOp>(loc, casted, structPtrAddr);
-      // Fill the offset value.
-      auto structOffsetAddr = builder.create<mlir::LLVM::GEPOp>(
-          loc, struct_type.getStructElementType(1), descPtr,
-          llvm::ArrayRef<Value>{zero, offsetIndex});
-      builder.create<mlir::LLVM::StoreOp>(loc, offset, structOffsetAddr);
+          loc, original.alignedPtr().getType().cast<LLVMType>(),
+          mlir::ValueRange(ptr));
+      original.alignedPtr().replaceAllUsesWith(casted);
+      original.allocatedPtr().replaceAllUsesWith(casted);
+
+      // Use the offset of the HLO buffer instead of the one expected in the
+      // function call.
+      original.offset().replaceAllUsesWith(offset);
+
       // Fill the shape.
       auto shape = operand->shape();
       // Unless the operand is a scalar pointer, also fill shape and strides.
-      if (!shape.dimensions().empty()) {
-        auto entry_type =
-            struct_type.getStructElementType(3).getArrayElementType();
-        // TODO(b/137624192) Pass in the descriptor to allow for dynamic shapes.
-        assert(shape.IsArray() && shape.is_static());
-        for (auto extent : llvm::enumerate(shape.dimensions())) {
-          auto index = builder.create<mlir::LLVM::ConstantOp>(
-              loc, offset_type, builder.getI64IntegerAttr(extent.index()));
-          auto shapeEntryPtr = builder.create<mlir::LLVM::GEPOp>(
-              loc, entry_type, descPtr,
-              llvm::ArrayRef<Value>{zero, shapeIndex, index});
-          auto extentValue = builder.create<mlir::LLVM::ConstantOp>(
-              loc, entry_type, builder.getI64IntegerAttr(extent.value()));
-          builder.create<mlir::LLVM::StoreOp>(loc, extentValue, shapeEntryPtr);
-        }
-        // Finally, fill the strides.
-        // TODO(b/137624192): Take assigned layout into account.
-        entry_type = struct_type.getStructElementType(4).getArrayElementType();
-        Value accumulator = nullptr;
-        for (int64 idx = shape.rank() - 1; idx >= 0; --idx) {
-          auto indexValue = builder.create<mlir::LLVM::ConstantOp>(
-              loc, offset_type, builder.getI64IntegerAttr(idx));
-          auto strideEntryPtr = builder.create<mlir::LLVM::GEPOp>(
-              loc, entry_type, descPtr,
-              llvm::ArrayRef<Value>{zero, strideIndex, indexValue});
-          if (accumulator) {
-            auto strideValue = builder.create<mlir::LLVM::ConstantOp>(
-                loc, entry_type,
-                builder.getI64IntegerAttr(shape.dimensions(idx + 1)));
-            accumulator = builder.create<mlir::LLVM::MulOp>(
-                loc, entry_type, accumulator, strideValue);
-          } else {
-            accumulator = one;
-          }
-          builder.create<mlir::LLVM::StoreOp>(loc, accumulator, strideEntryPtr);
-        }
+      if (shape.dimensions().empty()) {
+        continue;
       }
-      // Now we can use the descriptor instead of the original argument.
-      value.replaceAllUsesWith(descPtr);
+
+      // TODO(b/137624192) Pass in the descriptor to allow for dynamic shapes.
+      assert(shape.IsArray() && shape.is_static());
+      for (auto extent : llvm::enumerate(shape.dimensions())) {
+        auto shape = builder.create<mlir::LLVM::ConstantOp>(
+            loc, original.size(extent.index()).getType(),
+            builder.getI64IntegerAttr(extent.value()));
+        original.size(extent.index()).replaceAllUsesWith(shape);
+      }
+      // Finally, fill the strides.
+      // TODO(b/137624192): Take assigned layout into account.
+      uint64_t accumulator = 0;
+      for (int64_t idx = shape.rank() - 1; idx >= 0; --idx) {
+        if (accumulator == 0) {
+          accumulator = 1;
+        } else {
+          accumulator *= shape.dimensions(idx + 1);
+        }
+        auto stride = builder.create<mlir::LLVM::ConstantOp>(
+            loc, original.stride(idx).getType(),
+            builder.getI64IntegerAttr(accumulator));
+        original.stride(idx).replaceAllUsesWith(stride);
+      }
     }
   }
 
