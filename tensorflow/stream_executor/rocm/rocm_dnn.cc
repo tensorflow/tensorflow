@@ -4376,7 +4376,7 @@ bool MIOpenSupport::DoPoolBackward(
       return false;
     }
   }
-
+#if 0
   DeviceMemory<uint8> dest2;  // duplicated dest from forward:
   int64 dest2_size = 0;
 
@@ -4413,10 +4413,10 @@ bool MIOpenSupport::DoPoolBackward(
         << ToString(status);
     return false;
   }
-
+#endif
   status = wrap::miopenPoolingBackward(
       miopen.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
-      dest2.opaque(), dest_desc.handle(), input_diff_data.opaque(),
+      output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
       src_desc.handle(), input_data.opaque(), &beta, src_desc.handle(),
       output_diff_data->opaque(), workspace.opaque());
 
@@ -4470,7 +4470,7 @@ bool MIOpenSupport::DoPoolBackward(
       return false;
     }
   }
-
+#if 0
   DeviceMemory<uint8> dest2;  // duplicated dest from forward:
   int64 dest2_size = 0;
 
@@ -4510,10 +4510,10 @@ bool MIOpenSupport::DoPoolBackward(
         << ToString(status);
     return false;
   }
-
+#endif
   status = wrap::miopenPoolingBackward(
       miopen.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
-      dest2.opaque(), dest_desc.handle(), input_diff_data.opaque(),
+      output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
       src_desc.handle(), input_data.opaque(), &beta, src_desc.handle(),
       output_diff_data->opaque(), workspace.opaque());
 
