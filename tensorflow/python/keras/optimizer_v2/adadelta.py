@@ -57,7 +57,8 @@ class Adadelta(optimizer_v2.OptimizerV2):
       ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
 
   """
-
+  #def __init__(self, lr=1.0, rho=0.95, epsilon=None, decay=0., **kwargs):
+  #Adadelta function definition as per paper by M.D. Zeiler (https://arxiv.org/pdf/1212.5701.pdf) where epsilon=1e-6and learning rate=1.0
   def __init__(self,
                learning_rate=0.001,
                rho=0.95,
