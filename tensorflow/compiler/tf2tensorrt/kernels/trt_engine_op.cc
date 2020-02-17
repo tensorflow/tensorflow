@@ -640,7 +640,7 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   std::vector<void*> buffers(num_binding);
 
   mutex_lock lock(engine_context->mu);
-  auto& execution_context = engine_context->execution_context;
+  auto& execution_context = engine_context->execution_context[trt_context_idx];
 
   // Setup engine inputs.
   for (int i = 0; i < ctx->num_inputs(); i++) {
