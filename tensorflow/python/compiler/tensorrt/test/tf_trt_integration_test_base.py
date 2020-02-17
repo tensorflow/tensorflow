@@ -195,7 +195,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                                     output_shapes, input_mask, output_mask)
 
   def BuildParamsWithMask(self, graph_fn, dtype, input_shapes, output_shapes,
-                          input_mask, output_mask):
+                          input_mask, output_mask, extra_inputs=[],
+                          extra_outputs=[]):
     """Build test parameters with static or dynamic input shapes.
 
     To define dynamic shapes give a boolean mask that describes which
@@ -214,6 +215,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       output_shapes: The output shapes.
       input_mask: The input shape masks.
       output_mask: the output shape masks.
+      extra_inputs: list of additional input shapes
+      extra_outputs: list of additional outputs shapes
 
     Returns:
       The test parameters.
@@ -229,6 +232,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
     assert len(input_mask) == len(input_shapes)
     assert len(output_mask) == len(output_shapes)
+    for extra_in_shape, extra_out_shape in zip(extra_inputs, extra_outputs):
+      assert len(input_shapes) == len(extra_in_shape)
+      assert len(output_shapes) == len(extra_out_shape)
 
     return TfTrtIntegrationTestParams(
         graph_fn=graph_fn,
@@ -240,8 +246,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             self._GetTensorSpec(shape, mask, dtype, "output_%d" % i)
             for i, (shape, mask) in enumerate(zip(output_shapes, output_mask))
         ],
-        input_dims=[input_shapes],
-        expected_output_dims=[output_shapes])
+        input_dims=[input_shapes] + extra_inputs,
+        expected_output_dims=[output_shapes] + extra_outputs)
 
   def GetParams(self):
     """Return a TfTrtIntegrationTestParams for test, implemented by subclass."""
