@@ -726,8 +726,7 @@ template struct functor::ApplyGradientDescent<GPUDevice, complex128>;
 template struct functor::ApplyAdagrad<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagrad<GPUDevice, float>;
 template struct functor::ApplyAdagrad<GPUDevice, double>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
 template struct functor::ApplyAdagrad<GPUDevice, complex64>;
 template struct functor::ApplyAdagrad<GPUDevice, complex128>;
@@ -736,8 +735,7 @@ template struct functor::ApplyAdagrad<GPUDevice, complex128>;
 template struct functor::ApplyAdagradV2<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdagradV2<GPUDevice, float>;
 template struct functor::ApplyAdagradV2<GPUDevice, double>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
 template struct functor::ApplyAdagradV2<GPUDevice, complex64>;
 template struct functor::ApplyAdagradV2<GPUDevice, complex128>;
@@ -746,8 +744,7 @@ template struct functor::ApplyAdagradV2<GPUDevice, complex128>;
 template struct functor::ApplyAdadelta<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdadelta<GPUDevice, float>;
 template struct functor::ApplyAdadelta<GPUDevice, double>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
 template struct functor::ApplyAdadelta<GPUDevice, complex64>;
 template struct functor::ApplyAdadelta<GPUDevice, complex128>;
@@ -819,8 +816,7 @@ template struct functor::ApplyAdaMax<GPUDevice, double>;
 template struct functor::ApplyRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyRMSProp<GPUDevice, float>;
 template struct functor::ApplyRMSProp<GPUDevice, double>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
 template struct functor::ApplyRMSProp<GPUDevice, complex64>;
 template struct functor::ApplyRMSProp<GPUDevice, complex128>;
@@ -829,8 +825,7 @@ template struct functor::ApplyRMSProp<GPUDevice, complex128>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, Eigen::half>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, float>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, double>;
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
 template struct functor::ApplyCenteredRMSProp<GPUDevice, complex64>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, complex128>;
