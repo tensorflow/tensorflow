@@ -11,6 +11,14 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "testdata",
+    srcs = [
+        "testdata/repeated_vocab.txt",
+        "testdata/vocab.txt",
+    ],
+)
+
 py_library(
     name = "preprocessing",
     srcs = [
@@ -276,6 +284,7 @@ tf_py_test(
     name = "index_lookup_test",
     size = "medium",
     srcs = ["index_lookup_test.py"],
+    data = [":testdata"],
     python_version = "PY3",
     deps = [
         ":index_lookup",
@@ -303,10 +312,9 @@ cuda_py_test(
 )
 
 tf_py_test(
-    name = "preprocessing_normalization_test",
+    name = "normalization_test",
     size = "small",
     srcs = ["normalization_test.py"],
-    main = "normalization_test.py",
     python_version = "PY3",
     deps = [
         ":normalization",
@@ -317,10 +325,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "preprocessing_text_vectorization_test",
+    name = "text_vectorization_test",
     size = "medium",
     srcs = ["text_vectorization_test.py"],
-    main = "text_vectorization_test.py",
     python_version = "PY3",
     deps = [
         ":preprocessing_test_utils",

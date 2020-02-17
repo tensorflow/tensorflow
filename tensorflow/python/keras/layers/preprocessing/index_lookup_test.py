@@ -37,6 +37,7 @@ from tensorflow.python.keras.layers.preprocessing import index_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 
 
@@ -355,7 +356,13 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
-  def test_int_output_explicit_vocab_from_config(self):
+
+@keras_parameterized.run_all_keras_modes
+class IndexLookupVocabularyTest(keras_parameterized.TestCase,
+                                preprocessing_test_utils.PreprocessingLayerTest
+                               ):
+
+  def test_int_output_explicit_vocab(self):
     vocab_data = ["earth", "wind", "and", "fire"]
     input_array = np.array([["earth", "wind", "and", "fire"],
                             ["fire", "and", "earth", "michigan"]])
@@ -365,10 +372,20 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     layer = get_layer_class()(vocabulary=vocab_data)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
 
-    with CustomObjectScope({"IndexLookup": get_layer_class()}):
-      new_model = keras.Model.from_config(model.get_config())
-    output_dataset = new_model.predict(input_array)
+  def test_int_output_explicit_vocab_from_file(self):
+    vocab_data = resource_loader.get_path_to_datafile("testdata/vocab.txt")
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(vocabulary=vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
   def test_vocab_appending(self):
@@ -385,6 +402,17 @@ class IndexLookupOutputTest(keras_parameterized.TestCase,
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllClose(expected_output, output_dataset)
+
+  def test_non_unique_vocab_fails(self):
+    vocab_data = ["earth", "wind", "and", "fire", "fire"]
+    with self.assertRaisesRegex(ValueError, ".*repeated term.*fire.*"):
+      _ = get_layer_class()(vocabulary=vocab_data)
+
+  def test_non_unique_vocab_from_file_fails(self):
+    vocab_data = resource_loader.get_path_to_datafile(
+        "testdata/repeated_vocab.txt")
+    with self.assertRaisesRegex(ValueError, ".*repeated term.*earth.*"):
+      _ = get_layer_class()(vocabulary=vocab_data)
 
 
 @keras_parameterized.run_all_keras_modes
