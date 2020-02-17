@@ -60,8 +60,9 @@ struct OpData {
   int input_left_shift = 0;
   int32_t input_range_radius = 0;
   int diff_min = 0;
-  uint16_t table[256] = {0};
-  uint16_t* table_zero = nullptr;
+  uint8_t table[256] = {0};
+  uint16_t table_uint16[256] = {0};
+  uint16_t* table_zero_uint16 = nullptr;
 };
 
 struct SoftmaxOpData {
@@ -198,9 +199,9 @@ void PopulateLookupTableSigmoid(struct OpData* data) {
     65534, 65534, 65534, 65534, 65534, 65534, 65534, 65535
   });
 
-  std::copy(table.begin(), table.end(), data->table);
+  std::copy(table.begin(), table.end(), data->table_uint16);
 
-  data->table_zero = &data->table[0];
+  data->table_zero_uint16 = &data->table_uint16[0];
 }
 
 void EvalUsingLookupTable(struct OpData* data, const TfLiteTensor* input,
@@ -211,7 +212,6 @@ void EvalUsingLookupTable(struct OpData* data, const TfLiteTensor* input,
   const uint8_t* input_data = GetTensorData<uint8_t>(input);
   int i = 0;
 #if __aarch64__ && __clang__
-  // This code uses ARM64-only instructions.
   // TODO(b/143709993): Port to ARMv7
 
   // Load the tables into registers. (4*4 128-bit registers)
@@ -279,8 +279,8 @@ void EvalUsingLookupTableSigmoid16Bit(struct OpData* data, const TfLiteTensor* i
     // we need to divide by 2 in power of 7 for
     // the input conversion + 1/4 from the scale above.
     uint8_t uh = abs_input_data >> 9;
-    uint32_t ua = data->table_zero[uh];
-    uint32_t ub = data->table_zero[uh+1];
+    uint32_t ua = data->table_zero_uint16[uh];
+    uint32_t ub = data->table_zero_uint16[uh+1];
     uint32_t ut = abs_input_data & 0x1ff;
 
     // Interpolation is done using the fractional bit.
@@ -325,8 +325,8 @@ void EvalUsingLookupTableTanh16Bit(struct OpData* data, const TfLiteTensor* inpu
       result = 0xFFFF<<8;
     } else {
 
-      uint32_t ua = data->table_zero[uh];
-      uint32_t ub = data->table_zero[uh+1];
+      uint32_t ua = data->table_zero_uint16[uh];
+      uint32_t ub = data->table_zero_uint16[uh+1];
 
       uint8_t ut = abs_input_data & 0xFF;
 
@@ -645,7 +645,7 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
       });
     } else if (input->type == kTfLiteInt16) {
       TF_LITE_ENSURE(context, output->params.scale == 1. / 32768);
-      TF_LITE_ENSURE(context, output->params.zero_point == 0.);
+      TF_LITE_ENSURE(context, output->params.zero_point == 0);
       PopulateLookupTableSigmoid(data);
     }
   }
