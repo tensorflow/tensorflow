@@ -274,7 +274,7 @@ class _SaveableView(object):
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
       elif (ds_values.is_distributed_variable(obj) or
             resource_variable_ops.is_resource_variable(obj)):
-        obj_to_copy = obj._primary if ds_values.is_distributed_variable(  # pylint: disable=protected-access
+        obj_to_copy = obj.primary if ds_values.is_distributed_variable(
             obj) else obj
         new_variable = resource_variable_ops.copy_to_graph_uninitialized(
             obj_to_copy)

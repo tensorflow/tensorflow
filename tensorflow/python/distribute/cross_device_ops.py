@@ -1032,7 +1032,7 @@ class CollectiveAllReduce(CrossDeviceOps):
           else:
             # TODO(josh11b): Once we add support for model parallelism, get the
             # copy from the corresponding replica instead of the primary.
-            index.append(array_ops.identity(all_reduced._primary))  # pylint: disable=protected-access
+            index.append(array_ops.identity(all_reduced.primary))
     return value_lib.regroup(index, wrap_class=value_lib.Mirrored)
 
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs):
