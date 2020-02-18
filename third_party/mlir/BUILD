@@ -1727,6 +1727,7 @@ cc_library(
         "include/mlir/InitAllDialects.h",
         "include/mlir/InitAllPasses.h",
     ],
+    defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
     deps = [
         ":AffineOps",
         ":Analysis",
