@@ -654,8 +654,8 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
     const string& iterator_prefix, const std::vector<Tensor>& expected_outputs,
     const std::vector<int>& breakpoints, bool compare_order) {
   std::unique_ptr<IteratorBase> iterator;
-  TF_RETURN_IF_ERROR(
-      dataset_->MakeIterator(iterator_ctx_.get(), iterator_prefix, &iterator));
+  TF_RETURN_IF_ERROR(dataset_->MakeIterator(
+      iterator_ctx_.get(), /*parent=*/nullptr, iterator_prefix, &iterator));
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_RETURN_IF_ERROR(CreateSerializationContext(&serialization_ctx));
   bool end_of_sequence = false;
@@ -704,8 +704,9 @@ Status DatasetOpsTestBase::Initialize(const DatasetParams& dataset_params) {
   TF_RETURN_IF_ERROR(MakeDataset(dataset_params, &dataset_kernel_, &params_,
                                  &dataset_ctx_, &tensors_, &dataset_));
   TF_RETURN_IF_ERROR(CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
-  TF_RETURN_IF_ERROR(dataset_->MakeIterator(
-      iterator_ctx_.get(), dataset_params.iterator_prefix(), &iterator_));
+  TF_RETURN_IF_ERROR(
+      dataset_->MakeIterator(iterator_ctx_.get(), /*parent=*/nullptr,
+                             dataset_params.iterator_prefix(), &iterator_));
   initialized_ = true;
   return Status::OK();
 }
@@ -791,7 +792,8 @@ Status DatasetOpsTestBase::MakeIterator(
       CreateIteratorContext(dataset.op_kernel_context(), &iterator_ctx));
   std::unique_ptr<IteratorBase> iterator_base;
   TF_RETURN_IF_ERROR(dataset.dataset()->MakeIterator(
-      iterator_ctx.get(), dataset_params.iterator_prefix(), &iterator_base));
+      iterator_ctx.get(), /*parent=*/nullptr, dataset_params.iterator_prefix(),
+      &iterator_base));
   *iterator = std::make_unique<TestIterator>(std::move(iterator_ctx),
                                              std::move(iterator_base));
   return Status::OK();
