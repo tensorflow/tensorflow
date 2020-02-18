@@ -2429,15 +2429,16 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:cpu_plugin",  # reference backend
         "//tensorflow/compiler/xla/service:gpu_plugin",  # test backend
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
