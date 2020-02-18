@@ -91,8 +91,11 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
         [cm = params.cancellation_manager]() { cm->StartCancel(); },
         &deregister_fn));
     auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
+    uint64 start_time_us = ctx->env()->NowMicros();
     auto val = captured_state->iterator->GetNext(
         IteratorContext(std::move(params)), out_tensors, end_of_sequence);
+    metrics::RecordTFDataGetNextDuration(ctx->env()->NowMicros() -
+                                         start_time_us);
     metrics::RecordTFDataBytesFetched(GetTotalBytes(*out_tensors));
     return val;
   }
