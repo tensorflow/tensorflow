@@ -487,7 +487,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     def _select_fn(x):  # pylint: disable=g-missing-docstring
       if isinstance(x, values.Mirrored):
         if len(x.devices) == 1:
-          return x.primary
+          return x._primary  # pylint: disable=protected-access
         else:
           raise ValueError(
               "You cannot update variable with a Mirrored object with multiple "

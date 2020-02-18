@@ -1334,7 +1334,7 @@ class FunctionTest(test.TestCase):
     def forward(x, w, b):
       return x * w + b
     x = constant_op.constant([1.0], name="x_useless")
-    concrete_forward = forward.get_concrete_function(x, w.primary, b.primary)
+    concrete_forward = forward.get_concrete_function(x, w._primary, b._primary)
 
     with ms.scope():
       def replica_fn():
@@ -1350,8 +1350,8 @@ class FunctionTest(test.TestCase):
       g1, g2 = step_fn()
       run_metadata = context.export_run_metadata()
       context.disable_run_metadata()
-      self.assertEqual(self.evaluate(g1.primary), 1.0)
-      self.assertEqual(self.evaluate(g2.primary), 1.0)
+      self.assertEqual(self.evaluate(g1._primary), 1.0)
+      self.assertEqual(self.evaluate(g2._primary), 1.0)
 
       # Verify that this node runs on both devices.
       node_name = "gradients_mul_grad_mul_1_x"
