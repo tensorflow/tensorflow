@@ -316,7 +316,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   }
 #endif
   status =
-      context->GetAttr("_profile_generation_mode", profile_generation_mode_);
+      context->GetAttr("_profile_generation_mode", &profile_generation_mode_);
   if (status.code() == tensorflow::error::NOT_FOUND) {
     VLOG(2) << "Not found _profile_generation_mode in "
             << context->device()->name()
@@ -561,13 +561,13 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                                         "profiles are already created."));
       // Just collect the input shape info and return. The shapes are used to
       // generate optimization profiles during engine creation.
-      cache_res->profiles_.addShape(input_concrete_shapes);
+      cache_res->profiles_.AddShape(input_concrete_shapes);
       VLOG(1) << "Native segment is used during collecting shapes for profiles";
       ExecuteNativeSegment(ctx, helper);
       return;
     } else if (cache_res->profiles_.GetNumProfiles() == 0) {
       // Create profiles out of collected shapes during profile generation.
-      cache_res->profiles_.initProfiles();
+      cache_res->profiles_.InitProfiles();
     }
   }
   StatusOr<std::pair<EngineContext*, int>> status =
