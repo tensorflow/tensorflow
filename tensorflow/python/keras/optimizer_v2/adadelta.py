@@ -51,7 +51,37 @@ class Adadelta(optimizer_v2.OptimizerV2):
   $$\Delta x_t = -RMS[\Delta x]_{t-1} * g_t / RMS[g]_t$$
   $$E[\Delta x^2]_t := \rho * E[\Delta x^2]_{t-1} + (1 - \rho) * \Delta x_t^2$$
   $$x_t := x_{t-1} + \Delta x_{t}$$
+  
+  The learning rate and epsilon according to the original paper uses learning rate as 1.0 and epsilon as 1e-6.
+  
+  According to section 4.3 ("Effective Learning rates"), near the end of 
+  training step sizes converge to 1 which is effectively a high learning 
+  rate which would cause divergence.This occurs only near the end of the
+  training as gradients and step sizes are small,and the epsilon constant 
+  in the numerator and denominator dominate past gradients and parameter
+  Updates which converge learning rate to 1.This can be further 
+  ($$\Delta x_t = -RMS[\Delta x]_{t-1} * g_t / RMS[g]_t$$) 
+  simplified as with the step size tending to 1 the parameters update tend 
+  to 0.
+  
+  In section 4.1("Handwritten Digit Classification"), MNIST data was trained 
+  with tanh non linearities and 500 hidden units and 300 hidden in units with
+  a final softmax output layer. With epsilon=1e-6 and rho=0.95 on mini set of
+  100 images per batch for 6 epochs, the result achieved 2.00% test set error
+  compared to Schaul et al (2.10%).Table 1 & 2. MNIST error rates after 6 epochs 
+  of hyperparameter settings using ADADELTA showed 1.83% with epsilon=1e-6 over 
+  SGD, ADAGRAD, Momentum. 
 
+
+  According to section 4.4("Speech Data"),where a large neural network with 
+  4 hidden layers was trained on a corpus of US English data,ADADELTA was 
+  used with 100 network replicas.The epsilon used is 1e-6 with rho=0.95 
+  which converged faster than ADAGRAD.
+  
+  The alternate function declaration can be used for testing the use case 
+  similar to the in the paper
+  def __init__(self, lr=1.0, rho=0.95, epsilon=1e-6, decay=0., **kwargs):
+  
   References
     See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
       ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
