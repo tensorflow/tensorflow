@@ -160,6 +160,7 @@ package_group(
         "//learning/freud/topic_models/tensorflow/...",
         "//perftools/accelerators/xprof/api/...",
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
+        "//smartass/brain/server/...",
     ],
 )
 
