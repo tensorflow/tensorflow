@@ -367,7 +367,8 @@ class CTCLossTestV2(test.TestCase):
       batch_size = 8
       num_labels = 6
       label_length = 5
-      num_frames = 12
+      minimum_logits_length = 10
+      num_frames = minimum_logits_length + batch_size
       logits = random_ops.random_uniform([num_frames, batch_size, num_labels])
       labels = random_ops.random_uniform(
           [batch_size, label_length], minval=1, maxval=num_labels,
@@ -379,7 +380,7 @@ class CTCLossTestV2(test.TestCase):
           label_lengths, maxlen=label_length, dtype=label_lengths.dtype)
       labels *= label_mask
 
-      logit_lengths = [num_frames] * batch_size
+      logit_lengths = math_ops.range(batch_size) + minimum_logits_length
 
       ctc_loss = ctc_ops.ctc_loss_dense(
           labels=labels,
@@ -410,8 +411,8 @@ class CTCLossTestV2(test.TestCase):
           self.assertAllClose(*self.evaluate([ctc_loss, tf_nn_ctc_loss]))
           self.assertAllClose(
               *self.evaluate([ctc_loss_grads, tf_nn_ctc_grads]),
-              rtol=2e-06,
-              atol=2e-06)
+              rtol=4e-06,
+              atol=4e-06)
 
   @test_util.run_v1_only("b/120545219")
   def testCtcLossDenseUniqueFastPathIsSameAsCtcLoss(self):
