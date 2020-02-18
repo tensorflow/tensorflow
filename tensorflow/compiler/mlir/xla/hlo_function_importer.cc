@@ -370,6 +370,22 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
                                          Convert(interior_padding))
           .getOperation();
     }
+    case HloOpcode::kScatter: {
+      auto scatter = static_cast<HloScatterInstruction*>(instruction);
+      attributes.push_back(
+          ConvertScatterDimensionNumbers(scatter->scatter_dimension_numbers()));
+      attributes.push_back(builder_->getNamedAttr(
+          "indices_are_sorted",
+          builder_->getBoolAttr(scatter->indices_are_sorted())));
+      attributes.push_back(builder_->getNamedAttr(
+          "unique_indices", builder_->getBoolAttr(scatter->unique_indices())));
+
+      auto scatter_op = func_builder->create<mlir::xla_hlo::ScatterOp>(
+          loc, result_type, operands, attributes);
+      TF_RETURN_IF_ERROR(ImportComputation(scatter->to_apply(),
+                                           &scatter_op.update_computation()));
+      return scatter_op.getOperation();
+    }
     case HloOpcode::kSetDimensionSize: {
       attributes.push_back(builder_->getNamedAttr(
           "dimension", builder_->getIntegerAttr(builder_->getIntegerType(32),
@@ -842,6 +858,22 @@ mlir::NamedAttribute HloFunctionImporter::ConvertGatherDimensionNumbers(
       Convert(start_index_map),
       builder_->getI64IntegerAttr(dnums.index_vector_dim()), context_);
   return builder_->getNamedAttr("dimension_numbers", attr);
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertScatterDimensionNumbers(
+    const xla::ScatterDimensionNumbers& dnums) {
+  std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
+                                          dnums.update_window_dims().end());
+  std::vector<int64_t> inserted_window_dims(
+      dnums.inserted_window_dims().begin(), dnums.inserted_window_dims().end());
+  std::vector<int64_t> scatter_dims_to_operand_dims(
+      dnums.scatter_dims_to_operand_dims().begin(),
+      dnums.scatter_dims_to_operand_dims().end());
+  auto attr = mlir::xla_hlo::ScatterDimensionNumbers::get(
+      Convert(update_window_dims), Convert(inserted_window_dims),
+      Convert(scatter_dims_to_operand_dims),
+      builder_->getI64IntegerAttr(dnums.index_vector_dim()), context_);
+  return builder_->getNamedAttr("scatter_dimension_numbers", attr);
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
