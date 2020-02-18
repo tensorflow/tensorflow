@@ -51,6 +51,7 @@ exports_files(
         "node_def_builder.h",
         "numeric_op.h",
         "op_kernel.h",
+        "op_requires.h",
         "op_segment.h",
         "ops_util.h",
         "partial_tensor_shape.h",
@@ -180,6 +181,7 @@ filegroup(
         "op_def_builder.h",
         "op_def_util.h",
         "op_kernel.h",
+        "op_requires.h",
         "op_segment.h",
         "ops_util.h",
         "partial_tensor_shape.h",
@@ -351,6 +353,7 @@ filegroup(
         "op_def_util.h",
         "op_kernel.cc",
         "op_kernel.h",
+        "op_requires.h",
         "op_segment.cc",
         "op_segment.h",
         "ops_util.cc",
@@ -929,6 +932,12 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
     ],
+)
+
+cc_library(
+    name = "op_requires",
+    hdrs = ["op_requires.h"],
+    deps = ["//tensorflow/core/platform:macros"],
 )
 
 # Files whose users still need to be migrated from core:framework to the

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op.h"  // TODO(b/62899350): Remove
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/session_state.h"
@@ -1776,19 +1777,6 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
   ctx_->set_output_ref(i, mu, tensor_for_ref);
 }
 
-// Convenience macros for asserting and handling exceptional conditions.
-// Analogous to the CHECK* macros provided by logging.h.
-//
-// Example use:
-// void Compute(OperationContext* context) {
-//   OP_REQUIRES(context, context->num_inputs() == 2,
-//               errors::InvalidArgument("FooOp requires 2 arguments"));
-//   ...
-//   Status status = SomeUncertainMethod();
-//   OP_REQUIRES_OK(context, status);
-//   ...
-// }
-
 // Generate a fatal error if OP_REQUIRES or OP_REQUIRES_OK are used in
 // AsyncOpKernel implementations. If these macros are used and the condition
 // does not hold, the `done` callback will never be called and the system will
@@ -1801,44 +1789,6 @@ inline void CheckNotInComputeAsync(XlaOpKernelContext*, const char*) {}
 inline void CheckNotInComputeAsync(OpKernelConstruction*, const char*) {}
 void CheckNotInComputeAsync(OpKernelContext* ctx,
                             const char* correct_macro_name);
-
-#define OP_REQUIRES(CTX, EXP, STATUS)                     \
-  do {                                                    \
-    if (!TF_PREDICT_TRUE(EXP)) {                          \
-      CheckNotInComputeAsync((CTX), "OP_REQUIRES_ASYNC"); \
-      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS));    \
-      return;                                             \
-    }                                                     \
-  } while (0)
-
-#define OP_REQUIRES_OK(CTX, ...)                             \
-  do {                                                       \
-    ::tensorflow::Status _s(__VA_ARGS__);                    \
-    if (!TF_PREDICT_TRUE(_s.ok())) {                         \
-      CheckNotInComputeAsync((CTX), "OP_REQUIRES_OK_ASYNC"); \
-      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s);  \
-      return;                                                \
-    }                                                        \
-  } while (0)
-
-#define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK)  \
-  do {                                                 \
-    if (!TF_PREDICT_TRUE(EXP)) {                       \
-      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS)); \
-      (CALLBACK)();                                    \
-      return;                                          \
-    }                                                  \
-  } while (0)
-
-#define OP_REQUIRES_OK_ASYNC(CTX, STATUS, CALLBACK)         \
-  do {                                                      \
-    ::tensorflow::Status _s(STATUS);                        \
-    if (!TF_PREDICT_TRUE(_s.ok())) {                        \
-      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s); \
-      (CALLBACK)();                                         \
-      return;                                               \
-    }                                                       \
-  } while (0)
 
 }  // namespace tensorflow
 
