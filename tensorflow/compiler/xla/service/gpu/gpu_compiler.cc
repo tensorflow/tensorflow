@@ -392,7 +392,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // the gte(customcall, 0) would probably already be into a fusion node.  We
   // can't simplify across HloComputation boundaries, so in this case we
   // wouldn't be able to simplify away the new_tuple bits.
-
   pipeline.AddPass<GpuConvAlgorithmPicker>(stream_exec, device_allocator);
 
   // Clean up new_tuple described above.

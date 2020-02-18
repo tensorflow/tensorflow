@@ -176,6 +176,7 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   // Find the fastest algorithm for GEMMs.
   pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+  TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
   return Status::OK();
 }
