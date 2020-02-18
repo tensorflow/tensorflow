@@ -13405,6 +13405,20 @@ inline void DepthwiseConvDotProduct3x3(
       thread_dim);
 }
 
+template <DepthwiseConvImplementation implementation>
+inline void DepthwiseConvDotProduct3x3PerChannel(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const int8* input_data, const RuntimeShape& filter_shape,
+    const int8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
+    int thread_start, int thread_end, int thread_dim) {
+  DepthwiseConvDotProduct3x3Impl<
+      implementation, depthwise_conv::QuantizationType::kPerChannelInt8>(
+      params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+      bias_data, output_shape, output_data, thread_start, thread_end,
+      thread_dim);
+}
+
 #undef vst1_lane_8x4
 #undef vst1q_lane_8x4
 #undef vld1q_lane_s8x8
