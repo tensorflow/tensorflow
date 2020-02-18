@@ -304,9 +304,14 @@ Status DatasetOpsTestBase::ExpectEqual(std::vector<Tensor> produced_tensors,
 Status DatasetOpsTestBase::CreateOpKernel(
     const NodeDef& node_def, std::unique_ptr<OpKernel>* op_kernel) {
   OpKernel* kernel;
+  Status s;
+
+  std::shared_ptr<const NodeProperties> props;
+  TF_RETURN_IF_ERROR(NodeProperties::CreateFromNodeDef(
+      node_def, flr_->GetFunctionLibraryDefinition(), &props));
   TF_RETURN_IF_ERROR(tensorflow::CreateOpKernel(
       device_type_, device_.get(), allocator_, flr_,
-      device_->resource_manager(), node_def, TF_GRAPH_DEF_VERSION, &kernel));
+      device_->resource_manager(), props, TF_GRAPH_DEF_VERSION, &kernel));
   op_kernel->reset(kernel);
   return Status::OK();
 }
@@ -435,9 +440,10 @@ Status DatasetOpsTestBase::RunFunction(
   LocalExecutorParams params;
   params.function_library = flr_;
   params.device = device_.get();
-  params.create_kernel = [this, version](const NodeDef& ndef,
-                                         OpKernel** kernel) {
-    return CreateNonCachedKernel(device_.get(), this->flr_, ndef, version,
+  params.create_kernel = [this, version](
+                             const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+    return CreateNonCachedKernel(device_.get(), this->flr_, props, version,
                                  kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) {

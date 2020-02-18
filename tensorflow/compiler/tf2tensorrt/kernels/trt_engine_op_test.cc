@@ -127,9 +127,14 @@ class TRTEngineOpTestBase : public OpsTestBase {
  private:
   Status InitOpWithFunctionLibrary() {
     OpKernel* kernel = nullptr;
-    Status status = CreateOpKernel(device_type_, device_, allocator(),
-                                   pflr_->GetFLR(device_->name()), node_def_,
-                                   TF_GRAPH_DEF_VERSION, &kernel);
+    auto flr = pflr_->GetFLR(device_->name());
+    std::shared_ptr<const NodeProperties> props;
+    Status status = NodeProperties::CreateFromNodeDef(
+        node_def_, flr->GetFunctionLibraryDefinition(), &props);
+    if (status.ok()) {
+      status.Update(CreateOpKernel(device_type_, device_, allocator(), flr,
+                                   props, TF_GRAPH_DEF_VERSION, &kernel));
+    }
     kernel_ = std::unique_ptr<OpKernel>(kernel);
     if (kernel_ != nullptr) input_types_ = kernel_->input_types();
     return status;
