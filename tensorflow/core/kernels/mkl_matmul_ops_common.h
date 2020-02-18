@@ -115,7 +115,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   // of the memory layout. Hence, these functions are disabled for v1.x.
   memory::format GetSrcMemoryFormat() const { return context_.src_fmt; }
   memory::format GetWeightMemoryFormat() const { return context_.weight_fmt; }
-#endif  // ENABLE_MKLDNN_V1
+#endif  // !ENABLE_MKLDNN_V1
 
   std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>
   GetPrimitiveDesc() const {
@@ -190,7 +190,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
                                               MEMORY_FORMAT::any));
 #else
                                               matmul_fwd_params.weight_fmt));
-#endif
+#endif  // ENABLE_MKLDNN_V1
 
     context_.dst_md.reset(new memory::desc({matmul_fwd_params.dst_dims},
                                            MklDnnType<Toutput>(),
@@ -260,7 +260,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
 
     context_.weight_fmt = static_cast<mkldnn::memory::format>(
         context_.fwd_pd.get()->weights_primitive_desc().desc().data.format);
-#endif
+#endif  // !ENABLE_MKLDNN_V1
 
     // Create memory primitive based on dummy data
     context_.src_mem.reset(new MEMORY_CONSTRUCTOR(
@@ -285,7 +285,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.matmul_fwd.reset(new inner_product_forward(
         *context_.fwd_pd, *context_.src_mem, *context_.weight_mem,
         *context_.bias_mem, *context_.dst_mem));
-#endif
+#endif  // ENABLE_MKLDNN_V1
 
     context_.fwd_primitives.push_back(*context_.matmul_fwd);
     return;
@@ -538,7 +538,7 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
   dnnl_gemm_exec(a_md, b_md, c_md, static_cast<void*>(a), static_cast<void*>(b),
                  static_cast<void*>(c), attr);
 }
-#endif  // ENABLE_MKLDNN_V1
+#endif  // ENABLE_MKLDNN_V1_2
 
 }  // namespace tensorflow
 

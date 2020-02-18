@@ -151,7 +151,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
         if (input_md != matmul_pd->src_desc()) {
 #else
         if (input_md.data.format != MKL_TENSOR_FORMAT_NC) {
-#endif
+#endif  // ENABLE_MKLDNN_V1
           src_mkl.SetUsrMem(input_md, src_data);
           src_mkl.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
               matmul_pd.get()->PRIMITIVE_DESC_SRC, this->cpu_engine_));
@@ -165,7 +165,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
         if (input_md != matmul_pd->weight_desc()) {
 #else
         if (input_md.data.format != weight_format) {
-#endif
+#endif  // ENABLE_MKLDNN_V1
           weight_mkl.SetUsrMem(input_md, weight_data);
           weight_mkl.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
               matmul_pd.get()->PRIMITIVE_DESC_WEIGHTS, this->cpu_engine_));

@@ -273,7 +273,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
 #else
           weight_data = GetCachedWeight(
               context, static_cast<int32>(matmul_fwd->GetWeightMemoryFormat()));
-#endif
+#endif  // ENABLE_MKLDNN_V1
           is_weight_cached = (weight_data != nullptr);
         }
 
@@ -466,7 +466,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
         net.push_back(
             mkldnn::reorder(reorder_desc, *input_bias_, *scaled_bias_));
         reorder_stream.submit(net).wait();
-#endif
+#endif  // ENABLE_MKLDNN_V1
 
         return reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
       } else {
