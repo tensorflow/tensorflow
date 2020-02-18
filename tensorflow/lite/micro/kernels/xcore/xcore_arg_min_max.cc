@@ -4,7 +4,7 @@ namespace tflite {
 namespace ops {
 namespace micro {
 namespace xcore {
-namespace arg_max {
+namespace argmax {
 
     TfLiteStatus Prepare_ArgMax_16(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
@@ -29,15 +29,15 @@ namespace arg_max {
         return kTfLiteOk;
     }
 
-}  // namespace arg_max
+}  // namespace argmax
 
 
 TfLiteRegistration* Register_ArgMax_16() {
     static TfLiteRegistration r = {
         nullptr,
         nullptr,
-        arg_max::Prepare_ArgMax_16,
-        arg_max::Eval_ArgMax_16
+        argmax::Prepare_ArgMax_16,
+        argmax::Eval_ArgMax_16
     };
     return &r;
 }
