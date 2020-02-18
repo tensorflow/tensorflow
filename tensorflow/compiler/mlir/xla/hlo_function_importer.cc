@@ -385,6 +385,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
               ConvertDimensions(instruction->slice_strides()))
           .getOperation();
     }
+    case HloOpcode::kSort: {
+      auto sort_instruction = static_cast<HloSortInstruction*>(instruction);
+      auto sort_op = func_builder->create<mlir::xla_hlo::SortOp>(
+          loc, result_type, operands,
+          builder_->getI64IntegerAttr(sort_instruction->sort_dimension()),
+          builder_->getBoolAttr(sort_instruction->is_stable()));
+      TF_RETURN_IF_ERROR(ImportComputation(sort_instruction->to_apply(),
+                                           &sort_op.comparator()));
+      return sort_op.getOperation();
+    }
     case HloOpcode::kConditional: {
       llvm::SmallVector<Type, 4> rets;
       TF_RETURN_IF_ERROR(GetMlirTypes(
