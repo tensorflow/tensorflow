@@ -64,12 +64,8 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
 
 #ifdef ENABLE_MKLDNN_V1
-    DCHECK_EQ(context_.fwd_primitives.size(),
-              context_.fwd_net_args.size());
-    for (size_t i = 0; i < context_.fwd_primitives.size(); ++i) {
-      context_.fwd_primitives.at(i).execute(*context_.fwd_stream,
-                                            context_.fwd_net_args.at(i));
-    }
+    execute_primitives(context_.fwd_primitives, context_.fwd_stream,
+                       context_.net_args);
 #else
     context_.fwd_stream->submit(context_.fwd_primitives);
 #endif
@@ -120,7 +116,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     context_.src_md.reset(
         new memory::desc({fwdParams.src_dims}, MklDnnType<T>(), src_format));
 
-    // Create softmax decriptor and primitive descriptor.
+    // Create softmax descriptor and primitive descriptor.
     context_.fwd_desc.reset(new mkldnn::softmax_forward::desc(
         prop_kind::forward_scoring, *context_.src_md, fwdParams.axis));
     context_.fwd_pd.reset(new mkldnn::softmax_forward::primitive_desc(
@@ -136,8 +132,8 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     // Create softmax primitive and add it to net
     context_.softmax_fwd.reset(new mkldnn::softmax_forward(*context_.fwd_pd));
     context_.fwd_net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
-                                            { MKLDNN_ARG_DST,
-                                              *context_.dst_mem }});
+                                     { MKLDNN_ARG_DST,
+                                       *context_.dst_mem }});
 #else
     context_.softmax_fwd.reset(new mkldnn::softmax_forward(
         *context_.fwd_pd, *context_.src_mem, *context_.dst_mem));
@@ -311,9 +307,9 @@ class MklSoftmaxOp : public OpKernel {
       // Execute softmax primitive.
       softmax_fwd->Execute(src_data, dst_data);
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
-                         string(e.message) + ", in file " + string(__FILE__) +
-                         ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) +
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
