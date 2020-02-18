@@ -15,6 +15,7 @@ load(
 load(
     "//third_party/remote_config:common.bzl",
     "get_cpu_value",
+    "get_host_environ",
 )
 
 _TENSORRT_INSTALL_PATH = "TENSORRT_INSTALL_PATH"
@@ -72,14 +73,14 @@ def _create_dummy_repository(repository_ctx):
 
 def enable_tensorrt(repository_ctx):
     """Returns whether to build with TensorRT support."""
-    return int(repository_ctx.os.environ.get(_TF_NEED_TENSORRT, False))
+    return int(get_host_environ(repository_ctx, _TF_NEED_TENSORRT, False))
 
 def _tensorrt_configure_impl(repository_ctx):
     """Implementation of the tensorrt_configure repository rule."""
 
-    if _TF_TENSORRT_CONFIG_REPO in repository_ctx.os.environ:
+    if get_host_environ(repository_ctx, _TF_TENSORRT_CONFIG_REPO) != None:
         # Forward to the pre-configured remote repository.
-        remote_config_repo = repository_ctx.os.environ[_TF_TENSORRT_CONFIG_REPO]
+        remote_config_repo = get_host_environ(repository_ctx, _TF_TENSORRT_CONFIG_REPO)
         repository_ctx.template("BUILD", Label(remote_config_repo + ":BUILD"), {})
         repository_ctx.template(
             "build_defs.bzl",

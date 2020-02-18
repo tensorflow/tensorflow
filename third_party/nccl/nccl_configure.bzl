@@ -20,6 +20,7 @@ load(
 load(
     "//third_party/remote_config:common.bzl",
     "get_cpu_value",
+    "get_host_environ",
 )
 
 _CUDA_TOOLKIT_PATH = "CUDA_TOOLKIT_PATH"
@@ -76,9 +77,8 @@ def _nccl_configure_impl(repository_ctx):
     # See https://github.com/tensorflow/tensorflow/commit/62bd3534525a036f07d9851b3199d68212904778
     find_cuda_config_path = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"))
 
-    nccl_version = ""
-    if _TF_NCCL_VERSION in repository_ctx.os.environ:
-        nccl_version = repository_ctx.os.environ[_TF_NCCL_VERSION].strip()
+    nccl_version = get_host_environ(repository_ctx, _TF_NCCL_VERSION, "")
+    if nccl_version:
         nccl_version = nccl_version.split(".")[0]
 
     cuda_config = find_cuda_config(repository_ctx, find_cuda_config_path, ["cuda"])

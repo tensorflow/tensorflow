@@ -43,6 +43,7 @@ load(
     "execute",
     "get_bash_bin",
     "get_cpu_value",
+    "get_host_environ",
     "get_python_bin",
     "is_windows",
     "raw_exec",
@@ -223,10 +224,9 @@ def find_cc(repository_ctx):
         cc_path_envvar = _GCC_HOST_COMPILER_PATH
     cc_name = target_cc_name
 
-    if cc_path_envvar in repository_ctx.os.environ:
-        cc_name_from_env = repository_ctx.os.environ[cc_path_envvar].strip()
-        if cc_name_from_env:
-            cc_name = cc_name_from_env
+    cc_name_from_env = get_host_environ(repository_ctx, cc_path_envvar)
+    if cc_name_from_env:
+        cc_name = cc_name_from_env
     if cc_name.startswith("/"):
         # Absolute path, maybe we should make this supported by our which function.
         return cc_name
@@ -365,7 +365,7 @@ def _cuda_include_path(repository_ctx, cuda_config):
 
 def enable_cuda(repository_ctx):
     """Returns whether to build with CUDA support."""
-    return int(repository_ctx.os.environ.get("TF_NEED_CUDA", False))
+    return int(get_host_environ(repository_ctx, "TF_NEED_CUDA", False))
 
 def matches_version(environ_version, detected_version):
     """Checks whether the user-specified version matches the detected version.
@@ -409,9 +409,9 @@ _DEFINE_CUDNN_MAJOR = "#define CUDNN_MAJOR"
 
 def compute_capabilities(repository_ctx):
     """Returns a list of strings representing cuda compute capabilities."""
-    if _TF_CUDA_COMPUTE_CAPABILITIES not in repository_ctx.os.environ:
+    capabilities_str = get_host_environ(repository_ctx, _TF_CUDA_COMPUTE_CAPABILITIES)
+    if capabilities_str == None:
         return _DEFAULT_CUDA_COMPUTE_CAPABILITIES
-    capabilities_str = repository_ctx.os.environ[_TF_CUDA_COMPUTE_CAPABILITIES]
     capabilities = capabilities_str.split(",")
     for capability in capabilities:
         # Workaround for Skylark's lack of support for regex. This check should
@@ -805,18 +805,13 @@ def make_copy_dir_rule(repository_ctx, name, src_dir, out_dir):
 )""" % (name, "\n".join(outs), src_dir, out_dir)
 
 def _flag_enabled(repository_ctx, flag_name):
-    if flag_name in repository_ctx.os.environ:
-        value = repository_ctx.os.environ[flag_name].strip()
-        return value == "1"
-    return False
+    return get_host_environ(repository_ctx, flag_name) == "1"
 
 def _use_cuda_clang(repository_ctx):
     return _flag_enabled(repository_ctx, "TF_CUDA_CLANG")
 
 def _tf_sysroot(repository_ctx):
-    if _TF_SYSROOT in repository_ctx.os.environ:
-        return repository_ctx.os.environ[_TF_SYSROOT]
-    return ""
+    return get_host_environ(repository_ctx, _TF_SYSROOT, "")
 
 def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
     capability_flags = [
@@ -1006,9 +1001,10 @@ def _create_local_cuda_repository(repository_ctx):
     if is_cuda_clang:
         cuda_defines["%{cuda_toolkit_path}"] = cuda_config.config["cuda_toolkit_path"]
 
-    host_compiler_prefix = "/usr/bin"
-    if _GCC_HOST_COMPILER_PREFIX in repository_ctx.os.environ:
-        host_compiler_prefix = repository_ctx.os.environ[_GCC_HOST_COMPILER_PREFIX].strip()
+    host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX)
+    if not host_compiler_prefix:
+        host_compiler_prefix = "/usr/bin"
+
     cuda_defines["%{host_compiler_prefix}"] = host_compiler_prefix
 
     # Bazel sets '-B/usr/bin' flag to workaround build errors on RHEL (see
@@ -1157,14 +1153,15 @@ def _cuda_autoconf_impl(repository_ctx):
     """Implementation of the cuda_autoconf repository rule."""
     if not enable_cuda(repository_ctx):
         _create_dummy_repository(repository_ctx)
-    elif _TF_CUDA_CONFIG_REPO in repository_ctx.os.environ:
-        if (_TF_CUDA_VERSION not in repository_ctx.os.environ or
-            _TF_CUDNN_VERSION not in repository_ctx.os.environ):
+    elif get_host_environ(repository_ctx, _TF_CUDA_CONFIG_REPO) != None:
+        has_cuda_version = get_host_environ(repository_ctx, _TF_CUDA_VERSION) != None
+        has_cudnn_version = get_host_environ(repository_ctx, _TF_CUDNN_VERSION) != None
+        if not has_cuda_version or not has_cudnn_version:
             auto_configure_fail("%s and %s must also be set if %s is specified" %
                                 (_TF_CUDA_VERSION, _TF_CUDNN_VERSION, _TF_CUDA_CONFIG_REPO))
         _create_remote_cuda_repository(
             repository_ctx,
-            repository_ctx.os.environ[_TF_CUDA_CONFIG_REPO],
+            get_host_environ(repository_ctx, _TF_CUDA_CONFIG_REPO),
         )
     else:
         _create_local_cuda_repository(repository_ctx)
