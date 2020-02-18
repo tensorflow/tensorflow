@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 namespace tensorflow {
 namespace tensorrt {
 
@@ -180,3 +181,4 @@ int TrtShapeOptimizationProfile::GetNumProfiles() const {
 
 }  // namespace tensorrt
 }  // namespace tensorflow
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
