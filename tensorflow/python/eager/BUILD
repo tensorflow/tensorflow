@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tape",
+        "//tensorflow/c/eager:dlpack",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

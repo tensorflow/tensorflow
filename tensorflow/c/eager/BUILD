@@ -93,6 +93,7 @@ filegroup(
         "c_api_experimental.h",
         "c_api_internal.h",
         "tensor_handle_interface.h",
+        "dlpack.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -321,9 +322,30 @@ filegroup(
     srcs = [
         "c_api.h",
         "c_api_experimental.h",
+        "dlpack.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
+
+
+cc_library(
+    name = "dlpack",
+    srcs = ["dlpack.cc"],
+    hdrs = ["dlpack.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        "//tensorflow/core:framework",
+        "@dlpack",
+    ],
+)
+
 
 # TODO(karllessard): only used by //tensorflow/core:mobile_srcs_only_runtime
 # right now, remove this public rule when no longer needed (it should be
