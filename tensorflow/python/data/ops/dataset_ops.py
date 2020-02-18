@@ -1478,8 +1478,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       # bool(tf.TensorShape(None)) is False
       if not all(nest.flatten(padded_shapes)):
         raise ValueError("You must set the `padded_shapes` argument to "
-                         "`Dataset.padded_batch` if any component of its input"
-                         "has an unknown rank")
+                         "`Dataset.padded_batch` if any component of its "
+                         "input has an unknown rank")
     return PaddedBatchDataset(self, batch_size, padded_shapes, padding_values,
                               drop_remainder)
 
