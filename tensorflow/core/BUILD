@@ -1997,7 +1997,7 @@ cc_library(
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util:reporter",  # TODO(gunan): REMOVE as soon as cc_shared_library is supported.
         "@snappy",
-        "@zlib_archive//:zlib",
+        "@zlib",
         "@double_conversion//:double-conversion",
         "@com_google_protobuf//:protobuf",
     ] + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl(),
@@ -3077,7 +3077,7 @@ tf_cc_tests(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
 )
 
