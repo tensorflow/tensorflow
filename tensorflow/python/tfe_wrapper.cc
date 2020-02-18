@@ -1070,6 +1070,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     }
     TFE_TensorHandle* thandle = tensorflow::TFE_HandleFromDLPack(
         static_cast<void*>(pycapsule), status.get());
+      
+    PyCapsule_SetName(pycapsule.ptr(), "used_dltensor");
+    PyCapsule_SetDestructor(pycapsule.ptr(), nullptr);
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     return py::handle(EagerTensorFromHandle(thandle));
   });
