@@ -81,10 +81,12 @@ std::string StatsCalculator::ColumnString(const Detail& detail,
 
   std::stringstream stream;
   if (options_.format_as_csv) {
+    std::string name(detail.name);
+    std::replace(name.begin(), name.end(), ',', '\t');
     stream << detail.type << ", " << start_ms << ", " << first_time_ms << ", "
            << avg_time_ms << ", " << percentage << "%, " << cdf_percentage
            << "%, " << detail.mem_used.newest() / 1000.0 << ", " << times_called
-           << ", " << detail.name;
+           << ", " << name;
   } else {
     InitField(stream, 24) << detail.type;
     InitField(stream, 17) << start_ms;

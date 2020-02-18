@@ -89,12 +89,15 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
     profiler::MergePlanes(*cupti_driver_api_plane, host_plane);
     profiler::RemovePlaneWithName(space, profiler::kCuptiDriverApiPlaneName);
   }
-  // 2. Sort each plane of the XSpace
+  // 2. Normalize all timestamps by shifting timeline to profiling start time.
+  // NOTE: this have to be done before sorting XSpace due to timestamp overflow.
+  profiler::NormalizeTimeLine(space, start_time_ns_);
+  // 3. Sort each plane of the XSpace
   profiler::SortXSpace(space);
-  // 3. Grouping (i.e. marking step number) events in the XSpace.
+  // 4. Grouping (i.e. marking step number) events in the XSpace.
   profiler::EventGroupNameMap event_group_name_map;
   profiler::GroupTfEvents(space, &event_group_name_map);
-  // 4. Generated miscellaneous derived time lines for device planes.
+  // 5. Generated miscellaneous derived time lines for device planes.
   profiler::GenerateDerivedTimeLines(event_group_name_map, space);
 #endif
 
@@ -128,9 +131,7 @@ Status ProfilerSession::SerializeToString(string* content) {
 #if !defined(IS_MOBILE_PLATFORM)
   profiler::XSpace xspace;
   TF_RETURN_IF_ERROR(CollectData(&xspace));
-  uint64 end_time_ns = EnvTime::NowNanos();
-  profiler::ConvertXSpaceToTraceEvents(start_time_ns_, end_time_ns, xspace,
-                                       &trace);
+  profiler::ConvertXSpaceToTraceEvents(xspace, &trace);
 #endif
   trace.SerializeToString(content);
   return Status::OK();

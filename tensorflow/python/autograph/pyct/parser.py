@@ -91,7 +91,7 @@ def dedent_block(code_string):
         # See:
         # https://docs.python.org/3/reference/lexical_analysis.html#indentation
         raise errors.UnsupportedLanguageElementError(
-            'code mixing tabs and spaces for intentation is not allowed')
+            'code mixing tabs and spaces for indentation is not allowed')
       if len(tok_string) >= block_level:
         tok_string = tok_string[block_level:]
       tokens[i] = (tok_type, tok_string)

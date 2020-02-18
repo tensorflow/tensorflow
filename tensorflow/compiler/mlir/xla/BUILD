@@ -114,6 +114,7 @@ cc_library(
         ":hlo",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
@@ -157,7 +158,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgDialectRegistration",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -192,11 +192,10 @@ cc_library(
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
-        "@llvm-project//mlir:EDSC",
-        "@llvm-project//mlir:LinalgDialectRegistration",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
 )

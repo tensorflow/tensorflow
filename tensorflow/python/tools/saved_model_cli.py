@@ -713,7 +713,7 @@ def show(args):
   if args.all:
     _show_all(args.dir)
   else:
-    # If no tag is specified, display all tag_set, if no signaure_def key is
+    # If no tag is specified, display all tag_set, if no signature_def key is
     # specified, display all SignatureDef keys, else show input output tensor
     # information corresponding to the given SignatureDef key
     if args.tag_set is None:
@@ -1097,8 +1097,12 @@ def add_aot_compile_cpu_subparser(subparsers):
             'Options are: empty (default; all variables are frozen, none may '
             'be fed), \'all\' (all variables may be fed), or a '
             'comma-delimited list of names of variables that may be fed.  In '
-            'the last case, the non-fed variables will be frozen in the graph.')
-  )
+            'the last case, the non-fed variables will be frozen in the graph.'
+            '**NOTE** Any variables passed to `variables_to_feed` *must be set '
+            'by the user*.  These variables will NOT be frozen and their '
+            'values will be uninitialized in the compiled object '
+            '(this applies to all input arguments from the signature as '
+            'well).'))
 
   parser_compile.set_defaults(func=aot_compile_cpu)
 

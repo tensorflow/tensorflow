@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import gfile
 from tensorflow.python.util import compat
 
 # The string tokens in the extracted vocabulary
@@ -62,11 +63,17 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       there is no cap on the size of the vocabulary. Note that the vocabulary
       does include OOV buckets, so the effective number of unique values in the
       vocabulary is `(max_tokens - num_oov_tokens)` when this value is set.
-    vocabulary: An optional list of vocabulary terms.
     num_oov_tokens: The number of out-of-vocabulary tokens to use; defaults to
       1. If this value is more than 1, OOV inputs are hashed to determine their
       OOV value; if this value is 0, passing an OOV input will result in a
       runtime error.
+    vocabulary: An optional list of vocabulary terms, or a path to a text file
+      containing a vocabulary to load into this layer. The file should contain
+      one token per line. In either case, the vocabulary must be unique; if
+      the list or file contains the same token multiple times, an error will
+      be thrown. Note that when passing a vocabulary - either as a list or as
+      a file - the vocabulary will not be present in the layer's config dict;
+      it will instead be a part of the layer's weights.
     reserve_zero: Whether to reserve the index 0, which indicates pad values in
       the Keras masking system. If True, the output of this layer will be in the
       range `[1...max_tokens+1)`; if False, the output will be in the range
@@ -161,20 +168,41 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     # counting code in the Model object doesn't throw an attribute error.
     tracked_table.shape = tensor_shape.TensorShape((0,))
 
-    # This is a workaround for saving not working yet for MutableHashTables.
-    # By replacing the existing function call by an explicit failure, we
-    # can provide a more user-friendly error message.
-    def fail(_):
-      raise NotImplementedError(
-          "Saving is not yet supported for IndexLookup layers.")
-    self._table._list_extra_dependencies_for_serialization = fail  # pylint: disable=protected-access
     self._inverse_table = None
 
     if vocabulary is not None:
-      self._export_vocab = True
+      if isinstance(vocabulary, str):
+        vocabulary = self._get_vocabulary_from_file(vocabulary)
+
+      vocabulary_set = set(vocabulary)
+      if len(vocabulary) != len(vocabulary_set):
+        repeated_items = [
+            item for item, count in collections.Counter(vocabulary).items()
+            if count > 1
+        ]
+        raise ValueError("The passed vocabulary has at least one repeated "
+                         "term. Please uniquify your dataset before passing "
+                         "it to IndexLookup(). The repeated terms are %s" %
+                         repeated_items)
       self.set_vocabulary(vocabulary)
-    else:
-      self._export_vocab = False
+
+  def _get_vocabulary_from_file(self, vocabulary_path):
+    vocab = []
+    with gfile.GFile(vocabulary_path, "r") as reader:
+      while True:
+        # Get the next line, and break if it is None.
+        text = reader.readline()
+        if not text:
+          break
+
+        # Convert the raw text into UTF8 and strip whitespace.
+        if isinstance(text, str):
+          token = text
+        elif isinstance(text, bytes):
+          token = text.decode("utf-8", "ignore")
+        token = token.strip()
+        vocab.append(token)
+    return vocab
 
   def _get_table_data(self):
     keys, values = self._table.export()
@@ -263,11 +291,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     return [x for _, x in sorted(zip(values, keys))]
 
   def get_config(self):
-    vocabulary = self.get_vocabulary() if self._export_vocab else None
     config = {
         "max_tokens": self.max_tokens,
         "num_oov_tokens": self.num_oov_tokens,
-        "vocabulary": vocabulary,
+        "vocabulary": None,
         "reserve_zero": self.reserve_zero,
         "mask_zero": self.mask_zero,
     }
@@ -371,6 +398,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                                                 inputs.dense_shape)
     else:
       indexed_data = table.lookup(inputs)
+      # (b/149446477): output does not preserve input shape.
+      indexed_data.set_shape(inputs.shape)
 
     # Composite tensors can pass tensor values through, which will cause
     # errors if this is the only layer in the model. To fix this, pass

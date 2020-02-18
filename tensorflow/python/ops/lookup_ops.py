@@ -1533,7 +1533,7 @@ def index_to_string_table_from_file(vocabulary_file,
         value_column_index=value_column_index,
         delimiter=delimiter)
 
-    # TODO(yleon): Use a more effienct structure.
+    # TODO(yleon): Use a more efficient structure.
     return StaticHashTableV1(init, default_value)
 
 
@@ -1595,7 +1595,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
 
     init = KeyValueTensorInitializer(
         keys, vocabulary_list, dtypes.int64, dtypes.string, name="table_init")
-    # TODO(yleon): Use a more effienct structure.
+    # TODO(yleon): Use a more efficient structure.
     return StaticHashTableV1(init, default_value)
 
 

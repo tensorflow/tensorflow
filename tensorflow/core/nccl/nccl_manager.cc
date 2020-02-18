@@ -46,12 +46,13 @@ using se::rocm::ScopedActivateExecutorContext;
 int NcclManager::instance_count = 0;
 #endif
 
-#define NCCL_RETURN_IF_ERROR(...)                                         \
-  do {                                                                    \
-    ncclResult_t nccl_status = (__VA_ARGS__);                             \
-    if (nccl_status != ncclSuccess) {                                     \
-      return errors::Internal("NCCL: ", ncclGetErrorString(nccl_status)); \
-    }                                                                     \
+#define NCCL_RETURN_IF_ERROR(...)                                        \
+  do {                                                                   \
+    ncclResult_t nccl_status = (__VA_ARGS__);                            \
+    if (nccl_status != ncclSuccess) {                                    \
+      return errors::Internal("NCCL: ", ncclGetErrorString(nccl_status), \
+                              ". Set NCCL_DEBUG=WARN for detail.");      \
+    }                                                                    \
   } while (0)
 
 #define CUDA_RETURN_IF_ERROR(...)                                         \

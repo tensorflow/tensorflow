@@ -21,6 +21,27 @@ py_library(
 )
 
 py_library(
+    name = "profiler_client",
+    srcs = ["profiler_client.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:c_api_util",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+    ],
+)
+
+cuda_py_test(
+    name = "profiler_client_test",
+    srcs = ["profiler_client_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":profiler_client",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
     name = "option_builder",
     srcs = ["option_builder.py"],
     srcs_version = "PY2AND3",

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+
 #include "tensorflow/compiler/xla/tests/exhaustive_op_test_utils.h"
 
 #ifdef __FAST_MATH__
@@ -122,11 +124,11 @@ BINARY_TEST_16BIT(Min, {
 
 // TODO(bixia): Pow fails with bfloat16 on CPU.
 BINARY_TEST_16BIT(DISABLED_ON_CPU(Pow),
-                  { Run(AddEmptyBroadcastDimension(Pow), std::powf); })
+                  { Run(AddEmptyBroadcastDimension(Pow), std::pow); })
 
 // TODO(bixia): Atan2 fails with bfloat16 on CPU.
 BINARY_TEST_16BIT(DISABLED_ON_CPU(Atan2),
-                  { Run(AddEmptyBroadcastDimension(Atan2), std::atan2f); })
+                  { Run(AddEmptyBroadcastDimension(Atan2), std::atan2); })
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 INSTANTIATE_TEST_SUITE_P(F16, ExhaustiveF16BinaryTest,

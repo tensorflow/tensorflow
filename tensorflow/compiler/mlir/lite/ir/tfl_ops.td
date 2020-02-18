@@ -891,6 +891,29 @@ def TFL_MatrixDiagOp : TFL_Op<"matrix_diag", [
   let hasOptions = 0;
 }
 
+def TFL_MatrixSetDiagOp : TFL_Op<"matrix_set_diag", [NoSideEffect]> {
+  let summary = [{
+    Returns a batched matrix tensor with new batched diagonal values.
+  }];
+
+  let description = [{
+Given `input` and `diagonal`, this operation returns a tensor with the
+same shape and values as `input`, except for the main diagonal of the
+innermost matrices.  These will be overwritten by the values in `diagonal`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, I32, I64, I8, QI8, QI16, QUI8, TFL_Uint8, TFL_Quint8]>:$input,
+    TensorOf<[F32, I32, I64, I8, QI8, QI16, QUI8, TFL_Uint8, TFL_Quint8]>:$diagonal
+  );
+
+  let results = (outs
+    TensorOf<[F32, I32, I64, I8, QI8, QI16, QUI8, TFL_Uint8, TFL_Quint8]>:$output
+  );
+
+  let hasOptions = 0;
+}
+
 // These ops are named NonMaxSuppressionV4 & NonMaxSuppressionV5 to be
 // consistent with TensorFlow's naming. They are NOT 'versions' of NMS in the
 // sense that one is an incremental change over the other.
@@ -3495,6 +3518,8 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
   let results = (outs Variadic<AnyTensor>:$output);
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
+
+  let verifier = [{ return Verify(*this); }];
 
   let hasCanonicalizer = 1;
 }

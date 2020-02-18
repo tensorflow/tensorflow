@@ -1,9 +1,47 @@
 path: "tensorflow.experimental.tensorrt.ConversionParams"
 tf_class {
   is_instance: "<class \'tensorflow.python.compiler.tensorrt.trt_convert.TrtConversionParams\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'tensorflow.python.compiler.tensorrt.trt_convert.TrtConversionParams\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "is_dynamic_op"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "max_batch_size"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "max_workspace_size_bytes"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "maximum_cached_engines"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "minimum_segment_size"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "precision_mode"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "rewriter_config_template"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "use_calibration"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'rewriter_config_template\', \'max_workspace_size_bytes\', \'precision_mode\', \'minimum_segment_size\', \'is_dynamic_op\', \'maximum_cached_engines\', \'use_calibration\', \'max_batch_size\'], varargs=None, keywords=None, defaults=[\'None\', \'1073741824\', \'FP32\', \'3\', \'True\', \'1\', \'True\', \'1\'], "
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
   }
 }

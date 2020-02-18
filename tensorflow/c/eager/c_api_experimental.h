@@ -37,15 +37,6 @@ TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Op* op_to_reset,
 TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
                                               TF_Status* status);
 
-// Start a profiler grpc server which listens to specified port. It will start
-// the server on its own thread. It can be shutdown by terminating tensorflow.
-// It can be used in both Eager mode and graph mode. Creating multiple profiler
-// server is allowed. The service defined in
-// tensorflow/contrib/tpu/profiler/tpu_profiler.proto. Please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile to capture trace file
-// following https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern void TFE_StartProfilerServer(int port);
-
 // Enables only graph collection in RunMetadata on the functions executed from
 // this context.
 TF_CAPI_EXPORT extern void TFE_ContextEnableGraphCollection(TFE_Context* ctx);
@@ -53,29 +44,6 @@ TF_CAPI_EXPORT extern void TFE_ContextEnableGraphCollection(TFE_Context* ctx);
 // Disables only graph collection in RunMetadata on the functions executed from
 // this context.
 TF_CAPI_EXPORT extern void TFE_ContextDisableGraphCollection(TFE_Context* ctx);
-
-// Send a grpc request to profiler server (service_addr) to perform on-demand
-// profiling and save the result into logdir which can be visualized by
-// TensorBoard. worker_list is the list of worker TPUs separated by ','. Set
-// include_dataset_opts to false to profile longer traces. It will block the
-// caller thread until receives tracing result.
-// This API is designed for TensorBoard, for end user, please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile instead following
-// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern bool TFE_ProfilerClientStartTracing(
-    const char* service_addr, const char* logdir, const char* worker_list,
-    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
-    TF_Status* status);
-
-// Send a grpc request to profiler server (service_addr) to perform on-demand
-// monitoring and return the result in a string. It will block the
-// caller thread until receiving the monitoring result.
-// This API is designed for TensorBoard, for end user, please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile instead following
-// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern void TFE_ProfilerClientMonitor(
-    const char* service_addr, int duration_ms, int monitoring_level,
-    bool display_timestamp, TF_Buffer* result, TF_Status* status);
 
 // TODO(fishx): Move these monitoring APIs into a separate file.
 // -----------------------------------------------------------------------------

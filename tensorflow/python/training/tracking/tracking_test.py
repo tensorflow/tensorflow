@@ -313,7 +313,7 @@ class InterfaceTests(test.TestCase):
 
     # Note(taylorrobie): The reason that it is safe to time a unit test is that
     #                    a cache hit will be << 1 second, and a cache miss is
-    #                    guaranteed to be >= 1 second. Emperically confirmed by
+    #                    guaranteed to be >= 1 second. Empirically confirmed by
     #                    100,000 runs with no flakes.
     self.assertLess(total_time, 0.95)
 

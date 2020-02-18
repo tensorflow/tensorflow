@@ -848,8 +848,7 @@ std::vector<float> TestSparseDotprodMatrixBatchVectorMultiply(
   MatrixVectorData data = SetupMatrixVectorData(rows, cols, batch, negative);
   SparseMatrixBatchVectorMultiplyAccumulate(
       data.sparse_matrix.data(), data.ledger.data(), rows, cols,
-      data.vectors.data(), data.scale_factors.data(), batch, &data.results[0],
-      1);
+      data.vectors.data(), data.scale_factors.data(), batch, &data.results[0]);
   return data.results;
 }
 
@@ -1246,8 +1245,7 @@ TEST(uKernels, SparseMatrixBatchVectorMultiplyAccumulateTest) {
 
   std::vector<float> sparse_output(kRow * kBatch, 0.0);
   SparseMatrixBatchVectorMultiplyAccumulate(
-      matrix_values, ledger, kRow, kCol, vector, kBatch, sparse_output.data(),
-      /*result_stride=*/1);
+      matrix_values, ledger, kRow, kCol, vector, kBatch, sparse_output.data());
 
   EXPECT_THAT(sparse_output,
               ElementsAreArray(ArrayFloatNear(dense_output, 1e-4)));
@@ -1331,8 +1329,7 @@ TEST(uKernels,
   std::vector<float> sparse_output(kRow * kBatch, 0.0);
   SparseMatrixBatchVectorMultiplyAccumulate(
       quantized_matrix_values, ledger, kRow, kCol, quantized_vector,
-      result_scaling_factor, kBatch, sparse_output.data(),
-      /*result_stride=*/1);
+      result_scaling_factor, kBatch, sparse_output.data());
 
   EXPECT_THAT(sparse_output,
               ElementsAreArray(ArrayFloatNear(
@@ -1618,7 +1615,7 @@ TEST(uKernels, BatchVectorBatchVectorDotProductTest) {
                                                -0.1, 0.1,  -0.1, 0.1,  -0.1};
   std::vector<float> output(kBatch);
   BatchVectorBatchVectorDotProduct(input1, input2, kVectorSize, kBatch,
-                                   output.data(), /*result_stride=*/1);
+                                   output.data());
   EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({0.5, 1.75})));
 }
 
@@ -1631,7 +1628,7 @@ TEST(uKernels, BatchVectorBatchVectorDotProductIntegerTest) {
                                                  -1, 1,  -1, 1,  1};
   std::vector<int32_t> output(kBatch);
   BatchVectorBatchVectorDotProduct(input1, input2, kVectorSize, kBatch,
-                                   output.data(), /*result_stride=*/1);
+                                   output.data());
   EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({40, 85})));
 }
 
@@ -1894,7 +1891,7 @@ void BM_DotprodSparseMultiply(benchmark::State& state) {
     tflite::tensor_utils::SparseMatrixBatchVectorMultiplyAccumulate(
         data.sparse_matrix.data(), data.ledger.data(), data.rows, data.cols,
         data.vectors.data(), data.scale_factors.data(), data.batch,
-        &data.results[0], 1);
+        &data.results[0]);
     testing::DoNotOptimize(data.results[2]);
   }
 }

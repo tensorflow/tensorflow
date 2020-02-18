@@ -482,7 +482,7 @@ class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
                                      input_shape_b=(4, 7))
 
   def test_relu(self):
-    x = ops.convert_to_tensor([[-4, 0], [2, 7]], 'float32')
+    x = ops.convert_to_tensor_v2([[-4, 0], [2, 7]], 'float32')
 
     # standard relu
     relu_op = keras.backend.relu(x)
@@ -1311,7 +1311,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     inputs = keras.backend.variable(input_val)
     initial_states = [
         keras.backend.variable(init_state_val),
-        ops.convert_to_tensor(
+        ops.convert_to_tensor_v2(
             np.concatenate([init_state_val, init_state_val], axis=-1))
     ]
     mask = keras.backend.variable(np_mask)
@@ -1624,9 +1624,9 @@ class BackendCrossEntropyLossesTest(test.TestCase):
     p = keras.backend.placeholder()
     o = keras.backend.categorical_crossentropy(t, p)
 
-    t_val = ops.convert_to_tensor([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
-    p_val = ops.convert_to_tensor([[.9, .05, .05], [.05, .89, .06],
-                                   [.05, .01, .94]])
+    t_val = ops.convert_to_tensor_v2([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
+    p_val = ops.convert_to_tensor_v2([[.9, .05, .05], [.05, .89, .06],
+                                      [.05, .01, .94]])
     f = keras.backend.function([t, p], o)
 
     result = f([t_val, p_val])
@@ -1640,7 +1640,7 @@ class BackendCrossEntropyLossesTest(test.TestCase):
     self.assertArrayNear(result, [.105, .065, .111], 1e-3)
 
     # from logits
-    p_val = ops.convert_to_tensor([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p_val = ops.convert_to_tensor_v2([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
     o = keras.backend.categorical_crossentropy(t, p, from_logits=True)
     f = keras.backend.function([t, p], o)
 
@@ -1693,9 +1693,9 @@ class BackendCrossEntropyLossesTest(test.TestCase):
     p = keras.backend.placeholder()
     o = keras.backend.sparse_categorical_crossentropy(t, p)
 
-    t_val = ops.convert_to_tensor([0, 1, 2])
-    p_val = ops.convert_to_tensor([[.9, .05, .05], [.05, .89, .06],
-                                   [.05, .01, .94]])
+    t_val = ops.convert_to_tensor_v2([0, 1, 2])
+    p_val = ops.convert_to_tensor_v2([[.9, .05, .05], [.05, .89, .06],
+                                      [.05, .01, .94]])
     f = keras.backend.function([t, p], o)
 
     result = f([t_val, p_val])
@@ -1711,7 +1711,7 @@ class BackendCrossEntropyLossesTest(test.TestCase):
       _ = f([t_val, p_val])
 
     # from logits
-    p_val = ops.convert_to_tensor([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p_val = ops.convert_to_tensor_v2([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
     o = keras.backend.sparse_categorical_crossentropy(t, p, from_logits=True)
     f = keras.backend.function([t, p], o)
 
@@ -1956,10 +1956,9 @@ class BackendGraphTests(test.TestCase):
     output_values = f([None, None])
     self.assertEqual(output_values, [5., 6.])
 
-  @test_util.run_deprecated_v1
   def test_function_tf_feed_symbols(self):
     # Test Keras backend functions with TF tensor inputs.
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       # Test feeding a resource variable to `function`.
       x1 = keras.backend.placeholder(shape=())
       x2 = keras.backend.placeholder(shape=())
@@ -1990,14 +1989,13 @@ class BackendGraphTests(test.TestCase):
       outs = f([y5, y2, None])
       self.assertEqual(outs, [11., 2.])
 
-  @test_util.run_deprecated_v1
   def test_function_tf_fetches(self):
     # Additional operations can be passed to tf.compat.v1.Session().run() via
     # its `fetches` arguments. In contrast to `updates` argument of
     # keras.backend.function() these do not have control dependency on `outputs`
     # so they can run in parallel. Also they should not contribute to output of
     # keras.backend.function().
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       x = keras.backend.variable(0.)
       y = keras.backend.variable(0.)
       x_placeholder = keras.backend.placeholder(shape=())
@@ -2013,14 +2011,13 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(keras.backend.get_session().run(fetches=[x, y]),
                        [11., 5.])
 
-  @test_util.run_deprecated_v1
   def test_function_tf_feed_dict(self):
     # Additional substitutions can be passed to `tf.compat.v1.Session().run()`
     # via its `feed_dict` arguments. Note that the feed_dict is passed once in
     # the constructor but we can modify the values in the dictionary. Through
     # this feed_dict we can provide additional substitutions besides Keras
     # inputs.
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       x = keras.backend.variable(0.)
       y = keras.backend.variable(0.)
       x_placeholder = keras.backend.placeholder(shape=())
@@ -2046,9 +2043,8 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(keras.backend.get_session().run(fetches=[x, y]),
                        [30., 40.])
 
-  @test_util.run_deprecated_v1
   def test_function_tf_run_options_with_run_metadata(self):
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       x_placeholder = keras.backend.placeholder(shape=())
       y_placeholder = keras.backend.placeholder(shape=())
 
@@ -2072,7 +2068,6 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(output1, [30.])
       self.assertEqual(len(run_metadata.partition_graphs), 0)
 
-  @test_util.run_deprecated_v1
   def test_function_fetch_callbacks(self):
 
     class CallbackStub(object):
@@ -2085,7 +2080,7 @@ class BackendGraphTests(test.TestCase):
         self.times_called += 1
         self.callback_result = result
 
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       callback = CallbackStub()
       x_placeholder = keras.backend.placeholder(shape=())
       y_placeholder = keras.backend.placeholder(shape=())
@@ -2134,8 +2129,9 @@ class ControlOpsTests(test.TestCase):
     self.assertEqual(keras.backend.eval(tensor), [9.0])
 
   def test_unequal_rank(self):
-    x = ops.convert_to_tensor(np.array([[1, 2, 3], [4, 5, 6]]), dtype='float32')
-    y = ops.convert_to_tensor(np.array([1, 2, 3]), dtype='float32')
+    x = ops.convert_to_tensor_v2(
+        np.array([[1, 2, 3], [4, 5, 6]]), dtype='float32')
+    y = ops.convert_to_tensor_v2(np.array([1, 2, 3]), dtype='float32')
 
     def true_func():
       return x

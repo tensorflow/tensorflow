@@ -126,6 +126,15 @@ TEST(UnpackOpTest, FloatThreeDimensionsOutputs) {
                /*exp_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}});
 }
 
+TEST(UnpackOpTest, FloatFiveDimensionsOutputs) {
+  Check<float>(
+      /*axis=*/2, /*input_shape=*/{2, 2, 2, 2, 1},
+      /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+      /*exp_output_shape=*/{{2, 2, 2, 1}, {2, 2, 2, 1}},
+      /*exp_output_data=*/
+      {{1, 2, 5, 6, 9, 10, 13, 14}, {3, 4, 7, 8, 11, 12, 15, 16}});
+}
+
 TEST(UnpackOpTest, FloatVectorToScalar) {
   Check<float>(/*axis=*/0, /*input_shape=*/{5},
                /*input_data=*/{1, 2, 3, 4, 5},
@@ -164,6 +173,16 @@ TEST(UnpackOpTest, IntThreeDimensionsOutputs) {
                  /*exp_output_shape=*/{{2, 2}, {2, 2}},
                  /*exp_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}},
                  /*type=*/TensorType_INT32);
+}
+
+TEST(UnpackOpTest, IntFiveDimensionsOutputs) {
+  Check<int32_t>(
+      /*axis=*/2, /*input_shape=*/{2, 2, 2, 2, 1},
+      /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+      /*exp_output_shape=*/{{2, 2, 2, 1}, {2, 2, 2, 1}},
+      /*exp_output_data=*/
+      {{1, 2, 5, 6, 9, 10, 13, 14}, {3, 4, 7, 8, 11, 12, 15, 16}},
+      /*type=*/TensorType_INT32);
 }
 
 TEST(UnpackOpTest, IntVectorToScalar) {
@@ -223,6 +242,16 @@ TEST(UnpackOpTest, Uint8ThreeDimensionsOutputs) {
                  /*type=*/TensorType_UINT8);
 }
 
+TEST(UnpackOpTest, Uint8FiveDimensionsOutputs) {
+  Check<uint8_t>(
+      /*axis=*/2, /*input_shape=*/{2, 2, 2, 2, 1},
+      /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+      /*exp_output_shape=*/{{2, 2, 2, 1}, {2, 2, 2, 1}},
+      /*exp_output_data=*/
+      {{1, 2, 5, 6, 9, 10, 13, 14}, {3, 4, 7, 8, 11, 12, 15, 16}},
+      /*type=*/TensorType_UINT8);
+}
+
 TEST(UnpackOpTest, Uint8VectorToScalar) {
   Check<uint8_t>(/*axis=*/0, /*input_shape=*/{5},
                  /*input_data=*/{1, 2, 3, 4, 5},
@@ -278,6 +307,16 @@ TEST(UnpackOpTest, Int8ThreeDimensionsOutputs) {
                 /*exp_output_shape=*/{{2, 2}, {2, 2}},
                 /*exp_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}},
                 /*type=*/TensorType_INT8);
+}
+
+TEST(UnpackOpTest, Int8FiveDimensionsOutputs) {
+  Check<int8_t>(
+      /*axis=*/2, /*input_shape=*/{2, 2, 2, 2, 1},
+      /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+      /*exp_output_shape=*/{{2, 2, 2, 1}, {2, 2, 2, 1}},
+      /*exp_output_data=*/
+      {{1, 2, 5, 6, 9, 10, 13, 14}, {3, 4, 7, 8, 11, 12, 15, 16}},
+      /*type=*/TensorType_INT8);
 }
 
 TEST(UnpackOpTest, Int8VectorToScalar) {
@@ -341,6 +380,19 @@ TEST(UnpackOpTest, BoolThreeDimensionsOutputs) {
       /*exp_output_shape=*/{{2, 2}, {2, 2}},
       /*exp_output_data=*/
       {{true, true, true, true}, {false, false, false, false}},
+      /*type=*/TensorType_BOOL);
+}
+
+TEST(UnpackOpTest, BoolFiveDimensionsOutputs) {
+  Check<bool>(
+      /*axis=*/2, /*input_shape=*/{2, 2, 2, 2, 1},
+      /*input_data=*/
+      {true, false, true, false, true, false, true, false, true, true, true,
+       true, true, true, true, true},
+      /*exp_output_shape=*/{{2, 2, 2, 1}, {2, 2, 2, 1}},
+      /*exp_output_data=*/
+      {{true, false, true, false, true, true, true, true},
+       {true, false, true, false, true, true, true, true}},
       /*type=*/TensorType_BOOL);
 }
 

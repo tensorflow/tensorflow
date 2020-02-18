@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
@@ -28,46 +29,39 @@ namespace mlir {
 namespace TFL {
 namespace {
 
-struct ConvertTFWhileOp : public OpRewritePattern<TF::WhileOp> {
-  using OpRewritePattern<TF::WhileOp>::OpRewritePattern;
-  PatternMatchResult matchAndRewrite(TF::WhileOp while_op,
-                                     PatternRewriter& rewriter) const override;
-};
-
-PatternMatchResult ConvertTFWhileOp::matchAndRewrite(
-    TF::WhileOp while_op, PatternRewriter& rewriter) const {
-  Operation* op = while_op.getOperation();
-  auto new_op =
-      rewriter.create<TFL::WhileOp>(op->getLoc(), op->getResultTypes(),
-                                    op->getOperands(), while_op.is_stateless());
-  auto build_region = [&](Region& region, FlatSymbolRefAttr func) {
-    OpBuilder b(region);
-    auto block = b.createBlock(&region);
-    SmallVector<Value, 4> new_operands;
-    auto fn = while_op.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
-        func.getValue());
-    auto types = fn.getType().getResults();
-    for (Type t : fn.getType().getInputs())
-      new_operands.push_back(block->addArgument(t));
-    auto call = b.create<CallOp>(while_op.getLoc(), func, types, new_operands);
-    b.create<YieldOp>(while_op.getLoc(), call.getResults());
-  };
-  build_region(new_op.cond(), while_op.condAttr());
-  build_region(new_op.body(), while_op.bodyAttr());
-
-  rewriter.replaceOp(op, new_op.getResults());
-  return matchSuccess();
-}
-
-// Legalize operations in functions.
+// Legalize TF While to TFL While with calls to the original functions from the
+// cond and body regions.
 struct LegalizeWhile : public FunctionPass<LegalizeWhile> {
   void runOnFunction() override {
-    OwningRewritePatternList patterns;
-    auto* ctx = &getContext();
     auto func = getFunction();
+    // Convert all TF WhileOps inside the function body to TFL While ops.
+    func.getBody().walk([](TF::WhileOp while_op) {
+      Operation* op = while_op.getOperation();
+      // Create new TFL While op that will be used to replace TF While op.
+      auto new_op = OpBuilder(op).create<TFL::WhileOp>(
+          op->getLoc(), op->getResultTypes(), op->getOperands(),
+          while_op.is_stateless());
+      // Insert call to the given function into the 'region'.
+      auto create_region_with_call = [&while_op](FlatSymbolRefAttr symbol,
+                                                 Region& region) {
+        OpBuilder builder(region);
+        auto block = builder.createBlock(&region);
+        SmallVector<Value, 4> new_operands;
+        auto func = while_op.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
+            symbol.getValue());
+        for (Type t : func.getType().getInputs())
+          new_operands.push_back(block->addArgument(t));
+        auto call =
+            builder.create<CallOp>(while_op.getLoc(), symbol,
+                                   func.getType().getResults(), new_operands);
+        builder.create<YieldOp>(while_op.getLoc(), call.getResults());
+      };
+      create_region_with_call(while_op.condAttr(), new_op.cond());
+      create_region_with_call(while_op.bodyAttr(), new_op.body());
 
-    patterns.insert<ConvertTFWhileOp>(ctx);
-    applyPatternsGreedily(func, patterns);
+      op->replaceAllUsesWith(new_op.getResults());
+      op->erase();
+    });
   }
 };
 

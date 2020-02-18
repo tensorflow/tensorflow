@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A base class to provid a model and corresponding input data for testing."""
+"""A base class to provide a model and corresponding input data for testing."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

@@ -474,6 +474,13 @@ def string_to_number(input, out_type=dtypes.float32, name=None):
   (Note that int32 overflow results in an error while float overflow
   results in a rounded value.)
 
+  Examples:
+
+  >>> tf.strings.to_number("1.55")
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.55>
+  >>> tf.strings.to_number("3", tf.int32)
+  <tf.Tensor: shape=(), dtype=int32, numpy=3>
+
   Args:
     input: A `Tensor` of type `string`.
     out_type: An optional `tf.DType` from: `tf.float32, tf.float64, tf.int32,
@@ -512,6 +519,11 @@ def string_to_hash_bucket(input, num_buckets, name=None):
   Note that the hash function may change from time to time.
   This functionality will be deprecated and it's recommended to use
   `tf.strings.to_hash_bucket_fast()` or `tf.strings.to_hash_bucket_strong()`.
+
+  Examples:
+
+  >>> tf.strings.to_hash_bucket(["Hello", "TensorFlow", "2.x"], 3)
+  <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 0, 1])>
 
   Args:
     input: A `Tensor` of type `string`.

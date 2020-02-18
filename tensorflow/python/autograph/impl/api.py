@@ -192,7 +192,7 @@ def tf_convert(f, ctx, convert_by_default=True, user_requested=False):
 
   # TODO(mdan): Grab features from context.
   # Note: we pass the original context through to convert to properly handle the
-  # following scenario, which can be used insite TF implementations:
+  # following scenario, which can be used inside TF implementations:
   #
   #   ctx = ag_ctx.control_status_ctx()
   #   @function(autograph=False)  # Low-level graph code

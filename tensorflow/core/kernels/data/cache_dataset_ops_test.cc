@@ -13,6 +13,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/platform/path.h"
 
 namespace tensorflow {
 namespace data {
@@ -102,7 +103,7 @@ CacheDatasetParams CacheDatasetParams1() {
       /*node_name=*/"tensor_slice");
   return CacheDatasetParams(
       std::move(tensor_slice_dataset_params),
-      /*filename=*/absl::StrCat(testing::TmpDir(), "/cache_data"),
+      /*filename=*/io::JoinPath(testing::TmpDir(), "cache_data"),
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({3, 1})}, kNodeName);
 }
@@ -114,7 +115,7 @@ CacheDatasetParams CacheDatasetParams2() {
       /*node_name=*/"tensor_slice");
   return CacheDatasetParams(
       std::move(tensor_slice_dataset_params),
-      /*filename=*/absl::StrCat(testing::TmpDir(), "/cache_data"),
+      /*filename=*/io::JoinPath(testing::TmpDir(), "cache_data"),
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({})}, kNodeName);
 }

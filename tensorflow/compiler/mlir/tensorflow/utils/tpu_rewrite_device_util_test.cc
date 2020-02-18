@@ -110,8 +110,6 @@ TEST_P(ParameterizedMetadataTest, BadMetadata) {
 INSTANTIATE_TEST_SUITE_P(
     BadMetadata, ParameterizedMetadataTest,
     ::testing::Values(
-        std::make_tuple(1, 2,
-                        "num_cores_per_replica must be equal to 1, got 2"),
         std::make_tuple(8, 1, "num_replicas must be equal to 1 or 4, got 8")));
 
 TEST(TPURewriteDeviceUtilTest, NumReplicasNumTPUs) {
