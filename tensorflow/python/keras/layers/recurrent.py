@@ -535,12 +535,6 @@ class RNN(Layer):
       input_spec_shape[time_step_index] = None
       return InputSpec(shape=tuple(input_spec_shape))
 
-    def get_step_input_shape(shape):
-      if isinstance(shape, tensor_shape.TensorShape):
-        shape = tuple(shape.as_list())
-      # remove the timestep from the input_shape
-      return shape[1:] if self.time_major else (shape[0],) + shape[2:]
-
     # Check whether the input shape contains any nested shapes. It could be
     # (tensor_shape(1, 2), tensor_shape(3, 4)) or (1, 2, 3) which is from numpy
     # inputs.
@@ -556,19 +550,17 @@ class RNN(Layer):
         self.input_spec[0] = get_input_spec(input_shape)
       else:
         self.input_spec = [get_input_spec(input_shape)]
-      step_input_shape = get_step_input_shape(input_shape)
     else:
       if self.input_spec is not None:
         self.input_spec[0] = nest.map_structure(get_input_spec, input_shape)
       else:
         self.input_spec = generic_utils.to_list(
             nest.map_structure(get_input_spec, input_shape))
-      step_input_shape = nest.map_structure(get_step_input_shape, input_shape)
 
     # allow cell (if layer) to build before we set or validate state_spec.
     if isinstance(self.cell, Layer) and not self.cell.built:
       with K.name_scope(self.cell.name):
-        self.cell.build(step_input_shape)
+        self.cell.build(input_shape)
         self.cell.built = True
 
     # set or validate state_spec
