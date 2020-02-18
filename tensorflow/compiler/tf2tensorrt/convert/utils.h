@@ -110,8 +110,7 @@ string GetLoadedTensorRTVersion();
 // number of input tensors for the network. This can differ from the number of
 // input bindings, because the number of total input bindings equals the number
 // of profiles times the number of engine inputs.
-int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine *engine);
-
+int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine);
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 }  // namespace tensorrt
