@@ -505,13 +505,15 @@ selects.config_setting_group(
 package_group(
     name = "internal",
     packages = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/...",
         "//learning/brain/swift/x10/...",
         "//perftools/accelerators/xprof/api/...",
+        "//third_party/py/autograph/...",
+        "//third_party/swift/tensorflow/x10/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
-        "//third_party/py/autograph/...",
-        "//third_party/swift/tensorflow/x10/...",
     ],
 )
 
