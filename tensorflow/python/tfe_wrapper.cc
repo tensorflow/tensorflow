@@ -1043,11 +1043,12 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     void* dlm_ptr = tensorflow::TFE_HandleToDLPack(thandle, status.get());
 
     py::capsule capsule(
-        dlm_ptr, tensorflow::kDlTensorCapsuleName, [](PyObject* obj) {
+        dlm_ptr, tensorflow::kDlTensorCapsuleName, [](PyObject* capsule) {
           void* dlm_rptr =
-              PyCapsule_GetPointer(obj, tensorflow::kDlTensorCapsuleName);
+              PyCapsule_GetPointer(capsule, tensorflow::kDlTensorCapsuleName);
           if (dlm_rptr) {
             tensorflow::TFE_CallDLManagedTensorDeleter(dlm_rptr);
+            PyCapsule_SetDestructor(capsule, nullptr);
           } else {
             // The tensor has been deleted. Clear any error from
             // PyCapsule_GetPointer.
