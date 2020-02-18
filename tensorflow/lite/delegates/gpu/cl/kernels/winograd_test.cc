@@ -22,6 +22,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/cl/kernels/cl_test.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -37,8 +39,41 @@ namespace {
 TEST_F(OpenCLOperationTest, Winograd4x4To36) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 4, 4, 1);
-  src_tensor.data = {0.0f, 1.0f, 2.0f,  3.0f,  4.0f,  5.0f,  6.0f,  7.0f,
-                     8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f};
+  src_tensor.data.resize(16);
+  for (int i = 0; i < 16; ++i) {
+    src_tensor.data[i] = sin(i);
+  }
+
+  TensorFloat32 dst_ref;
+  dst_ref.shape = BHWC(1, 36, 1, 1);
+  dst_ref.data.resize(36, 0.0f);
+  auto b_t = BtMatrixForWinograd4x4To6x6();
+
+  // Bt * Src * B
+  // 1: temp = Src * B
+  std::vector<float> temp(36, 0.0f);
+  for (int y = 0; y < 6; ++y) {
+    for (int x = 0; x < 6; ++x) {
+      float sum = 0.0f;
+      for (int i = 0; i < 6; ++i) {
+        if (y < 1 || y > 4 || i < 1 || i > 4) continue;
+        const int index = src_tensor.shape.LinearIndex({0, y - 1, i - 1, 0});
+        sum += src_tensor.data[index] * b_t[x * 6 + i];
+      }
+      temp[y * 6 + x] = sum;
+    }
+  }
+  // 2: ref = Bt * temp
+  for (int y = 0; y < 6; ++y) {
+    for (int x = 0; x < 6; ++x) {
+      float sum = 0.0f;
+      for (int i = 0; i < 6; ++i) {
+        sum += b_t[y * 6 + i] * temp[i * 6 + x];
+      }
+      const int index = dst_ref.shape.LinearIndex({0, y * 6 + x, 0, 0});
+      dst_ref.data[index] = sum;
+    }
+  }
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -57,20 +92,7 @@ TEST_F(OpenCLOperationTest, Winograd4x4To36) {
           CreateWinograd4x4To36(creation_context_, op_def, padding, &wino_up));
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &wino_up,
                                     BHWC(1, 36, 1, 1), &dst_tensor));
-      EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(eps),
-                            {-1.8076144457f, 3.0488157272f,   -0.3543013334f,
-                             -0.9567713737f, 0.0698715150f,   6.3601350784f,
-                             7.9091277122f,  -7.5317668915f,  -0.4988912344f,
-                             0.0400028825f,  0.0815277994f,   1.8058515787f,
-                             -2.0690131187f, 1.4405870438f,   0.3173895180f,
-                             0.3676810265f,  -0.0566446260f,  -3.1750767231f,
-                             -4.4264192581f, 3.3195235729f,   0.5952118039f,
-                             0.6170299053f,  -0.1053467616f,  -5.5806870461f,
-                             0.3939223289f,  -0.2771621346f,  -0.0594099388f,
-                             -0.0679424182f, 0.0105922129f,   0.5897778869f,
-                             31.1582794189f, -22.9188480377f, -4.3477787971f,
-                             -4.6630558968f, 0.7714096308f,   41.5681838989f}));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), dst_ref.data));
     }
   }
 }
@@ -90,6 +112,36 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
     biases.data[i] = 0.0f;
   }
 
+  TensorFloat32 dst_ref;
+  dst_ref.shape = BHWC(1, 4, 4, 1);
+  dst_ref.data.resize(16, 0.0f);
+  auto a_t = AtMatrixForWinograd4x4To6x6();
+
+  // At * Src * A
+  // 1: temp = Src * A
+  std::vector<float> temp(24, 0.0f);
+  for (int y = 0; y < 6; ++y) {
+    for (int x = 0; x < 4; ++x) {
+      float sum = 0.0f;
+      for (int i = 0; i < 6; ++i) {
+        const int index = src_tensor.shape.LinearIndex({0, y * 6 + i, 0, 0});
+        sum += src_tensor.data[index] * a_t[x * 6 + i];
+      }
+      temp[y * 4 + x] = sum;
+    }
+  }
+  // 2: ref = At * temp
+  for (int y = 0; y < 4; ++y) {
+    for (int x = 0; x < 4; ++x) {
+      float sum = 0.0f;
+      for (int i = 0; i < 6; ++i) {
+        sum += a_t[y * 6 + i] * temp[i * 4 + x];
+      }
+      const int index = dst_ref.shape.LinearIndex({0, y, x, 0});
+      dst_ref.data[index] = sum;
+    }
+  }
+
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
@@ -104,14 +156,7 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
           CreateWinograd36To4x4(creation_context_, op_def, biases, &wino_down));
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &wino_down,
                                     BHWC(1, 4, 4, 1), &dst_tensor));
-      EXPECT_THAT(
-          dst_tensor.data,
-          Pointwise(
-              FloatNear(eps),
-              {5.6982488632f, 4.4291338921f, 7.1398024559f, 8.3108062744f,
-               0.2751901150f, 0.6380079389f, -1.6235249043f, 0.6435587406f,
-               5.8707995415f, 3.3895490170f, 12.8032960892f, 7.8921923637f,
-               1.2864947319f, 1.1310911179f, 1.0033880472f, 1.9512135983f}));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), dst_ref.data));
     }
   }
 }

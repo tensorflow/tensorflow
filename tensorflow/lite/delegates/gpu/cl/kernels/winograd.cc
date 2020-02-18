@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -48,16 +49,17 @@ std::string GetWinograd4x4To36Code(
       src_tensor_type == TensorStorageType::IMAGE_BUFFER;
   const bool is_buffer = src_tensor_type == TensorStorageType::BUFFER;
 
-  c += R"(
-  constant FLT Bt[36] = {
-   1.0000000000f,  0.0000000887f, -2.3075673580f,  0.0000000089f,  0.8519787788f, -0.0000000000f,
-  -0.0000000000f,  0.9057970643f,  1.2307025194f, -0.4180375934f, -0.5679858327f,  0.0000000000f,
-   0.0000000000f, -0.9057970643f,  1.2307025194f,  0.4180375934f, -0.5679858327f, -0.0000000000f,
-  -0.0000000000f, -0.1132246330f, -0.0769189075f,  0.2090187818f,  0.1419964582f,  0.0000000000f,
-   0.0000000000f,  0.1132246330f, -0.0769189224f, -0.2090187967f,  0.1419964582f, -0.0000000000f,
-  -0.0000000000f,  1.1737382412f, -0.0000000532f, -2.7084801197f, -0.0000000355f,  1.0000000000f,
-};
-)";
+  auto bt_mat = BtMatrixForWinograd4x4To6x6();
+  c += "constant FLT Bt[36] = {\n";
+  for (int y = 0; y < 6; ++y) {
+    c += "\t";
+    for (int x = 0; x < 6; ++x) {
+      c += absl::StrFormat("%.10f", bt_mat[y * 6 + x]) + "f, ";
+    }
+    c += "\n";
+  }
+  c += "};\n";
+
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
   c += bt_arr.GetDeclaration();
@@ -211,14 +213,17 @@ std::string GetWinograd36To4x4Code(
   const std::string batch_id = op_def.IsBatchSupported() ? "batch_id" : "";
   std::string c = GetCommonDefines(op_def.precision);
 
-  c += R"(
-constant FLT At[24] = {
-  1.0000000000f, 1.0000000000f,  1.0000000000f, 1.0000000000f,  1.0000000000f, 0.0000000000f,
-  0.0000000000f, 0.7360000014f, -0.7360000014f, 1.4720000029f, -1.4720000029f, 0.0000000000f,
-  0.0000000000f, 0.5416960120f,  0.5416960120f, 2.1667840481f,  2.1667840481f, 0.0000000000f,
-  0.0000000000f, 0.3986882567f, -0.3986882567f, 3.1895060539f, -3.1895060539f, 1.0000000000f,
-};
-)";
+  auto at_mat = AtMatrixForWinograd4x4To6x6();
+  c += "constant FLT At[24] = {\n";
+  for (int y = 0; y < 4; ++y) {
+    c += "\t";
+    for (int x = 0; x < 6; ++x) {
+      c += absl::StrFormat("%.10f", at_mat[y * 6 + x]) + "f, ";
+    }
+    c += "\n";
+  }
+  c += "};\n";
+
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
   c += at_arr.GetDeclaration() + ",\n";
@@ -341,26 +346,23 @@ Status Winograd4x4To36::Compile(const CreationContext& creation_context) {
 }
 
 Status Winograd4x4To36::UploadBt(CLContext* context) {
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> Bt;
-  Bt.shape = Linear(48);
-  Bt.data = {1.0000000000f,  0.0000000887f,  -2.3075673580f, 0.0000000089f,
-             0.8519787788f,  0.0000000000f,  0.0000000000f,  0.0000000000f,
-             0.0000000000f,  0.9057970643f,  1.2307025194f,  -0.4180375934f,
-             -0.5679858327f, 0.0000000000f,  0.0000000000f,  0.0000000000f,
-             0.0000000000f,  -0.9057970643f, 1.2307025194f,  0.4180375934f,
-             -0.5679858327f, -0.0000000000f, 0.0000000000f,  0.0000000000f,
-             0.0000000000f,  -0.1132246330f, -0.0769189075f, 0.2090187818f,
-             0.1419964582f,  0.0000000000f,  0.0000000000f,  0.0000000000f,
-             0.0000000000f,  0.1132246330f,  -0.0769189224f, -0.2090187967f,
-             0.1419964582f,  0.0000000000f,  0.0000000000f,  0.0000000000f,
-             0.0000000000f,  1.1737382412f,  -0.0000000532f, -2.7084801197f,
-             -0.0000000355f, 1.0000000000f,  0.0000000000f,  0.0000000000f};
+  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> bt_aligned;
+  bt_aligned.shape = Linear(6 * 8);
+  bt_aligned.data.resize(6 * 8);
+  auto bt_mat = BtMatrixForWinograd4x4To6x6();
+  for (int y = 0; y < 6; ++y) {
+    for (int x = 0; x < 6; ++x) {
+      bt_aligned.data[y * 8 + x] = bt_mat[y * 6 + x];
+    }
+    bt_aligned.data[y * 8 + 6] = 0.0f;
+    bt_aligned.data[y * 8 + 7] = 0.0f;
+  }
 
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::TEXTURE_2D;
   create_info.data_type = definition_.GetDataType();
   create_info.name = "bt_arr";
-  return CreateLinearStorage(create_info, Bt, context, &bt_);
+  return CreateLinearStorage(create_info, bt_aligned, context, &bt_);
 }
 
 Status Winograd4x4To36::BindArguments() {
@@ -436,22 +438,23 @@ Status Winograd36To4x4::Compile(const CreationContext& creation_context) {
 }
 
 Status Winograd36To4x4::UploadAt(CLContext* context) {
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> At;
-  At.shape = Linear(32);
-  At.data = {1.0000000000f,  1.0000000000f, 1.0000000000f,  1.0000000000f,
-             1.0000000000f,  0.0000000000f, 0.0000000000f,  0.0000000000f,
-             0.0000000000f,  0.7360000014f, -0.7360000014f, 1.4720000029f,
-             -1.4720000029f, 0.0000000000f, 0.0000000000f,  0.0000000000f,
-             0.0000000000f,  0.5416960120f, 0.5416960120f,  2.1667840481f,
-             2.1667840481f,  0.0000000000f, 0.0000000000f,  0.0000000000f,
-             0.0000000000f,  0.3986882567f, -0.3986882567f, 3.1895060539f,
-             -3.1895060539f, 1.0000000000f, 0.0000000000f,  0.0000000000f};
+  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> at_aligned;
+  at_aligned.shape = Linear(4 * 8);
+  at_aligned.data.resize(4 * 8);
+  auto at_mat = AtMatrixForWinograd4x4To6x6();
+  for (int y = 0; y < 4; ++y) {
+    for (int x = 0; x < 6; ++x) {
+      at_aligned.data[y * 8 + x] = at_mat[y * 6 + x];
+    }
+    at_aligned.data[y * 8 + 6] = 0.0f;
+    at_aligned.data[y * 8 + 7] = 0.0f;
+  }
 
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::TEXTURE_2D;
   create_info.data_type = definition_.GetDataType();
   create_info.name = "at_arr";
-  return CreateLinearStorage(create_info, At, context, &at_);
+  return CreateLinearStorage(create_info, at_aligned, context, &at_);
 }
 
 Status Winograd36To4x4::BindArguments() {
