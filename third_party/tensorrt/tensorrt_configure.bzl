@@ -71,45 +71,18 @@ def _create_dummy_repository(repository_ctx):
         "%{tensorrt_version}": "",
     })
 
+    # Copy license file in non-remote build.
+    repository_ctx.template(
+        "LICENSE",
+        Label("@org_tensorflow//third_party/tensorrt:LICENSE"),
+        {},
+    )
+
 def enable_tensorrt(repository_ctx):
     """Returns whether to build with TensorRT support."""
     return int(get_host_environ(repository_ctx, _TF_NEED_TENSORRT, False))
 
-def _tensorrt_configure_impl(repository_ctx):
-    """Implementation of the tensorrt_configure repository rule."""
-
-    if get_host_environ(repository_ctx, _TF_TENSORRT_CONFIG_REPO) != None:
-        # Forward to the pre-configured remote repository.
-        remote_config_repo = get_host_environ(repository_ctx, _TF_TENSORRT_CONFIG_REPO)
-        repository_ctx.template("BUILD", Label(remote_config_repo + ":BUILD"), {})
-        repository_ctx.template(
-            "build_defs.bzl",
-            Label(remote_config_repo + ":build_defs.bzl"),
-            {},
-        )
-        repository_ctx.template(
-            "tensorrt/include/tensorrt_config.h",
-            Label(remote_config_repo + ":tensorrt/include/tensorrt_config.h"),
-            {},
-        )
-        repository_ctx.template(
-            "LICENSE",
-            Label(remote_config_repo + ":LICENSE"),
-            {},
-        )
-        return
-
-    # Copy license file in non-remote build.
-    repository_ctx.template(
-        "LICENSE",
-        Label("//third_party/tensorrt:LICENSE"),
-        {},
-    )
-
-    if not enable_tensorrt(repository_ctx):
-        _create_dummy_repository(repository_ctx)
-        return
-
+def _create_local_tensorrt_repository(repository_ctx):
     # Resolve all labels before doing any real work. Resolving causes the
     # function to be restarted with all previous state being lost. This
     # can easily lead to a O(n^2) runtime in the number of labels.
@@ -159,6 +132,13 @@ def _tensorrt_configure_impl(repository_ctx):
         {"%{copy_rules}": "\n".join(copy_rules)},
     )
 
+    # Copy license file in non-remote build.
+    repository_ctx.template(
+        "LICENSE",
+        Label("@org_tensorflow//third_party/tensorrt:LICENSE"),
+        {},
+    )
+
     # Set up tensorrt_config.h, which is used by
     # tensorflow/stream_executor/dso_loader.cc.
     repository_ctx.template(
@@ -166,6 +146,36 @@ def _tensorrt_configure_impl(repository_ctx):
         tpl_paths["tensorrt/include/tensorrt_config.h"],
         {"%{tensorrt_version}": trt_version},
     )
+
+def _tensorrt_configure_impl(repository_ctx):
+    """Implementation of the tensorrt_configure repository rule."""
+
+    if get_host_environ(repository_ctx, _TF_TENSORRT_CONFIG_REPO) != None:
+        # Forward to the pre-configured remote repository.
+        remote_config_repo = repository_ctx.os.environ[_TF_TENSORRT_CONFIG_REPO]
+        repository_ctx.template("BUILD", Label(remote_config_repo + ":BUILD"), {})
+        repository_ctx.template(
+            "build_defs.bzl",
+            Label(remote_config_repo + ":build_defs.bzl"),
+            {},
+        )
+        repository_ctx.template(
+            "tensorrt/include/tensorrt_config.h",
+            Label(remote_config_repo + ":tensorrt/include/tensorrt_config.h"),
+            {},
+        )
+        repository_ctx.template(
+            "LICENSE",
+            Label(remote_config_repo + ":LICENSE"),
+            {},
+        )
+        return
+
+    if not enable_tensorrt(repository_ctx):
+        _create_dummy_repository(repository_ctx)
+        return
+
+    _create_local_tensorrt_repository(repository_ctx)
 
 tensorrt_configure = repository_rule(
     implementation = _tensorrt_configure_impl,
