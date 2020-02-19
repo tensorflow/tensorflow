@@ -1313,19 +1313,12 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
 
   std::fill_n(output_data, output_rows * output_cols, 0.0f);
 
-#ifdef TFLITE_WITH_RUY_GEMV
   // The scratch buffer must have the same size as the output.
   TFLITE_DCHECK_EQ(accum_scratch_shape.FlatSize(), output_shape.FlatSize());
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, filter_rows, filter_cols, gemm_input_data,
       scaling_factors_ptr, /*n_batch=*/gemm_input_rows, accum_scratch,
       output_data, /*result_stride=*/1, context);
-#else
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      filter_data, filter_rows, filter_cols, gemm_input_data,
-      scaling_factors_ptr, /*n_batch=*/gemm_input_rows, output_data,
-      /*result_stride=*/1);
-#endif
   AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
                                    bias_shape, bias_data, output_shape,
                                    output_data);

@@ -501,30 +501,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       },
       py::return_value_policy::reference);
 
-  // Profiler Logic
-  m.def("TFE_StartProfilerServer", &TFE_StartProfilerServer);
-  m.def(
-      "TFE_ProfilerClientStartTracing",
-      [](const char* service_addr, const char* logdir, const char* worker_list,
-         bool include_dataset_ops, int duration_ms, int num_tracing_attempts) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        bool output = TFE_ProfilerClientStartTracing(
-            service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
-            num_tracing_attempts, status.get());
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      });
-  m.def("TFE_ProfilerClientMonitor",
-        [](const char* service_addr, int duration_ms, int monitoring_level,
-           bool display_timestamp, TF_Buffer& result) {
-          tensorflow::Safe_TF_StatusPtr status =
-              tensorflow::make_safe(TF_NewStatus());
-          TFE_ProfilerClientMonitor(service_addr, duration_ms, monitoring_level,
-                                    display_timestamp, &result, status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        });
-
   m.def("TFE_OpNameGetAttrType",
         [](py::handle& ctx, const char* op_or_function_name,
            const char* attr_name) {

@@ -160,6 +160,7 @@ package_group(
         "//learning/freud/topic_models/tensorflow/...",
         "//perftools/accelerators/xprof/api/...",
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
+        "//smartass/brain/server/...",
     ],
 )
 
@@ -471,6 +472,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:memory_types.h",
         "//tensorflow/core/framework:node_def_builder.h",
         "//tensorflow/core/framework:node_def_util.h",
+        "//tensorflow/core/framework:node_properties.h",
         "//tensorflow/core/framework:numeric_op.h",
         "//tensorflow/core/framework:numeric_types.h",
         "//tensorflow/core/framework:op.h",
@@ -1972,6 +1974,7 @@ cc_library(
         "//tensorflow/core/platform:prefetch",
         "//tensorflow/core/platform:protobuf_internal",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:resource",
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:stacktrace",
@@ -1994,7 +1997,7 @@ cc_library(
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util:reporter",  # TODO(gunan): REMOVE as soon as cc_shared_library is supported.
         "@snappy",
-        "@zlib_archive//:zlib",
+        "@zlib",
         "@double_conversion//:double-conversion",
         "@com_google_protobuf//:protobuf",
     ] + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl(),
@@ -2321,6 +2324,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:bfloat16",
         "//tensorflow/core/framework:common_shape_fns",
         "//tensorflow/core/framework:node_def_util",
+        "//tensorflow/core/framework:node_properties",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/framework:op",
         "//tensorflow/core/framework:op_def_builder",
@@ -3075,7 +3079,7 @@ tf_cc_tests(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
 )
 

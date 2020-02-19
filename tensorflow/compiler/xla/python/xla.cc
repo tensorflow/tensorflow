@@ -458,6 +458,8 @@ void BuildOpsSubmodule(py::module* m) {
 
   ops.def("Igamma", &Igamma);
   ops.def("Igammac", &Igammac);
+  ops.def("IgammaGradA", &IgammaGradA);
+  ops.def("RandomGammaGrad", &RandomGammaGrad);
   ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta);
 
 #define BINARY_OP(op)                                                 \

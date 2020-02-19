@@ -202,6 +202,30 @@ def _get_next_as_optional(iterator, strategy, name=None):
   return global_has_value, replicas
 
 
+def _is_statically_shaped(tensor_class, shape):
+  """Test if an iteratort output is statically shaped.
+
+  For sparse and ragged tensors this only tests the batch dimension.
+
+  Args:
+    tensor_class: a class from an iterator.output_classes list.
+    shape: a TensorShape from an iterator.output_shapes list.
+
+  Returns:
+    True if the shape is static, false otherwise.
+  """
+  if (tensor_class == sparse_tensor.SparseTensor or
+      isinstance(tensor_class, ragged_tensor.RaggedTensorSpec)):
+    # For sparse or ragged tensor, we should only check the first
+    # dimension in order to get_next_as_optional. This is because
+    # when these tensors get batched by dataset only the batch dimension
+    # is set.
+    if shape.rank > 0 and shape.as_list()[0] is None:
+      return False
+    return True
+  return shape.is_fully_defined()
+
+
 class DistributedIterator(object):
   """Common implementation for all input iterators."""
 
@@ -210,9 +234,10 @@ class DistributedIterator(object):
     for iterator in iterators:
       if not isinstance(iterator, _SingleWorkerDatasetIterator):
         continue
-      flattened_shapes = nest.flatten(iterator.output_shapes)
-      for output_shape in flattened_shapes:
-        if not output_shape.is_fully_defined():
+      flattened = zip(nest.flatten(iterator.output_shapes),
+                      nest.flatten(iterator.output_classes))
+      for output_shape, output_class in flattened:
+        if not _is_statically_shaped(output_class, output_shape):
           static_shape = False
           break
 

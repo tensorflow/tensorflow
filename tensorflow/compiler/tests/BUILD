@@ -18,12 +18,20 @@ package_group(
     includes = [
         "//tensorflow/compiler/tf2xla:internal",
     ],
+    packages = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/compiler/tests/...",
+    ],
 )
 
 package_group(
     name = "friends",
     includes = [
         "//tensorflow/compiler/tf2xla:friends",
+    ],
+    packages = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/compiler/tests/...",
     ],
 )
 
@@ -66,6 +74,9 @@ py_test(
     size = "small",
     srcs = ["xla_test_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
     ],
@@ -76,6 +87,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["adadelta_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -90,6 +104,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["adagrad_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -105,6 +122,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["adagrad_da_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -119,6 +139,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["adam_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -136,6 +159,9 @@ tf_xla_py_test(
     # TensorList ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -151,6 +177,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["argminmax_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -168,6 +197,7 @@ tf_xla_py_test(
     shard_count = 5,
     tags = [
         "no_oss",  # TODO(b/148108508): Re-enable this test in OSS.
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],
     deps = [
@@ -194,6 +224,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 2,
     tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],
     deps = [
@@ -212,6 +243,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["bucketize_op_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -226,7 +260,10 @@ tf_xla_py_test(
     size = "small",
     srcs = ["categorical_op_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",
@@ -242,6 +279,7 @@ tf_xla_py_test(
     srcs = ["cholesky_op_test.py"],
     python_version = "PY3",
     tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",
         "optonly",
     ],
@@ -261,6 +299,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["cond_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -278,7 +319,10 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["self_adjoint_eig_op_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -297,6 +341,9 @@ tf_xla_py_test(
     timeout = "moderate",
     srcs = ["searchsorted_op_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:platform_test",
@@ -314,6 +361,7 @@ tf_xla_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",
         "optonly",
     ],
@@ -336,6 +384,7 @@ tf_xla_py_test(
     srcs = ["matrix_inverse_op_test.py"],
     python_version = "PY3",
     tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "noasan",
         "nomsan",
         "notsan",
@@ -356,6 +405,9 @@ tf_xla_py_test(
     timeout = "moderate",
     srcs = ["matrix_solve_op_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:linalg_ops",
@@ -371,7 +423,10 @@ tf_xla_py_test(
     timeout = "moderate",
     srcs = ["matrix_triangular_solve_op_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -387,6 +442,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["clustering_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -403,6 +461,7 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "many_xla_args",
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",
     ],
     deps = [
@@ -423,6 +482,9 @@ tf_xla_py_test(
     srcs = ["conv2d_test.py"],
     python_version = "PY3",
     shard_count = 10,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":test_utils",
         ":xla_test",
@@ -442,6 +504,9 @@ tf_xla_py_test(
     srcs = ["conv3d_test.py"],
     python_version = "PY3",
     shard_count = 5,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -460,6 +525,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",
         "noasan",
         "nomsan",
@@ -482,6 +548,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["dynamic_slice_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -499,6 +568,9 @@ tf_xla_py_test(
         "gpu",
     ],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -513,6 +585,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["reshape_op_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -527,6 +602,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["dynamic_stitch_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -541,6 +619,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["extract_image_patches_op_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -556,6 +637,7 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
     deps = [
         ":xla_test",
@@ -574,6 +656,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["fifo_queue_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -591,6 +676,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 6,
     tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",
         "optonly",
     ],
@@ -609,6 +695,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["slice_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -623,6 +712,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["ftrl_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -638,6 +730,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["function_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -653,6 +748,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],
     deps = [
@@ -669,6 +765,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["listdiff_op_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -685,6 +784,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["lrn_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -700,6 +802,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["manip_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -715,7 +820,10 @@ tf_xla_py_test(
     timeout = "long",
     srcs = ["matrix_band_part_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -731,6 +839,9 @@ tf_xla_py_test(
     timeout = "long",
     srcs = ["matrix_diag_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -744,6 +855,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["momentum_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -759,6 +873,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["nary_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -773,6 +890,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["nullary_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:control_flow_ops",
@@ -787,6 +907,9 @@ tf_xla_py_test(
     srcs = ["pooling_ops_test.py"],
     python_version = "PY3",
     shard_count = 10,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -803,6 +926,9 @@ tf_xla_py_test(
     srcs = ["pooling_ops_3d_test.py"],
     python_version = "PY3",
     shard_count = 10,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -818,6 +944,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["proximal_adagrad_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -832,6 +961,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["proximal_gradient_descent_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -852,7 +984,10 @@ tf_xla_py_test(
     ],
     python_version = "PY3",
     shard_count = 5,
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -871,6 +1006,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",
         "optonly",
     ],
@@ -892,6 +1028,7 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "notap",  # TODO(b/141057424): flaky on TPU
     ],
     deps = [
@@ -911,6 +1048,9 @@ tf_xla_py_test(
     srcs = ["reduce_ops_test.py"],
     python_version = "PY3",
     shard_count = 5,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -927,6 +1067,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["reduce_window_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -943,6 +1086,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["reverse_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -955,7 +1101,10 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["reverse_sequence_op_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -969,6 +1118,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["rmsprop_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -984,7 +1136,10 @@ tf_xla_py_test(
     size = "small",
     srcs = ["scan_ops_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -999,6 +1154,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["segment_reduction_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1015,6 +1173,9 @@ tf_xla_py_test(
     srcs = ["spacetobatch_op_test.py"],
     python_version = "PY3",
     shard_count = 3,
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1029,6 +1190,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["sparse_to_dense_op_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1043,7 +1207,10 @@ tf_xla_py_test(
     size = "small",
     srcs = ["stack_ops_test.py"],
     python_version = "PY3",
-    tags = ["config-cuda-only"],
+    tags = [
+        "config-cuda-only",
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     use_xla_device = False,
     deps = [
         ":xla_test",
@@ -1060,7 +1227,10 @@ tf_xla_py_test(
     srcs = ["stateful_random_ops_test.py"],
     python_version = "PY3",
     shard_count = 10,
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",
@@ -1076,7 +1246,10 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["stateless_random_ops_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",
@@ -1096,6 +1269,7 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "config-cuda-only",
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "v1only",
     ],
     use_xla_device = False,
@@ -1121,6 +1295,9 @@ tf_xla_py_test(
     # TensorList ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1136,6 +1313,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["ternary_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1152,6 +1332,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["unary_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1168,6 +1351,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["fused_batchnorm_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":test_utils",
         ":xla_test",
@@ -1188,7 +1374,10 @@ tf_xla_py_test(
     size = "small",
     srcs = ["variable_ops_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1207,6 +1396,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["while_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1237,6 +1429,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["gather_nd_op_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1250,7 +1445,10 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["scatter_nd_op_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1266,7 +1464,10 @@ tf_xla_py_test(
     python_version = "PY3",
     shard_count = 1,
     # Times out in fastbuild mode.
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1280,6 +1481,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["data_format_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -1294,7 +1498,10 @@ tf_xla_py_test(
     size = "small",
     srcs = ["xla_device_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1307,6 +1514,9 @@ cuda_py_test(
     name = "xla_device_gpu_test",
     size = "small",
     srcs = ["xla_device_gpu_test.py"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:array_ops",
@@ -1323,7 +1533,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["jit_test.py"],
     shard_count = 5,
-    tags = ["no_rocm"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm",
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":test_utils",
@@ -1344,7 +1557,10 @@ cuda_py_test(
     name = "dense_layer_test",
     size = "medium",
     srcs = ["dense_layer_test.py"],
-    tags = ["no_rocm"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm",
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":test_utils",
@@ -1385,6 +1601,7 @@ tf_cuda_cc_test(
     size = "large",
     # This test is randomized, so only run it if explicitly requested.
     tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "manual",
         "notap",
     ] + tf_cuda_tests_tags(),
@@ -1394,7 +1611,9 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "unary_ops_composition_test",
     srcs = ["unary_ops_composition_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ] + tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/compiler/jit",
@@ -1430,7 +1649,10 @@ py_library(
 cuda_py_test(
     name = "lstm_test",
     srcs = ["lstm_test.py"],
-    tags = ["no_rocm"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm",
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         ":lstm",
@@ -1474,6 +1696,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["fake_quant_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",
@@ -1486,6 +1711,9 @@ tf_xla_py_test(
     size = "small",
     srcs = ["placeholder_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1499,6 +1727,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["quantized_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1516,6 +1747,9 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["xla_ops_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1535,6 +1769,7 @@ tf_xla_py_test(
     shard_count = 5,
     tags = [
         "no_oss",  # TODO(b/148108508): Re-enable this test in OSS.
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",
     ],
     deps = [
@@ -1560,6 +1795,7 @@ tf_xla_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
     deps = [
@@ -1576,7 +1812,10 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["special_math_test.py"],
     shard_count = 5,
-    tags = ["optonly"],
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:extra_py_tests_deps",

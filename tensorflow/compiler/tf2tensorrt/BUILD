@@ -247,10 +247,12 @@ tf_cuda_library(
     srcs = [
         "utils/trt_int8_calibrator.cc",
         "utils/trt_lru_cache.cc",
+        "utils/trt_shape_optimization_profiles.cc",
     ],
     hdrs = [
         "utils/trt_int8_calibrator.h",
         "utils/trt_lru_cache.h",
+        "utils/trt_shape_optimization_profiles.h",
     ],
     deps = [
         ":trt_allocator",
@@ -296,6 +298,22 @@ tf_cc_test(
     size = "small",
     srcs = ["utils/trt_lru_cache_test.cc"],
     tags = [
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_resources",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "trt_shape_optimization_profiles_test",
+    size = "small",
+    srcs = ["utils/trt_shape_optimization_profiles_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
     ],

@@ -52,8 +52,7 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       error_reporter_(error_reporter),
       allocator_(&context_, model_, tensor_arena, tensor_arena_size,
                  error_reporter_),
-      tensors_allocated_(false),
-      tensors_prepared_(false) {
+      tensors_allocated_(false) {
   const flatbuffers::Vector<flatbuffers::Offset<SubGraph>>* subgraphs =
       model->subgraphs();
   if (subgraphs->size() != 1) {
@@ -84,6 +83,21 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   }
 
   initialization_status_ = kTfLiteOk;
+}
+
+MicroInterpreter::~MicroInterpreter() {
+  if (node_and_registrations_ != nullptr) {
+    for (size_t i = 0; i < operators_->size(); ++i) {
+      TfLiteNode* node = &(node_and_registrations_[i].node);
+      const TfLiteRegistration* registration =
+          node_and_registrations_[i].registration;
+      // registration is allocated outside the interpreter, so double check to
+      // make sure it's not nullptr;
+      if (registration != nullptr && registration->free != nullptr) {
+        registration->free(&context_, node->user_data);
+      }
+    }
+  }
 }
 
 void MicroInterpreter::CorrectTensorEndianness(TfLiteTensor* tensorCorr) {
@@ -128,8 +142,41 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
                                    op_resolver_, &node_and_registrations_));
   TF_LITE_ENSURE_OK(&context_, allocator_.FinishTensorAllocation());
 
-  tensors_allocated_ = true;
-  return kTfLiteOk;
+  // Init method is not yet implemented.
+  for (size_t i = 0; i < operators_->size(); ++i) {
+    auto* node = &(node_and_registrations_[i].node);
+    auto* registration = node_and_registrations_[i].registration;
+    size_t init_data_size;
+    const char* init_data;
+    if (registration->builtin_code == BuiltinOperator_CUSTOM) {
+      init_data = reinterpret_cast<const char*>(node->custom_initial_data);
+      init_data_size = node->custom_initial_data_size;
+    } else {
+      init_data = reinterpret_cast<const char*>(node->builtin_data);
+      init_data_size = 0;
+    }
+    if (registration->init) {
+      node->user_data =
+          registration->init(&context_, init_data, init_data_size);
+    }
+  }
+
+    for (size_t i = 0; i < operators_->size(); ++i) {
+      auto* node = &(node_and_registrations_[i].node);
+      auto* registration = node_and_registrations_[i].registration;
+      if (registration->prepare) {
+        TfLiteStatus prepare_status = registration->prepare(&context_, node);
+        if (prepare_status != kTfLiteOk) {
+          error_reporter_->Report(
+              "Node %s (number %d) failed to prepare with status %d",
+              OpNameFromRegistration(registration), i, prepare_status);
+          return kTfLiteError;
+        }
+      }
+    }
+
+    tensors_allocated_ = true;
+    return kTfLiteOk;
 }
 
 TfLiteStatus MicroInterpreter::Invoke() {
@@ -144,45 +191,6 @@ TfLiteStatus MicroInterpreter::Invoke() {
     AllocateTensors();
   }
 
-  // Init method is not yet implemented.
-  for (size_t i = 0; i < operators_->size(); ++i) {
-    auto* node = &(node_and_registrations_[i].node);
-    auto* registration = node_and_registrations_[i].registration;
-    size_t init_data_size;
-    const char* init_data;
-    if (registration->builtin_code == BuiltinOperator_CUSTOM) {
-      init_data = reinterpret_cast<const char*>(node->custom_initial_data);
-      init_data_size = node->custom_initial_data_size;
-    } else {
-      init_data = reinterpret_cast<const char*>(node->builtin_data);
-      init_data_size = 0;
-    }
-    if (!tensors_prepared_ && registration->init) {
-      node->user_data =
-          registration->init(&context_, init_data, init_data_size);
-    }
-  }
-
-  if (!tensors_prepared_) {
-    for (size_t i = 0; i < operators_->size(); ++i) {
-      auto* node = &(node_and_registrations_[i].node);
-      auto* registration = node_and_registrations_[i].registration;
-      if (registration->prepare) {
-        TfLiteStatus prepare_status = registration->prepare(&context_, node);
-        if (prepare_status != kTfLiteOk) {
-          error_reporter_->Report(
-              "Node %s (number %d) failed to prepare with status %d",
-              OpNameFromRegistration(registration), i, prepare_status);
-          return kTfLiteError;
-        }
-      }
-    }
-#ifdef TF_LITE_MICRO_TENSORS_PREPARED
-    // TODO(b/148085107): Turn this value on by default.
-    tensors_prepared_ = true;
-#endif
-  }
-
   for (size_t i = 0; i < operators_->size(); ++i) {
     auto* node = &(node_and_registrations_[i].node);
     auto* registration = node_and_registrations_[i].registration;
@@ -195,16 +203,6 @@ TfLiteStatus MicroInterpreter::Invoke() {
             OpNameFromRegistration(registration), i, invoke_status);
         return kTfLiteError;
       }
-    }
-  }
-
-  // This is actually a no-op.
-  // TODO(wangtz): Consider removing this code to slightly reduce binary size.
-  for (size_t i = 0; i < operators_->size(); ++i) {
-    auto* node = &(node_and_registrations_[i].node);
-    auto* registration = node_and_registrations_[i].registration;
-    if (registration->free) {
-      registration->free(&context_, node->user_data);
     }
   }
   return kTfLiteOk;

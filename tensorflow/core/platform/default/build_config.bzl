@@ -759,6 +759,9 @@ def tf_logging_deps():
 def tf_monitoring_deps():
     return ["//tensorflow/core/platform/default:monitoring"]
 
+def tf_resource_deps():
+    return ["//tensorflow/core/platform/default:resource"]
+
 def tf_portable_deps_no_runtime():
     return [
         "//third_party/eigen3",

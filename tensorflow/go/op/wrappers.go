@@ -20516,6 +20516,14 @@ func FusedBatchNormV2Epsilon(value float32) FusedBatchNormV2Attr {
 	}
 }
 
+// FusedBatchNormV2ExponentialAvgFactor sets the optional exponential_avg_factor attribute to value.
+// If not specified, defaults to 1
+func FusedBatchNormV2ExponentialAvgFactor(value float32) FusedBatchNormV2Attr {
+	return func(m optionalAttr) {
+		m["exponential_avg_factor"] = value
+	}
+}
+
 // FusedBatchNormV2DataFormat sets the optional data_format attribute to value.
 //
 // value: The data format for x and y. Either "NHWC" (default) or "NCHW".
@@ -20780,6 +20788,14 @@ type FusedBatchNormAttr func(optionalAttr)
 func FusedBatchNormEpsilon(value float32) FusedBatchNormAttr {
 	return func(m optionalAttr) {
 		m["epsilon"] = value
+	}
+}
+
+// FusedBatchNormExponentialAvgFactor sets the optional exponential_avg_factor attribute to value.
+// If not specified, defaults to 1
+func FusedBatchNormExponentialAvgFactor(value float32) FusedBatchNormAttr {
+	return func(m optionalAttr) {
+		m["exponential_avg_factor"] = value
 	}
 }
 
@@ -34191,6 +34207,14 @@ type FusedBatchNormV3Attr func(optionalAttr)
 func FusedBatchNormV3Epsilon(value float32) FusedBatchNormV3Attr {
 	return func(m optionalAttr) {
 		m["epsilon"] = value
+	}
+}
+
+// FusedBatchNormV3ExponentialAvgFactor sets the optional exponential_avg_factor attribute to value.
+// If not specified, defaults to 1
+func FusedBatchNormV3ExponentialAvgFactor(value float32) FusedBatchNormV3Attr {
+	return func(m optionalAttr) {
+		m["exponential_avg_factor"] = value
 	}
 }
 

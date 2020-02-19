@@ -44,7 +44,7 @@ def _get_devices(devices):
   if isinstance(devices, (tuple, list)):
     return tuple(device_util.resolve(d) for d in devices)
   elif isinstance(devices, value_lib.DistributedValues):
-    return devices.devices
+    return devices._devices
   elif isinstance(devices, ops.Tensor):
     return (device_util.resolve(devices.device),)
   return (device_util.resolve(devices),)
@@ -124,7 +124,7 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
         self._assert_values_equal(l, r)
     else:
       if isinstance(left, value_lib.DistributedValues):
-        self.assertEqual(set(left.devices), set(right.devices))
+        self.assertEqual(set(left._devices), set(right._devices))
         self._assert_values_equal(left.values, right.values)
       else:
         self.assertEqual(
@@ -512,7 +512,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         self._assert_values_equal(l, r, sess)
     else:
       if isinstance(left, value_lib.DistributedValues):
-        self.assertEqual(set(left.devices), set(right.devices))
+        self.assertEqual(set(left._devices), set(right._devices))
         self._assert_values_equal(left.values, right.values, sess)
       else:
         self.assertEqual(

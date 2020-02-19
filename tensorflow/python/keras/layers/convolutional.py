@@ -124,6 +124,8 @@ class Conv(Layer):
         activity_regularizer=regularizers.get(activity_regularizer),
         **kwargs)
     self.rank = rank
+    if filters is not None and not isinstance(filters, int):
+      filters = int(filters)
     self.filters = filters
     self.kernel_size = conv_utils.normalize_tuple(
         kernel_size, rank, 'kernel_size')

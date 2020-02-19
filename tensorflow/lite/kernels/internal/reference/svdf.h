@@ -102,19 +102,6 @@ inline void EvalIntegerSVDF(
   const int n_unit = n_filter / n_rank;
   const int n_memory = weights_time_tensor->dims->data[1];
 
-  // Rewrite last bit of state.
-  // TODO(jianlijianli): move this function into matmul.
-  {
-    for (int b = 0; b < n_batch; ++b) {
-      int16_t* state_ptr_batch =
-          GetTensorData<int16_t>(state_tensor) + b * n_memory * n_filter;
-      for (int c = 0; c < n_filter; ++c) {
-        int16_t* state_ptr = state_ptr_batch + c * n_memory;
-        state_ptr[n_memory - 1] = 0;
-      }
-    }
-  }
-
   // Feature matmul.
   {
     int16_t* state = GetTensorData<int16_t>(state_tensor);
@@ -135,6 +122,12 @@ inline void EvalIntegerSVDF(
         dot_prod =
             MultiplyByQuantizedMultiplier(dot_prod, scale_1_a, scale_1_b);
         dot_prod = std::min(std::max(output_min, dot_prod), output_max);
+        // This assumes state is symmetrically quantized. Otherwise last bit of
+        // state should be initialized to its zero point and accumulate the
+        // dot_prod.
+        // Equivalent as the following:
+        //     result_in_batch = zero point, which happens to be zero.
+        //     result_in_batch += dot_prod.
         *result_in_batch = dot_prod;
         result_in_batch += n_memory;
       }

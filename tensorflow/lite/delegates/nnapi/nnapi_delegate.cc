@@ -1444,12 +1444,14 @@ bool NNAPIDelegateKernel::Validate(
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       auto builtin = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
       // TODO(b/138756912): Large filter window would overflow on the
-      // reference CPU path.
-      Expect(is_accelerator_specified ||
-                 (builtin->filter_width * builtin->filter_height <= 256),
-             NNAPIValidationFailureType::kUnsupportedOperandSize,
-             "Large filter window would overflow on the reference CPU path",
-             &val_ctx);
+      // quantized reference CPU path.
+      if (IsQuantized(context->tensors[node->inputs->data[0]].type)) {
+        Expect(is_accelerator_specified ||
+                   (builtin->filter_width * builtin->filter_height <= 256),
+               NNAPIValidationFailureType::kUnsupportedOperandSize,
+               "Large filter window would overflow on the reference CPU path",
+               &val_ctx);
+      }
     } break;
     case kTfLiteBuiltinMaxPool2d: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
@@ -2195,7 +2197,7 @@ bool NNAPIDelegateKernel::Validate(
              "NNAPI only supports constant int32 axis tensor.", &val_ctx);
     } break;
     case kTfLiteBuiltinSplit: {
-      ExpectOpVersion(version, 1, &val_ctx);
+      ExpectOpVersion(version, 3, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       // Tensor indices: split_dim: 0, value: 1

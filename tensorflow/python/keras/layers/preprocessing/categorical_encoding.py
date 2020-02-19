@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import compat
 
 TFIDF = "tf-idf"
@@ -68,10 +69,16 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
           of times the token at that index appeared in the batch item.
         "tf-idf": As "binary", but the TF-IDF algorithm is applied to find the
           value in each token slot.
+    sparse: Boolean. If true, returns a `SparseTensor` instead of a dense
+      `Tensor`. Defaults to `False`.
   """
   # TODO(momernick): Add an examples section to the docstring.
 
-  def __init__(self, max_tokens=None, output_mode=COUNT, **kwargs):
+  def __init__(self,
+               max_tokens=None,
+               output_mode=COUNT,
+               sparse=False,
+               **kwargs):
     # 'output_mode' must be one of (COUNT, BINARY, TFIDF)
     layer_utils.validate_string_arg(
         output_mode,
@@ -92,6 +99,7 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     self._max_tokens = max_tokens
     self._output_mode = output_mode
+    self._sparse = sparse
     self._called = False
 
     # This layer supports RaggedTensor inputs.
@@ -130,7 +138,11 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
     output_dtype = K.floatx() if self._output_mode == TFIDF else dtypes.int64
-    return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
+    if self._sparse:
+      return sparse_tensor.SparseTensorSpec(
+          shape=output_shape, dtype=output_dtype)
+    else:
+      return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def adapt(self, data, reset_state=True):
     """Fits the state of the preprocessing layer to the dataset.
@@ -169,6 +181,7 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     config = {
         "max_tokens": self._max_tokens,
         "output_mode": self._output_mode,
+        "sparse": self._sparse,
     }
     base_config = super(CategoricalEncoding, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -178,6 +191,18 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       return x
     else:
       return np.array(x)
+
+  def _convert_to_sparse_inputs(self, inputs):
+    if isinstance(inputs, sparse_tensor.SparseTensor):
+      return inputs
+    elif isinstance(inputs, ragged_tensor.RaggedTensor):
+      return inputs.to_sparse()
+    else:
+      indices = array_ops.where_v2(
+          math_ops.greater_equal(inputs, array_ops.constant(0, inputs.dtype)))
+      values = array_ops.gather_nd(inputs, indices)
+      shape = array_ops.shape(inputs, out_type=dtypes.int64)
+      return sparse_tensor.SparseTensor(indices, values, shape)
 
   def set_num_elements(self, num_elements):
     if self._max_tokens is not None:
@@ -214,6 +239,28 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       out_depth = K.get_value(self.num_elements)
     else:
       out_depth = self._max_tokens
+
+    if self._sparse:
+      if self._output_mode != COUNT:
+        raise ValueError("Only supports `sparse=True` when `output_mode` "
+                         ' is \"count\", got {}'.format(self._output_mode))
+      inputs = self._convert_to_sparse_inputs(inputs)
+
+      # Consider having sparse.one_hot
+      # Append values to indices, and reduce sum to get the counts.
+      tokens = array_ops.expand_dims(
+          math_ops.cast(inputs.values, dtypes.int64), axis=1)
+      count_tokens = array_ops.concat([inputs.indices, tokens], axis=1)
+      count_values = array_ops.ones_like(inputs.values, dtype=dtypes.int64)
+      unreduced_count_shape = array_ops.concat(
+          [inputs.dense_shape, [out_depth]], axis=0)
+      counts = sparse_tensor.SparseTensor(
+          indices=count_tokens,
+          values=count_values,
+          dense_shape=unreduced_count_shape)
+      count_data = sparse_ops.sparse_reduce_sum_v2(
+          counts, axis=1, output_is_sparse=True)
+      return count_data
 
     # If the input is a sparse tensor, we densify it with the default value of
     # -1. Because -1 is ignored by one_hot, this effectively drops the non-set
