@@ -135,7 +135,7 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
   } else {
     outdir = tensorflow::testing::TmpDir();
   }
-  string pattern = tensorflow::io::JoinPath(outdir, "/tempfile-*.pb");
+  string pattern = tensorflow::io::JoinPath(outdir, "tempfile-*.pb");
   std::vector<string> files;
   TF_CHECK_OK(env->GetMatchingPaths(pattern, &files));
   for (const auto& f : files) {

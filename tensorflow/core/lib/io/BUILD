@@ -240,7 +240,7 @@ cc_library(
     hdrs = ["zlib_compression_options.h"],
     deps = [
         "//tensorflow/core/platform:types",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
     alwayslink = True,
 )
@@ -258,7 +258,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:types",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
     alwayslink = True,
 )
@@ -275,7 +275,7 @@ cc_library(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:types",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
     alwayslink = True,
 )

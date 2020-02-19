@@ -1318,6 +1318,43 @@ cc_library(
 )
 
 cc_library(
+    name = "winograd",
+    srcs = ["winograd.cc"],
+    hdrs = ["winograd.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
+        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "winograd_test",
+    srcs = ["winograd_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":util",
+        ":winograd",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "work_group_picking",
     srcs = ["work_group_picking.cc"],
     hdrs = ["work_group_picking.h"],
@@ -1364,5 +1401,6 @@ test_suite(
         "softmax_test",
         "strided_slice_test",
         "transpose_test",
+        "winograd_test",
     ],
 )

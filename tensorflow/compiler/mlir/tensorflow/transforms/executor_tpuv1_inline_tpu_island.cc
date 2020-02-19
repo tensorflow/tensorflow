@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
@@ -70,10 +71,20 @@ void TPUBridgeExecutorIslandInlining::runOnModule() {
       call_op.emitOpError() << "Failed to inline\n";
       return WalkResult::interrupt();
     }
+    called_func.erase();
     call_op.erase();
     return WalkResult::advance();
   });
   if (walk_result.wasInterrupted()) return signalPassFailure();
+  // Move all remaining nested functions back into the parent module.
+  Block &nested_block = nested_module->getRegion(0).front();
+  for (FuncOp func_op :
+       llvm::make_early_inc_range(nested_block.getOps<FuncOp>())) {
+    if (!symbol_table.lookupSymbolIn(getModule(), func_op.getName())) {
+      nested_block.getOperations().remove(func_op.getOperation());
+      symbol_table.insert(func_op.getOperation());
+    }
+  }
   nested_module->erase();
 }
 

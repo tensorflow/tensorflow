@@ -107,7 +107,8 @@ class ComputationPrinting(absltest.TestCase):
     builder = xla_client.ComputationBuilder("acomputation")
     p0 = builder.ParameterFromNumpy(np.float32(0))
     p1 = builder.ParameterFromNumpy(np.zeros((4,), np.float32))
-    builder.Mul(p0, p1)
+    x = builder.Mul(p0, p1)
+    builder.Add(x, x)
     return builder.Build()
 
   def testComputationToHloText(self):
@@ -119,6 +120,26 @@ class ComputationPrinting(absltest.TestCase):
     computation = self.ExampleComputation()
     hlo_dot_graph = computation.GetHloDotGraph()
     self.assertTrue(hlo_dot_graph.startswith("digraph "))
+
+  def testHloModuleToHloText(self):
+    computation = self.ExampleComputation()
+    hlo_text = computation.computation.get_hlo_module().to_string()
+    self.assertTrue(hlo_text.startswith("HloModule acomputation"))
+
+  def testHloModuleToHloGraph(self):
+    computation = self.ExampleComputation()
+    hlo_dot_graph = xla_client._xla.hlo_module_to_dot_graph(
+        computation.computation.get_hlo_module())
+    self.assertTrue(hlo_dot_graph.startswith("digraph "))
+
+  def testCompiledHloModuleToHloText(self):
+    computation = self.ExampleComputation()
+    executable = computation.Compile()
+    hlo_modules = executable.get_hlo_modules()
+    self.assertLen(hlo_modules, 1)
+    hlo_text = hlo_modules[0].to_string()
+    self.assertTrue(hlo_text.startswith("HloModule acomputation"))
+    self.assertIn("fusion", hlo_text)
 
 
 class ComputationHashTest(absltest.TestCase):

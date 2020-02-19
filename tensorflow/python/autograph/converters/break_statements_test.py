@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.converters import break_statements
 from tensorflow.python.autograph.core import converter_testing
+from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
@@ -46,6 +47,21 @@ class BreakCanonicalizationTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 1)
     self.assertTransformedEquivalent(test_fn, 4)
 
+  def test_while_loop_preserves_directives(self):
+
+    def test_fn(x):
+      while x > 0:
+        x -= 1
+        if x % 2 == 0:
+          break
+
+    node, ctx = self.prepare(test_fn, {})
+    fake_annotation = object()
+    anno.setanno(node.body[0], anno.Basic.DIRECTIVES, fake_annotation)
+    node = break_statements.transform(node, ctx)
+    self.assertIs(
+        anno.getanno(node.body[1], anno.Basic.DIRECTIVES), fake_annotation)
+
   def test_for_loop(self):
 
     def test_fn(a):
@@ -62,6 +78,20 @@ class BreakCanonicalizationTest(converter_testing.TestCase):
       # The break is incompletely canonicalized. The loop will not interrupt,
       # but the section following the break will be skipped.
       self.assertEqual([3], result.test_fn([5, 4]))
+
+  def test_for_loop_preserves_directives(self):
+
+    def test_fn(a):
+      for x in a:
+        if x % 2 == 0:
+          break
+
+    node, ctx = self.prepare(test_fn, {})
+    fake_annotation = object()
+    anno.setanno(node.body[0], anno.Basic.DIRECTIVES, fake_annotation)
+    node = break_statements.transform(node, ctx)
+    self.assertIs(
+        anno.getanno(node.body[1], anno.Basic.DIRECTIVES), fake_annotation)
 
   def test_nested(self):
 

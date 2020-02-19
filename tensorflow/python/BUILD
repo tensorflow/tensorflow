@@ -218,6 +218,11 @@ tf_py_build_info_genrule(
 )
 
 py_library(
+    name = "platform_build_info",
+    srcs = ["platform/build_info.py"],
+)
+
+py_library(
     name = "platform",
     srcs = glob(
         [
@@ -2526,6 +2531,7 @@ tf_py_test(
     deps = [
         ":control_flow_ops",
         ":errors",
+        ":framework_combinations",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
         ":platform_test",
@@ -2549,7 +2555,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = [
-        "no_oss_py2",
+        "no_oss",
         "no_pip",
         "no_windows",
     ],
@@ -2559,6 +2565,16 @@ tf_py_test(
         # Adding directly to `framework_test_lib` caused a Colab binary size
         # regression b/149433910 .
         ":memory_checker",
+        ":_memory_checker_test_helper",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_memory_checker_test_helper",
+    srcs = ["framework/memory_checker_test_helper.cc"],
+    module_name = "_memory_checker_test_helper",
+    deps = [
+        "@pybind11",
     ],
 )
 
@@ -2607,6 +2623,8 @@ tf_py_test(
 tf_gen_op_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -2620,6 +2638,8 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "bitwise_ops_gen",
     visibility = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/quantization:__pkg__",
@@ -2815,6 +2835,8 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "math_ops_gen",
     visibility = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -2825,6 +2847,8 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "nn_ops_gen",
     visibility = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -5056,7 +5080,10 @@ cuda_py_test(
     kernels = [
         "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
     ],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_oss",  # TODO(b/149565560)
+        "no_windows_gpu",
+    ],
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",

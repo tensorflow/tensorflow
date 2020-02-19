@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
+
 #include <algorithm>
 #include <functional>
+
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
@@ -130,8 +132,7 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
       }
 #endif
     }
-    exec_context.push_back(
-        TrtUniquePtrType<nvinfer1::IExecutionContext>(ctx));
+    exec_context.push_back(TrtUniquePtrType<nvinfer1::IExecutionContext>(ctx));
     i++;
   } while (i < profiles_.size());
 

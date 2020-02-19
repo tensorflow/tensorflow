@@ -313,6 +313,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["utils/trt_shape_optimization_profiles_test.cc"],
     tags = [
+        "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
     ],

@@ -1297,7 +1297,6 @@ def stack(values, axis=0, name="stack"):
   array([[1, 4],
          [2, 5],
          [3, 6]], dtype=int32)>
-
   >>> tf.stack([x, y, z], axis=1)
   <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
   array([[1, 2, 3],

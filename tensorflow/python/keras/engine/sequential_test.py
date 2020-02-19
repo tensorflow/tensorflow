@@ -215,23 +215,6 @@ class TestSequential(keras_parameterized.TestCase):
       model = keras.models.Sequential()
       model.add(None)
 
-    # Added layers cannot have multiple outputs
-    class MyLayer(keras.layers.Layer):
-
-      def call(self, inputs):
-        return [3 * inputs, 2 * inputs]
-
-      def compute_output_shape(self, input_shape):
-        return [input_shape, input_shape]
-
-    with self.assertRaises(ValueError):
-      model = keras.models.Sequential()
-      model.add(MyLayer(input_shape=(3,)))
-    with self.assertRaises(TypeError):
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(1, input_dim=1))
-      model.add(MyLayer())
-
   @keras_parameterized.run_all_keras_modes
   def test_nested_sequential_trainability(self):
     input_dim = 20
@@ -404,6 +387,17 @@ class TestSequential(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(
         ValueError, 'should have a single output tensor'):
       keras.Sequential([MultiOutputLayer(input_shape=(3,))])
+
+    with self.assertRaisesRegexp(
+        ValueError, 'should have a single output tensor'):
+      keras.Sequential([
+          keras.layers.Dense(1, input_shape=(3,)),
+          MultiOutputLayer()])
+
+    # Should also raise error in a deferred build mode
+    with self.assertRaisesRegexp(
+        ValueError, 'should have a single output tensor'):
+      keras.Sequential([MultiOutputLayer()])(np.zeros((10, 10)))
 
   @keras_parameterized.run_all_keras_modes
   def test_layer_add_after_compile_deferred(self):

@@ -95,6 +95,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 import enum  # pylint: disable=g-bad-import-order
 import threading
@@ -410,6 +411,35 @@ class InputContext(object):
     return "tf.distribute.InputContext(input pipeline id {}, total: {})".format(
         self.input_pipeline_id, self.num_input_pipelines)
 
+
+@tf_export("distribute.RunOptions")
+class RunOptions(
+    collections.namedtuple("RunOptions", [
+        "experimental_enable_dynamic_batch_size",
+        "experimental_bucketizing_dynamic_shape",
+    ])):
+  """Run options for `strategy.experimental_run_v2`.
+
+  This can be used to hold some strategy specific configs.
+
+  Attributes:
+    experimental_enable_dynamic_batch_size: Boolean. Only applies to
+      TPUStrategy. Default to False. If True, TPUStrategy will enable dynamic
+      padder to support dynamic batch size for the inputs. Otherwise only static
+      shape inputs are allowed.
+    experimental_bucketizing_dynamic_shape: Boolean. Only applies to
+      TPUStrategy. Default to False. If True, TPUStrategy will automatic
+      bucketize inputs passed into `experimental_run_v2` if the input shape is
+      dynamic. This is a performance optimization to reduce XLA recompilation,
+      which should not have impact on correctness.
+  """
+
+  def __new__(cls,
+              experimental_enable_dynamic_batch_size=True,
+              experimental_bucketizing_dynamic_shape=False):
+    return super(RunOptions,
+                 cls).__new__(cls, experimental_enable_dynamic_batch_size,
+                              experimental_bucketizing_dynamic_shape)
 
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.
@@ -778,7 +808,7 @@ class StrategyBase(object):
     return self._extended._experimental_distribute_datasets_from_function(  # pylint: disable=protected-access
         dataset_fn)
 
-  def experimental_run_v2(self, fn, args=(), kwargs=None):
+  def experimental_run_v2(self, fn, args=(), kwargs=None, options=None):
     """Run `fn` on each replica, with the given arguments.
 
     Executes ops specified by `fn` on each replica. If `args` or `kwargs` have
@@ -800,6 +830,8 @@ class StrategyBase(object):
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
       args: (Optional) Positional arguments to `fn`.
       kwargs: (Optional) Keyword arguments to `fn`.
+      options: (Optional) An instance of `tf.distribute.RunOptions` specifying
+        the options to run `fn`.
 
     Returns:
       Merged return value of `fn` across replicas. The structure of the return
@@ -807,6 +839,8 @@ class StrategyBase(object):
       structure can either be "per-replica" `Tensor` objects or `Tensor`s
       (for example, if running on a single replica).
     """
+    del options
+
     if not isinstance(args, (list, tuple)):
       raise ValueError(
           "positional args must be a list or tuple, got {}".format(type(args)))

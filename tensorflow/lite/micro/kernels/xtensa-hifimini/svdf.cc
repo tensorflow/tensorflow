@@ -75,19 +75,6 @@ void EvalIntegerSVDF(
   int32_t scratch_tensor[kScratchTensorMaxSize];
   int32_t scratch_output_tensor[kScratchTensorMaxSize];
 
-  // Rewrite last bit of state.
-  {
-    for (int b = 0; b < n_batch; ++b) {
-      int16_t* state_ptr_batch =
-          GetTensorData<int16_t>(activation_state_tensor) +
-          b * n_memory * n_filter;
-      for (int c = 0; c < n_filter; ++c) {
-        int16_t* state_ptr = state_ptr_batch + c * n_memory;
-        state_ptr[n_memory - 1] = 0;
-      }
-    }
-  }
-
   // Feature matmul.
   {
     int16_t* state = GetTensorData<int16_t>(activation_state_tensor);
@@ -145,6 +132,12 @@ void EvalIntegerSVDF(
         dot_prod_56 = AE_MAXQ56S(dot_prod_56, output_int16_min_56);
         dot_prod_56 = AE_MINQ56S(dot_prod_56, output_int16_max_56);
         // Truncate immediately since the QR register is already 32 bit aligned:
+        // This assumes state is symmetrically quantized. Otherwise last bit of
+        // state should be initialized to its zero point and accumulate the
+        // dot_prod.
+        // Equivalent as the following:
+        //     result_in_batch = zero point, which happens to be zero.
+        //     result_in_batch += dot_prod_56.
         *result_in_batch = AE_TRUNCA32Q48(dot_prod_56);
         result_in_batch += n_memory;
       }

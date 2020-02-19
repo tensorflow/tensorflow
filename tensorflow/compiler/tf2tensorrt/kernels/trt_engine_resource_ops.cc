@@ -145,8 +145,9 @@ class InitializeTRTResource : public OpKernel {
         // Restore profiles if there are any. Currently only 1 engine is allowed
         // in dynamic mode therefore we call this only for the 0th engine.
         // it is a no-op in implicit batch mode.
-        resource->profiles_.RestoreProfiles(raw_engine);
-        resource->profiles_.CreateExecutionContexts(raw_engine, ctx_vec);
+        OP_REQUIRES_OK(ctx, resource->profiles_.RestoreProfiles(raw_engine));
+        OP_REQUIRES_OK(ctx, resource->profiles_.CreateExecutionContexts(
+                                raw_engine, ctx_vec));
       } else {
         // Multiple engines are only available in static mode. For each engine
         // we have only a single execution context.
@@ -154,10 +155,9 @@ class InitializeTRTResource : public OpKernel {
             raw_engine->createExecutionContext());
         ctx_vec.push_back(std::move(exec_ctx));
       }
-      resource->cache_.emplace(
-          engine_input_shapes,
-          absl::make_unique<EngineContext>(
-              std::move(engine), std::move(ctx_vec)));
+      resource->cache_.emplace(engine_input_shapes,
+                               absl::make_unique<EngineContext>(
+                                   std::move(engine), std::move(ctx_vec)));
       ++num_loaded_engine;
     } while (1);
     VLOG(1) << "Loaded " << num_loaded_engine << " TRT engines for op "

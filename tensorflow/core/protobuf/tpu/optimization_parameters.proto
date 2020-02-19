@@ -202,18 +202,9 @@ message OnlineYogiParameters {
   // \beta_2 from Algorithm 2 in the paper.
   float beta2 = 3;
 
-  // x -> copysign(1, x) (i.e., return 1 for an input of +0 rather than 0).
-  message SignActivation {}
-
-  // x -> tanh(x * 10)
-  message TanhActivation {}
-
-  // Activation to use to replace sign function in v_t update in Algorithm 2 of
-  // paper.
-  oneof activation {
-    SignActivation sign = 6;
-    TanhActivation tanh = 7;
-  }
+  // Reserved ids corresponding to removed tanh activation.
+  reserved 6;  // sign
+  reserved 7;  // tanh
 }
 
 // The online Yogi optimizer does not implement hyper-parameter update; use the
@@ -241,18 +232,9 @@ message ProximalYogiParameters {
   // A constant trading off adaptivity and noise.
   float epsilon = 5;
 
-  // x -> copysign(1, x) (i.e., return 1 for an input of +0 rather than 0).
-  message SignActivation {}
-
-  // x -> tanh(x * 10)
-  message TanhActivation {}
-
-  // Activation to use to replace sign function in v_t update in Algorithm 2 of
-  // paper.
-  oneof activation {
-    SignActivation sign = 8;
-    TanhActivation tanh = 9;
-  }
+  // Reserved ids corresponding to removed tanh activation.
+  reserved 8;  // sign
+  reserved 9;  // tanh
 }
 
 // Status of using gradient accumulation (doing two passes over the input

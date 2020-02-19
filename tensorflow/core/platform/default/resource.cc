@@ -13,18 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/python/tools/compiled_model.h"
+#include "tensorflow/core/platform/resource.h"
+
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
-namespace {
-TEST(AOTCompiledSavedModelTest, Run) {
-  CompiledModel model;
-  *model.arg_feed_x_data() = 3.0f;
-  *model.arg_feed_y_data() = 4.0f;
-  CHECK(model.Run());
-  ASSERT_NEAR(model.result_fetch_output_0(), 7.0f, /*abs_error=*/1e-6f);
-}
-}  // namespace
+
+ResourceTagger::ResourceTagger(StringPiece key, StringPiece value) {}
+
 }  // namespace tensorflow

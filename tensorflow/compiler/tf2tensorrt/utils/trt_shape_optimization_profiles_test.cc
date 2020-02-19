@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+
 #include <string.h>
 
 #include <vector>
@@ -24,10 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/test.h"
-
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
-
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -37,8 +36,8 @@ std::vector<TensorShape> DimVecToShapeVec(std::vector<nvinfer1::Dims3> dimvec) {
   std::vector<TensorShape> shapevec(dimvec.size());
   for (int i = 0; i < dimvec.size(); i++) {
     TensorShape shape;
-    TF_CHECK_OK(TensorShapeUtils::MakeShape(dimvec[i].d, dimvec[i].nbDims,
-                                            &shape));
+    TF_CHECK_OK(
+        TensorShapeUtils::MakeShape(dimvec[i].d, dimvec[i].nbDims, &shape));
     shapevec[i] = shape;
   }
   return shapevec;
@@ -133,8 +132,8 @@ TEST_F(TrtShapeOptimizationProfileTest, Static) {
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // Configure and build engine - should be a no-op
-  profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
-                           network_.get());
+  TF_CHECK_OK(profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
+                                       network_.get()));
 
   engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
       builder_->buildEngineWithConfig(*network_, *builder_config_));
@@ -174,13 +173,13 @@ TEST_F(TrtShapeOptimizationProfileTest, Dynamic) {
   profile.InitProfiles();
 
   // Configure and build engine
-  profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
-                           network_.get());
+  TF_CHECK_OK(profile.ConfigureBuilder(builder_.get(), builder_config_.get(),
+                                       network_.get()));
   engine = TrtUniquePtrType<nvinfer1::ICudaEngine>(
       builder_->buildEngineWithConfig(*network_.get(), *builder_config_.get()));
   ASSERT_NE(nullptr, engine);
 
-  profile.CreateExecutionContexts(engine.get(), exec_context_);
+  TF_CHECK_OK(profile.CreateExecutionContexts(engine.get(), exec_context_));
 
   // Each profile has an associated execution context.
   EXPECT_EQ(exec_context_.size(), input_profiles.size());
