@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/path.h"
 
 namespace tensorflow {
 
@@ -78,13 +79,14 @@ template <class T>
 string WriteTextProtoToUniqueFile(Env* env, const string& name,
                                   const char* proto_type, T& proto,
                                   const string& dirname) {
-  const char* dir = nullptr;
+  string dir;
   if (!dirname.empty()) {
-    dir = dirname.c_str();
+    dir = dirname;
   } else {
-    dir = getenv("TF_DUMP_GRAPH_PREFIX");
+    const char* prefix = getenv("TF_DUMP_GRAPH_PREFIX");
+    if (prefix != nullptr) dir = prefix;
   }
-  if (!dir) {
+  if (dir.empty()) {
     LOG(WARNING)
         << "Failed to dump " << name << " because dump location is not "
         << " specified through either TF_DUMP_GRAPH_PREFIX environment "
@@ -94,18 +96,15 @@ string WriteTextProtoToUniqueFile(Env* env, const string& name,
 
   if (absl::EqualsIgnoreCase(dir, "sponge") ||
       absl::EqualsIgnoreCase(dir, "test_undeclared_outputs_dir")) {
-    const char* tmp_dir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
-    if (tmp_dir == nullptr) {
+    if (!io::GetTestUndeclaredOutputsDir(&dir)) {
       LOG(WARNING) << "TF_DUMP_GRAPH_PREFIX=sponge, but "
                       "TEST_UNDECLARED_OUTPUT_DIRS is not set, dumping to log";
       dir = "-";
-    } else {
-      dir = tmp_dir;
     }
   }
 
   string filepath = "NULL";
-  if (std::strncmp(dir, "-", 2) == 0) {
+  if (dir == "-") {
     LOG(INFO) << proto.DebugString();
     filepath = "LOG(INFO)";
   } else {
