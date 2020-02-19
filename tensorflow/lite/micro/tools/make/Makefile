@@ -82,6 +82,7 @@ CC_PREFIX :=
 MICROLITE_LIB_NAME := libtensorflow-microlite.a
 
 MICRO_LITE_EXAMPLE_TESTS := $(wildcard tensorflow/lite/micro/examples/*/Makefile.inc)
+MICRO_LITE_EXAMPLE_TESTS += $(wildcard tensorflow/lite/micro/examples/experimental/*/Makefile.inc)
 
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/micro/*test.cc) \
