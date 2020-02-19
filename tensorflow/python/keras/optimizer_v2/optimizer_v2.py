@@ -26,9 +26,11 @@ import functools
 import six
 
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import hybrid_strategy
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -41,6 +43,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -457,6 +460,49 @@ class OptimizerV2(trackable.Trackable):
 
       apply_kwargs = {}
       if isinstance(grad, ops.IndexedSlices):
+        if isinstance(distribution, hybrid_strategy.HybridStrategy):
+          num_workers = distribution.extended._num_workers
+          task_id = distribution.extended._task_id
+
+          grad_accum = data_flow_ops.SparseConditionalAccumulator(
+            grad.values.dtype,
+            shape=grad.values.shape,
+            shared_name=var.op.name+"/grad_accum",
+            reduction_type="SUM"
+          )
+          accum_apply_op = grad_accum.apply_indexed_slices_grad(
+            grad,
+            local_step=int(2**63 -1),
+            name=grad.op.name + '_accum_apply_grad'
+          )
+          var_update_global_sync_queues = [data_flow_ops.FIFOQueue(1, [dtypes.bool], shapes=[[]],
+                                                                  name="update_sync_queue_%s_%d" % (var.op.name, i),
+                                                                  shared_name="update_sync_queue_%s_%d" % (var.op.name ,i))
+                                                                  for i in range(num_workers)]
+          queue_ops = []
+          with ops.control_dependencies([accum_apply_op]):
+            if distribution.extended._is_chief:
+              agg_grad = grad_accum.take_indexed_slices_grad(
+                      num_workers,
+                      name=var.op.name + '_take_grad')
+              if var.constraint is not None:
+                raise RuntimeError(
+                    "Cannot use a constraint function on a sparse variable.")
+              if "apply_state" in self._sparse_apply_args:
+                apply_kwargs["apply_state"] = apply_state
+              update_op = self._resource_apply_sparse_duplicate_indices(
+                  agg_grad.values, var, agg_grad.indices, **apply_kwargs)
+              dummy_token = constant_op.constant(False)
+              with ops.control_dependencies([update_op]):
+                for i, q in enumerate(var_update_global_sync_queues):
+                  if i != 0:
+                    queue_ops.append(q.enqueue(dummy_token))
+                  else:
+                    queue_ops.append(control_flow_ops.no_op())
+            else:
+              queue_ops.append(var_update_global_sync_queues[task_id].dequeue())
+          return control_flow_ops.group(queue_ops)
+
         if var.constraint is not None:
           raise RuntimeError(
               "Cannot use a constraint function on a sparse variable.")

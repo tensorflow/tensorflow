@@ -1686,6 +1686,14 @@ class AggregatingVariable(variables_lib.Variable):
     return self._v.shape
 
   @property
+  def trainable(self):
+    return self._v.trainable
+
+  @property
+  def value(self):
+    return self._v.value
+
+  @property
   def aggregation(self):
     return self._aggregation
 
