@@ -109,6 +109,7 @@ PROFILER_SRCS := \
 
 PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/lite/profiling/profile_summarizer.cc \
+	tensorflow/lite/profiling/profile_summary_formatter.cc \
 	tensorflow/core/util/stats_calculator.cc
 
 CMD_LINE_TOOLS_SRCS := \
