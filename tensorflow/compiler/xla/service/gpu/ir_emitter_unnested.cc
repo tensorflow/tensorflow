@@ -3250,17 +3250,20 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
     return kWarpSize;
   }();
 
-  int vec_stride = 2;
+  int tile_size_x = reduction_tiling[2] * num_threads_x;
+
+  int vec_stride = 1;
   char* env = getenv("VEC_STRIDE");
-  if (env)
+  if (indexing_order == KernelMappingScheme::LinearDilatedIndexingX &&
+      reduction_dimensions.dimensions[2] % tile_size_x == 0) {
+    vec_stride = 2;
+  }
+  if (env) {
     vec_stride = atoi(env);
-  if (indexing_order != KernelMappingScheme::LinearDilatedIndexingX) {
-    vec_stride = 1;
   }
   KernelMappingScheme mapping_scheme(
       reduction_dimensions.dimensions,
-      {reduction_tiling[0], reduction_tiling[1] * num_threads_y,
-       reduction_tiling[2] * num_threads_x},
+      {reduction_tiling[0], reduction_tiling[1] * num_threads_y, tile_size_x},
       num_threads_y, num_threads_x, indexing_order,
       vec_stride);
   return ReductionCodegenInfo(mapping_scheme,
