@@ -16,7 +16,6 @@ int_dtypes = [
 float_dtypes = [np.float16, np.float32, np.float64]
 complex_dtypes = [np.complex64, np.complex128]
 dlpack_dtypes = int_dtypes + float_dtypes + [dtypes.bfloat16]
-standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
 
 
 testcase_shapes = [
@@ -55,12 +54,28 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
         dlcapsule = to_dlpack(tf_tensor)
         del tf_tensor  # should still work
         tf_tensor2 = from_dlpack(dlcapsule)
-        
+
         def ConsumeDLPackTensor():
             from_dlpack(dlcapsule)  # Should can be consumed only once
         self.assertRaisesRegex(Exception,
                                ".*a DLPack tensor may be consumed at most once.*",
                                ConsumeDLPackTensor)
+
+    def testUnsupportedType(self):
+        def case1():
+            tf_tensor = constant_op.constant(
+                [[1, 4], [5, 2]], dtype=dtypes.qint16)
+            dlcapsule = to_dlpack(tf_tensor)
+
+        def case2():
+            tf_tensor = constant_op.constant(
+                [[1, 4], [5, 2]], dtype=dtypes.complex64)
+            dlcapsule = to_dlpack(tf_tensor)
+
+        self.assertRaisesRegex(
+            Exception, ".* is not supported by dlpack", case1)
+        self.assertRaisesRegex(
+            Exception, ".* is not supported by dlpack", case2)
 
 
 if __name__ == '__main__':

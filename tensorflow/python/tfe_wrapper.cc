@@ -1041,21 +1041,19 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     void* dlm_ptr = tensorflow::TFE_HandleToDLPack(thandle, status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
 
     py::capsule capsule(
         dlm_ptr, tensorflow::kDlTensorCapsuleName, [](PyObject* capsule) {
-          void* dlm_rptr =
-              PyCapsule_GetPointer(capsule, tensorflow::kDlTensorCapsuleName);
-          if (dlm_rptr) {
-            tensorflow::TFE_CallDLManagedTensorDeleter(dlm_rptr);
-            PyCapsule_SetDestructor(capsule, nullptr);
-          } else {
-            // The tensor has been deleted. Clear any error from
-            // PyCapsule_GetPointer.
-            PyErr_Clear();
+          if (PyCapsule_IsValid(capsule, tensorflow::kDlTensorCapsuleName)) {
+            void* dlm_rptr =
+                PyCapsule_GetPointer(capsule, tensorflow::kDlTensorCapsuleName);
+            if (dlm_rptr) {
+              tensorflow::TFE_CallDLManagedTensorDeleter(dlm_rptr);
+              PyCapsule_SetDestructor(capsule, nullptr);
+            }
           }
         });
-    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     return capsule;
   });
 
@@ -1072,10 +1070,11 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     }
     TFE_TensorHandle* thandle =
         tensorflow::TFE_HandleFromDLPack(pycapsule, status.get());
+    
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
 
     PyCapsule_SetName(pycapsule.ptr(), "used_dltensor");
     PyCapsule_SetDestructor(pycapsule.ptr(), nullptr);
-    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     return py::handle(EagerTensorFromHandle(thandle));
   });
 
