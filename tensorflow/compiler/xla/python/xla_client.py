@@ -1635,6 +1635,7 @@ FftType = _xla.FftType
 
 _UNARY_OPS = [
     'Not',
+    'PopulationCount',
     'Clz',
     'Abs',
     'Exp',

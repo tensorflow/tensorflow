@@ -496,6 +496,7 @@ void BuildOpsSubmodule(py::module* m) {
 
 #define UNARY_OP(op) ops.def(#op, &op)
   UNARY_OP(Not);
+  UNARY_OP(PopulationCount);
   UNARY_OP(Clz);
   UNARY_OP(Abs);
   UNARY_OP(Exp);
