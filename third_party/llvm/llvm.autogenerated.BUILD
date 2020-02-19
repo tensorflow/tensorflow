@@ -151,17 +151,6 @@ gentbl(
 )
 
 gentbl(
-    name = "attributes_compat_gen",
-    tbl_outs = [("-gen-attrs", "lib/IR/AttributesCompatFunc.inc")],
-    tblgen = ":llvm-tblgen",
-    td_file = "lib/IR/AttributesCompatFunc.td",
-    td_srcs = [
-        "lib/IR/AttributesCompatFunc.td",
-        "include/llvm/IR/Attributes.td",
-    ],
-)
-
-gentbl(
     name = "instcombine_transforms_gen",
     tbl_outs = [(
         "-gen-searchable-tables",
@@ -479,7 +468,9 @@ llvm_target_list = [
             ("-gen-disassembler", "lib/Target/AMDGPU/AMDGPUGenDisassemblerTables.inc"),
             ("-gen-pseudo-lowering", "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc"),
             ("-gen-searchable-tables", "lib/Target/AMDGPU/AMDGPUGenSearchableTables.inc"),
-            ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
+        ],
+        "tbl_deps": [
+            ":amdgpu_isel_target_gen",
         ],
     },
     {
@@ -569,6 +560,32 @@ llvm_target_list = [
     },
 ]
 
+filegroup(
+    name = "common_target_td_sources",
+    srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+        "include/llvm/TableGen/*.td",
+        "include/llvm/Target/*.td",
+        "include/llvm/Target/GlobalISel/*.td",
+    ]),
+)
+
+gentbl(
+    name = "amdgpu_isel_target_gen",
+    tbl_outs = [
+        ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
+        ("-gen-global-isel-combiner -combiners=AMDGPUPreLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenGICombiner.inc"),
+    ],
+    tblgen = ":llvm-tblgen",
+    td_file = "lib/Target/AMDGPU/AMDGPUGISel.td",
+    td_srcs = [
+        ":common_target_td_sources",
+    ] + glob([
+        "lib/Target/AMDGPU/*.td",
+    ]),
+)
+
 [
     gentbl(
         name = target["lower_name"] + "_target_gen",
@@ -584,6 +601,7 @@ llvm_target_list = [
             "include/llvm/Target/*.td",
             "include/llvm/Target/GlobalISel/*.td",
         ]),
+        deps = target.get("tbl_deps", []),
     )
     for target in llvm_target_list
 ]
@@ -624,6 +642,18 @@ cc_binary(
     linkopts = llvm_linkopts,
     deps = [
         ":support",
+    ],
+)
+
+cc_library(
+    name = "all_targets",
+    deps = [
+        ":aarch64_code_gen",
+        ":amdgpu_code_gen",
+        ":arm_code_gen",
+        ":nvptx_code_gen",
+        ":powerpc_code_gen",
+        ":x86_code_gen",
     ],
 )
 
@@ -1704,7 +1734,6 @@ cc_library(
         ":aarch64_enums_gen",
         ":amdgcn_enums_gen",
         ":arm_enums_gen",
-        ":attributes_compat_gen",
         ":attributes_gen",
         ":binary_format",
         ":bpf_enums_gen",
@@ -2194,6 +2223,7 @@ cc_library(
         ":bit_writer",
         ":config",
         ":core",
+        ":frontend_open_mp",
         ":inst_combine",
         ":instrumentation",
         ":ir_reader",
@@ -3722,7 +3752,7 @@ cc_library(
     deps = [
         ":config",
         ":demangle",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
 )
 
@@ -4001,6 +4031,27 @@ cc_library(
 )
 
 cc_library(
+    name = "ve_asm_printer",
+    srcs = glob([
+        "lib/Target/VE/InstPrinter/*.c",
+        "lib/Target/VE/InstPrinter/*.cpp",
+        "lib/Target/VE/InstPrinter/*.inc",
+    ]),
+    hdrs = glob([
+        "include/llvm/Target/VE/InstPrinter/*.h",
+        "include/llvm/Target/VE/InstPrinter/*.def",
+        "include/llvm/Target/VE/InstPrinter/*.inc",
+        "lib/Target/VE/InstPrinter/*.h",
+    ]),
+    copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/VE"],
+    deps = [
+        ":config",
+        ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "ve_code_gen",
     srcs = glob([
         "lib/Target/VE/*.c",
@@ -4024,6 +4075,7 @@ cc_library(
         ":selection_dag",
         ":support",
         ":target",
+        ":ve_asm_printer",
         ":ve_desc",
         ":ve_info",
     ],
@@ -4047,6 +4099,7 @@ cc_library(
         ":config",
         ":mc",
         ":support",
+        ":ve_asm_printer",
         ":ve_info",
     ],
 )

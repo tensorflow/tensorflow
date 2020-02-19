@@ -293,8 +293,8 @@ class MirroredStrategyVariableCreatorStackTest(
     def model_fn():
       replica_id_str = str(self.evaluate(_replica_id()))
 
-      def thread_creator_fn(next_creator, *args, **kwargs):
-        return next_creator(*args, **kwargs) + ":thread_" + replica_id_str
+      def thread_creator_fn(next_creator, **kwargs):
+        return next_creator(**kwargs) + ":thread_" + replica_id_str
 
       with variable_scope.variable_creator_scope(thread_creator_fn):
         # Create a variable in this scope.
@@ -304,9 +304,9 @@ class MirroredStrategyVariableCreatorStackTest(
         ds_context.get_replica_context().merge_call(lambda _: _)
       return v
 
-    def main_thread_creator(next_creator, *args, **kwargs):
+    def main_thread_creator(next_creator, **kwargs):
       # We are not using the underlying next_creator for test purposes.
-      del next_creator, args, kwargs
+      del next_creator, kwargs
       return "main_thread"
 
     with context.graph_mode(), \
@@ -714,18 +714,18 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEqual(7.0, self.evaluate(mirrored_var.values[0]))
       self.assertEqual(7.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
       # read_value == False
       self.evaluate(mirrored_var.assign_add(2.0, read_value=False))
       self.assertEqual(9.0, self.evaluate(mirrored_var.values[0]))
       self.assertEqual(9.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
   def testAssignAddMirroredVarReplicaContext(self, distribution):
     def var_fn():
@@ -780,9 +780,9 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEqual(3.0, self.evaluate(mirrored_var.values[0]))
       self.assertEqual(3.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
   def testAssignSubMirroredVarReplicaContext(self, distribution):
     def var_fn():
@@ -1054,7 +1054,7 @@ class MirroredStrategyDefunTest(test.TestCase):
       with backprop.GradientTape(persistent=True) as gtape:
         result = fn2(mock_model)
       grads = gtape.gradient(result,
-                             [v.get() for v in mock_model.variables])
+                             [v._get() for v in mock_model.variables])
       return grads
 
     self._call_and_check(distribution, model_fn, [], [2.0, 1.0], [fn1, fn2],
@@ -1319,10 +1319,9 @@ class MirroredVariableStopGradientTest(test.TestCase, parameterized.TestCase):
 
 class FunctionTest(test.TestCase):
 
-  def testBackwardFuctionDevicePlacement(self):
+  def testBackwardFunctionDevicePlacement(self):
     if context.num_gpus() < 1:
       self.skipTest("At least one GPU is required.")
-
     devices = [device_util.resolve("/device:GPU:0"),
                device_util.resolve("/device:CPU:0")]
     ms = mirrored_strategy.MirroredStrategy(devices)
@@ -1335,13 +1334,13 @@ class FunctionTest(test.TestCase):
     def forward(x, w, b):
       return x * w + b
     x = constant_op.constant([1.0], name="x_useless")
-    concrete_forward = forward.get_concrete_function(x, w.primary, b.primary)
+    concrete_forward = forward.get_concrete_function(x, w._primary, b._primary)
 
     with ms.scope():
       def replica_fn():
         with backprop.GradientTape() as t:
           x = constant_op.constant([1.0], name="x")
-          loss = concrete_forward(x, w.get(), b.get()) - [1.0]
+          loss = concrete_forward(x, w._get(), b._get()) - [1.0]
           return t.gradient(loss, [w, b])
 
       def step_fn():
@@ -1351,8 +1350,8 @@ class FunctionTest(test.TestCase):
       g1, g2 = step_fn()
       run_metadata = context.export_run_metadata()
       context.disable_run_metadata()
-      self.assertEqual(self.evaluate(g1.primary), 1.0)
-      self.assertEqual(self.evaluate(g2.primary), 1.0)
+      self.assertEqual(self.evaluate(g1._primary), 1.0)
+      self.assertEqual(self.evaluate(g2._primary), 1.0)
 
       # Verify that this node runs on both devices.
       node_name = "gradients_mul_grad_mul_1_x"

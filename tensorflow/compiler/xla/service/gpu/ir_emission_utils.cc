@@ -133,7 +133,8 @@ std::array<int64, 3> GetReductionTiling(
       CHECK_EQ(reduction_dimensions.dimensions[0], 1);
       return {tile_z, 1, 16};
     }
-    if (reduction_dimensions.dimensions[2] % (kWarpSize * 64) == 0) {
+    if (reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
+        0) {
       return {tile_z, 1, 64};
     }
     return {tile_z, 1, 8};
@@ -343,9 +344,8 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
                                      /*isSigned=*/true);
     }
     builder->CreateStore(
-        arguments[i],
-        builder->CreateGEP(arguments_ptr,
-                           {builder->getInt64(0), builder->getInt32(i)}));
+        value, builder->CreateGEP(arguments_ptr, {builder->getInt64(0),
+                                                  builder->getInt32(i)}));
   }
   llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
   return builder->CreateCall(

@@ -73,14 +73,6 @@ def BitcastNested : Pat<(TF_BitcastOp (TF_BitcastOp $arg)),
                         (TF_BitcastOp $arg)>;
 
 //===----------------------------------------------------------------------===//
-// Cast op patterns.
-//===----------------------------------------------------------------------===//
-
-def CastSameType : Pat<(TF_CastOp:$res $arg, $truncate),
-                       (replaceWithValue $arg),
-                       [(SingleResultAndOperandHaveSameType $res, $arg)]>;
-
-//===----------------------------------------------------------------------===//
 // Conj op patterns.
 //===----------------------------------------------------------------------===//
 

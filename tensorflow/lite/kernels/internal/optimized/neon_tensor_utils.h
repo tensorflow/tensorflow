@@ -18,6 +18,7 @@ limitations under the License.
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils_impl.h"
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
@@ -44,6 +45,16 @@ void MatrixBatchVectorMultiplyAccumulate(
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, int32_t* scratch, float* __restrict__ result,
+    int result_stride, CpuBackendContext* context) {
+  NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
+                   vectors, scaling_factors, n_batch, scratch, result,
+                   result_stride, context);
+}
+
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride,
     const float* per_channel_scale, const int32_t* input_offset) {
   return NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows,
@@ -51,22 +62,33 @@ void MatrixBatchVectorMultiplyAccumulate(
                           result_stride, per_channel_scale, input_offset);
 }
 
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset,
+    int32_t* scratch, int32_t* row_sums, bool* compute_row_sums,
+    CpuBackendContext* context) {
+  return NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows,
+                          m_cols, vectors, scaling_factors, n_batch, result,
+                          result_stride, per_channel_scale, input_offset,
+                          scratch, row_sums, compute_row_sums, context);
+}
+
 void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
-    float* __restrict__ result, int result_stride) {
+    float* __restrict__ result) {
   NEON_OR_PORTABLE(SparseMatrixBatchVectorMultiplyAccumulate, matrix, ledger,
-                   m_rows, m_cols, vector, n_batch, result, result_stride);
+                   m_rows, m_cols, vector, n_batch, result);
 }
 
 void SparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result,
-    int result_stride) {
+    const float* scaling_factors, int n_batch, float* __restrict__ result) {
   NEON_OR_PORTABLE(SparseMatrixBatchVectorMultiplyAccumulate, matrix, ledger,
-                   m_rows, m_cols, vectors, scaling_factors, n_batch, result,
-                   result_stride);
+                   m_rows, m_cols, vectors, scaling_factors, n_batch, result);
 }
 
 void MatrixBatchVectorMultiplyAccumulate(
@@ -144,10 +166,9 @@ void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
 
 void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       const int16_t* vector2, int v_size,
-                                      int n_batch, int32_t* result,
-                                      int result_stride) {
-  return PortableBatchVectorBatchVectorDotProduct(
-      vector1, vector2, v_size, n_batch, result, result_stride);
+                                      int n_batch, int32_t* result) {
+  return PortableBatchVectorBatchVectorDotProduct(vector1, vector2, v_size,
+                                                  n_batch, result);
 }
 
 void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
@@ -226,6 +247,12 @@ void ReductionSumVector(const int32_t* input_vector, int32_t* output_vector,
                         int output_size, int reduction_size) {
   PortableReductionSumVector(input_vector, output_vector, output_size,
                              reduction_size);
+}
+
+void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
+                        int output_size, int reduction_size) {
+  NEON_OR_PORTABLE(ReductionSumVector, input_vector, output_vector, output_size,
+                   reduction_size);
 }
 
 void MeanStddevNormalization(const float* input_vector, float* output_vector,

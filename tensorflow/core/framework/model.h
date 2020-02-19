@@ -577,9 +577,10 @@ class Model {
   // Indicates whether to collect resource usage.
   bool collect_resource_usage() const { return collect_resource_usage_; }
 
-  // Adds a node with the given name and given output.
-  std::shared_ptr<Node> AddNode(Node::Factory factory, const string& name,
-                                const string& output_name) LOCKS_EXCLUDED(mu_);
+  // Adds a node with the given name and given output. The method returns
+  // a pointer to the node but does not transfer ownership.
+  void AddNode(Node::Factory factory, const string& name,
+               const string& output_name, Node** out_node) LOCKS_EXCLUDED(mu_);
 
   // Increments the processing time for the given node..
   void AddProcessingTime(const string& name, int64 delta) LOCKS_EXCLUDED(mu_);

@@ -34,6 +34,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
@@ -153,7 +154,7 @@ class CompileTest(keras_parameterized.TestCase):
     self.assertAllEqual(model._loss_weights_list, [1., 2.])
 
   def test_compile_with_multi_output_and_loss_weights_dict(self):
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       model = self._get_multi_output_model()
       loss_weights = {'dense_1': 1., 'dense_2': 2.}
       model.compile(optimizer='adam', loss='mse', loss_weights=loss_weights)
@@ -246,19 +247,19 @@ class CompileTest(keras_parameterized.TestCase):
           run_eagerly=testing_utils.should_run_eagerly(),
           experimental_run_tf_function=testing_utils.should_run_tf_function())
 
-  @tf_test_util.run_deprecated_v1
   def test_compile_with_session_kwargs(self):
-    model = testing_utils.get_small_sequential_mlp(
-        num_hidden=10, num_classes=2, input_dim=3)
+    with ops.Graph().as_default():
+      model = testing_utils.get_small_sequential_mlp(
+          num_hidden=10, num_classes=2, input_dim=3)
 
-    # Test that unknown arguments are not accepted
-    with self.assertRaisesRegexp(
-        TypeError,
-        r'Invalid keyword argument'):
-      model.compile(
-          optimizer='adam',
-          loss='mse',
-          foo=True)
+      # Test that unknown arguments are not accepted
+      with self.assertRaisesRegexp(
+          TypeError,
+          r'Invalid keyword argument'):
+        model.compile(
+            optimizer='adam',
+            loss='mse',
+            foo=True)
 
 
 class TrainingTest(keras_parameterized.TestCase):
@@ -906,31 +907,31 @@ class TrainingTest(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'Please densify'):
       model.evaluate(test_inputs, test_outputs, batch_size=2)
 
-  @tf_test_util.run_deprecated_v1
   def test_training_on_sparse_data_with_dense_placeholders_v1(self):
-    if scipy_sparse is None:
-      return
+    with ops.Graph().as_default():
+      if scipy_sparse is None:
+        return
 
-    test_inputs = [
-        scipy_sparse.random(6, 3, density=0.25).tocsr() for _ in range(2)
-    ]
-    test_outputs = [
-        scipy_sparse.random(6, i, density=0.25).tocsr() for i in range(3, 5)
-    ]
-    in1 = keras.layers.Input(shape=(3,))
-    in2 = keras.layers.Input(shape=(3,))
-    out1 = keras.layers.Dropout(0.5, name='dropout')(in1)
-    out2 = keras.layers.Dense(4, name='dense_1')(in2)
-    model = keras.Model([in1, in2], [out1, out2])
-    model.predict(test_inputs, batch_size=2)
-    optimizer = 'rmsprop'
-    model.compile(
-        optimizer,
-        'mse',
-        metrics=['mae', metrics_module.CategoricalAccuracy()])
-    model.fit(test_inputs, test_outputs,
-              epochs=1, batch_size=2, validation_split=0.5)
-    model.evaluate(test_inputs, test_outputs, batch_size=2)
+      test_inputs = [
+          scipy_sparse.random(6, 3, density=0.25).tocsr() for _ in range(2)
+      ]
+      test_outputs = [
+          scipy_sparse.random(6, i, density=0.25).tocsr() for i in range(3, 5)
+      ]
+      in1 = keras.layers.Input(shape=(3,))
+      in2 = keras.layers.Input(shape=(3,))
+      out1 = keras.layers.Dropout(0.5, name='dropout')(in1)
+      out2 = keras.layers.Dense(4, name='dense_1')(in2)
+      model = keras.Model([in1, in2], [out1, out2])
+      model.predict(test_inputs, batch_size=2)
+      optimizer = 'rmsprop'
+      model.compile(
+          optimizer,
+          'mse',
+          metrics=['mae', metrics_module.CategoricalAccuracy()])
+      model.fit(test_inputs, test_outputs,
+                epochs=1, batch_size=2, validation_split=0.5)
+      model.evaluate(test_inputs, test_outputs, batch_size=2)
 
   @keras_parameterized.run_all_keras_modes
   def test_compile_with_sparse_placeholders(self):
@@ -1584,20 +1585,22 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
         input_shape=(input_dim,),
         num_classes=num_classes)
 
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Input arrays should have the same number of samples as target arrays'):
       model.fit(x_train, np.concatenate([y_train, y_train], axis=-1))
 
-    if not context.executing_eagerly():
-      # TODO(psv): Investigate these use cases in eager mode.
-      with self.assertRaises(ValueError):
-        model.fit(x_train, y_train)
+    with self.assertRaisesRegexp(ValueError,
+                                 'expects targets to be binary matrices'):
+      model.fit(x_train, y_train)
 
-      with self.assertRaises(ValueError):
-        model.compile(
-            optimizer,
-            loss=None,
-            run_eagerly=testing_utils.should_run_eagerly(),
-            experimental_run_tf_function=testing_utils.should_run_tf_function())
+    with self.assertRaisesRegexp(ValueError, 'no loss to optimize'):
+      model.compile(
+          optimizer,
+          loss=None,
+          run_eagerly=testing_utils.should_run_eagerly(),
+          experimental_run_tf_function=testing_utils.should_run_tf_function())
+      model.fit(x_train)
 
   @keras_parameterized.run_all_keras_modes
   def test_compile_warning_for_loss_missing_output(self):
@@ -2139,7 +2142,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
 
   def test_sample_weight_tensor(self):
     """Tests that sample weight may be defined as a tensor in the graph."""
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       # Create a simple pass-through model
       input_layer = keras.layers.Input(shape=1, name='input_layer')
       model = keras.Model(inputs=input_layer, outputs=input_layer)
@@ -2480,142 +2483,141 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
 
 class TestTrainingWithDataTensors(keras_parameterized.TestCase):
 
-  @tf_test_util.run_deprecated_v1
   def test_training_and_eval_methods_on_symbolic_tensors_single_io(self):
-    x = keras.layers.Input(shape=(3,), name='input')
-    y = keras.layers.Dense(4, name='dense')(x)
-    model = keras.Model(x, y)
+    with ops.Graph().as_default():
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      model = keras.Model(x, y)
 
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
-    loss = 'mse'
-    model.compile(
-        optimizer,
-        loss,
-        metrics=['mae', metrics_module.CategoricalAccuracy()])
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(
+          optimizer,
+          loss,
+          metrics=['mae', metrics_module.CategoricalAccuracy()])
 
-    inputs = keras.backend.zeros(shape=(10, 3))
-    targets = keras.backend.zeros(shape=(10, 4))
+      inputs = keras.backend.zeros(shape=(10, 3))
+      targets = keras.backend.zeros(shape=(10, 4))
 
-    model.fit(inputs, targets, epochs=1, steps_per_epoch=2, verbose=0)
-    model.evaluate(inputs, targets, steps=2, verbose=0)
-    model.predict(inputs, steps=2)
-    model.train_on_batch(inputs, targets)
-    model.test_on_batch(inputs, targets)
-    model.fit(inputs, targets,
-              epochs=1, steps_per_epoch=2, verbose=0,
-              validation_data=(inputs, targets), validation_steps=2)
+      model.fit(inputs, targets, epochs=1, steps_per_epoch=2, verbose=0)
+      model.evaluate(inputs, targets, steps=2, verbose=0)
+      model.predict(inputs, steps=2)
+      model.train_on_batch(inputs, targets)
+      model.test_on_batch(inputs, targets)
+      model.fit(inputs, targets,
+                epochs=1, steps_per_epoch=2, verbose=0,
+                validation_data=(inputs, targets), validation_steps=2)
 
-    # Test with dynamic shape
-    inputs = array_ops.placeholder_with_default(
-        np.zeros((2, 3)), shape=tensor_shape.TensorShape([None, 3]))
-    targets = array_ops.placeholder_with_default(
-        np.zeros((2, 4)), shape=tensor_shape.TensorShape([None, 4]))
-    self.assertEqual(inputs.shape.dims[0].value, None)
-    model.fit(inputs, targets, epochs=1, steps_per_epoch=2, verbose=0)
-    model.evaluate(inputs, targets, steps=2, verbose=0)
-    model.predict(inputs, steps=2)
-    model.train_on_batch(inputs, targets)
-    model.test_on_batch(inputs, targets)
-    model.fit(inputs, targets,
-              epochs=1, steps_per_epoch=2, verbose=0,
-              validation_data=(inputs, targets), validation_steps=2)
+      # Test with dynamic shape
+      inputs = array_ops.placeholder_with_default(
+          np.zeros((2, 3)), shape=tensor_shape.TensorShape([None, 3]))
+      targets = array_ops.placeholder_with_default(
+          np.zeros((2, 4)), shape=tensor_shape.TensorShape([None, 4]))
+      self.assertEqual(inputs.shape.dims[0].value, None)
+      model.fit(inputs, targets, epochs=1, steps_per_epoch=2, verbose=0)
+      model.evaluate(inputs, targets, steps=2, verbose=0)
+      model.predict(inputs, steps=2)
+      model.train_on_batch(inputs, targets)
+      model.test_on_batch(inputs, targets)
+      model.fit(inputs, targets,
+                epochs=1, steps_per_epoch=2, verbose=0,
+                validation_data=(inputs, targets), validation_steps=2)
 
-  @tf_test_util.run_deprecated_v1
   def test_training_and_eval_methods_on_symbolic_tensors_multi_io(self):
-    a = keras.layers.Input(shape=(3,), name='input_a')
-    b = keras.layers.Input(shape=(3,), name='input_b')
+    with ops.Graph().as_default():
+      a = keras.layers.Input(shape=(3,), name='input_a')
+      b = keras.layers.Input(shape=(3,), name='input_b')
 
-    dense = keras.layers.Dense(4, name='dense')
-    c = dense(a)
-    d = dense(b)
-    e = keras.layers.Dropout(0.5, name='dropout')(c)
+      dense = keras.layers.Dense(4, name='dense')
+      c = dense(a)
+      d = dense(b)
+      e = keras.layers.Dropout(0.5, name='dropout')(c)
 
-    model = keras.models.Model([a, b], [d, e])
+      model = keras.models.Model([a, b], [d, e])
 
-    optimizer = 'rmsprop'
-    loss = 'mse'
-    loss_weights = [1., 0.5]
-    model.compile(
-        optimizer,
-        loss,
-        metrics=['mae', metrics_module.CategoricalAccuracy()],
-        loss_weights=loss_weights)
+      optimizer = 'rmsprop'
+      loss = 'mse'
+      loss_weights = [1., 0.5]
+      model.compile(
+          optimizer,
+          loss,
+          metrics=['mae', metrics_module.CategoricalAccuracy()],
+          loss_weights=loss_weights)
 
-    input_a_tf = keras.backend.zeros(shape=(10, 3))
-    input_b_tf = keras.backend.zeros(shape=(10, 3))
+      input_a_tf = keras.backend.zeros(shape=(10, 3))
+      input_b_tf = keras.backend.zeros(shape=(10, 3))
 
-    output_d_tf = keras.backend.zeros(shape=(10, 4))
-    output_e_tf = keras.backend.zeros(shape=(10, 4))
+      output_d_tf = keras.backend.zeros(shape=(10, 4))
+      output_e_tf = keras.backend.zeros(shape=(10, 4))
 
-    model.fit(
-        [input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
-        epochs=1,
-        steps_per_epoch=2,
-        verbose=0)
-    with self.assertRaisesRegexp(ValueError,
-                                 'should specify the `steps_per_epoch`'):
       model.fit(
           [input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
           epochs=1,
-          batch_size=5,
+          steps_per_epoch=2,
           verbose=0)
-    model.train_on_batch([input_a_tf, input_b_tf], [output_d_tf, output_e_tf])
+      with self.assertRaisesRegexp(ValueError,
+                                   'should specify the `steps_per_epoch`'):
+        model.fit(
+            [input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
+            epochs=1,
+            batch_size=5,
+            verbose=0)
+      model.train_on_batch([input_a_tf, input_b_tf], [output_d_tf, output_e_tf])
 
-    # Test with dictionary inputs
-    model.fit(
-        {'input_a': input_a_tf,
-         'input_b': input_b_tf},
-        {'dense': output_d_tf,
-         'dropout': output_e_tf},
-        epochs=1,
-        steps_per_epoch=2,
-        verbose=0)
-    model.fit(
-        {'input_a': input_a_tf,
-         'input_b': input_b_tf},
-        {'dense': output_d_tf,
-         'dropout': output_e_tf},
-        validation_data=({'input_a': input_a_tf,
-                          'input_b': input_b_tf},
-                         {'dense': output_d_tf,
-                          'dropout': output_e_tf}),
-        epochs=1,
-        steps_per_epoch=2,
-        validation_steps=2,
-        verbose=0)
-    model.train_on_batch(
-        {'input_a': input_a_tf,
-         'input_b': input_b_tf},
-        {'dense': output_d_tf,
-         'dropout': output_e_tf})
+      # Test with dictionary inputs
+      model.fit(
+          {'input_a': input_a_tf,
+           'input_b': input_b_tf},
+          {'dense': output_d_tf,
+           'dropout': output_e_tf},
+          epochs=1,
+          steps_per_epoch=2,
+          verbose=0)
+      model.fit(
+          {'input_a': input_a_tf,
+           'input_b': input_b_tf},
+          {'dense': output_d_tf,
+           'dropout': output_e_tf},
+          validation_data=({'input_a': input_a_tf,
+                            'input_b': input_b_tf},
+                           {'dense': output_d_tf,
+                            'dropout': output_e_tf}),
+          epochs=1,
+          steps_per_epoch=2,
+          validation_steps=2,
+          verbose=0)
+      model.train_on_batch(
+          {'input_a': input_a_tf,
+           'input_b': input_b_tf},
+          {'dense': output_d_tf,
+           'dropout': output_e_tf})
 
-    # Test with validation data
-    model.fit(
-        [input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
-        validation_data=([input_a_tf, input_b_tf],
-                         [output_d_tf, output_e_tf]),
-        epochs=1,
-        steps_per_epoch=2,
-        validation_steps=2,
-        verbose=0)
-    # Test with validation split
-    with self.assertRaisesRegexp(ValueError,
-                                 'you cannot use `validation_split`'):
+      # Test with validation data
       model.fit(
           [input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
-          epochs=2,
+          validation_data=([input_a_tf, input_b_tf],
+                           [output_d_tf, output_e_tf]),
+          epochs=1,
           steps_per_epoch=2,
-          verbose=0,
-          validation_split=0.2,
-          validation_steps=2)
+          validation_steps=2,
+          verbose=0)
+      # Test with validation split
+      with self.assertRaisesRegexp(ValueError,
+                                   'you cannot use `validation_split`'):
+        model.fit(
+            [input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
+            epochs=2,
+            steps_per_epoch=2,
+            verbose=0,
+            validation_split=0.2,
+            validation_steps=2)
 
-    # Test evaluation / prediction methods
-    model.evaluate([input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
-                   steps=2, verbose=0)
-    model.predict([input_a_tf, input_b_tf], steps=2)
-    model.test_on_batch([input_a_tf, input_b_tf], [output_d_tf, output_e_tf])
+      # Test evaluation / prediction methods
+      model.evaluate([input_a_tf, input_b_tf], [output_d_tf, output_e_tf],
+                     steps=2, verbose=0)
+      model.predict([input_a_tf, input_b_tf], steps=2)
+      model.test_on_batch([input_a_tf, input_b_tf], [output_d_tf, output_e_tf])
 
-  @tf_test_util.run_deprecated_v1
   def test_model_with_input_feed_tensor(self):
     """We test building a model with a TF variable as input.
 
@@ -2623,7 +2625,7 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
     by only passing them data for the placeholder inputs
     in the model.
     """
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       input_a_np = np.random.random((10, 3))
       input_b_np = np.random.random((10, 3))
 
@@ -2795,9 +2797,8 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       # evaluate
       _ = model.evaluate(input_a_np, [output_a_np])
 
-  @tf_test_util.run_deprecated_v1
   def test_model_with_external_loss(self):
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       # None loss, only regularization loss.
       a = keras.Input(shape=(3,), name='input_a')
       a_2 = keras.layers.Dense(4, name='dense_1',
@@ -2921,9 +2922,8 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       self.assertEqual(out[0].shape, (10 * 3, 4))
       self.assertEqual(out[1].shape, (10 * 3, 4))
 
-  @tf_test_util.run_deprecated_v1
   def test_target_tensors(self):
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       # single-output, as list
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(4, input_shape=(4,), name='dense'))
@@ -2987,9 +2987,8 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       model.train_on_batch(input_val, None,
                            sample_weight={'dense_a': np.random.random((10,))})
 
-  @tf_test_util.run_deprecated_v1
   def test_model_custom_target_tensors(self):
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       a = keras.Input(shape=(3,), name='input_a')
       b = keras.Input(shape=(3,), name='input_b')
 
@@ -3794,10 +3793,12 @@ class SubgraphUpdateLayer(keras.layers.Layer):
 class TestAutoUpdates(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
-  @parameterized.named_parameters(('bare_update', BareUpdateLayer()),
-                                  ('lambda_update', LambdaUpdateLayer()),
-                                  ('nested_update', NestedUpdateLayer()))
-  def test_updates_in_model(self, layer):
+  @parameterized.named_parameters(
+      ('bare_update', BareUpdateLayer),
+      ('lambda_update', LambdaUpdateLayer),
+      ('nested_update', NestedUpdateLayer))
+  def test_updates_in_model(self, layer_builder):
+    layer = layer_builder()
     x, y = np.ones((10, 10)), np.ones((10, 1))
     model = testing_utils.get_model_from_layers(
         [layer, keras.layers.Dense(1)], input_shape=(10,))
@@ -3845,10 +3846,12 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     model.fit(x, y, batch_size=2, epochs=1)
     self.assertEqual(self.evaluate(layer.counter), 5)
 
-  @parameterized.named_parameters(('bare_update', BareUpdateLayer()),
-                                  ('lambda_update', LambdaUpdateLayer()),
-                                  ('nested_update', NestedUpdateLayer()))
-  def test_updates_standalone_layer(self, layer):
+  @parameterized.named_parameters(
+      ('bare_update', BareUpdateLayer),
+      ('lambda_update', LambdaUpdateLayer),
+      ('nested_update', NestedUpdateLayer))
+  def test_updates_standalone_layer(self, layer_builder):
+    layer = layer_builder()
     y = layer(np.ones((10, 10)))
     self.evaluate(layer.counter.initializer)
     self.evaluate(y)

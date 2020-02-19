@@ -49,7 +49,8 @@ class ExecuteNodeArgs : public EagerKernelArgs {
   ~ExecuteNodeArgs() override;
 
   Status Init(EagerContext* ctx,
-              const gtl::InlinedVector<TensorHandle*, 4>& op_inputs);
+              const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
+              const core::RefCountPtr<KernelAndDevice>& kernel);
 
   bool HasRemoteInputs() const override { return has_remote_inputs_; };
 

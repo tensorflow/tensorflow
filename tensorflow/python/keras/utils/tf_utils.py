@@ -19,14 +19,18 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -382,6 +386,18 @@ def register_symbolic_tensor_type(cls):
   _user_convertible_tensor_types.add(cls)
 
 
+def type_spec_from_value(value):
+  """Grab type_spec without converting array-likes to tensors."""
+  if isinstance(value, composite_tensor.CompositeTensor):
+    return value._type_spec  # pylint: disable=protected-access
+  # Get a TensorSpec for array-like data without
+  # converting the data to a Tensor
+  if hasattr(value, 'shape') and hasattr(value, 'dtype'):
+    return tensor_spec.TensorSpec(value.shape, value.dtype)
+  else:
+    return type_spec.type_spec_from_value(value)
+
+
 def is_tensor_or_variable(x):
   return tensor_util.is_tensor(x) or isinstance(x, variables.Variable)
 
@@ -438,3 +454,13 @@ def graph_context_for_symbolic_tensors(*args, **kwargs):
       yield
   else:
     yield
+
+
+def dataset_is_infinite(dataset):
+  """True if the passed dataset is infinite."""
+  if ops.executing_eagerly_outside_functions():
+    return math_ops.equal(
+        cardinality.cardinality(dataset), cardinality.INFINITE)
+  else:
+    dataset_size = K.get_session().run(cardinality.cardinality(dataset))
+    return dataset_size == cardinality.INFINITE

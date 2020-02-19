@@ -52,7 +52,7 @@ Status GenericTransferManager::WriteSingleTupleIndexTable(
   TF_RETURN_IF_ERROR(TransferBufferToDevice(
       stream, GetByteSizeRequirement(shape), element_pointers->data(), region));
   // Ensure the buffer is transferred before we destroy element_pointers.
-  stream->ThenRunAfterNextBlockHostUntilDone([element_pointers]() {
+  stream->ThenDoHostCallback([element_pointers{std::move(element_pointers)}]() {
     /* holds reference to element_pointers in closure */
   });
   return Status::OK();

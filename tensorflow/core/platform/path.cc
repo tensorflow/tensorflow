@@ -20,7 +20,9 @@ limitations under the License.
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#if !defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_WINDOWS)
+#include <windows.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -34,6 +36,11 @@ limitations under the License.
 namespace tensorflow {
 namespace io {
 namespace internal {
+namespace {
+
+const char kPathSep[] = "/";
+
+}  // namespace
 
 string JoinPathImpl(std::initializer_list<StringPiece> paths) {
   string result;
@@ -46,18 +53,12 @@ string JoinPathImpl(std::initializer_list<StringPiece> paths) {
       continue;
     }
 
-    if (result[result.size() - 1] == '/') {
-      if (IsAbsolutePath(path)) {
-        strings::StrAppend(&result, path.substr(1));
-      } else {
-        strings::StrAppend(&result, path);
-      }
+    if (IsAbsolutePath(path)) path = path.substr(1);
+
+    if (result[result.size() - 1] == kPathSep[0]) {
+      strings::StrAppend(&result, path);
     } else {
-      if (IsAbsolutePath(path)) {
-        strings::StrAppend(&result, path);
-      } else {
-        strings::StrAppend(&result, "/", path);
-      }
+      strings::StrAppend(&result, kPathSep, path);
     }
   }
 
@@ -105,6 +106,7 @@ std::pair<StringPiece, StringPiece> SplitBasename(StringPiece path) {
       StringPiece(path.data(), pos),
       StringPiece(path.data() + pos + 1, path.size() - (pos + 1)));
 }
+
 }  // namespace internal
 
 bool IsAbsolutePath(StringPiece path) {
@@ -251,8 +253,25 @@ int64 UniqueId() {
 }
 
 string GetTempFilename(const string& extension) {
-#if defined(PLATFORM_WINDOWS) || defined(__ANDROID__)
+#if defined(__ANDROID__)
   LOG(FATAL) << "GetTempFilename is not implemented in this platform.";
+#elif defined(PLATFORM_WINDOWS)
+  char temp_dir[_MAX_PATH];
+  DWORD retval;
+  retval = GetTempPath(_MAX_PATH, temp_dir);
+  if (retval > _MAX_PATH || retval == 0) {
+    LOG(FATAL) << "Cannot get the directory for temporary files.";
+  }
+
+  char temp_file_name[_MAX_PATH];
+  retval = GetTempFileName(temp_dir, "", UniqueId(), temp_file_name);
+  if (retval > _MAX_PATH || retval == 0) {
+    LOG(FATAL) << "Cannot get a temporary file in: " << temp_dir;
+  }
+
+  string full_tmp_file_name(temp_file_name);
+  full_tmp_file_name.append(extension);
+  return full_tmp_file_name;
 #else
   for (const char* dir : std::vector<const char*>(
            {getenv("TEST_TMPDIR"), getenv("TMPDIR"), getenv("TMP"), "/tmp"})) {

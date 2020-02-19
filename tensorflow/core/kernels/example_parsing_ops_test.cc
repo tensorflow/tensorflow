@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
@@ -82,11 +83,11 @@ template <typename T>
 struct ExampleStore {
  private:
   static ExampleTensorMap serialized_example;
-  static std::once_flag flags_init;
+  static absl::once_flag flags_init;
 
  public:
   static ExampleTensorMap& GetSerializedExample() {
-    std::call_once(flags_init, [] {
+    absl::call_once(flags_init, [] {
       AddExample(&serialized_example, 10, 1, 1);
       AddExample(&serialized_example, 100, 1, 1);
       AddExample(&serialized_example, 1000, 1, 1);
@@ -133,7 +134,7 @@ struct ExampleStore {
 template <typename T>
 ExampleTensorMap ExampleStore<T>::serialized_example;
 template <typename T>
-std::once_flag ExampleStore<T>::flags_init;
+absl::once_flag ExampleStore<T>::flags_init;
 
 template struct ExampleStore<BytesFiller>;
 template struct ExampleStore<Int64Filler>;

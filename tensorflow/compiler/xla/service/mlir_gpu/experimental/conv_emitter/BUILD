@@ -42,6 +42,10 @@ cc_library(
 tf_cc_test(
     name = "conv_emitter_test",
     srcs = ["conv_emitter_test.cc"],
+    tags = [
+        "no_oss",  # TODO(b/148143101): Test should pass in OSS.
+        "no_rocm",
+    ],
     deps = [
         ":conv_emitter",
         "//tensorflow/compiler/xla/service:hlo_parser",
@@ -51,12 +55,12 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AffineDialectRegistration",
         "@llvm-project//mlir:AffineToStandardTransforms",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMTransforms",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardDialectRegistration",
         "@llvm-project//mlir:Transforms",
     ],
 )

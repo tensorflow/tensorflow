@@ -39,7 +39,12 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.models.Sequential', 'keras.Sequential')
+SINGLE_LAYER_OUTPUT_ERROR_MSG = ('All layers in a Sequential model should have '
+                                 'a single output tensor. For multi-output '
+                                 'layers, use the functional API.')
+
+
+@keras_export('keras.Sequential', 'keras.models.Sequential')
 class Sequential(training.Model):
   """`Sequential` groups a linear stack of layers into a `tf.keras.Model`.
 
@@ -110,7 +115,6 @@ class Sequential(training.Model):
     """
     super(Sequential, self).__init__(name=name, autocast=False)
     self.supports_masking = True
-    self._build_input_shape = None
     self._compute_output_and_mask_jointly = True
 
     self._layer_call_argspecs = {}
@@ -196,10 +200,7 @@ class Sequential(training.Model):
       if set_inputs:
         # If an input layer (placeholder) is available.
         if len(nest.flatten(layer._inbound_nodes[-1].output_tensors)) != 1:
-          raise ValueError('All layers in a Sequential model '
-                           'should have a single output tensor. '
-                           'For multi-output layers, '
-                           'use the functional API.')
+          raise ValueError(SINGLE_LAYER_OUTPUT_ERROR_MSG)
         self.outputs = [
             nest.flatten(layer._inbound_nodes[-1].output_tensors)[0]
         ]
@@ -210,10 +211,7 @@ class Sequential(training.Model):
       # refresh its output.
       output_tensor = layer(self.outputs[0])
       if len(nest.flatten(output_tensor)) != 1:
-        raise TypeError('All layers in a Sequential model '
-                        'should have a single output tensor. '
-                        'For multi-output layers, '
-                        'use the functional API.')
+        raise ValueError(SINGLE_LAYER_OUTPUT_ERROR_MSG)
       self.outputs = [output_tensor]
 
     if self.outputs:
@@ -287,6 +285,8 @@ class Sequential(training.Model):
 
       outputs = layer(inputs, **kwargs)
 
+      if len(nest.flatten(outputs)) != 1:
+        raise ValueError(SINGLE_LAYER_OUTPUT_ERROR_MSG)
       # `outputs` will be the inputs to the next layer.
       inputs = outputs
       mask = outputs._keras_mask

@@ -260,7 +260,7 @@ def _ragged_stack_concat_axis_1(rt_inputs, stack_values):
   ]
 
   with ops.control_dependencies(nrows_checks):
-    # Concatentate the inputs together to put them in a single ragged tensor.
+    # Concatenate the inputs together to put them in a single ragged tensor.
     concatenated_rt = _ragged_stack_concat_axis_0(rt_inputs, stack_values=False)
 
     # Use ragged.gather to permute the rows of concatenated_rt.  In particular,

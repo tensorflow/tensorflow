@@ -69,9 +69,6 @@ MACs stands for Multiply Adds
 | [mobilenet_v2_0.35_128] | 20  | 1.66 |          50.8 | 75.0 |
 | [mobilenet_v2_0.35_96]  | 11  | 1.66 |          45.5 | 70.4 |
 
-Reference paper:
-  - [MobileNetV2: Inverted Residuals and Linear Bottlenecks]
-  (https://arxiv.org/abs/1801.04381) (CVPR 2018)
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -105,9 +102,15 @@ def MobileNetV2(input_shape=None,
                 **kwargs):
   """Instantiates the MobileNetV2 architecture.
 
+  Reference paper:
+  - [MobileNetV2: Inverted Residuals and Linear Bottlenecks]
+  (https://arxiv.org/abs/1801.04381) (CVPR 2018)
+
+  Optionally loads weights pre-trained on ImageNet.
+
   Arguments:
-    input_shape: optional shape tuple, to be specified if you would
-      like to use a model with an input img resolution that is not
+    input_shape: Optional shape tuple, to be specified if you would
+      like to use a model with an input image resolution that is not
       (224, 224, 3).
       It should have exactly 3 inputs channels (224, 224, 3).
       You can also omit this option if you would like
@@ -116,24 +119,25 @@ def MobileNetV2(input_shape=None,
       input_shape will be used if they match, if the shapes
       do not match then we will throw an error.
       E.g. `(160, 160, 3)` would be one valid value.
-    alpha: controls the width of the network. This is known as the
-    width multiplier in the MobileNetV2 paper, but the name is kept for
-    consistency with MobileNetV1 in Keras.
+    alpha: Float between 0 and 1. controls the width of the network.
+      This is known as the width multiplier in the MobileNetV2 paper,
+      but the name is kept for consistency with `applications.MobileNetV1`
+      model in Keras.
       - If `alpha` < 1.0, proportionally decreases the number
           of filters in each layer.
       - If `alpha` > 1.0, proportionally increases the number
           of filters in each layer.
       - If `alpha` = 1, default number of filters from the paper
-           are used at each layer.
-    include_top: whether to include the fully-connected
-      layer at the top of the network.
-    weights: one of `None` (random initialization),
-        'imagenet' (pre-training on ImageNet),
-        or the path to the weights file to be loaded.
-    input_tensor: optional Keras tensor (i.e. output of
+          are used at each layer.
+    include_top: Boolean, whether to include the fully-connected
+      layer at the top of the network. Defaults to `True`.
+    weights: String, one of `None` (random initialization),
+      'imagenet' (pre-training on ImageNet),
+      or the path to the weights file to be loaded.
+    input_tensor: Optional Keras tensor (i.e. output of
       `layers.Input()`)
       to use as image input for the model.
-    pooling: Optional pooling mode for feature extraction
+    pooling: String, optional pooling mode for feature extraction
       when `include_top` is `False`.
       - `None` means that the output of the model
           will be the 4D tensor output of the
@@ -145,13 +149,13 @@ def MobileNetV2(input_shape=None,
           2D tensor.
       - `max` means that global max pooling will
           be applied.
-    classes: optional number of classes to classify images
+    classes: Integer, optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
     **kwargs: For backwards compatibility only.
 
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
@@ -481,9 +485,11 @@ def _make_divisible(v, divisor, min_value=None):
 
 @keras_export('keras.applications.mobilenet_v2.preprocess_input')
 def preprocess_input(x, data_format=None):
+  """Preprocesses the input (encoding a batch of images) for the model."""
   return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.mobilenet_v2.decode_predictions')
 def decode_predictions(preds, top=5):
+  """Decodes the prediction result from the model."""
   return imagenet_utils.decode_predictions(preds, top=top)

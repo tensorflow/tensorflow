@@ -215,19 +215,6 @@ void EvalIntegerSVDF(
   int32_t scratch_tensor[kScratchTensorMaxSize];
   int32_t scratch_output_tensor[kScratchTensorMaxSize];
 
-  // Rewrite last bit of state.
-  {
-    for (int b = 0; b < n_batch; ++b) {
-      int16_t* state_ptr_batch =
-          GetTensorData<int16_t>(activation_state_tensor) +
-          b * n_memory * n_filter;
-      for (int c = 0; c < n_filter; ++c) {
-        int16_t* state_ptr = state_ptr_batch + c * n_memory;
-        state_ptr[n_memory - 1] = 0;
-      }
-    }
-  }
-
   // Feature matmul.
   {
     int16_t* state = GetTensorData<int16_t>(activation_state_tensor);
@@ -248,6 +235,12 @@ void EvalIntegerSVDF(
         dot_prod =
             MultiplyByQuantizedMultiplier(dot_prod, scale_1_a, scale_1_b);
         dot_prod = std::min(std::max(output_min, dot_prod), output_max);
+        // This assumes state is symmetrically quantized. Otherwise last bit of
+        // state should be initialized to its zero point and accumulate the
+        // dot_prod.
+        // Equivalent as the following:
+        //     result_in_batch = zero point, which happens to be zero.
+        //     result_in_batch += dot_prod_56.
         *result_in_batch = dot_prod;
         result_in_batch += n_memory;
       }
@@ -377,8 +370,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* weights_time =
       GetInput(context, node, kWeightsTimeTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
-  TfLiteTensor* activation_state =
-      &context->tensors[node->inputs->data[kInputActivationStateTensor]];
+  const TfLiteTensor* activation_state =
+      GetInput(context, node, kInputActivationStateTensor);
 
   // Define input constants based on input tensor definition above:
   const int rank = params->rank;
@@ -491,7 +484,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetInput(context, node, kWeightsTimeTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* activation_state =
-      &context->tensors[node->inputs->data[kInputActivationStateTensor]];
+      GetVariableInput(context, node, kInputActivationStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   const bool is_full_integer = input->type == kTfLiteInt8;
@@ -526,12 +519,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
             output->quantization.params);
         const double effective_scale_1 =
-            input_params->scale->data[0] *
-            weights_feature_params->scale->data[0] /
-            state_params->scale->data[0];
-        const double effective_scale_2 = state_params->scale->data[0] *
-                                         weight_time_params->scale->data[0] /
-                                         output_params->scale->data[0];
+            static_cast<double>(input_params->scale->data[0] *
+                                weights_feature_params->scale->data[0] /
+                                state_params->scale->data[0]);
+        const double effective_scale_2 = static_cast<double>(
+            state_params->scale->data[0] * weight_time_params->scale->data[0] /
+            output_params->scale->data[0]);
         QuantizeMultiplier(effective_scale_1, &op_data.effective_scale_1_a,
                            &op_data.effective_scale_1_b);
         QuantizeMultiplier(effective_scale_2, &op_data.effective_scale_2_a,
@@ -550,8 +543,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     default:
-      context->ReportError(context, "Type %s not currently supported.",
-                           TfLiteTypeGetName(weights_feature->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
+                         TfLiteTypeGetName(weights_feature->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -560,8 +553,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace svdf
 
 TfLiteRegistration* Register_SVDF() {
-  static TfLiteRegistration r = {svdf::Init, svdf::Free, svdf::Prepare,
-                                 svdf::Eval};
+  static TfLiteRegistration r = {};
+  r.init = svdf::Init;
+  r.free = svdf::Free;
+  r.prepare = svdf::Prepare;
+  r.invoke = svdf::Eval;
   return &r;
 }
 

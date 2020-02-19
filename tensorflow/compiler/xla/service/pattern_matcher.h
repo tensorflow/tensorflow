@@ -910,10 +910,10 @@ class ShapePatternSubshapeImpl {
   }
 
  private:
-  Shape* GetSubshape(Shape* shape) const {
+  ::xla::Shape* GetSubshape(::xla::Shape* shape) const {
     return ShapeUtil::GetMutableSubshape(shape, index_);
   }
-  const Shape* GetSubshape(const Shape* shape) const {
+  const ::xla::Shape* GetSubshape(const ::xla::Shape* shape) const {
     return &ShapeUtil::GetSubshape(*shape, index_);
   }
 

@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_nn/hexagon_nn.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -97,7 +96,7 @@ TfLiteStatus ConcatOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   auto* output_max_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, (char*)&output_max_, sizeof(output_max_));
 
-  auto* requantize_op = graph_builder_->AddNode();
+  auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
   requantize_op->SetOpType(OP_Requantize_8to8);
   requantize_op->AddInput(concat_out);
   requantize_op->AddInput(concat_out_min);
