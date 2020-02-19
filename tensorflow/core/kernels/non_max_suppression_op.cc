@@ -583,8 +583,9 @@ class NonMaxSuppressionV2Op : public OpKernel {
     int num_boxes = 0;
     ParseAndCheckBoxSizes(context, boxes, &num_boxes);
     CheckScoreSizes(context, num_boxes, scores);
-    // check if the boxes have logical coordinates
-    OP_REQUIRES(context, CheckBoxesCoordinates<T>(boxes, num_boxes), errors::InvalidArgument("boxes coordinates shouldn't have x1=x2 or y1=y2"));
+    OP_REQUIRES(
+          context, CheckBoxesCoordinates<T>(boxes, num_boxes), 
+          errors::InvalidArgument("Boxes are empty (x1 == x2 or y1 == y2)"));
     if (!context->status().ok()) {
       return;
     }
@@ -636,8 +637,9 @@ class NonMaxSuppressionV3Op : public OpKernel {
     int num_boxes = 0;
     ParseAndCheckBoxSizes(context, boxes, &num_boxes);
     CheckScoreSizes(context, num_boxes, scores);
-    // check if the boxes have logical coordinates
-    OP_REQUIRES(context, CheckBoxesCoordinates<T>(boxes, num_boxes), errors::InvalidArgument("boxes coordinates shouldn't have x1=x2 or y1=y2"));
+    OP_REQUIRES(
+          context, CheckBoxesCoordinates<T>(boxes, num_boxes), 
+          errors::InvalidArgument("Boxes are empty (x1 == x2 or y1 == y2)"));
     if (!context->status().ok()) {
       return;
     }
@@ -692,8 +694,9 @@ class NonMaxSuppressionV4Op : public OpKernel {
     int num_boxes = 0;
     ParseAndCheckBoxSizes(context, boxes, &num_boxes);
     CheckScoreSizes(context, num_boxes, scores);
-    // check if the boxes have logical coordinates
-    OP_REQUIRES(context, CheckBoxesCoordinates<T>(boxes, num_boxes), errors::InvalidArgument("boxes coordinates shouldn't have x1=x2 or y1=y2"));
+    OP_REQUIRES(
+          context, CheckBoxesCoordinates<T>(boxes, num_boxes), 
+          errors::InvalidArgument("Boxes are empty (x1 == x2 or y1 == y2)"));
     if (!context->status().ok()) {
       return;
     }
