@@ -1069,9 +1069,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
           "Note that a DLPack tensor may be consumed at most once.",
           absl::string_view(pycapsule.name()));
     }
-    TFE_TensorHandle* thandle = tensorflow::TFE_HandleFromDLPack(
-        static_cast<void*>(pycapsule), status.get());
-      
+    TFE_TensorHandle* thandle =
+        tensorflow::TFE_HandleFromDLPack(pycapsule, status.get());
+
     PyCapsule_SetName(pycapsule.ptr(), "used_dltensor");
     PyCapsule_SetDestructor(pycapsule.ptr(), nullptr);
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
