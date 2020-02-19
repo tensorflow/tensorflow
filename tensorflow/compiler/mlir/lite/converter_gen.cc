@@ -28,6 +28,9 @@ limitations under the License.
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
 #include "mlir/TableGen/Attribute.h"  // TF:llvm-project
+#include "mlir/TableGen/Format.h"  // TF:llvm-project
+#include "mlir/TableGen/Operator.h"  // TF:llvm-project
+#include "mlir/TableGen/Predicate.h"  // TF:llvm-project
 
 using llvm::DefInit;
 using llvm::dyn_cast;
@@ -40,6 +43,19 @@ using llvm::RecordRecTy;
 using llvm::SmallVector;
 using llvm::StringInit;
 using llvm::StringRef;
+
+enum ActionType {
+  OpConv,
+  RuntimeVerify,
+};
+
+// NOLINTNEXTLINE
+llvm::cl::opt<ActionType> action(
+    llvm::cl::desc("Action to perform:"),
+    llvm::cl::values(clEnumValN(OpConv, "gen-operator-converters",
+                                "Generate operator converters"),
+                     clEnumValN(RuntimeVerify, "gen-runtime-verifiers",
+                                "Generate TFLite runtime verifiers")));
 
 // Returns the associated option name for the given op definition.
 static inline std::string GetOperatorOptionName(const Record &def) {
@@ -342,8 +358,101 @@ static bool OperatorWritersMain(raw_ostream &os, RecordKeeper &records) {
   return false;
 }
 
+static void GenOperandResultVerifier(raw_ostream &os,
+                                     llvm::ArrayRef<llvm::Init *> values,
+                                     StringRef valueKind) {
+  mlir::tblgen::FmtContext fctx;
+
+  bool first = true;
+  for (auto static_value : llvm::enumerate(values)) {
+    auto *definit = llvm::cast<llvm::DefInit>(static_value.value());
+    auto *val = definit->getDef()->getValue("tflRuntimeTypePredicate");
+    if (!val) continue;
+
+    // Create code block on first type to verify.
+    if (first) {
+      os << "  {\n";
+      os << "    unsigned index = " << static_value.index() << ";\n";
+      first = false;
+    }
+
+    mlir::tblgen::Pred pred(dyn_cast<llvm::DefInit>(val->getValue()));
+    auto desc =
+        definit->getDef()->getValueAsString("tflRuntimeTypeDescription");
+
+    // Emit a loop to check all the dynamic values in the pack.
+    os << formatv("    for (Value v : top.getODS{0}{1}s({2})) {{\n",
+                  // Capitalize the first letter to match the function name
+                  valueKind.substr(0, 1).upper(), valueKind.substr(1),
+                  static_value.index());
+
+    os << "      (void)v;\n"
+       << "      if (!("
+       << tgfmt(pred.getCondition(), &fctx.withSelf("v.getType()")) << ")) {\n"
+       << formatv(
+              "        return op->emitOpError(\"{0} #\") << index "
+              "<< \" must be {1}, but got \" << v.getType();\n",
+              valueKind, desc)
+       << "      }\n"  // if
+       << "      ++index;\n"
+       << "    }\n";  // for
+  }
+
+  // Emit closing brace if needed.
+  if (!first) os << "  }\n";
+}
+
+// NOLINTNEXTLINE
+static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
+  emitSourceFileHeader("MLIR TFLite Runtime Verifiers", os);
+
+  // Retrieve all the definitions derived from TFL_Op and sort by record name.
+  std::vector<Record *> defs = records.getAllDerivedDefinitions("Op");
+  llvm::sort(defs, LessRecord());
+
+  // Iterate through all the ops defined.
+  for (const auto *def : defs) {
+    mlir::tblgen::Operator op(*def);
+    if (!op.getTrait("TflRuntimeVerifyOpInterface::Trait")) continue;
+
+    mlir::tblgen::FmtContext verify_ctx;
+    os << "::mlir::LogicalResult " << op.getCppClassName()
+       << "::VerifyTflRuntimeTypes(::mlir::Operation *op) {\n";
+    os << "  auto top = cast<" << op.getCppClassName() << ">(op); (void)top;\n";
+    verify_ctx.withOp("top");
+
+    for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
+      for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
+        auto &value = op.getOperand(i);
+        // Skip from from first variadic operands for now. Else getOperand index
+        // used below doesn't match.
+        if (value.isVariadic()) break;
+        if (!value.name.empty())
+          verify_ctx.addSubst(value.name, formatv("op->getOperand({0})", i));
+      }
+      for (int i = 0, e = op.getNumResults(); i < e; ++i) {
+        auto &value = op.getResult(i);
+        // Skip from from first variadic results for now. Else getResult index
+        // used below doesn't match.
+        if (value.isVariadic()) break;
+        if (!value.name.empty())
+          verify_ctx.addSubst(value.name, formatv("op->getResult({0})", i));
+      }
+    }
+    GenOperandResultVerifier(os, def->getValueAsDag("arguments")->getArgs(),
+                             "operand");
+    GenOperandResultVerifier(os, def->getValueAsDag("results")->getArgs(),
+                             "result");
+    os << "  return mlir::success();\n}\n";
+  }
+
+  return false;
+}
+
 int main(int argc, char **argv) {
   llvm::InitLLVM y(argc, argv);
   llvm::cl::ParseCommandLineOptions(argc, argv);
-  return TableGenMain(argv[0], &OperatorWritersMain);
+  if (action == ActionType::OpConv)
+    return TableGenMain(argv[0], &OperatorWritersMain);
+  return TableGenMain(argv[0], &RuntimeVerifierWriterMain);
 }
