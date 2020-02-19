@@ -1860,12 +1860,13 @@ namespace {
 
 // Returns true if the fusion contains any instruction that is likely
 // translated to complex LLVM IR, such as loops, and prevent vectorization.
-bool MayPreventVectorization(const HloInstruction& hlo) {
+bool MayPreventVectorization(const HloInstruction& hlo, const bool tolerate_reduce=false) {
   if (hlo.opcode() == HloOpcode::kFusion) {
     return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
-                          [](const HloInstruction* instr) {
+                          [tolerate_reduce](const HloInstruction* instr) {
                             switch (instr->opcode()) {
                               case HloOpcode::kReduce:
+                                return !tolerate_reduce;
                               case HloOpcode::kReduceWindow:
                               case HloOpcode::kSort:
                               case HloOpcode::kDot:
@@ -1892,6 +1893,8 @@ bool MayPreventVectorization(const HloInstruction& hlo) {
       default:
         return false;
     }
+  } else if (hlo.opcode() == HloOpcode::kReduce) {
+    return !tolerate_reduce;
   }
   return true;
 }
@@ -3254,12 +3257,21 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
 
   int vec_stride = 1;
   char* env = getenv("VEC_STRIDE");
-  if (indexing_order == KernelMappingScheme::LinearDilatedIndexingX &&
-      reduction_dimensions.dimensions[2] % tile_size_x == 0) {
-    vec_stride = 2;
+  if (indexing_order == KernelMappingScheme::LinearDilatedIndexingX) {
+    if (reduction_dimensions.dimensions[2] % tile_size_x == 0 &&
+        // As XLA unroll and suppose LLVM will vectorize,
+        // disable the unroll for case that LLVM doesn't vectorize.
+        !MayPreventVectorization(*unnested_hlo, /*tolerate_reduce*/true)) {
+      vec_stride = 2;
+    } else {
+      indexing_order = KernelMappingScheme::DilatedIndexingX;
+    }
   }
   if (env) {
     vec_stride = atoi(env);
+    if (vec_stride > 1) {
+      indexing_order = KernelMappingScheme::LinearDilatedIndexingX;
+    }
   }
   KernelMappingScheme mapping_scheme(
       reduction_dimensions.dimensions,
