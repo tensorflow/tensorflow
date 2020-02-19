@@ -570,6 +570,9 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
       eager::RegisterFunctionOp* register_function =
           request->add_queue()->mutable_register_function();
       *register_function->mutable_function_def() = *function_defs[j];
+      StripDefaultAttributes(
+          *OpRegistry::Global(),
+          register_function->mutable_function_def()->mutable_node_def());
       auto* response = new eager::EnqueueResponse;
       eager_client->StreamingEnqueueAsync(
           request, response, [request, response](const Status& s) {
