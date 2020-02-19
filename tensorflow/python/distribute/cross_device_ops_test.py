@@ -723,6 +723,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
           num_packs=[1, 2]))
   def testReductionDistributed(self, required_gpus, use_strategy_object,
                                num_packs):
+    if required_gpus == 2:
+      self.skipTest("b/138143527")
     self._run_between_graph_clients(
         self._test_reduction,
         self._cluster_spec,
@@ -749,6 +751,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
           required_gpus=2,
           use_strategy_object=[True, False]))
   def testReductionLocal(self, required_gpus, use_strategy_object):
+    if required_gpus == 2:
+      self.skipTest("b/138143527")
     self._test_reduction(
         None,
         None,

@@ -34,7 +34,6 @@ from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -1151,7 +1150,7 @@ class CollectiveAllReduce(CrossDeviceOps):
                 reduced_gv_list):
               control_input_grads = [g for g, _ in reduced_gv_list[-1]]
             else:
-              control_input_grads = []
+              control_input_grads = None
             collective_reduced = cross_device_utils.build_collective_reduce(
                 grads, self._num_workers, self._collective_keys, "Add", "Id",
                 communication_hint, control_input_grads)
@@ -1200,87 +1199,20 @@ class CollectiveAllReduce(CrossDeviceOps):
       # optimizer and packed into a single all-reduce.
       with ops.name_scope("allreduce"):
         for grad_and_vars in chunk:
-          # `grad_and_vars` contains gradients for the same variable but from
-          # different devices. Because current CollectiveAllGather
-          # implementations require input IndexedSlices to have consistent
-          # length across the board, we handle the reduction of IndexedSlices
-          # as follows:
-          #   1. Gather the lengths of IndexedSlices from all participants.
-          #   2. If they have consistent length, apply all_gather.
-          #   3. Otherwise convert IndexedSlices to dense tensors and apply
-          #      all_reduce.
+          grads = [g for g, _ in grad_and_vars]
 
-          def all_gather():
-            """Use all_gather to aggregate `IndexedSlices`."""
-            grads = [g for g, _ in grad_and_vars]  # pylint: disable=cell-var-from-loop
-            values = [g.values for g in grads]
-            indices = [g.indices for g in grads]
+          # Add control dependencies per device from the last gradients to the
+          # current set, in order to serialize NCCL launches.
+          if (communication_hint == CollectiveCommunication.NCCL.value and
+              reduced_gv_list):
+            control_input_grads = [g for g, _ in reduced_gv_list[-1]]
+          else:
+            control_input_grads = None
 
-            # Build two separate allgathers, one for values, the other one for
-            # indices.
-            gathered_values = cross_device_utils.build_collective_gather(
-                values, self._num_workers, self._collective_keys)
-            gathered_indices = cross_device_utils.build_collective_gather(
-                indices, self._num_workers, self._collective_keys)
-            assert len(gathered_values) == len(gathered_indices)
-
-            gathered_grads = []
-            for i in range(len(values)):
-              gathered_grad = ops.IndexedSlices(
-                  values=gathered_values[i],
-                  indices=gathered_indices[i],
-                  dense_shape=grads[i].dense_shape)
-              gathered_grads.append(gathered_grad)
-            return gathered_grads
-
-          def all_reduce():
-            """Use all_reduce to aggregate `IndexedSlices`."""
-            grads = []
-            for g, _ in grad_and_vars:  # pylint: disable=cell-var-from-loop
-              with ops.device(g.device):
-                grads.append(ops.convert_to_tensor(g))
-
-            reduced_dense_grads = cross_device_utils.build_collective_reduce(
-                grads, self._num_workers, self._collective_keys, "Add", "Id",
-                communication_hint)
-            # We have to convert dense grad to IndexedSlice because all_reduce()
-            # and all_gather() must have the same return type as required by
-            # control_flow_ops.cond.
-            reduced_grads = []
-            for grad in reduced_dense_grads:
-              reduced_grads.append(
-                  ops.IndexedSlices(
-                      values=grad,
-                      indices=math_ops.range(array_ops.shape(grad)[0]),
-                      dense_shape=array_ops.shape(grad)))
-            return reduced_grads
-
-          indexed_slice_lengths = []
-          for g, _ in grad_and_vars:
-            with ops.device(g.device):
-              indexed_slice_lengths.append(array_ops.shape(g.indices))
-          gathered_indexed_slice_lengths = (
-              cross_device_utils.build_collective_gather(
-                  indexed_slice_lengths, self._num_workers,
-                  self._collective_keys))
-          # gathered_indexed_slice_lengths takes the following forms:
-          # [[length1_on_gpu_0, length2_on_gpu0, ...],
-          #  [length1_on_gpu_1, length2_on_gpu1, ...]
-          #  ...
-          # ]
-          # Each sublist is value-wise identical but resides on different
-          # devices. Since each sublist has the same value, we can just use the
-          # first sublist to compute the condition.
-          collective_reduced = control_flow_ops.cond(
-              math_ops.equal(
-                  math_ops.reduce_max(gathered_indexed_slice_lengths[0]),
-                  math_ops.reduce_min(gathered_indexed_slice_lengths[0])),
-              all_gather, all_reduce)
-          # tf.cond implicitly unpacks singleton list to single value, hence
-          # we need to re-wrap the single value into a singleton list here.
-          if not isinstance(collective_reduced, list):
-            collective_reduced = [collective_reduced]
-
+          collective_reduced = (
+              cross_device_utils.build_collective_gather_indexed_slices(
+                  grads, self._num_workers, self._collective_keys,
+                  communication_hint, control_input_grads))
           result = []
           for (_, v), g in zip(grad_and_vars, collective_reduced):
             result.append([g, v])
