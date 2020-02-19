@@ -125,7 +125,8 @@ DLManagedTensor* TFEHandleToTFDLManagedTensorCtx(TFE_TensorHandle* h,
                                                  TF_Status* status) {
   const Tensor* tensor = GetTensorFromHandle(h, status);
   TF_DataType data_type = static_cast<TF_DataType>(tensor->dtype());
-  TFDLManagedTensorCtx* tf_dlm_tensor_ctx(new TFDLManagedTensorCtx);
+  auto* tf_dlm_tensor_ctx = new TFDLManagedTensorCtx;
+
   TensorReference* tensor_ref =
       new TensorReference(*tensor);  // This will call buf_->Ref()
   tf_dlm_tensor_ctx->handle = tensor_ref;
