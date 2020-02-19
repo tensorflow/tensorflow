@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/map_lhlo_to_scalar_op.h"
+#include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 
 namespace mlir {
 namespace xla_lhlo {
@@ -56,7 +56,7 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
     }
     auto l = rewriter.create<LoadOp>(loc, lhs, induction_vars);
     auto r = rewriter.create<LoadOp>(loc, rhs, induction_vars);
-    Value opResult = MapLhloOpToStdScalarOp<LhloOp>(
+    Value opResult = MapXlaOpToStdScalarOp<LhloOp>(
         llvm::cast<LhloOp>(op), element_type, {l, r}, &rewriter);
     if (opResult == nullptr) {
       return this->matchFailure();

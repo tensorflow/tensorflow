@@ -101,13 +101,9 @@ Status CreateFileForDumping(llvm::StringRef name,
   if (!dirname.empty())
     dir = dirname.data();
   else
-    dir = getenv("TF_DUMP_GRAPH_PREFIX");
+    dir = GetDumpDirFromEnvVar();
 
   if (!dir) {
-    LOG(WARNING)
-        << "Failed to generate file because dump location is not specified "
-           "through either "
-           "TF_DUMP_GRAPH_PREFIX environment variable or function argument.";
     return Status(error::Code::INVALID_ARGUMENT,
                   "(TF_DUMP_GRAPH_PREFIX not specified)");
   }
@@ -126,8 +122,10 @@ Status CreateFileForDumping(llvm::StringRef name,
                  << "' directory for dumping: " << status;
     return Status(error::Code::UNAVAILABLE, "(unavailable)");
   }
-  *filepath =
-      llvm::Twine(dir).concat("/").concat(MakeUniqueFilename(name)).str();
+  *filepath = llvm::Twine(dir)
+                  .concat("/")
+                  .concat(MakeUniqueFilename(std::string(name)))
+                  .str();
 
   // Try to open the file and generate a raw_ostream.
   std::unique_ptr<WritableFile> file;
@@ -151,6 +149,27 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
             << "' to '" << filepath << "'";
   return filepath;
+}
+
+const char* GetDumpDirFromEnvVar() {
+  const char* prefix_env = getenv("TF_DUMP_GRAPH_PREFIX");
+  if (!prefix_env) {
+    LOG(WARNING)
+        << "Failed to dump MLIR module because dump location is not "
+        << " specified through TF_DUMP_GRAPH_PREFIX environment variable.";
+    return nullptr;
+  }
+
+  if (absl::EqualsIgnoreCase(prefix_env, "sponge")) {
+    const char* tmp_dir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+    if (!tmp_dir) {
+      LOG(WARNING) << "TF_DUMP_GRAPH_PREFIX=sponge but "
+                      "TEST_UNDECLARED_OUTPUT_DIRS is not set";
+      return nullptr;
+    }
+    return tmp_dir;
+  }
+  return prefix_env;
 }
 
 }  // namespace tensorflow

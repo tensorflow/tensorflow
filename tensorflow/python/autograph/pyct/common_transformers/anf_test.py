@@ -47,7 +47,7 @@ class DummyGensym(object):
 
 # These two test functions have to be top-level, not nested, for compatibility
 # with some unknown version of Python 2.7 preceding 2.7.15.  Why?  Because
-# `exec` and nested function definitions _incomaptibly_ change the
+# `exec` and nested function definitions _incompatibly_ change the
 # representation of local variables, such that `exec` inside a nested function
 # definition is a syntax error in that version.  The tuple form of `exec` fixes
 # this problem, but apparently that was introduced in some unknown version of
@@ -465,7 +465,7 @@ class AnfNonTransformationTest(AnfTransformerTest):
     node, _ = parser.parse_entity(test_fn, future_features=())
     orig_source = parser.unparse(node, indentation='  ')
     orig_str = textwrap.dedent(orig_source).strip()
-    config = [(anf.ANY, anf.LEAVE)]  # Configuration to trasform nothing
+    config = [(anf.ANY, anf.LEAVE)]  # Configuration to transform nothing
     node = anf.transform(
         node, self._simple_context(),
         config=config, gensym_source=DummyGensym)

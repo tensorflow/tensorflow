@@ -1,0 +1,7 @@
+path: "tensorflow.profiler"
+tf_module {
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+}

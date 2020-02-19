@@ -442,7 +442,7 @@ class Bijector(object):
   Non injective maps `g` are supported, provided their domain `D` can be
   partitioned into `k` disjoint subsets, `Union{D1, ..., Dk}`, such that,
   ignoring sets of measure zero, the restriction of `g` to each subset is a
-  differentiable bijection onto `g(D)`.  In particular, this imples that for
+  differentiable bijection onto `g(D)`.  In particular, this implies that for
   `y in g(D)`, the set inverse, i.e. `g^{-1}(y) = {x in D : g(x) = y}`, always
   contains exactly `k` distinct points.
 

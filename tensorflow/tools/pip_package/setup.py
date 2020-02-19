@@ -143,7 +143,7 @@ class InstallCommand(InstallCommandBase):
 
   def finalize_options(self):
     ret = InstallCommandBase.finalize_options(self)
-    self.install_headers = os.path.join(self.install_purelib, 'tensorflow_core',
+    self.install_headers = os.path.join(self.install_platlib, 'tensorflow',
                                         'include')
     self.install_lib = self.install_platlib
     return ret
@@ -181,17 +181,15 @@ class InstallHeaders(Command):
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
-    install_dir = re.sub('/include/tensorflow_core/', '/include/tensorflow/',
-                         install_dir)
 
-    # Copy external code headers into tensorflow_core/include.
+    # Copy external code headers into tensorflow/include.
     # A symlink would do, but the wheel file that gets created ignores
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
     external_header_locations = [
-        'tensorflow_core/include/external/eigen_archive/',
-        'tensorflow_core/include/external/com_google_absl/',
+        'tensorflow/include/external/eigen_archive/',
+        'tensorflow/include/external/com_google_absl/',
     ]
     for location in external_header_locations:
       if location in install_dir:
@@ -245,16 +243,20 @@ else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (
-    list(find_files('*.h', 'tensorflow_core/compiler')) +
-    list(find_files('*.h', 'tensorflow_core/core')) +
-    list(find_files('*.h', 'tensorflow_core/stream_executor')) +
+    list(find_files('*.proto', 'tensorflow/compiler')) +
+    list(find_files('*.proto', 'tensorflow/core')) +
+    list(find_files('*.proto', 'tensorflow/python')) +
+    list(find_files('*.h', 'tensorflow/compiler')) +
+    list(find_files('*.h', 'tensorflow/core')) +
+    list(find_files('*.h', 'tensorflow/python')) +
+    list(find_files('*.h', 'tensorflow/stream_executor')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
     list(find_files('*', 'third_party/eigen3')) + list(
-        find_files('*.h', 'tensorflow_core/include/external/com_google_absl')) +
+        find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(
-        find_files('*.inc', 'tensorflow_core/include/external/com_google_absl'))
-    + list(find_files('*', 'tensorflow_core/include/external/eigen_archive')))
+        find_files('*.inc', 'tensorflow/include/external/com_google_absl'))
+    + list(find_files('*', 'tensorflow/include/external/eigen_archive')))
 
 setup(
     name=project_name,

@@ -50,10 +50,12 @@ void CreateTFStandardPipeline(OpPassManager &pm,
   OpPassManager &func_pm = pm.nest<FuncOp>();
 
   // First operates on the executor dialect:
-  // - eliminate trivial switch/merge
+  // - eliminate trivial switch/merge.
+  // - remove dead islands.
   // - fuse islands as much as possible.
   // - materialize the eventual "pass-through" ops by inlining their content.
   func_pm.addPass(tf_executor::CreateSwitchFoldPass());
+  func_pm.addPass(tf_executor::CreateTFExecutorGraphPruningPass());
   func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateMaterializePassthroughOpPass());
 
@@ -63,6 +65,7 @@ void CreateTFStandardPipeline(OpPassManager &pm,
   if (options.enable_inliner) {
     pm.addPass(createInlinerPass());
   }
+  pm.addPass(createSymbolDCEPass());
   pm.addPass(CreateTFShapeInferencePass());
   pm.addNestedPass<FuncOp>(CreateTFOptimizePass());
   pm.addNestedPass<FuncOp>(createCSEPass());

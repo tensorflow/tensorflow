@@ -30,6 +30,7 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -1644,8 +1645,8 @@ class RNNTest(keras_parameterized.TestCase):
 
     # Must raise error when unroll is set to True
     unroll_rnn_layer = layer(3, unroll=True)
-    with self.assertRaisesRegexp(
-        ValueError, 'The input received constains RaggedTensors *'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'The input received contains RaggedTensors *'):
       unroll_rnn_layer(inputs)
 
     # Check if return sequences outputs are correct
@@ -1665,7 +1666,7 @@ class RNNTest(keras_parameterized.TestCase):
     model_2 = keras.models.Model(x_dense, y_dense)
     dense_data = ragged_data.to_tensor()
     output_dense = model_2.predict(dense_data, steps=1)
-    # Convert the output here to ragged for value comparision
+    # Convert the output here to ragged for value comparison
     output_dense = ragged_tensor.RaggedTensor.from_tensor(
         output_dense, lengths=row_lengths)
     self.assertAllClose(output_ragged, output_dense)
@@ -1697,6 +1698,41 @@ class RNNTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly(),
         experimental_run_tf_function=testing_utils.should_run_tf_function())
     model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 5)))
+
+  @parameterized.parameters(
+      [rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM, rnn_v2.GRU, rnn_v2.LSTM])
+  def test_for_enable_caching_device_for_layer(self, layer_cls):
+    expected_caching_device = ops.executing_eagerly_outside_functions()
+    layer = layer_cls(1)
+    self.assertEqual(layer.cell._enable_caching_device, expected_caching_device)
+
+    # Make sure the config only appears when the none default value is used.
+    config = layer.get_config()
+    self.assertNotIn('enable_caching_device', config)
+
+    non_default_value = not expected_caching_device
+    layer = layer_cls(1, enable_caching_device=non_default_value)
+    self.assertEqual(layer.cell._enable_caching_device, non_default_value)
+    config = layer.get_config()
+    self.assertEqual(config['enable_caching_device'], non_default_value)
+
+  @parameterized.parameters(
+      [rnn_v1.SimpleRNNCell, rnn_v1.GRUCell, rnn_v1.LSTMCell, rnn_v2.GRUCell,
+       rnn_v2.LSTMCell])
+  def test_for_enable_caching_device_for_cell(self, cell_cls):
+    expected_caching_device = ops.executing_eagerly_outside_functions()
+    cell = cell_cls(1)
+    self.assertEqual(cell._enable_caching_device, expected_caching_device)
+
+    # Make sure the config only appears when the none default value is used.
+    config = cell.get_config()
+    self.assertNotIn('enable_caching_device', config)
+
+    non_default_value = not expected_caching_device
+    cell = cell_cls(1, enable_caching_device=non_default_value)
+    self.assertEqual(cell._enable_caching_device, non_default_value)
+    config = cell.get_config()
+    self.assertEqual(config['enable_caching_device'], non_default_value)
 
 
 class RNNCellWithConstants(keras.layers.Layer):

@@ -334,6 +334,29 @@ class CudaSolver {
                        Scalar* dev_V, int ldv, int* dev_lapack_info,
                        int batch_size);
 
+  // Triangular solve
+  // Returns Status::OK() if the kernel was launched successfully.
+  // See https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-trsm
+  template <typename Scalar>
+  Status Trsm(cublasSideMode_t side, cublasFillMode_t uplo,
+              cublasOperation_t trans, cublasDiagType_t diag, int m, int n,
+              const Scalar* alpha, const Scalar* A, int lda, Scalar* B,
+              int ldb);
+
+  template <typename Scalar>
+  Status Trsv(cublasFillMode_t uplo, cublasOperation_t trans,
+              cublasDiagType_t diag, int n, const Scalar* A, int lda, Scalar* x,
+              int intcx);
+
+  // See
+  // https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-trsmbatched
+  template <typename Scalar>
+  Status TrsmBatched(cublasSideMode_t side, cublasFillMode_t uplo,
+                     cublasOperation_t trans, cublasDiagType_t diag, int m,
+                     int n, const Scalar* alpha,
+                     const Scalar* const dev_Aarray[], int lda,
+                     Scalar* dev_Barray[], int ldb, int batch_size);
+
  private:
   OpKernelContext* context_;  // not owned.
   cudaStream_t cuda_stream_;

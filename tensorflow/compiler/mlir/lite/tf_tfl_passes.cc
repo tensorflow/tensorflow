@@ -80,10 +80,6 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   }
 
   if (pass_config.lower_tensor_list_ops) {
-    // Execute this pass before `CanonicalizerPass` in case some TensorList
-    // ops are constant folded into variant types.
-    // TODO(b/137125056): Move this pass after `CanonicalizerPass` after we
-    // handle constant ops that produce `TensorList`.
     // TODO(haoliang): Add this pass by default.
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
   }
@@ -106,6 +102,16 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
     // Convert composite op pass will happen after ophint extraction pass.
     pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
+  }
+
+  // Legalize while early to allow further constant folding.
+  // TODO(jpienaar): This may not actually matter as we do canonicalization
+  // after the legalize below, for now it needs to be below the above passes
+  // that work on TF dialect and before inliner so that the function calls in
+  // body and cond are inlined for optimization.
+  if (pass_config.legalize_tf_while) {
+    pass_manager->addNestedPass<mlir::FuncOp>(
+        mlir::TFL::CreateLegalizeTFWhilePass());
   }
 
   // TODO(jpienaar): Revise post dialect constants.

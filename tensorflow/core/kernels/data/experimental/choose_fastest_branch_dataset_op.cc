@@ -331,7 +331,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+            dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
 
         for (int i = 0; i < dataset()->captured_funcs_.size(); ++i) {
           TF_RETURN_IF_ERROR(dataset()->captured_funcs_[i]->Instantiate(
@@ -515,7 +515,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
             temp_dataset, wrapper_dataset_tensor_.get()));
 
         TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-            ctx, {*wrapper_dataset_tensor_}, branch_index,
+            ctx, this, {*wrapper_dataset_tensor_}, branch_index,
             *instantiated_captured_funcs_[branch_index], prefix(),
             &current_iterator_));
 

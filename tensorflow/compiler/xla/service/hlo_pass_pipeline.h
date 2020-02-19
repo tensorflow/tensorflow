@@ -104,11 +104,15 @@ class HloPassPipeline : public HloPassInterface {
   // helpers enable templating of the core of the pipeline logic by providing
   // HloModule and HloModuleGroup specific methods with the same name.
   static StatusOr<bool> RunHelper(HloPassInterface* pass, HloModule* module) {
-    return pass->Run(module);
+    TF_ASSIGN_OR_RETURN(bool changed, pass->Run(module));
+    module->Cleanup();
+    return changed;
   }
   static StatusOr<bool> RunHelper(HloPassInterface* pass,
                                   HloModuleGroup* module_group) {
-    return pass->RunOnModuleGroup(module_group);
+    TF_ASSIGN_OR_RETURN(bool changed, pass->RunOnModuleGroup(module_group));
+    module_group->Cleanup();
+    return changed;
   }
 
   const string name_;

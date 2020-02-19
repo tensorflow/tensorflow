@@ -112,7 +112,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       return dataset()->input_->MakeIterator(
-          ctx, strings::StrCat(prefix(), "[0]"), &input_impl_);
+          ctx, this, strings::StrCat(prefix(), "[0]"), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -131,7 +131,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
         }
         if (++i_ < 2) {
           TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
-              ctx, strings::StrCat(prefix(), "[1]"), &input_impl_));
+              ctx, this, strings::StrCat(prefix(), "[1]"), &input_impl_));
         }
       }
       *end_of_sequence = true;
@@ -170,7 +170,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
         return errors::InvalidArgument("i_ must be in range [0, 2].");
       if (i_ == 1) {
         TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
-            ctx, strings::StrCat(prefix(), "[1]"), &input_impl_));
+            ctx, this, strings::StrCat(prefix(), "[1]"), &input_impl_));
       } else if (i_ == 2) {
         input_impl_.reset();
       }

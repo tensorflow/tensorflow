@@ -1391,7 +1391,13 @@ class RemoteMonitor(Callback):
     send = {}
     send['epoch'] = epoch
     for k, v in logs.items():
-      send[k] = v
+      # np.ndarray and np.generic are not scalar types
+      # therefore we must unwrap their scalar values and
+      # pass to the json-serializable dict 'send'
+      if isinstance(v, (np.ndarray, np.generic)):
+        send[k] = v.item()
+      else:
+        send[k] = v
     try:
       if self.send_as_json:
         requests.post(self.root + self.path, json=send, headers=self.headers)
@@ -1594,10 +1600,14 @@ class TensorBoard(Callback):
     """Sets Keras model and writes graph if specified."""
     self.model = model
 
-    # TensorBoard callback involves writing a summary file in a
-    # possibly distributed settings.
-    self._log_write_dir = distributed_file_utils.write_dirpath(
-        self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
+    # In case this callback is used via native Keras, _get_distribution_strategy does not exist.
+    if hasattr(self.model, '_get_distribution_strategy'):
+      # TensorBoard callback involves writing a summary file in a
+      # possibly distributed settings.
+      self._log_write_dir = distributed_file_utils.write_dirpath(
+          self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
+    else:
+      self._log_write_dir = self.log_dir
 
     with context.eager_mode():
       self._close_writers()
@@ -1793,9 +1803,11 @@ class TensorBoard(Callback):
     summary_state.writer = self._prev_summary_writer
     summary_state.step = self._prev_summary_step
 
-    # Safely remove the unneeded temp files.
-    distributed_file_utils.remove_temp_dirpath(
-        self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
+    # In case this callback is used via native Keras, _get_distribution_strategy does not exist.
+    if hasattr(self.model, '_get_distribution_strategy'):
+      # Safely remove the unneeded temp files.
+      distributed_file_utils.remove_temp_dirpath(
+          self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
 
   def _enable_trace(self):
     if context.executing_eagerly():

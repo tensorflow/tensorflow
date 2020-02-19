@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_RNG_H_
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/rng.h"
 

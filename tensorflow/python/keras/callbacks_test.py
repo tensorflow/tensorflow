@@ -893,7 +893,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
   def test_EarlyStopping_with_baseline(self):
     with self.cached_session():
       np.random.seed(1337)
-      baseline = 0.5
+      baseline = 0.6
       (data, labels), _ = testing_utils.get_test_data(
           train_samples=100,
           test_samples=50,
@@ -1349,6 +1349,31 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           verbose=0)
       t.join()
       assert not t.is_alive()
+
+  def test_RemoteMonitor_np_array(self):
+    if requests is None:
+      self.skipTest('`requests` required to run this test')
+    with test.mock.patch.object(requests, 'post') as requests_post:
+      monitor = keras.callbacks.RemoteMonitor(send_as_json=True)
+      a = np.arange(1)  # a 1 by 1 array
+      logs = {'loss': 0., 'val': a}
+      monitor.on_epoch_end(0, logs=logs)
+      send = {'loss': 0., 'epoch': 0, 'val': 0}
+      requests_post.assert_called_once_with(
+          monitor.root + monitor.path, json=send, headers=monitor.headers)
+
+  def test_RemoteMonitor_np_float32(self):
+    if requests is None:
+      self.skipTest('`requests` required to run this test')
+
+    with test.mock.patch.object(requests, 'post') as requests_post:
+      monitor = keras.callbacks.RemoteMonitor(send_as_json=True)
+      a = np.float32(1.0)  # a float32 generic type
+      logs = {'loss': 0., 'val': a}
+      monitor.on_epoch_end(0, logs=logs)
+      send = {'loss': 0., 'epoch': 0, 'val': 1.0}
+      requests_post.assert_called_once_with(
+          monitor.root + monitor.path, json=send, headers=monitor.headers)
 
   def test_RemoteMonitorWithJsonPayload(self):
     if requests is None:

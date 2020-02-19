@@ -22,6 +22,10 @@ application we'll be using has been tested on the following devices:
     (using Arduino IDE)
 *   [Adafruit Circuit Playground Bluefruit](https://learn.adafruit.com/tensorflow-lite-for-circuit-playground-bluefruit-quickstart?view=all)
     (using Arduino IDE)
+*   [Espressif ESP32-DevKitC](https://www.espressif.com/en/products/hardware/esp32-devkitc/overview)
+    (using ESP IDF)
+*   [Espressif ESP-EYE](https://www.espressif.com/en/products/hardware/esp-eye/overview)
+    (using ESP IDF)
 
 Learn more about supported platforms in
 [TensorFlow Lite for Microcontrollers](index.md).
@@ -167,7 +171,7 @@ model to ensure its schema version is compatible with the version we are using:
 ```C++
 const tflite::Model* model = ::tflite::GetModel(g_sine_model_data);
 if (model->version() != TFLITE_SCHEMA_VERSION) {
-  error_reporter->Report(
+  TF_LITE_REPORT_ERROR(error_reporter,
       "Model provided is schema version %d not equal "
       "to supported version %d.\n",
       model->version(), TFLITE_SCHEMA_VERSION);
@@ -280,7 +284,7 @@ instance:
 ```C++
 TfLiteStatus invoke_status = interpreter.Invoke();
 if (invoke_status != kTfLiteOk) {
-  error_reporter->Report("Invoke failed\n");
+  TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
 }
 ```
 

@@ -227,7 +227,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     loaded = keras_load.load(saved_model_dir)
     input_arr = array_ops.ones((4, 3))
 
-    # Run the layer, and use the keras backend learing phase
+    # Run the layer, and use the keras backend learning phase
     keras.backend.set_learning_phase(0)
     self.assertAllEqual(input_arr, loaded(input_arr))
     keras.backend.set_learning_phase(1)
@@ -425,8 +425,8 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
     self.assertAllClose(
         model.predict(input_arr),
-        loaded.signatures['predict'](
-            ops.convert_to_tensor(input_arr.astype('float32')))['predictions'])
+        loaded.signatures['predict'](ops.convert_to_tensor_v2(
+            input_arr.astype('float32')))['predictions'])
 
     feature = {
         'inputs': feature_pb2.Feature(
@@ -435,7 +435,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     example = example_pb2.Example(
         features=feature_pb2.Features(feature=feature))
     outputs = loaded.signatures['parse_and_predict'](
-        ops.convert_to_tensor([example.SerializeToString()]))
+        ops.convert_to_tensor_v2([example.SerializeToString()]))
     self.assertAllClose(model.predict(input_arr), outputs['predictions'])
     self.assertAllClose(model.layers[0](input_arr), outputs['layer_1_outputs'])
 

@@ -268,7 +268,7 @@ TEST_P(MemorySpaceAssignmentTest, Simple) {
 
   // Make sure the preset assignments is sane.
   EXPECT_EQ(preset_assignments->chunks().size(), 3);
-  EXPECT_EQ(preset_assignments->sizes().size(), 1);
+  EXPECT_EQ(preset_assignments->assignment_informations().size(), 1);
   // Ensure the offset assigned to add and sub are different.
   EXPECT_NE(preset_assignments->chunks()[0].second.offset,
             preset_assignments->chunks()[1].second.offset);
@@ -2027,12 +2027,13 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
           kAlternateMemorySpace);
-  // Indexes {1} and {2} of the while loop argument are only placed in the
-  // alternate memory if we enable the allocate_across_sequential_calls option.
+  // Index {1} is a scalar, so it is always placed in the default memory.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {1})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-          memory_space_across_while);
+          kDefaultMemorySpace);
+  // Index {2} of the while loop argument is placed in the alternate memory if
+  // we enable the allocate_across_sequential_calls option.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {2})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
@@ -2823,6 +2824,21 @@ TEST_P(MemorySpaceAssignmentTest,
     const HloPosition& position = position_and_chunk.first;
     EXPECT_NE(position.instruction, p1);
     EXPECT_NE(position.instruction, add);
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, Determinism) {
+  // Run memory space assignment a few times to make sure every time it compiles
+  // to the same thing.
+  std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
+
+  AssignMemorySpace(module.get());
+  std::string module_str = module->ToString();
+
+  for (int i = 0; i < 10; ++i) {
+    std::unique_ptr<HloModule> other_module = CreateEvictAndPrefetchModule();
+    AssignMemorySpace(other_module.get());
+    EXPECT_EQ(module_str, other_module->ToString());
   }
 }
 

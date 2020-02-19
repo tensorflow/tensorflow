@@ -81,6 +81,17 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "context_test",
+    srcs = ["context_test.cc"],
+    deps = [
+        ":context",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_cuda_library(
     name = "eager_operation",
     srcs = [
@@ -100,6 +111,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -146,6 +158,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/types:variant",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -165,6 +178,7 @@ tf_cc_test(
     srcs = ["tensor_handle_test.cc"],
     deps = [
         ":tensor_handle",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -391,6 +405,7 @@ tf_cc_test(
     deps = [
         ":eager_op_rewrite_registry",
         "//tensorflow/core:lib",
+        "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

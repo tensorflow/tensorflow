@@ -325,7 +325,6 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
     self.assertAllClose(keras.backend.get_value(ref_model.layers[1].kernel),
                         keras.backend.get_value(model.layers[1].kernel))
 
-  @test_util.run_deprecated_v1
   def test_sequential_weight_loading_group_name_with_incorrect_shape(self):
     if h5py is None:
       return
@@ -337,7 +336,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
     num_hidden = 5
     input_dim = 3
     num_classes = 2
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       ref_model = keras.models.Sequential()
       ref_model.add(keras.layers.Dense(num_hidden, input_dim=input_dim,
                                        name='d1'))
@@ -429,11 +428,10 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       # The model has been trained on two batches. So the tolerance is larger.
       self.assertAllClose(out, out2, atol=0.01)
 
-  @test_util.run_deprecated_v1
   def test_sequential_model_saving_without_input_shape(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2))
       model.add(keras.layers.RepeatVector(3))
@@ -482,12 +480,11 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
-  @test_util.run_deprecated_v1
   def test_sequential_model_saving_2(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
 
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       # test with custom optimizer, loss
 
       class CustomOp(keras.optimizers.RMSprop):
@@ -516,11 +513,10 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       out2 = model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
-  @test_util.run_deprecated_v1
   def test_functional_model_saving(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       inputs = keras.layers.Input(shape=(3,))
       x = keras.layers.Dense(2)(inputs)
       output = keras.layers.Dense(3)(x)
@@ -687,11 +683,10 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       out2 = model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
-  @test_util.run_deprecated_v1
   def test_model_saving_to_pre_created_h5py_file(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       inputs = keras.Input(shape=(3,))
       x = keras.layers.Dense(2)(inputs)
       outputs = keras.layers.Dense(3)(x)
@@ -751,6 +746,22 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
     model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
     keras.models.save_model(model, saved_model_dir, save_format=save_format)
     model = keras.models.load_model(saved_model_dir)
+
+  def test_saving_group_naming_h5py(self):
+    # Test saving model with layer which name is prefix to a previous layer
+    # name.
+
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    h5_path = os.path.join(temp_dir, 'test.h5')
+
+    input_layer = keras.layers.Input((None, None, 3), name='test_input')
+    x = keras.layers.Conv2D(1, 1, name='conv1/conv')(input_layer)
+    x = keras.layers.Activation('relu', name='conv1')(x)
+    model = keras.models.Model(inputs=input_layer, outputs=x)
+
+    model.save_weights(h5_path)
+    model.load_weights(h5_path)
 
   def test_primitive_attrs_contain_no_extraneous_strings(self):
     if h5py is None:
@@ -996,7 +1007,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       model.load_weights(fname)
 
   def test_no_graph_pollution(self):
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       graph = ops.Graph()
       with graph.as_default(), self.session(graph) as session:
         model = SubclassedModel()

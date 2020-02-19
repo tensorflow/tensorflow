@@ -98,6 +98,7 @@ cc_library(
     hdrs = if_gpu_is_configured(["gpu_executor.h"]),
     deps = [
         ":gpu_kernel_header",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:platform",
         "//tensorflow/stream_executor:stream_executor_internal",
@@ -130,6 +131,7 @@ cc_library(
     hdrs = if_gpu_is_configured(["gpu_rng.h"]),
     deps = [
         ":gpu_types_header",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:rng",
         "//tensorflow/stream_executor/platform",
@@ -142,8 +144,8 @@ cc_library(
     hdrs = if_gpu_is_configured(["gpu_stream.h"]),
     deps = [
         ":gpu_driver_header",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:stream_executor_internal",
-        "//tensorflow/stream_executor/platform",
     ],
 )
 
@@ -154,6 +156,7 @@ cc_library(
     deps = [
         ":gpu_driver_header",
         ":gpu_executor_header",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/lib",
@@ -197,6 +200,17 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_asm_opts",
+    hdrs = ["gpu_asm_opts.h"],
+    visibility = [
+        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
+        "//tensorflow/stream_executor:__subpackages__",
+    ],
+    deps = ["@com_google_absl//absl/strings"],
+)
+
+cc_library(
     name = "asm_compiler",
     srcs = if_gpu_is_configured(["asm_compiler.cc"]),
     hdrs = if_gpu_is_configured(["asm_compiler.h"]),
@@ -208,8 +222,9 @@ cc_library(
         "//tensorflow/stream_executor:__subpackages__",
     ],
     deps = if_gpu_is_configured([
-        "gpu_driver_header",
-        "gpu_helpers_header",
+        ":gpu_asm_opts",
+        ":gpu_driver_header",
+        ":gpu_helpers_header",
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core:cuda_libdevice_path",
@@ -236,7 +251,9 @@ cc_library(
         "//tensorflow/stream_executor:__subpackages__",
     ],
     deps = if_gpu_is_configured([
-        "asm_compiler",
+        ":asm_compiler",
+        ":gpu_asm_opts",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",

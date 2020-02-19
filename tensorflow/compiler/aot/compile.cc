@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "llvm-c/Target.h"
 #include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/flags.h"
@@ -106,12 +107,11 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   if (flags.mlir_components == "Bridge") {
     TF_RETURN_IF_ERROR(
         ConvertGraphDefToXlaViaMlir(graph_def, config, &computation));
-  } else {
-    if (!flags.mlir_components.empty()) {
-      return errors::Unknown("Unknown mlir_components ", flags.mlir_components);
-    }
+  } else if (flags.mlir_components.empty() || flags.mlir_components == "None") {
     TF_RETURN_IF_ERROR(ConvertGraphDefToXla(std::move(graph_def), config,
                                             client, &computation));
+  } else {
+    return errors::Unknown("Unknown mlir_components ", flags.mlir_components);
   }
   if (!flags.out_session_module.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloSnapshot> module,
@@ -142,7 +142,7 @@ static Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
   }
 }
 
-static std::once_flag targets_init;
+static absl::once_flag targets_init;
 
 static void InitializeTargets() {
   // Initialize all LLVM targets so we can cross compile.
@@ -167,7 +167,7 @@ static void InitializeTargets() {
 }
 
 Status Main(const MainFlags& flags) {
-  std::call_once(targets_init, &InitializeTargets);
+  absl::call_once(targets_init, &InitializeTargets);
 
   // Process config.
   tf2xla::Config config;
