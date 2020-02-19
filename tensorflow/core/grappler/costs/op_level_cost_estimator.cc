@@ -773,6 +773,11 @@ int64 OpLevelCostEstimator::CountConv2DOperations(
   DCHECK(op_info.op() == kConv2d || op_info.op() == kDepthwiseConv2dNative)
       << "Invalid Operation: not Conv2D nor DepthwiseConv2dNative";
 
+  if (op_info.inputs_size() < 2) {  // Unexpect inputs.
+    *found_unknown_shapes = true;
+    return 0;
+  }
+
   ConvolutionDimensions conv_dims = ConvolutionDimensionsFromInputs(
       op_info.inputs(0).shape(), op_info.inputs(1).shape(), op_info,
       found_unknown_shapes);
