@@ -31,6 +31,8 @@ struct LoggingDevice {
   tensorflow::string underlying_device;
   // Set to true whenever a TensorHandle is copied onto the device
   bool* arrived_flag;
+  // Set to true whenever an operation is executed
+  bool* executed_flag;
 };
 
 struct LoggedTensor {
@@ -115,6 +117,7 @@ void LoggingDeviceExecute(int num_inputs, TFE_TensorHandle** inputs,
     outputs[i] = MakeLoggedTensorHandle(dev->ctx, dev->device_name,
                                         std::move(logged_tensor), s);
   }
+  *(dev->executed_flag) = true;
 }
 
 void DeleteLoggingDevice(void* device_info) {
@@ -122,7 +125,7 @@ void DeleteLoggingDevice(void* device_info) {
 }
 
 void RegisterLoggingDevice(TFE_Context* context, const char* name,
-                           bool* arrived_flag) {
+                           bool* arrived_flag, bool* executed_flag) {
   TFE_CustomDevice custom_device;
   custom_device.copy_tensor_to_device = &CopyToLoggingDevice;
   custom_device.copy_tensor_from_device = &CopyTensorFromLoggingDevice;
@@ -131,6 +134,7 @@ void RegisterLoggingDevice(TFE_Context* context, const char* name,
   LoggingDevice* device = new LoggingDevice;
   device->ctx = context;
   device->arrived_flag = arrived_flag;
+  device->executed_flag = executed_flag;
   device->device_name = name;
   device->underlying_device = "/job:localhost/replica:0/task:0/device:CPU:0";
   TFE_RegisterCustomDevice(context, custom_device, name, device);
@@ -144,13 +148,15 @@ TEST(CUSTOM_DEVICE, RegisterSimpleDevice) {
   TFE_DeleteContextOptions(opts);
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   bool arrived = false;
+  bool executed = false;
   const char* name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  RegisterLoggingDevice(context, name, &arrived);
+  RegisterLoggingDevice(context, name, &arrived, &executed);
   TFE_TensorHandle* hcpu = TestMatrixTensorHandle();
   ASSERT_FALSE(arrived);
   TFE_TensorHandle* hdevice =
       TFE_TensorHandleCopyToDevice(hcpu, context, name, status.get());
   ASSERT_TRUE(arrived);
+  ASSERT_FALSE(executed);
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> matmul(
       MatMulOp(context, hcpu, hdevice), TFE_DeleteOp);
@@ -160,11 +166,41 @@ TEST(CUSTOM_DEVICE, RegisterSimpleDevice) {
   int num_retvals = 1;
   TFE_Execute(matmul.get(), &retval, &num_retvals, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_TRUE(executed);
 
   TFE_DeleteTensorHandle(retval);
   TFE_DeleteTensorHandle(hcpu);
   TFE_DeleteTensorHandle(hdevice);
   TFE_DeleteContext(context);
+}
+
+TEST(CUSTOM_DEVICE, ResetOperation) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> context(
+      TFE_NewContext(opts, status.get()), TFE_DeleteContext);
+  TFE_DeleteContextOptions(opts);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  bool arrived = false;
+  bool executed = false;
+  const char* custom_device_name =
+      "/job:localhost/replica:0/task:0/device:CUSTOM:0";
+  RegisterLoggingDevice(context.get(), custom_device_name, &arrived, &executed);
+
+  std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> reused_op(
+      TFE_NewOp(context.get(), "Identity", status.get()), TFE_DeleteOp);
+  TFE_OpReset(reused_op.get(), "Identity", custom_device_name, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_EQ(tensorflow::string(TFE_OpGetDevice(reused_op.get(), status.get())),
+            tensorflow::string(custom_device_name));
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  TFE_OpReset(reused_op.get(), "Identity",
+              "/job:localhost/replica:0/task:0/device:CPU:0", status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_EQ(tensorflow::string(TFE_OpGetDevice(reused_op.get(), status.get())),
+            tensorflow::string("/job:localhost/replica:0/task:0/device:CPU:0"));
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 }
 
 }  // namespace

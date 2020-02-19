@@ -748,7 +748,7 @@ Status EagerContext::FindCustomDeviceFromName(const string& device_name,
 
 void EagerContext::RegisterCustomDevice(const string& device_name,
                                         std::unique_ptr<CustomDevice> device) {
-  custom_devices_[device_name] = std::move(device);
+  custom_devices_.emplace(device_name, std::move(device));
 }
 
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {
