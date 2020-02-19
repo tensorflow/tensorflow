@@ -2161,7 +2161,9 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
   profiler::TraceMe activity(
       [&]() {
         return strings::StrCat("ExecutorPropagateOutputs#", "id=", step_id_,
-                               ",kernel_name=", item->kernel->name_view(), "#");
+                               ",kernel_name=", item->kernel->name_view(),
+                               ",num_output_edges=", item->num_output_edges,
+                               "#");
       },
       profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
