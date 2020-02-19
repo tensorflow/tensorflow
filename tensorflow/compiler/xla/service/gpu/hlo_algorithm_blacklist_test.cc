@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/stream_executor/dnn.h"
 
@@ -31,9 +33,9 @@ class BlacklistTest : public testing::Test {
         "XLA_FLAGS",
         absl::StrCat(
             "--xla_gpu_algorithm_blacklist_path=",
-            tensorflow::io::JoinPath(tensorflow::testing::TensorFlowSrcRoot(),
-                                     "compiler", "xla", "service", "gpu",
-                                     "data", "hlo_algorithm_blacklist.pbtxt"))
+            tensorflow::GetDataDependencyFilepath(tensorflow::io::JoinPath(
+                "tensorflow", "compiler", "xla", "service", "gpu", "data",
+                "hlo_algorithm_blacklist.pbtxt")))
             .data(),
         0);
   }
