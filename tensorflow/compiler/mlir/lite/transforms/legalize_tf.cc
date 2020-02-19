@@ -49,6 +49,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace mlir {
@@ -114,8 +116,53 @@ DECL_CONVERT_OP(SplitV);
 DECL_CONVERT_OP(StridedSlice);
 DECL_CONVERT_OP(Unpack);
 DECL_CONVERT_OP(Reciprocal);
+DECL_CONVERT_OP(RandomUniform);
 
 #undef DECL_CONVERT_OP
+
+PatternMatchResult ConvertTFRandomUniformOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto random_uniform_op = cast<TF::RandomUniformOp>(op);
+  if (random_uniform_op.seed() == 0 && random_uniform_op.seed2() == 0) {
+    return matchFailure();
+  }
+  if (!random_uniform_op.dtype().isF32()) {
+    return matchFailure();
+  }
+  typedef tensorflow::random::UniformDistribution<
+      tensorflow::random::PhiloxRandom, float>
+      Distribution;
+
+  tensorflow::random::PhiloxRandom generator(
+      random_uniform_op.seed().getSExtValue(),
+      random_uniform_op.seed2().getSExtValue());
+  Distribution dist;
+  int num_elements = 0;
+  if (auto output_type =
+          random_uniform_op.output().getType().dyn_cast_or_null<ShapedType>()) {
+    if (auto ranked_output = output_type.dyn_cast_or_null<RankedTensorType>()) {
+      if (!ranked_output.hasRank() || ranked_output.getNumDynamicDims() != 0) {
+        return matchFailure();
+      }
+      num_elements = output_type.getNumElements();
+      size_t offset = 0;
+      size_t num_samples = Distribution::kResultElementCount;
+      llvm::SmallVector<float, 32> data;
+      data.resize(num_elements);
+      while (offset < num_elements) {
+        const typename Distribution::ResultType samples = dist(&generator);
+        std::copy(&samples[0],
+                  &samples[0] + std::min(num_samples, data.size() - offset),
+                  &data[0] + offset);
+        offset += num_samples;
+      }
+      auto output_data = DenseFPElementsAttr::get(output_type, data);
+      rewriter.replaceOpWithNewOp<ConstantOp>(op, output_type, output_data);
+      return matchSuccess();
+    }
+  }
+  return matchFailure();
+}
 
 PatternMatchResult ConvertTFConcatOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
@@ -521,11 +568,12 @@ void LegalizeTF::runOnFunction() {
 
   // Add the generated patterns to the list.
   populateWithGenerated(ctx, &patterns);
-  patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
-                  ConvertTFMatrixDiagV2Op, ConvertTFMatrixDiagV3Op,
-                  ConvertTFPackOp, ConvertTFReshapeOp, ConvertTFSplitOp,
-                  ConvertTFSplitVOp, ConvertTFStridedSliceOp, ConvertTFUnpackOp,
-                  ConvertTFAssertOp, ConvertTFReciprocalOp>(ctx);
+  patterns
+      .insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
+              ConvertTFMatrixDiagV2Op, ConvertTFMatrixDiagV3Op, ConvertTFPackOp,
+              ConvertTFReshapeOp, ConvertTFSplitOp, ConvertTFSplitVOp,
+              ConvertTFStridedSliceOp, ConvertTFUnpackOp, ConvertTFAssertOp,
+              ConvertTFReciprocalOp, ConvertTFRandomUniformOp>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 
