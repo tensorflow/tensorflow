@@ -293,6 +293,16 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_MAXIMUM:
     case BuiltinOperator_MINIMUM:
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.output_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+      return 1;
+
     case BuiltinOperator_PACK:
       if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
