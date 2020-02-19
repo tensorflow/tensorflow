@@ -56,7 +56,7 @@ struct PoolingWorkspaceDescriptor {
 struct PoolingWorkspaceCache {
   std::map<const void*, PoolingWorkspaceDescriptor> cache;
   const int trim_size = 1000;
-  const uint64_t memory_budget = 1e8;
+  const uint64_t memory_budget = 2e7;
   uint64_t timestamp = 0;
   uint64_t memory_used = 0;
   bool find(const void* p, const dnn::BatchDescriptor& input_dimensions,
@@ -70,9 +70,10 @@ struct PoolingWorkspaceCache {
     const dnn::PoolingDescriptor& pooling_dimensions,
     int _type,
     std::unique_ptr<TemporaryDeviceMemory<uint8>>& workspace,
-    size_t wsp_size);
+    size_t wsp_size,
+    hipStream_t hip_stream);
 private:
-  void trim();
+  void trim(hipStream_t hip_stream);
 };
 
 

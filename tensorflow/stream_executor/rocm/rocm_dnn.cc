@@ -4306,15 +4306,19 @@ void PoolingWorkspaceCache::insert(const void* p,
     const dnn::PoolingDescriptor& pooling_dimensions,
     int _type,
     std::unique_ptr<TemporaryDeviceMemory<uint8>>& workspace,
-    size_t wsp_size) {
+    size_t wsp_size,
+    hipStream_t hip_stream) {
 
   PoolingWorkspaceDescriptor* desc = 0;
   auto it = cache.find(p); 
   if(it!=cache.end()) {
+    // replacing an entry with the same pointer but different attributes
+    // (if everything matches, the caller is expected to reuse the entry)
     desc = &it->second;
+    hipStreamSynchronize(hip_stream);
     memory_used -= desc->workspace_size;
   }
-  else {    
+  else {
     cache[p] = PoolingWorkspaceDescriptor();
     desc = &cache[p];
   }
@@ -4327,19 +4331,25 @@ void PoolingWorkspaceCache::insert(const void* p,
   desc->workspace = std::move(workspace);
   desc->workspace_size = wsp_size;
   memory_used += wsp_size;
-  trim();
+  trim(hip_stream);
 }
 
 
-void PoolingWorkspaceCache::trim() {
+void PoolingWorkspaceCache::trim(hipStream_t hip_stream) {
   if(memory_used < memory_budget && cache.size() < trim_size)
     return;
+  bool must_sync = true;
   while(true) {
     int new_size = cache.size() - (cache.size() >> 2); 
     std::vector<const void*> old_entries;
     for(auto& x: cache)
       if(x.second.timestamp + new_size < timestamp)
         old_entries.push_back(x.first);
+    if(old_entries.empty())
+      break;
+    if(must_sync)
+      hipStreamSynchronize(hip_stream);
+    must_sync = true;
     for(auto x: old_entries) {
       memory_used -= cache[x].workspace_size;
       cache.erase(x);
@@ -4348,8 +4358,6 @@ void PoolingWorkspaceCache::trim() {
       break;
   }
 }
-
-#define DT_FLOAT 0
 
 bool MIOpenSupport::DoPoolForward(
     Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
@@ -4383,9 +4391,28 @@ bool MIOpenSupport::DoPoolForward(
       return false;
     }
     if(workspace_size!=0) {
-      wsp_mem = stream->AllocateTemporaryArray<uint8>(workspace_size)
-            .ConsumeValueOrDie();
-      workspace = reinterpret_cast<uint8*>(wsp_mem->mutable_device_memory()->opaque());
+      PoolingWorkspaceDescriptor* pdesc = 0;
+      bool cache_hit = m_pooling_cache_allowed && m_pooling_cache.find(input_data.opaque(), input_dimensions,
+        output_dimensions,
+        pooling_dimensions,
+        type, 
+        pdesc);
+      if(cache_hit) {
+        // reusing the same buffer
+        workspace = reinterpret_cast<uint8*>(pdesc->workspace->mutable_device_memory()->opaque());
+      }
+      else {
+        wsp_mem = stream->AllocateTemporaryArray<uint8>(workspace_size)
+              .ConsumeValueOrDie();
+        workspace = reinterpret_cast<uint8*>(wsp_mem->mutable_device_memory()->opaque());
+        //printf("Inserting %p\n", input_data.opaque());
+        m_pooling_cache.insert(input_data.opaque(),
+          input_dimensions,
+          output_dimensions,
+          pooling_dimensions,
+          miopenFloat, 
+          wsp_mem, workspace_size);
+      }
     }
   }
 
@@ -4397,15 +4424,6 @@ bool MIOpenSupport::DoPoolForward(
     LOG(ERROR) << "failed to enqueue forward pooling on stream: "
                << ToString(status);
     return false;
-  }
-  if(m_pooling_cache_enabled && workspace_size!=0) {
-    //printf("Inserting %p\n", input_data.opaque());
-    m_pooling_cache.insert(input_data.opaque(),
-      input_dimensions,
-      output_dimensions,
-      pooling_dimensions,
-      miopenFloat, 
-      wsp_mem, workspace_size);
   }
   return true;
 }
