@@ -27,6 +27,7 @@ transitive_hdrs(
     name = "included_headers",
     deps = [
         "//tensorflow/c/experimental:network",
+        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -126,9 +127,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/docs:generate_lib",
     "//tensorflow/tools/docs:parser",
     "//tensorflow/tools/docs:py_guide_parser",
-] + if_xla_available([
-    "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
-])
+]
 
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
