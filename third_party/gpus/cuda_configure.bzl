@@ -39,6 +39,7 @@ load(
 )
 load(
     "//third_party/remote_config:common.bzl",
+    "config_repo_label",
     "err_out",
     "execute",
     "get_bash_bin",
@@ -1156,17 +1157,17 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
     )
     repository_ctx.template(
         "cuda/BUILD",
-        Label(remote_config_repo + "/cuda:BUILD"),
+        config_repo_label(remote_config_repo, "cuda:BUILD"),
         {},
     )
     repository_ctx.template(
         "cuda/build_defs.bzl",
-        Label(remote_config_repo + "/cuda:build_defs.bzl"),
+        config_repo_label(remote_config_repo, "cuda:build_defs.bzl"),
         {},
     )
     repository_ctx.template(
         "cuda/cuda/cuda_config.h",
-        Label(remote_config_repo + "/cuda:cuda/cuda_config.h"),
+        config_repo_label(remote_config_repo, "cuda:cuda/cuda_config.h"),
         {},
     )
 
