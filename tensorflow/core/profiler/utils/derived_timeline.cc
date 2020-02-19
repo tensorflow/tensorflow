@@ -302,7 +302,9 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
         device_plane.GetOrCreateLine(kThreadIdKernelLaunch);
     launch_line.SetName(kDerivedLineKernelLaunch);
     launch_line.SetTimestampNs(std::min(device_plane_start, host_plane_start));
-    for (const auto& [group_id, group_info] : per_device_launch_info[i]) {
+    for (const auto& it : per_device_launch_info[i]) {
+      uint64 group_id = it.first;
+      const GroupLaunchInfo& group_info = it.second;
       if (auto group_name = gtl::FindOrNull(event_group_name_map, group_id)) {
         XEventBuilder device_event =
             launch_line.AddEvent(*device_plane.GetOrCreateEventMetadata(
