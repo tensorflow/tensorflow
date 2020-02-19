@@ -24,7 +24,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,6 +36,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util as util_v1
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import default_gradient
@@ -207,8 +208,6 @@ def while_loop(cond,
       num_cond_captures = len(cond_graph.external_captures)
       assert (cond_graph.external_captures ==
               body_graph.external_captures[:num_cond_captures])
-      cond_graph_captures = object_identity.ObjectIdentitySet(
-          cond_graph.external_captures)
       _duplicate_body_captures_in_cond(
           cond_graph, body_graph.external_captures[num_cond_captures:])
 
@@ -266,21 +265,10 @@ def while_loop(cond,
       output_shapes[orig_loop_vars_range] = nest.flatten(
           shape_invariants, expand_composites=True)[orig_loop_vars_range]
 
-      cond_stateful_ops = [
-          op for op in cond_graph.get_operations() if op._is_stateful
-      ]
-      body_stateful_ops = [
-          op for op in body_graph.get_operations() if op._is_stateful
-      ]
-      if (cond_stateful_ops or body_stateful_ops):
-        op_fn = gen_functional_ops._while
-      else:
-        op_fn = gen_functional_ops.stateless_while
-
-      outputs = op_fn(
+      outputs = _build_while_op(
           flattened_loop_vars,
-          util.create_new_tf_function(cond_graph),
-          util.create_new_tf_function(body_graph),
+          cond_graph,
+          body_graph,
           output_shapes=output_shapes,
           parallel_iterations=parallel_iterations,
           name=scope)
@@ -304,9 +292,11 @@ def while_loop(cond,
       # exit op as input.
       outputs = tuple(array_ops.identity(t) for t in outputs)
 
-  outputs = _pack_sequence_as(
-      orig_loop_vars, outputs[first_loop_var_index:first_loop_var_index +
-                              num_flattened_outputs])
+  output_loop_vars = outputs[first_loop_var_index:first_loop_var_index +
+                             num_flattened_outputs]
+  if not back_prop:
+    output_loop_vars = [array_ops.stop_gradient(t) for t in output_loop_vars]
+  outputs = _pack_sequence_as(orig_loop_vars, output_loop_vars)
 
   if return_same_structure:
     return outputs
@@ -380,7 +370,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
                           [t.shape for t in new_outputs])
     _copy_handle_data(new_outputs, op.outputs[orig_num_params:])
 
-  # Do not ingore grads wrt extra outputs when computing higher order
+  # Do not ignore grads wrt extra outputs when computing higher order
   # derivatives.
   while_op._set_attr("_num_original_outputs",
                      attr_value_pb2.AttrValue(i=len(while_op.outputs)))
@@ -404,10 +394,10 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   _check_num_inputs_outputs(cond_grad_graph, body_grad_graph, len(loop_vars))
 
-  outputs = gen_functional_ops._while(
+  outputs = _build_while_op(
       loop_vars,
-      util.create_new_tf_function(cond_grad_graph),
-      util.create_new_tf_function(body_grad_graph),
+      cond_grad_graph,
+      body_grad_graph,
       output_shapes=[t.shape for t in body_grad_graph.outputs],
       parallel_iterations=parallel_iterations,
       name="%s_grad" % while_op.name)
@@ -420,6 +410,29 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   # See comment in while_loop.
   outputs = [array_ops.identity(t) for t in outputs]
   return _get_structured_grad_output(outputs, grads, body_grad_graph)
+
+
+def _build_while_op(loop_vars, cond_graph, body_graph, output_shapes,
+                    parallel_iterations, name):
+  """Builds the functional StatelessWhile/While op."""
+  cond_stateful_ops = [
+      op for op in cond_graph.get_operations() if op._is_stateful
+  ]
+  body_stateful_ops = [
+      op for op in body_graph.get_operations() if op._is_stateful
+  ]
+  if (cond_stateful_ops or body_stateful_ops):
+    op_fn = gen_functional_ops._while
+  else:
+    op_fn = gen_functional_ops.stateless_while
+
+  return op_fn(
+      loop_vars,
+      util.create_new_tf_function(cond_graph),
+      util.create_new_tf_function(body_graph),
+      output_shapes=output_shapes,
+      parallel_iterations=parallel_iterations,
+      name=name)
 
 
 def _get_intermediates(func_graph):
@@ -447,8 +460,7 @@ def _get_intermediates(func_graph):
   # 3. Do not accumulate loop vars that are returned as-is just like captured
   #    tensors.
   intermediates = []
-  reverse_captures = dict(
-      (v.experimental_ref(), k) for k, v in func_graph.captures)
+  reverse_captures = dict((v.ref(), k) for k, v in func_graph.captures)
 
   for op in func_graph.get_operations():
     if op.type == "Identity":
@@ -460,7 +472,7 @@ def _get_intermediates(func_graph):
       if (o is not func_graph.inputs[0] and  # Loop counter.
           o.dtype != dtypes.resource and  # Do not accumulate resource tensors.
           _get_accumulator(o) is None and  # Has existing accumulator.
-          o.experimental_ref() not in reverse_captures
+          o.ref() not in reverse_captures
          ):  # Captured value, hence loop invariant.
         intermediates.append(o)
   return intermediates
@@ -895,6 +907,61 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
   @property
   def while_op_needs_rewrite(self):
     return self.extra_inputs
+
+  def _create_op_internal(
+      self,
+      op_type,
+      inputs,
+      dtypes=None,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_device=True):
+    # For a reduction op, if op is in in the gradient body graph and its input
+    # is from the forward graph, moving op to the forward graph means we would
+    # store the tensor after the reduction as opposed to the tensor before
+    # reduction, and therefore could significantly reduce memory consumption.
+    # For now, we do this only for a few ops.
+    #
+    # We don't do this if any input tensor has already been accumulated. This
+    # can happen if we output all intermediates in the forward pass.
+    #
+    # If in XLA context, do not move constant ops to forward pass as pushing to
+    # and popping from a TensorList removes the constant property of an op and
+    # breaks XLA compilation, which requires certain inputs to be compile-time
+    # constant for certain ops.
+    if (op_type in {"Shape", "Size", "Rank"} and
+        all(input.graph is self._forward_graph for input in inputs) and
+        all(_get_accumulator(input) is None for input in inputs) and
+        not util_v1.GraphOrParentsInXlaContext(self._forward_graph)):
+      with self._forward_graph.as_default():
+        # `name` was built using name_scope stack of gradient graph and may not
+        # be unique in the forward graph. `Graph.create_op` does not uniquify
+        # names which are name scopes i.e. end in `/`. To ensure that the op
+        # created gets a unique name in the forward graph we get rid of the
+        # trailing slash.
+        name = ops.name_from_scope_name(name)
+        result = self._forward_graph._create_op_internal(
+            op_type,
+            inputs,
+            dtypes=dtypes,
+            input_types=input_types,
+            name=name,
+            attrs=attrs,
+            op_def=op_def,
+            compute_device=compute_device)
+        return result
+
+    return super(_WhileBodyGradFuncGraph, self)._create_op_internal(
+        op_type,
+        inputs,
+        dtypes=dtypes,
+        input_types=input_types,
+        name=name,
+        attrs=attrs,
+        op_def=op_def,
+        compute_device=compute_device)
 
   def capture(self, tensor, name=None, whitelisted=False):
     """Selectively captures external tensors.

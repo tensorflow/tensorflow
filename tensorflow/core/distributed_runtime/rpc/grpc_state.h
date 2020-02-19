@@ -107,8 +107,7 @@ class RPCState : public GrpcClientCQTag {
 
     VLOG(2) << "Starting call: " << method_;
 
-    call_ = std::move(
-        stub_->PrepareUnaryCall(context_.get(), method_, request_buf_, cq_));
+    call_ = stub_->PrepareUnaryCall(context_.get(), method_, request_buf_, cq_);
     call_->StartCall();
     call_->Finish(&response_buf_, &status_, this);
   }
@@ -124,7 +123,9 @@ class RPCState : public GrpcClientCQTag {
     if (s.ok() && !ok) {
       // Since this function is only being used for processing the response
       // to Finish for client-side unary calls, ok should never be false
-      s.Update(errors::Internal("unexpected ok value at rpc completion"));
+      s.Update(
+          errors::Internal("GRPC status is okay but CompletionQueueStatus is "
+                           "not.  This should never happen."));
     }
 
     if (s.ok()) {
@@ -326,7 +327,7 @@ class ExchangeQueue {
                protobuf::Message* response, StatusCallback cb,
                std::string debug_string);
 
-  // Returns an exchange for which we can initiated request writing, if any.
+  // Returns an exchange for which we can initiate request writing, if any.
   // Returns nullptr if there is no such exchange.
   Exchange* GetReadyForRequestWriting();
 
@@ -454,8 +455,8 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     if (!ok) {
       // unlocks mu_
       MarkDoneAndCompleteExchanges(errors::Internal(
-          "Unexpected ok value at streaming rpc writing. ",
-          "Probably because the completion queue has been shut ",
+          "Not ok value returned by CompletionQueue when attempting streaming "
+          "rpc write. Probably because the completion queue has been shut "
           "down or the connection went down. ",
           context_->debug_error_string()));
       return;
@@ -512,7 +513,8 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     Status s = FromGrpcStatus(call_status_);
     if (s.ok() && !ok) {
       s.Update(
-          errors::Internal("unexpected ok value at streaming rpc completion. ",
+          errors::Internal("GRPC status is okay but CompletionQueueStatus is "
+                           "not.  This should never happen.",
                            context_->debug_error_string()));
     }
     // unlocks mu_
@@ -675,7 +677,7 @@ class StreamingRPCDispatcher {
     context_->set_wait_for_ready(true);
 
     std::unique_ptr<grpc::GenericClientAsyncReaderWriter> call =
-        std::move(stub_->PrepareCall(context_.get(), method_, cq_));
+        stub_->PrepareCall(context_.get(), method_, cq_);
 
     state_.reset(new StreamingRPCState<Response>(std::move(call), context_));
   }

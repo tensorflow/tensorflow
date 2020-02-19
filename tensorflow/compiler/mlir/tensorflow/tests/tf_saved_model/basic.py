@@ -24,6 +24,17 @@ import tensorflow.compat.v2 as tf
 from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common
 
 
+# Verify that the tf.versions attribute exists. It is difficult to enforce
+# contents, since the version numbers change over time. The conversion logic
+# itself is verified in the common graphdef converter, so here just assert
+# it is being invoked.
+# CHECK: module
+# CHECK-SAME: tf.versions
+# CHECK-SAME: bad_consumers
+# CHECK-SAME: min_consumer
+# CHECK-SAME: producer
+
+
 class TestModule(tf.Module):
 
   def __init__(self):
@@ -38,7 +49,7 @@ class TestModule(tf.Module):
   # CHECK-SAME:   %arg1: tensor<*x!tf.resource> {tf_saved_model.bound_input = @[[VAR]]},
   # CHECK-SAME:   %arg2: tensor<f32> {tf_saved_model.bound_input = @[[CONST]]}) -> (
   # CHECK-SAME:   tensor<f32> {tf_saved_model.index_path = []})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["some_function"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["some_function"]
   @tf.function(input_signature=[tf.TensorSpec([], tf.float32)])
   def some_function(self, x):
     return x + self.v42 + self.c43

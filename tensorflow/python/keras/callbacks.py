@@ -811,18 +811,51 @@ class History(Callback):
 
 @keras_export('keras.callbacks.ModelCheckpoint')
 class ModelCheckpoint(Callback):
-  """Save the model after every epoch.
+  """Callback to save the Keras model or model weights at some frequency.
 
-  `filepath` can contain named formatting options,
-  which will be filled the value of `epoch` and
-  keys in `logs` (passed in `on_epoch_end`).
+  `ModelCheckpoint` callback is used in conjunction with training using
+  `model.fit()` to save a model or weights (in a checkpoint file) at some
+  interval, so the model or weights can be loaded later to continue the training
+  from the state saved.
 
-  For example: if `filepath` is `weights.{epoch:02d}-{val_loss:.2f}.hdf5`,
-  then the model checkpoints will be saved with the epoch number and
-  the validation loss in the filename.
+  A few options this callback provides include:
+
+  - Whether to only keep the model that has achieved the "best performance" so
+    far, or whether to save the model at the end of every epoch regardless of
+    performance.
+  - Definition of 'best'; which quantity to monitor and whether it should be
+    maximized or minimized.
+  - The frequency it should save at. Currently, the callback supports saving at
+    the end of every epoch, or after a fixed number of training samples.
+  - Whether only weights are saved, or the whole model is saved.
+
+  Example:
+
+  ```python
+  EPOCHS = 10
+  checkpoint_filepath = '/tmp/checkpoint'
+  model_checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
+      filepath=checkpoint_filepath,
+      save_weights_only=True,
+      monitor='val_acc',
+      mode='max',
+      save_best_only=True)
+
+  # Model weights are saved at the end of every epoch, if it's the best seen
+  # so far.
+  model.fit(epochs=EPOCHS, callbacks=[model_checkpoint_callback])
+
+  # The model weights (that are considered the best) are loaded into the model.
+  model.load_weights(checkpoint_filepath)
+  ```
 
   Arguments:
-      filepath: string, path to save the model file.
+      filepath: string, path to save the model file. `filepath` can contain
+        named formatting options, which will be filled the value of `epoch` and
+        keys in `logs` (passed in `on_epoch_end`). For example: if `filepath` is
+        `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model checkpoints
+        will be saved with the epoch number and the validation loss in the
+        filename.
       monitor: quantity to monitor.
       verbose: verbosity mode, 0 or 1.
       save_best_only: if `save_best_only=True`, the latest best model according
@@ -1052,7 +1085,14 @@ class ModelCheckpoint(Callback):
     # pylint: disable=protected-access
     if not self.model._in_multi_worker_mode(
     ) or multi_worker_util.should_save_checkpoint():
-      return self.filepath.format(epoch=epoch + 1, **logs)
+      try:
+        # `filepath` may contain placeholders such as `{epoch:02d}` and
+        # `{mape:.2f}`. A mismatch between logged metrics and the path's
+        # placeholders can cause formatting to fail.
+        return self.filepath.format(epoch=epoch + 1, **logs)
+      except KeyError as e:
+        raise KeyError('Failed to format this callback filepath: "{}". '
+                       'Reason: {}'.format(self.filepath, e))
     else:
       # If this is multi-worker training, and this worker should not
       # save checkpoint, we use a temp filepath to store a dummy checkpoint, so
@@ -1168,41 +1208,36 @@ class ModelCheckpoint(Callback):
 
 @keras_export('keras.callbacks.EarlyStopping')
 class EarlyStopping(Callback):
-  """Stop training when a monitored quantity has stopped improving.
+  """Stop training when a monitored metric has stopped improving.
 
-  Arguments:
-      monitor: Quantity to be monitored.
-      min_delta: Minimum change in the monitored quantity
-          to qualify as an improvement, i.e. an absolute
-          change of less than min_delta, will count as no
-          improvement.
-      patience: Number of epochs with no improvement
-          after which training will be stopped.
-      verbose: verbosity mode.
-      mode: One of `{"auto", "min", "max"}`. In `min` mode,
-          training will stop when the quantity
-          monitored has stopped decreasing; in `max`
-          mode it will stop when the quantity
-          monitored has stopped increasing; in `auto`
-          mode, the direction is automatically inferred
-          from the name of the monitored quantity.
-      baseline: Baseline value for the monitored quantity.
-          Training will stop if the model doesn't show improvement over the
-          baseline.
-      restore_best_weights: Whether to restore model weights from
-          the epoch with the best value of the monitored quantity.
-          If False, the model weights obtained at the last step of
-          training are used.
+  Assuming the goal of a training is to minimize the loss. With this, the
+  metric to be monitored would be 'loss', and mode would be 'min'. A
+  `model.fit()` training loop will check at end of every epoch whether
+  the loss is no longer decreasing, considering the `min_delta` and
+  `patience` if applicable. Once it's found no longer decreasing,
+  `model.stop_training` is marked True and the training terminates.
+
+  The quantity to be monitored needs to be available in `logs` dict.
+  To make it so, pass the loss or metrics at `model.compile()`.
 
   Example:
 
-  ```python
-  callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3)
-  # This callback will stop the training when there is no improvement in
-  # the validation loss for three consecutive epochs.
-  model.fit(data, labels, epochs=100, callbacks=[callback],
-      validation_data=(val_data, val_labels))
-  ```
+  >>> callback = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=3)
+  >>> # This callback will stop the training when there is no improvement in
+  >>> # the validation loss for three consecutive epochs.
+  >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
+  >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
+  >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5),
+  ...                     epochs=10, callbacks=[callback])
+      Train on 5 samples
+      Epoch 1/10
+  5/5 [==============================] - ... loss: 6533.1904
+      Epoch 2/10
+  5/5 [==============================] - ... loss: 110183360.0000
+      Epoch 3/10
+  5/5 [==============================] - ... loss: 1862575718400.0000
+      Epoch 4/10
+  5/5 [==============================] - ... loss: 31485597793124352.0000
   """
 
   def __init__(self,
@@ -1213,6 +1248,32 @@ class EarlyStopping(Callback):
                mode='auto',
                baseline=None,
                restore_best_weights=False):
+    """Initialize an EarlyStopping callback.
+
+    Arguments:
+        monitor: Quantity to be monitored.
+        min_delta: Minimum change in the monitored quantity
+            to qualify as an improvement, i.e. an absolute
+            change of less than min_delta, will count as no
+            improvement.
+        patience: Number of epochs with no improvement
+            after which training will be stopped.
+        verbose: verbosity mode.
+        mode: One of `{"auto", "min", "max"}`. In `min` mode,
+            training will stop when the quantity
+            monitored has stopped decreasing; in `max`
+            mode it will stop when the quantity
+            monitored has stopped increasing; in `auto`
+            mode, the direction is automatically inferred
+            from the name of the monitored quantity.
+        baseline: Baseline value for the monitored quantity.
+            Training will stop if the model doesn't show improvement over the
+            baseline.
+        restore_best_weights: Whether to restore model weights from
+            the epoch with the best value of the monitored quantity.
+            If False, the model weights obtained at the last step of
+            training are used.
+    """
     super(EarlyStopping, self).__init__()
 
     self.monitor = monitor
@@ -1330,7 +1391,13 @@ class RemoteMonitor(Callback):
     send = {}
     send['epoch'] = epoch
     for k, v in logs.items():
-      send[k] = v
+      # np.ndarray and np.generic are not scalar types
+      # therefore we must unwrap their scalar values and
+      # pass to the json-serializable dict 'send'
+      if isinstance(v, (np.ndarray, np.generic)):
+        send[k] = v.item()
+      else:
+        send[k] = v
     try:
       if self.send_as_json:
         requests.post(self.root + self.path, json=send, headers=self.headers)
@@ -1419,6 +1486,13 @@ class TensorBoard(Callback):
 
   You can find more information about TensorBoard
   [here](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
+
+  Example:
+  ```python
+  tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs")
+  model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
+  #run the tensorboard command to view the visualizations
+  ```
 
   Arguments:
       log_dir: the path of the directory where to save the log files to be

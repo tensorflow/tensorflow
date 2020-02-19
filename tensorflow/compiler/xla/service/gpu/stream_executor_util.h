@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 
 // Helper functions for interacting with StreamExecutor.
@@ -82,7 +82,7 @@ se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config);
 // `buffer_type` determines what buffer would be filled out with.
 //
 // Precondition: `buffer_type` is a floating point type, `rng_state` needs to be
-// initalized to zero on the first use.
+// initialized to zero on the first use.
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
                       int64* rng_state, se::DeviceMemoryBase buffer);
 

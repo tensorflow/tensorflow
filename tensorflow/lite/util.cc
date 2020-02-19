@@ -17,7 +17,7 @@ limitations under the License.
 #include <complex>
 #include <cstring>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -103,11 +103,13 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       *bytes = sizeof(TfLiteFloat16);
       break;
     default:
-      context->ReportError(
-          context,
-          "Type %d is unsupported. Only float32, int8, int16, int32, int64, "
-          "uint8, bool, complex64 supported currently.",
-          type);
+      if (context) {
+        context->ReportError(
+            context,
+            "Type %d is unsupported. Only float32, int8, int16, int32, int64, "
+            "uint8, bool, complex64 supported currently.",
+            type);
+      }
       return kTfLiteError;
   }
   return kTfLiteOk;

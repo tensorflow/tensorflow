@@ -398,7 +398,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   profiler::TraceMe trace_me(
       [&] {
         return absl::StrCat("RemoteCallOp#func_name=", func_name,
-                            "parent_step_id=", ctx->step_id(),
+                            ",parent_step_id=", ctx->step_id(),
                             ",function_step_id=", opts.step_id,
                             ",device=", target_device, "#");
       },
@@ -409,7 +409,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         profiler::TraceMe activity(
             [&] {
               return absl::StrCat("RemoteCallOpDone#func_name=", func_name,
-                                  "parent_step_id=", ctx->step_id(),
+                                  ",parent_step_id=", ctx->step_id(),
                                   ",function_step_id=", opts.step_id,
                                   ",device=", target_device, "#");
             },
@@ -424,6 +424,15 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         delete rets;
         done();
       });
+}
+
+string RemoteCallOp::TraceString(OpKernelContext* ctx, bool verbose) {
+  string trace_string =
+      strings::StrCat(name_view(), "__", func_.name(), ":", type_string_view());
+  if (!verbose) return trace_string;
+  string trace_args = GetTraceArgument(ctx);
+  if (trace_args.empty()) return trace_string;
+  return strings::StrCat(trace_string, "#", trace_args, "#");
 }
 
 REGISTER_KERNEL_BUILDER(

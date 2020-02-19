@@ -13,12 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/platform/s3/s3_file_system.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/file_system_helper.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/s3/aws_crypto.h"
-#include "tensorflow/core/platform/s3/aws_logging.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/config/AWSProfileConfigLoader.h>
@@ -37,6 +31,13 @@ limitations under the License.
 #include <aws/s3/model/PutObjectRequest.h>
 
 #include <cstdlib>
+
+#include "tensorflow/core/platform/file_system_helper.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/s3/aws_crypto.h"
+#include "tensorflow/core/platform/s3/aws_logging.h"
+#include "tensorflow/core/platform/str_util.h"
 
 namespace tensorflow {
 
@@ -264,6 +265,7 @@ class S3WritableFile : public WritableFile {
       return errors::Unknown(putObjectOutcome.GetError().GetExceptionName(),
                              ": ", putObjectOutcome.GetError().GetMessage());
     }
+    sync_needed_ = false;
     return Status::OK();
   }
 
@@ -396,9 +398,9 @@ Status S3FileSystem::FileExists(const string& fname) {
 Status S3FileSystem::GetChildren(const string& dir,
                                  std::vector<string>* result) {
   string bucket, prefix;
-  TF_RETURN_IF_ERROR(ParseS3Path(dir, false, &bucket, &prefix));
+  TF_RETURN_IF_ERROR(ParseS3Path(dir, true, &bucket, &prefix));
 
-  if (prefix.back() != '/') {
+  if (!prefix.empty() && prefix.back() != '/') {
     prefix.push_back('/');
   }
 

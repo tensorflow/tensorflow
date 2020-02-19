@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -114,14 +115,6 @@ class LRUCache {
   }
 };
 
-// Define a hash function for vector<TensorShape> because it is used as the key
-// for the engine cache.
-struct VectorTensorShapeHasher {
-  std::size_t operator()(const std::vector<TensorShape>& key) const {
-    return std::hash<std::string>()(TensorShapeUtils::ShapeListString(key));
-  }
-};
-
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 
@@ -190,6 +183,11 @@ class TRTEngineCacheResource : public ResourceBase {
   // TODO(hinsu): Use different calibration context for the available shapes and
   // attach it to each item of the cache.
   std::unique_ptr<CalibrationContext> calib_ctx_;
+
+  // This object maintains all the optimization profiles during profile
+  // generation and engine build. During runtime the list of profiles is used to
+  // look up a matching profile for the input data.
+  TrtShapeOptimizationProfile profiles_;
 };
 
 #endif  // GOOGLE_TENSORRT

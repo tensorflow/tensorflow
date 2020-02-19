@@ -113,6 +113,7 @@ int64 CseHash(const HloInstruction* instruction) {
 
 StatusOr<bool> HloCSE::Run(HloModule* module) {
   bool changed = false;
+
   const std::function<bool(const HloInstruction*, const HloInstruction*)>
       eq_instructions = std::equal_to<const HloInstruction*>();
   const std::function<bool(const HloComputation*, const HloComputation*)>
@@ -153,16 +154,15 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
         continue;
       }
 
-      auto it = representatives.find(instruction);
-      if (it != representatives.end()) {
-        HloInstruction* equivalent_instruction = *it;
+      auto pair = representatives.insert(instruction);
+      if (!pair.second) {
+        HloInstruction* equivalent_instruction = *pair.first;
         TF_RETURN_IF_ERROR(
             instruction->ReplaceAllUsesWith(equivalent_instruction));
         TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
         changed = true;
         continue;
       }
-      representatives.insert(instruction);
     }
   }
   return changed;

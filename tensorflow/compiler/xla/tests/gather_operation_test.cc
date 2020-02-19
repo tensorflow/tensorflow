@@ -330,8 +330,13 @@ ENTRY main {
 )";
   Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>(
-      {{2, -1}, {2, 1}, {1, 1}, {-500, 1}, {-2147483648, 1}, {1, 2}});
+  Literal start_indices =
+      LiteralUtil::CreateR2<int32>({{2, -1},
+                                    {2, 1},
+                                    {1, 1},
+                                    {-500, 1},
+                                    {static_cast<int32>(-2147483648), 1},
+                                    {1, 2}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -356,8 +361,13 @@ ENTRY main {
 )";
   Literal operand =
       LiteralUtil::CreateR2<uint32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>(
-      {{2, -1}, {2, 1}, {1, 1}, {-500, 1}, {-2147483648, 1}, {1, 2}});
+  Literal start_indices =
+      LiteralUtil::CreateR2<int32>({{2, -1},
+                                    {2, 1},
+                                    {1, 1},
+                                    {-500, 1},
+                                    {static_cast<int32>(-2147483648), 1},
+                                    {1, 2}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -619,7 +629,7 @@ ENTRY main {
 
 class GatherClientLibraryTest : public ClientLibraryTestBase {};
 
-// Disabled on interpreter since ExectuteAsyncOnStream is not supported.
+// Disabled on interpreter since ExecuteAsyncOnStream is not supported.
 XLA_TEST_F(GatherClientLibraryTest,
            DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(Basic))) {
   // We create this HLO, but using the XlaBuilder API.

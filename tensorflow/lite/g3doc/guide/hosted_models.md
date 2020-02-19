@@ -13,12 +13,7 @@ models to find the optimal balance between size, performance, and accuracy.
 ## Image classification
 
 For more information about image classification, see
-<a href="../image_classification/overview.md">Image classification</a>.
-
-## Question and Answer
-
-For more information about text classification with Mobile BERT, see
-<a href="../bert_qa/overview.md">Question And Answer</a>.
+<a href="../models/image_classification/overview.md">Image classification</a>.
 
 ### Quantized models
 
@@ -144,6 +139,11 @@ The image segmentation model we currently host is **deeplabv3_257_mv_gpu**.
 
 <a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/deeplabv3_257_mv_gpu.tflite">Download
 model</a>
+
+## Question and Answer
+
+For more information about text classification with Mobile BERT, see
+<a href="../models/bert_qa/overview.md">Question And Answer</a>.
 
 ## Smart reply
 

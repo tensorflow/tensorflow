@@ -58,11 +58,11 @@ TEST(FillOpModel, FillInt32) {
 TEST(FillOpModel, FillInt64) {
   FillOpModel m({TensorType_INT32, {2}}, {TensorType_INT64});
   m.PopulateTensor<int32_t>(m.input1(), {2, 4});
-  m.PopulateTensor<int64_t>(m.input2(), {2 ^ 45});
+  m.PopulateTensor<int64_t>(m.input2(), {1LL << 45});
   m.Invoke();
   EXPECT_THAT(m.ExtractVector<int64_t>(m.output()),
-              ElementsAreArray({2 ^ 45, 2 ^ 45, 2 ^ 45, 2 ^ 45, 2 ^ 45, 2 ^ 45,
-                                2 ^ 45, 2 ^ 45}));
+              ElementsAreArray({1LL << 45, 1LL << 45, 1LL << 45, 1LL << 45,
+                                1LL << 45, 1LL << 45, 1LL << 45, 1LL << 45}));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({2, 4}));
 }
 

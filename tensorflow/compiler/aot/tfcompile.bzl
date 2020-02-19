@@ -37,9 +37,9 @@ def tf_library(
         tfcompile_tool = "//tensorflow/compiler/aot:tfcompile",
         include_standard_runtime_deps = True,
         enable_xla_hlo_profiling = False,
-        mlir_components = None,
+        mlir_components = "None",
         deps = None,
-        tags = None):
+        tags = []):
     """Runs tfcompile to compile a TensorFlow graph into executable code.
 
     Given an invocation of tf_library(name="foo", ...), generates the following
@@ -88,8 +88,8 @@ def tf_library(
       enable_xla_hlo_profiling: Enable XLA HLO profiling in the generated
         program, and emit metadata that lets us pretty-print the gathered
         profile counters.
-      mlir_components: When the value is "Bridge", use MLIR to translate
-        GraphDef to HLO.
+      mlir_components: When the value is "None", no components use MLIR. When
+        the value is "Bridge", use MLIR to translate GraphDef to HLO.
       deps: a list of deps to include on the build rules for the generated
         library, added to the standard deps if standard_runtime_deps is True.
       tags: tags to apply to subsidiary build rules.
@@ -189,10 +189,7 @@ def tf_library(
     else:
         profiling_flag = ""
 
-    if mlir_components:
-        mlir_flag = "--mlir_components=" + mlir_components
-    else:
-        mlir_flag = ""
+    mlir_flag = "--mlir_components=" + mlir_components
 
     native.genrule(
         name = ("gen_" + name),
@@ -407,6 +404,7 @@ def target_llvm_triple():
         "//tensorflow:android_arm64": "aarch64-none-android",
         "//tensorflow:android_x86": "i686-none-android",
         "//tensorflow:ios": "arm64-none-ios",
+        "//tensorflow:ios_x86_64": "x86_64-apple-ios",
         "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
         "//tensorflow:macos": "x86_64-none-darwin",
         "//conditions:default": "x86_64-pc-linux",

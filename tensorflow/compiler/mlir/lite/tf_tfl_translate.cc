@@ -20,11 +20,12 @@ limitations under the License.
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Support/FileUtilities.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/model.h"
@@ -103,7 +105,7 @@ static int PrintFunctionResultMapping(const std::string &result,
     i = 0;
     for (auto output : *subgraph->outputs()) {
       print_buffer(*subgraph, i, output, [&](int i) {
-        return terminator ? terminator->getOperand(i)->getLoc() : unknown_loc;
+        return terminator ? terminator->getOperand(i).getLoc() : unknown_loc;
       });
     }
   }
@@ -179,14 +181,15 @@ int main(int argc, char **argv) {
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
+  pass_config.inline_functions = inline_functions;
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
+  pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
 
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
       module.ValueOrDie().get(), output_mlir, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, emit_quant_adaptor_ops,
-      lower_tensor_list_ops, quant_specs, &result, &pm);
+      emit_select_tf_ops, emit_custom_ops, quant_specs, &result, &pm);
   if (!status.ok()) return kTrFailure;
 
   std::string error_msg;

@@ -36,7 +36,7 @@ class TestModule(tf.Module):
   #
   # CHECK:      func {{@[a-zA-Z_0-9]+}}() -> (
   # CHECK-SAME:   tensor<1xf32> {tf_saved_model.index_path = []})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0000_single_return"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0000_single_return"]
   @tf.function(input_signature=[])
   def f0000_single_return(self):
     return tf.constant(1.0, shape=[1])
@@ -48,7 +48,7 @@ class TestModule(tf.Module):
   # CHECK:      func {{@[a-zA-Z_0-9]+}}() -> (
   # CHECK-SAME:   tensor<1xf32> {tf_saved_model.index_path = [0]},
   # CHECK-SAME:   tensor<2xf32> {tf_saved_model.index_path = [1]})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0001_multiple_results_no_punctuation"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0001_multiple_results_no_punctuation"]
   @tf.function(input_signature=[])
   def f0001_multiple_results_no_punctuation(self):
     return tf.constant(1.0, shape=[1]), tf.constant(1.0, shape=[2])
@@ -61,7 +61,7 @@ class TestModule(tf.Module):
   # CHECK:      func {{@[a-zA-Z_0-9]+}}() -> (
   # CHECK-SAME:   tensor<1xf32> {tf_saved_model.index_path = [0]},
   # CHECK-SAME:   tensor<2xf32> {tf_saved_model.index_path = [1]})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0002_multiple_results_parentheses"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0002_multiple_results_parentheses"]
   @tf.function(input_signature=[])
   def f0002_multiple_results_parentheses(self):
     return (tf.constant(1.0, shape=[1]), tf.constant(1.0, shape=[2]))
@@ -74,7 +74,7 @@ class TestModule(tf.Module):
   # CHECK:      func {{@[a-zA-Z_0-9]+}}() -> (
   # CHECK-SAME:   tensor<1xf32> {tf_saved_model.index_path = [0]},
   # CHECK-SAME:   tensor<2xf32> {tf_saved_model.index_path = [1]})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0003_multiple_results_brackets"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0003_multiple_results_brackets"]
   @tf.function(input_signature=[])
   def f0003_multiple_results_brackets(self):
     return [tf.constant(1.0, shape=[1]), tf.constant(1.0, shape=[2])]
@@ -84,7 +84,7 @@ class TestModule(tf.Module):
   # CHECK:      func {{@[a-zA-Z_0-9]+}}() -> (
   # CHECK-SAME:   tensor<1xf32> {tf_saved_model.index_path = [0, 0]},
   # CHECK-SAME:   tensor<2xf32> {tf_saved_model.index_path = [0, 1]})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0004_list_2_elements"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0004_list_2_elements"]
   @tf.function(input_signature=[])
   def f0004_list_2_elements(self):
     return [[tf.constant(1.0, shape=[1]), tf.constant(1.0, shape=[2])]]
@@ -97,7 +97,7 @@ class TestModule(tf.Module):
   # CHECK:      func {{@[a-zA-Z_0-9]+}}() -> (
   # CHECK-SAME:   tensor<1xf32> {tf_saved_model.index_path = ["x"]},
   # CHECK-SAME:   tensor<2xf32> {tf_saved_model.index_path = ["y"]})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0005_dict_2_keys"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0005_dict_2_keys"]
   @tf.function(input_signature=[])
   def f0005_dict_2_keys(self):
     return {
@@ -112,7 +112,7 @@ class TestModule(tf.Module):
   # CHECK-SAME:   %arg0: tensor<f32> {tf_saved_model.index_path = [0]}
   # CHECK-SAME: ) -> (
   # CHECK-SAME:   tensor<1xf32> {tf_saved_model.index_path = ["x"]})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0006_multiple_return_statements"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0006_multiple_return_statements"]
   @tf.function(input_signature=[tf.TensorSpec([], tf.float32)])
   def f0006_multiple_return_statements(self, x):
     if x > 3.:

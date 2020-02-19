@@ -17,13 +17,24 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "absl/types/optional.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
 
 namespace tflite {
+
+namespace delegate {
+namespace nnapi {
+class NNAPIDelegateKernel;
+}  // namespace nnapi
+}  // namespace delegate
+
+using tflite::delegate::nnapi::NNAPIDelegateKernel;
 
 // TFliteDelegate to interface with NNAPI.
 class StatefulNnApiDelegate : public TfLiteDelegate {
@@ -63,13 +74,23 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // NOTE: when using compilation caching, it is not recommended to use the
     // same delegate instance for multiple models.
     const char* model_token = nullptr;
+
+    // Whether to disallow NNAPI CPU usage. Only effective on Android 10 and
+    // above. The NNAPI CPU typically performs less well than built-in TfLite
+    // kernels, but allowing CPU allows partial acceleration of models. If this
+    // is set to true, NNAPI is only used if the whole model is accelerated.
+    bool disallow_nnapi_cpu = false;
   };
 
   // Uses default options.
   StatefulNnApiDelegate();
 
+  explicit StatefulNnApiDelegate(const NnApi* nnapi);
+
   // The constructor that accepts options from user.
   explicit StatefulNnApiDelegate(Options options);
+
+  StatefulNnApiDelegate(const NnApi* nnapi, Options options);
 
   ~StatefulNnApiDelegate() = default;
 
@@ -125,17 +146,41 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   struct Data {
     // Preferred Power/perf trade-off.
     Options::ExecutionPreference execution_preference;
+    // Pointer to NNAPI implementation to be used by this delegate as
+    // set when building the StatefulNnApiDelegate instance.
+    // Will generally be the NnApiInstance() singleton but can be overridden
+    // for testing or for users needing to wrap or stub parts of NNAPI.
+    // The ownership of the nnapi instance is left to the caller of
+    // the StatefulNnApiDelegate constructor.
+    const NnApi* nnapi;
     // Selected NNAPI accelerator name.
     std::string accelerator_name;
     // The cache dir for NNAPI model.
     std::string cache_dir;
     // The unique token string for NNAPI model.
     std::string model_token;
+    // Whether to disallow NNAPI CPU.
+    bool disallow_nnapi_cpu;
     // Tensor to ANeuralNetworksMemory mapping.
     std::vector<MemoryRegistration> tensor_memory_map;
     // Constains a non zero value if any NNAPI method call
     // operation returned a non zero result code.
     int nnapi_errno;
+    // Cache of kernels already built in StatefulNnApiDelegate::DoPrepare
+    // when trying to understand if all nodes are supported by the target
+    // accelerators.
+    // The key is the index of the first node in the partition.
+    // Couldn't use unique_ptr because of problems building on gcc
+    std::unordered_map<int, NNAPIDelegateKernel*> delegate_state_cache;
+
+    ~Data();
+
+    // Caches an initialised NNAPIDelegateKernel.
+    void CacheDelegateKernel(const TfLiteDelegateParams* delegate_params,
+                             NNAPIDelegateKernel* delegate_state);
+    // Returns a cached NNAPIDelegateKernel if available.
+    absl::optional<NNAPIDelegateKernel*> GetCachedDelegateKernel(
+        const TfLiteDelegateParams* delegate_params);
   };
 
   // Implements TfLiteDelegate::Prepare. Please refer to TFLiteDelegate

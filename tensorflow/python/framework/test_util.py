@@ -37,14 +37,6 @@ from absl.testing import parameterized
 import numpy as np
 import six
 
-_portpicker_import_error = None
-try:
-  import portpicker  # pylint: disable=g-import-not-at-top
-except ImportError as _error:
-  _portpicker_import_error = _error
-  portpicker = None
-
-# pylint: disable=g-import-not-at-top
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
@@ -52,9 +44,9 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import _pywrap_stacktrace_handler
 from tensorflow.python import _pywrap_util_port
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.client import session
 from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import context
@@ -64,11 +56,13 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import gpu_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
@@ -205,7 +199,7 @@ def assert_equal_graph_def(actual, expected, checkpoint_v2=False,
     _strip_hash_table_shared_name(actual)
     _strip_hash_table_shared_name(expected)
 
-  diff = pywrap_tensorflow.EqualGraphDefWrapper(actual.SerializeToString(),
+  diff = pywrap_tf_session.EqualGraphDefWrapper(actual.SerializeToString(),
                                                 expected.SerializeToString())
   if diff:
     raise AssertionError(compat.as_str(diff))
@@ -288,6 +282,10 @@ def IsGoogleCudaEnabled():
 
 def IsBuiltWithROCm():
   return _pywrap_util_port.IsBuiltWithROCm()
+
+
+def IsBuiltWithXLA():
+  return _pywrap_util_port.IsBuiltWithXLA()
 
 
 def IsBuiltWithNvcc():
@@ -638,7 +636,7 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
 
         # There should be no new Python objects hanging around.
         obj_count_by_type = _get_object_count_by_type() - obj_count_by_type
-        # In some cases (specifacally on MacOS), new_count is somehow
+        # In some cases (specifically on MacOS), new_count is somehow
         # smaller than previous_count.
         # Using plain assert because not all classes using this decorator
         # have assertLessEqual
@@ -768,7 +766,7 @@ def _find_reference_cycle(objects, idx):
         return "{}, {}".format(type(obj), id(obj))
 
   def build_ref_graph(obj, graph, reprs, blacklist):
-    """Builds a reference graph as <referrer> -> <list of refferents>.
+    """Builds a reference graph as <referrer> -> <list of referents>.
 
     Args:
       obj: The object to start from. The graph will be built by recursively
@@ -1138,7 +1136,7 @@ def run_in_graph_and_eager_modes(func=None,
         run_eagerly(self, **kwargs)
       ops.dismantle_graph(graph_for_eager_test)
 
-    return decorated
+    return tf_decorator.make_decorator(f, decorated)
 
   if func is not None:
     return decorator(func)
@@ -1149,7 +1147,7 @@ def run_in_graph_and_eager_modes(func=None,
 def py_func_if_in_function(f):
 
   def decorated(*args, **kwds):
-    if not ops.get_default_graph()._building_function:
+    if not ops.inside_function():
       return f(*args, **kwds)
 
     tensor_args = []
@@ -1396,7 +1394,7 @@ def run_gpu_only(func=None):
 def run_cuda_only(func=None):
   """Execute the decorated test only if a GPU is available.
 
-  This function is intended to be applied to tests that require the precense
+  This function is intended to be applied to tests that require the presence
   of a CUDA GPU. If a CUDA GPU is absent, it will simply be skipped.
 
   Args:
@@ -1494,28 +1492,12 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   Returns:
     True if a GPU device of the requested kind is available.
   """
-
-  def compute_capability_from_device_desc(device_desc):
-    # TODO(jingyue): The device description generator has to be in sync with
-    # this file. Another option is to put compute capability in
-    # DeviceAttributes, but I avoided that to keep DeviceAttributes
-    # target-independent. Reconsider this option when we have more things like
-    # this to keep in sync.
-    # LINT.IfChange
-    match = re.search(r"compute capability: (\d+)\.(\d+)", device_desc)
-    # LINT.ThenChange(//tensorflow/core/\
-    #                 common_runtime/gpu/gpu_device.cc)
-    if not match:
-      return 0, 0
-    return int(match.group(1)), int(match.group(2))
-
   try:
     for local_device in device_lib.list_local_devices():
       if local_device.device_type == "GPU":
-        if (min_cuda_compute_capability is None or
-            compute_capability_from_device_desc(
-                local_device.physical_device_desc) >=
-            min_cuda_compute_capability):
+        gpu_info = gpu_util.compute_capability_from_device_desc(local_device)
+        cc = gpu_info.compute_capability or (0, 0)
+        if not min_cuda_compute_capability or cc >= min_cuda_compute_capability:
           return True
       if local_device.device_type == "SYCL" and not cuda_only:
         return True
@@ -1601,7 +1583,7 @@ class FakeEagerSession(object):
     self._test_case = test_case
 
   def run(self, fetches, *args, **kwargs):
-    """Evalaute `fetches`.
+    """Evaluate `fetches`.
 
     Fail if additional args are specified.
 
@@ -1645,14 +1627,14 @@ class ErrorLoggingSession(session.Session):
       raise
 
 
-def use_deterministic_cudnn(func):
+def disable_cudnn_autotune(func):
   """Disable autotuning during the call to this function.
 
   Some tests want to base assertions on a graph being isomorphic with a copy.
   To ensure this, this decorator disables autotuning.
 
   Args:
-    func: Function to run with CUDNN autotuning turned off.
+    func: Function to run with CuDNN autotuning turned off.
 
   Returns:
     Decorated function.
@@ -1661,10 +1643,25 @@ def use_deterministic_cudnn(func):
   def decorator(f):
 
     def decorated(self, *args, **kwargs):
-      original_var = os.environ.get("TF_CUDNN_DETERMINISTIC", "")
-      os.environ["TF_CUDNN_DETERMINISTIC"] = "true"
+      original_tf_cudnn_use_autotune = os.environ.get("TF_CUDNN_USE_AUTOTUNE")
+      os.environ["TF_CUDNN_USE_AUTOTUNE"] = "false"
+      original_xla_flags = os.environ.get("XLA_FLAGS")
+      new_xla_flags = "--xla_gpu_autotune_level=0"
+      if original_xla_flags:
+        new_xla_flags = original_xla_flags + " " + new_xla_flags
+      os.environ["XLA_FLAGS"] = new_xla_flags
+
       result = f(self, *args, **kwargs)
-      os.environ["TF_CUDNN_DETERMINISTIC"] = original_var
+
+      if (original_tf_cudnn_use_autotune is None):
+        del os.environ["TF_CUDNN_USE_AUTOTUNE"]
+      else:
+        os.environ["TF_CUDNN_USE_AUTOTUNE"] = original_tf_cudnn_use_autotune
+      if (original_xla_flags is None):
+        del os.environ["XLA_FLAGS"]
+      else:
+        os.environ["XLA_FLAGS"] = original_xla_flags
+
       return result
 
     return decorated
@@ -1697,10 +1694,10 @@ def enable_tf_xla_constant_folding(description):
     def decorator(f):
 
       def decorated(self, *args, **kwargs):
-        original_var = pywrap_tensorflow.TF_GetXlaConstantFoldingDisabled()
-        pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(False)
+        original_var = pywrap_tf_session.TF_GetXlaConstantFoldingDisabled()
+        pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(False)
         result = f(self, *args, **kwargs)
-        pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(original_var)
+        pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(original_var)
         return result
 
       return decorated
@@ -1802,9 +1799,9 @@ def xla_allow_fallback(description):  # pylint: disable=unused-argument
           # Update the global XLABuildOpsPassFlags to enable lazy compilation,
           # which allows the compiler to fall back to TF classic. Remember the
           # old value so that we can reset it.
-          old_value = pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(True)
+          old_value = pywrap_tf_session.TF_SetXlaEnableLazyCompilation(True)
           result = func(self, *args, **kwargs)
-          pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(old_value)
+          pywrap_tf_session.TF_SetXlaEnableLazyCompilation(old_value)
           return result
         else:
           return func(self, *args, **kwargs)
@@ -1838,13 +1835,13 @@ class TensorFlowTestCase(googletest.TestCase):
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TensorFlowTestCase, self).__init__(methodName)
     if is_xla_enabled():
-      pywrap_tensorflow.TF_SetXlaAutoJitMode("2")
-      pywrap_tensorflow.TF_SetXlaMinClusterSize(1)
-      pywrap_tensorflow.TF_SetXlaEnableLazyCompilation(False)
-      pywrap_tensorflow.TF_SetTfXlaCpuGlobalJit(True)
+      pywrap_tf_session.TF_SetXlaAutoJitMode("2")
+      pywrap_tf_session.TF_SetXlaMinClusterSize(1)
+      pywrap_tf_session.TF_SetXlaEnableLazyCompilation(False)
+      pywrap_tf_session.TF_SetTfXlaCpuGlobalJit(True)
       # Constant folding secretly runs code on TF:Classic CPU, so we also
       # disable it here.
-      pywrap_tensorflow.TF_SetXlaConstantFoldingDisabled(True)
+      pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
 
     self._threads = []
     self._tempdir = None
@@ -2063,7 +2060,7 @@ class TensorFlowTestCase(googletest.TestCase):
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
   def session(self, graph=None, config=None, use_gpu=False, force_gpu=False):
-    """Returns a TensorFlow Session for use in executing tests.
+    """A context manager for a TensorFlow Session for use in executing tests.
 
     Note that this will set this session and the graph as global defaults.
 
@@ -2345,8 +2342,8 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertTrue(self._NDArrayNear(ndarray1, ndarray2, err), msg=msg)
 
   def _GetNdArray(self, a):
-    # If a is a tensor then convert it to ndarray
-    if isinstance(a, ops.Tensor):
+    # If a is tensor-like then convert it to ndarray
+    if tensor_util.is_tensor(a):
       if isinstance(a, ops._EagerTensorBase):
         a = a.numpy()
       else:
@@ -2408,7 +2405,7 @@ class TensorFlowTestCase(googletest.TestCase):
                                path=None,
                                msg=None):
     path = path or []
-    path_str = (("[" + "][".join([str(p) for p in path]) + "]") if path else "")
+    path_str = (("[" + "][".join(str(p) for p in path) + "]") if path else "")
     msg = msg if msg else ""
 
     # Check if a and/or b are namedtuples.
@@ -2927,8 +2924,8 @@ class TensorFlowTestCase(googletest.TestCase):
     else:
       self._assertAllCloseRecursive(a, b, rtol, atol, path, msg)
 
-  # Fix Python 3 compatibility issues
-  if six.PY3:
+  # Fix Python 3+ compatibility issues
+  if not six.PY2:
     # pylint: disable=invalid-name
 
     # Silence a deprecation warning
@@ -3092,8 +3089,7 @@ def create_local_cluster(num_workers,
   Raises:
     ImportError: if portpicker module was not found at load time
   """
-  if _portpicker_import_error:
-    raise _portpicker_import_error  # pylint: disable=raising-bad-type
+  import portpicker  # pylint: disable=g-import-not-at-top
   worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
   ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {

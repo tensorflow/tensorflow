@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/common_runtime/placer.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -122,7 +124,7 @@ Status ProcessFunctionLibraryRuntime::SendTensors(
     const string& key_prefix, int64 src_incarnation,
     gtl::ArraySlice<Tensor> tensors_to_send, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
-    Rendezvous* rendezvous) {
+    RendezvousInterface* rendezvous) {
   std::vector<string> keys;
   for (int i = 0; i < tensors_to_send.size(); ++i) {
     string name = strings::StrCat(key_prefix, i);
@@ -140,8 +142,9 @@ void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
     const string& source_device, const string& target_device,
     const string& key_prefix, int64 src_incarnation, int64 num_tensors,
     DeviceContext* device_context,
-    const std::vector<AllocatorAttributes>& alloc_attrs, Rendezvous* rendezvous,
-    std::vector<Tensor>* received_tensors, StatusCallback done) {
+    const std::vector<AllocatorAttributes>& alloc_attrs,
+    RendezvousInterface* rendezvous, std::vector<Tensor>* received_tensors,
+    StatusCallback done) {
   std::vector<string> keys;
   for (int64 i = 0; i < num_tensors; ++i) {
     string name = strings::StrCat(key_prefix, i);
@@ -409,6 +412,18 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
                   << " src_device: " << *src_device
                   << " colo group: " << colocation_group;
         }
+        // If colocation_group is not set and output producing node is assigned
+        // to a remote device, colocate the retval node with its input node.
+        // TODO(yujingzhang): Remove this when we support outputting tensors on
+        // remote devices.
+        const bool remote_src_device =
+            !src_device->empty() && GetFLR(*src_device) == nullptr;
+        if (colocation_group.empty() && remote_src_device) {
+          colocation_group =
+              absl::StrCat(kColocationGroupPrefix, it->src()->name());
+          VLOG(3) << "Considering src: " << src_node->name()
+                  << " colo group: " << colocation_group;
+        }
 
         // If resource is produced by a function call node, we can't trust
         // source node device assignment, because multi-device functions can
@@ -658,6 +673,26 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       function_name, function_key, ret_node_names.size(),
       lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
 
+  // Mapping from a function body node name to the control output name.
+  std::unordered_map<string, string> node_name_to_control_ret;
+
+  bool control_rets_updated = false;
+  TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
+      device_set_, options.config_proto, &graph, &data->lib_def_,
+      &control_ret_node_names, &control_rets_updated));
+
+  if (control_rets_updated) {
+    // Function graph pass may have resulted in different nodes/node names for
+    // control rets.
+    for (const auto& control_ret : control_ret_node_names) {
+      node_name_to_control_ret.emplace(control_ret, control_ret);
+    }
+  } else {
+    for (const auto& control_ret : fdef->control_ret()) {
+      node_name_to_control_ret.emplace(control_ret.second, control_ret.first);
+    }
+  }
+
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
   SessionOptions session_options;
@@ -667,6 +702,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimization_options.graph = &graph;
   optimization_options.flib_def = &data->lib_def_;
   optimization_options.device_set = &device_set_;
+  optimization_options.is_function_graph = true;
 
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
@@ -711,8 +747,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     options.graph_collector->CollectOptimizedGraph(def);
   }
 
-  VLOG(2) << "Main function graph to be partitioned:";
-  VLOG(2) << DebugString(graph->ToGraphDefDebug());
+  VLOG(4) << "Main function graph to be partitioned:";
+  VLOG(4) << DebugString(graph->ToGraphDefDebug());
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
   TF_RETURN_IF_ERROR(
@@ -752,12 +788,6 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
       options.graph_collector->CollectPartitionedGraph(def);
     }
-  }
-
-  // Mapping from a function body node name to the control output name.
-  std::unordered_map<string, string> node_name_to_control_ret;
-  for (const auto& control_ret : fdef->control_ret()) {
-    node_name_to_control_ret.emplace(control_ret.second, control_ret.first);
   }
 
   // We must preserve control returns in each of the function components,
@@ -830,7 +860,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       auto attrs = AttrSlice(&shard.attr());
       VLOG(1) << "Start instantiating component function " << unique_name
               << " on device " << target;
-      VLOG(2) << DebugString(shard);
+      VLOG(4) << DebugString(shard);
 
       auto* component_handle = new FunctionLibraryRuntime::Handle;
       auto done = [this, status, unique_name, comp_data, component_handle,
@@ -838,7 +868,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
         status->Update(s);
 
         VLOG(1) << "Finished instantiating component function " << unique_name
-                << "with handle " << *component_handle << " status: " << s;
+                << " with handle " << *component_handle << " status: " << s;
         if (status->ok()) {
           {
             mutex_lock l(mu_);

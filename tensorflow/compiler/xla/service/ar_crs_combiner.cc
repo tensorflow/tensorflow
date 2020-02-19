@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_replication_analysis.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -240,7 +241,8 @@ bool ArCrsCombiner::TupleElementsComputeSameValue(
 /* static */
 bool ArCrsCombiner::TestInstructionsComputeSameValue(HloInstruction* i1,
                                                      HloInstruction* i2) {
-  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/1);
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/2, /*num_replicas=*/1,
+                         /*spmd_partition=*/false);
   auto module = i1->parent()->parent();
   CHECK_EQ(module, i2->parent()->parent());
   combiner.call_graph_ = CallGraph::Build(module);
@@ -363,14 +365,15 @@ void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
   }
 }
 
-void ArCrsCombiner::KeepProvablyEqualInstructionGroups() {
-  for (auto it : all_reduce_map_) {
-    auto channel_id = it.first;
+Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
+  for (auto it = all_reduce_map_.begin(); it != all_reduce_map_.end();) {
+    auto copy_it = it++;  // Advance `it` before invalidation from erase.
+    auto channel_id = copy_it->first;
     VLOG(2)
         << "KeepProvablyEqualInstructionGroups. Checking AllReduce channel id: "
         << channel_id << "\n";
-    auto pairs_vec = it.second;
-    CHECK_EQ(pairs_vec.size(), num_spatial_partitions_);
+    auto pairs_vec = copy_it->second;
+    TF_RET_CHECK(pairs_vec.size() == num_spatial_partitions_);
     auto instr_0 = pairs_vec[0].ar;
     for (int i = 1; i < pairs_vec.size(); ++i) {
       auto instr_i = pairs_vec[i].ar;
@@ -379,7 +382,7 @@ void ArCrsCombiner::KeepProvablyEqualInstructionGroups() {
       absl::flat_hash_map<int64, int64> visited_pairs;
       while (true) {
         if (!InstructionsComputeSameValue(next_0, next_i, &visited_pairs)) {
-          all_reduce_map_.erase(channel_id);
+          all_reduce_map_.erase(copy_it);
           VLOG(2) << "KeepProvablyEqualInstructionGroups. Erased AllReduce "
                      "channel id: "
                   << channel_id << "\n";
@@ -393,6 +396,45 @@ void ArCrsCombiner::KeepProvablyEqualInstructionGroups() {
       }
     }
   }
+  return Status::OK();
+}
+
+Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
+    HloModule* module) {
+  // For SPMD mode, use HloReplicationAnalysis to figure out HLO value
+  // equivalence across partitions.
+  TF_ASSIGN_OR_RETURN(
+      auto replication_analysis,
+      HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
+
+  for (auto it = all_reduce_map_.begin(); it != all_reduce_map_.end();) {
+    auto copy_it = it++;  // Advance `it` before invalidation from erase.
+    auto channel_id = copy_it->first;
+    VLOG(2)
+        << "KeepProvablyEqualInstructionGroups. Checking AllReduce channel id: "
+        << channel_id << "\n";
+    auto pairs_vec = copy_it->second;
+    TF_RET_CHECK(pairs_vec.size() == 1);
+    auto instr = pairs_vec[0].ar;
+    auto next = instr->users()[0];
+    while (true) {
+      // The patterns we detect in ArCrsCombiner::MatchesArCrsPattern()
+      // guarantee that the HLO produces an array.
+      TF_RET_CHECK(next->shape().IsArray());
+      if (!replication_analysis->HloInstructionIsReplicatedAt(next, {})) {
+        all_reduce_map_.erase(copy_it);
+        VLOG(2) << "KeepProvablyEqualInstructionGroups. Erased AllReduce "
+                   "channel id: "
+                << channel_id << "\n";
+        break;
+      }
+      if (next->IsCrossReplicaAllReduce()) {
+        break;
+      }
+      next = next->users()[0];
+    }
+  }
+  return Status::OK();
 }
 
 StatusOr<bool> ArCrsCombiner::RewriteGraph() {
@@ -460,7 +502,11 @@ StatusOr<bool> ArCrsCombiner::Run(HloModule* module) {
 
   GroupAllReducesById(module);
 
-  KeepProvablyEqualInstructionGroups();
+  if (spmd_partition_) {
+    TF_RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsSPMD(module));
+  } else {
+    TF_RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsMPMD());
+  }
 
   return RewriteGraph();
 }

@@ -12,10 +12,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "autotune_algorithm"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "autotune_buffers"
     mtype: "<type \'property\'>"
   }

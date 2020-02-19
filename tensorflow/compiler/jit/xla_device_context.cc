@@ -140,7 +140,6 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     // The device tensor should always be fresh.
     TF_RET_CHECK(!xla_tensor->has_shaped_buffer());
 
-    xla_tensor->set_host_tensor(*cpu_tensor);
     TF_RETURN_IF_ERROR(
         xla_tensor->AllocateShapedBuffer(device_tensor->dtype(), shape, client_,
                                          stream_->parent()->device_ordinal()));
@@ -262,7 +261,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
                 << xla_tensor->shaped_buffer().ToString();
         // For devices don't allow sync on completion, the device execution is
         // deferred. We check the execution stream status here to avoid wrong
-        // results from a failed stream being propogated to following
+        // results from a failed stream being propagated to following
         // host-side ops.
         if (!device_allows_sync_on_completion) {
           done_status.Update(xla_tensor->RefreshStatusOfStreams());

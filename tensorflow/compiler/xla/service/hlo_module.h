@@ -184,13 +184,17 @@ class HloModule {
   // Gets the number of instructions in this module.
   int64 instruction_count() const;
 
+  // Deallocate removed instructions in each computation.
+  void Cleanup() {
+    for (auto& comp : computations_) {
+      comp->Cleanup();
+    }
+  }
+
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
   std::vector<HloComputation*> MakeComputationPostOrder() const;
-
-  // Same as MakeComputationPostOrder() but sorting the computations by names.
-  std::vector<HloComputation*> MakeComputationPostOrderAndSortedByNames() const;
 
   // Gets the computations in this module which aren't for fusion nodes.
   //
@@ -289,7 +293,7 @@ class HloModule {
   // Returns true if the module has a schedule set.
   bool has_schedule() const { return schedule_.has_value(); }
 
-  // Returns the schedue of the module. CHECK fails if no schedule is set.
+  // Returns the schedule of the module. CHECK fails if no schedule is set.
   const HloSchedule& schedule() const { return *schedule_; }
   HloSchedule& schedule() { return *schedule_; }
 
@@ -341,6 +345,10 @@ class HloModule {
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers);
+
+  // Same as MakeComputationPostOrder() but sorting the computations by their
+  // contents.
+  std::vector<HloComputation*> MakeComputationSortedByContent() const;
 
   string name_;
   HloModuleConfig config_;

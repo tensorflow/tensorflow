@@ -18,8 +18,23 @@ limitations under the License.
 
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "absl/memory/memory.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Dialect/Linalg/Utils/Utils.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
+
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> tile_to_parallel_loops_for_linalg_fusion(
+    "tile-to-parallel-loops-for-linalg-fusion",
+    llvm::cl::desc(
+        "Tiles GenericOp consumer to parallel loops before linalg fusion"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static llvm::cl::list<unsigned> tile_sizes_for_linalg_fusion(
+    "tile-sizes-for-linalg-fusion",
+    llvm::cl::desc(
+        "Tile sizes by which to tile linalg generic before linalg fusion"),
+    llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated);
 
 namespace mlir {
 namespace xla_lhlo {
@@ -42,19 +57,23 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     // tiled. In order to greedily fuse the ops, we have to start from the tiled
     // root linalg ops, i.e. linalg ops that write to output buffers of the
     // function.
-    llvm::SmallDenseSet<Value*> func_args;
+    llvm::SmallDenseSet<Value> func_args;
     for (auto func_arg : func.getArguments()) {
       func_args.insert(func_arg);
     }
     OpBuilder b(func);
     OperationFolder folder(func.getContext());
     func.walk([&](linalg::GenericOp generic_op) {
-      const SmallVector<int64_t, 2> tile_sizes(
-          generic_op.getNumInputsAndOutputs(), 1);
+      SmallVector<int64_t, 2> tile_sizes(tile_sizes_for_linalg_fusion.begin(),
+                                         tile_sizes_for_linalg_fusion.end());
+      if (tile_sizes.empty()) {
+        tile_sizes =
+            SmallVector<int64_t, 2>(generic_op.getNumInputsAndOutputs(), 1);
+      }
       auto op = cast<LinalgOp>(generic_op.getOperation());
-      for (const Value* result : op.getOutputs()) {
+      for (const Value result : op.getOutputBuffers()) {
         if (!func_args.count(result)) continue;
-        if (linalg::tileLinalgOp(b, op, tile_sizes, &folder)) {
+        if (tileGenericOp(op, tile_sizes, &b, &folder)) {
           generic_op.erase();
           return;
         }
@@ -65,16 +84,33 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     llvm::SmallDenseSet<Operation*> erase_set;
     SmallVector<Operation*, 8> linalg_ops;
     func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
-    linalg::Aliases aliases;
-    linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
     for (auto* op : llvm::reverse(linalg_ops)) {
       for (unsigned id = 0, e = LinalgOp(op).getNumInputs(); id < e; ++id) {
+        linalg::Aliases aliases;
+        linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
         if (auto info = fuseProducerOf(b, op, id, graph, &folder)) {
-          erase_set.insert(info->originalProducer.getOperation());
+          auto originalOp = info->originalProducer.getOperation();
+          erase_set.insert(originalOp);
+          auto originalOpInLinalgOpsVector = std::find_if(
+              linalg_ops.begin(), linalg_ops.end(),
+              [&](const Operation* op) { return op == originalOp; });
+          *originalOpInLinalgOpsVector = info->fusedProducer.getOperation();
         }
       }
     }
     for (auto* e : erase_set) e->erase();
+  }
+
+ private:
+  bool tileGenericOp(LinalgOp op, ArrayRef<int64_t> tile_sizes, OpBuilder* b,
+                     OperationFolder* folder) {
+    auto tiled_generic_op =
+        tile_to_parallel_loops_for_linalg_fusion
+            ? linalg::tileLinalgOpToParallelLoops(*b, op, tile_sizes,
+                                                  /*permutation=*/{}, folder)
+            : linalg::tileLinalgOp(*b, op, tile_sizes,
+                                   /*permutation=*/{}, folder);
+    return tiled_generic_op.hasValue();
   }
 };
 

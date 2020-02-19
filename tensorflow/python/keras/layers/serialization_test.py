@@ -120,7 +120,7 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters(
       [batchnorm_v1.BatchNormalization, batchnorm_v2.BatchNormalization])
-  def test_deserialize_batchnorm_backwards_compatiblity(self, batchnorm_layer):
+  def test_deserialize_batchnorm_backwards_compatibility(self, batchnorm_layer):
     layer = batchnorm_layer(
         momentum=0.9, beta_initializer='zeros', gamma_regularizer='l2')
     config = keras.layers.serialize(layer)

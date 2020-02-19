@@ -13,15 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/platform/s3/aws_logging.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/logging/AWSLogging.h>
 #include <aws/core/utils/logging/LogSystemInterface.h>
 
 #include <cstdarg>
+
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 

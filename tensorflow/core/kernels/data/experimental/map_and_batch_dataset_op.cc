@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
@@ -86,7 +88,12 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         output_types_(output_types),
         output_shapes_(output_shapes),
         captured_func_(std::move(captured_func)),
-        preserve_cardinality_(preserve_cardinality) {
+        preserve_cardinality_(preserve_cardinality),
+        traceme_metadata_(
+            {{"autotune",
+              num_parallel_calls == model::kAutotune ? "true" : "false"},
+             {"batch_size", strings::Printf("%lld", batch_size)},
+             {"drop_remainder", drop_remainder ? "true" : "false"}}) {
     input_->Ref();
   }
 
@@ -170,34 +177,16 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           num_parallel_calls_(std::make_shared<model::SharedState>(
               params.dataset->num_parallel_calls_, mu_, cond_var_)),
           max_batch_results_(
-              std::min(kMaxBatchResults, (params.dataset->num_parallel_calls_ +
-                                          params.dataset->batch_size_ - 1) /
-                                             params.dataset->batch_size_)) {}
+              params.dataset->num_parallel_calls_ == model::kAutotune
+                  ? kMaxBatchResults
+                  : std::min(kMaxBatchResults,
+                             (params.dataset->num_parallel_calls_ +
+                              params.dataset->batch_size_ - 1) /
+                                 params.dataset->batch_size_)) {}
 
     ~Iterator() override {
-      mutex_lock l(*mu_);
-      // Cancel the runner thread.
-      cancelled_ = true;
-      cond_var_->notify_all();
-      // Wait for all in-flight calls to complete.
-      while (num_calls_ > 0) {
-        cond_var_->wait(l);
-      }
-    }
-
-    string BuildTraceMeName() override {
-      int64 parallelism = -1;
-      // NOTE: We only set the parallelism value if the lock can be acquired
-      // right away to avoid introducing tracing overhead.
-      if (mu_->try_lock()) {
-        parallelism = num_parallel_calls_->value;
-        mu_->unlock();
-      }
-      return strings::StrCat(
-          prefix(), "#parallelism=", parallelism,
-          ",autotune=", dataset()->num_parallel_calls_ == model::kAutotune,
-          ",batch_size=", dataset()->batch_size_,
-          ",drop_remainder=", dataset()->drop_remainder_, "#");
+      CancelThreads(/*wait=*/true);
+      if (deregister_fn_) deregister_fn_();
     }
 
     Status Initialize(IteratorContext* ctx) override {
@@ -205,8 +194,11 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
+      TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+          ctx->cancellation_manager(),
+          [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
       TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+          dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -218,13 +210,16 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       {
         mutex_lock l(*mu_);
         EnsureRunnerThreadStarted(ctx);
-        while (batch_results_.empty() ||
-               batch_results_.front()->num_calls > 0) {
+        while (!cancelled_ && (batch_results_.empty() ||
+                               batch_results_.front()->num_calls > 0)) {
           ++waiting_;
           RecordStop(ctx);
           cond_var_->wait(l);
           RecordStart(ctx);
           --waiting_;
+        }
+        if (cancelled_) {
+          return errors::Cancelled("Iterator was cancelled");
         }
         std::swap(result, batch_results_.front());
         batch_results_.pop_front();
@@ -273,6 +268,20 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
       }
       return Status::OK();
+    }
+
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      int64 parallelism = -1;
+      // NOTE: We only set the parallelism value if the lock can be acquired
+      // right away to avoid introducing tracing overhead.
+      if (mu_->try_lock()) {
+        parallelism = num_parallel_calls_->value;
+        mu_->unlock();
+      }
+      auto result = dataset()->traceme_metadata_;
+      result.push_back(
+          std::make_pair("parallelism", strings::Printf("%lld", parallelism)));
+      return result;
     }
 
    private:
@@ -412,6 +421,16 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
                                             std::move(done), prefix());
     }
 
+    void CancelThreads(bool wait) LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(*mu_);
+      cancelled_ = true;
+      cond_var_->notify_all();
+      // Wait for all in-flight calls to complete.
+      while (wait && num_calls_ > 0) {
+        cond_var_->wait(l);
+      }
+    }
+
     Status CopyPartialBatch(Tensor* output, const Tensor& value,
                             int64 num_elements) {
       switch (value.dtype()) {
@@ -452,6 +471,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
       const size_t num_components = return_values->size();
+      result->output.reserve(num_components);
       for (size_t i = 0; i < num_components; ++i) {
         TensorShape component_shape({dataset()->batch_size_});
         component_shape.AppendShape(return_values->at(i).shape());
@@ -504,6 +524,10 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           attr.set_gpu_compatible(true);
           out_tensors->emplace_back(ctx->allocator(attr), output[i].dtype(),
                                     component_shape);
+          if (!out_tensors->back().IsInitialized()) {
+            return errors::ResourceExhausted(
+                "Failed to allocate memory for the batch of component ", i);
+          }
           TF_RETURN_IF_ERROR(CopyPartialBatch(&out_tensors->back(), output[i],
                                               result->num_elements));
         }
@@ -727,6 +751,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // Identifies the maximum number of batch results to store.
     int64 max_batch_results_ GUARDED_BY(*mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
+
+    // Method for deregistering the cancellation callback.
+    std::function<void()> deregister_fn_;
   };
 
   const DatasetBase* const input_;
@@ -737,6 +764,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
   const std::vector<PartialTensorShape> output_shapes_;
   const std::unique_ptr<CapturedFunction> captured_func_;
   const bool preserve_cardinality_;
+  const TraceMeMetadata traceme_metadata_;
 };
 
 MapAndBatchDatasetOp::MapAndBatchDatasetOp(OpKernelConstruction* ctx)

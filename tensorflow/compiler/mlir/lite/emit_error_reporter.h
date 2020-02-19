@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <cstdarg>
 
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:llvm-project
 #include "tensorflow/lite/core/api/error_reporter.h"
 
 namespace tflite {

@@ -66,7 +66,7 @@ TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
                           bool is_per_channel, int channel_dim_index,
                           ErrorReporter* error_reporter) {
   if (bias_tensor->shape.size() != 1) {
-    error_reporter->Report("Expected bias tensor shape to be 1.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Expected bias tensor shape to be 1.");
     return kTfLiteError;
   }
 
@@ -76,20 +76,23 @@ TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
 
   if (is_per_channel) {
     if (bias_tensor->shape[0] != weight_tensor->shape[channel_dim_index]) {
-      error_reporter->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
           "Channel mismatch between bias and weight tensors %d vs %d",
           bias_tensor->shape[0], weight_tensor->shape[channel_dim_index]);
       return kTfLiteError;
     }
     if (!input_tensor->quantization ||
         input_tensor->quantization->scale.size() != 1) {
-      error_reporter->Report("Input tensor missing quantization information");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Input tensor missing quantization information");
       return kTfLiteError;
     }
 
     if (weight_scales.size() != channel_dim_size) {
-      error_reporter->Report("Mismatch weight scale dimension: %d",
-                             weight_scales.size());
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Mismatch weight scale dimension: %d",
+                           weight_scales.size());
       return kTfLiteError;
     }
     return utils::SymmetricPerChannelBiasQuantize(
@@ -97,7 +100,8 @@ TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
         weight_scales.data(), channel_dim_size, error_reporter);
   } else {
     if (weight_scales.size() != 1) {
-      error_reporter->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
           "Expected per-layer weight scale dimension size 1, got %d",
           weight_scales.size());
       return kTfLiteError;
@@ -247,7 +251,8 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
       TensorT* tensor = subgraph->tensors[subgraph->inputs[i]].get();
       // TODO(suharshs): Add support for this case if it ever comes up.
       if (tensor->type == TensorType_FLOAT32 && input_type != tensor->type) {
-        error_reporter->Report(
+        TF_LITE_REPORT_ERROR(
+            error_reporter,
             "Unsupported input type %s for input tensor %d of type %s.",
             EnumNameTensorType(input_type), subgraph->inputs[i],
             EnumNameTensorType(tensor->type));
@@ -264,7 +269,8 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
       TensorT* tensor = subgraph->tensors[subgraph->outputs[i]].get();
       // TODO(suharshs): Add support for this case if it ever comes up.
       if (tensor->type == TensorType_FLOAT32 && output_type != tensor->type) {
-        error_reporter->Report(
+        TF_LITE_REPORT_ERROR(
+            error_reporter,
             "Unsupported output type %s for output tensor '%s' of type %s.",
             EnumNameTensorType(output_type), tensor->name.c_str(),
             EnumNameTensorType(tensor->type));
@@ -282,10 +288,9 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
 }
 
 // Apply constraints to ops if they have any.
-// We have made the restriction that for int8 quantized concat, the inputs and
-// outpus must have the same scale and zero point. The other ones with
-// constraints(averagepool, maxpool, gather, softmax, tanh etc) are handled in
-// QuantizeWeightsAndInput.
+// We have made the restriction that for int8 quantized concat, minimum, and
+// maximum, the inputs and outputs must have the same scale and zero point.
+// The other ones with constraints are handled in QuantizeWeightsAndInput.
 TfLiteStatus ApplyConstraints(ModelT* model,
                               const std::unordered_set<string>& operator_names,
                               ErrorReporter* error_reporter) {
@@ -301,7 +306,6 @@ TfLiteStatus ApplyConstraints(ModelT* model,
       if (!property.quantizable) {
         continue;
       }
-      // Basically only Concat passes this check.
       if (!property.arbitrary_inputs ||
           !property.restrict_same_input_output_scale) {
         continue;
@@ -310,9 +314,9 @@ TfLiteStatus ApplyConstraints(ModelT* model,
       // of max, which means using the scale and zero point of output.
       TensorT* output_tensor = subgraph->tensors[op->outputs[0]].get();
       if (!utils::QuantizationParametersExist(output_tensor)) {
-        error_reporter->Report(
-            "Unable to get scale or zero point from the tensor at %d, which "
-            "is the output tensor for concat.",
+        TF_LITE_REPORT_ERROR(
+            error_reporter,
+            "Unable to get scale or zero point from the tensor at %d.",
             op->outputs[0]);
         return kTfLiteError;
       }
@@ -321,9 +325,9 @@ TfLiteStatus ApplyConstraints(ModelT* model,
       for (size_t input_idx = 0; input_idx < op->inputs.size(); ++input_idx) {
         TensorT* input_tensor = subgraph->tensors[op->inputs[input_idx]].get();
         if (!utils::QuantizationParametersExist(input_tensor)) {
-          error_reporter->Report(
-              "Unable to get scale or zero point from tensor at %d, which is "
-              "an input tensor of concat.",
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
+              "Unable to get scale or zero point from tensor at %d.",
               op->inputs[input_idx]);
           return kTfLiteError;
         }
@@ -413,7 +417,8 @@ TfLiteStatus QuantizeOpInput(
   const BuiltinOperator op_code =
       model->operator_codes[op->opcode_index]->builtin_code;
   if (input_idx >= op->inputs.size()) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "Required input index %d is larger than the input length of op "
         "%s at index %d in subgraph %d",
         input_idx, op->inputs.size(), EnumNameBuiltinOperator(op_code), *op_idx,
@@ -441,7 +446,8 @@ TfLiteStatus QuantizeOpInput(
         if (utils::QuantizeWeight(model, tensor, tensor_property.per_axis,
                                   tensor_property.per_axis_index,
                                   error_reporter) == kTfLiteError) {
-          error_reporter->Report(
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
               "Unable to quantize buffer or min/max value for input %d "
               "in op %s in subgraph %d, node: %d",
               input_idx, EnumNameBuiltinOperator(op_code), subgraph_idx,
@@ -483,10 +489,29 @@ TfLiteStatus QuantizeOpInput(
         return utils::SymmetricPerLayerBiasQuantize(model, tensor, scale,
                                                     error_reporter);
 
+      } else if (tensor_property.number_of_bits == 10) {
+        // When the number of bits is 10 (instead of 16), quantize the tensor to
+        // [-512, 512], instead of [-32767, 32767].
+        TensorT* tensor = subgraph->tensors[tensor_idx].get();
+        int total_size = 1;
+        for (int i = 0; i < tensor->shape.size(); ++i) {
+          total_size *= tensor->shape[i];
+        }
+        BufferT* buffer = model->buffers[tensor->buffer].get();
+        float* buffer_data = reinterpret_cast<float*>(buffer->data.data());
+        auto minmax =
+            std::minmax_element(buffer_data, buffer_data + total_size);
+        const float range =
+            std::max(std::abs(*minmax.first), std::abs(*minmax.second));
+        const float quantized_range = 512.0;
+        const float scale = range / quantized_range;
+        return utils::SymmetricQuantizeFloatsToInt16(model, tensor, scale,
+                                                     error_reporter);
       } else {
-        // Only 8, 16, 32 are supported.
+        // Only 8, 16, 32, 10 are supported.
         // TODO(jianlijianli): extend this to support arbitrary bits.
-        error_reporter->Report(
+        TF_LITE_REPORT_ERROR(
+            error_reporter,
             "Unable to quantize buffer or min/max value for input %d "
             "in op %s in subgraph %d, node: %d",
             input_idx, EnumNameBuiltinOperator(op_code), subgraph_idx, *op_idx);
@@ -503,14 +528,15 @@ TfLiteStatus QuantizeOpInput(
           utils::QuantizeActivation(tensor);
         } else if (tensor_property.number_of_bits == 16) {
           TensorT* tensor = subgraph->tensors[tensor_idx].get();
+          float quantized_range = 32767.0;
           float range = std::max(std::abs(tensor->quantization->min[0]),
                                  std::abs(tensor->quantization->max[0]));
           if (tensor_property.extend_to_power_of_two) {
             const int power_of_two_scale = utils::GetPowerOfTwoScale(
                 tensor->quantization->min[0], tensor->quantization->max[0]);
             range = std::pow(2, power_of_two_scale);
+            quantized_range = 32768.0;
           }
-          const float quantized_range = 32768.0;
           const float scale = range / quantized_range;
           utils::QuantizeActivationToInt16(tensor, scale);
         }
@@ -535,7 +561,8 @@ TfLiteStatus QuantizeOpInput(
         *op_idx += 1;
       }
     } else {
-      error_reporter->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
           "Unable to find buffer or min/max value for input activation "
           "%d in %s in subgraph %d, node: %d",
           input_idx, EnumNameBuiltinOperator(op_code), subgraph_idx, *op_idx);
@@ -578,7 +605,8 @@ TfLiteStatus QuantizeOpOutput(
   const BuiltinOperator op_code =
       model->operator_codes[op->opcode_index]->builtin_code;
   if (output_idx >= op->outputs.size()) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "Required output index %d is larger than the output length of "
         "op %s at index %d in subgraph %d",
         output_idx, op->outputs.size(), EnumNameBuiltinOperator(op_code),
@@ -596,7 +624,8 @@ TfLiteStatus QuantizeOpOutput(
     // min/max can be different but we want them to be the same.
     // Get scale and zero point of input.
     if (property.inputs[0].first >= op->inputs.size()) {
-      error_reporter->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
           "Required input index %d is larger than the input length of "
           "op %s at index %d in subgraph %d",
           property.inputs[0].first, op->inputs.size(),
@@ -607,10 +636,11 @@ TfLiteStatus QuantizeOpOutput(
     TensorT* input_tensor = subgraph->tensors[input_tensor_idx].get();
     if (input_tensor->quantization->scale.size() != 1 ||
         input_tensor->quantization->zero_point.size() != 1) {
-      error_reporter->Report(
-          "Invalid quantization params for op %s at index %d "
-          "in subgraph %d",
-          EnumNameBuiltinOperator(op_code), op_idx, subgraph_idx);
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Invalid quantization params for op %s at index %d "
+                           "in subgraph %d",
+                           EnumNameBuiltinOperator(op_code), op_idx,
+                           subgraph_idx);
       return kTfLiteError;
     }
 
@@ -642,7 +672,8 @@ TfLiteStatus QuantizeOpOutput(
     if (utils::HasMinMax(output_tensor)) {
       utils::QuantizeActivation(output_tensor);
     } else {
-      error_reporter->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
           "Unable to find min/max value for output %d in %s in "
           "subgraph %d, node: %d",
           output_idx, EnumNameBuiltinOperator(op_code), subgraph_idx, op_idx);
@@ -678,7 +709,8 @@ TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
             if (utils::HasMinMax(tensor)) {
               utils::QuantizeActivation(tensor);
             } else {
-              error_reporter->Report(
+              TF_LITE_REPORT_ERROR(
+                  error_reporter,
                   "Unable to find min/max value for output %d in %s in "
                   "subgraph %d, node: %d",
                   tensor, EnumNameBuiltinOperator(op_code), subgraph_idx,
@@ -715,6 +747,11 @@ TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
 // Quantize tensros that have shared range. For example, in LSTM, the output
 // tensor and input state tensor should share the same range because they are
 // using the same scale and zero point.
+// We have to model this explicitely because the output is modeled as an extra
+// tensor in LSTM. In calibrator, state tensors are logged both before and after
+// the inferece so the range is fully captured. But output, although it is
+// identical to activation, is not a state tensor the input value (range) of the
+// very first inference is not captured.
 TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
   for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
@@ -786,8 +823,9 @@ TfLiteStatus QuantizeWeightsInputOutput(
                               subgraph->tensors[op->outputs[0]]->name);
 
       if (!property.quantizable && !allow_float) {
-        error_reporter->Report("Quantization not yet supported for op: %s",
-                               EnumNameBuiltinOperator(op_code));
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "Quantization not yet supported for op: %s",
+                             EnumNameBuiltinOperator(op_code));
         return kTfLiteError;
       }
 
@@ -827,11 +865,12 @@ TfLiteStatus QuantizeBiases(ModelT* model,
         continue;
       }
       for (const int bias_idx : property.biases) {
-        if (op->inputs[bias_idx] == -1 /*kOptionalTensor*/) {
+        if (op->inputs[bias_idx] == kTfLiteOptionalTensor) {
           continue;
         }
         if (bias_idx >= op->inputs.size()) {
-          error_reporter->Report(
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
               "Required input index %d is larger than the input length of "
               "op  %s at index %d in subgraph %d",
               bias_idx, op->inputs.size(), EnumNameBuiltinOperator(op_code),
@@ -844,11 +883,12 @@ TfLiteStatus QuantizeBiases(ModelT* model,
         if (!utils::QuantizationParametersExist(bias_tensor)) {
           if (utils::HasBuffer(model, subgraph, op->inputs[bias_idx])) {
             if (property.inputs.size() != 2) {
-              error_reporter->Report(
-                  "Expect the input length of "
-                  "op %s at index %d in subgraph %d to be 2",
-                  bias_idx, op->inputs.size(), EnumNameBuiltinOperator(op_code),
-                  op_idx, subgraph_idx);
+              TF_LITE_REPORT_ERROR(error_reporter,
+                                   "Expect the input length of "
+                                   "op %s at index %d in subgraph %d to be 2",
+                                   bias_idx, op->inputs.size(),
+                                   EnumNameBuiltinOperator(op_code), op_idx,
+                                   subgraph_idx);
               return kTfLiteError;
             }
             TensorT* input_tensor =
@@ -931,7 +971,8 @@ TfLiteStatus FillQuantizationParams(
                   float_input_data, tensor->shape, channel_dim_index,
                   tensor->quantization.get(), error_reporter));
             } else {
-              error_reporter->Report(
+              TF_LITE_REPORT_ERROR(
+                  error_reporter,
                   "Could not fill max min for tensor as the dimension is %d "
                   "and not 4 as expected.",
                   tensor->shape.size());
@@ -948,7 +989,8 @@ TfLiteStatus FillQuantizationParams(
           }
           if (tensor->quantization->quantized_dimension !=
               input.second.per_axis_index) {
-            error_reporter->Report(
+            TF_LITE_REPORT_ERROR(
+                error_reporter,
                 "Quantized dimension for tensor property and quantization "
                 "parameters do not match. Got %d and %d respectively.",
                 input.second.per_axis_index,
@@ -959,14 +1001,15 @@ TfLiteStatus FillQuantizationParams(
           // Dynamic tensor.
         } else if (!utils::HasMinMax(tensor) &&
                    !utils::HasBuffer(model, subgraph, tensor_idx)) {
-          error_reporter->Report(
-              "Max and min for dynamic tensors should be"
-              " recorded during calibration");
+          TF_LITE_REPORT_ERROR(error_reporter,
+                               "Max and min for dynamic tensors should be"
+                               " recorded during calibration");
           return kTfLiteError;
         }
 
         if (utils::QuantizationParametersExist(tensor)) {
-          error_reporter->Report(
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
               "Scale and zero points should not be recorded before "
               "quantization.");
           return kTfLiteError;
@@ -992,15 +1035,20 @@ TfLiteStatus EnsureBiasScaleCompatibility(
 
       // Loop over all bias tensors.
       for (const int bias_idx : property.biases) {
+        if (op->inputs[bias_idx] == kTfLiteOptionalTensor) {
+          continue;
+        }
         TensorT* bias_tensor = subgraph->tensors[op->inputs[bias_idx]].get();
         int32_t channel_dim_size = bias_tensor->shape[0];
         if (bias_tensor->shape.size() != 1) {
-          error_reporter->Report("Expected bias tensor to be a vector.");
+          TF_LITE_REPORT_ERROR(error_reporter,
+                               "Expected bias tensor to be a vector.");
           return kTfLiteError;
         }
 
         if (property.inputs.size() != 2) {  // Only works for two input tensors.
-          error_reporter->Report(
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
               "Expect %d inputs for op %s at index %d in subgraph %d to be 2",
               property.inputs.size(), op_idx, subgraph_idx);
           return kTfLiteError;
@@ -1018,7 +1066,8 @@ TfLiteStatus EnsureBiasScaleCompatibility(
 
           // Check quantization parameters exist for input.
           if (!utils::HasMinMax(input_tensor)) {
-            error_reporter->Report(
+            TF_LITE_REPORT_ERROR(
+                error_reporter,
                 "Input tensor missing quantization information. Should be "
                 "populated during calibration.");
             return kTfLiteError;
@@ -1032,14 +1081,16 @@ TfLiteStatus EnsureBiasScaleCompatibility(
               std::numeric_limits<int8_t>::min(),
               std::numeric_limits<int8_t>::max(), &temp_quant_params);
           if (temp_quant_params.scale.size() != 1) {
-            error_reporter->Report("Unexpected input quantization scale size.");
+            TF_LITE_REPORT_ERROR(error_reporter,
+                                 "Unexpected input quantization scale size.");
             return kTfLiteError;
           }
           float input_scale = temp_quant_params.scale[0];
 
           // Check that max/min values have been filled for weights.
           if (!utils::HasMinMax(weight_tensor)) {
-            error_reporter->Report(
+            TF_LITE_REPORT_ERROR(
+                error_reporter,
                 "Min and/or max values have not been recorded for weight "
                 "tensor. This should have happened in FillQuantizationParams.");
             return kTfLiteError;
@@ -1049,7 +1100,8 @@ TfLiteStatus EnsureBiasScaleCompatibility(
           if (weight_property.per_axis) {
             if (bias_tensor->shape[0] !=
                 weight_tensor->shape[weight_property.per_axis_index]) {
-              error_reporter->Report(
+              TF_LITE_REPORT_ERROR(
+                  error_reporter,
                   "Channel mismatch between bias and weight tensors %d vs %d",
                   bias_tensor->shape[0],
                   weight_tensor->shape[weight_property.per_axis_index]);
@@ -1057,14 +1109,16 @@ TfLiteStatus EnsureBiasScaleCompatibility(
             }
             // Ensure that the number of max/mins matches the channel_dim_size.
             if (weight_tensor->quantization->max.size() != channel_dim_size) {
-              error_reporter->Report(
+              TF_LITE_REPORT_ERROR(
+                  error_reporter,
                   "Mismatch between number of weight maxs and channels: %d vs "
                   "%d",
                   weight_tensor->quantization->max.size(), channel_dim_size);
               return kTfLiteError;
             }
             if (weight_tensor->quantization->min.size() != channel_dim_size) {
-              error_reporter->Report(
+              TF_LITE_REPORT_ERROR(
+                  error_reporter,
                   "Mismatch between number of weight mins and channels: %d",
                   weight_tensor->quantization->min.size());
               return kTfLiteError;
@@ -1084,13 +1138,15 @@ TfLiteStatus EnsureBiasScaleCompatibility(
               input_scale, error_reporter));
 
           if (utils::QuantizationParametersExist(weight_tensor)) {
-            error_reporter->Report(
+            TF_LITE_REPORT_ERROR(
+                error_reporter,
                 "Scale and zero points should not be recorded for the weight "
                 "tensor before quantization.");
             return kTfLiteError;
           }
           if (utils::QuantizationParametersExist(input_tensor)) {
-            error_reporter->Report(
+            TF_LITE_REPORT_ERROR(
+                error_reporter,
                 "Scale and zero points should not be recorded for the input "
                 "tensor before quantization.");
             return kTfLiteError;

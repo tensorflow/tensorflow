@@ -78,7 +78,7 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
   CompressionType compression_type_;
 };
 
-class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBase {};
 
 Status CreateTestFiles(const std::vector<tstring>& filenames,
                        const std::vector<string>& contents,

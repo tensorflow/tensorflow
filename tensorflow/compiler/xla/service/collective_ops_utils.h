@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -31,7 +32,7 @@ namespace xla {
 
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 
-// Atempts to match computation to one of the possible cases in ReductionKind.
+// Attempts to match computation to one of the possible cases in ReductionKind.
 absl::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
@@ -188,6 +189,48 @@ class Rendezvous {
   virtual ~Rendezvous() {}
   explicit Rendezvous(const RendezvousKey& k) : key_(k) {}
 
+  // Submit a participant to the rendezvous. We get the rendezvous from
+  // `rendezvous_getter`, which we can then use to drop the existing reference.
+  static StatusOr<O> SubmitParticipant(
+      std::function<std::shared_ptr<Rendezvous<O>>()> rendezvous_getter,
+      AllReduceParticipantData participant) {
+    std::shared_ptr<Rendezvous<O>> rendezvous = rendezvous_getter();
+    TF_ASSIGN_OR_RETURN(auto p, rendezvous->SubmitParticipant(participant));
+
+    // Drop our reference to the Rendezvous and wait for all other threads to do
+    // the same.  If we didn't do this, one of the threads could run past this
+    // point, reenter ExecuteOnStream for another all-reduce, and attempt to
+    // reuse the Rendezvous!
+    //
+    // An alternative way of accomplishing this goal would be to implement
+    // RefcountingHashMap::erase() and call it during SubmitParticipant.  But
+    // erase() is deceptively complex to implement correctly.
+    std::shared_ptr<tensorflow::BlockingCounter> blocking_counter = p.second;
+    rendezvous.reset();
+    blocking_counter->DecrementCount();
+    xla::WaitAndLogIfStuck(blocking_counter.get(), [&] {
+      return absl::StrFormat(
+          "participant waiting for all threads to drop their reference to the "
+          "rendezvous: %p",
+          rendezvous.get());
+    });
+    return p.first;
+  }
+
+ protected:
+  // Returns domain-specific output O and whether this replica is primary.
+  virtual StatusOr<std::pair<O, bool>> SubmitParticipantImpl(
+      AllReduceParticipantData participant) = 0;
+
+  virtual void CleanupImpl(O handle, bool is_primary) {}
+
+  tensorflow::mutex mu_;
+
+  bool initialized_ GUARDED_BY(mu_) = false;
+
+  std::vector<AllReduceParticipantData> participants_ GUARDED_BY(mu_);
+
+ private:
   // Runs the all-reduce on the given thread.  If successful, returns
   //  - a handle to the clique that was used, so that the caller may keep the
   //    clique alive if it chooses.
@@ -248,21 +291,6 @@ class Rendezvous {
 
     return std::make_pair(handle, returned_blocking_counter_);
   }
-
- protected:
-  // Returns domain-specific output O and whether this replica is primary.
-  virtual StatusOr<std::pair<O, bool>> SubmitParticipantImpl(
-      AllReduceParticipantData participant) = 0;
-
-  virtual void CleanupImpl(O handle, bool is_primary) {}
-
-  tensorflow::mutex mu_;
-
-  bool initialized_ GUARDED_BY(mu_) = false;
-
-  std::vector<AllReduceParticipantData> participants_ GUARDED_BY(mu_);
-
- private:
   const RendezvousKey key_;
 
   tensorflow::BlockingCounter all_participants_present_{

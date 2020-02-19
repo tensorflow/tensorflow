@@ -1228,12 +1228,18 @@ class PolyvalTest(test.TestCase):
       tf_val = math_ops.polyval(coeffs, x)
       self.assertAllClose(np_val, self.evaluate(tf_val))
 
+  def test_coeffs_raise(self):
+    x = np.random.rand(2, 2).astype(np.float32)
+    coeffs = {}
+    with self.assertRaisesRegexp(ValueError, "Argument coeffs must be list"):
+      math_ops.polyval(coeffs, x)
+
 
 class SingularGradientOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientAtSingularity(self):
-    if not compat.forward_compatible(2019, 12, 14):
+    if not compat.forward_compatible(2020, 3, 14):
       self.skipTest("Skipping test for future functionality.")
 
     ops_and_singularity = [

@@ -22,6 +22,7 @@ import time
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import interleave_ops
+from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
@@ -104,9 +105,16 @@ class ParallelInterleaveBenchmark(test.Benchmark):
                  cycle_length=10,
                  iters=100,
                  num_parallel_calls=None,
+                 attach_stats_aggregator=False,
                  name=None):
     ds = self.make_dataset(interleave_version, initial_delay_us,
                            remainder_delay_us, cycle_length, num_parallel_calls)
+    if attach_stats_aggregator:
+      aggregator = stats_aggregator.StatsAggregator()
+      opts = dataset_ops.Options()
+      opts.experimental_stats.aggregator = aggregator
+      ds = ds.with_options(opts)
+
     ds = ds.skip(num_elements)
     deltas = []
     for _ in range(iters):
@@ -155,6 +163,14 @@ class ParallelInterleaveBenchmark(test.Benchmark):
           cycle_length=1000,
           num_elements=100000,
           name="long_cycle_" + version)
+
+  def benchmark_stats(self):
+    self._benchmark(
+        CORE_PARALLEL,
+        cycle_length=50,
+        num_elements=1000,
+        name="stats",
+        attach_stats_aggregator=True)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_PROTOBUF_INTERNAL_H_
 
 #include "google/protobuf/any.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -48,7 +48,7 @@ Status ParseAny(const google::protobuf::Any& any, T* message,
         "Expected Any type_url for: ", type_name,
         ". Got: ", string(any.type_url().data(), any.type_url().size()), ".");
   }
-  if (!message->ParseFromString(any.value())) {
+  if (!message->ParseFromString(ProtobufStringToString(any.value()))) {
     return errors::FailedPrecondition("Failed to unpack: ",
                                       DebugStringIfAvailable(any));
   }

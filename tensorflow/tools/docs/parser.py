@@ -1660,8 +1660,7 @@ class _GeneratedFile(object):
     return True
 
   def __str__(self):
-    return 'Defined in generated file: `%s%s`.\n\n' % (self.path_prefix,
-                                                       self.path)
+    return ''
 
 
 def _get_defined_in(py_object, parser_config):

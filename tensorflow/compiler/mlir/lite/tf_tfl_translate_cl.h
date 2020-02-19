@@ -35,6 +35,7 @@ extern llvm::cl::opt<std::string> output_file_name;
 extern llvm::cl::opt<bool> use_splatted_constant;
 extern llvm::cl::opt<bool> input_mlir;
 extern llvm::cl::opt<bool> output_mlir;
+extern llvm::cl::opt<bool> inline_functions;
 extern llvm::cl::list<std::string> custom_opdefs;
 extern llvm::cl::opt<bool> emit_quant_adaptor_ops;
 extern llvm::cl::opt<std::string> quant_stats_file_name;

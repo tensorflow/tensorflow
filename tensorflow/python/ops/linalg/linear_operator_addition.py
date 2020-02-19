@@ -397,6 +397,15 @@ _IDENTITY_FAMILY = {_IDENTITY, _SCALED_IDENTITY}
 # operators with an efficient .add_to_tensor() method.
 _EFFICIENT_ADD_TO_TENSOR = _DIAG_LIKE
 
+# Supported LinearOperator classes.
+SUPPORTED_OPERATORS = [
+    linear_operator_diag.LinearOperatorDiag,
+    linear_operator_lower_triangular.LinearOperatorLowerTriangular,
+    linear_operator_full_matrix.LinearOperatorFullMatrix,
+    linear_operator_identity.LinearOperatorIdentity,
+    linear_operator_identity.LinearOperatorScaledIdentity
+]
+
 
 def _type(operator):
   """Returns the type name constant (e.g. _TRIL) for operator."""

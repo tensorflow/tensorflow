@@ -363,7 +363,7 @@ class Conv2DTest(test.TestCase):
         tf_logging.debug("actual = %s", value)
         tol_to_use = fp16_tol if value.dtype == np.float16 else tol
         if np.issubdtype(value.dtype, np.integer):
-          self.assertAllEqual(expected, np.ravel(value))
+          self.assertAllEqual(np.rint(expected), np.ravel(value))
         else:
           self.assertAllClose(expected, np.ravel(value), atol=tol_to_use,
                               rtol=tol_to_use)
@@ -2659,7 +2659,7 @@ class SeparableConv2DTest(test.TestCase):
 
       value = self.evaluate(conv)
     tf_logging.debug("value = %s", value)
-    self.assertArrayNear(expected, np.ravel(value), 1e-3)
+    self.assertArrayNear(expected, np.ravel(value), 2e-3)
     self.assertShapeEqual(value, conv)
 
   def _testSeparableConv2D(self, data_format):

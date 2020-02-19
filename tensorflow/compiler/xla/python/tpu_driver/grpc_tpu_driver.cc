@@ -313,8 +313,10 @@ class GrpcTpuStream {
 
 class GrpcTpuDriver : public TpuDriver {
  public:
-  explicit GrpcTpuDriver(const TpuDriverConfig& config, int32_t client_id)
-      : config_(config), client_id_(client_id) {
+  explicit GrpcTpuDriver(const TpuDriverConfig& config,
+                         std::shared_ptr<::grpc::ChannelCredentials> creds,
+                         int32_t client_id)
+      : config_(config), creds_(creds), client_id_(client_id) {
     SystemInfo system_info;
     QuerySystemInfo(&system_info);
     for (auto& chip_info : system_info.tpu_chip()) {
@@ -330,18 +332,12 @@ class GrpcTpuDriver : public TpuDriver {
   }
 
   ~GrpcTpuDriver() override {
-    auto stub = CreateTpuDriverStub(config_);
-    ::grpc::ClientContext ctx;
-    ctx.set_fail_fast(false);
-    ctx.set_deadline(std::chrono::system_clock::now() +
-                     std::chrono::seconds(10));
-    CloseRequest req;
-    req.set_client_id(client_id_);
-    CloseResponse resp;
-    ::grpc::Status status = stub->Close(&ctx, req, &resp);
+    if (closed_) {
+      return;
+    }
+    auto status = Close();
     if (!status.ok()) {
-      LOG(ERROR) << "Failed to close the gRPC driver: " << status.error_code()
-                 << ": " << status.error_details();
+      LOG(ERROR) << status;
     }
   }
 
@@ -424,20 +420,24 @@ class GrpcTpuDriver : public TpuDriver {
   EventId NewOperationId() { return EventId{client_id_, ++operation_id_}; }
 
   static std::unique_ptr<grpc::CloudTpuDriver::Stub> CreateTpuDriverStub(
-      const TpuDriverConfig& config);
+      const TpuDriverConfig& config,
+      std::shared_ptr<::grpc::ChannelCredentials> creds);
 
   uint32_t client_id() const { return client_id_; }
 
  private:
+  Status Close();
   std::unique_ptr<GrpcTpuStream> AllocateStream(int32_t core_id);
 
   const TpuDriverConfig config_;
+  std::shared_ptr<::grpc::ChannelCredentials> creds_;
   const uint32_t client_id_;
   // Map from stream IDs to streams.
   absl::flat_hash_map<int32_t, std::unique_ptr<GrpcTpuStream>> streams_;
   std::unique_ptr<GrpcTpuStream> host_stream_;
   // Shared by all streams.
   std::atomic<uint64_t> operation_id_{0};
+  std::atomic<bool> closed_{false};
 };  // namespace
 
 GrpcEvent::~GrpcEvent() { stream_->DeleteEvent(id_); }
@@ -942,8 +942,9 @@ std::shared_ptr<Event> GrpcTpuStream::ExecuteProgram(
 }
 
 /*static*/ std::unique_ptr<grpc::CloudTpuDriver::Stub>
-GrpcTpuDriver::CreateTpuDriverStub(const TpuDriverConfig& config) {
-  auto creds = ::grpc::InsecureChannelCredentials();
+GrpcTpuDriver::CreateTpuDriverStub(
+    const TpuDriverConfig& config,
+    std::shared_ptr<::grpc::ChannelCredentials> creds) {
   ::grpc::ChannelArguments args;
   args.SetMaxReceiveMessageSize(std::numeric_limits<int>::max());
   args.SetMaxSendMessageSize(std::numeric_limits<int>::max());
@@ -984,7 +985,7 @@ GrpcTpuDriver::CreateTpuDriverStub(const TpuDriverConfig& config) {
 }
 
 std::unique_ptr<GrpcTpuStream> GrpcTpuDriver::AllocateStream(int32_t id) {
-  auto stub = CreateTpuDriverStub(config_);
+  auto stub = CreateTpuDriverStub(config_, creds_);
   ::grpc::ClientContext ctx;
   ctx.set_fail_fast(false);
   ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(10));
@@ -992,7 +993,7 @@ std::unique_ptr<GrpcTpuStream> GrpcTpuDriver::AllocateStream(int32_t id) {
 }
 
 void GrpcTpuDriver::QuerySystemInfo(SystemInfo* system_info) {
-  auto stub = CreateTpuDriverStub(config_);
+  auto stub = CreateTpuDriverStub(config_, creds_);
   ::grpc::ClientContext ctx;
   ctx.set_fail_fast(false);
   ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(10));
@@ -1002,43 +1003,94 @@ void GrpcTpuDriver::QuerySystemInfo(SystemInfo* system_info) {
   ::grpc::Status status = stub->QuerySystemInfo(&ctx, req, &resp);
   if (!status.ok()) {
     LOG(ERROR) << "QuerySystemInfo request failed: " << status.error_code()
-               << ":" << status.error_details();
+               << ": " << status.error_message() << ": "
+               << status.error_details();
     return;
   }
   *system_info = resp.system_info();
 }
 
 Status GrpcTpuDriver::Reset() {
-  return xla::Unimplemented("GRPC driver reset is not implemented yet.");
+  auto stub = CreateTpuDriverStub(config_, creds_);
+  ::grpc::ClientContext ctx;
+  ctx.set_fail_fast(false);
+  ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(10));
+  ResetRequest req;
+  ResetResponse resp;
+  ::grpc::Status status = stub->Reset(&ctx, req, &resp);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to reset the gRPC driver: " << status.error_code()
+               << ": " << status.error_message() << ": "
+               << status.error_details();
+    return xla::Status(tensorflow::error::Code(status.error_code()),
+                       absl::StrCat("Failed to reset TPU driver. Error was: ",
+                                    status.error_message(),
+                                    ". Details: ", status.error_details()));
+  }
+  streams_.clear();
+  host_stream_.reset();
+  return Close();
+}
+
+Status GrpcTpuDriver::Close() {
+  auto stub = CreateTpuDriverStub(config_, creds_);
+  ::grpc::ClientContext ctx;
+  ctx.set_fail_fast(false);
+  ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(10));
+  CloseRequest req;
+  req.set_client_id(client_id_);
+  CloseResponse resp;
+  ::grpc::Status status = stub->Close(&ctx, req, &resp);
+  if (!status.ok()) {
+    return xla::Status(tensorflow::error::Code(status.error_code()),
+                       absl::StrCat("Failed to close TPU driver. Error was: ",
+                                    status.error_message(),
+                                    ". Details: ", status.error_details()));
+  }
+  closed_ = true;
+  return Status::OK();
+}
+}  // namespace
+
+xla::StatusOr<std::unique_ptr<TpuDriver>> CreateGrpcTpuDriver(
+    const TpuDriverConfig& config,
+    std::shared_ptr<::grpc::ChannelCredentials> creds) {
+  auto stub = GrpcTpuDriver::CreateTpuDriverStub(config, creds);
+  ::grpc::ClientContext ctx;
+  ctx.set_fail_fast(false);
+  ctx.set_deadline(
+      std::chrono::system_clock::now() +
+      std::chrono::seconds(config.grpc().connection_timeout_secs()));
+  OpenRequest req;
+  OpenResponse resp;
+  ::grpc::Status status = stub->Open(&ctx, req, &resp);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to open the gRPC driver: " << status.error_code()
+               << ": " << status.error_message() << ": "
+               << status.error_details();
+    return xla::Status(
+        tensorflow::error::Code(status.error_code()),
+        absl::StrCat(
+            "Failed to connect to remote server at address: ", config.worker(),
+            ". Error from gRPC: ", status.error_message(),
+            ". Details: ", status.error_details()));
+  }
+  return std::unique_ptr<TpuDriver>(
+      new GrpcTpuDriver(config, creds, resp.client_id()));
 }
 
 REGISTER_TPU_DRIVER(
     "grpc://",
     [](const TpuDriverConfig& config)
         -> xla::StatusOr<std::unique_ptr<TpuDriver>> {
-      auto stub = GrpcTpuDriver::CreateTpuDriverStub(config);
-      ::grpc::ClientContext ctx;
-      ctx.set_fail_fast(false);
-      ctx.set_deadline(
-          std::chrono::system_clock::now() +
-          std::chrono::seconds(config.grpc().connection_timeout_secs()));
-      OpenRequest req;
-      OpenResponse resp;
-      ::grpc::Status status = stub->Open(&ctx, req, &resp);
-      if (!status.ok()) {
-        LOG(ERROR) << "Failed to open the gRPC driver: " << status.error_code()
-                   << ": " << status.error_message() << ": "
-                   << status.error_details();
-        return xla::Status(
-            tensorflow::error::Code(status.error_code()),
-            absl::StrCat("Failed to connect to remote server at address: ",
-                         config.worker(),
-                         ". Error from gRPC: ", status.error_message(),
-                         ". Details: ", status.error_details()));
+      if (absl::StartsWith(config.worker(), "grpc://localhost")) {
+        LOG(INFO) << "Using local credentials for localhost: connection.";
+        return CreateGrpcTpuDriver(
+            config, ::grpc::experimental::LocalCredentials(LOCAL_TCP));
+      } else {
+        return CreateGrpcTpuDriver(config,
+                                   ::grpc::InsecureChannelCredentials());
       }
-      return std::unique_ptr<TpuDriver>(
-          new GrpcTpuDriver(config, resp.client_id()));
     });
 
-}  // namespace
 }  // namespace tpu_driver

@@ -24,7 +24,7 @@ namespace xla {
 namespace llvm_ir {
 
 bool MayBeImplementedAsInPlaceDynamicUpdateSlice(const HloInstruction* instr) {
-  // Today we can't emit a dynamic-update-slice if the DUS node is parallized;
+  // Today we can't emit a dynamic-update-slice if the DUS node is parallelized;
   // the emitter will not emit correct code.  It's possible to change this, but
   // then ParallelTaskAssigner would have to somehow know whether a node *will*
   // be emitted as an in-place DUS, and it can't, because it doesn't have a

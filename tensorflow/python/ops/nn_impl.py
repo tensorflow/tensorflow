@@ -38,6 +38,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import util as losses_util
+from tensorflow.python.platform import device_context
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
@@ -707,22 +708,6 @@ def zero_fraction(value, name=None):
     return array_ops.identity(zero_fraction_float32, "fraction")
 
 
-# copybara:strip_begin
-# TODO(b/138808492): Remove code inside copybara
-# to make TPU code and CPU code consistent.
-def _enclosing_tpu_context():
-  # pylint: disable=protected-access
-  context = ops.get_default_graph()._get_control_flow_context()
-  # pylint: enable=protected-access
-  while context is not None and not isinstance(
-      context, control_flow_ops.XLAControlFlowContext):
-    context = context.outer_context
-  return context
-
-
-# copybara:strip_end
-
-
 # pylint: disable=redefined-builtin
 @tf_export(v1=["nn.depthwise_conv2d"])
 def depthwise_conv2d(input,
@@ -782,11 +767,8 @@ def depthwise_conv2d(input,
     if rate is None:
       rate = [1, 1]
 
-    # copybara:strip_begin
-    # TODO(b/138808492): Remove code inside copybara
-    # to make TPU code and CPU code consistent.
     # Use depthwise_conv2d_native if executing on TPU.
-    if _enclosing_tpu_context() is not None:
+    if device_context.enclosing_tpu_context() is not None:
       if data_format == "NCHW":
         dilations = [1, 1, rate[0], rate[1]]
       else:
@@ -799,7 +781,6 @@ def depthwise_conv2d(input,
           data_format=data_format,
           dilations=dilations,
           name=name)
-    # copybara:strip_end
 
     def op(input_converted, _, padding):
       return nn_ops.depthwise_conv2d_native(
@@ -953,7 +934,7 @@ def separable_conv2d(input,
       rate = [1, 1]
 
     # The layout of the ops in the graph are expected to be as follows:
-    # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
+    # depthwise_conv2d  // Conv2D op corresponding to native depthwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
 
     def op(input_converted, _, padding):
@@ -1314,7 +1295,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     # The shape of the weights isn't necessarily the same as x's
     # shape, just broadcast-compatible with it -- so this expression
     # performs broadcasting to give a per-item weight, with the same
-    # shape as (freqency_weights * x). This avoids having to reason
+    # shape as (frequency_weights * x). This avoids having to reason
     # through all the broadcast logic to compute a correct
     # sum_of_weights.
     broadcasted_weights = frequency_weights + array_ops.zeros_like(x)
@@ -1530,6 +1511,7 @@ def fused_batch_norm(
       is_training=is_training,
       name=name)
   return y, batch_mean, batch_var
+
 
 @tf_export(v1=["nn.batch_norm_with_global_normalization"])
 def batch_norm_with_global_normalization(t=None,

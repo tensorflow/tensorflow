@@ -24,16 +24,17 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @test_util.run_v1_only("b/121264236")
+  # TODO(b/121264236)
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testPrefetchWithSlackOption(self):
     """Determines slack_period based on num devices attached to iterator."""
     dataset = dataset_ops.Dataset.range(10)
@@ -44,9 +45,9 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
         dataset, ["/cpu:1", "/cpu:2"])
     dataset = multi_device_iterator._dataset  # pylint: disable=protected-access
-    self.assertIn("slack", dataset.options()._static_optimizations())
+    self.assertIn("slack", dataset.options()._graph_rewrites())
     self.assertIn("slack:slack_period:2",
-                  dataset.options()._static_optimization_configs())
+                  dataset.options()._graph_rewrite_configs())
 
     config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.test_session(config=config):
@@ -60,6 +61,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPrefetchWithSlackOptionWithoutIterator(self):
     """Defaults to slack period of 1 without iterator."""
     dataset = dataset_ops.Dataset.range(10)
@@ -67,11 +69,12 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     options = dataset_ops.Options()
     options.experimental_slack = True
     dataset = dataset.with_options(options)
-    self.assertIn("slack", dataset.options()._static_optimizations())
+    self.assertIn("slack", dataset.options()._graph_rewrites())
     self.assertIn("slack:slack_period:1",
-                  dataset.options()._static_optimization_configs())
+                  dataset.options()._graph_rewrite_configs())
     self.assertDatasetProduces(dataset, range(10))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testWithPassthroughDataset(self):
     """Should still work with a passthrough dataset after prefetch()."""
     dataset = dataset_ops.Dataset.range(10)
@@ -82,6 +85,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, range(1, 11))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testErrorWithoutPrefetch(self):
     """The rewrite fails if there is no prefetch() in the pipeline."""
     dataset = dataset_ops.Dataset.range(10)
@@ -92,6 +96,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
       get_next = self.getNext(dataset)
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testErrorWithInvalidDataset(self):
     """With a nested dataset op after prefetch, the rewrite should fail."""
     dataset = dataset_ops.Dataset.range(10)

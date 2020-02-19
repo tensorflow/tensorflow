@@ -89,9 +89,9 @@ std::string GenerateConvBuffer1x1(
     int element_size,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
@@ -173,7 +173,7 @@ std::string GenerateConvBuffer1x1(
       c += "    FLT4 res = TO_FLT4(r" + i_s + ");\n";
       const LinkingContext context{"res", "X + " + x_s, "Y + " + y_s, "Z"};
       c += PostProcess(linked_operations, context);
-      c += "  " + dst_tensor.Write3D("res", "X + " + x_s, "Y + " + y_s, "Z") +
+      c += "  " + dst_tensor.WriteWHS("res", "X + " + x_s, "Y + " + y_s, "Z") +
            "\n";
       c += "  }\n";
     }
@@ -261,10 +261,10 @@ Status ConvBuffer1x1::BindArguments() {
   RETURN_IF_ERROR(BindArgs(kernel, linked_operations_));
   RETURN_IF_ERROR(kernel->SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   int4 src_size = int4(
-      src_[0]->Width() * src_[0]->Batch(), src_[0]->Height(), src_[0]->Depth(),
+      src_[0]->Width() * src_[0]->Batch(), src_[0]->Height(), src_[0]->Slices(),
       GetGridWidth(src_[0]->Width()) * src_[0]->Height() * src_[0]->Batch());
   RETURN_IF_ERROR(kernel->SetBytesAuto(src_size));
-  RETURN_IF_ERROR(kernel->SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel->SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   return OkStatus();
 }
 
@@ -276,7 +276,7 @@ int3 ConvBuffer1x1::GetGridSize() const {
   const int grid_x = IntegralDivideRoundUp(
       GetGridWidth(dst_[0]->Width()) * dst_[0]->Batch(), fltx_count);
   const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), flty_count);
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

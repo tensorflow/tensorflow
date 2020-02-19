@@ -38,7 +38,7 @@ tf_module {
   }
   member {
     name: "DType"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "DeviceSpec"
@@ -1110,7 +1110,7 @@ tf_module {
   }
   member_method {
     name: "dequantize"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\', \'axis\', \'narrow_range\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\', \'None\', \'False\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\', \'axis\', \'narrow_range\', \'dtype\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\', \'None\', \'False\', \"<dtype: \'float32\'>\"], "
   }
   member_method {
     name: "deserialize_many_sparse"
@@ -1237,11 +1237,11 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "erfinv"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    name: "executing_eagerly"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "executing_eagerly"
+    name: "executing_eagerly_outside_functions"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -1715,10 +1715,6 @@ tf_module {
   member_method {
     name: "multiply"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "ndtri"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "negative"

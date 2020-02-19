@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
 
 namespace tensorflow {
 // TODO(antiagainst): Directly manipulating files in library functions is not
@@ -35,8 +35,9 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
-    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, bool upgrade_legacy, mlir::MLIRContext* context);
+    absl::string_view control_output_arrays, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
+    mlir::MLIRContext* context);
 
 // Similar as the above function, but replaces all constant tensors
 // with randomly generated splat values.
@@ -44,8 +45,9 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
-    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
-    bool graph_as_function, bool upgrade_legacy, mlir::MLIRContext* context);
+    absl::string_view control_output_arrays, bool prune_unused_nodes,
+    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
+    mlir::MLIRContext* context);
 
 // Converts a TensorFlow SavedModel stored in the directory with the given
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the
@@ -54,6 +56,14 @@ mlir::OwningModuleRef SavedModelToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context);
+
+// Converts a TensorFlow V1 SavedModel stored in the directory with the given
+// `saved_model_dir` into a MLIR module. Creates MLIR entities into the
+// given MLIR `context`.
+mlir::OwningModuleRef SavedModelV1ToMlirImport(
+    absl::string_view saved_model_dir,
+    const std::unordered_set<std::string>& tags, mlir::MLIRContext* context);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_H_

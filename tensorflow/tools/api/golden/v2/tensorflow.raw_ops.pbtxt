@@ -205,6 +205,10 @@ tf_module {
     argspec: "args=[\'condition\', \'data\', \'summarize\', \'name\'], varargs=None, keywords=None, defaults=[\'3\', \'None\'], "
   }
   member_method {
+    name: "AssertCardinalityDataset"
+    argspec: "args=[\'input_dataset\', \'cardinality\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "AssertNextDataset"
     argspec: "args=[\'input_dataset\', \'transformations\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -493,6 +497,10 @@ tf_module {
     argspec: "args=[\'node_id_range\', \'stats_summary\', \'l1\', \'l2\', \'tree_complexity\', \'min_node_weight\', \'logits_dimension\', \'split_type\', \'name\'], varargs=None, keywords=None, defaults=[\'inequality\', \'None\'], "
   }
   member_method {
+    name: "BoostedTreesCalculateBestFeatureSplitV2"
+    argspec: "args=[\'node_id_range\', \'stats_summaries_list\', \'split_types\', \'candidate_feature_ids\', \'l1\', \'l2\', \'tree_complexity\', \'min_node_weight\', \'logits_dimension\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "BoostedTreesCalculateBestGainsPerFeature"
     argspec: "args=[\'node_id_range\', \'stats_summary_list\', \'l1\', \'l2\', \'tree_complexity\', \'min_node_weight\', \'max_splits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -605,6 +613,18 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'tag\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "CSRSparseMatrixComponents"
+    argspec: "args=[\'csr_sparse_matrix\', \'index\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "CSRSparseMatrixToDense"
+    argspec: "args=[\'sparse_input\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "CSRSparseMatrixToSparseTensor"
+    argspec: "args=[\'sparse_matrix\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "CSVDataset"
     argspec: "args=[\'filenames\', \'compression_type\', \'buffer_size\', \'header\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'select_cols\', \'record_defaults\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -618,6 +638,10 @@ tf_module {
   }
   member_method {
     name: "CTCLoss"
+    argspec: "args=[\'inputs\', \'labels_indices\', \'labels_values\', \'sequence_length\', \'preprocess_collapse_repeated\', \'ctc_merge_repeated\', \'ignore_longer_outputs_than_inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "CTCLossV2"
     argspec: "args=[\'inputs\', \'labels_indices\', \'labels_values\', \'sequence_length\', \'preprocess_collapse_repeated\', \'ctc_merge_repeated\', \'ignore_longer_outputs_than_inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'False\', \'None\'], "
   }
   member_method {
@@ -929,6 +953,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'filename\', \'compression_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "Dawsn"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "DebugGradientIdentity"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -954,7 +982,7 @@ tf_module {
   }
   member_method {
     name: "DebugNumericSummaryV2"
-    argspec: "args=[\'input\', \'tensor_debug_mode\', \'tensor_id\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'None\'], "
+    argspec: "args=[\'input\', \'output_dtype\', \'tensor_debug_mode\', \'tensor_id\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'-1\', \'-1\', \'None\'], "
   }
   member_method {
     name: "DecodeAndCropJpeg"
@@ -1033,6 +1061,10 @@ tf_module {
     argspec: "args=[\'handle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "DenseToCSRSparseMatrix"
+    argspec: "args=[\'dense_input\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "DenseToDenseSetOperation"
     argspec: "args=[\'set1\', \'set2\', \'set_operation\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
@@ -1062,7 +1094,7 @@ tf_module {
   }
   member_method {
     name: "Dequantize"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'False\', \'-1\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'narrow_range\', \'axis\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'False\', \'-1\', \"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "DeserializeIterator"
@@ -1393,6 +1425,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "Expint"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Expm1"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1545,8 +1581,16 @@ tf_module {
     argspec: "args=[\'orig_input\', \'orig_output\', \'out_backprop\', \'row_pooling_sequence\', \'col_pooling_sequence\', \'overlapping\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "FresnelCos"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "FresnelSin"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "FusedBatchNorm"
-    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'NHWC\', \'True\', \'None\'], "
+    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'exponential_avg_factor\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'1\', \'NHWC\', \'True\', \'None\'], "
   }
   member_method {
     name: "FusedBatchNormGrad"
@@ -1562,11 +1606,11 @@ tf_module {
   }
   member_method {
     name: "FusedBatchNormV2"
-    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'NHWC\', \'True\', \'None\'], "
+    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'exponential_avg_factor\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'1\', \'NHWC\', \'True\', \'None\'], "
   }
   member_method {
     name: "FusedBatchNormV3"
-    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'NHWC\', \'True\', \'None\'], "
+    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'exponential_avg_factor\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'1\', \'NHWC\', \'True\', \'None\'], "
   }
   member_method {
     name: "FusedPadConv2D"
@@ -1723,6 +1767,10 @@ tf_module {
   member_method {
     name: "Imag"
     argspec: "args=[\'input\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "ImageProjectiveTransformV2"
+    argspec: "args=[\'images\', \'transforms\', \'output_shape\', \'interpolation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "ImageSummary"
@@ -1919,6 +1967,10 @@ tf_module {
   member_method {
     name: "LeftShift"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "LegacyParallelInterleaveDatasetV2"
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'buffer_output_elements\', \'prefetch_input_elements\', \'f\', \'output_types\', \'output_shapes\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'None\'], "
   }
   member_method {
     name: "Less"
@@ -2589,8 +2641,20 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'sloppy\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "ParallelInterleaveDatasetV3"
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'None\'], "
+  }
+  member_method {
+    name: "ParallelInterleaveDatasetV4"
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'cycle_length\', \'block_length\', \'buffer_output_elements\', \'prefetch_input_elements\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'None\'], "
+  }
+  member_method {
     name: "ParallelMapDataset"
     argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'sloppy\', \'preserve_cardinality\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "ParallelMapDatasetV2"
+    argspec: "args=[\'input_dataset\', \'other_arguments\', \'num_parallel_calls\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\', \'deterministic\', \'preserve_cardinality\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'default\', \'False\', \'None\'], "
   }
   member_method {
     name: "ParameterizedTruncatedNormal"
@@ -2603,6 +2667,10 @@ tf_module {
   member_method {
     name: "ParseExampleDataset"
     argspec: "args=[\'input_dataset\', \'num_parallel_calls\', \'dense_defaults\', \'sparse_keys\', \'dense_keys\', \'sparse_types\', \'dense_shapes\', \'output_types\', \'output_shapes\', \'sloppy\', \'ragged_keys\', \'ragged_value_types\', \'ragged_split_types\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'[]\', \'[]\', \'[]\', \'None\'], "
+  }
+  member_method {
+    name: "ParseExampleDatasetV2"
+    argspec: "args=[\'input_dataset\', \'num_parallel_calls\', \'dense_defaults\', \'sparse_keys\', \'dense_keys\', \'sparse_types\', \'dense_shapes\', \'output_types\', \'output_shapes\', \'deterministic\', \'ragged_keys\', \'ragged_value_types\', \'ragged_split_types\', \'name\'], varargs=None, keywords=None, defaults=[\'default\', \'[]\', \'[]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "ParseExampleV2"
@@ -2830,6 +2898,10 @@ tf_module {
   }
   member_method {
     name: "QuantizedMatMulWithBiasAndReluAndRequantize"
+    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'min_freezed_output\', \'max_freezed_output\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'False\', \'False\', \'MIN_FIRST\', \'None\'], "
+  }
+  member_method {
+    name: "QuantizedMatMulWithBiasAndRequantize"
     argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'min_freezed_output\', \'max_freezed_output\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'False\', \'False\', \'MIN_FIRST\', \'None\'], "
   }
   member_method {
@@ -3710,7 +3782,7 @@ tf_module {
   }
   member_method {
     name: "SerializeIterator"
-    argspec: "args=[\'resource_handle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'resource_handle\', \'external_state_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
   }
   member_method {
     name: "SerializeManySparse"
@@ -3814,7 +3886,11 @@ tf_module {
   }
   member_method {
     name: "SnapshotDataset"
-    argspec: "args=[\'input_dataset\', \'path\', \'output_types\', \'output_shapes\', \'compression\', \'reader_path_prefix\', \'writer_path_prefix\', \'shard_size_bytes\', \'pending_snapshot_expiry_seconds\', \'num_reader_threads\', \'reader_buffer_size\', \'num_writer_threads\', \'writer_buffer_size\', \'shuffle_on_read\', \'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'10737418240\', \'86400\', \'1\', \'1\', \'1\', \'1\', \'False\', \'0\', \'0\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'path\', \'output_types\', \'output_shapes\', \'compression\', \'reader_path_prefix\', \'writer_path_prefix\', \'shard_size_bytes\', \'pending_snapshot_expiry_seconds\', \'num_reader_threads\', \'reader_buffer_size\', \'num_writer_threads\', \'writer_buffer_size\', \'shuffle_on_read\', \'seed\', \'seed2\', \'mode\', \'snapshot_name\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'\', \'10737418240\', \'86400\', \'1\', \'1\', \'1\', \'1\', \'False\', \'0\', \'0\', \'auto\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "SobolSample"
+    argspec: "args=[\'dim\', \'num_results\', \'skip\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
     name: "Softmax"
@@ -3949,6 +4025,50 @@ tf_module {
     argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "SparseMatrixAdd"
+    argspec: "args=[\'a\', \'b\', \'alpha\', \'beta\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixMatMul"
+    argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'transpose_output\', \'conjugate_output\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixMul"
+    argspec: "args=[\'a\', \'b\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixNNZ"
+    argspec: "args=[\'sparse_matrix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixOrderingAMD"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixSoftmax"
+    argspec: "args=[\'logits\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixSoftmaxGrad"
+    argspec: "args=[\'softmax\', \'grad_softmax\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixSparseCholesky"
+    argspec: "args=[\'input\', \'permutation\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixSparseMatMul"
+    argspec: "args=[\'a\', \'b\', \'type\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixTranspose"
+    argspec: "args=[\'input\', \'type\', \'conjugate\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "SparseMatrixZeros"
+    argspec: "args=[\'dense_shape\', \'type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SparseReduceMax"
     argspec: "args=[\'input_indices\', \'input_values\', \'input_shape\', \'reduction_axes\', \'keep_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
@@ -4045,12 +4165,20 @@ tf_module {
     argspec: "args=[\'indices\', \'values\', \'dense_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SparseTensorToCSRSparseMatrix"
+    argspec: "args=[\'indices\', \'values\', \'dense_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SparseToDense"
     argspec: "args=[\'sparse_indices\', \'output_shape\', \'sparse_values\', \'default_value\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "SparseToSparseSetOperation"
     argspec: "args=[\'set1_indices\', \'set1_values\', \'set1_shape\', \'set2_indices\', \'set2_values\', \'set2_shape\', \'set_operation\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "Spence"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Split"
@@ -4173,12 +4301,28 @@ tf_module {
     argspec: "args=[\'logits\', \'num_samples\', \'seed\', \'output_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
   }
   member_method {
+    name: "StatelessRandomBinomial"
+    argspec: "args=[\'shape\', \'seed\', \'counts\', \'probs\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
+  }
+  member_method {
+    name: "StatelessRandomGammaV2"
+    argspec: "args=[\'shape\', \'seed\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "StatelessRandomNormal"
     argspec: "args=[\'shape\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
+    name: "StatelessRandomPoisson"
+    argspec: "args=[\'shape\', \'seed\', \'lam\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "StatelessRandomUniform"
     argspec: "args=[\'shape\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "StatelessRandomUniformFullInt"
+    argspec: "args=[\'shape\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'uint64\'>\", \'None\'], "
   }
   member_method {
     name: "StatelessRandomUniformInt"
@@ -4657,6 +4801,10 @@ tf_module {
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ToBool"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "TopK"
     argspec: "args=[\'input\', \'k\', \'sorted\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
@@ -4866,6 +5014,10 @@ tf_module {
   }
   member_method {
     name: "Xdivy"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "Xlog1py"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {

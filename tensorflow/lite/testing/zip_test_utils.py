@@ -25,14 +25,15 @@ import re
 import string
 import traceback
 import zipfile
+
 import numpy as np
 from six import StringIO
 
 # pylint: disable=g-import-not-at-top
 import tensorflow as tf
 from google.protobuf import text_format
+from tensorflow.lite.testing import _pywrap_string_util
 from tensorflow.lite.testing import generate_examples_report as report_lib
-from tensorflow.lite.testing import string_util_wrapper
 from tensorflow.python.framework import graph_util as tf_graph_util
 
 # A map from names to functions which make test cases.
@@ -155,7 +156,7 @@ def format_result(t):
     values = ["{:.9f}".format(value) for value in list(t.flatten())]
     return ",".join(values)
   else:
-    return string_util_wrapper.SerializeAsHexString(t.flatten())
+    return _pywrap_string_util.SerializeAsHexString(t.flatten())
 
 
 def write_examples(fp, examples):

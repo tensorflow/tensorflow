@@ -24,7 +24,7 @@ op {
   in_arg {
     name: "max_filter"
     description: "The maximum value of the filter tensor."
-  }  
+  }
   out_arg {
     name: "output"
     description: "The output tensor."
@@ -40,13 +40,13 @@ op {
   attr {
     name: "Tinput"
     description: <<END
-The quantized type of input tensor that needs to be converted. 
+The quantized type of input tensor that needs to be converted.
 END
   }
   attr {
     name: "Tfilter"
     description: <<END
-The quantized type of filter tensor that needs to be converted. 
+The quantized type of filter tensor that needs to be converted.
 END
   }
   attr {

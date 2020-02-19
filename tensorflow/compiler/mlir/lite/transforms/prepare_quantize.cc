@@ -21,11 +21,13 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
-#include "mlir/IR/Value.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -34,7 +36,7 @@ limitations under the License.
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> quantize_whitelist(
     "tfl-test-quantize-whitelist", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma seprarated list of whitelisted functions to be "
+    llvm::cl::desc("comma separated list of whitelisted functions to be "
                    "quantized. Only used in tests"),
     llvm::cl::CommaSeparated);
 
@@ -139,30 +141,37 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
   BoolAttr narrow_range = builder.getBoolAttr(false);
 
   auto add_quantize_op = [&](Location loc, Type input_type, Block* block,
-                             Block::iterator insertion_point, Value* arg,
+                             Block::iterator insertion_point, Value arg,
                              int i) {
     if (auto shaped = input_type.dyn_cast<ShapedType>()) {
       if (shaped.getElementType().isa<FloatType>()) {
+        // If there are existing quantize ops, they are from training and we
+        // should respect them.
+        if (arg.hasOneUse() &&
+            llvm::isa<quant::QuantizeCastOp>(*arg.user_begin())) {
+          return;
+        }
+
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
-        TypeAttr params = GetQuantizedTypeAttr(
+        TypeAttr params = quant::GetQuantizedTypeAttr(
             builder, input_type, builder.getF64FloatAttr(min_max.first),
             builder.getF64FloatAttr(min_max.second), /*quant_dim=*/-1, num_bits,
             narrow_range, is_signed);
         builder.setInsertionPoint(block, insertion_point);
-        auto q_op = builder.create<TFL::QuantizeOp>(loc, params.getValue(), arg,
-                                                    params);
-        auto dq_op =
-            builder.create<TFL::DequantizeOp>(loc, input_type, q_op.output());
-        arg->replaceAllUsesWith(dq_op.output());
+        auto q_op =
+            builder.create<quant::QuantizeCastOp>(loc, params.getValue(), arg);
+        auto dq_op = builder.create<quant::DequantizeCastOp>(loc, input_type,
+                                                             q_op.getResult());
+        arg.replaceAllUsesWith(dq_op.getResult());
         q_op.setOperand(arg);
       }
     }
   };
 
   for (int i = 0, e = func.getNumArguments(); i != e; ++i) {
-    BlockArgument* arg = func.getArgument(i);
-    auto* arg_block = arg->getOwner();
-    add_quantize_op(arg->getLoc(), arg->getType(), arg_block,
+    BlockArgument arg = func.getArgument(i);
+    auto* arg_block = arg.getOwner();
+    add_quantize_op(arg.getLoc(), arg.getType(), arg_block,
                     std::next(arg_block->begin(), i), arg, i);
   }
 
@@ -176,11 +185,13 @@ bool PrepareQuantizePass::RemoveRedundantStats(FuncOp func) {
 }
 
 using PrepareQuantStats =
-    TFL::ConvertStatsToQDQs<TFL::QuantizeOp, TFL::DequantizeOp>;
+    quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
 
 void PrepareQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = func.getContext();
+
+  ConvertTFLQuantOpsToMlirQuantOps(func);
 
   if (quant_specs_.post_training_quantization) {
     RemoveRedundantStats(func);
@@ -198,7 +209,7 @@ void PrepareQuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   bool is_signed = quant_specs_.IsSignedInferenceType();
   if (is_signed) {
-    patterns.insert<ConvertUnsignedToSigned<TFL::QuantizeOp>>(ctx);
+    patterns.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
     // Convert quant stats to int8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
     patterns.insert<PrepareQuantStats>(8, false, true, ctx);
@@ -213,6 +224,8 @@ void PrepareQuantizePass::runOnFunction() {
   // values (tensors).
   ApplyQuantizationParamsPropagation(func, is_signed, disable_per_channel,
                                      GetOpQuantSpec);
+
+  ConvertMlirQuantOpsToTFLQuantOps(func);
 }
 
 }  // namespace

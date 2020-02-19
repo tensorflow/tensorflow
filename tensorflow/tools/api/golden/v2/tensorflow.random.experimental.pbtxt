@@ -1,12 +1,16 @@
 path: "tensorflow.random.experimental"
 tf_module {
   member {
+    name: "Algorithm"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "Generator"
     mtype: "<type \'type\'>"
   }
   member_method {
     name: "create_rng_state"
-    argspec: "args=[\'seed\', \'algorithm\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'seed\', \'alg\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_global_generator"

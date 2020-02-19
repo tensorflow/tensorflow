@@ -105,7 +105,7 @@ def make_reduce_tests(reduce_op,
             "input_shape": [[1, 8, 8, 4], [1, 8, 8, 3]],
             "axis": [
                 0, 1, 2, 3, [0], [1], [2], [3], [-1], [-2], [-3], [1, 2],
-                [0, 3], [1, 2, 3]
+                [0, 3], [1, 2, 3], [1, 3], [2, 3]
             ],
             "const_axis": [True],
             "keepdims": [True, False],

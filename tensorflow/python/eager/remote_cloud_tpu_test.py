@@ -32,12 +32,12 @@ flags.DEFINE_string('project', None, 'Name of GCP project with TPU.')
 flags.DEFINE_string('zone', None, 'Name of GCP zone with TPU.')
 
 EXPECTED_DEVICES_PRE_CONNECT = [
-    '/job:localhost/replica:0/task:0/device:CPU:0',
-    '/job:localhost/replica:0/task:0/device:XLA_CPU:0'
+    '/device:CPU:0',
+    '/device:XLA_CPU:0',
 ]
 EXPECTED_DEVICES_AFTER_CONNECT = [
-    '/job:localhost/replica:0/task:0/device:CPU:0',
-    '/job:localhost/replica:0/task:0/device:XLA_CPU:0',
+    '/device:CPU:0',
+    '/device:XLA_CPU:0',
     '/job:worker/replica:0/task:0/device:CPU:0',
     '/job:worker/replica:0/task:0/device:XLA_CPU:0',
     '/job:worker/replica:0/task:0/device:TPU_SYSTEM:0',

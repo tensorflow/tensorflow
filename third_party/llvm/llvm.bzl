@@ -59,9 +59,10 @@ def gentbl(name, tblgen, td_file, td_srcs, tbl_outs, library = True, **kwargs):
             outs = [out],
             tools = [tblgen],
             message = "Generating code from table: %s" % td_file,
-            cmd = (("$(location %s) " + "-I external/llvm/include " +
-                    "-I external/llvm/tools/clang/include " +
-                    "-I $$(dirname $(location %s)) " + "%s $(location %s) -o $@") % (
+            cmd = (("$(location %s) " + "-I external/llvm-project/llvm/include " +
+                    "-I external/llvm-project/clang/include " +
+                    "-I $$(dirname $(location %s)) " + ("%s $(location %s) --long-string-literals=0 " +
+                                                        "-o $@")) % (
                 tblgen,
                 td_file,
                 opts,
@@ -102,7 +103,7 @@ def _quote(s):
       command.
     """
     return ('"' +
-            s.replace("\\", "\\\\").replace("$", "\\$").replace('"', '\\"') +
+            s.replace("\\", "\\\\").replace("$", "\\$").replace('"', "\\\"") +
             '"')
 
 def cmake_var_string(cmake_vars):
@@ -294,7 +295,7 @@ win32_cmake_vars = {
 
     # ThreadPoolExecutor global destructor and thread handshaking do not work
     # on this platform when used as a DLL.
-    # See: https://github.com/google/iree/issues/114
+    # See: https://bugs.llvm.org/show_bug.cgi?id=44211
     "LLVM_ENABLE_THREADS": 0,
 }
 

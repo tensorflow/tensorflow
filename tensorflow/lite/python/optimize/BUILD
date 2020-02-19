@@ -12,7 +12,28 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/python/interpreter_wrapper:numpy",
+        "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
+        "//tensorflow/lite/python/interpreter_wrapper:python_utils",
+        "//tensorflow/lite/tools/optimize:quantize_model",
+        "//tensorflow/lite/tools/optimize/calibration:calibration_reader",
+        "//tensorflow/lite/tools/optimize/calibration:calibrator_lib",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "sparsification_wrapper_lib",
+    srcs = ["sparsification_wrapper.cc"],
+    hdrs = ["sparsification_wrapper.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
@@ -37,6 +58,17 @@ tf_py_wrap_cc(
     ],
 )
 
+tf_py_wrap_cc(
+    name = "tensorflow_lite_wrap_sparsification_wrapper",
+    srcs = [
+        "sparsification_wrapper.i",
+    ],
+    deps = [
+        ":sparsification_wrapper_lib",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
 py_library(
     name = "calibrator",
     srcs = [
@@ -46,6 +78,20 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python/optimize:tensorflow_lite_wrap_calibration_wrapper",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "sparsifier",
+    srcs = [
+        "sparsifier.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/lite/python/optimize:tensorflow_lite_wrap_sparsification_wrapper",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
@@ -65,6 +111,27 @@ py_test(
         ":calibrator",
         "//tensorflow/lite/python:lite_constants",
         "//tensorflow/lite/python/optimize:tensorflow_lite_wrap_calibration_wrapper",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "sparsifier_test",
+    srcs = ["sparsifier_test.py"],
+    data = [
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = ["no_oss"],
+    deps = [
+        ":sparsifier",
+        "//tensorflow/lite/python:lite_constants",
+        "//tensorflow/lite/python/optimize:tensorflow_lite_wrap_sparsification_wrapper",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",

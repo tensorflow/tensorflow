@@ -191,6 +191,20 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           float op_beta = post_op_param.param[2];
           post_ops.append_eltwise(op_scale, mkldnn::eltwise_relu, op_alpha,
                                   op_beta);
+        } else if (post_op_param.name == "relu6") {
+          DCHECK_EQ(post_op_param.param.size(), 3);
+          float op_scale = post_op_param.param[0];
+          float op_alpha = post_op_param.param[1];
+          float op_beta = post_op_param.param[2];
+          post_ops.append_eltwise(op_scale, mkldnn::eltwise_bounded_relu,
+                                  op_alpha, op_beta);
+        } else if (post_op_param.name == "elu") {
+          DCHECK_EQ(post_op_param.param.size(), 3);
+          float op_scale = post_op_param.param[0];
+          float op_alpha = post_op_param.param[1];
+          float op_beta = post_op_param.param[2];
+          post_ops.append_eltwise(op_scale, mkldnn::eltwise_elu, op_alpha,
+                                  op_beta);
         } else if (post_op_param.name == "output_scale") {
           DCHECK_EQ(post_op_param.param.size(), 1);
           std::vector<float> scales;
@@ -198,6 +212,8 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           post_ops_attr.set_output_scales(0, scales);
         } else {
           DCHECK((post_op_param.name == "relu") ||
+                 (post_op_param.name == "relu6") ||
+                 (post_op_param.name == "elu") ||
                  (post_op_param.name == "output_scale"));
         }
       }
@@ -296,7 +312,8 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 
     // Generate keys for post-ops
     for (auto const& post_op_param : mkldnn_matmul_fwd_dims.post_op_params) {
-      if (post_op_param.name == "relu") {
+      if (post_op_param.name == "relu" || post_op_param.name == "relu6" ||
+          post_op_param.name == "elu") {
         DCHECK_EQ(post_op_param.param.size(), 3);
         key_creator.AddAsKey(post_op_param.name);
         key_creator.AddAsKey(post_op_param.param[0]);
@@ -326,7 +343,7 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-template <class Toutput>
+template <class Tweight, class Toutput>
 class MklDnnMatMulOpBase : public OpKernel {
  public:
   explicit MklDnnMatMulOpBase(OpKernelConstruction* context)
@@ -357,9 +374,90 @@ class MklDnnMatMulOpBase : public OpKernel {
                               output_tf_shape, output_mkl_shape);
   }
 
+  // LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
+  // be acquired before entering the function, since it is acquired
+  // inside the function.
+  inline bool IsWeightCacheEmpty(OpKernelContext* context) LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock lock(mu_);
+    return (weight_oi_.NumElements() == 0);
+  }
+
+  // Cache the converted weight in a persistent tensor.
+  // Only one thread can execute this method at any given time.
+  void CacheWeight(
+      OpKernelContext* context,
+      const std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>&
+          matmul_fwd_pd,
+      Tweight* weight_data, const Tensor& weight_tensor,
+      MklDnnData<Tweight>& weight, const memory::desc& weight_md)
+      LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    const Tensor& weight_t = *weight_oi_.AccessTensor(context);
+
+    // If the weights are already cached, there's nothing to do
+    if (weight_t.NumElements() > 0) {
+      return;
+    }
+
+    // reorder and cache the weight
+    weight.SetUsrMem(weight_md, &weight_tensor);
+    weight.CheckReorderToOpMem(matmul_fwd_pd.get()->weights_primitive_desc());
+    weight_data = static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
+
+    Tensor* weight_tensor_ptr = nullptr;
+
+    TensorShape weight_tf_shape;
+    weight_tf_shape.AddDim(
+        (matmul_fwd_pd.get()->weights_primitive_desc().get_size() /
+         sizeof(Tweight)));
+
+    OP_REQUIRES_OK(context, context->allocate_persistent(
+                                DataTypeToEnum<Tweight>::value, weight_tf_shape,
+                                &weight_oi_, &weight_tensor_ptr));
+
+    void* weight_oi_t_data = weight.GetTensorBuffer(weight_tensor_ptr);
+    size_t weight_size = weight.GetOpMem().get_primitive_desc().get_size();
+    memcpy(weight_oi_t_data, weight_data, weight_size);
+
+    // cache the memory descriptor
+    Tensor* weight_md_tensor_ptr = nullptr;
+    TensorShape weight_mkl_format;
+    weight_mkl_format.AddDim(1);
+
+    OP_REQUIRES_OK(context, context->allocate_persistent(
+                                DT_INT32, weight_mkl_format, &weight_oi_md_,
+                                &weight_md_tensor_ptr));
+    weight_md_tensor_ptr->scalar<int32>()() =
+        matmul_fwd_pd.get()->weights_primitive_desc().desc().data.format;
+  }
+
+  Tweight* GetCachedWeight(OpKernelContext* context,
+                           const memory::format& weight_mf)
+      LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock lock(mu_);
+    const Tensor& weight_t = *weight_oi_.AccessTensor(context);
+    const Tensor& weight_md_t = *weight_oi_md_.AccessTensor(context);
+
+    // Check if the  memory descriptor of the cached weight is same as
+    // weight_mf. if so use the cached memory, else return NULL
+    if (weight_md_t.scalar<int32>().size() &&
+        weight_md_t.scalar<int32>()() == weight_mf) {
+      return static_cast<Tweight*>(
+          const_cast<Tweight*>(weight_t.flat<Tweight>().data()));
+    }
+    return nullptr;
+  }
+
   engine cpu_engine_ = engine(engine::cpu, 0);
 
  protected:
+  // Tensor to save reordered weight
+  mutex mu_;
+  PersistentTensor weight_oi_ GUARDED_BY(mu_);
+  PersistentTensor weight_oi_md_ GUARDED_BY(mu_);
+
+  bool is_weight_const_;
+
   const int kInputIndexSrc = 0;
   const int kInputIndexWeight = 1;
   const int kInputIndexBias = 2;

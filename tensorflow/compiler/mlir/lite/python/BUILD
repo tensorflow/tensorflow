@@ -17,6 +17,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite:common",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tf_tfl_passes",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -28,10 +29,10 @@ cc_library(
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/toco:types_proto_cc",
         "//tensorflow/stream_executor/lib",
-        "@llvm//:support",
-        "@local_config_mlir//:IR",
-        "@local_config_mlir//:Pass",
-        "@local_config_mlir//:Support",
-        "@local_config_mlir//:ViewOpGraph",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
 )

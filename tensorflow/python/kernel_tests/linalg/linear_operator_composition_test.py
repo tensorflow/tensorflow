@@ -20,7 +20,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -151,14 +150,11 @@ class NonSquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  def operator_and_matrix(self, build_info, dtype, use_placeholder):
-    sess = ops.get_default_session()
+  def operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+    del ensure_self_adjoint_and_pd
     shape = list(build_info.shape)
-
-    # Test only the case of 2 matrices.
-    # The Square test uses either 1 or 2, so we have tested the case of 1 matrix
-    # sufficiently.
-    num_operators = 2
 
     # Create 2 matrices/operators, A1, A2, which becomes A = A1 A2.
     # Use inner dimension of 2.

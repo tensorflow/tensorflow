@@ -115,7 +115,8 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
               cancelled_ = true;
             },
             &deregister_fn_));
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -125,7 +126,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
         RecordStop(ctx);
         bool cancelled = mu_.AwaitWithDeadline(
             Condition(&cancelled_),
-            ctx->env()->NowNanos() +
+            EnvTime::NowNanos() +
                 dataset()->sleep_microseconds_ * EnvTime::kMicrosToNanos);
         RecordStart(ctx);
         if (cancelled) {

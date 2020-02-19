@@ -16,7 +16,7 @@ limitations under the License.
 package org.tensorflow.lite.support.image.ops;
 
 import org.checkerframework.checker.nullness.qual.NonNull;
-import org.tensorflow.lite.support.common.SupportPrecondtions;
+import org.tensorflow.lite.support.common.SupportPreconditions;
 import org.tensorflow.lite.support.common.TensorOperator;
 import org.tensorflow.lite.support.image.ImageOperator;
 import org.tensorflow.lite.support.image.TensorImage;
@@ -45,7 +45,7 @@ public class TensorOperatorWrapper implements ImageOperator {
   @Override
   @NonNull
   public TensorImage apply(@NonNull TensorImage image) {
-    SupportPrecondtions.checkNotNull(image, "Op cannot apply on null image.");
+    SupportPreconditions.checkNotNull(image, "Op cannot apply on null image.");
     image.load(tensorOp.apply(image.getTensorBuffer()));
     return image;
   }

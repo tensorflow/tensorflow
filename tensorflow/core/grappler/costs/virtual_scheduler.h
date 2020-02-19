@@ -70,6 +70,10 @@ struct NodeState {
   // Each output port uses up memory space from time_scheduled to its
   // time_no_references.
 
+  Costs node_costs;  // Node costs per execution
+  Costs TotalNodeCosts() const {
+    return MultiplyCosts(node_costs, execution_count);
+  }
   // How many times this node has been executed, e.g. in a while loop.
   int execution_count;
 

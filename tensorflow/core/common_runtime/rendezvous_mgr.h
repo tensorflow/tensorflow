@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/local_rendezvous.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -29,60 +30,61 @@ limitations under the License.
 
 namespace tensorflow {
 
-// IntraProcessRendezvous is a Rendezvous which expects all producers
-// and consumers to be devices immediately accessible within the
-// process.  That is, it will never be necessary to perform an RPC to
+// The IntraProcessRendezvous classes are implementations of a Rendezvous that
+// expects all producers and consumers to be devices immediately accessible
+// within the process. That is, it will never be necessary to perform an RPC to
 // communicate with either.
 //
-// Buffering of Tensor values is delegated to a "local" Rendezvous
-// obtained from NewLocalRendezvous().  This class just adds
-// functionality to coordinate multiple process-local devices.
-class IntraProcessRendezvous : public Rendezvous {
- public:
-  explicit IntraProcessRendezvous(const DeviceMgr* device_mgr);
+// Buffering of Tensor values is delegated to a `LocalRendezvous`. An
+// IntraProcessRendezvous. just adds functionality to coordinate multiple
+// process-local devices.
 
-  // Forwards to local_, where the Tensor "val" will be buffered and
-  // any waiting callback stored.
+// Reference-counted implementation that may be shared between multiple threads.
+class RefCountedIntraProcessRendezvous : public Rendezvous {
+ public:
+  explicit RefCountedIntraProcessRendezvous(const DeviceMgr* device_mgr);
+
+  // Implementation of RendezvousInterface methods.
   Status Send(const ParsedKey& key, const Rendezvous::Args& args,
               const Tensor& val, const bool is_dead) override;
-
-  // This method is called only by the RecvOp.  It tests to see
-  // whether the value will be produced by a local or remote device
-  // and handles accordingly.  In the local case it forwards to
-  // local_, in the remote case it initiates an RPC request.
   void RecvAsync(const ParsedKey& key, const Rendezvous::Args& args,
                  DoneCallback done) override;
-
   void StartAbort(const Status& status) override;
 
  private:
   const DeviceMgr* device_mgr_;
-  Rendezvous* local_;  // Owns a Ref on this object.
+  LocalRendezvous local_;
 
-  mutable mutex mu_;
+  ~RefCountedIntraProcessRendezvous() override;
 
-  // Status given by StartAbort() if any.
-  Status status_ GUARDED_BY(mu_);
+  TF_DISALLOW_COPY_AND_ASSIGN(RefCountedIntraProcessRendezvous);
+};
 
-  ~IntraProcessRendezvous() override;
+// RefCountedIntraProcessRendezvous is aliased to IntraProcessRendezvous for
+// backwards compatibility with existing users.
+using IntraProcessRendezvous = RefCountedIntraProcessRendezvous;
 
-  // Parses "key" into "parsed". If "is_src" is true, checks that the
-  // rendezvous key's source is in this process. If "is_src" is false,
-  // checks that the rendezvous key's destination is in this process.
-  Status ParseKey(const string& key, bool is_src,
-                  Rendezvous::ParsedKey* parsed);
+// Non-reference-counted implementation that may be stack-allocated for
+// performance.
+//
+// Prefer to use PrivateIntraProcessRendezvous in new code.
+class PrivateIntraProcessRendezvous : public RendezvousInterface {
+ public:
+  explicit PrivateIntraProcessRendezvous(const DeviceMgr* device_mgr);
+  ~PrivateIntraProcessRendezvous() override;
 
-  // Callback handling the case when a rendezvous has been
-  // accomplished in local_ and the consumer is local to this process.
-  // Tensor "in" will be copied into "out". The key "parsed" encodes
-  // the src and dst devices.
-  typedef std::function<void(const Status&)> StatusCallback;
-  void SameWorkerRecvDone(const Rendezvous::ParsedKey& parsed,
-                          const Rendezvous::Args& send_args,
-                          const Rendezvous::Args& recv_args, const Tensor& in,
-                          Tensor* out, StatusCallback done);
+  // Implementation of RendezvousInterface methods.
+  Status Send(const ParsedKey& key, const Rendezvous::Args& args,
+              const Tensor& val, const bool is_dead) override;
+  void RecvAsync(const ParsedKey& key, const Rendezvous::Args& args,
+                 DoneCallback done) override;
+  void StartAbort(const Status& status) override;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(IntraProcessRendezvous);
+ private:
+  const DeviceMgr* device_mgr_;
+  LocalRendezvous local_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(PrivateIntraProcessRendezvous);
 };
 
 }  // end namespace tensorflow

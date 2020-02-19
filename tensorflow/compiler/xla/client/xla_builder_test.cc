@@ -292,7 +292,7 @@ TEST_F(XlaBuilderTest, BinopHasInDimAndDegenerateBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
 
   // The binary operation has in-dim broadcast and degenerate broadcast, should
-  // first do the in-dim broadcast then convert the degnerate broadcast into a
+  // first do the in-dim broadcast then convert the degenerate broadcast into a
   // reshape and a broadcast.
   //
   // Expected:

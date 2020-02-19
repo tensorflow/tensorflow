@@ -117,18 +117,23 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     if not isinstance(optimizer, optimizer_v2.OptimizerV2):
       raise ValueError('"optimizer" must be an instance of OptimizerV2, but '
                        'got: %s' % optimizer)
-    if hasattr(optimizer, 'clipnorm'):
+    if optimizer.clipnorm is not None:
       raise ValueError('LossScaleOptimizer does not support wrapping '
                        'optimizers with a clipnorm. Optimizer %s has clipnorm '
                        '%s' % (optimizer, optimizer.clipnorm))
 
-    if hasattr(optimizer, 'clipvalue'):
+    if optimizer.clipvalue is not None:
       raise ValueError('LossScaleOptimizer does not support wrapping '
                        'optimizers with a clipvalue. Optimizer %s has '
                        'clipvalue %s' % (optimizer, optimizer.clipvalue))
 
+    self.clipnorm = None
+    self.clipvalue = None
+
     self._optimizer = optimizer
     self._loss_scale = keras_loss_scale_module.get(loss_scale)
+    if self._loss_scale is None:
+      raise ValueError('loss_scale cannot be None.')
     for weight in loss_scale_module.get_loss_scale_weights(self._loss_scale):
       # We cannot call `track_variable` in the LossScale class itself, because a
       # file outside of Keras cannot depend on a Keras file. Calling it here

@@ -181,14 +181,35 @@ def replicate(tensor, assign_tuple_sharding=False, use_sharding_op=False):
   return tensor
 
 
-def assign_device(tensor, device, assign_tuple_sharding=False):
+def assign_device(tensor,
+                  device,
+                  assign_tuple_sharding=False,
+                  use_sharding_op=False):
+  """Returns a tensor that has AssignDevice sharding attribute."""
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
+
   Sharding.assign_device(device).apply_to_tensor(
       tensor,
       assign_tuple_sharding=assign_tuple_sharding)
   return tensor
 
 
-def tile(tensor, tile_assignment, assign_tuple_sharding=False):
+def tile(tensor,
+         tile_assignment,
+         assign_tuple_sharding=False,
+         use_sharding_op=False):
+  """Returns a tensor that has tiled sharding.
+
+  Args:
+    tensor: A tf.Tensor to shard.
+    tile_assignment: An np.ndarray describing the topology of the tiling and
+      which device will compute which part of the topology.
+    assign_tuple_sharding: If the sharding type should be a tuple.
+    use_sharding_op: If true, adds a sharding op to set the sharding.
+  """
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
   Sharding.tile(tile_assignment).apply_to_tensor(
       tensor,
       assign_tuple_sharding=assign_tuple_sharding

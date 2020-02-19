@@ -13,7 +13,7 @@ py_binary(
         "dataset.py",
         "mnist_tflite.py",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],

@@ -146,7 +146,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         optimizer='sgd',
         run_eagerly=testing_utils.should_run_eagerly(),
         experimental_run_tf_function=testing_utils.should_run_tf_function())
-    self.assertEqual(len(model.losses), 5)
+    self.assertLen(model.losses, 5)
 
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters([
@@ -169,7 +169,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         optimizer='sgd',
         run_eagerly=testing_utils.should_run_eagerly(),
         experimental_run_tf_function=testing_utils.should_run_tf_function())
-    self.assertEqual(len(model.losses), 6)
+    self.assertLen(model.losses, 6)
 
   @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters([
@@ -197,7 +197,13 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         optimizer='sgd',
         run_eagerly=testing_utils.should_run_eagerly(),
         experimental_run_tf_function=testing_utils.should_run_tf_function())
-    self.assertEqual(len(model.losses), 14)
+
+    # We expect to see 9 losses on the model:
+    # - 2 from the 2 add_loss calls on the outer model.
+    # - 3 from the weight regularizers on the shared_dense layer, unshared_dense
+    # in inner model 1, unshared_dense in inner model 2.
+    # - 4 from activity regularizers on the shared_dense layer.
+    self.assertLen(model.losses, 9)
 
 
 if __name__ == '__main__':

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -441,7 +442,17 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     nums, divs = self.floatTestData()
     tf_result = math_ops.realdiv(nums, divs)
     np_result = np.divide(nums, divs)
-    self.assertAllEqual(tf_result, np_result)
+    self.assertAllClose(tf_result, np_result)
+
+  def testDivideType(self):
+    a = array_ops.constant([2], dtype=dtypes.int32)
+    # Since __future__.division is effect, we should always upgrade to float64
+    b = math_ops.divide(a, 1)
+    self.assertEqual(b.dtype, dtypes.float64)
+    self.assertEqual(2.0, self.evaluate(b))
+    c = math_ops.divide(a, 4)
+    self.assertEqual(c.dtype, dtypes.float64)
+    self.assertEqual(0.5, self.evaluate(c))
 
   def testComplexDiv(self):
     foo = array_ops.constant([1. + 3.j])
@@ -498,7 +509,7 @@ class DivNoNanTest(test_util.TensorFlowTestCase):
 
       with test_util.use_gpu():
         tf_result = math_ops.div_no_nan(nums, divs)
-        self.assertAllEqual(tf_result, np_result)
+        self.assertAllClose(tf_result, np_result)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -548,6 +559,40 @@ class XlogyTest(test_util.TensorFlowTestCase):
         xtimes_logy = self.evaluate(math_ops.log(y[1]))
         self.assertAllClose(zeros_np, xlogy_tf_np[0])
         self.assertAllClose(xtimes_logy, xlogy_tf_np[1])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class Xlog1pyTest(test_util.TensorFlowTestCase):
+
+  def testXlog1pyNoNeg1(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[0.1, 0.2, 3.5], [-2., -5., 30.]], dtype=dtype)
+      y = constant_op.constant([[-0.1, -0.2, 3.5], [3.1, -0.9, 2.]],
+                               dtype=dtype)
+      with test_util.use_gpu():
+        xlog1py = self.evaluate(math_ops.xlog1py(x, y))
+        xtimeslog1py = self.evaluate(x * math_ops.log1p(y))
+        self.assertAllClose(xlog1py, xtimeslog1py)
+
+  def testXlog1pyWithNegOne(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(np.zeros((2, 3)), dtype=dtype)
+      y = constant_op.constant([[0.1, 0.2, 3.5], [-1., 1., 2.]], dtype=dtype)
+      with test_util.use_gpu():
+        xlog1py_tf_np = self.evaluate(math_ops.xlog1py(x, y))
+        zeros_np = self.evaluate(array_ops.zeros_like(y))
+        self.assertAllClose(xlog1py_tf_np, zeros_np)
+
+  def testXlog1pyWithZeroBroadcast(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[0.], [1.]], dtype=dtype)
+      y = constant_op.constant([[-0.1, -0.2, -1.], [0., 1., 2.]], dtype=dtype)
+      with test_util.use_gpu():
+        xlog1py_tf_np = self.evaluate(math_ops.xlog1py(x, y))
+        zeros_np = self.evaluate(array_ops.zeros_like(y[0]))
+        xtimes_log1py = self.evaluate(math_ops.log1p(y[1]))
+        self.assertAllClose(zeros_np, xlog1py_tf_np[0])
+        self.assertAllClose(xtimes_log1py, xlog1py_tf_np[1])
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -636,6 +681,18 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(error, error_message):
       a = array_ops.ones([1], dtype=dtypes.int32) + 1.0
       self.evaluate(a)
+
+
+class SignTest(test_util.TensorFlowTestCase):
+
+  def test_complex_sign_gradient(self):
+    with context.eager_mode():
+      x = math_ops.complex(1., 1.)
+      with backprop.GradientTape() as t:
+        t.watch(x)
+        y = math_ops.sign(x)
+      self.assertAllClose(
+          t.gradient(y, x), math_ops.complex(0.353553, -0.353553))
 
 
 @test_util.run_all_in_graph_and_eager_modes

@@ -352,14 +352,17 @@ TEST_F(UtilsTest, NumNonControlOutputs) {
   NodeMap node_map(&graph);
 
   const NodeDef* add_node = node_map.GetNode("add");
+  const NodeDef* mul_node = node_map.GetNode("mul");
   ASSERT_NE(add_node, nullptr);
 
   // [a, b] are only non-control inputs
   EXPECT_EQ(NumNonControlInputs(*add_node), 2);
+  EXPECT_EQ(NumControlInputs(*add_node), 1);
   // [sqrt, shape] are non control outputs
   EXPECT_EQ(NumNonControlOutputs(*add_node, node_map), 2);
   // sqrt is the only data output
   EXPECT_EQ(NumNonControlDataOutputs(*add_node, node_map), 1);
+  EXPECT_EQ(NumControlInputs(*mul_node), 0);
 
   EXPECT_TRUE(HasControlInputs(*add_node));
   EXPECT_TRUE(HasRegularInputs(*add_node));

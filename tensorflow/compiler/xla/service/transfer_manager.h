@@ -270,6 +270,13 @@ class TransferManager {
   static StatusOr<TransferManager*> GetForPlatform(
       const se::Platform* platform);
 
+  // Writes the given device-memory pointers in 'elements' to the given region
+  // to construct a tuple index table in the platform-specific tuple
+  // representation.
+  virtual Status WriteSingleTupleIndexTable(
+      se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
+      const Shape& shape, se::DeviceMemoryBase* region) = 0;
+
  protected:
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.
@@ -286,13 +293,6 @@ class TransferManager {
   virtual Status TransferBufferToDevice(se::Stream* stream, int64 size,
                                         const void* source,
                                         se::DeviceMemoryBase* destination);
-
-  // Writes the given device-memory pointers in 'elements' to the given region
-  // to construct a tuple index table in the platform-specific tuple
-  // representation.
-  virtual Status WriteSingleTupleIndexTable(
-      se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
-      const Shape& shape, se::DeviceMemoryBase* region) = 0;
 
  private:
   // The mutex that guards the platform-to-transfer manager map.

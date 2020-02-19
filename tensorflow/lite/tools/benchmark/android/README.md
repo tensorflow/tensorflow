@@ -14,7 +14,7 @@ binary executed via `adb shell ...`. This tailored behavior is most evident when
 enabling multi-threaded CPU execution with TensorFlow Lite.
 
 To that end, this app offers perhaps a more faithful view of runtime performance
-that developers can expected when deploying TensorFlow Lite with their
+that developers can expect when deploying TensorFlow Lite with their
 application.
 
 ## To build/install/run
@@ -28,7 +28,6 @@ to edit the `WORKSPACE` to configure the android NDK/SDK.
 ```
 bazel build -c opt \
   --config=android_arm64 \
-  --cxxopt='--std=c++11' \
   tensorflow/lite/tools/benchmark/android:benchmark_model
 ```
 

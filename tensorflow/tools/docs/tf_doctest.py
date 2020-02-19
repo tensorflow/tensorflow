@@ -1,3 +1,4 @@
+# Lint as: python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,20 +20,21 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import re
 import sys
-import textwrap
-import numpy as np
 
 from absl import flags
 from absl.testing import absltest
+import numpy as np
 
 import tensorflow.compat.v2 as tf
-tf.compat.v1.enable_v2_behavior()
+
+from tensorflow.tools.docs import tf_doctest_lib
 
 # We put doctest after absltest so that it picks up the unittest monkeypatch.
 # Otherwise doctest tests aren't runnable at all.
-import doctest  # pylint: disable=g-import-not-at-top, g-bad-import-order
+import doctest  # pylint: disable=g-bad-import-order
+
+tf.compat.v1.enable_v2_behavior()
 
 FLAGS = flags.FLAGS
 
@@ -78,8 +80,7 @@ def filter_on_submodules(all_modules, submodule):
   """
 
   filtered_modules = [
-      mod for mod in all_modules
-      if PACKAGE + submodule in mod.__name__
+      mod for mod in all_modules if PACKAGE + submodule in mod.__name__
   ]
   return filtered_modules
 
@@ -116,32 +117,6 @@ class TfTestCase(tf.test.TestCase):
     self.tearDown()
 
 
-class CustomOutputChecker(doctest.OutputChecker):
-  """Changes the `want` and `got` strings.
-
-  This allows it to be customized before they are compared.
-  """
-
-  ADDRESS_RE = re.compile(r'\bat 0x[0-9a-f]*?>')
-
-  def check_output(self, want, got, optionflags):
-    # Replace python's addresses with ellipsis (`...`) since it can change on
-    # each execution.
-    want = self.ADDRESS_RE.sub('at ...>', want)
-    return doctest.OutputChecker.check_output(self, want, got, optionflags)
-
-  _MESSAGE = textwrap.dedent("""\n
-        #############################################################
-        Check the documentation
-        (https://www.tensorflow.org/community/contribute/docs_ref) on how to write testable docstrings.
-        #############################################################""")
-
-  def output_difference(self, example, got, optionflags):
-    got = got + self._MESSAGE
-    return doctest.OutputChecker.output_difference(self, example, got,
-                                                   optionflags)
-
-
 def load_tests(unused_loader, tests, unused_ignore):
   """Loads all the tests in the docstrings and runs them."""
 
@@ -173,11 +148,10 @@ def load_tests(unused_loader, tests, unused_ignore):
             },
             setUp=testcase.set_up,
             tearDown=testcase.tear_down,
-            checker=CustomOutputChecker(),
-            optionflags=(doctest.ELLIPSIS |
-                         doctest.NORMALIZE_WHITESPACE |
-                         doctest.IGNORE_EXCEPTION_DETAIL |
-                         doctest.DONT_ACCEPT_BLANKLINE),
+            checker=tf_doctest_lib.TfDoctestOutputChecker(),
+            optionflags=(doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE
+                         | doctest.IGNORE_EXCEPTION_DETAIL
+                         | doctest.DONT_ACCEPT_BLANKLINE),
         ))
   return tests
 

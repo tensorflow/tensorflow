@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 
+#include <limits>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
 namespace {
@@ -396,6 +399,28 @@ TEST(QuantizationUtilTest, QuantizeMultiplierUnderflow) {
   EXPECT_THAT(quantize(std::ldexp(1.0f, -33)), Pair(0, 0));
 }
 #endif
+
+TEST(QuantizationUtilTest, GetInvSqrtQuantizedMultiplierExp) {
+  auto inv_sqrt = [](std::int32_t input) {
+    int32_t output;
+    int output_shift;
+    GetInvSqrtQuantizedMultiplierExp(input, 1, &output, &output_shift);
+    return std::pair<int32_t, int>{output, output_shift};
+  };
+
+  const auto kInt32Max = std::numeric_limits<std::int32_t>::max();
+  EXPECT_THAT(inv_sqrt(0), Pair(kInt32Max, 0));
+  EXPECT_THAT(inv_sqrt(1), Pair(kInt32Max, 0));
+  EXPECT_THAT(inv_sqrt(2), Pair(1518498372, 0));
+  EXPECT_THAT(inv_sqrt(3), Pair(1239850284, 0));
+  EXPECT_THAT(inv_sqrt(4), Pair(1073741828, 0));
+  EXPECT_THAT(inv_sqrt(100), Pair(214748363, 0));
+  EXPECT_THAT(inv_sqrt(10000), Pair(343597361, 4));
+  EXPECT_THAT(inv_sqrt(1000000), Pair(274877901, 7));
+  EXPECT_THAT(inv_sqrt(100000000), Pair(219902323, 10));
+  EXPECT_THAT(inv_sqrt((1 << 30)), Pair(268435457, 12));
+  EXPECT_THAT(inv_sqrt(kInt32Max), Pair(189812531, 12));
+}
 
 TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
   auto quantize = [](double beta, double scale, int integer_bits) {

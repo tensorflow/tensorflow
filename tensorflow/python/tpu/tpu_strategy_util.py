@@ -158,7 +158,7 @@ def shutdown_tpu_system(cluster_resolver=None):
   tpu_name = compat.as_text(cluster_resolver._tpu)  # pylint: disable=protected-access
   if tpu_name not in _INITIALIZED_TPU_SYSTEMS:
     logging.warning("You are shutting down a TPU system %s that has not been "
-                    "initialized.")
+                    "initialized." % tpu_name)
 
   logging.info("Shutting down the TPU system: %s", tpu_name)
 

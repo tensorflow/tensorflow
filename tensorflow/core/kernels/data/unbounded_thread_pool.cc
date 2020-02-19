@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/resource.h"
 #include "tensorflow/core/platform/unbounded_work_queue.h"
 
 namespace tensorflow {
@@ -68,7 +69,12 @@ std::shared_ptr<ThreadFactory> UnboundedThreadPool::get_thread_factory() {
 }
 
 void UnboundedThreadPool::Schedule(std::function<void()> fn) {
-  ScheduleOnWorkQueue(std::move(fn), /*done=*/nullptr);
+  auto tagged_fn = [fn = std::move(fn)]() {
+    tensorflow::ResourceTagger tag =
+        tensorflow::ResourceTagger("tfdata", "ThreadPool");
+    fn();
+  };
+  ScheduleOnWorkQueue(std::move(tagged_fn), /*done=*/nullptr);
 }
 
 int UnboundedThreadPool::NumThreads() const { return -1; }

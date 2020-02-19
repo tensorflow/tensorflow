@@ -20,12 +20,19 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
 //===----------------------------------------------------------------------===//
+// Nullary op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(HLO_ConstOp ElementsAttr:$value),
+          (ConstantOp $value)>;
+
+//===----------------------------------------------------------------------===//
 // Binary op patterns.
 //===----------------------------------------------------------------------===//
 
 def IsSameSizePred : CPred<
-    "$0->getType().cast<ShapedType>().getShape() "
-    "== $1->getType().cast<ShapedType>().getShape()">;
+    "$0.getType().cast<ShapedType>().getShape() "
+    "== $1.getType().cast<ShapedType>().getShape()">;
 def IsSameSizeConstraint : Constraint<IsSameSizePred, "inputs are same size">;
 
 
@@ -67,9 +74,9 @@ def : Pat<(HLO_MulOp HLO_IntTensor:$l, HLO_IntTensor:$r,
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_DivOp HLO_IntTensor:$l, HLO_IntTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
-          (DivISOp $l, $r),
+          (SignedDivIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_RemOp HLO_IntTensor:$l, HLO_IntTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
-          (RemISOp $l, $r),
+          (SignedRemIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;

@@ -16,20 +16,23 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/SymbolTable.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/Identifier.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace tf_saved_model {
@@ -62,6 +65,13 @@ static LogicalResult Verify(GlobalTensorOp global_tensor) {
           global_tensor.type(), global_tensor.value().Attribute::getType()))) {
     return global_tensor.emitError() << "'type' and 'value' attributes should "
                                         "have compatible tensor types";
+  }
+  if (!global_tensor.is_mutable()) {
+    if (!global_tensor.type().cast<TensorType>().hasStaticShape()) {
+      return global_tensor.emitError()
+             << "'type' attribute for immutable 'tf_saved_model.global_tensor' "
+                "should have a static shape";
+    }
   }
   return success();
 }
@@ -102,6 +112,14 @@ static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
   return mlir::success();
 }
 
+// Return true if `type` is a tensor of `!tf.resource`. This is the type that is
+// used to represent mutable variables on exported functions' bound inputs.
+static bool IsResourceVarType(Type type) {
+  TensorType tensor_type = type.dyn_cast<TensorType>();
+  if (!tensor_type) return false;
+  return tensor_type.getElementType().isa<TF::ResourceType>();
+}
+
 LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     Operation *op, unsigned region_index, unsigned arg_index,
     NamedAttribute named_attr) {
@@ -118,7 +136,20 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
                                 "reference a valid symbol, got invalid symbol '"
                              << symbol_name << "'";
     }
-    // TODO(silvasean): Check that argument type matches with the value.
+    auto arg_type = cast<FuncOp>(op).getArgument(arg_index).getType();
+    if (global_tensor.is_mutable()) {
+      if (!IsResourceVarType(arg_type)) {
+        return op->emitError()
+               << "bound inputs for mutable 'tf_saved_model.global_tensor's "
+                  "must be tensors of '!tf.resource'";
+      }
+    } else {
+      if (arg_type != global_tensor.type()) {
+        return op->emitError() << "bound input for immutable "
+                                  "'tf_saved_model.global_tensor' must "
+                                  "match the global tensor's type";
+      }
+    }
     return success();
   }
   if (named_attr.first == "tf_saved_model.index_path") {
@@ -138,6 +169,22 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionResultAttribute(
 
   return op->emitError() << "unknown tf_saved_model dialect result attribute '"
                          << named_attr.first << "'";
+}
+
+static bool HasAnyTfSavedModelArgAttr(FuncOp func) {
+  for (int i = 0, e = func.getNumArguments(); i < e; i++) {
+    if (func.getArgAttr(i, "tf_saved_model.index_path") ||
+        func.getArgAttr(i, "tf_saved_model.bound_input")) {
+      return true;
+    }
+  }
+  for (int i = 0, e = func.getNumResults(); i < e; i++) {
+    if (func.getResultAttr(i, "tf_saved_model.index_path") ||
+        func.getResultAttr(i, "tf_saved_model.bound_input")) {
+      return true;
+    }
+  }
+  return false;
 }
 
 static LogicalResult VerifySavedModelModule(
@@ -167,8 +214,17 @@ static LogicalResult VerifySavedModelModule(
       }
     }
   }
+  for (auto func : module.getOps<FuncOp>()) {
+    if (HasAnyTfSavedModelArgAttr(func)) {
+      if (!IsExported(func)) {
+        return func.emitError()
+               << "can only apply 'tf_saved_model' argument attributes "
+                  "to exported functions";
+      }
+    }
+  }
   SymbolTable symbol_table(module);
-  auto symbol_uses = SymbolTable::getSymbolUses(module);
+  auto symbol_uses = SymbolTable::getSymbolUses(&module.getBodyRegion());
   if (!symbol_uses.hasValue()) {
     return module.emitError() << "modules with 'tf_saved_model.semantics' must "
                                  "have analyzable symbol uses";
@@ -183,6 +239,46 @@ static LogicalResult VerifySavedModelModule(
           .append("references this exported function");
     }
   }
+  return success();
+}
+
+LogicalResult VerifyExportedFunc(FuncOp func) {
+  bool reached_bound_inputs = false;
+  for (int i = 0, e = func.getNumArguments(); i < e; i++) {
+    if (func.getArgAttr(i, "tf_saved_model.bound_input")) {
+      reached_bound_inputs = true;
+      continue;
+    }
+    if (func.getArgAttr(i, "tf_saved_model.index_path")) {
+      if (reached_bound_inputs) {
+        return func.emitError()
+               << "all 'tf_saved_model.index_path' arg attributes should "
+                  "precede all 'tf_saved_model.bound_input' arg attributes";
+      }
+      continue;
+    }
+    return func.emitError()
+           << "all arguments should have 'tf_saved_model.index_path' or "
+              "'tf_saved_model.bound_input' attributes";
+  }
+  llvm::SmallDenseSet<StringRef, 8> unique_bound_inputs;
+  for (int i = 0, e = func.getNumArguments(); i < e; i++) {
+    if (auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
+            i, "tf_saved_model.bound_input")) {
+      if (!unique_bound_inputs.insert(attr.getValue()).second) {
+        return func.emitError()
+               << "duplicate 'tf_saved_model.bound_input' binding";
+      }
+    }
+  }
+
+  for (int i = 0, e = func.getNumResults(); i < e; i++) {
+    if (!func.getResultAttr(i, "tf_saved_model.index_path")) {
+      return func.emitError() << "all results should have "
+                                 "'tf_saved_model.index_path' attributes";
+    }
+  }
+
   return success();
 }
 
@@ -204,29 +300,8 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
                 "'tf_saved_model.semantics'";
     }
     if (auto func = dyn_cast<FuncOp>(op)) {
-      bool reached_bound_inputs = false;
-      for (int i = 0, e = func.getNumArguments(); i < e; i++) {
-        if (func.getArgAttr(i, "tf_saved_model.bound_input")) {
-          reached_bound_inputs = true;
-          continue;
-        }
-        if (func.getArgAttr(i, "tf_saved_model.index_path")) {
-          if (reached_bound_inputs) {
-            return op->emitError()
-                   << "all 'tf_saved_model.index_path' arg attributes should "
-                      "precede all 'tf_saved_model.bound_input' arg attributes";
-          }
-          continue;
-        }
-        return op->emitError()
-               << "all arguments should have 'tf_saved_model.index_path' or "
-                  "'tf_saved_model.bound_input' attributes";
-      }
-      for (int i = 0, e = func.getNumResults(); i < e; i++) {
-        if (!func.getResultAttr(i, "tf_saved_model.index_path")) {
-          return op->emitError() << "all results should have "
-                                    "'tf_saved_model.index_path' attributes";
-        }
+      if (failed(VerifyExportedFunc(func))) {
+        return failure();
       }
     }
     return success();

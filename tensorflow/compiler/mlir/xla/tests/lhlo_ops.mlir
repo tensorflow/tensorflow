@@ -1,14 +1,4 @@
-// RUN: tf-opt %s -verify-diagnostics -split-input-file
-
-// -----
-
-func @enforce_static_shapes(%arg0: memref<?xf32>, %arg1: memref<?xf32>) -> () {
-  // expected-error@+1{{op operand #0 must be statically shaped memref of floating-point or integer values}}
-  "xla_lhlo.tanh"(%arg0, %arg1) : (memref<?xf32>, memref<?xf32>) -> ()
-  return
-}
-
-// -----
+// RUN: tf-opt %s -verify-diagnostics -split-input-file | tf-opt | FileCheck %s
 
 func @enforce_same_shape(%arg0: memref<1xf32>, %arg1: memref<2xf32>) -> () {
   // expected-error@+1{{'xla_lhlo.tanh' op requires all operands to have the same type}}
@@ -50,9 +40,25 @@ func @exp_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
 
 // -----
 
+// CHECK-LABEL: func @log_memref
+func @log_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
+  "xla_lhlo.log"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @neg_memref
 func @neg_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
   "xla_lhlo.neg"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @rsqrt_memref
+func @rsqrt_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
+  "xla_lhlo.rsqrt"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
   return
 }
 
@@ -129,6 +135,23 @@ func @and_memref(%lhs: memref<10xf32>, %rhs: memref<10xf32>, %out: memref<10xf32
 }
 
 // -----
+
+// CHECK-LABEL: func @broadcast_in_dim_memref
+func @broadcast_in_dim_memref(%arg0: memref<1x2xi32>, %out: memref<1x2x2xi32>) -> () {
+  "xla_lhlo.broadcast_in_dim"(%arg0, %out) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (memref<1x2xi32>, memref<1x2x2xi32>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @broadcast_in_dim_zero_rank_memref
+func @broadcast_in_dim_zero_rank_memref(%arg0: memref<i32>, %out: memref<1x2x3xi32>) -> () {
+  "xla_lhlo.broadcast_in_dim"(%arg0, %out) : (memref<i32>, memref<1x2x3xi32>) -> ()
+  return
+}
+
+// -----
+
 
 // CHECK-LABEL: func @reduce_memref
 func @reduce_memref(%input: memref<10xf32>, %init: memref<f32>, %out: memref<1xf32>) -> () {

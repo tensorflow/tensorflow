@@ -17,32 +17,26 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/optional.h"
-#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace profiler {
-namespace cpu {
 
 std::unique_ptr<ProfilerInterface> CreateHostTracer(
     const ProfilerOptions& options);
 
 namespace {
 
-Status CollectData(ProfilerInterface* profiler, RunMetadata* run_metadata) {
-  return profiler->CollectData(run_metadata);
-}
-
-using ::testing::ElementsAre;
-using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
-NodeExecStats MakeNodeStats(const string& name, uint64 thread_id,
+NodeExecStats MakeNodeStats(const string& name, int32 thread_id,
                             const string& label = "") {
   NodeExecStats ns;
   ns.set_node_name(name);
@@ -79,11 +73,10 @@ inline ::testing::PolymorphicMatcher<NodeStatsMatcher> EqualsNodeStats(
   return ::testing::MakePolymorphicMatcher(NodeStatsMatcher(expected));
 }
 
-TEST(HostTracerTest, CollectsTraceMeEvents) {
-  uint32 thread_id = Env::Default()->GetCurrentThreadId();
+TEST(HostTracerTest, CollectsTraceMeEventsAsRunMetadata) {
+  int32 thread_id = Env::Default()->GetCurrentThreadId();
 
-  const ProfilerOptions options;
-  auto tracer = CreateHostTracer(options);
+  auto tracer = CreateHostTracer(ProfilerOptions());
 
   TF_ASSERT_OK(tracer->Start());
   { TraceMe traceme("hello"); }
@@ -95,7 +88,7 @@ TEST(HostTracerTest, CollectsTraceMeEvents) {
   TF_ASSERT_OK(tracer->Stop());
 
   RunMetadata run_metadata;
-  TF_ASSERT_OK(CollectData(tracer.get(), &run_metadata));
+  TF_ASSERT_OK(tracer->CollectData(&run_metadata));
 
   EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 1);
   EXPECT_EQ(run_metadata.step_stats().dev_stats(0).node_stats_size(), 6);
@@ -112,7 +105,81 @@ TEST(HostTracerTest, CollectsTraceMeEvents) {
               MakeNodeStats("incomplete", thread_id, "key1=value1,key2"))));
 }
 
+TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
+  int32 thread_id;
+  string thread_name = "MyThreadName";
+  XSpace space;
+
+  // We start a thread with a known and controled name. As of the time of
+  // writing, not all platforms (example: Windows) allow reading through the
+  // system to the current thread name/description. By starting a thread with a
+  // name, we control this behavior entirely within the TensorFlow subsystems.
+  std::unique_ptr<Thread> traced_thread(
+      Env::Default()->StartThread(ThreadOptions(), thread_name, [&] {
+        // Some implementations add additional information to the thread name.
+        // Recapture this information.
+        ASSERT_TRUE(Env::Default()->GetCurrentThreadName(&thread_name));
+        thread_id = Env::Default()->GetCurrentThreadId();
+
+        auto tracer = CreateHostTracer(ProfilerOptions());
+
+        TF_ASSERT_OK(tracer->Start());
+        { TraceMe traceme("hello"); }
+        { TraceMe traceme("world"); }
+        { TraceMe traceme("contains#inside"); }
+        { TraceMe traceme("good#key1=value1#"); }
+        { TraceMe traceme("morning#key1=value1,key2=value2#"); }
+        { TraceMe traceme("incomplete#key1=value1,key2#"); }
+        TF_ASSERT_OK(tracer->Stop());
+
+        TF_ASSERT_OK(tracer->CollectData(&space));
+      }));
+  traced_thread.reset();      // Join thread, waiting for completion.
+  ASSERT_NO_FATAL_FAILURE();  // Test for failure in child thread.
+
+  ASSERT_EQ(space.planes_size(), 1);
+  const auto& plane = space.planes(0);
+  ASSERT_EQ(plane.name(), kHostThreads);
+  ASSERT_EQ(plane.lines_size(), 1);
+  ASSERT_EQ(plane.event_metadata_size(), 6);
+  ASSERT_EQ(plane.stat_metadata_size(), 2);
+  const auto& event_metadata = plane.event_metadata();
+  const auto& stat_metadata = plane.stat_metadata();
+  const auto& line = plane.lines(0);
+  EXPECT_EQ(line.id(), thread_id);
+  EXPECT_EQ(line.name(), thread_name);
+  ASSERT_EQ(line.events_size(), 6);
+  const auto& events = line.events();
+  EXPECT_EQ(events[0].metadata_id(), 1);
+  EXPECT_EQ(event_metadata.at(1).name(), "hello");
+  ASSERT_EQ(events[0].stats_size(), 0);
+  EXPECT_EQ(events[1].metadata_id(), 2);
+  EXPECT_EQ(event_metadata.at(2).name(), "world");
+  ASSERT_EQ(events[1].stats_size(), 0);
+  EXPECT_EQ(events[2].metadata_id(), 3);
+  EXPECT_EQ(event_metadata.at(3).name(), "contains#inside");
+  ASSERT_EQ(events[2].stats_size(), 0);
+  EXPECT_EQ(events[3].metadata_id(), 4);
+  EXPECT_EQ(event_metadata.at(4).name(), "good");
+  ASSERT_EQ(events[3].stats_size(), 1);
+  EXPECT_EQ(events[3].stats(0).metadata_id(), 1);
+  EXPECT_EQ(stat_metadata.at(1).name(), "key1");
+  EXPECT_EQ(events[3].stats(0).str_value(), "value1");
+  EXPECT_EQ(events[4].metadata_id(), 5);
+  EXPECT_EQ(event_metadata.at(5).name(), "morning");
+  ASSERT_EQ(events[4].stats_size(), 2);
+  EXPECT_EQ(events[4].stats(0).metadata_id(), 1);
+  EXPECT_EQ(events[4].stats(0).str_value(), "value1");
+  EXPECT_EQ(events[4].stats(1).metadata_id(), 2);
+  EXPECT_EQ(stat_metadata.at(2).name(), "key2");
+  EXPECT_EQ(events[4].stats(1).str_value(), "value2");
+  EXPECT_EQ(events[5].metadata_id(), 6);
+  EXPECT_EQ(event_metadata.at(6).name(), "incomplete");
+  ASSERT_EQ(events[5].stats_size(), 1);
+  EXPECT_EQ(events[5].stats(0).metadata_id(), 1);
+  EXPECT_EQ(events[5].stats(0).str_value(), "value1");
+}
+
 }  // namespace
-}  // namespace cpu
 }  // namespace profiler
 }  // namespace tensorflow

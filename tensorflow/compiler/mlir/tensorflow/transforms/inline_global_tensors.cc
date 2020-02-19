@@ -24,10 +24,10 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
@@ -55,7 +55,7 @@ void InlineGlobalTensorsPass::runOnModule() {
       // Replace the arg with a tf.Const op in the function body.
       auto const_op = builder.create<TF::ConstOp>(global_tensor.getLoc(),
                                                   global_tensor.value());
-      func.getArgument(i)->replaceAllUsesWith(const_op.getResult());
+      func.getArgument(i).replaceAllUsesWith(const_op.getResult());
       args_to_erase.push_back(i);
     }
     func.eraseArguments(args_to_erase);

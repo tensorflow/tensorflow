@@ -18,7 +18,7 @@ package org.tensorflow.lite.support.tensorbuffer;
 import java.nio.FloatBuffer;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.DataType;
-import org.tensorflow.lite.support.common.SupportPrecondtions;
+import org.tensorflow.lite.support.common.SupportPreconditions;
 
 /** Represents data buffer with float values. */
 public final class TensorBufferFloat extends TensorBuffer {
@@ -73,8 +73,8 @@ public final class TensorBufferFloat extends TensorBuffer {
 
   @Override
   public void loadArray(@NonNull float[] src, @NonNull int[] shape) {
-    SupportPrecondtions.checkNotNull(src, "The array to be loaded cannot be null.");
-    SupportPrecondtions.checkArgument(
+    SupportPreconditions.checkNotNull(src, "The array to be loaded cannot be null.");
+    SupportPreconditions.checkArgument(
         src.length == computeFlatSize(shape),
         "The size of the array to be loaded does not match the specified shape.");
     resize(shape);
@@ -86,8 +86,8 @@ public final class TensorBufferFloat extends TensorBuffer {
 
   @Override
   public void loadArray(@NonNull int[] src, @NonNull int[] shape) {
-    SupportPrecondtions.checkNotNull(src, "The array to be loaded cannot be null.");
-    SupportPrecondtions.checkArgument(
+    SupportPreconditions.checkNotNull(src, "The array to be loaded cannot be null.");
+    SupportPreconditions.checkArgument(
         src.length == computeFlatSize(shape),
         "The size of the array to be loaded does not match the specified shape.");
     resize(shape);

@@ -11,14 +11,14 @@ END
     name: "other_arguments"
     description: <<END
 Additional arguments to pass to `f` beyond those produced by `input_dataset`.
-Evaluated once when the dataset is instantiated. 
+Evaluated once when the dataset is instantiated.
 END
   }
   in_arg {
     name: "cycle_length"
     description: <<END
 Number of datasets (each created by applying `f` to the elements of
-`input_dataset`) among which the `ParallelInterleaveDataset` will cycle in a 
+`input_dataset`) among which the `ParallelInterleaveDataset` will cycle in a
 round-robin fashion.
 END
   }
@@ -88,7 +88,7 @@ allows the training step to proceed so long as some data is available.
 dataset will not be deterministic!
 
 This dataset has been superseded by `ParallelInterleaveDatasetV2`.  New code
-should use `ParallelInterleaveDatasetV2`. 
+should use `ParallelInterleaveDatasetV2`.
 
 The Python API `tf.data.experimental.parallel_interleave` creates instances of
 this op. `tf.data.experimental.parallel_interleave` is a deprecated API.

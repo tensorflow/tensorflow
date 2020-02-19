@@ -17,7 +17,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
 )
@@ -142,6 +142,8 @@ tf_cuda_cc_test(
         ":trt_engine_resource_ops_op_lib",
         ":trt_logging",
         ":trt_resources",
+        ":utils",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -151,6 +153,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:resource_variable_ops",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -169,13 +172,15 @@ tf_cuda_cc_test(
         ":trt_op_libs",
         ":trt_resources",
         ":trt_conversion",
-        ":utils",
         "@com_google_googletest//:gtest",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "//third_party/eigen3",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -242,10 +247,12 @@ tf_cuda_library(
     srcs = [
         "utils/trt_int8_calibrator.cc",
         "utils/trt_lru_cache.cc",
+        "utils/trt_shape_optimization_profiles.cc",
     ],
     hdrs = [
         "utils/trt_int8_calibrator.h",
         "utils/trt_lru_cache.h",
+        "utils/trt_shape_optimization_profiles.h",
     ],
     deps = [
         ":trt_allocator",
@@ -291,6 +298,22 @@ tf_cc_test(
     size = "small",
     srcs = ["utils/trt_lru_cache_test.cc"],
     tags = [
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_resources",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "trt_shape_optimization_profiles_test",
+    size = "small",
+    srcs = ["utils/trt_shape_optimization_profiles_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
     ],
@@ -500,7 +523,8 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
-    ],
+        "//tensorflow/core:lib",
+    ] + if_tensorrt([":tensorrt_lib"]),
 )
 
 tf_proto_library(

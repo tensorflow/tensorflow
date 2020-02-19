@@ -201,8 +201,7 @@ class StatsAggregatorImplV2 : public StatsAggregator {
     }
     std::unique_ptr<Event> e{new Event};
     e->set_step(steps);
-    tensorflow::Env* env = tensorflow::Env::Default();
-    e->set_wall_time(env->NowMicros() / 1.0e6);
+    e->set_wall_time(EnvTime::NowMicros() / 1.0e6);
     // maybe expose GetWallTime in SummaryWriterInterface
     Summary::Value* v = e->mutable_summary()->add_value();
     v->set_tag(name);
@@ -218,8 +217,7 @@ class StatsAggregatorImplV2 : public StatsAggregator {
     }
     std::unique_ptr<Event> e{new Event};
     e->set_step(steps);
-    tensorflow::Env* env = tensorflow::Env::Default();
-    e->set_wall_time(env->NowMicros() / 1.0e6);
+    e->set_wall_time(EnvTime::NowMicros() / 1.0e6);
     Summary::Value* v = e->mutable_summary()->add_value();
     v->set_tag(name);
     histogram.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */);

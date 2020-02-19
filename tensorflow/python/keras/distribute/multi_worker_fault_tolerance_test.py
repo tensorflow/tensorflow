@@ -23,6 +23,7 @@ import signal
 import sys
 import tempfile
 import threading
+
 from absl.testing import parameterized
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
@@ -48,14 +49,14 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
                                          parameterized.TestCase):
 
   class PreemptionAtBatchBoundarySimulatingCallback(callbacks.Callback):
-    """Callback to simulate preemtion at batch boundary."""
+    """Callback to simulate preemption at batch boundary."""
 
     def on_epoch_begin(self, epoch, logs=None):
       self._current_epoch = epoch
 
     def on_batch_begin(self, batch, logs=None):
       if self._current_epoch == 1 and batch == 1 and not test_base.is_chief():
-        # Simulate preemtion at the start of second batch of second epoch.
+        # Simulate preemption at the start of second batch of second epoch.
         raise RuntimeError('Preemption!')
 
     def on_batch_end(self, batch, logs=None):
@@ -66,11 +67,11 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
 
   # TODO(rchao): Add tests for checking 0th and 2nd epoch boundary.
   class PreemptionAtEpochBoundarySimulatingCallback(callbacks.Callback):
-    """Callback to simulate preemtion at epoch boundary."""
+    """Callback to simulate preemption at epoch boundary."""
 
     def on_epoch_begin(self, epoch, logs=None):
       if epoch == 1 and not test_base.is_chief():
-        # Simulate preemtion at the start of second epoch.
+        # Simulate preemption at the start of second epoch.
         raise RuntimeError('Preemption!')
 
     def on_epoch_end(self, epoch, logs=None):
