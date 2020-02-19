@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace nvtx {
 
-namespace detail {
+namespace {
 
 inline unsigned hash_string(const char* c) {
   enum { M = 33 };
@@ -68,13 +68,9 @@ inline nvtxRangeId_t nvtxRangeStartHelper(const char* msg, const char* type,
   return ::nvtxRangeStartEx(&attrs);
 }
 
-}  // namespace detail
+}  // namespace anonymous
 
-const NvtxDomain& GetNvtxTensorFlowCoreDomain() {
-  // Singleton because we want the same domain for the lifetime of the process.
-  static NvtxDomain nvtx_domain("tensorflow-core");
-  return nvtx_domain;
-}
+// #############################################################################
 
 // A helper function to decide whether to enable CUDA NVTX profiling ranges.
 bool check_nvtx_envvar(const char* envvar_name){
@@ -85,16 +81,24 @@ bool check_nvtx_envvar(const char* envvar_name){
   return is_enabled;
 }
 
-bool NvtxRangesEnabled() {
-  static bool is_enabled = check_nvtx_envvar("TF_ENABLE_NVTX_RANGES");
-  return is_enabled;
-}
+const int8 NVTX_RANGE_INJECTION_STATUS = [] {
+  if (check_nvtx_envvar("TF_ENABLE_NVTX_RANGES_DETAILED")){
+    return NVTX_RANGE_INJECTION_STATUS_kDetailed;
+  }
+  else if (check_nvtx_envvar("TF_ENABLE_NVTX_RANGES")) {
+    return NVTX_RANGE_INJECTION_STATUS_kBasic;
+  }
+  else {
+    return NVTX_RANGE_INJECTION_STATUS_kDisabled;
+  }
+}();
 
-// A helper function to decide whether to enable CUDA NVTX profiling ranges
-// with detailed node information.
-bool NvtxRangesDetailedEnabled() {
-  static bool is_enabled =  check_nvtx_envvar("TF_ENABLE_NVTX_RANGES_DETAILED");
-  return is_enabled;
+// #############################################################################
+
+const NvtxDomain& GetNvtxTensorFlowCoreDomain() {
+  // Singleton because we want the same domain for the lifetime of the process.
+  static NvtxDomain nvtx_domain("tensorflow-core");
+  return nvtx_domain;
 }
 
 string DataTypeToNumpyString(DataType dtype) {
@@ -194,9 +198,9 @@ string MaybeGetNvtxDomainRangeMessage(
     const OpKernel* kernel, const int num_inputs,
     std::vector<const TensorShape*> input_shape_array) {
   string msg;
-  if (NvtxRangesEnabled()) {
+  if (IsNvtxRangesEnabled()) {
     msg = kernel->def().op() + ": " + kernel->name();
-  } else if (NvtxRangesDetailedEnabled()) {
+  } else if (IsNvtxRangesDetailedEnabled()) {
     std::vector<string> args_pieces;
     for (int i = 0; i < num_inputs; ++i) {
       if (i == 10) {
@@ -234,27 +238,33 @@ string MaybeGetNvtxDomainRangeMessage(
 
 nvtxRangeId_t MaybeNvtxDomainRangeStart(string node_op, string node_name) {
   nvtxRangeId_t nvtx_range;
-  if (NvtxRangesEnabled() || NvtxRangesDetailedEnabled()) {
+  if (IsNvtxRangesEnabled() || IsNvtxRangesDetailedEnabled()) {
     string msg;
     msg = node_op + ": " + node_name;
-    nvtx_range = detail::nvtxRangeStartHelper(msg.c_str(), node_op.c_str(),
-                                              GetNvtxTensorFlowCoreDomain());
+    nvtx_range = nvtxRangeStartHelper(
+      msg.c_str(),
+      node_op.c_str(),
+      GetNvtxTensorFlowCoreDomain()
+    );
   }
   return nvtx_range;
 }
 
 nvtxRangeId_t MaybeNvtxDomainRangeStartMsg(string msg, string node_op) {
   nvtxRangeId_t nvtx_range;
-  if (NvtxRangesEnabled() || NvtxRangesDetailedEnabled()) {
-    nvtx_range = detail::nvtxRangeStartHelper(msg.c_str(), node_op.c_str(),
-                                              GetNvtxTensorFlowCoreDomain());
+  if (! IsNvtxRangesDisabled()) {
+    nvtx_range = nvtxRangeStartHelper(
+      msg.c_str(),
+      node_op.c_str(),
+      GetNvtxTensorFlowCoreDomain()
+    );
   }
   return nvtx_range;
 }
 
 void MaybeNvtxDomainRangeEnd(nvtxRangeId_t nvtx_range) {
-  if (NvtxRangesEnabled() || NvtxRangesDetailedEnabled()) {
-    ::nvtxDomainRangeEnd(GetNvtxTensorFlowCoreDomain(), nvtx_range);
+  if (! IsNvtxRangesDisabled()) {
+    nvtxDomainRangeEnd(GetNvtxTensorFlowCoreDomain(), nvtx_range);
   }
 }
 

@@ -281,8 +281,10 @@ Status KernelAndDeviceOp::Run(
   OpKernelContext context(&params);
 
   string msg;
-  if (nvtx::NvtxRangesEnabled() || nvtx::NvtxRangesDetailedEnabled()) {
-    if (nvtx::NvtxRangesDetailedEnabled()) {
+  nvtxRangeId_t nvtx_range;
+
+  if (! nvtx::IsNvtxRangesDisabled()) {
+    if (nvtx::IsNvtxRangesDetailedEnabled()) {
       std::vector<string> args_pieces;
       for (int i = 0; i < inputs.GetTensorValues()->size(); i++) {
         if (i == 10) {
@@ -317,9 +319,9 @@ Status KernelAndDeviceOp::Run(
     } else {
       msg = kernel_->def().op() + ": " + kernel_->name();
     }
+
+    nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(msg, kernel_->def().op());
   }
-  auto nvtx_range =
-      nvtx::MaybeNvtxDomainRangeStartMsg(msg, kernel_->def().op());
 
   {
     // 'AnnotatedTraceMe' will trace both scheduling time on host and execution

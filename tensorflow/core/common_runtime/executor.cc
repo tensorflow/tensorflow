@@ -1796,17 +1796,25 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
     std::vector<const TensorShape*> input_shape_array;
 
-    if (nvtx::NvtxRangesDetailedEnabled()) {
-      for (int i = 0; i < item.num_inputs; ++i) {
-        input_shape_array.push_back(
-            &GetTensorValueForDump(first_input[i])->shape());
-      }
-    }
+    nvtxRangeId_t nvtx_range;
 
-    auto nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(
-        nvtx::MaybeGetNvtxDomainRangeMessage(item.kernel, item.num_inputs,
-                                             input_shape_array),
-        item.kernel->def().op());
+    if (! nvtx::IsNvtxRangesDisabled()) {
+      if (nvtx::IsNvtxRangesDetailedEnabled()) {
+        for (int i = 0; i < item.num_inputs; ++i) {
+          input_shape_array.push_back(
+              &GetTensorValueForDump(first_input[i])->shape());
+        }
+      }
+
+      nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(
+        nvtx::MaybeGetNvtxDomainRangeMessage(
+          item.kernel,
+          item.num_inputs,
+          input_shape_array
+        ),
+        item.kernel->def().op()
+      );
+    }
 
     TensorReferenceVector accessed_tensors;
     DeviceContext* device_context = nullptr;
@@ -1875,6 +1883,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           }
           FrameState* input_frame = state->tagged_node.input_frame;
           const int64 input_iter = state->tagged_node.input_iter;
+
           MaybeMarkCompleted(input_frame, input_iter, *state->item);
           TaggedNodeSeq ready;
           if (s.ok()) {

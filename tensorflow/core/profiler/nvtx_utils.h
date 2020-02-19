@@ -25,6 +25,28 @@ namespace tensorflow {
 
 namespace nvtx {
 
+#define NVTX_RANGE_INJECTION_STATUS_kDisabled 0
+#define NVTX_RANGE_INJECTION_STATUS_kBasic 1
+#define NVTX_RANGE_INJECTION_STATUS_kDetailed 2
+
+extern const int8 NVTX_RANGE_INJECTION_STATUS;
+
+// A helper function to decide whether to skip CUDA NVTX profiling ranges.
+inline bool IsNvtxRangesDisabled(){
+  return NVTX_RANGE_INJECTION_STATUS == NVTX_RANGE_INJECTION_STATUS_kDisabled;
+};
+
+// A helper function to decide whether to enable CUDA NVTX profiling ranges.
+inline bool IsNvtxRangesEnabled(){
+  return NVTX_RANGE_INJECTION_STATUS == NVTX_RANGE_INJECTION_STATUS_kBasic;
+};
+
+// A helper function to decide whether to enable CUDA NVTX profiling ranges
+// with detailed node information.
+inline bool IsNvtxRangesDetailedEnabled(){
+  return NVTX_RANGE_INJECTION_STATUS == NVTX_RANGE_INJECTION_STATUS_kDetailed;
+};
+
 class NvtxDomain {
  public:
   explicit NvtxDomain(const char* name) : handle_(nvtxDomainCreateA(name)) {}
@@ -35,13 +57,6 @@ class NvtxDomain {
   nvtxDomainHandle_t handle_;
   TF_DISALLOW_COPY_AND_ASSIGN(NvtxDomain);
 };
-
-// A helper function to decide whether to enable CUDA NVTX profiling ranges.
-bool NvtxRangesEnabled();
-
-// A helper function to decide whether to enable CUDA NVTX profiling ranges
-// with detailed node information.
-bool NvtxRangesDetailedEnabled();
 
 string DataTypeToNumpyString(DataType dtype);
 
