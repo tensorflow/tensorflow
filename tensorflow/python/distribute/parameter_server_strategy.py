@@ -486,7 +486,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
     def _select_fn(x):  # pylint: disable=g-missing-docstring
       if isinstance(x, values.Mirrored):
-        if len(x.devices) == 1:
+        if len(x._devices) == 1:  # pylint: disable=protected-access
           return x._primary  # pylint: disable=protected-access
         else:
           raise ValueError(

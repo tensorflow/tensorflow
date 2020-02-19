@@ -98,7 +98,7 @@ class DistributedValues(object):
     return self._values
 
   @property
-  def devices(self):
+  def _devices(self):
     return tuple(v.device for v in self._values)
 
   def __str__(self):
@@ -505,7 +505,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   @property
   def op(self):
     # We want cross-replica code that does some var.op.X calls
-    # to work (even if the current device isn't in self.devices), but
+    # to work (even if the current device isn't in self._devices), but
     # other uses of var.op in a cross-replica context to fail.
     if distribution_strategy_context.in_cross_replica_context():
       return DistributedVarOp(self._primary.op.name, self._primary.op.graph,
@@ -1014,7 +1014,7 @@ class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
     # when saving.
     tensor, = restored_tensors
     if self._sync_on_read_variable.aggregation == vs.VariableAggregation.SUM:
-      tensor = math_ops.cast(tensor / len(self._sync_on_read_variable.devices),
+      tensor = math_ops.cast(tensor / len(self._sync_on_read_variable._devices),  # pylint: disable=protected-access
                              self._sync_on_read_variable.dtype)
     return control_flow_ops.group(
         tuple(

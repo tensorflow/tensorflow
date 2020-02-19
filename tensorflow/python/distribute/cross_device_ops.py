@@ -154,7 +154,7 @@ def _validate_value_destination_pairs(value_destination_pairs):
 # CrossDeviceOps.
 def get_devices_from(destinations):
   if isinstance(destinations, value_lib.DistributedValues):
-    return destinations.devices
+    return destinations._devices  # pylint: disable=protected-access
   elif isinstance(destinations, six.string_types):
     return (device_util.resolve(destinations),)
   return (device_util.resolve(destinations.device),)
@@ -441,12 +441,12 @@ def _group_value_by_device(per_replica_values):
     a list of lists, each sublist has components for its corresponding device of
       PerReplica objects, paired with a None.
   """
-  destinations = per_replica_values[0].devices
+  destinations = per_replica_values[0]._devices  # pylint: disable=protected-access
   grouped = [[] for _ in range(len(destinations))]
   for per_replica_value in per_replica_values:
     # pylint: disable=protected-access
     for i, v in enumerate(per_replica_value.values):
-      assert per_replica_value.devices == destinations
+      assert per_replica_value._devices == destinations
       grouped[i].append((v, None))
   return grouped
 
@@ -730,7 +730,7 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
         (len(dense_values), self._all_reduce_alg, self._num_packs,
          self._agg_small_grads_max_bytes, self._agg_small_grads_max_group), 10)
 
-    destinations = dense_values[0].devices
+    destinations = dense_values[0]._devices  # pylint: disable=protected-access
     grouped = _group_value_by_device(dense_values)
 
     device_grad_packs, tensor_packer = _pack_tensors(
@@ -1010,7 +1010,7 @@ class CollectiveAllReduce(CrossDeviceOps):
     devices = get_devices_from(destinations)
 
     if (isinstance(all_reduced, value_lib.Mirrored) and
-        (all_reduced.devices == devices)):
+        (all_reduced._devices == devices)):  # pylint: disable=protected-access
       return all_reduced
 
     # Convert `all_reduced` to a `Mirrored` object, as a simple and uniform

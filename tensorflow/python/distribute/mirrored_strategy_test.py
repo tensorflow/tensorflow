@@ -714,18 +714,18 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEqual(7.0, self.evaluate(mirrored_var.values[0]))
       self.assertEqual(7.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
       # read_value == False
       self.evaluate(mirrored_var.assign_add(2.0, read_value=False))
       self.assertEqual(9.0, self.evaluate(mirrored_var.values[0]))
       self.assertEqual(9.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
   def testAssignAddMirroredVarReplicaContext(self, distribution):
     def var_fn():
@@ -780,9 +780,9 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEqual(3.0, self.evaluate(mirrored_var.values[0]))
       self.assertEqual(3.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
   def testAssignSubMirroredVarReplicaContext(self, distribution):
     def var_fn():
