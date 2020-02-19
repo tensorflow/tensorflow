@@ -117,7 +117,7 @@ struct OptimizationProfileConfig {
 // before the engine is created.
 class TrtShapeOptimizationProfile {
  public:
-  TrtShapeOptimizationProfile(){}
+  TrtShapeOptimizationProfile() {}
 
   // Stores input shape information during profile_generation_mode
   void AddShape(std::vector<TensorShape> shapes) {

@@ -29,6 +29,7 @@ py_test(
     name = "interpreter_test",
     srcs = ["interpreter_test.py"],
     data = [
+        "//tensorflow/lite:testdata/sparse_tensor.bin",
         "//tensorflow/lite/python/testdata:interpreter_test_data",
         "//tensorflow/lite/python/testdata:test_delegate.so",
     ],

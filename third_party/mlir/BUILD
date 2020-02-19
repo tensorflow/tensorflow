@@ -81,15 +81,14 @@ cc_library(
     ]),
     hdrs = glob([
         "include/mlir/Pass/*.h",
-    ]) + [
-        "include/mlir/Analysis/Verifier.h",
-    ],
+    ]),
     includes = ["include"],
     linkopts = [
         "-lm",
         "-lpthread",
     ],
     deps = [
+        ":Analysis",
         ":IR",
         ":Support",
         "@llvm-project//llvm:support",
@@ -667,6 +666,26 @@ cc_library(
 )
 
 cc_library(
+    name = "GPUToVulkanTransforms",
+    srcs = [
+        "lib/Conversion/GPUToVulkan/ConvertLaunchFuncToVulkanCalls.cpp",
+    ],
+    hdrs = ["include/mlir/Conversion/GPUToVulkan/ConvertGPUToVulkanPass.h"],
+    includes = ["include"],
+    deps = [
+        ":GPUDialect",
+        ":IR",
+        ":LLVMDialect",
+        ":Pass",
+        ":SPIRVDialect",
+        ":SPIRVSerialization",
+        ":StandardOps",
+        ":Support",
+        "@llvm-project//llvm:support",
+    ],
+)
+
+cc_library(
     name = "GPUToCUDATransforms",
     srcs = [
         "lib/Conversion/GPUToCUDA/ConvertKernelFuncToCubin.cpp",
@@ -681,8 +700,8 @@ cc_library(
         ":Pass",
         ":Support",
         ":TargetNVVMIR",
-        "@llvm-project//llvm:all_targets",
         "@llvm-project//llvm:core",
+        "@llvm-project//llvm:nvptx_code_gen",
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:target",
     ],
@@ -1457,7 +1476,6 @@ cc_library(
         ":IR",
         ":InferTypeOpInterfaceIncGen",
         ":LoopOps",
-        ":Pass",
         ":StandardOps",
         ":Support",
         "@llvm-project//llvm:support",
@@ -1709,6 +1727,7 @@ cc_library(
         "include/mlir/InitAllDialects.h",
         "include/mlir/InitAllPasses.h",
     ],
+    defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
     deps = [
         ":AffineOps",
         ":Analysis",
@@ -1718,6 +1737,7 @@ cc_library(
         ":GPUToNVVMTransforms",
         ":GPUToROCDLTransforms",
         ":GPUToSPIRVTransforms",
+        ":GPUToVulkanTransforms",
         ":GPUTransforms",
         ":IR",
         ":LLVMDialect",

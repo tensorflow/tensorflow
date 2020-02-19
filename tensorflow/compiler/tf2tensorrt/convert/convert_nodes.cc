@@ -31,8 +31,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -1341,10 +1341,9 @@ Status Converter::RenameAndMarkOutputTensors(
 }
 
 Status Converter::BuildCudaEngine(
-    TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
-    int max_batch_size, size_t max_workspace_size_bytes,
-    nvinfer1::IGpuAllocator* allocator, TRTInt8Calibrator* calibrator,
-    TrtShapeOptimizationProfile* profiles) {
+    TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, int max_batch_size,
+    size_t max_workspace_size_bytes, nvinfer1::IGpuAllocator* allocator,
+    TRTInt8Calibrator* calibrator, TrtShapeOptimizationProfile* profiles) {
   VLOG(1) << "Configuring TensorRT builder";
   trt_builder_->setMaxBatchSize(max_batch_size);
   trt_builder_->setGpuAllocator(allocator);
@@ -1365,8 +1364,8 @@ Status Converter::BuildCudaEngine(
     }
   }
   if (!use_implicit_batch_ && profiles) {
-    profiles->ConfigureBuilder(trt_builder_.get(), builder_config.get(),
-                               network());
+    TF_RETURN_IF_ERROR(profiles->ConfigureBuilder(
+        trt_builder_.get(), builder_config.get(), network()));
   }
   VLOG(1) << "Building TensorRT engine";
   engine->reset(
@@ -4104,6 +4103,7 @@ Status ConvertBinary(OpConverterParams* params) {
   nvinfer1::ILayer* layer = params->converter->network()->addElementWise(
       *tensor_l, *tensor_r, op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
 
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)

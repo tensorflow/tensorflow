@@ -58,6 +58,10 @@ TODO: Make invariants more structured so that we can reference them in ops.
 def TF_OperandsSameAsResultsTypeOrRef : NativeOpTrait<
   "TF::OperandsSameAsResultsTypeOrRef">;
 
+// Layout agnostic operations do not depend on the operands data layout (data
+// format), as an example all element wise operations are layout agnostic.
+def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
+
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
 //===----------------------------------------------------------------------===//

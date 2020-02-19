@@ -365,3 +365,7 @@ def : Pat<
      /*padding=*/ $padding,
      /*stride_h=*/ ExtractI32At<1>:$strides,
      /*stride_w=*/ ExtractI32At<2>:$strides)>;
+
+def : Pat<
+  (TF_MatrixSetDiagOp $input, $diagonal),
+  (TFL_MatrixSetDiagOp $input, $diagonal)>;

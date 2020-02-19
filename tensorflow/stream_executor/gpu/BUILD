@@ -98,6 +98,7 @@ cc_library(
     hdrs = if_gpu_is_configured(["gpu_executor.h"]),
     deps = [
         ":gpu_kernel_header",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:platform",
         "//tensorflow/stream_executor:stream_executor_internal",
@@ -130,6 +131,7 @@ cc_library(
     hdrs = if_gpu_is_configured(["gpu_rng.h"]),
     deps = [
         ":gpu_types_header",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:rng",
         "//tensorflow/stream_executor/platform",
@@ -142,8 +144,8 @@ cc_library(
     hdrs = if_gpu_is_configured(["gpu_stream.h"]),
     deps = [
         ":gpu_driver_header",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:stream_executor_internal",
-        "//tensorflow/stream_executor/platform",
     ],
 )
 
@@ -154,6 +156,7 @@ cc_library(
     deps = [
         ":gpu_driver_header",
         ":gpu_executor_header",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor:stream_header",
         "//tensorflow/stream_executor/lib",

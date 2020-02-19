@@ -1661,7 +1661,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   return clone;
 }
 
-HloInstruction::~HloInstruction() {
+void HloInstruction::DetachFromOperandsAndUsers() {
+  if (cleaned_up_) {
+    return;
+  }
+  cleaned_up_ = true;
   // Detach from operands. An instruction may be repeated as an operand. To
   // avoid calling RemoveUser twice on the same operand, check before remove.
   for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {

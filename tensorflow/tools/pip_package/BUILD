@@ -27,6 +27,7 @@ transitive_hdrs(
     name = "included_headers",
     deps = [
         "//tensorflow/c/experimental:network",
+        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -126,9 +127,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/docs:generate_lib",
     "//tensorflow/tools/docs:parser",
     "//tensorflow/tools/docs:py_guide_parser",
-] + if_xla_available([
-    "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
-])
+]
 
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
@@ -190,7 +189,7 @@ filegroup(
         "@sobol_data//:LICENSE",
         "@swig//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
-        "@zlib_archive//:zlib.h",
+        "@zlib//:zlib.h",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -235,10 +234,10 @@ filegroup(
             "@absl_py//absl/third_party/unittest3_backport:LICENSE",
         ],
     ) + if_not_system_lib(
-        "grpc",
+        "com_github_grpc_grpc",
         [
-            "@grpc//:LICENSE",
-            "@grpc//third_party/address_sorting:LICENSE",
+            "@com_github_grpc_grpc//:LICENSE",
+            "@com_github_grpc_grpc//third_party/address_sorting:LICENSE",
         ],
     ) + if_ngraph([
         "@ngraph//:LICENSE",

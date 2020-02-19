@@ -453,7 +453,6 @@ inline bool Fast3x3FilterKernelSupported(
   const int32 filter_width = filter_shape.Dims(2);
   const int32 output_height = output_shape.Dims(1);
   const int32 output_width = output_shape.Dims(2);
-  const int32 output_depth = output_shape.Dims(3);
 
   bool supported =
       filter_width == 3 && filter_height == 3 && depth_multiplier == 1 &&
@@ -466,14 +465,6 @@ inline bool Fast3x3FilterKernelSupported(
 
   if (!supported) {
     return false;
-  }
-
-  if (quantization_type == QuantizationType::kPerChannelInt8) {
-    for (int i = 0; i < output_depth; ++i) {
-      if (output_shift_ptr[i] > 0) {
-        return false;
-      }
-    }
   }
 
   // Handle case where padding is zero but padding type is not kValid.

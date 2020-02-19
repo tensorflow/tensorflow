@@ -249,6 +249,7 @@ cc_library(
     deps = [
         ":device_memory",
         ":stream_header",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/synchronization",
@@ -264,6 +265,7 @@ cc_library(
         ":stream_executor_pimpl_header",
         ":stream_header",
         ":temporary_device_memory",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings",
@@ -491,6 +493,7 @@ cc_library(
         ":platform",
         ":stream_executor_headers",
         ":stream_executor_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",
