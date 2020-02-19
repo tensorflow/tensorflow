@@ -1794,11 +1794,12 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     Entry* first_input = input_tensors + item.input_start;
     outputs.clear();
 
-    std::vector<const TensorShape*> input_shape_array;
-
     nvtxRangeId_t nvtx_range;
 
     if (! nvtx::IsNvtxRangesDisabled()) {
+
+      std::vector<const TensorShape*> input_shape_array;
+      
       if (nvtx::IsNvtxRangesDetailedEnabled()) {
         for (int i = 0; i < item.num_inputs; ++i) {
           input_shape_array.push_back(
