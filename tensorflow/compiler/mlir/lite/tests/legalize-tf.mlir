@@ -1400,9 +1400,10 @@ func @random_uniform_no_fold2(%arg0: tensor<2xi32>) -> tensor<*xf32> {
   // CHECK: %[[RANDOM:.*]] = "tf.RandomUniform"
 }
 
-func @random_uniform_no_fold3(%arg0: tensor<2xi32>) -> tensor<*xf64> {
-  %1 = "tf.RandomUniform"(%arg0) { seed = 1, seed2 = 2} : (tensor<2xi32>) -> tensor<*xf64>
-  return %1 : tensor<*xf64>
+func @random_uniform_no_fold3() -> tensor<2x5xf64> {
+  %0 = "tf.Const"() { value = dense<[2, 5]> : tensor<2xi32> } : () -> tensor<2xi32>
+  %1 = "tf.RandomUniform"(%0) { seed = 1, seed2 = 0} : (tensor<2xi32>) -> tensor<2x5xf64>
+  return %1 : tensor<2x5xf64>
 
   // CHECK-LABEL: random_uniform_no_fold3
   // CHECK: %[[RANDOM:.*]] = "tf.RandomUniform"
