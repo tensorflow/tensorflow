@@ -22,11 +22,11 @@ namespace benchmark {
 
 ProfilingListener::ProfilingListener(Interpreter* interpreter,
                                      uint32_t max_num_entries,
-                                     std::string csv_file_path)
+                                     const std::string& csv_file_path)
     : interpreter_(interpreter),
       profiler_(max_num_entries),
-      run_summarizer_(!csv_file_path.empty()),
-      init_summarizer_(!csv_file_path.empty()),
+      run_summarizer_(CreateProfileSummaryFormatter(!csv_file_path.empty())),
+      init_summarizer_(CreateProfileSummaryFormatter(!csv_file_path.empty())),
       csv_file_path_(csv_file_path) {
   TFLITE_BENCHMARK_CHECK(interpreter);
   interpreter_->SetProfiler(&profiler_);
@@ -83,6 +83,13 @@ void ProfilingListener::WriteOutput(const std::string& header,
                                     const string& data, std::ostream* stream) {
   (*stream) << header << std::endl;
   (*stream) << data << std::endl;
+}
+
+std::unique_ptr<profiling::ProfileSummaryFormatter>
+ProfilingListener::CreateProfileSummaryFormatter(bool format_as_csv) const {
+  return format_as_csv
+             ? std::make_unique<profiling::ProfileSummaryDefaultFormatter>()
+             : std::make_unique<profiling::ProfileSummaryCSVFormatter>();
 }
 
 }  // namespace benchmark

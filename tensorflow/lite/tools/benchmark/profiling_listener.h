@@ -27,7 +27,7 @@ namespace benchmark {
 class ProfilingListener : public BenchmarkListener {
  public:
   explicit ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries,
-                             std::string csv_file_path = "");
+                             const std::string& csv_file_path = "");
 
   void OnBenchmarkStart(const BenchmarkParams& params) override;
 
@@ -36,6 +36,11 @@ class ProfilingListener : public BenchmarkListener {
   void OnSingleRunEnd() override;
 
   void OnBenchmarkEnd(const BenchmarkResults& results) override;
+
+ protected:
+  // Allow subclasses to create a customized summary writer during init.
+  virtual std::unique_ptr<profiling::ProfileSummaryFormatter>
+  CreateProfileSummaryFormatter(bool format_as_csv) const;
 
  private:
   void WriteOutput(const std::string& header, const string& data,

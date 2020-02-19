@@ -113,6 +113,27 @@ cc_test(
 )
 
 cc_library(
+    name = "profile_summary_formatter",
+    srcs = ["profile_summary_formatter.cc"],
+    hdrs = ["profile_summary_formatter.h"],
+    copts = common_copts,
+    deps = [
+        "//tensorflow/core/util:stats_calculator_portable",
+    ],
+)
+
+cc_test(
+    name = "profile_summary_formatter_test",
+    srcs = ["profile_summary_formatter_test.cc"],
+    copts = common_copts,
+    deps = [
+        ":profile_summary_formatter",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "profile_summarizer",
     srcs = ["profile_summarizer.cc"],
     hdrs = ["profile_summarizer.h"],
@@ -120,6 +141,7 @@ cc_library(
     deps = [
         ":memory_info",
         ":profile_buffer",
+        ":profile_summary_formatter",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
