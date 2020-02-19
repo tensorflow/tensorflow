@@ -1189,12 +1189,12 @@ class ComputationBuilder(object):
     return ops.Call(self._builder, computation_to_apply.computation,
                     list(operands))
 
-  def CustomCall(self,
-                 call_target_name,
-                 operands,
-                 shape_with_layout,
-                 operand_shapes_with_layout,
-                 opaque=None):
+  def CustomCallWithLayout(self,
+                           call_target_name,
+                           operands,
+                           shape_with_layout,
+                           operand_shapes_with_layout,
+                           opaque=None):
     """Enqueues a custom call operation onto the computation.
 
     Args:
@@ -1213,6 +1213,10 @@ class ComputationBuilder(object):
     return ops.CustomCall(self._builder, call_target_name,
                           list(operands), shape_with_layout,
                           list(operand_shapes_with_layout), opaque)
+
+  # TODO(phawkins): remove CustomCall after callers are updated to use
+  # CustomCallWithLayout.
+  CustomCall = CustomCallWithLayout
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.

@@ -349,7 +349,10 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("precision_config") = nullptr);
   ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
           py::arg("new_element_type"));
+  // TODO(phawkins): remove CustomCall after callers are updated to use
+  // CustomCallWithLayout.
   ops.def("CustomCall", &CustomCallWithLayout);
+  ops.def("CustomCallWithLayout", &CustomCallWithLayout);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr);
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
