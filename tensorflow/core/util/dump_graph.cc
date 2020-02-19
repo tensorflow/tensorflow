@@ -40,7 +40,8 @@ string MakeUniqueFilename(string name) {
   // Remove illegal characters from `name`.
   for (int i = 0; i < name.size(); ++i) {
     char ch = name[i];
-    if (ch == '/' || ch == '[' || ch == ']' || ch == '*' || ch == '?') {
+    if (ch == '/' || ch == '[' || ch == ']' || ch == '*' || ch == '?' ||
+        ch == '\\') {
       name[i] = '_';
     }
   }
@@ -114,7 +115,7 @@ string WriteTextProtoToUniqueFile(Env* env, const string& name,
                    << proto_type << ": " << status;
       return "(unavailable)";
     }
-    filepath = absl::StrCat(dir, "/", MakeUniqueFilename(name));
+    filepath = io::JoinPath(dir, MakeUniqueFilename(name));
     status = WriteToFile(filepath, proto);
     if (!status.ok()) {
       LOG(WARNING) << "Failed to dump " << proto_type
