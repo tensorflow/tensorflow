@@ -38,6 +38,44 @@ class MIOpenCTCLossDescriptor;
 // Opaque and unique identifier for the MIOpen plugin.
 extern const PluginId kMIOpenPlugin;
 
+
+struct PoolingWorkspaceDescriptor {
+  std::vector<int64> input_dims;
+  std::vector<int64> output_dims;
+  dnn::PoolingDescriptor op;
+  int dtype;
+  uint64_t timestamp;
+  std::unique_ptr<TemporaryDeviceMemory<uint8>> workspace;
+  size_t workspace_size;
+  bool IsSame(const dnn::BatchDescriptor& input_dimensions,
+    const dnn::BatchDescriptor& output_dimensions,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    int _type);
+};
+
+struct PoolingWorkspaceCache {
+  std::map<const void*, PoolingWorkspaceDescriptor> cache;
+  const int trim_size = 1000;
+  const uint64_t memory_budget = 1e8;
+  uint64_t timestamp = 0;
+  uint64_t memory_used = 0;
+  bool find(const void* p, const dnn::BatchDescriptor& input_dimensions,
+    const dnn::BatchDescriptor& output_dimensions,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    int _type,
+    PoolingWorkspaceDescriptor*& pdesc);
+  void insert(const void* p,
+    const dnn::BatchDescriptor& input_dimensions,
+    const dnn::BatchDescriptor& output_dimensions,
+    const dnn::PoolingDescriptor& pooling_dimensions,
+    int _type,
+    std::unique_ptr<TemporaryDeviceMemory<uint8>>& workspace,
+    size_t wsp_size);
+private:
+  void trim();
+};
+
+
 // miopen-library based DNN support. For details on overridden interface
 // functions, see dnn.h.
 class MIOpenSupport : public dnn::DnnSupport {
@@ -699,6 +737,10 @@ class MIOpenSupport : public dnn::DnnSupport {
   // Provide access to the MIOpen handle.
   std::unique_ptr<class MIOpenAccess> miopen_;
 
+  PoolingWorkspaceCache m_pooling_cache;
+  bool m_pooling_cache_allowed = true;
+  bool m_pooling_cache_enabled = false;
+
   template <class T, class U>
   bool DoBatchNormalizationForwardImpl(
       Stream* stream, dnn::DataType input_data_type,
@@ -884,6 +926,17 @@ class MIOpenSupport : public dnn::DnnSupport {
       absl::Span<const int> input_lengths_data,
       ScratchAllocator* scratch_allocator,
       DeviceMemory<uint8>* scratch_memory) override;
+
+  template <class T>
+  bool DoPoolBackwardImpl(Stream* stream,
+                      const dnn::PoolingDescriptor& pooling_dimensions,
+                      const dnn::BatchDescriptor& input_dimensions,
+                      const DeviceMemory<T>& input_data,
+                      const dnn::BatchDescriptor& output_dimensions,
+                      const DeviceMemory<T>& output_data,
+                      const DeviceMemory<T>& input_diff_data,
+                      DeviceMemory<T>* output_diff_data,
+                      ScratchAllocator* workspace_allocator = nullptr);
 
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenSupport);
 };
