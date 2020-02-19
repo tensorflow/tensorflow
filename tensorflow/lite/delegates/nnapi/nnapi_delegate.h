@@ -80,6 +80,15 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // kernels, but allowing CPU allows partial acceleration of models. If this
     // is set to true, NNAPI is only used if the whole model is accelerated.
     bool disallow_nnapi_cpu = false;
+
+    // Specifies the max number of partitions to delegate. A value <= 0 means
+    // no limit.
+    // If the delegation of the full set of supported nodes would generate a
+    // number of partition greater than this parameter, only
+    // <max_number_delegated_partitions> of them will be actually accelerated.
+    // The selection is currently done sorting partitions in decreasing order
+    // of number of nodes and selecting them until the limit is reached.
+    int max_number_delegated_partitions = 0;
   };
 
   // Uses default options.
@@ -172,13 +181,17 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // The key is the index of the first node in the partition.
     // Couldn't use unique_ptr because of problems building on gcc
     std::unordered_map<int, NNAPIDelegateKernel*> delegate_state_cache;
+    // Maximum number of NNAPI partition to delegate. Zero or negative means
+    // no limit. Copied from StatefulNnApiDelegate::Options
+    int max_number_delegated_partitions;
 
     ~Data();
 
     // Caches an initialised NNAPIDelegateKernel.
     void CacheDelegateKernel(const TfLiteDelegateParams* delegate_params,
                              NNAPIDelegateKernel* delegate_state);
-    // Returns a cached NNAPIDelegateKernel if available.
+    // Returns a cached NNAPIDelegateKernel if available and removes it
+    // from the cache transferring the ownership to the caller.
     absl::optional<NNAPIDelegateKernel*> GetCachedDelegateKernel(
         const TfLiteDelegateParams* delegate_params);
   };
@@ -210,6 +223,34 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   static void DoFreeBufferHandle(TfLiteContext* context,
                                  TfLiteDelegate* delegate,
                                  TfLiteBufferHandle* handle);
+
+  // Returns the nodes that can be delegated via NNAPI to the accelerator
+  // specified in the delegate options and information about the way the
+  // graph will be partitioned if the supported nodes will be delegated.
+  // Partition information is composed by the number of partitions and
+  // the delegate parameters associated to each partition.
+  // The method also caches in delegate->data the NNApiDelegateKernel instances
+  // that have been created during the device evaluation.
+  // All arguments are expected to be non-null.
+  static TfLiteStatus GetNodesSupportedByAccelerator(
+      TfLiteContext* context, TfLiteDelegate* delegate, const NnApi* nnapi,
+      const std::vector<int>& supported_nodes,
+      std::vector<int>* device_supported_nodes, int* num_partitions,
+      TfLiteDelegateParams** params_array, int* nnapi_errno);
+
+  // Alters the given array of nodes_to_delegate to limit the number of NNAPI
+  // owned partition to be less or equal than num_partitions. If num_partitions
+  // is less or equal to zero the input is left unaltered.
+  // The nodes_to_delegate array is expected to contain at element 0 the number
+  // of nodes to delegate and in remaining elements the set of nodes
+  // that would be delegated to NNAPI if this function wouldn't be
+  // called. It will be altered storing in the first element the count of
+  // nodes to actually delegate and in the remainder of the array the indexes.
+  // The params_array params might be altered during the functions execution.
+  static TfLiteStatus LimitDelegatedPartitions(
+      int max_partitions,
+      std::vector<TfLiteDelegateParams> partition_params_array,
+      std::vector<int>* nodes_to_delegate);
 
   // Delegate data presented through TfLiteDelegate::data_.
   Data delegate_data_;
