@@ -27,7 +27,7 @@ import six
 from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
@@ -334,9 +334,8 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         history.history['val_loss'],
         [inputs.sum() / 40, inputs.sum() / 40])
 
-  @tf_test_util.run_deprecated_v1
   def test_dataset_input_shape_validation(self):
-    with self.cached_session():
+    with ops.get_default_graph().as_default(), self.cached_session():
       model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
       model.compile(optimizer='rmsprop', loss='mse')
 

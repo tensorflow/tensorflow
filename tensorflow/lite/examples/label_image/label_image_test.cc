@@ -37,15 +37,15 @@ TEST(LabelImageTest, GraceHopper) {
 
   std::vector<uint8_t> output(606 * 517 * 3);
   resize<uint8_t>(output.data(), input.data(), 606, 517, 3, 214, 214, 3, &s);
-  ASSERT_EQ(output[0], 0x0);
-  ASSERT_EQ(output[214 * 214 * 3 - 1], 0x0);
+  ASSERT_EQ(output[0], 0x15);
+  ASSERT_EQ(output[214 * 214 * 3 - 1], 0x11);
 }
 
 TEST(LabelImageTest, GetTopN) {
   uint8_t in[] = {1, 1, 2, 2, 4, 4, 16, 32, 128, 64};
 
   std::vector<std::pair<float, int>> top_results;
-  get_top_n<uint8_t>(in, 10, 5, 0.025, &top_results, kTfLiteUInt8);
+  get_top_n<uint8_t>(in, 10, 5, 0.025, &top_results, false);
   ASSERT_EQ(top_results.size(), 4);
   ASSERT_EQ(top_results[0].second, 8);
 }

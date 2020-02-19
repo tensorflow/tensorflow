@@ -43,6 +43,9 @@ from tensorflow.compiler.xla.python.xla_extension import ops
 # pylint: disable=invalid-name
 
 
+profiler = _xla.profiler
+
+
 class Backend(object, metaclass=abc.ABCMeta):
   """Abstract base class for XLA backends."""
 
@@ -1695,6 +1698,7 @@ _BINARY_OPS = [
     'ShiftRightLogical',
     'Atan2',
     'Igamma',
+    'IgammaGradA',
     'Igammac',
     'Complex',
     'NextAfter',

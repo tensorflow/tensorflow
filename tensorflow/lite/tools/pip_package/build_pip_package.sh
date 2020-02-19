@@ -23,7 +23,7 @@ export TENSORFLOW_DIR="${SCRIPT_DIR}/../../../.."
 TENSORFLOW_LITE_DIR="${TENSORFLOW_DIR}/tensorflow/lite"
 TENSORFLOW_VERSION=$(grep "_VERSION = " "${TENSORFLOW_DIR}/tensorflow/tools/pip_package/setup.py" | cut -d= -f2 | sed "s/[ '-]//g")
 export PACKAGE_VERSION="${TENSORFLOW_VERSION}${VERSION_SUFFIX}"
-BUILD_DIR="/tmp/tflite_pip/${PYTHON}"
+BUILD_DIR="${SCRIPT_DIR}/gen/tflite_pip/python3"
 
 # Build source tree.
 rm -rf "${BUILD_DIR}" && mkdir -p "${BUILD_DIR}/tflite_runtime"
@@ -49,7 +49,12 @@ case "${TENSORFLOW_TARGET}" in
                        bdist_wheel --plat-name=linux-aarch64
     ;;
   *)
-    ${PYTHON} setup.py bdist bdist_wheel
+    if [[ -n "${TENSORFLOW_TARGET}" ]] && [[ -n "${TENSORFLOW_TARGET_ARCH}" ]]; then
+      ${PYTHON} setup.py bdist --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH} \
+                         bdist_wheel --plat-name=${TENSORFLOW_TARGET}-${TENSORFLOW_TARGET_ARCH}
+    else
+      ${PYTHON} setup.py bdist bdist_wheel
+    fi
     ;;
 esac
 

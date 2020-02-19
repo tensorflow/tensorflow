@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -40,42 +41,168 @@ class HashingTest(keras_parameterized.TestCase):
     layer = hashing.Hashing(num_bins=1)
     inp = np.asarray([['A'], ['B'], ['C'], ['D'], ['E']])
     output = layer(inp)
-    self.assertAllClose(np.asarray([[0], [0], [0], [0], [0]]), output)
+    self.assertAllClose([[0], [0], [0], [0], [0]], output)
 
-  def test_hash_two_bins(self):
+  def test_hash_dense_input_farmhash(self):
     layer = hashing.Hashing(num_bins=2)
-    inp = np.asarray([['A'], ['B'], ['C'], ['D'], ['E']])
+    inp = np.asarray([['omar'], ['stringer'], ['marlo'], ['wire'],
+                      ['skywalker']])
     output = layer(inp)
-    self.assertEqual(output.numpy().max(), 1)
-    self.assertEqual(output.numpy().min(), 0)
+    # Assert equal for hashed output that should be true on all platforms.
+    self.assertAllClose([[0], [0], [1], [0], [0]], output)
 
-  def test_hash_sparse_input(self):
+  def test_hash_dense_int_input_farmhash(self):
+    layer = hashing.Hashing(num_bins=3)
+    inp = np.asarray([[0], [1], [2], [3], [4]])
+    output = layer(inp)
+    # Assert equal for hashed output that should be true on all platforms.
+    self.assertAllClose([[1], [0], [1], [0], [2]], output)
+
+  def test_hash_dense_input_siphash(self):
+    layer = hashing.Hashing(num_bins=2, salt=[133, 137])
+    inp = np.asarray([['omar'], ['stringer'], ['marlo'], ['wire'],
+                      ['skywalker']])
+    output = layer(inp)
+    # Assert equal for hashed output that should be true on all platforms.
+    # Note the result is different from FarmHash.
+    self.assertAllClose([[0], [1], [0], [1], [0]], output)
+
+    layer_2 = hashing.Hashing(num_bins=2, salt=[211, 137])
+    output_2 = layer_2(inp)
+    # Note the result is different from (133, 137).
+    self.assertAllClose([[1], [0], [1], [0], [1]], output_2)
+
+  def test_hash_dense_int_input_siphash(self):
+    layer = hashing.Hashing(num_bins=3, salt=[133, 137])
+    inp = np.asarray([[0], [1], [2], [3], [4]])
+    output = layer(inp)
+    # Assert equal for hashed output that should be true on all platforms.
+    self.assertAllClose([[1], [1], [2], [0], [1]], output)
+
+  def test_hash_sparse_input_farmhash(self):
     layer = hashing.Hashing(num_bins=2)
+    indices = [[0, 0], [1, 0], [1, 1], [2, 0], [2, 1]]
     inp = sparse_tensor.SparseTensor(
-        indices=[[0, 0], [1, 0], [1, 1], [2, 0], [2, 1]],
+        indices=indices,
         values=['omar', 'stringer', 'marlo', 'wire', 'skywalker'],
         dense_shape=[3, 2])
     output = layer(inp)
-    self.assertEqual(output.values.numpy().max(), 1)
-    self.assertEqual(output.values.numpy().min(), 0)
+    self.assertAllClose(indices, output.indices)
+    self.assertAllClose([0, 0, 1, 0, 0], output.values)
 
-  def test_hash_ragged_string_input(self):
+  def test_hash_sparse_int_input_farmhash(self):
+    layer = hashing.Hashing(num_bins=3)
+    indices = [[0, 0], [1, 0], [1, 1], [2, 0], [2, 1]]
+    inp = sparse_tensor.SparseTensor(
+        indices=indices, values=[0, 1, 2, 3, 4], dense_shape=[3, 2])
+    output = layer(inp)
+    self.assertAllClose(indices, output.indices)
+    self.assertAllClose([1, 0, 1, 0, 2], output.values)
+
+  def test_hash_sparse_input_siphash(self):
+    layer = hashing.Hashing(num_bins=2, salt=[133, 137])
+    indices = [[0, 0], [1, 0], [1, 1], [2, 0], [2, 1]]
+    inp = sparse_tensor.SparseTensor(
+        indices=indices,
+        values=['omar', 'stringer', 'marlo', 'wire', 'skywalker'],
+        dense_shape=[3, 2])
+    output = layer(inp)
+    self.assertAllClose(output.indices, indices)
+    # The result should be same with test_hash_dense_input_siphash.
+    self.assertAllClose([0, 1, 0, 1, 0], output.values)
+
+    layer_2 = hashing.Hashing(num_bins=2, salt=[211, 137])
+    output = layer_2(inp)
+    # The result should be same with test_hash_dense_input_siphash.
+    self.assertAllClose([1, 0, 1, 0, 1], output.values)
+
+  def test_hash_sparse_int_input_siphash(self):
+    layer = hashing.Hashing(num_bins=3, salt=[133, 137])
+    indices = [[0, 0], [1, 0], [1, 1], [2, 0], [2, 1]]
+    inp = sparse_tensor.SparseTensor(
+        indices=indices, values=[0, 1, 2, 3, 4], dense_shape=[3, 2])
+    output = layer(inp)
+    self.assertAllClose(indices, output.indices)
+    self.assertAllClose([1, 1, 2, 0, 1], output.values)
+
+  def test_hash_ragged_string_input_farmhash(self):
     layer = hashing.Hashing(num_bins=2)
     inp_data = ragged_factory_ops.constant(
         [['omar', 'stringer', 'marlo', 'wire'], ['marlo', 'skywalker', 'wire']],
         dtype=dtypes.string)
     out_data = layer(inp_data)
-    self.assertEqual(out_data.values.numpy().max(), 1)
-    self.assertEqual(out_data.values.numpy().min(), 0)
-    # hash of 'marlo' should be same.
-    self.assertAllClose(out_data[0][2], out_data[1][0])
-    # hash of 'wire' should be same.
-    self.assertAllClose(out_data[0][3], out_data[1][2])
+    # Same hashed output as test_hash_sparse_input_farmhash
+    expected_output = [[0, 0, 1, 0], [1, 0, 0]]
+    self.assertAllEqual(expected_output, out_data)
 
     inp_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
     out_t = layer(inp_t)
     model = training.Model(inputs=inp_t, outputs=out_t)
     self.assertAllClose(out_data, model.predict(inp_data))
+
+  def test_hash_ragged_int_input_farmhash(self):
+    layer = hashing.Hashing(num_bins=3)
+    inp_data = ragged_factory_ops.constant([[0, 1, 3, 4], [2, 1, 0]],
+                                           dtype=dtypes.int64)
+    out_data = layer(inp_data)
+    # Same hashed output as test_hash_sparse_input_farmhash
+    expected_output = [[1, 0, 0, 2], [1, 0, 1]]
+    self.assertAllEqual(expected_output, out_data)
+
+    inp_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.int64)
+    out_t = layer(inp_t)
+    model = training.Model(inputs=inp_t, outputs=out_t)
+    self.assertAllClose(out_data, model.predict(inp_data))
+
+  def test_hash_ragged_string_input_siphash(self):
+    layer = hashing.Hashing(num_bins=2, salt=[133, 137])
+    inp_data = ragged_factory_ops.constant(
+        [['omar', 'stringer', 'marlo', 'wire'], ['marlo', 'skywalker', 'wire']],
+        dtype=dtypes.string)
+    out_data = layer(inp_data)
+    # Same hashed output as test_hash_dense_input_siphash
+    expected_output = [[0, 1, 0, 1], [0, 0, 1]]
+    self.assertAllEqual(expected_output, out_data)
+
+    inp_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    out_t = layer(inp_t)
+    model = training.Model(inputs=inp_t, outputs=out_t)
+    self.assertAllClose(out_data, model.predict(inp_data))
+
+    layer_2 = hashing.Hashing(num_bins=2, salt=[211, 137])
+    out_data = layer_2(inp_data)
+    expected_output = [[1, 0, 1, 0], [1, 1, 0]]
+    self.assertAllEqual(expected_output, out_data)
+
+    out_t = layer_2(inp_t)
+    model = training.Model(inputs=inp_t, outputs=out_t)
+    self.assertAllClose(out_data, model.predict(inp_data))
+
+  def test_hash_ragged_int_input_siphash(self):
+    layer = hashing.Hashing(num_bins=3, salt=[133, 137])
+    inp_data = ragged_factory_ops.constant([[0, 1, 3, 4], [2, 1, 0]],
+                                           dtype=dtypes.int64)
+    out_data = layer(inp_data)
+    # Same hashed output as test_hash_sparse_input_farmhash
+    expected_output = [[1, 1, 0, 1], [2, 1, 1]]
+    self.assertAllEqual(expected_output, out_data)
+
+    inp_t = input_layer.Input(shape=(None,), ragged=True, dtype=dtypes.int64)
+    out_t = layer(inp_t)
+    model = training.Model(inputs=inp_t, outputs=out_t)
+    self.assertAllClose(out_data, model.predict(inp_data))
+
+  def test_invalid_inputs(self):
+    with self.assertRaisesRegexp(ValueError, 'cannot be `None`'):
+      _ = hashing.Hashing(num_bins=None)
+    with self.assertRaisesRegexp(ValueError, 'cannot be `None`'):
+      _ = hashing.Hashing(num_bins=-1)
+    with self.assertRaisesRegexp(ValueError, 'must be a tuple'):
+      _ = hashing.Hashing(num_bins=2, salt='string')
+    with self.assertRaisesRegexp(ValueError, 'must be a tuple'):
+      _ = hashing.Hashing(num_bins=2, salt=[1])
+    with self.assertRaisesRegexp(ValueError, 'must be a tuple'):
+      _ = hashing.Hashing(num_bins=1, salt=constant_op.constant([133, 137]))
 
   def test_hash_compute_output_signature(self):
     input_shape = tensor_shape.TensorShape([2, 3])

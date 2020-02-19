@@ -42,8 +42,8 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
   static int certainty = 220;
 
   if (is_new_command) {
-    error_reporter->Report("Heard %s (%d) @%dms", found_command, score,
-                           current_time);
+    TF_LITE_REPORT_ERROR(error_reporter, "Heard %s (%d) @%dms", found_command,
+                         score, current_time);
     // If we hear a command, light up the appropriate LED
     if (found_command[0] == 'y') {
       last_command_time = current_time;

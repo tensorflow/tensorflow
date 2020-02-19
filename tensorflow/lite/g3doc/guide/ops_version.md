@@ -85,8 +85,9 @@ supported starting from which version. The result is seen below:
 
 ```
 typedef struct {
-  // Parameters supported by version 1: TfLitePadding padding; int
-  stride_width;
+  // Parameters supported by version 1:
+  TfLitePadding padding;
+  int stride_width;
   int stride_height;
   TfLiteFusedActivation activation;
 

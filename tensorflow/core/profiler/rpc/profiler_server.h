@@ -19,23 +19,19 @@ limitations under the License.
 
 #include "grpcpp/grpcpp.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
-
-class Thread;
 
 class ProfilerServer {
  public:
   ~ProfilerServer();
-  // If TF_PROFILER_PORT is defined, starts a profiler server with the
-  // specified port. Otherwise, don't start a profiler server
-  void MaybeStartProfilerServer();
   // Starts a profiler server with a given port.
   void StartProfilerServer(int32 port);
 
  private:
+  std::unique_ptr<grpc::ProfilerService::Service> service_;
   std::unique_ptr<::grpc::Server> server_;
-  std::unique_ptr<Thread> server_thread_;
 };
 
 }  // namespace tensorflow

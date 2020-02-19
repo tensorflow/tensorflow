@@ -83,6 +83,18 @@ Below is the list of current operators and limitations:
 * Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
   are not supported.
 
+### `HARD_SWISH`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `LOGISTIC`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
 ### `MUL`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -99,6 +111,31 @@ Below is the list of current operators and limitations:
   1.
 * Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
   are not supported.
+
+### `RELU`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `RELU6`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `RELU_N1_TO_1`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `SOFTMAX`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Only `beta = 1.0` is supported.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
 
 ### Other limitations
 

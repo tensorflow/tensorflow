@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -34,11 +35,8 @@ namespace tensorflow {
 // This require the TF_DUMP_GRAPH_PREFIX to be set to a path that exist (or can
 // be created).
 static void DumpModule(mlir::ModuleOp module, llvm::StringRef file_prefix) {
-  const char* prefix_env = getenv("TF_DUMP_GRAPH_PREFIX");
+  const char* prefix_env = GetDumpDirFromEnvVar();
   if (!prefix_env) {
-    LOG(WARNING)
-        << "Failed to dump MLIR module because dump location is not "
-        << " specified through TF_DUMP_GRAPH_PREFIX environment variable.";
     return;
   }
   std::string prefix = prefix_env;

@@ -399,7 +399,7 @@ void ReportOpError(struct TfLiteContext* context, const char* format, ...) {
   ErrorReporter* error_reporter = static_cast<ErrorReporter*>(context->impl_);
   va_list args;
   va_start(args, format);
-  error_reporter->Report(format, args);
+  TF_LITE_REPORT_ERROR(error_reporter, format, args);
   va_end(args);
 }
 

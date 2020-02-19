@@ -13,17 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_RESOURCE_H_
-#define TENSORFLOW_CORE_PLATFORM_DEFAULT_RESOURCE_H_
+#include "tensorflow/lite/micro/debug_log.h"
 
-#include "absl/strings/string_view.h"
-namespace tensorflow {
-
-class ResourceTagger {
- public:
-  ResourceTagger(absl::string_view key, absl::string_view value) {}
-};
-
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_RESOURCE_H_
+extern "C" void DebugLog(const char* s) {
+  asm("mov r0, #0x04\n"  // SYS_WRITE0
+      "mov r1, %[str]\n"
+      "bkpt #0xAB\n"
+      :
+      : [ str ] "r"(s)
+      : "r0", "r1");
+}

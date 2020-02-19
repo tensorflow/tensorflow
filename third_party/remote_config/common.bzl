@@ -135,7 +135,7 @@ def get_environ(repository_ctx, name, default_value = None):
         return default_value
     return result.stdout
 
-def get_host_environ(repository_ctx, name):
+def get_host_environ(repository_ctx, name, default_value = None):
     """Returns the value of an environment variable on the host platform.
 
     The host platform is the machine that Bazel runs on.
@@ -147,7 +147,13 @@ def get_host_environ(repository_ctx, name):
     Returns:
       The value of the environment variable 'name' on the host platform.
     """
-    return repository_ctx.os.environ.get(name)
+    if name in repository_ctx.os.environ:
+        return repository_ctx.os.environ.get(name).strip()
+
+    if hasattr(repository_ctx.attr, "environ") and name in repository_ctx.attr.environ:
+        return repository_ctx.attr.environ.get(name).strip()
+
+    return default_value
 
 def is_windows(repository_ctx):
     """Returns true if the execution platform is Windows.
@@ -260,3 +266,19 @@ def realpath(repository_ctx, path, bash_bin = None):
         bash_bin = get_bash_bin(repository_ctx)
 
     return execute(repository_ctx, [bash_bin, "-c", "realpath %s" % path]).stdout.strip()
+
+def err_out(result):
+    """Returns stderr if set, else stdout.
+
+    This function is a workaround for a bug in RBE where stderr is returned as stdout. Instead
+    of using result.stderr use err_out(result) instead.
+
+    Args:
+      result: the exec_result.
+
+    Returns:
+      The stderr if set, else stdout
+    """
+    if len(result.stderr) == 0:
+        return result.stdout
+    return result.stderr

@@ -301,7 +301,7 @@ class ActivationV2IntegrationTest(keras_parameterized.TestCase):
   """Tests activation function V2 in model exporting and loading.
 
   This test is to verify in TF 2.x, when 'tf.nn.softmax' is used as an
-  activition function, its model exporting and loading work as expected.
+  activation function, its model exporting and loading work as expected.
   Check b/123041942 for details.
   """
 

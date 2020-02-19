@@ -77,7 +77,6 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import kwarg_only
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.tools.docs.doc_controls import do_not_generate_docs
 
 ag_ctx = LazyLoader(
     "ag_ctx", globals(),
@@ -3640,7 +3639,7 @@ class Graph(object):
     """Returns the `Operation` with the given `name`.
 
     This is a internal unsafe version of get_operation_by_name. It skips many
-    checks and does not have user friedly error messages but runs considerably
+    checks and does not have user friendly error messages but runs considerably
     faster. This method may be called concurrently from multiple threads.
 
     Args:
@@ -5161,7 +5160,7 @@ def control_dependencies(control_inputs):
   """
   if context.executing_eagerly():
     if control_inputs:
-      # Excute any pending callables.
+      # Execute any pending callables.
       for control in control_inputs:
         if callable(control):
           control()
@@ -5549,8 +5548,31 @@ def init_scope():
         outer_graph._device_function_stack = outer_device_stack  # pylint: disable=protected-access
 
 
+@tf_export(v1=["executing_eagerly_outside_functions"])
 def executing_eagerly_outside_functions():
-  """Returns True if executing eagerly, even if inside a graph function."""
+  """Returns True if executing eagerly, even if inside a graph function.
+
+  This function will check the outermost context for the program and see if
+  it is in eager mode. It is useful comparing to `tf.executing_eagerly()`,
+  which checks the current context and will return `False` within a
+  `tf.function` body. It can be used to build library that behave differently
+  in eager runtime and v1 session runtime (deprecated).
+
+  Example:
+
+  >>> tf.compat.v1.enable_eager_execution()
+  >>> @tf.function
+  ... def func():
+  ...   # A function constructs TensorFlow graphs, it does not execute eagerly,
+  ...   # but the outer most context is still eager.
+  ...   assert not tf.executing_eagerly()
+  ...   return tf.compat.v1.executing_eagerly_outside_functions()
+  >>> func()
+  <tf.Tensor: shape=(), dtype=bool, numpy=True>
+
+  Returns:
+    boolean, whether the outermost context is in eager mode.
+  """
   if context.executing_eagerly():
     return True
   else:
@@ -6178,8 +6200,8 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
     values: The list of `Tensor` arguments that are passed to the op function.
     skip_on_eager: Indicates to return NullContextmanager if executing eagerly.
       By default this is True since naming tensors and operations in eager mode
-      have little use and cause unecessary performance overhead. However, it is
-      important to preseve variable names since they are often useful for
+      have little use and cause unnecessary performance overhead. However, it is
+      important to preserve variable names since they are often useful for
       debugging and saved models.
 
   Returns:
@@ -6606,8 +6628,7 @@ register_tensor_conversion_function = \
 def to_raw_op(f):
   """Make a given op wrapper function `f` raw.
 
-  Raw op wrappers are not included in the docs, and can only be called
-  with keyword arguments.
+  Raw op wrappers can only be called with keyword arguments.
 
   Args:
     f: An op wrapper function to make raw.
@@ -6619,7 +6640,7 @@ def to_raw_op(f):
   # due to double-registration.
   f = types.FunctionType(f.__code__, f.__globals__, f.__name__, f.__defaults__,
                          f.__closure__)
-  return kwarg_only(do_not_generate_docs(f))
+  return kwarg_only(f)
 
 
 def raise_from_not_ok_status(e, name):
@@ -6650,7 +6671,7 @@ def add_exit_callback_to_default_func_graph(fn):
       To be executed when exiting func graph scope.
 
   Raises:
-    RuntimeError: If executed when the current defualt graph is not a FuncGraph,
+    RuntimeError: If executed when the current default graph is not a FuncGraph,
       or not currently executing in function creation mode (e.g., if inside
       an init_scope).
   """

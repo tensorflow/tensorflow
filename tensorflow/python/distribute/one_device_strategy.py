@@ -163,7 +163,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     """
     return super(OneDeviceStrategy, self).experimental_local_results(value)
 
-  def experimental_run_v2(self, fn, args=(), kwargs=None):  # pylint: disable=useless-super-delegation
+  def experimental_run_v2(self, fn, args=(), kwargs=None, options=None):  # pylint: disable=useless-super-delegation
     """Run `fn` on each replica, with the given arguments.
 
     In `OneDeviceStrategy`, `fn` is simply called within a device scope for the
@@ -173,11 +173,14 @@ class OneDeviceStrategy(distribute_lib.Strategy):
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
       args: (Optional) Positional arguments to `fn`.
       kwargs: (Optional) Keyword arguments to `fn`.
+      options: (Optional) An instance of `tf.distribute.RunOptions` specifying
+        the options to run `fn`.
 
     Returns:
       Return value from running `fn`.
     """
-    return super(OneDeviceStrategy, self).experimental_run_v2(fn, args, kwargs)
+    return super(OneDeviceStrategy,
+                 self).experimental_run_v2(fn, args, kwargs, options)
 
   def reduce(self, reduce_op, value, axis):  # pylint: disable=useless-super-delegation
     """Reduce `value` across replicas.

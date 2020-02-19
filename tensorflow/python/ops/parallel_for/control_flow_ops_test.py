@@ -23,6 +23,7 @@ import functools
 import time
 
 from absl import flags
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.example import example_pb2
@@ -41,7 +42,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradients as gradient_ops
+from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
@@ -50,11 +53,13 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_control_flow_ops
 from tensorflow.python.ops.parallel_for.test_util import PForTestCase
+from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
@@ -337,6 +342,37 @@ class BitwiseTest(PForTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class ImageTest(PForTestCase):
+
+  def test_adjust_contrast(self):
+    images = random_ops.random_uniform([3, 2, 4, 4, 3])
+
+    def loop_fn(i):
+      image = array_ops.gather(images, i)
+      return image_ops.adjust_contrast(image, 2.0)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_adjust_hue(self):
+    images = random_ops.random_uniform([3, 2, 4, 4, 3])
+
+    def loop_fn(i):
+      image = array_ops.gather(images, i)
+      return image_ops.adjust_hue(image, .25)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_adjust_saturation(self):
+    images = random_ops.random_uniform([3, 2, 4, 4, 3])
+
+    def loop_fn(i):
+      image = array_ops.gather(images, i)
+      return image_ops.adjust_saturation(image, 0.1)
+
+    self._test_loop_fn(loop_fn, 3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class NNTest(PForTestCase):
 
   def test_conv2d(self):
@@ -408,6 +444,27 @@ class NNTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_avg_pool3d(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = random_ops.random_uniform([5, 3, 7, 6, 6, 5])
+      g.watch(x)
+      ksize = [1, 2, 2, 2, 1]
+      strides = [1, 2, 2, 2, 1]
+
+    def loop_fn(i):
+      with g:
+        x1 = array_ops.gather(x, i)
+        output = nn.avg_pool3d(
+            x1,
+            ksize,
+            strides=strides,
+            padding="VALID",
+            data_format="NDHWC")
+        loss = nn.l2_loss(output)
+      return output, g.gradient(loss, x1)
+
+    self._test_loop_fn(loop_fn, 3)
+
   def test_max_pool(self):
     with backprop.GradientTape(persistent=True) as g:
       x = random_ops.random_uniform([3, 2, 12, 12, 3])
@@ -419,6 +476,27 @@ class NNTest(PForTestCase):
       with g:
         x1 = array_ops.gather(x, i)
         output = nn.max_pool(
+            x1, ksize, strides=strides, padding="VALID", data_format="NHWC")
+        loss = nn.l2_loss(output)
+        ones = array_ops.ones_like(output)
+        g.watch(ones)
+        grad = g.gradient(loss, x1, output_gradients=ones)
+      grad_grad = g.gradient(grad, ones)
+      return output, grad, grad_grad
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_max_pool_v2(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = random_ops.random_uniform([3, 2, 12, 12, 3])
+      g.watch(x)
+      ksize = [1, 3, 3, 1]
+      strides = [1, 2, 2, 1]
+
+    def loop_fn(i):
+      with g:
+        x1 = array_ops.gather(x, i)
+        output = gen_nn_ops.max_pool_v2(
             x1, ksize, strides=strides, padding="VALID", data_format="NHWC")
         loss = nn.l2_loss(output)
         ones = array_ops.ones_like(output)
@@ -634,6 +712,41 @@ class RandomTest(PForTestCase):
       return random_ops.categorical(logits_i, num_samples=3)
 
     self._test_loop_fn(loop_fn, 5)
+
+
+class StatelessRandomTest(PForTestCase):
+
+  # This test currently only tests that the vectorized and non-vectorized
+  # outputs have same shapes. This is needed since under XLA compilation,
+  # stateless random numbers can generate different random numbers.
+  # TODO(agarwal): switch to checking for actual values matching once
+  # b/149402339 is resolved.
+  def run_and_assert_equal(self, targets1, targets2):
+    outputs = self._run_targets(targets1, targets2)
+    n = len(outputs) // 2
+    for i in range(n):
+      self.assertAllEqual(outputs[i].shape, outputs[i + n].shape)
+
+  # TODO(agarwal): add tests for other random functions
+  def test_multinomial(self):
+    seeds = [[1, 2], [3, 4]]
+    logits = random_ops.random_uniform([2, 3, 4])
+
+    def loop_fn(i):
+      logits_0 = array_ops.gather(logits, 0)
+      logits_i = array_ops.gather(logits, i)
+      seeds_0 = array_ops.gather(seeds, 0)
+      seeds_i = array_ops.gather(seeds, i)
+      return (stateless_random_ops.stateless_categorical(
+          logits=logits_i, num_samples=3, seed=seeds_i),
+              stateless_random_ops.stateless_categorical(
+                  logits=logits_i, num_samples=3, seed=seeds_0),
+              stateless_random_ops.stateless_categorical(
+                  logits=logits_0, num_samples=3, seed=seeds_i),
+              stateless_random_ops.stateless_categorical(
+                  logits=logits_0, num_samples=3, seed=seeds_0))
+
+    self._test_loop_fn(loop_fn, 2)
 
 
 class LoggingTest(PForTestCase):
@@ -1489,6 +1602,65 @@ class PartitionedCallTest(PForTestCase):
       return out, g.gradient(out, z_i)
 
     self._test_loop_fn(loop_fn, 4)
+
+
+class SpectralTest(PForTestCase, parameterized.TestCase):
+
+  @parameterized.parameters(
+      (fft_ops.fft,),
+      (fft_ops.fft2d,),
+      (fft_ops.fft3d,),
+      (fft_ops.ifft,),
+      (fft_ops.ifft2d,),
+      (fft_ops.ifft3d,),
+  )
+  def test_fft(self, op_func):
+    shape = [2, 3, 4, 3, 4]
+    x = np.random.uniform(size=shape) + 1j * np.random.uniform(size=shape)
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      return op_func(x_i)
+
+    self._test_loop_fn(loop_fn, 2)
+
+  @parameterized.parameters(
+      (fft_ops.rfft,),
+      (fft_ops.rfft2d,),
+      (fft_ops.rfft3d,),
+  )
+  def test_rfft(self, op_func):
+    for dtype in (dtypes.float32, dtypes.float64):
+      x = random_ops.random_uniform([2, 3, 4, 3, 4], dtype=dtype)
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        x_i = array_ops.gather(x, i)
+        return op_func(x_i)
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 2)
+
+  @parameterized.parameters(
+      (fft_ops.irfft,),
+      (fft_ops.irfft2d,),
+      (fft_ops.irfft3d,),
+  )
+  def test_irfft(self, op_func):
+    for dtype in (dtypes.complex64, dtypes.complex128):
+      shape = [2, 3, 4, 3, 4]
+      x = np.random.uniform(size=shape) + 1j * np.random.uniform(size=shape)
+      x = math_ops.cast(x, dtype=dtype)
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        x_i = array_ops.gather(x, i)
+        return op_func(x_i)
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 2)
 
 
 class VariableTest(PForTestCase):

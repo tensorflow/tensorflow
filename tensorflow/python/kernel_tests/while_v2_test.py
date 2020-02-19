@@ -715,7 +715,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # Skip over Identity.
     while_op = r.op.inputs[0].op
     # We can't directly use while_op.inputs.index() because Tensors are not
-    # hashshable.
+    # hashable.
     index = GetInputIndex(while_op, v)
     self._assertNotAccumulated(while_op, index)
 

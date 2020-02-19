@@ -145,7 +145,7 @@ class TrtConversionParams(collections.namedtuple("TrtConversionParams", [
       missing ranges. The calibration graph must be converted to an inference
       graph by running calibration with calibrate(). If set to False,
       quantization nodes will be expected for every tensor in the graph
-      (exlcuding those which will be fused). If a range is missing, an error
+      (excluding those which will be fused). If a range is missing, an error
       will occur. Please note that accuracy may be negatively affected if
       there is a mismatch between which tensors TRT quantizes and which
       tensors were trained with fake quantization.
@@ -207,7 +207,7 @@ def _check_conversion_params(conversion_params, is_v2=False):
               "Found more than one TensorRTOptimizer in "
               "rewriter_config_template while only one is allowed.")
         trt_optimizer = optimizer
-    # If rewriter_config_template is set, it should inculde TensorRTOptimizer.
+    # If rewriter_config_template is set, it should include TensorRTOptimizer.
     # It is possible to remove this requirement if needed.
     if not trt_optimizer:
       raise ValueError(
@@ -327,7 +327,7 @@ def get_tensorrt_rewriter_config(conversion_params,
     rewriter_config_with_trt.CopyFrom(
         conversion_params.rewriter_config_template)
 
-  # Disabling optimizers should happen after CopyFrom the temaplte
+  # Disabling optimizers should happen after CopyFrom the template
   # otherwise the template can overwrite the disablement.
   if disable_non_trt_optimizers:
     off = rewriter_config_pb2.RewriterConfig.OFF
@@ -443,7 +443,7 @@ class TrtGraphConverter(object):
         missing ranges. The calibration graph must be converted to an inference
         graph by running calibration with calibrate(). If set to False,
         quantization nodes will be expected for every tensor in the graph
-        (exlcuding those which will be fused). If a range is missing, an error
+        (excluding those which will be fused). If a range is missing, an error
         will occur. Please note that accuracy may be negatively affected if
         there is a mismatch between which tensors TRT quantizes and which
         tensors were trained with fake quantization.

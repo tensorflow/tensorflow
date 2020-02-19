@@ -172,6 +172,7 @@ Status GpuExecutable::ExecuteThunks(
 
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
   bool scoped_annotation_enabled = ScopedAnnotation::IsEnabled();
+  std::vector<std::function<void()>> deferred_host_callbacks;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
@@ -196,8 +197,12 @@ Status GpuExecutable::ExecuteThunks(
             << thunk->hlo_instruction()->ToString() << " on stream "
             << stream_no;
     Thunk::ExecuteParams thunk_params{
-        &buffer_allocations, stream, run_options->run_options().run_id(),
-        &profiler, run_options->run_options().device_assignment()};
+        &buffer_allocations,
+        stream,
+        run_options->run_options().run_id(),
+        &profiler,
+        run_options->run_options().device_assignment(),
+        &deferred_host_callbacks};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
     if (thunk_schedule_->Depended(thunk)) {
       auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
@@ -208,6 +213,19 @@ Status GpuExecutable::ExecuteThunks(
   }
 
   main_stream->ThenWaitFor(&sub_streams);
+  if (!deferred_host_callbacks.empty()) {
+    auto fn = [deferred_host_callbacks{std::move(deferred_host_callbacks)}]() {
+      for (auto& callback : deferred_host_callbacks) {
+        callback();
+      }
+    };
+    if (run_options->run_options().then_execute_function()) {
+      (*run_options->run_options().then_execute_function())(main_stream,
+                                                            std::move(fn));
+    } else {
+      main_stream->ThenDoHostCallback(std::move(fn));
+    }
+  }
   // Make sure kernels are completed before deallocating temporary buffers or
   // the profiler state.
   // TODO(b/30100571): we could potentially postpone deallocating the temp

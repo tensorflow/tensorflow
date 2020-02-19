@@ -524,6 +524,10 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           attr.set_gpu_compatible(true);
           out_tensors->emplace_back(ctx->allocator(attr), output[i].dtype(),
                                     component_shape);
+          if (!out_tensors->back().IsInitialized()) {
+            return errors::ResourceExhausted(
+                "Failed to allocate memory for the batch of component ", i);
+          }
           TF_RETURN_IF_ERROR(CopyPartialBatch(&out_tensors->back(), output[i],
                                               result->num_elements));
         }

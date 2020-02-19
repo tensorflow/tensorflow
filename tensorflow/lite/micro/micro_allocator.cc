@@ -103,7 +103,8 @@ AllocationInfo* AllocateAndCalculateAllocationInfo(
       allocator->AllocateFromTail(sizeof(AllocationInfo) * allocation_info_size,
                                   alignof(AllocationInfo)));
   if (allocation_info == nullptr) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "Failed to allocate memory for allocation_info, %d bytes required",
         sizeof(TfLiteTensor) * allocation_info_size);
     return nullptr;
@@ -165,7 +166,8 @@ AllocationInfo* AllocateAndCalculateAllocationInfo(
         !is_read_only &&
         ((current->first_created == -1) || (current->last_used == -1));
     if (has_partial_lifetime && current->needs_allocating) {
-      error_reporter->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
           "Logic error in memory planner, tensor %d has an invalid lifetime: "
           "first_created: %d, last_used: %d",
           i, current->first_created, current->last_used);
@@ -339,6 +341,7 @@ TfLiteStatus MicroAllocator::Init() {
     error_reporter_->Report(
         "Failed to allocate memory for context->tensors, %d bytes required",
         sizeof(TfLiteTensor) * context_->tensors_size);
+    return kTfLiteError;
   }
 
   // Initialize runtime tensors in context_ using the flatbuffer.
