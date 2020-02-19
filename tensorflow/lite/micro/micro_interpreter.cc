@@ -161,23 +161,23 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
     }
   }
 
-    for (size_t i = 0; i < operators_->size(); ++i) {
-      auto* node = &(node_and_registrations_[i].node);
-      auto* registration = node_and_registrations_[i].registration;
-      if (registration->prepare) {
-        TfLiteStatus prepare_status = registration->prepare(&context_, node);
-        if (prepare_status != kTfLiteOk) {
-          TF_LITE_REPORT_ERROR(
-              error_reporter_,
-              "Node %s (number %d) failed to prepare with status %d",
-              OpNameFromRegistration(registration), i, prepare_status);
-          return kTfLiteError;
-        }
+  for (size_t i = 0; i < operators_->size(); ++i) {
+    auto* node = &(node_and_registrations_[i].node);
+    auto* registration = node_and_registrations_[i].registration;
+    if (registration->prepare) {
+      TfLiteStatus prepare_status = registration->prepare(&context_, node);
+      if (prepare_status != kTfLiteOk) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "Node %s (number %d) failed to prepare with status %d",
+            OpNameFromRegistration(registration), i, prepare_status);
+        return kTfLiteError;
       }
     }
+  }
 
-    tensors_allocated_ = true;
-    return kTfLiteOk;
+  tensors_allocated_ = true;
+  return kTfLiteOk;
 }
 
 TfLiteStatus MicroInterpreter::Invoke() {
@@ -199,12 +199,14 @@ TfLiteStatus MicroInterpreter::Invoke() {
 
     if (registration->invoke) {
       TfLiteStatus invoke_status = registration->invoke(&context_, node);
-      if (invoke_status != kTfLiteOk) {
+      if (invoke_status == kTfLiteError) {
         TF_LITE_REPORT_ERROR(
             error_reporter_,
             "Node %s (number %d) failed to invoke with status %d",
             OpNameFromRegistration(registration), i, invoke_status);
         return kTfLiteError;
+      } else if (invoke_status != kTfLiteOk) {
+        return invoke_status;
       }
     }
   }
