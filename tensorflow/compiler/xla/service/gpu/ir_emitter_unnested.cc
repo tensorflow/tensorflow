@@ -2051,6 +2051,7 @@ void IrEmitterUnnested::EmitTile(
             std::cout << "IF_NB 2" << std::endl;
             ksl->If(loop_name + "_is_full_tile",
                     //b->CreateICmpULT(last_element, tile_width),
+                    // If (the thread fully unrolled) {no condition path} else {condition path}
                     b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeFor(2)), tile_width),
                     [&] {unroll(false, x_num_steps, vec_stride);},
                     [&] {unroll(true, x_num_steps, vec_stride);});
