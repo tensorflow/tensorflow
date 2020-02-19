@@ -227,19 +227,21 @@ class BroadcastInDimConverter
 
     unsigned nloops = resultMemrefType.getRank();
 
+    auto operandShape = operandMemrefType.getShape();
     SmallVector<AffineExpr, 4> dimExprs;
     {
       dimExprs.reserve(nloops);
+      for (const auto& broadcastDim : llvm::enumerate(
+               broadcastOp.broadcast_dimensions().getValue().getIntValues())) {
+        int dim = broadcastDim.value().getSExtValue();
 
-      auto operandShape = operandMemrefType.getShape();
-      int index = 0;
-      for (const auto& broadcastSize :
-           broadcastOp.broadcast_dimensions().getValue().getIntValues()) {
-        int size = broadcastSize.getSExtValue();
-        dimExprs.push_back(
-            operandShape[index++] == 1
+        // TODO(pifon): Add support for args with dynamic shapes for the case
+        // when a dimension of size 1 is broadcasted into dim of size N.
+        AffineExpr affineExpr =
+            operandShape[broadcastDim.index()] == 1
                 ? mlir::getAffineConstantExpr(0, broadcastOp.getContext())
-                : mlir::getAffineDimExpr(size, broadcastOp.getContext()));
+                : mlir::getAffineDimExpr(dim, broadcastOp.getContext());
+        dimExprs.push_back(affineExpr);
       }
     }
 
