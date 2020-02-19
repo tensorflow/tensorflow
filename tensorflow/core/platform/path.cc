@@ -36,6 +36,11 @@ limitations under the License.
 namespace tensorflow {
 namespace io {
 namespace internal {
+namespace {
+
+const char kPathSep[] = "/";
+
+}  // namespace
 
 string JoinPathImpl(std::initializer_list<StringPiece> paths) {
   string result;
@@ -48,18 +53,12 @@ string JoinPathImpl(std::initializer_list<StringPiece> paths) {
       continue;
     }
 
-    if (result[result.size() - 1] == '/') {
-      if (IsAbsolutePath(path)) {
-        strings::StrAppend(&result, path.substr(1));
-      } else {
-        strings::StrAppend(&result, path);
-      }
+    if (IsAbsolutePath(path)) path = path.substr(1);
+
+    if (result[result.size() - 1] == kPathSep[0]) {
+      strings::StrAppend(&result, path);
     } else {
-      if (IsAbsolutePath(path)) {
-        strings::StrAppend(&result, path);
-      } else {
-        strings::StrAppend(&result, "/", path);
-      }
+      strings::StrAppend(&result, kPathSep, path);
     }
   }
 
@@ -107,6 +106,7 @@ std::pair<StringPiece, StringPiece> SplitBasename(StringPiece path) {
       StringPiece(path.data(), pos),
       StringPiece(path.data() + pos + 1, path.size() - (pos + 1)));
 }
+
 }  // namespace internal
 
 bool IsAbsolutePath(StringPiece path) {
