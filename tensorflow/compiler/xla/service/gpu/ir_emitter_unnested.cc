@@ -3255,21 +3255,21 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
 
   int tile_size_x = reduction_tiling[2] * num_threads_x;
 
-  int vec_stride = 1;
-  char* env = getenv("VEC_STRIDE");
+  int vector_size = 1;
+  char* env = getenv("VECTOR_SIZE");
   if (indexing_order == KernelMappingScheme::LinearDilatedIndexingX) {
     if (reduction_dimensions.dimensions[2] % tile_size_x == 0 &&
         // As XLA unroll and suppose LLVM will vectorize,
         // disable the unroll for case that LLVM doesn't vectorize.
         !MayPreventVectorization(*unnested_hlo, /*tolerate_reduce*/true)) {
-      vec_stride = 2;
+      vector_size = 2;
     } else {
       indexing_order = KernelMappingScheme::DilatedIndexingX;
     }
   }
   if (env) {
-    vec_stride = atoi(env);
-    if (vec_stride > 1) {
+    vector_size = atoi(env);
+    if (vector_size > 1) {
       indexing_order = KernelMappingScheme::LinearDilatedIndexingX;
     }
   }
@@ -3277,7 +3277,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       reduction_dimensions.dimensions,
       {reduction_tiling[0], reduction_tiling[1] * num_threads_y, tile_size_x},
       num_threads_y, num_threads_x, indexing_order,
-      vec_stride);
+      vector_size);
   return ReductionCodegenInfo(mapping_scheme,
                               reduction_dimensions.is_row_reduction);
 }
