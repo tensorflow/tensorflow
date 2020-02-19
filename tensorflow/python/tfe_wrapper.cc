@@ -1068,6 +1068,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
           "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
           "Note that a DLPack tensor may be consumed at most once.",
           absl::string_view(pycapsule.name()));
+      tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     }
     TFE_TensorHandle* thandle =
         tensorflow::TFE_HandleFromDLPack(pycapsule, status.get());

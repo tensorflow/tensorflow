@@ -80,6 +80,9 @@ DLDataType GetDLDataType(TF_DataType data_type, TF_Status* status) {
     case TF_DataType::TF_UINT8:
       dtype.code = DLDataTypeCode::kDLUInt;
       break;
+    case TF_DataType::TF_INT8:
+      dtype.code = DLDataTypeCode::kDLInt;
+      break;
     case TF_DataType::TF_INT16:
       dtype.code = DLDataTypeCode::kDLInt;
       break;
@@ -118,6 +121,9 @@ DLDataType GetDLDataType(TF_DataType data_type, TF_Status* status) {
     case TF_DataType::TF_QUINT16:
       status->status = tensorflow::errors::InvalidArgument(
           "TF_QUINT16 is not supported by dlpack");
+      break;
+    case TF_DataType::TF_UINT16:
+      dtype.code = DLDataTypeCode::kDLUInt;
       break;
     case TF_DataType::TF_COMPLEX128:
       status->status = tensorflow::errors::InvalidArgument(
