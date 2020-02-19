@@ -34,12 +34,6 @@ using BatchNormBwdPd = mkldnn::batch_normalization_backward::primitive_desc;
 namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 
-#ifdef ENABLE_MKLDNN_V1
-#define BN_FLAGS mkldnn::batch_normalization_flags
-#else
-#define BN_FLAGS mkldnn
-#endif
-
 struct MklBatchNormFwdParams {
   memory::dims src_dims;
   int depth;
@@ -61,7 +55,7 @@ struct MklBatchNormFwdParams {
                         bool training)
       : src_dims(src_dims), depth(depth), eps(eps), training(training) {}
 
-#endif
+#endif // !ENABLE_MKLDNN_V1
 };
 
 template <typename T, typename U>
@@ -87,22 +81,18 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
 
-    if (context_.flags & (int)BN_FLAGS::use_scale_shift)
+    if (context_.flags & static_cast<int>(BN_FLAGS::use_scale_shift))
       context_.weights_mem->set_data_handle(
           static_cast<void*>(const_cast<U*>(weights_data)));
 
     if ((context_.pkind == prop_kind::forward_training) ||
-        (context_.flags & (int)BN_FLAGS::use_global_stats)) {
+        (context_.flags & static_cast<int>(BN_FLAGS::use_global_stats))) {
       context_.mean_mem->set_data_handle(static_cast<void*>(mean_data));
       context_.variance_mem->set_data_handle(static_cast<void*>(variance_data));
     }
 #ifdef ENABLE_MKLDNN_V1
     // Execute batch-normalization forward primitives.
-    DCHECK_EQ(context_.fwd_primitives.size(), context_.net_args.size());
-    for (size_t i = 0; i < context_.fwd_primitives.size(); ++i) {
-      context_.fwd_primitives.at(i).execute(*context_.fwd_stream,
-                                            context_.net_args.at(i));
-    }
+    execute_primitives(context_.fwd_primitives, context_.fwd_stream, context_.net_args);
 #else
     context_.fwd_stream->submit(context_.fwd_primitives);
 #endif  // ENABLE_MKLDNN_V1
@@ -141,7 +131,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
  private:
   // Primitive reuse context for BatchNorm forward op.
   struct BatchNormFwdContext {
-    // Flags indicts if it is training or inference mode.
+    // Flags indicating if it is training or inference mode.
     int64 flags;
 
     // Algorithm kind.
@@ -556,12 +546,12 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     auto diff_weights_desc = weights_desc;
 
     // Forward batch-normalization descriptor and primitive descriptor.
-    auto bn_flags =
-        bwdParams.training
-            ? BN_FLAGS::use_scale_shift
-            : (BN_FLAGS::use_scale_shift | BN_FLAGS::use_global_stats);
+    //auto bn_flags =
+    //    bwdParams.training
+    //        ? BN_FLAGS::use_scale_shift
+    //        : (BN_FLAGS::use_scale_shift | BN_FLAGS::use_global_stats);
     auto fwd_desc = batch_normalization_forward::desc(
-        prop_kind::forward_training, src_md, bwdParams.eps, bn_flags);
+        prop_kind::forward_training, src_md, bwdParams.eps, context_.flags);
     auto fwd_pd = BatchNormFwdPd(fwd_desc, cpu_engine_);
 
     // Backward batch-normalization primitive.
@@ -570,7 +560,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     //   2. on bwd propagation, mean and variance are considered as constants.
     //      Thus, reduce the amount of MKL computation.
     auto bwd_desc = batch_normalization_backward::desc(
-        prop_kind::backward, diff_dst_md, src_md, bwdParams.eps, bn_flags);
+        prop_kind::backward, diff_dst_md, src_md, bwdParams.eps, context_.flags);
     context_.bwd_pd.reset(new BatchNormBwdPd(bwd_desc, cpu_engine_, fwd_pd));
 
     // Create memory primitives.
@@ -979,7 +969,7 @@ class MklFusedBatchNormOp : public OpKernel {
 
     // Set NAN mean value in case of empty input tensor
     auto saved_mean_data = (*saved_mean_tensor)->flat<U>().data();
-    std::fill_n(saved_mean_data, num_elements, static_cast<U>(NAN));
+    std::fill_n(saved_mean_data, num_elements, static_cast<U>(0));
 
     MklDnnShape mkl_shape_saved_variance;
     mkl_shape_saved_variance.SetMklTensor(false);
@@ -990,12 +980,12 @@ class MklFusedBatchNormOp : public OpKernel {
 
     // Set NAN variance value in case of empty input tensor
     auto saved_variance_data = (*saved_variance_tensor)->flat<U>().data();
-    std::fill_n(saved_variance_data, num_elements, static_cast<U>(NAN));
+    std::fill_n(saved_variance_data, num_elements, static_cast<U>(0));
 
     // Changes to support reserved_space_3 parameter in FusedBatchNormV3.
     // TODO: This parameter functionality is not implemented on CPU.
     //       It is used to hold intermediate results. So the allocated
-    //       memory is filled with NANs.
+    //       memory is filled with 0s.
     if (reserved_space) {
       DCHECK(reserved_space_tensor != nullptr);
 
@@ -1171,7 +1161,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
       src_data = static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
 
       const T* diff_dst_data = nullptr;
-#ifdef ENABLE_MKL_DNN_V1
+#ifdef ENABLE_MKLDNN_V1
       if (IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, bn_bwd_pd, bn_bwd)) {
         diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
         diff_dst.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
@@ -1184,7 +1174,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
 #else
       diff_dst_data =
           static_cast<T*>(const_cast<T*>(diff_dst_tensor.flat<T>().data()));
-#endif
+#endif // ENABLE_MKLDNN_V1
 
       // Indices of output tensors
       const size_t kDiffSrcIndex = 0;

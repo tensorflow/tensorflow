@@ -110,6 +110,7 @@ namespace tensorflow {
 #define TENSOR_FORMAT MKL_TENSOR_FORMAT
 #define TENSOR_FORMAT_NHWC MKL_TENSOR_FORMAT_NHWC
 #define TENSOR_MAX_DIMS MKLDNN_MAX_NDIMS
+#define BN_FLAGS mkldnn::batch_normalization_flags
 
 #else
 
@@ -205,6 +206,7 @@ namespace tensorflow {
 #define SUMMAND_MD summand_pd
 #define TENSOR_FORMAT TensorFormat
 #define TENSOR_FORMAT_NHWC FORMAT_NHWC
+#define BN_FLAGS mkldnn
 #endif  // ENABLE_MKLDNN_V1
 
 }  // namespace tensorflow
