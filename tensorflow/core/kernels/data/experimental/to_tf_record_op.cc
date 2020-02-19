@@ -84,8 +84,8 @@ class ToTFRecordOp : public AsyncOpKernel {
 
     IteratorContext iter_ctx(std::move(params));
     std::unique_ptr<IteratorBase> iterator;
-    TF_RETURN_IF_ERROR(
-        dataset->MakeIterator(&iter_ctx, "ToTFRecordOpIterator", &iterator));
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(
+        &iter_ctx, /*parent=*/nullptr, "ToTFRecordOpIterator", &iterator));
 
     std::vector<Tensor> components;
     components.reserve(dataset->output_dtypes().size());

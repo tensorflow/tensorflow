@@ -341,6 +341,7 @@ TfLiteStatus MicroAllocator::Init() {
     error_reporter_->Report(
         "Failed to allocate memory for context->tensors, %d bytes required",
         sizeof(TfLiteTensor) * context_->tensors_size);
+    return kTfLiteError;
   }
 
   // Initialize runtime tensors in context_ using the flatbuffer.

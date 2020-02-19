@@ -320,10 +320,8 @@ build:xla --define=with_xla_support=true
 # Options when using remote execution
 # WARNING: THESE OPTIONS WONT WORK IF YOU DO NOT HAVE PROPER AUTHENTICATION AND PERMISSIONS
 build:rbe --action_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
-build:rbe --auth_enabled=true
-build:rbe --auth_scope=https://www.googleapis.com/auth/cloud-source-tools
+build:rbe --google_default_credentials
 build:rbe --bes_backend=buildeventservice.googleapis.com
-build:rbe --bes_best_effort=false
 build:rbe --bes_results_url="https://source.cloud.google.com/results/invocations"
 build:rbe --bes_timeout=600s
 build:rbe --define=EXECUTOR=remote
@@ -336,7 +334,7 @@ build:rbe --spawn_strategy=remote,worker,standalone,local
 test:rbe --test_env=USER=anon
 # Attempt to minimize the amount of data transfer between bazel and the remote
 # workers:
-build:rbe --experimental_inmemory_jdeps_files --experimental_inmemory_dotd_files --experimental_remote_download_outputs=toplevel
+build:rbe --remote_download_toplevel
 
 build:rbe_linux --config=rbe
 build:rbe_linux --action_env=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"

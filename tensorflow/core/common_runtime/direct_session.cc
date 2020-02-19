@@ -1356,24 +1356,25 @@ Status DirectSession::CreateExecutors(
     params.session_metadata = session_metadata;
     params.function_library = lib;
     auto opseg = device->op_segment();
-    params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
-                                              OpKernel** kernel) {
-      // NOTE(mrry): We must not share function kernels (implemented
-      // using `CallOp`) between subgraphs, because `CallOp::handle_`
-      // is tied to a particular subgraph. Even if the function itself
-      // is stateful, the `CallOp` that invokes it is not.
-      if (!OpSegment::ShouldOwnKernel(lib, ndef.op())) {
-        return lib->CreateKernel(ndef, kernel);
-      }
-      auto create_fn = [lib, &ndef](OpKernel** kernel) {
-        return lib->CreateKernel(ndef, kernel);
-      };
-      // Kernels created for subgraph nodes need to be cached.  On
-      // cache miss, create_fn() is invoked to create a kernel based
-      // on the function library here + global op registry.
-      return opseg->FindOrCreate(session_handle_, ndef.name(), kernel,
-                                 create_fn);
-    };
+    params.create_kernel =
+        [this, lib, opseg](const std::shared_ptr<const NodeProperties>& props,
+                           OpKernel** kernel) {
+          // NOTE(mrry): We must not share function kernels (implemented
+          // using `CallOp`) between subgraphs, because `CallOp::handle_`
+          // is tied to a particular subgraph. Even if the function itself
+          // is stateful, the `CallOp` that invokes it is not.
+          if (!OpSegment::ShouldOwnKernel(lib, props->node_def.op())) {
+            return lib->CreateKernel(props, kernel);
+          }
+          auto create_fn = [lib, &props](OpKernel** kernel) {
+            return lib->CreateKernel(props, kernel);
+          };
+          // Kernels created for subgraph nodes need to be cached.  On
+          // cache miss, create_fn() is invoked to create a kernel based
+          // on the function library here + global op registry.
+          return opseg->FindOrCreate(session_handle_, props->node_def.name(),
+                                     kernel, create_fn);
+        };
     params.delete_kernel = [lib](OpKernel* kernel) {
       if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string()))
         delete kernel;

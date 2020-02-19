@@ -121,6 +121,15 @@ void MatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ per_channel_scale,
     const int32_t* __restrict__ input_offset);
 
+// Same as the function above except that can make use of cached row sums.
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset,
+    int32_t* scratch, int32_t* row_sums, bool* compute_row_sums,
+    CpuBackendContext* context);
+
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
 //   1. A matrix array stores non-zero blocks of the matrix in row major.
@@ -535,6 +544,10 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
 
 // Same as above but input/output is 32 bit integer.
 void ReductionSumVector(const int32_t* input_vector, int32_t* output_vector,
+                        int output_size, int reduction_size);
+
+// Same as above but input is 8 bit integer.
+void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                         int output_size, int reduction_size);
 
 // Layer norm for each batch.

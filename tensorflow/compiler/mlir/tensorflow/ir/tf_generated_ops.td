@@ -49,7 +49,7 @@ an output element, this operation computes \\(y = |x|\\).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape]>,
+def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
 
@@ -98,7 +98,7 @@ Inputs must be of same size and shape.
   let hasFolder = 1;
 }
 
-def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
+def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
 
@@ -6781,7 +6781,7 @@ variables.
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType, TF_LayoutAgnostic]> {
   let summary = "Computes hyperbolic tangent of `x` element-wise.";
 
   let description = [{

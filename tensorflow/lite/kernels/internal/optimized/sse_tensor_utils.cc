@@ -138,6 +138,10 @@ void SseMatrixBatchVectorMultiplyAccumulate(
     const float batch_scaling_factor = scaling_factors[batch];
     for (int row = 0; row < m_rows; ++row, result += result_stride) {
       const int8_t* __restrict__ row_ptr = matrix + row * m_cols;
+      float scale = batch_scaling_factor;
+      if (per_channel_scale != nullptr) {
+        scale *= per_channel_scale[row];
+      }
       __m128i dotprod_32x4 = _mm_setzero_si128();
       __m128i row_sum_16x8 = _mm_setzero_si128();
       int col = 0;
@@ -167,7 +171,7 @@ void SseMatrixBatchVectorMultiplyAccumulate(
         row_sum += row_ptr[col];
       }  // for col
       sum -= row_sum * input_offset[batch];
-      *result += sum * batch_scaling_factor * per_channel_scale[row];
+      *result += sum * scale;
     }  // for row
     vectors += m_cols;
   }  // for batch

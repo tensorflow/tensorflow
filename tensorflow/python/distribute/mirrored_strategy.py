@@ -578,7 +578,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       with ops.device(colocate_with.device):
         return next_creator(**kwargs)
     else:
-      devices = colocate_with.devices
+      devices = colocate_with._devices  # pylint: disable=protected-access
 
     def _real_mirrored_creator(**kwargs):  # pylint: disable=g-missing-docstring
       value_list = []

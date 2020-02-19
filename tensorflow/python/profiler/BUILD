@@ -42,6 +42,30 @@ cuda_py_test(
 )
 
 py_library(
+    name = "profiler_v2",
+    srcs = ["profiler_v2.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
+    ],
+)
+
+cuda_py_test(
+    name = "profiler_v2_test",
+    srcs = ["profiler_v2_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+    deps = [
+        ":profiler_v2",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/profiler:traceme",
+    ],
+)
+
+py_library(
     name = "option_builder",
     srcs = ["option_builder.py"],
     srcs_version = "PY2AND3",
