@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "client"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "server"
     mtype: "<type \'module\'>"
   }
