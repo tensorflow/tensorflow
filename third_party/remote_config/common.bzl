@@ -135,7 +135,7 @@ def get_environ(repository_ctx, name, default_value = None):
         return default_value
     return result.stdout
 
-def get_host_environ(repository_ctx, name):
+def get_host_environ(repository_ctx, name, default_value = None):
     """Returns the value of an environment variable on the host platform.
 
     The host platform is the machine that Bazel runs on.
@@ -147,7 +147,13 @@ def get_host_environ(repository_ctx, name):
     Returns:
       The value of the environment variable 'name' on the host platform.
     """
-    return repository_ctx.os.environ.get(name)
+    if name in repository_ctx.os.environ:
+        return repository_ctx.os.environ.get(name).strip()
+
+    if hasattr(repository_ctx.attr, "environ") and name in repository_ctx.attr.environ:
+        return repository_ctx.attr.environ.get(name).strip()
+
+    return default_value
 
 def is_windows(repository_ctx):
     """Returns true if the execution platform is Windows.
@@ -165,6 +171,19 @@ def is_windows(repository_ctx):
         os_name = repository_ctx.os.name
 
     return os_name.lower().find("windows") != -1
+
+def get_cpu_value(repository_ctx):
+    """Returns the name of the host operating system.
+
+    Args:
+      repository_ctx: The repository context.
+    Returns:
+      A string containing the name of the host operating system.
+    """
+    if is_windows(repository_ctx):
+        return "Windows"
+    result = raw_exec(repository_ctx, ["uname", "-s"])
+    return result.stdout.strip()
 
 def execute(
         repository_ctx,
@@ -209,3 +228,57 @@ def raw_exec(repository_ctx, cmdline):
       The 'exec_result' of repository_ctx.execute().
     """
     return repository_ctx.execute(cmdline)
+
+def files_exist(repository_ctx, paths, bash_bin = None):
+    """Checks which files in paths exists.
+
+    Args:
+      repository_ctx: the repository_ctx
+      paths: a list of paths
+      bash_bin: path to the bash interpreter
+
+    Returns:
+      Returns a list of Bool. True means that the path at the
+      same position in the paths list exists.
+    """
+    if bash_bin == None:
+        bash_bin = get_bash_bin(repository_ctx)
+
+    cmd_tpl = "[ -e \"%s\" ] && echo True || echo False"
+    cmds = [cmd_tpl % path for path in paths]
+    cmd = " ; ".join(cmds)
+
+    stdout = execute(repository_ctx, [bash_bin, "-c", cmd]).stdout.strip()
+    return [val == "True" for val in stdout.splitlines()]
+
+def realpath(repository_ctx, path, bash_bin = None):
+    """Returns the result of "realpath path".
+
+    Args:
+      repository_ctx: the repository_ctx
+      path: a path on the file system
+      bash_bin: path to the bash interpreter
+
+    Returns:
+      Returns the result of "realpath path"
+    """
+    if bash_bin == None:
+        bash_bin = get_bash_bin(repository_ctx)
+
+    return execute(repository_ctx, [bash_bin, "-c", "realpath %s" % path]).stdout.strip()
+
+def err_out(result):
+    """Returns stderr if set, else stdout.
+
+    This function is a workaround for a bug in RBE where stderr is returned as stdout. Instead
+    of using result.stderr use err_out(result) instead.
+
+    Args:
+      result: the exec_result.
+
+    Returns:
+      The stderr if set, else stdout
+    """
+    if len(result.stderr) == 0:
+        return result.stdout
+    return result.stderr

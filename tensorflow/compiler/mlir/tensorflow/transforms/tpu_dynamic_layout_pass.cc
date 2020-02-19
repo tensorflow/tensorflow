@@ -31,9 +31,11 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -159,8 +161,16 @@ bool HandleReplicatedInputs(
   for (auto entry : llvm::enumerate(inputs)) {
     auto copy_with_layout = BuildCopyWithLayout(
         execute, compile, get_layout, entry.value(), walk_order, &builder);
+
+    // As model parallelism is not supported yet, assume that all ops are
+    // placed at logical core 0.
+    auto device_list = replicate.devices()
+                           .getValue()
+                           .get(tensorflow::GetDeviceAliasForLogicalCore(0))
+                           .cast<ArrayAttr>();
     copy_with_layout.setAttr(kDeviceAttr,
-                             replicate.devices()->getValue()[entry.index()]);
+                             device_list.getValue()[entry.index()]);
+
     replicate.setOperand(num_replicas * replicate_arg_index + entry.index(),
                          copy_with_layout);
   }

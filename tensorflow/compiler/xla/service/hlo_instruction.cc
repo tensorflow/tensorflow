@@ -497,9 +497,15 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
                              operand_shapes, proto.backend_config());
       } else {
-        instruction =
-            CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
-                             proto.backend_config());
+        if (proto.called_computation_ids_size() == 1) {
+          instruction = CreateCustomCall(shape, all_operands(), computations(0),
+                                         proto.custom_call_target(),
+                                         proto.backend_config());
+        } else {
+          instruction = CreateCustomCall(shape, all_operands(),
+                                         proto.custom_call_target(),
+                                         proto.backend_config());
+        }
       }
       auto custom_call_instr =
           Cast<HloCustomCallInstruction>(instruction.get());
@@ -1410,6 +1416,14 @@ bool HloInstruction::HasSideEffect() const {
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* to_apply, absl::string_view custom_call_target,
+    string opaque) {
+  return absl::make_unique<HloCustomCallInstruction>(
+      shape, operands, to_apply, custom_call_target, std::move(opaque));
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target,
     absl::Span<const Shape> operand_shapes_with_layout, string opaque) {
   return absl::make_unique<HloCustomCallInstruction>(
@@ -1647,7 +1661,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   return clone;
 }
 
-HloInstruction::~HloInstruction() {
+void HloInstruction::DetachFromOperandsAndUsers() {
+  if (cleaned_up_) {
+    return;
+  }
+  cleaned_up_ = true;
   // Detach from operands. An instruction may be repeated as an operand. To
   // avoid calling RemoveUser twice on the same operand, check before remove.
   for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
@@ -2150,6 +2168,7 @@ HloComputation* HloInstruction::to_apply() const {
     case HloOpcode::kAllReduce:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
+    case HloOpcode::kCustomCall:
       CHECK_EQ(called_computations_.size(), 1);
       return called_computations_[0];
     default:
@@ -2170,6 +2189,7 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
+    case HloOpcode::kCustomCall:
       CHECK_EQ(called_computations_.size(), 1);
       called_computations_[0] = computation;
       break;
@@ -2414,15 +2434,17 @@ string HloInstruction::ToStringWithCanonicalNameMap(
     StrAppend(&result, PrintNameInternal(name(), options), " = ");
   }
 
-  // Print shape.
-  if (options.include_layout_in_shapes()) {
-    StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()));
-  } else {
-    StrAppend(&result, ShapeUtil::HumanString(shape()));
+  if (options.print_result_shape()) {
+    // Print shape.
+    if (options.include_layout_in_shapes()) {
+      StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()), " ");
+    } else {
+      StrAppend(&result, ShapeUtil::HumanString(shape()), " ");
+    }
   }
 
   // Print opcode, operand(s).
-  StrAppend(&result, " ", HloOpcodeString(opcode()), "(",
+  StrAppend(&result, HloOpcodeString(opcode()), "(",
             OperandsToStringWithCanonicalNameMap(options, canonical_name_map),
             ")");
 
@@ -2493,7 +2515,9 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
 
 std::vector<string> HloInstruction::ExtraAttributesToString(
     const HloPrintOptions& options) const {
-  std::vector<string> extra = ExtraAttributesToStringImpl(options);
+  std::vector<string> extra = options.print_extra_attributes()
+                                  ? ExtraAttributesToStringImpl(options)
+                                  : std::vector<string>();
 
   if (options.print_subcomputation_mode() ==
       HloPrintOptions::PrintSubcomputationMode::kNameOnly) {

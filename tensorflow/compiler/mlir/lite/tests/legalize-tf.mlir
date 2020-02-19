@@ -739,6 +739,15 @@ func @matrix_diag_v3(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
 // CHECK:           return [[VAL_6]] : tensor<8x16x16xf32>
 }
 
+func @matrix_set_diag(%arg0: tensor<3x3xi32>, %arg1: tensor<3xi32>) -> tensor<3x3xi32> {
+  %0 = "tf.MatrixSetDiag"(%arg0, %arg1) : (tensor<3x3xi32>, tensor<3xi32>) -> tensor<3x3xi32>
+  return %0 : tensor<3x3xi32>
+
+// CHECK-LABEL: func @matrix_set_diag(
+// CHECK: [[VAL_0:%.*]] = "tfl.matrix_set_diag"(%arg0, %arg1) : (tensor<3x3xi32>, tensor<3xi32>) -> tensor<3x3xi32>
+// CHECK: return [[VAL_0]]
+}
+
 func @maximum(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Maximum"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   return %0 : tensor<8x16xf32>
@@ -1363,4 +1372,38 @@ func @reciprocal_i64(%arg0: tensor<8xi64>) -> tensor<8xi64> {
 // CHECK:  %cst = constant dense<1> : tensor<1xi64>
 // CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xi64>, tensor<8xi64>) -> tensor<8xi64>
 // CHECK:  return
+}
+
+func @random_uniform() -> tensor<2x5xf32> {
+  %0 = "tf.Const"() { value = dense<[2, 5]> : tensor<2xi32> } : () -> tensor<2xi32>
+  %1 = "tf.RandomUniform"(%0) { seed = 1, seed2 = 0} : (tensor<2xi32>) -> tensor<2x5xf32>
+  return %1 : tensor<2x5xf32>
+
+  // CHECK-LABEL: random_uniform
+  // CHECK: %[[CST:.*]] = constant dense
+  // CHECK: return %[[CST:.*]] : tensor<2x5xf32>
+}
+
+func @random_uniform_no_fold(%arg0: tensor<2xi32>) -> tensor<2x5xf32> {
+  %1 = "tf.RandomUniform"(%arg0) { seed = 0, seed2 = 0} : (tensor<2xi32>) -> tensor<2x5xf32>
+  return %1 : tensor<2x5xf32>
+
+  // CHECK-LABEL: random_uniform_no_fold
+  // CHECK: %[[RANDOM:.*]] = "tf.RandomUniform"
+}
+
+func @random_uniform_no_fold2(%arg0: tensor<2xi32>) -> tensor<*xf32> {
+  %1 = "tf.RandomUniform"(%arg0) { seed = 1, seed2 = 2} : (tensor<2xi32>) -> tensor<*xf32>
+  return %1 : tensor<*xf32>
+
+  // CHECK-LABEL: random_uniform_no_fold2
+  // CHECK: %[[RANDOM:.*]] = "tf.RandomUniform"
+}
+
+func @random_uniform_no_fold3(%arg0: tensor<2xi32>) -> tensor<*xf64> {
+  %1 = "tf.RandomUniform"(%arg0) { seed = 1, seed2 = 2} : (tensor<2xi32>) -> tensor<*xf64>
+  return %1 : tensor<*xf64>
+
+  // CHECK-LABEL: random_uniform_no_fold3
+  // CHECK: %[[RANDOM:.*]] = "tf.RandomUniform"
 }

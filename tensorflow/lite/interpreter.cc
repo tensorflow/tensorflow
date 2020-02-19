@@ -267,6 +267,13 @@ TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
 void Interpreter::UseNNAPI(bool enable) { primary_subgraph().UseNNAPI(enable); }
 
 void Interpreter::SetNumThreads(int num_threads) {
+  if (num_threads < -1) {
+    context_->ReportError(context_,
+                          "num_threads should be >=0 or just -1 to let TFLite "
+                          "runtime set the value.");
+    return;
+  }
+
   for (auto& subgraph : subgraphs_) {
     subgraph->context()->recommended_num_threads = num_threads;
   }
@@ -342,6 +349,18 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
 }
 
 void Interpreter::SetProfiler(Profiler* profiler) {
+  // Release resources occupied by owned_profiler_ which is replaced by
+  // caller-owned profiler.
+  owned_profiler_.reset(nullptr);
+  SetSubgraphProfiler(profiler);
+}
+
+void Interpreter::SetProfiler(std::unique_ptr<Profiler> profiler) {
+  owned_profiler_ = std::move(profiler);
+  SetSubgraphProfiler(owned_profiler_.get());
+}
+
+void Interpreter::SetSubgraphProfiler(Profiler* profiler) {
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
     subgraphs_[subgraph_index]->SetProfiler(profiler, subgraph_index);

@@ -893,7 +893,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
   def test_EarlyStopping_with_baseline(self):
     with self.cached_session():
       np.random.seed(1337)
-      baseline = 0.5
+      baseline = 0.6
       (data, labels), _ = testing_utils.get_test_data(
           train_samples=100,
           test_samples=50,

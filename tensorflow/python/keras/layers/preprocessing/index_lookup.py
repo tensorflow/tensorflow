@@ -24,11 +24,11 @@ import operator
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
-from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
+from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -43,7 +43,7 @@ _ACCUMULATOR_VOCAB_NAME = "vocab"
 _ACCUMULATOR_COUNTS_NAME = "counts"
 
 
-class IndexLookup(CombinerPreprocessingLayer):
+class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Maps strings (or integers) from a vocabulary to integer indices.
 
   This layer translates a set of arbitray strings or integers into an integer
@@ -66,6 +66,7 @@ class IndexLookup(CombinerPreprocessingLayer):
       1. If this value is more than 1, OOV inputs are hashed to determine their
       OOV value; if this value is 0, passing an OOV input will result in a
       runtime error.
+    vocabulary: An optional list of vocabulary terms.
     reserve_zero: Whether to reserve the index 0, which indicates pad values in
       the Keras masking system. If True, the output of this layer will be in the
       range `[1...max_tokens+1)`; if False, the output will be in the range
@@ -83,8 +84,9 @@ class IndexLookup(CombinerPreprocessingLayer):
   # TODO(momernick): Add an examples section to the docstring.
 
   def __init__(self,
-               max_tokens,
+               max_tokens=None,
                num_oov_tokens=1,
+               vocabulary=None,
                reserve_zero=True,
                mask_zero=False,
                **kwargs):
@@ -159,14 +161,13 @@ class IndexLookup(CombinerPreprocessingLayer):
     # counting code in the Model object doesn't throw an attribute error.
     tracked_table.shape = tensor_shape.TensorShape((0,))
 
-    # This is a workaround for saving not working yet for MutableHashTables.
-    # By replacing the existing function call by an explicit failure, we
-    # can provide a more user-friendly error message.
-    def fail(_):
-      raise NotImplementedError(
-          "Saving is not yet supported for IndexLookup layers.")
-    self._table._list_extra_dependencies_for_serialization = fail  # pylint: disable=protected-access
     self._inverse_table = None
+
+    if vocabulary is not None:
+      self._export_vocab = True
+      self.set_vocabulary(vocabulary)
+    else:
+      self._export_vocab = False
 
   def _get_table_data(self):
     keys, values = self._table.export()
@@ -255,9 +256,11 @@ class IndexLookup(CombinerPreprocessingLayer):
     return [x for _, x in sorted(zip(values, keys))]
 
   def get_config(self):
+    vocabulary = self.get_vocabulary() if self._export_vocab else None
     config = {
         "max_tokens": self.max_tokens,
         "num_oov_tokens": self.num_oov_tokens,
+        "vocabulary": vocabulary,
         "reserve_zero": self.reserve_zero,
         "mask_zero": self.mask_zero,
     }
@@ -354,13 +357,23 @@ class IndexLookup(CombinerPreprocessingLayer):
     # a RT we need to use map_flat_values to look up every element.
     if ragged_tensor.is_ragged(inputs):
       indexed_data = ragged_functional_ops.map_flat_values(table.lookup, inputs)
+    elif isinstance(
+        inputs, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
+      indexed_data = sparse_tensor.SparseTensor(inputs.indices,
+                                                table.lookup(inputs.values),
+                                                inputs.dense_shape)
     else:
       indexed_data = table.lookup(inputs)
+      # (b/149446477): output does not preserve input shape.
+      indexed_data.set_shape(inputs.shape)
 
-    return indexed_data
+    # Composite tensors can pass tensor values through, which will cause
+    # errors if this is the only layer in the model. To fix this, pass
+    # the output through an identity op.
+    return array_ops.identity(indexed_data)
 
 
-class _IndexLookupCombiner(Combiner):
+class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
   """Combiner for the IndexLookup preprocessing layer.
 
   This class encapsulates the logic for computing a vocabulary based on the
@@ -370,7 +383,7 @@ class _IndexLookupCombiner(Combiner):
     vocab_size: (Optional) If set, only the top `vocab_size` tokens (based on
       frequency across the dataset) are retained in the vocabulary. If None, or
       set to a value greater than the total number of distinct tokens in the
-      dataset, all tokens are retained.
+      dataset, all tokens are retained.s
   """
   ACCUMULATOR_CLS = collections.namedtuple("Accumulator", ["count_dict"])
 
@@ -379,12 +392,7 @@ class _IndexLookupCombiner(Combiner):
 
   def compute(self, values, accumulator=None):
     """Compute a step in this computation, returning a new accumulator."""
-    if ragged_tensor.is_ragged(values):
-      values = values.to_list()
-    if isinstance(values, ops.EagerTensor):
-      values = values.numpy()
-    if isinstance(values, np.ndarray):
-      values = values.tolist()
+    values = base_preprocessing_layer.convert_to_list(values)
 
     if accumulator is None:
       accumulator = self._create_accumulator()

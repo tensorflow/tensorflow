@@ -51,17 +51,21 @@ std::string StatsCalculator::HeaderString(const std::string& title) const {
 
   stream << "============================== " << title
          << " ==============================" << std::endl;
-
-  InitField(stream, 24) << "[node type]";
-  InitField(stream, 17) << "[start]";
-  InitField(stream, 9) << "[first]";
-  InitField(stream, 9) << "[avg ms]";
-  InitField(stream, 8) << "[%]";
-  InitField(stream, 8) << "[cdf%]";
-  InitField(stream, 10) << "[mem KB]";
-  InitField(stream, 9) << "[times called]";
-  stream << "\t"
-         << "[Name]";
+  if (options_.format_as_csv) {
+    stream << "node type, start, first, avg_ms, %, cdf%, mem KB, times called, "
+              "name";
+  } else {
+    InitField(stream, 24) << "[node type]";
+    InitField(stream, 17) << "[start]";
+    InitField(stream, 9) << "[first]";
+    InitField(stream, 9) << "[avg ms]";
+    InitField(stream, 8) << "[%]";
+    InitField(stream, 8) << "[cdf%]";
+    InitField(stream, 10) << "[mem KB]";
+    InitField(stream, 9) << "[times called]";
+    stream << "\t"
+           << "[Name]";
+  }
   return stream.str();
 }
 
@@ -76,15 +80,24 @@ std::string StatsCalculator::ColumnString(const Detail& detail,
   const int64_t times_called = detail.times_called / num_runs();
 
   std::stringstream stream;
-  InitField(stream, 24) << detail.type;
-  InitField(stream, 17) << start_ms;
-  InitField(stream, 9) << first_time_ms;
-  InitField(stream, 9) << avg_time_ms;
-  InitField(stream, 7) << percentage << "%";
-  InitField(stream, 7) << cdf_percentage << "%";
-  InitField(stream, 10) << detail.mem_used.newest() / 1000.0;
-  InitField(stream, 9) << times_called;
-  stream << "\t" << detail.name;
+  if (options_.format_as_csv) {
+    std::string name(detail.name);
+    std::replace(name.begin(), name.end(), ',', '\t');
+    stream << detail.type << ", " << start_ms << ", " << first_time_ms << ", "
+           << avg_time_ms << ", " << percentage << "%, " << cdf_percentage
+           << "%, " << detail.mem_used.newest() / 1000.0 << ", " << times_called
+           << ", " << name;
+  } else {
+    InitField(stream, 24) << detail.type;
+    InitField(stream, 17) << start_ms;
+    InitField(stream, 9) << first_time_ms;
+    InitField(stream, 9) << avg_time_ms;
+    InitField(stream, 7) << percentage << "%";
+    InitField(stream, 7) << cdf_percentage << "%";
+    InitField(stream, 10) << detail.mem_used.newest() / 1000.0;
+    InitField(stream, 9) << times_called;
+    stream << "\t" << detail.name;
+  }
 
   return stream.str();
 }
@@ -186,14 +199,18 @@ std::string StatsCalculator::GetStatsByNodeType() const {
                     std::pair<std::string, int64_t>(node_type.first, mem_used));
   }
 
-  InitField(stream, 24) << "[Node type]";
-  InitField(stream, 9) << "[count]";
-  InitField(stream, 10) << "[avg ms]";
-  InitField(stream, 11) << "[avg %]";
-  InitField(stream, 11) << "[cdf %]";
-  InitField(stream, 10) << "[mem KB]";
-  InitField(stream, 10) << "[times called]";
-  stream << std::endl;
+  if (options_.format_as_csv) {
+    stream << "node type, count, avg_ms, avg %, cdf %, mem KB, times called\n";
+  } else {
+    InitField(stream, 24) << "[Node type]";
+    InitField(stream, 9) << "[count]";
+    InitField(stream, 10) << "[avg ms]";
+    InitField(stream, 11) << "[avg %]";
+    InitField(stream, 11) << "[cdf %]";
+    InitField(stream, 10) << "[mem KB]";
+    InitField(stream, 10) << "[times called]";
+    stream << std::endl;
+  }
 
   float cdf = 0.0f;
   while (!timings.empty()) {
@@ -210,14 +227,21 @@ std::string StatsCalculator::GetStatsByNodeType() const {
         ((entry.first / static_cast<float>(accumulated_us)) * 100.0f);
     cdf += percentage;
 
-    InitField(stream, 24) << node_type;
-    InitField(stream, 9) << node_type_map_count[node_type];
-    InitField(stream, 10) << time_per_run_ms;
-    InitField(stream, 10) << percentage << "%";
-    InitField(stream, 10) << cdf << "%";
-    InitField(stream, 10) << memory;
-    InitField(stream, 9) << node_type_map_times_called[node_type];
-    stream << std::endl;
+    if (options_.format_as_csv) {
+      stream << node_type << ", " << node_type_map_count[node_type] << ", "
+             << time_per_run_ms << ", " << percentage << "%, " << cdf << "%, "
+             << memory << ", " << node_type_map_times_called[node_type]
+             << std::endl;
+    } else {
+      InitField(stream, 24) << node_type;
+      InitField(stream, 9) << node_type_map_count[node_type];
+      InitField(stream, 10) << time_per_run_ms;
+      InitField(stream, 10) << percentage << "%";
+      InitField(stream, 10) << cdf << "%";
+      InitField(stream, 10) << memory;
+      InitField(stream, 9) << node_type_map_times_called[node_type];
+      stream << std::endl;
+    }
   }
   stream << std::endl;
   return stream.str();

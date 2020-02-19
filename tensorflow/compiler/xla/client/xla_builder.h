@@ -332,6 +332,12 @@ class XlaBuilder {
   // Adds a new input/output alias. Since the input/output shape information are
   // not available until the computation is built, and eventual error in the
   // arguments of this API will be detected only at computation Build() time.
+  //
+  // Note: Aliasing API is 'may-alias' and only donated buffer at runtime will
+  // be aliased with output. If a buffer is not donated at runtime, a copy will
+  // be inserted by XLA to prevent buffer clobbering.
+  //
+  // Only works on TPU backend.
   void SetUpAlias(const ShapeIndex& output_index, int64 param_number,
                   const ShapeIndex& param_index) {
     input_output_aliases_.push_back({output_index, param_number, param_index});
@@ -389,6 +395,9 @@ class XlaBuilder {
                 int64 inferred_dimension = -1);
 
   XlaOp Reshape(XlaOp operand, absl::Span<const int64> new_sizes,
+                int64 inferred_dimension = -1);
+
+  XlaOp Reshape(const Shape& shape, XlaOp operand,
                 int64 inferred_dimension = -1);
 
   XlaOp Collapse(XlaOp operand, absl::Span<const int64> dimensions);
@@ -662,8 +671,8 @@ class XlaBuilder {
 
   // Internal helper method for creating a Reshape op with the already inferred
   // shape.
-  StatusOr<XlaOp> Reshape(const Shape& shape, XlaOp operand,
-                          int64 inferred_dimension = -1);
+  StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
+                                  int64 inferred_dimension = -1);
 
   // Returns the (inferred) result for the program shape using the given root.
   StatusOr<ProgramShape> GetProgramShape(int64 root_id) const;
@@ -770,6 +779,8 @@ class XlaBuilder {
                        absl::Span<const int64> new_sizes);
 
   friend XlaOp Reshape(XlaOp operand, absl::Span<const int64> new_sizes);
+
+  friend XlaOp Reshape(const Shape& shape, XlaOp operand);
 
   friend XlaOp ReshapeWithInferredDimension(XlaOp operand,
                                             absl::Span<const int64> new_sizes,
@@ -1245,6 +1256,9 @@ XlaOp Reshape(XlaOp operand, absl::Span<const int64> dimensions,
 // first to last dimension (C order), then reshapes it to the given dimension
 // sizes. Conceptually, this is a limited form of "shape casting".
 XlaOp Reshape(XlaOp operand, absl::Span<const int64> new_sizes);
+
+// Enqueues a Reshape op that uses an explicit target shape.
+XlaOp Reshape(const Shape& shape, XlaOp operand);
 
 // `inferred_dimension` represents the output dimension that's inferred by
 // upper-level framework by dividing the input element count by the known

@@ -22,8 +22,7 @@ to convert a model based on the original model format:
 *   `TFLiteConverter.from_concrete_functions()`: Converts
     [concrete functions](https://tensorflow.org/guide/concrete_function).
 
-This document contains [example usages](#examples) of the API, a detailed list
-of [changes in the API between Tensorflow 1 and TensorFlow 2](#differences), and
+This document contains [example usages](#examples) of the API and
 [instructions](#versioning) on running the different versions of TensorFlow.
 
 ## Examples <a name="examples"></a>

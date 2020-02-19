@@ -59,14 +59,42 @@ std::string WhileOutlinePass::GetName(Operation* op, StringRef suffix) {
 
 void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   OpBuilder builder(&getContext());
-  auto i1_tensor = RankedTensorType::get({}, builder.getI1Type());
+  // Colect external values used. Note: if an external value is also passed in
+  // via argument, then it could end up being passed in multiple times. In the
+  // case where the value was already just passed through, this will result in
+  // redundancy.
   llvm::SetVector<Value> extern_values;
-  getUsedValuesDefinedAbove(while_op.cond(), extern_values);
-  getUsedValuesDefinedAbove(while_op.body(), extern_values);
+
+  // Sink down none type constants into the functions.
+  llvm::SmallVector<Region*, 2> regions{&while_op.cond(), &while_op.body()};
+  for (auto it : llvm::enumerate(regions)) {
+    llvm::SetVector<Value> region_extern_values;
+    Value const_none = nullptr;
+    getUsedValuesDefinedAbove(*it.value(), region_extern_values);
+    for (auto extern_value : region_extern_values) {
+      if (!extern_value.getType().isa<NoneType>()) {
+        extern_values.insert(extern_value);
+        continue;
+      }
+      assert(extern_value.getDefiningOp()->hasNoSideEffect());
+      if (!const_none) {
+        // Add constant at start of region.
+        auto const_builder =
+            OpBuilder(&it.value()->front(), it.value()->front().begin());
+        const_none = const_builder.create<ConstantOp>(
+            while_op.getLoc(), extern_value.getType(),
+            const_builder.getUnitAttr());
+      }
+      replaceAllUsesInRegionWith(extern_value, const_none, *it.value());
+    }
+  }
 
   // Colect new types.
   SmallVector<Type, 4> types;
-  types.reserve(extern_values.size() + while_op.getNumOperands());
+  types.reserve(extern_values.size() +
+                while_op.cond().front().getNumArguments());
+  // Type of block arguments are used as these could differ from those of While
+  // op, but has to match between cond and body.
   for (BlockArgument ba : while_op.cond().front().getArguments())
     types.push_back(ba.getType());
   for (Value operand : extern_values) types.push_back(operand.getType());
@@ -74,17 +102,30 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   // Create outline function from region. Optional pass extra arguments through
   // to yield.
   SymbolTable symbol_table(getModule());
-  auto create_outline_func = [&](StringRef name, FunctionType type,
-                                 Region& region, bool passthru_extra_args) {
+  auto create_outline_func = [&](StringRef name, Region& region,
+                                 bool passthru_extra_args) {
+    FunctionType type;
+    if (passthru_extra_args) {
+      type = FunctionType::get(types, types, &getContext());
+    } else {
+      SmallVector<Type, 4> result_types;
+      auto operands = region.front().getTerminator()->getOperandTypes();
+      result_types.append(operands.begin(), operands.end());
+      type = FunctionType::get(types, result_types, &getContext());
+    }
+
     auto outlined_func = builder.create<FuncOp>(while_op.getLoc(), name, type,
                                                 ArrayRef<NamedAttribute>{});
     outlined_func.getBody().takeBody(region);
-    Block& block = outlined_func.getBody().front();
+    Region& func_region = outlined_func.getBody();
+
+    // Replace all external uses with block args and update uses..
     llvm::SmallVector<Value, 4> new_args;
     new_args.reserve(extern_values.size());
+    Block& block = func_region.front();
     for (Value value : extern_values) {
       auto arg = block.addArgument(value.getType());
-      replaceAllUsesInRegionWith(value, arg, outlined_func.getBody());
+      replaceAllUsesInRegionWith(value, arg, func_region);
       new_args.push_back(arg);
     }
 
@@ -93,38 +134,53 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
     OpBuilder b(yield_op);
     llvm::SmallVector<Value, 4> args;
     args.reserve(yield_op->getNumOperands() + new_args.size());
-    args.append(yield_op->operand_begin(), yield_op->operand_end());
-    if (passthru_extra_args) args.append(new_args.begin(), new_args.end());
+    if (passthru_extra_args) {
+      // Add operands of yield to the return, inserting casts if needed.
+      for (auto it : llvm::zip(yield_op->getOperands(), types)) {
+        auto value = std::get<0>(it);
+        auto type = std::get<1>(it);
+        if (value.getType() == type) {
+          args.push_back(value);
+        } else {
+          auto cast = b.create<CastOp>(yield_op->getLoc(), type, value);
+          args.push_back(cast);
+        }
+      }
+      args.append(new_args.begin(), new_args.end());
+    } else {
+      args.append(yield_op->operand_begin(), yield_op->operand_end());
+    }
     b.create<ReturnOp>(yield_op->getLoc(), args);
     yield_op->erase();
     symbol_table.insert(outlined_func);
+    outlined_func.setVisibility(FuncOp::Visibility::Private);
     return outlined_func;
   };
 
   // Replace region with call to outline function.
-  auto replace_with_call = [&](FunctionType fn_type, StringRef name,
-                               Region& region, bool passthru_extra_args) {
+  auto replace_with_call = [&](StringRef name, Region& region,
+                               bool passthru_extra_args) {
     // Skip if already only a call.
     if (region.front().getOperations().size() == 2 &&
         isa<mlir::CallOp>(region.front().front()))
       return;
 
-    auto func = create_outline_func(name, fn_type, region, passthru_extra_args);
+    auto func = create_outline_func(name, region, passthru_extra_args);
     OpBuilder b(region);
     // The body of the region is empty/has been outlined into the function.
     auto block = b.createBlock(&region);
     SmallVector<Value, 4> new_operands;
     new_operands.reserve(types.size());
-    for (Type t : types) new_operands.push_back(block->addArgument(t));
+    for (Type t : llvm::makeArrayRef(types).drop_back(extern_values.size()))
+      new_operands.push_back(block->addArgument(t));
+    for (Value v : extern_values) new_operands.push_back(v);
     auto call = b.create<CallOp>(while_op.getLoc(), func, new_operands);
     b.create<YieldOp>(while_op.getLoc(), call.getResults());
   };
 
-  replace_with_call(FunctionType::get(types, {i1_tensor}, &getContext()),
-                    GetName(while_op.getOperation(), "_cond"), while_op.cond(),
+  replace_with_call(GetName(while_op.getOperation(), "_cond"), while_op.cond(),
                     false);
-  replace_with_call(FunctionType::get(types, types, &getContext()),
-                    GetName(while_op.getOperation(), "_body"), while_op.body(),
+  replace_with_call(GetName(while_op.getOperation(), "_body"), while_op.body(),
                     true);
 
   // If there are extern values used then the result type of the while has to

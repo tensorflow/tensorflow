@@ -60,7 +60,7 @@ class BatchNormalizationBase(Layer):
 
   3) When performing inference using a model containing batch normalization, it
   is generally (though not always) desirable to use accumulated statistics
-  rather than mini-batch statistics. This is acomplished by passing
+  rather than mini-batch statistics. This is accomplished by passing
   `training=False` when calling the model, or using `model.predict`.
 
   Arguments:
@@ -503,7 +503,7 @@ class BatchNormalizationBase(Layer):
   def _assign_moving_average(self, variable, value, momentum, inputs_size):
     with K.name_scope('AssignMovingAvg') as scope:
       with ops.colocate_with(variable):
-        decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
+        decay = ops.convert_to_tensor_v2(1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
           decay = math_ops.cast(decay, variable.dtype.base_dtype)
         update_delta = (
@@ -566,7 +566,7 @@ class BatchNormalizationBase(Layer):
                                      lambda: self.momentum,
                                      lambda: 1.0)
     else:
-      momentum = ops.convert_to_tensor(self.momentum)
+      momentum = ops.convert_to_tensor_v2(self.momentum)
     if training_value or training_value is None:
       def mean_update():
         return self._assign_moving_average(self.moving_mean, mean, momentum,
@@ -757,13 +757,11 @@ class BatchNormalizationBase(Layer):
       moving_mean = self.moving_mean
       moving_variance = self.moving_variance
 
-      mean = tf_utils.smart_cond(training,
-                                 lambda: mean,
-                                 lambda: ops.convert_to_tensor(moving_mean))
+      mean = tf_utils.smart_cond(training, lambda: mean,
+                                 lambda: ops.convert_to_tensor_v2(moving_mean))
       variance = tf_utils.smart_cond(
-          training,
-          lambda: variance,
-          lambda: ops.convert_to_tensor(moving_variance))
+          training, lambda: variance,
+          lambda: ops.convert_to_tensor_v2(moving_variance))
 
       if self.virtual_batch_size is not None:
         # This isn't strictly correct since in ghost batch norm, you are
@@ -1078,6 +1076,12 @@ class LayerNormalization(Layer):
       return v
 
     if not self._fused:
+      input_dtype = inputs.dtype
+      if input_dtype in ('float16', 'bfloat16') and self.dtype == 'float32':
+        # If mixed precision is used, cast inputs to float32 so that this is at
+        # least as numerically stable as the fused version.
+        inputs = math_ops.cast(inputs, 'float32')
+
       # Calculate the moments on the last axis (layer activations).
       mean, variance = nn.moments(inputs, self.axis, keep_dims=True)
 
@@ -1091,6 +1095,7 @@ class LayerNormalization(Layer):
           offset=offset,
           scale=scale,
           variance_epsilon=self.epsilon)
+      outputs = math_ops.cast(outputs, input_dtype)
     else:
       # Collapse dims before self.axis, and dims in self.axis
       pre_dim, in_dim = (1, 1)
@@ -1116,7 +1121,7 @@ class LayerNormalization(Layer):
       # self.gamma and self.beta have the wrong shape for fused_batch_norm, so
       # we cannot pass them as the scale and offset parameters. Therefore, we
       # create two constant tensors in correct shapes for fused_batch_norm and
-      # later constuct a separate calculation on the scale and offset.
+      # later construct a separate calculation on the scale and offset.
       scale = _set_const_tensor(1.0, self.dtype, [pre_dim])
       offset = _set_const_tensor(0.0, self.dtype, [pre_dim])
 

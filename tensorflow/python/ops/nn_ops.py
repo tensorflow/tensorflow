@@ -533,8 +533,8 @@ class _WithSpaceToBatch(object):
     spatial_dims = sorted(set(int(x) for x in orig_spatial_dims))
     if spatial_dims != orig_spatial_dims or any(x < 1 for x in spatial_dims):
       raise ValueError(
-          "spatial_dims must be a montonically increasing sequence of positive "
-          "integers")
+          "spatial_dims must be a monotonically increasing sequence of "
+          "positive integers")
 
     if data_format is not None and data_format.startswith("NC"):
       expected_input_rank = spatial_dims[-1]
@@ -4359,7 +4359,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
   rely on the output of other nodes.
 
   More precisely: With probability `rate` elements of `x` are set to `0`.
-  The remaining elemenst are scaled up by `1.0 / (1 - rate)`, so that the
+  The remaining elements are scaled up by `1.0 / (1 - rate)`, so that the
   expected value is preserved.
 
   >>> tf.random.set_seed(0)

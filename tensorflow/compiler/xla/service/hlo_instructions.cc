@@ -2182,6 +2182,23 @@ HloCustomCallInstruction::HloCustomCallInstruction(
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* to_apply, absl::string_view custom_call_target,
+    string opaque)
+    : HloInstruction(HloOpcode::kCustomCall, shape),
+      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      feature_group_count_(1),
+      batch_group_count_(1),
+      layout_constrained_(false),
+      custom_call_has_side_effect_(false) {
+  set_raw_backend_config_string(std::move(opaque));
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+  AppendComputation(to_apply);
+}
+
+HloCustomCallInstruction::HloCustomCallInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target, string opaque,
     absl::Span<const Shape> operand_shapes_with_layout)
     : HloInstruction(HloOpcode::kCustomCall, shape),

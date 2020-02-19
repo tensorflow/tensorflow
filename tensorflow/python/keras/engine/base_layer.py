@@ -104,15 +104,25 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   We recommend that descendants of `Layer` implement the following methods:
 
-  * `__init__()`: Save configuration in member variables
-  * `build()`: Called once from `__call__`, when we know the shapes of inputs
-    and `dtype`. Should have the calls to `add_weight()`, and then
-    call the super's `build()` (which sets `self.built = True`, which is
-    nice in case the user wants to call `build()` manually before the
-    first `__call__`).
-  * `call()`: Called in `__call__` after making sure `build()` has been called
-    once. Should actually perform the logic of applying the layer to the
-    input tensors (which should be passed in as the first argument).
+  * `__init__()`: Defines custom layer attributes, and creates layer state
+    variables that do not depend on input shapes, using `add_weight()`.
+  * `build(self, input_shape)`: This method can be used to create weights that
+    depend on the shape(s) of the input(s), using `add_weight()`. `__call__()`
+    will automatically build the layer (if it has not been built yet) by
+    calling `build()`.
+  * `call(self, *args, **kwargs)`: Called in `__call__` after making sure
+    `build()` has been called. `call()` performs the logic of applying the
+    layer to the input tensors (which should be passed in as argument).
+    Two reserved keyword arguments you can optionally use in `call()` are:
+      - `training` (boolean, whether the call is in
+        inference mode or training mode)
+      - `mask` (boolean tensor encoding masked timesteps in the input, used
+        in RNN layers)
+  * `get_config(self)`: Returns a dictionary containing the configuration used
+    to initialize this layer. If the keys differ from the arguments
+    in `__init__`, then override `from_config(self)` as well.
+    This method is used when saving
+    the layer or a model that contains this layer.
 
   Arguments:
     trainable: Boolean, whether the layer's variables should be trainable.
@@ -195,6 +205,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Indicates whether `build` needs to be called upon layer call, to create
     # the layer's weights.
     self.built = False
+    # Record the build input shape for loading purposes.
+    # TODO(kathywu): Move this to Layer._set_save_spec once cl/290121460 is
+    # submitted.
+    self._build_input_shape = None
     # Provides information about which inputs are compatible with the layer.
     self._input_spec = None
     self.supports_masking = False
@@ -262,6 +276,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Manage initial weight values if passed.
     self._initial_weights = kwargs.get('weights', None)
 
+  @trackable.no_automatic_dependency_tracking
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
 
@@ -276,6 +291,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         `TensorShape` if the layer expects a list of inputs
         (one instance per input).
     """
+    # Only record the build input shapes of overridden the build methods.
+    if not hasattr(self.build, '_is_default'):
+      self._build_input_shape = input_shape
     self.built = True
 
   @doc_controls.for_subclass_implementers
@@ -505,8 +523,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Check that either the only argument in the `__init__` is  `self`,
     # or that `get_config` has been overridden:
     if len(extra_args) > 1 and hasattr(self.get_config, '_is_default'):
-      raise NotImplementedError('Layers with arguments in `__init__` must '
-                                'override `get_config`.')
+      raise NotImplementedError('Layer %s has arguments in `__init__` and '
+                                'therefore must override `get_config`.' %
+                                self.__class__.__name__)
     return config
 
   @classmethod
@@ -552,21 +571,22 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # with the shape the Layer will be called on (these users will have to
       # implement `compute_output_shape` themselves).
       self._maybe_build(input_shape)
-      with context.graph_mode():
-        graph = func_graph.FuncGraph('graph')
-        with graph.as_default():
-          input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
-          inputs = nest.map_structure(
-              base_layer_utils.generate_placeholders_from_shape, input_shape)
-          try:
-            outputs = self(inputs, training=False)
-          except TypeError as e:
-            six.raise_from(
-                NotImplementedError(
-                    'We could not automatically infer the static shape of the '
-                    'layer\'s output. Please implement the '
-                    '`compute_output_shape` method on your layer (%s).' %
-                    self.__class__.__name__), e)
+      with func_graph.FuncGraph('graph').as_default():
+        input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
+        def _make_placeholder_like(shape):
+          ph = backend.placeholder(shape=shape, dtype=self.dtype)
+          ph._keras_mask = None
+          return ph
+        inputs = nest.map_structure(_make_placeholder_like, input_shape)
+        try:
+          outputs = self(inputs, training=False)
+        except TypeError as e:
+          six.raise_from(
+              NotImplementedError(
+                  'We could not automatically infer the static shape of the '
+                  'layer\'s output. Please implement the '
+                  '`compute_output_shape` method on your layer (%s).' %
+                  self.__class__.__name__), e)
       return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError
 
@@ -683,10 +703,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Accept NumPy and scalar inputs by converting to Tensors.
     if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
       def _convert_non_tensor(x):
-        # Don't call `ops.convert_to_tensor` on all `inputs` because
+        # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
         # `SparseTensors` can't be converted to `Tensor`.
         if isinstance(x, (np.ndarray, float, int)):
-          return ops.convert_to_tensor(x)
+          return ops.convert_to_tensor_v2(x)
         return x
       inputs = nest.map_structure(_convert_non_tensor, inputs)
       input_list = nest.flatten(inputs)
@@ -1022,7 +1042,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     x = tf.keras.layers.Dense(10)(inputs)
     outputs = tf.keras.layers.Dense(1)(x)
     model = tf.keras.Model(inputs, outputs)
-    # Actvity regularization.
+    # Activity regularization.
     model.add_loss(tf.abs(tf.reduce_mean(x)))
     ```
 
@@ -1066,7 +1086,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
-        loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
       return loss
 
@@ -1082,7 +1102,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if loss is None:
         continue
       if not tensor_util.is_tensor(loss):
-        loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
       # TF Functions should take the eager path.
       if (tf_utils.is_symbolic_tensor(loss) and
           not base_layer_utils.is_in_tf_function()):
@@ -1273,7 +1293,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       elif hasattr(x, 'op'):
         update = x.op
       else:
-        update = ops.convert_to_tensor(x)
+        update = ops.convert_to_tensor_v2(x)
 
       reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, [update])
       update._unconditional_update = update not in reachable
@@ -2200,10 +2220,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # to avoid creating symbolic Tensors that will later pollute any eager
         # operations.
         with tf_utils.maybe_init_scope(self):
-          self.build(input_shapes)
-      # We must set self.built since user defined build functions are not
-      # constrained to set self.built.
-      self.built = True
+          self.build(input_shapes)  # pylint:disable=not-callable
+      # We must set also ensure that the layer is marked as built, and the build
+      # shape is stored since user defined build functions may not be calling
+      # `super.build()`
+      Layer.build(self, input_shapes)
 
     # Optionally load weight values specified at layer instantiation.
     if self._initial_weights is not None:
@@ -2219,12 +2240,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _symbolic_call(self, inputs):
     input_shapes = nest.map_structure(lambda x: x.shape, inputs)
     output_shapes = self.compute_output_shape(input_shapes)
+    # Convert to TensorShape so that nest.map_structure will not map into
+    # individual dim of the shape.
+    output_shapes = tf_utils.convert_shapes(output_shapes, to_tuples=False)
 
     def _make_placeholder_like(shape):
       ph = backend.placeholder(shape=shape, dtype=self.dtype)
       ph._keras_mask = None
       return ph
-
     return nest.map_structure(_make_placeholder_like, output_shapes)
 
   def _get_trainable_state(self):

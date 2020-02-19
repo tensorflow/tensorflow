@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 
@@ -81,6 +82,11 @@ class Reduction(Layer):
     # and return it.
     if weights is None:
       return get_reduce_op(self.reduction)(inputs, axis=self.axis)
+
+    # TODO(momernick): Add checks for this and a decent error message if the
+    # weight shape isn't compatible.
+    if weights.shape.rank + 1 == inputs.shape.rank:
+      weights = array_ops.expand_dims(weights, -1)
 
     weighted_inputs = math_ops.multiply(inputs, weights)
 

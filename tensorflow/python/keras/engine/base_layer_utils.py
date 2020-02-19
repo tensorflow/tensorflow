@@ -109,18 +109,17 @@ def make_variable(name,
   if initializer is not None and not callable(initializer):
     initializing_from_value = True
 
-  with ops.init_scope():
-    if initializing_from_value:
-      init_val = initializer
-      variable_dtype = None
-    else:
-      # Instantiate initializer if provided initializer is a type object.
-      if isinstance(
-          initializer,
-          (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
-        initializer = initializer()
-      init_val = lambda: initializer(shape, dtype=dtype)
-      variable_dtype = dtype.base_dtype
+  if initializing_from_value:
+    init_val = initializer
+    variable_dtype = None
+  else:
+    # Instantiate initializer if provided initializer is a type object.
+    if isinstance(
+        initializer,
+        (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
+      initializer = initializer()
+    init_val = lambda: initializer(shape, dtype=dtype)
+    variable_dtype = dtype.base_dtype
   if use_resource is None:
     use_resource = True
 

@@ -201,7 +201,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+            dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Instantiate(
             ctx, &instantiated_key_func_));
         TF_RETURN_IF_ERROR(dataset()->captured_init_func_->Instantiate(

@@ -677,6 +677,18 @@ bool RequireCudnnDeterminism() {
   return require_cudnn_determinism;
 }
 
+// A helper function to decide whether to force the default conv algorithm.
+bool ConvUseDefaultAlgorithm() {
+  static bool use_default = [] {
+    bool use_default = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_USE_DEFAULT_CONV_ALGO",
+                                               /*default_val=*/false,
+                                               &use_default));
+    return use_default;
+  }();
+  return use_default;
+}
+
 std::tuple<int, int> GetCcMajorMinor(Stream* stream) {
   int cc_major, cc_minor;
   stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
@@ -3337,21 +3349,27 @@ bool CudnnSupport::GetConvolveAlgorithms(
   bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
   out_algorithms->clear();
 
-  std::vector<dnn::AlgorithmDesc::Index> algo_types = {
-      // clang-format off
+  std::vector<dnn::AlgorithmDesc::Index> algo_types;
+  if (ConvUseDefaultAlgorithm()) {
+    // Force a fallback algorithm.
+    algo_types = {CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM};
+  } else {
+    algo_types = {
+        // clang-format off
     CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
     CUDNN_CONVOLUTION_FWD_ALGO_FFT,
     CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
-      // clang-format on
-  };
-  if (CudnnEnvVar<FftTilingForward>::IsEnabled()) {
-    algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
-  }
-  if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
-    algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
+        // clang-format on
+    };
+    if (CudnnEnvVar<FftTilingForward>::IsEnabled()) {
+      algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
+    }
+    if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
+      algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
+    }
   }
 
   // The algorithms are intentionally ordered for deterministic operation
@@ -3468,17 +3486,14 @@ bool CudnnSupport::DoBatchNormalizationForward(
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator,
-    std::function<const DeviceMemory<float>&()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    ScratchAllocator* workspace_allocator) {
   return IsStatusOk(
       DoBatchNormalizationForwardImpl<float, float>(
           stream, dnn::DataType::kFloat, dnn::DataType::kFloat, x, scale,
           offset, estimated_mean, estimated_variance, side_input, x_desc,
           scale_offset_desc, epsilon, exponential_average_factor,
           activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
-          is_training, reserve_space_allocator, workspace_allocator,
-          std::move(var_to_inv_var), std::move(inv_var_to_var)),
+          is_training, reserve_space_allocator, workspace_allocator),
       /*report_error=*/true);
 }
 
@@ -3494,17 +3509,14 @@ bool CudnnSupport::DoBatchNormalizationForward(
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator,
-    std::function<const DeviceMemory<float>&()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    ScratchAllocator* workspace_allocator) {
   return IsStatusOk(
       DoBatchNormalizationForwardImpl<Eigen::half, float>(
           stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
           estimated_mean, estimated_variance, side_input, x_desc,
           scale_offset_desc, epsilon, exponential_average_factor,
           activation_mode, y, batch_mean, batch_var, saved_mean, saved_inv_var,
-          is_training, reserve_space_allocator, workspace_allocator,
-          std::move(var_to_inv_var), std::move(inv_var_to_var)),
+          is_training, reserve_space_allocator, workspace_allocator),
       /*report_error=*/true);
 }
 
@@ -3522,9 +3534,7 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
     DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator,
-    std::function<const DeviceMemory<U>&()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    ScratchAllocator* workspace_allocator) {
   CudnnTensorDescriptor x_descriptor(x_desc, ToCudnnDataType(input_data_type));
   CudnnTensorDescriptor scale_offset_descriptor(
       scale_offset_desc, ToCudnnDataType(scale_data_type));

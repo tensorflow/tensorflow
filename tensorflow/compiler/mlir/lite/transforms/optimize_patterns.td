@@ -354,11 +354,17 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
 // if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;
 
-// Convert squeeze to reshape
+// Convert squeeze to reshape if possible.
 def : Pat<(TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
           (TFL_ReshapeOp $input,
            (ConstantOp (GetShape $squeeze_op))),
           [(AnyStaticShapeTensor $squeeze_op)]>;
+
+// Convert expand_dims to reshape if possible.
+def : Pat<(TFL_ExpandDimsOp:$expand_dims_op $input, $dim),
+          (TFL_ReshapeOp $input,
+           (ConstantOp (GetShape $expand_dims_op))),
+          [(AnyStaticShapeTensor $expand_dims_op)]>;
 
 class ValueEquals<string val> : Constraint<CPred<
   "$0.cast<DenseElementsAttr>().getNumElements() == 1 &&"

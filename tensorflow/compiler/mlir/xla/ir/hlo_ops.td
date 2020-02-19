@@ -60,6 +60,18 @@ def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
+// Dynamic representation of a shape vector as a tensor. Ideally this would be
+// an index type (as it stores indices) but that is currently disallowed in
+// MLIR.
+def HLO_DimensionTensor : ShapedContainerType<
+    [AnyInteger], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
+    "a 1D tensor of dimensions">;
+
+// In general, static shaped tensor constraints should be avoided unless
+// it is for a legacy op which is only correct with static shapes.
+def HLO_StaticShapeTensor : StaticShapeTensorOf<[
+      AnyFloat, AnyInteger, AnyComplex]>;
+
 //===----------------------------------------------------------------------===//
 // XLA combined type definitions.
 //===----------------------------------------------------------------------===//
@@ -672,7 +684,8 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
 }
 
 def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
-      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>]> {
+      [NoSideEffect, AllElementTypesMatch<["operand", "update", "result"]>,
+       AllShapesMatch<["operand", "result"]>]> {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$update,
@@ -758,10 +771,35 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
     BroadcastDimAttr:$broadcast_dimensions
   );
 
+  let results = (outs HLO_StaticShapeTensor);
+
+  // Only handles a static subset of the legacy format.
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
+      [NoSideEffect]> {
+  string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
+  string description = [{
+    This is a generalization of the BroadcastInDimOp which accepts its output
+    dimensions as an argument. It should eventually supercede the statically
+    shaped original, but is being phased as a separate op in order to support
+    compatibility with lowerings and translations that precede dynamic
+    shapes.
+
+    Note that the `broadcast_dimensions` attribute is optional and if omitted,
+    it is assumed to be an ordered, right-aligned mapping from input to
+    output dimensions.
+  }];
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_DimensionTensor:$output_dimensions,
+    BroadcastDimAttr:$broadcast_dimensions
+  );
+
   let results = (outs HLO_Tensor);
 
-  // TODO(b/130357376): One of the arguments comes from the new shape, which is
-  // not handled by the codegen.
+  // Cannot be exported to legacy formats.
   let hasCustomHLOConverter = 1;
 }
 

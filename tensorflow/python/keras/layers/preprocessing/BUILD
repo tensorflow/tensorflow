@@ -18,9 +18,12 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":categorical",
+        ":categorical_crossing",
+        ":discretization",
+        ":hashing",
         ":image_preprocessing",
         ":normalization",
+        ":preprocessing_stage",
         ":preprocessing_test_utils",
         ":reduction",
         ":text_vectorization",
@@ -28,9 +31,37 @@ py_library(
 )
 
 py_library(
-    name = "categorical",
+    name = "discretization",
     srcs = [
-        "categorical.py",
+        "discretization.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/keras/engine:base_layer",
+    ],
+)
+
+py_library(
+    name = "categorical_crossing",
+    srcs = [
+        "categorical_crossing.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/keras/engine:base_layer",
+    ],
+)
+
+py_library(
+    name = "hashing",
+    srcs = [
+        "hashing.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -175,6 +206,20 @@ py_library(
 )
 
 py_library(
+    name = "preprocessing_stage",
+    srcs = [
+        "preprocessing_stage.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras/engine:base_preprocessing_layer",
+    ],
+)
+
+py_library(
     name = "preprocessing_test_utils",
     srcs = ["preprocessing_test_utils.py"],
     srcs_version = "PY2AND3",
@@ -183,14 +228,44 @@ py_library(
     ],
 )
 
+tf_py_test(
+    name = "discretization_test",
+    size = "small",
+    srcs = ["discretization_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":discretization",
+        ":preprocessing_test_utils",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 cuda_py_test(
-    name = "categorical_test",
+    name = "categorical_crossing_test",
     size = "medium",
-    srcs = ["categorical_test.py"],
+    srcs = ["categorical_crossing_test.py"],
+    python_version = "PY3",
+    shard_count = 4,
+    tags = [
+        "no_windows",  # b/149031156
+    ],
+    deps = [
+        ":categorical_crossing",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "hashing_test",
+    size = "medium",
+    srcs = ["hashing_test.py"],
     python_version = "PY3",
     shard_count = 4,
     deps = [
-        ":categorical",
+        ":hashing",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -281,6 +356,19 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "preprocessing_stage_test",
+    srcs = ["preprocessing_stage_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":preprocessing_stage",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

@@ -78,7 +78,7 @@ tf_portable_proto_library(
     name = "portable_tf2xla_proto",
     config_string = "allow_all:true",
     header_outs = ["//tensorflow/compiler/tf2xla/tf2xla.proto.h"],
-    portable_deps = ["//tensorflow/core:android_proto_lib"],
+    portable_deps = ["//tensorflow/core:portable_proto_lib_full_runtime"],
     proto_deps = [
         ":tf2xla_proto",
         "//tensorflow/core:protos_all",
@@ -162,6 +162,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf2xla_proto_cc",
+        ":tf2xla_util",
         ":xla_compiler",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
@@ -175,10 +176,7 @@ cc_library(
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -626,9 +624,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:session_options",
+        "//tensorflow/core:core_cpu",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:support",
     ],
     alwayslink = 1,
@@ -641,6 +640,7 @@ cc_library(
     ],
     deps = [
         ":mlir_bridge_pass",
+        "//tensorflow/core:core_cpu",
     ],
     alwayslink = 1,
 )

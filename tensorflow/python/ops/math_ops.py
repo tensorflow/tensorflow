@@ -1290,7 +1290,7 @@ def _mul_dispatch(x, y, name=None):
 
 # NOTE(aselle): When integer division is added for sparse_dense_cwise,
 # div, truediv, and floordiv should be delegated appropriately for
-# Python sematnics, analogous to dense cwise tensor operations.
+# Python semantics, analogous to dense cwise tensor operations.
 _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_div, "div",
                               sparse_tensor.SparseTensor)
 _OverrideBinaryOperatorHelper(_sparse_dense_truediv, "truediv",
@@ -1487,7 +1487,7 @@ def tensor_equals(self, other):
     return False
   g = getattr(self, "graph", None)
   if (ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions() and
-      (g is None or g._building_function)):  # pylint: disable=protected-access
+      (g is None or g.building_function)):
     return gen_math_ops.equal(self, other, incompatible_shape_error=False)
   else:
     # In legacy graph mode, tensor equality is object equality
@@ -1768,12 +1768,14 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   For example:
 
   ```python
-  x = tf.constant([[1, 2, 3], [1, 1, 1]])
-  tf.reduce_euclidean_norm(x)  # sqrt(17)
-  tf.reduce_euclidean_norm(x, 0)  # [sqrt(2), sqrt(5), sqrt(10)]
-  tf.reduce_euclidean_norm(x, 1)  # [sqrt(14), sqrt(3)]
-  tf.reduce_euclidean_norm(x, 1, keepdims=True)  # [[sqrt(14)], [sqrt(3)]]
-  tf.reduce_euclidean_norm(x, [0, 1])  # sqrt(17)
+  x = tf.constant([[1, 2, 3], [1, 1, 1]]) # x.dtype is tf.int32
+  tf.math.reduce_euclidean_norm(x)  # returns 4 as dtype is tf.int32
+  y = tf.constant([[1, 2, 3], [1, 1, 1]], dtype = tf.float32)
+  tf.math.reduce_euclidean_norm(y)  # returns 4.1231055 which is sqrt(17)
+  tf.math.reduce_euclidean_norm(y, 0)  # [sqrt(2), sqrt(5), sqrt(10)]
+  tf.math.reduce_euclidean_norm(y, 1)  # [sqrt(14), sqrt(3)]
+  tf.math.reduce_euclidean_norm(y, 1, keepdims=True)  # [[sqrt(14)], [sqrt(3)]]
+  tf.math.reduce_euclidean_norm(y, [0, 1])  # sqrt(17)
   ```
 
   Args:
@@ -2880,8 +2882,16 @@ def matmul(a,
       multiplication.
     adjoint_b: If `True`, `b` is conjugated and transposed before
       multiplication.
-    a_is_sparse: If `True`, `a` is treated as a sparse matrix.
-    b_is_sparse: If `True`, `b` is treated as a sparse matrix.
+    a_is_sparse: If `True`, `a` is treated as a sparse matrix. Notice, this
+      **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
+      that assume most values in `a` are zero.
+      See `tf.sparse.sparse_dense_matmul`
+      for some support for `tf.SparseTensor` multiplication.
+    b_is_sparse: If `True`, `b` is treated as a sparse matrix. Notice, this
+      **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
+      that assume most values in `a` are zero.
+      See `tf.sparse.sparse_dense_matmul`
+      for some support for `tf.SparseTensor` multiplication.
     name: Name for the operation (optional).
 
   Returns:
@@ -4364,6 +4374,14 @@ def polyval(coeffs, x, name=None):
 
      p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
             x * coeffs[0]))
+            
+  Usage Example:
+  
+  >>> coefficients = [1.0, 2.5, -4.2]
+  >>> x = 5.0
+  >>> y = tf.math.polyval(coefficients, x)
+  >>> y
+  <tf.Tensor: shape=(), dtype=float32, numpy=33.3>
 
   Usage Example:
 
@@ -4395,6 +4413,9 @@ def polyval(coeffs, x, name=None):
   Equivalent to numpy.polyval.
   @end_compatibility
   """
+  if not isinstance(coeffs, list):
+    raise ValueError("Argument coeffs must be list type "
+                     "found {}.".format(type(coeffs)))
 
   with ops.name_scope(name, "polyval", nest.flatten(coeffs) + [x]) as name:
     x = ops.convert_to_tensor(x, name="x")

@@ -217,11 +217,11 @@ class AudioProcessor(object):
     """
     if not data_url:
       return
-    if not os.path.exists(dest_directory):
+    if not gfile.Exists(dest_directory):
       os.makedirs(dest_directory)
     filename = data_url.split('/')[-1]
     filepath = os.path.join(dest_directory, filename)
-    if not os.path.exists(filepath):
+    if not gfile.Exists(filepath):
 
       def _progress(count, block_size, total_size):
         sys.stdout.write(
@@ -350,7 +350,7 @@ class AudioProcessor(object):
     """
     self.background_data = []
     background_dir = os.path.join(self.data_dir, BACKGROUND_NOISE_DIR_NAME)
-    if not os.path.exists(background_dir):
+    if not gfile.Exists(background_dir):
       return self.background_data
     with tf.compat.v1.Session(graph=tf.Graph()) as sess:
       wav_filename_placeholder = tf.compat.v1.placeholder(tf.string, [])

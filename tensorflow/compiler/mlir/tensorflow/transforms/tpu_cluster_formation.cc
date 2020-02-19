@@ -339,7 +339,8 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
   // Create replicate op.
   OpBuilder builder(launch_op);
   auto replicate_op = builder.create<tf_device::ReplicateOp>(
-      launch_op.getLoc(), num_replicas, llvm::ArrayRef<llvm::StringRef>(),
+      launch_op.getLoc(), num_replicas,
+      llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>(),
       replicated_inputs, launch_op.getResultTypes());
   if (!mirrored_variable_indices.empty())
     replicate_op.setAttr(kMirroredVariableIndicesAttr,

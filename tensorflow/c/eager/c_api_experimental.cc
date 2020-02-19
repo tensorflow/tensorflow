@@ -25,8 +25,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/profiler/rpc/client/capture_profile.h"
-#include "tensorflow/core/profiler/rpc/profiler_server.h"
 
 using tensorflow::string;
 
@@ -47,79 +45,12 @@ void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
           ->Handle());
 }
 
-TFE_Profiler* TFE_NewProfiler() { return new TFE_Profiler(); }
-
-bool TFE_ProfilerIsOk(TFE_Profiler* profiler) {
-  return profiler->profiler->Status().ok();
-}
-
-void TFE_DeleteProfiler(TFE_Profiler* profiler) { delete profiler; }
-
-void TFE_ProfilerSerializeToString(TFE_Profiler* profiler, TF_Buffer* buf,
-                                   TF_Status* status) {
-  string content;
-  status->status = profiler->profiler->SerializeToString(&content);
-  void* data = tensorflow::port::Malloc(content.length());
-  content.copy(static_cast<char*>(data), content.length(), 0);
-  buf->data = data;
-  buf->length = content.length();
-  buf->data_deallocator = [](void* data, size_t length) {
-    tensorflow::port::Free(data);
-  };
-}
-
-void TFE_StartProfilerServer(int port) {
-  // Release child thread intentionally. The child thread can be terminated by
-  // terminating the main thread.
-  tensorflow::StartProfilerServer(port).release();
-}
-
 void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
   ctx->context->SetShouldStoreGraphs(true);
 }
 
 void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
   ctx->context->SetShouldStoreGraphs(false);
-}
-
-bool TFE_ProfilerClientStartTracing(const char* service_addr,
-                                    const char* logdir, const char* worker_list,
-                                    bool include_dataset_ops, int duration_ms,
-                                    int num_tracing_attempts,
-                                    TF_Status* status) {
-  tensorflow::Status s =
-      tensorflow::profiler::ValidateHostPortPair(service_addr);
-  if (!s.ok()) {
-    Set_TF_Status_from_Status(status, s);
-    return false;
-  }
-  s = tensorflow::profiler::Trace(service_addr, logdir, worker_list,
-                                  include_dataset_ops, duration_ms,
-                                  num_tracing_attempts);
-  tensorflow::Set_TF_Status_from_Status(status, s);
-  return s.ok();
-}
-
-void TFE_ProfilerClientMonitor(const char* service_addr, int duration_ms,
-                               int monitoring_level, bool display_timestamp,
-                               TF_Buffer* result, TF_Status* status) {
-  tensorflow::Status s =
-      tensorflow::profiler::ValidateHostPortPair(service_addr);
-  if (!s.ok()) {
-    Set_TF_Status_from_Status(status, s);
-    return;
-  }
-  string content;
-  s = tensorflow::profiler::Monitor(service_addr, duration_ms, monitoring_level,
-                                    display_timestamp, &content);
-  void* data = tensorflow::port::Malloc(content.length());
-  content.copy(static_cast<char*>(data), content.length(), 0);
-  result->data = data;
-  result->length = content.length();
-  result->data_deallocator = [](void* data, size_t length) {
-    tensorflow::port::Free(data);
-  };
-  tensorflow::Set_TF_Status_from_Status(status, s);
 }
 
 void TFE_MonitoringCounterCellIncrementBy(TFE_MonitoringCounterCell* cell,
@@ -631,4 +562,10 @@ void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
+}
+
+void TFE_TensorHandleEnableImplicitMirroring(TFE_TensorHandle* h,
+                                             TF_Status* status) {
+  h->handle->EnableImplicitMirroring();
+  status->status = tensorflow::Status::OK();
 }

@@ -244,6 +244,19 @@ void RearrangeWeightsToOHWIOGroupI4O4(
   }
 }
 
+// Matrices for Winograd trasformations received with method described here
+// https://openreview.net/pdf?id=H1ZaRZVKg
+
+// returns A transposed matrix(6 * 4) as array (24 values) for Winograd4x4To6x6
+std::vector<float> AtMatrixForWinograd4x4To6x6();
+
+// returns B transposed matrix(6 * 6) as array (36 values) for Winograd4x4To6x6
+std::vector<float> BtMatrixForWinograd4x4To6x6();
+
+void RearrangeWeightsToWinograd4x4To6x6Weights(
+    const ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& src_weights,
+    ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32>* dst_weights);
+
 // Returns fastest TextureAddressMode that return ZERO for out-of-range image
 // coordinates.
 //

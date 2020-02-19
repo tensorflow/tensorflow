@@ -2215,20 +2215,21 @@ bool MIOpenSupport::DoRnnBackwardImpl(
 
   // workaround for missing initialization support in MIOpen.
   // TODO: remove this when MIOpen is ready.
+  auto type_size = std::is_same<T, Eigen::half>::value ? 2 : sizeof(T);
   auto size_data = input_desc.seq_length() * input_desc.batch_size() *
                    input_desc.data_size();
   if ((size_data > 0) && (input_backprop_data->opaque() != nullptr))
-    stream->ThenMemZero(input_backprop_data, size_data * sizeof(float));
+    stream->ThenMemZero(input_backprop_data, size_data * type_size);
 
   size_data = input_h_desc.num_layers() * input_h_desc.batch_size() *
               input_h_desc.data_size();
   if ((size_data > 0) && (input_h_backprop_data->opaque() != nullptr))
-    stream->ThenMemZero(input_h_backprop_data, size_data * sizeof(float));
+    stream->ThenMemZero(input_h_backprop_data, size_data * type_size);
 
   size_data = input_c_desc.num_layers() * input_c_desc.batch_size() *
               input_c_desc.data_size();
   if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr))
-    stream->ThenMemZero(input_c_backprop_data, size_data * sizeof(float));
+    stream->ThenMemZero(input_c_backprop_data, size_data * type_size);
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
@@ -2486,8 +2487,19 @@ MIOpenSupport::createRnnDescriptor(
     dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
     float dropout, uint64 seed, ScratchAllocator* state_allocator,
     bool use_padded_io) {
-  // ROCM TODO: cell_size is ignored for now
-  // ROCM TODO: batch_size is ignored for now
+  // ROCM TODO: batch_size is used in dynamic persistent RNN algorithm and is
+  // not supported by MIOpen now.
+  if (use_padded_io) {
+    return port::Status(port::error::INVALID_ARGUMENT,
+                        "ROCm MIOpen only supports packed input output.");
+  }
+
+  bool use_projection = cell_size != 0 && hidden_size < cell_size;
+  if (use_projection) {
+    return port::Status(
+        port::error::INVALID_ARGUMENT,
+        "ROCm MIOpen does not support RNN ProjectionLayers yet.");
+  }
 
   auto miopen = miopen_->GetHandle(parent_, nullptr);
   std::unique_ptr<MIOpenRnnDescriptor> rnn_desc(new MIOpenRnnDescriptor(
@@ -3443,15 +3455,12 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator,
-    std::function<const DeviceMemory<float>&()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationForwardImpl<Eigen::half, float>(
       stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
       estimated_mean, estimated_variance, side_input, x_desc, scale_offset_desc,
       epsilon, exponential_average_factor, activation_mode, y, batch_mean,
-      batch_var, saved_mean, saved_inv_var, is_training,
-      std::move(var_to_inv_var), std::move(inv_var_to_var));
+      batch_var, saved_mean, saved_inv_var, is_training);
 }
 
 bool MIOpenSupport::DoBatchNormalizationForward(
@@ -3466,15 +3475,12 @@ bool MIOpenSupport::DoBatchNormalizationForward(
     DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
     DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
     bool is_training, ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator,
-    std::function<const DeviceMemory<float>&()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    ScratchAllocator* workspace_allocator) {
   return DoBatchNormalizationForwardImpl<float, float>(
       stream, dnn::DataType::kFloat, dnn::DataType::kFloat, x, scale, offset,
       estimated_mean, estimated_variance, side_input, x_desc, scale_offset_desc,
       epsilon, exponential_average_factor, activation_mode, y, batch_mean,
-      batch_var, saved_mean, saved_inv_var, is_training,
-      std::move(var_to_inv_var), std::move(inv_var_to_var));
+      batch_var, saved_mean, saved_inv_var, is_training);
 }
 
 template <class T, class U>
@@ -3490,8 +3496,7 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
     dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
     DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
     DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
-    bool is_training, std::function<const DeviceMemory<U>&()> var_to_inv_var,
-    std::function<void()> inv_var_to_var) {
+    bool is_training) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   ScopedTensorDescriptor x_descriptor{x_desc,

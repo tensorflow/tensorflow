@@ -75,7 +75,7 @@ class DistributedValues(object):
         "replica accesses.")
 
   def _get_closest(self):
-    """Returns value in same replica or device if possible, else the primary."""
+    """Returns value in same replica or device if possible, else the _primary."""
     replica_id = _get_current_replica_id_as_int()
     if replica_id is None:
       # Try to find a value on the current device.
@@ -83,12 +83,12 @@ class DistributedValues(object):
       for value in self._values:
         if device_util.canonicalize(value.device) == current_device:
           return value
-      return self.primary
+      return self._primary
     else:
       return self._values[replica_id]
 
   @property
-  def primary(self):
+  def _primary(self):
     """Returns a representative component."""
     return self._values[0]
 
@@ -98,12 +98,8 @@ class DistributedValues(object):
     return self._values
 
   @property
-  def devices(self):
+  def _devices(self):
     return tuple(v.device for v in self._values)
-
-  @property
-  def is_tensor_like(self):
-    return all(tensor_util.is_tensor(v) for v in self._values)
 
   def __str__(self):
     debug_str = ",\n".join(
@@ -372,7 +368,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   def __init__(self, strategy, values):
     self._distribute_strategy = strategy
     super(DistributedVariable, self).__init__(values)
-    self._common_name = self.primary.name.split(":")[0]
+    self._common_name = self._primary.name.split(":")[0]
     # Use a weakref to make it easy to map from the contained values
     # to the container without introducing a reference cycle.
     for v in values:
@@ -399,7 +395,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
       The op that evaluates to True or False depending on if all the
       component variables are initialized.
     """
-    result = self.primary.is_initialized()
+    result = self._primary.is_initialized()
     # We iterate through the list of values except the last one to allow us to
     # name the final `logical_and` op the same name that is passed by the user
     # to the `is_initialized` op. For distributed variables, the
@@ -430,11 +426,11 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
 
   @property
   def constraint(self):
-    return self.primary.constraint
+    return self._primary.constraint
 
   @property
   def graph(self):
-    return self.primary.graph
+    return self._primary.graph
 
   @property
   def _shared_name(self):
@@ -442,28 +438,28 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
 
   @property
   def _unique_id(self):
-    return self.primary._unique_id  # pylint: disable=protected-access
+    return self._primary._unique_id  # pylint: disable=protected-access
 
   @property
   def _graph_key(self):
     """Lets Optimizers know which graph this variable is from."""
-    return self.primary._graph_key  # pylint: disable=protected-access
+    return self._primary._graph_key  # pylint: disable=protected-access
 
   @property
   def name(self):
-    return self.primary.name
+    return self._primary.name
 
   @property
   def dtype(self):
-    return self.primary.dtype
+    return self._primary.dtype
 
   @property
   def shape(self):
-    return self.primary.shape
+    return self._primary.shape
 
   @property
   def synchronization(self):
-    return self.primary.synchronization
+    return self._primary.synchronization
 
   @property
   def handle(self):
@@ -479,10 +475,10 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
 
   @property
   def _save_slice_info(self):
-    return self.primary._save_slice_info  # pylint: disable=protected-access
+    return self._primary._save_slice_info  # pylint: disable=protected-access
 
   def _get_save_slice_info(self):
-    return self.primary._get_save_slice_info()  # pylint: disable=protected-access
+    return self._primary._get_save_slice_info()  # pylint: disable=protected-access
 
   def _set_save_slice_info(self, save_slice_info):
     for v in self._values:
@@ -494,31 +490,31 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
 
   @property
   def trainable(self):
-    return self.primary.trainable
+    return self._primary.trainable
 
   @property
   def distribute_strategy(self):
     return self._distribute_strategy
 
   def get_shape(self):
-    return self.primary.get_shape()
+    return self._primary.get_shape()
 
   def to_proto(self, export_scope=None):
-    return self.primary.to_proto(export_scope=export_scope)
+    return self._primary.to_proto(export_scope=export_scope)
 
   @property
   def op(self):
     # We want cross-replica code that does some var.op.X calls
-    # to work (even if the current device isn't in self.devices), but
+    # to work (even if the current device isn't in self._devices), but
     # other uses of var.op in a cross-replica context to fail.
     if distribution_strategy_context.in_cross_replica_context():
-      return DistributedVarOp(self.primary.op.name, self.primary.op.graph,
-                              self.primary.op.traceback, self.primary.op.type)
+      return DistributedVarOp(self._primary.op.name, self._primary.op.graph,
+                              self._primary.op.traceback, self._primary.op.type)
     return self._get().op
 
   @property
   def _in_graph_mode(self):
-    return self.primary._in_graph_mode  # pylint: disable=protected-access
+    return self._primary._in_graph_mode  # pylint: disable=protected-access
 
   def read_value(self):
     with _enter_or_assert_strategy(self._distribute_strategy):
@@ -571,7 +567,7 @@ class TPUVariableMixin(object):
     # Handle ID is needed for `get_replicated_var_handle` to cache the variables
     # correctly since in eager mode different variables can have the same name.
     if ops.executing_eagerly_outside_functions():
-      self._handle_id = self._common_name + "_" + str(id(self.primary))
+      self._handle_id = self._common_name + "_" + str(id(self._primary))
     else:
       self._handle_id = self._common_name
 
@@ -596,7 +592,7 @@ class TPUVariableMixin(object):
     if _enclosing_tpu_context() is None:
       return super(TPUVariableMixin, self)._get_closest()
     else:
-      return self.primary
+      return self._primary
 
   def numpy(self):
     if context.executing_eagerly():
@@ -648,8 +644,8 @@ class TPUVariableMixin(object):
 
   @property
   def op(self):
-    return DistributedVarOp(self.primary.op.name, self.primary.op.graph,
-                            self.primary.op.traceback, self.primary.op.type)
+    return DistributedVarOp(self._primary.op.name, self._primary.op.graph,
+                            self._primary.op.traceback, self._primary.op.type)
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
@@ -904,7 +900,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
     """
 
     def _saveable_factory(name=self._common_name):
-      return _MirroredSaveable(self, self.primary, name)
+      return _MirroredSaveable(self, self._primary, name)
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
@@ -1007,7 +1003,8 @@ class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
         slice_spec="",
         name=name,
         dtype=sync_on_read_variable.dtype,
-        device=sync_on_read_variable.primary.device)
+        device=sync_on_read_variable._primary.device)  # pylint: disable=protected-access
+
     super(_SyncOnReadSaveable, self).__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
@@ -1017,7 +1014,7 @@ class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
     # when saving.
     tensor, = restored_tensors
     if self._sync_on_read_variable.aggregation == vs.VariableAggregation.SUM:
-      tensor = math_ops.cast(tensor / len(self._sync_on_read_variable.devices),
+      tensor = math_ops.cast(tensor / len(self._sync_on_read_variable._devices),  # pylint: disable=protected-access
                              self._sync_on_read_variable.dtype)
     return control_flow_ops.group(
         tuple(
@@ -1107,7 +1104,7 @@ class SyncOnReadVariable(DistributedVariable):
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-      return self.primary
+      return self._primary
 
     with _enter_or_assert_strategy(self._distribute_strategy):
       return self._distribute_strategy.reduce(
@@ -1139,8 +1136,9 @@ class SyncOnReadVariable(DistributedVariable):
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
-    return ops.convert_to_tensor(
-        self._get(), dtype=dtype, name=name, as_ref=as_ref)
+    with _enter_or_assert_strategy(self._distribute_strategy):
+      return ops.convert_to_tensor(
+          self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
 # Register a conversion function for SyncOnReadVariable which allows as_ref to

@@ -49,7 +49,6 @@ do
         //tensorflow/examples/android:libtensorflow_demo.so \
         //tensorflow/tools/benchmark:benchmark_model
 
-    copy_lib bazel-bin/tensorflow/core/libandroid_tensorflow_lib.lo
     copy_lib bazel-bin/tensorflow/tools/android/inference_interface/libtensorflow_inference.so
     copy_lib bazel-bin/tensorflow/examples/android/libtensorflow_demo.so
     copy_lib bazel-bin/tensorflow/tools/benchmark/benchmark_model

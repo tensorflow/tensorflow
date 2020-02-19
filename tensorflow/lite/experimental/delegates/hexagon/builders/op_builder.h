@@ -261,6 +261,13 @@ class GraphBuilder {
     return builders_[node_id - 1]->GetOpType();
   }
 
+  int GetTFLiteNodeID(int node_id) const {
+    if (node_id > builders_.size()) {
+      return -1;
+    }
+    return builders_[node_id - 1]->GetTFLiteNodeID();
+  }
+
  private:
   // Helper method to fetch dimensions.
   // TODO(karimnosseir): Move this method to shared place.

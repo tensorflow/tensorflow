@@ -212,6 +212,12 @@ llvm::JITSymbol SimpleOrcJIT::FindCompiledSymbol(const std::string& name) {
   return nullptr;
 }
 
+#if defined(PLATFORM_WINDOWS)
+// This function is used by compiler-generated code on windows, but it's not
+// declared anywhere. The signature does not matter, we just need the address.
+extern "C" void __chkstk(size_t);
+#endif
+
 namespace {
 // Register some known symbols with the CustomCallTargetRegistry.
 bool RegisterKnownJITSymbols() {
@@ -362,6 +368,10 @@ bool RegisterKnownJITSymbols() {
 #ifdef MEMORY_SANITIZER
   registry->Register("__msan_unpoison",
                      reinterpret_cast<void*>(__msan_unpoison), "Host");
+#endif
+
+#if defined(PLATFORM_WINDOWS)
+  registry->Register("__chkstk", reinterpret_cast<void*>(__chkstk), "Host");
 #endif
 
   return true;

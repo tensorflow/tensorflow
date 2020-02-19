@@ -74,6 +74,11 @@ and the following optional parameters:
     blank, passive mode is used by default.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
+*   `hexagon_profiling`: `bool` (default=false) \
+    Whether to profile ops running on hexagon. Needs to be combined with
+    `enable_op_profiling`. When this is set to true the profile of ops
+    on hexagon DSP will be added to the profile table.
+    Note that, the reported data on hexagon is in cycles, not in ms like on cpu.
 
 ## To build/install/run
 

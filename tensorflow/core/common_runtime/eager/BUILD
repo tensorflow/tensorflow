@@ -157,6 +157,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/types:variant",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -176,6 +177,7 @@ tf_cc_test(
     srcs = ["tensor_handle_test.cc"],
     deps = [
         ":tensor_handle",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -402,6 +404,7 @@ tf_cc_test(
     deps = [
         ":eager_op_rewrite_registry",
         "//tensorflow/core:lib",
+        "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

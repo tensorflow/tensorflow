@@ -109,7 +109,7 @@ namespace tensorflow {
 
 template <typename Device, typename Tinput, typename Tweight, typename Tbias,
           typename Toutput>
-class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
+class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
  public:
   virtual ~MklDnnQuantizedMatMulOp() {
     if (this->input_bias_ != nullptr) {
@@ -134,7 +134,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
   }
 
   explicit MklDnnQuantizedMatMulOp(OpKernelConstruction* context)
-      : MklDnnMatMulOpBase<Toutput>(context) {
+      : MklDnnMatMulOpBase<Tweight, Toutput>(context) {
     string mode_string;
     OP_REQUIRES_OK(context, context->GetAttr("input_quant_mode", &mode_string));
     if (mode_string == "MIN_FIRST") {
@@ -146,10 +146,10 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
           "Quantization mode must be either MIN_FIRST or SCALED, but received ",
           mode_string));
     }
-    is_weight_const_ = false;
+    this->is_weight_const_ = false;
     if (context->HasAttr("is_weight_const")) {
-      OP_REQUIRES_OK(context,
-                     context->GetAttr("is_weight_const", &is_weight_const_));
+      OP_REQUIRES_OK(context, context->GetAttr("is_weight_const",
+                                               &(this->is_weight_const_)));
     }
   }
 
@@ -258,15 +258,15 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
         // TF default format is IO. So in that case convert weight from IO
         // to OI for the first iteration and cache it to reuse in the
         // subsequent iterations, if the weight is constant.
-        if (is_weight_const_) {
+        if (this->is_weight_const_) {
           // Check if the weight is already cached or not
-          if (IsWeightCacheEmpty(context)) {
+          if (this->IsWeightCacheEmpty(context)) {
             // Cache weight if it is not cached.
-            CacheWeight(context, matmul_fwd_pd, weight_data, weight_tensor,
-                        weight, weight_md);
+            this->CacheWeight(context, matmul_fwd_pd, weight_data,
+                              weight_tensor, weight, weight_md);
           }
-          weight_data =
-              GetCachedWeight(context, matmul_fwd->GetweightMemoryFormat());
+          weight_data = this->GetCachedWeight(
+              context, matmul_fwd->GetweightMemoryFormat());
           is_weight_cached = (weight_data != nullptr);
         }
 
@@ -461,87 +461,8 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
 
   // Buffer to save the compensated bias
   float* comp_bias_ = nullptr;
-  // Tensor to save reordered weight
-  mutex mu_;
-  PersistentTensor weight_oi GUARDED_BY(mu_);
-  PersistentTensor weight_oi_md GUARDED_BY(mu_);
 
   int mode_;
-  bool is_weight_const_;
-  // LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
-  // be acquired before entering the function, since it is acquired
-  // inside the function.
-  inline bool IsWeightCacheEmpty(OpKernelContext* context) LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock lock(mu_);
-    return (weight_oi.NumElements() == 0);
-  }
-
-  // Cache the converted weight in a persistent tensor.
-  // Only one thread can execute this method at any given time.
-  void CacheWeight(
-      OpKernelContext* context,
-      const std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>&
-          matmul_fwd_pd,
-      Tweight* weight_data, const Tensor& weight_tensor,
-      MklDnnData<Tweight>& weight, const memory::desc& weight_md)
-      LOCKS_EXCLUDED(mu_) {
-    mutex_lock lock(mu_);
-    const Tensor& weight_t = *weight_oi.AccessTensor(context);
-
-    // If the weights are already cahced, there's nothing to do
-    if (weight_t.NumElements() > 0) {
-      return;
-    }
-
-    // Reorder and cache the weight
-    weight.SetUsrMem(weight_md, &weight_tensor);
-    weight.CheckReorderToOpMem(matmul_fwd_pd.get()->weights_primitive_desc());
-    weight_data = static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
-
-    Tensor* weight_tensor_ptr = nullptr;
-
-    TensorShape weight_tf_shape;
-    weight_tf_shape.AddDim(
-        (matmul_fwd_pd.get()->weights_primitive_desc().get_size() /
-         sizeof(Tweight)));
-
-    OP_REQUIRES_OK(context, context->allocate_persistent(
-                                DataTypeToEnum<Tweight>::value, weight_tf_shape,
-                                &weight_oi, &weight_tensor_ptr));
-
-    void* weight_oi_t_data = weight.GetTensorBuffer(weight_tensor_ptr);
-    size_t weight_size = weight.GetOpMem().get_primitive_desc().get_size();
-    memcpy(weight_oi_t_data, weight_data, weight_size);
-
-    // Cache the memory descriptor
-    Tensor* weight_md_tensor_ptr = nullptr;
-    TensorShape weight_mkl_format;
-
-    weight_mkl_format.AddDim(1);
-
-    OP_REQUIRES_OK(context, context->allocate_persistent(
-                                DT_INT32, weight_mkl_format, &weight_oi_md,
-                                &weight_md_tensor_ptr));
-    weight_md_tensor_ptr->scalar<int32>()() =
-        matmul_fwd_pd.get()->weights_primitive_desc().desc().data.format;
-  }
-
-  Tweight* GetCachedWeight(OpKernelContext* context,
-                           const memory::format& weight_mf)
-      LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock lock(mu_);
-    const Tensor& weight_t = *weight_oi.AccessTensor(context);
-    const Tensor& weight_md_t = *weight_oi_md.AccessTensor(context);
-
-    // Check if the  memory descriptor of the cached weight is same as
-    // weight_mf. If so use the cached memory, else return NULL
-    if ((weight_md_t.scalar<int32>().size() > 0) &&
-        weight_md_t.scalar<int32>()() == weight_mf) {
-      return static_cast<Tweight*>(
-          const_cast<Tweight*>(weight_t.flat<Tweight>().data()));
-    }
-    return nullptr;
-  }
 };
 
 template <typename Device, typename Tinput, typename Tweight, typename Tbias,

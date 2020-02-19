@@ -158,14 +158,15 @@ class TPUStrategy(distribute_lib.Strategy):
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
   # This implementation runs a single step. It does not use infeed or outfeed.
-  def experimental_run_v2(self, fn, args=(), kwargs=None):
+  def experimental_run_v2(self, fn, args=(), kwargs=None, options=None):
     """See base class."""
     validate_experimental_run_function(fn)
 
     # Note: the target function is converted to graph even when in Eager mode,
     # so autograph is on by default here.
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
-    return self.extended.tpu_run(fn, args, kwargs)
+    options = options or distribute_lib.RunOptions()
+    return self.extended.tpu_run(fn, args, kwargs, options)
 
 
 @tf_export(v1=["distribute.experimental.TPUStrategy"])
@@ -206,12 +207,62 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
   # This implementation runs a single step. It does not use infeed or outfeed.
-  def experimental_run_v2(self, fn, args=(), kwargs=None):
-    """See base class."""
+  def experimental_run_v2(self, fn, args=(), kwargs=None, options=None):
+    """Run `fn` on each replica, with the given arguments.
+
+    Executes ops specified by `fn` on each replica. If `args` or `kwargs` have
+    "per-replica" values, such as those produced by a "distributed `Dataset`",
+    when `fn` is executed on a particular replica, it will be executed with the
+    component of those "per-replica" values that correspond to that replica.
+
+    `fn` may call `tf.distribute.get_replica_context()` to access members such
+    as `all_reduce`.
+
+    All arguments in `args` or `kwargs` should either be nest of tensors or
+    per-replica objects containing tensors or composite tensors.
+
+    Users can pass strategy specific options to `options` argument. An example
+    to enable bucketizing dynamic shapes in `TPUStrategy.experimental_run_v2`
+    is:
+    ```python
+
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tf.config.experimental_connect_to_cluster(resolver)
+    tf.tpu.experimental.initialize_tpu_system(resolver)
+    strategy = tf.distribute.experimental.TPUStrategy(tpu='')
+
+    options = tf.distribute.RunOptions()
+    options.experimental_bucketizing_dynamic_shape = True
+
+    iterator = iter(inputs)
+
+    @tf.function()
+    def step_fn(inputs):
+      output = tf.reduce_sum(inputs)
+      return output
+
+      strategy.experimental_run_v2(step_fn, args=(next(iterator),),
+                                   options=options)
+    ```
+
+    Args:
+      fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
+      args: (Optional) Positional arguments to `fn`.
+      kwargs: (Optional) Keyword arguments to `fn`.
+      options: (Optional) An instance of `tf.distribute.RunOptions` specifying
+        the options to run `fn`.
+
+    Returns:
+      Merged return value of `fn` across replicas. The structure of the return
+      value is the same as the return value from `fn`. Each element in the
+      structure can either be "per-replica" `Tensor` objects or `Tensor`s
+      (for example, if running on a single replica).
+    """
     validate_experimental_run_function(fn)
 
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
-    return self.extended.tpu_run(fn, args, kwargs)
+    options = options or distribute_lib.RunOptions()
+    return self.extended.tpu_run(fn, args, kwargs, options)
 
 
 # TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
@@ -288,7 +339,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._retrace_functions_for_each_device = False
 
     self.experimental_enable_get_next_as_optional = True
-    self.experimental_enable_dynamic_batch_size = True
     self._prefetch_on_host = False
 
     self._logical_device_stack = [0]
@@ -571,7 +621,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       with ops.device(colocate_with.device):
         return next_creator(**kwargs)
     else:
-      devices = colocate_with.devices
+      devices = colocate_with._devices  # pylint: disable=protected-access
 
     def _real_mirrored_creator(**kwargs):  # pylint: disable=g-missing-docstring
       initial_value = None
@@ -801,11 +851,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     """
     return True
 
-  def tpu_run(self, fn, args, kwargs):
-    func = self._tpu_function_creator(fn)
+  def tpu_run(self, fn, args, kwargs, options=None):
+    func = self._tpu_function_creator(fn, options)
     return func(args, kwargs)
 
-  def _tpu_function_creator(self, fn):
+  def _tpu_function_creator(self, fn, options):
     if fn in self._tpu_function_cache:
       return self._tpu_function_cache[fn]
 
@@ -844,7 +894,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
       # Construct and pass `maximum_shapes` so that we could support dynamic
       # shapes using dynamic padder.
-      if self.experimental_enable_dynamic_batch_size and replicate_inputs:
+      if options.experimental_enable_dynamic_batch_size and replicate_inputs:
         maximum_shapes = []
         flattened_list = nest.flatten(replicate_inputs[0])
         for input_tensor in flattened_list:
@@ -859,12 +909,18 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       else:
         maximum_shapes = None
 
+      if options.experimental_bucketizing_dynamic_shape:
+        padding_spec = tpu.PaddingSpec.POWER_OF_TWO
+      else:
+        padding_spec = None
+
       with strategy.scope():
         replicate_outputs = tpu.replicate(
             replicated_fn,
             replicate_inputs,
             device_assignment=self._device_assignment,
-            maximum_shapes=maximum_shapes)
+            maximum_shapes=maximum_shapes,
+            padding_spec=padding_spec)
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
       if isinstance(result[0], list):

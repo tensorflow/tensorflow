@@ -77,6 +77,8 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
                   BenchmarkParam::Create<std::string>(""));
   params.AddParam("nnapi_execution_preference",
                   BenchmarkParam::Create<std::string>(""));
+  params.AddParam("profiling_output_csv_file",
+                  BenchmarkParam::Create<std::string>(""));
   return params;
 }
 

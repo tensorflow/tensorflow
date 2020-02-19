@@ -25,6 +25,10 @@ cc_library(
         ":tflite_api_dispatcher",
         "//tensorflow/lite:framework",
     ] + tflite_experimental_runtime_linkopts(
+        if_eager = [
+            # "//tensorflow/lite/experimental/tf_runtime/opdef:tflrt_opdefs",
+            # "//tensorflow/lite/experimental/tf_runtime/tfrt_ops:tfrt_tflite_ops_alwayslink",
+        ],
         if_non_eager = [
             # "//tensorflow/lite/experimental/tf_runtime/tfrt_kernels:tfrt_tflite_interpreter_alwayslink",
             # "//third_party/tf_runtime:basic_kernels_alwayslink",

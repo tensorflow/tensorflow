@@ -187,7 +187,8 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
   void Run(const Options& opts, Handle handle, CallFrameInterface* call_frame,
            DoneCallback done) override;
 
-  Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) override;
+  Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
+                      OpKernel** kernel) override;
 
   bool IsStateful(const string& function_name) const override;
 
@@ -256,7 +257,8 @@ void FunctionLibraryRuntimeOverlay::Run(const Options& opts, Handle handle,
   base_flr_->Run(opts, handle, call_frame, std::move(done));
 }
 
-Status FunctionLibraryRuntimeOverlay::CreateKernel(const NodeDef&, OpKernel**) {
+Status FunctionLibraryRuntimeOverlay::CreateKernel(
+    const std::shared_ptr<const NodeProperties>&, OpKernel**) {
   // We don't have access to base_lib_def_ in base function library runtime (aka
   // FunctionLibraryRuntimeImpl), so to make sure we do not create a kernel with
   // the wrong lib_def we just disable creation of new kernels through overlays.
@@ -344,7 +346,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   Status GetRetTypes(Handle handle, DataTypeVector* ret_types) override;
 
-  Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) override;
+  Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
+                      OpKernel** kernel) override;
 
   void Run(const Options& opts, Handle handle, gtl::ArraySlice<Tensor> args,
            std::vector<Tensor>* rets, DoneCallback done) override;
@@ -393,7 +396,9 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   const string device_name_;
 
   std::function<Status(const string&, const OpDef**)> get_func_sig_;
-  std::function<Status(const NodeDef&, OpKernel**)> create_kernel_;
+  std::function<Status(const std::shared_ptr<const NodeProperties>&,
+                       OpKernel**)>
+      create_kernel_;
 
   mutable mutex mu_;
 
@@ -426,8 +431,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // to use for kernel creation and execution. In particular, this method can
   // accept a FunctionLibraryRuntimeOverlay that overlays a different
   // FunctionLibraryDefinition.
-  Status CreateKernel(const NodeDef& ndef, FunctionLibraryRuntime* flr,
-                      OpKernel** kernel);
+  Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
+                      FunctionLibraryRuntime* flr, OpKernel** kernel);
   Status FunctionDefToBody(const FunctionDef& fdef, AttrSlice attrs,
                            const FunctionLibraryDefinition* lib_def,
                            std::unique_ptr<FunctionBody>* fbody);
@@ -476,8 +481,9 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
     return base_lib_def_->LookUpOpDef(op, sig);
   };
-  create_kernel_ = [this](const NodeDef& ndef, OpKernel** kernel) {
-    return CreateKernel(ndef, kernel);
+  create_kernel_ = [this](const std::shared_ptr<const NodeProperties>& props,
+                          OpKernel** kernel) {
+    return CreateKernel(props, kernel);
   };
   thread::ThreadPool* pool = nullptr;
   if (device_ != nullptr) {
@@ -589,20 +595,20 @@ Status FunctionLibraryRuntimeImpl::GetRetTypes(Handle h,
   return Status::OK();
 }
 
-Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
-                                                OpKernel** kernel) {
-  return CreateKernel(ndef, this, kernel);
+Status FunctionLibraryRuntimeImpl::CreateKernel(
+    const std::shared_ptr<const NodeProperties>& props, OpKernel** kernel) {
+  return CreateKernel(props, this, kernel);
 }
 
-Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
-                                                FunctionLibraryRuntime* flr,
-                                                OpKernel** kernel) {
+Status FunctionLibraryRuntimeImpl::CreateKernel(
+    const std::shared_ptr<const NodeProperties>& props,
+    FunctionLibraryRuntime* flr, OpKernel** kernel) {
   // If a custom kernel creator is given, try that.
   Status s;
   if (custom_kernel_creator_ != nullptr &&
-      custom_kernel_creator_->CanCreateKernel(*this, ndef)) {
+      custom_kernel_creator_->CanCreateKernel(*this, props)) {
     std::unique_ptr<OpKernel> ret;
-    s = custom_kernel_creator_->CreateKernel(this, ndef, &ret);
+    s = custom_kernel_creator_->CreateKernel(this, props, &ret);
     if (s.ok()) {
       *kernel = ret.release();
     } else {
@@ -613,9 +619,9 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
 
   const FunctionLibraryDefinition* lib_def =
       flr->GetFunctionLibraryDefinition();
-  if (lib_def->Find(ndef.op()) == nullptr) {
+  if (lib_def->Find(props->node_def.op()) == nullptr) {
     // A primitive operation. Creates the registered kernel.
-    return CreateNonCachedKernel(device_, flr, ndef, graph_def_version_,
+    return CreateNonCachedKernel(device_, flr, props, graph_def_version_,
                                  kernel);
   }
 
@@ -626,8 +632,9 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
     options.lib_def = lib_def;
   }
   Handle handle;
-  TF_RETURN_IF_ERROR(
-      Instantiate(ndef.op(), AttrSlice(&ndef.attr()), options, &handle));
+  TF_RETURN_IF_ERROR(Instantiate(props->node_def.op(),
+                                 AttrSlice(&props->node_def.attr()), options,
+                                 &handle));
 
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
@@ -647,10 +654,12 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
 
   // Constructs a CallOp kernel for running the instantiated function.
   auto device_type = DeviceType(device_->attributes().device_type());
+  auto new_props = std::make_shared<NodeProperties>(
+      &fbody->fdef.signature(), props->node_def, fbody->arg_types,
+      fbody->ret_types);
   OpKernelConstruction construction(
-      device_type, device_, device_->GetAllocator(AllocatorAttributes()), &ndef,
-      &fbody->fdef.signature(), flr, device_->resource_manager(),
-      fbody->arg_types, input_memory_types, fbody->ret_types,
+      device_type, device_, device_->GetAllocator(AllocatorAttributes()), flr,
+      device_->resource_manager(), props, input_memory_types,
       output_memory_types, graph_def_version_, &s);
   if (s.ok()) {
     *kernel = new CallOp(handle, &construction);
@@ -953,9 +962,11 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   if (flr == this) {
     params.create_kernel = create_kernel_;
   } else {
-    params.create_kernel = [this, flr](const NodeDef& ndef, OpKernel** kernel) {
-      return CreateKernel(ndef, flr, kernel);
-    };
+    params.create_kernel =
+        [this, flr](const std::shared_ptr<const NodeProperties>& props,
+                    OpKernel** kernel) {
+          return CreateKernel(props, flr, kernel);
+        };
   }
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
