@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
@@ -56,6 +57,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/rpc/profiler_server.h"
 #include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
@@ -90,14 +93,21 @@ StatusOr<py::bytes> GetComputationSerializedProto(
   return py::bytes(result);
 }
 
-// Converts a computation to textual HLO form.
-StatusOr<std::string> GetComputationHloText(const XlaComputation& computation) {
+StatusOr<std::shared_ptr<HloModule>> GetHloModule(
+    const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
                       HloModule::CreateModuleConfigFromProto(
                           computation.proto(), GetDebugOptionsFromFlags()));
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
+      std::unique_ptr<HloModule> module,
       HloModule::CreateFromProto(computation.proto(), module_config));
+  return std::shared_ptr<HloModule>(std::move(module));
+}
+
+// Converts a computation to textual HLO form.
+StatusOr<std::string> GetComputationHloText(const XlaComputation& computation) {
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+                      GetHloModule(computation));
   HloPrintOptions options;
   options = HloPrintOptions::ShortParsable();
   options.set_print_large_constants(false);
@@ -107,12 +117,8 @@ StatusOr<std::string> GetComputationHloText(const XlaComputation& computation) {
 // Converts a computation to HLO dot graph form.
 StatusOr<std::string> GetComputationHloDotGraph(
     const XlaComputation& computation) {
-  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
-                      HloModule::CreateModuleConfigFromProto(
-                          computation.proto(), GetDebugOptionsFromFlags()));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(computation.proto(), module_config));
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+                      GetHloModule(computation));
   return RenderGraph(*hlo_module->entry_computation(), /*label=*/"",
                      hlo_module->config().debug_options(),
                      RenderedGraphFormat::kDot);
@@ -120,12 +126,8 @@ StatusOr<std::string> GetComputationHloDotGraph(
 
 // Hashes the HLO module.
 StatusOr<uint64> HashComputation(const XlaComputation& computation) {
-  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
-                      HloModule::CreateModuleConfigFromProto(
-                          computation.proto(), GetDebugOptionsFromFlags()));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(computation.proto(), module_config));
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<HloModule> hlo_module,
+                      GetHloModule(computation));
   return hlo_module->Hash();
 }
 
@@ -304,10 +306,312 @@ StatusOr<py::dict> PyLocalBufferCudaArrayInterface(
   return result;
 }
 
+void BuildOpsSubmodule(py::module* m) {
+  // ops submodule, containing free functions that add operators to an
+  // XlaBuilder.
+  py::module ops = m->def_submodule("ops", "XLA operations");
+
+  ops.def("AfterAll", &AfterAll);
+  ops.def(
+      "AllReduce",
+      static_cast<XlaOp (*)(
+          XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
+          const absl::optional<ChannelHandle>&, const absl::optional<Shape>&)>(
+          &AllReduce));
+  ops.def("AllToAll", &AllToAll);
+  ops.def("CollectivePermute", &CollectivePermute);
+  ops.def("CreateToken", &CreateToken);
+  ops.def("CrossReplicaSum",
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
+              &CrossReplicaSum));
+  ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
+          py::arg("new_element_type"));
+  ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));
+  ops.def("BroadcastInDim", &BroadcastInDim, py::arg("operand"),
+          py::arg("shape"), py::arg("broadcast_dimensions"));
+  ops.def("Call", &Call);
+  ops.def("Cholesky", &Cholesky, py::arg("a"), py::arg("lower") = true);
+  ops.def("Clamp", &Clamp);
+  ops.def("Collapse", &Collapse, py::arg("operand"), py::arg("dimensions"));
+  ops.def("ConcatInDim", &ConcatInDim);
+  ops.def("Conditional",
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaComputation* const>,
+                                absl::Span<const XlaOp>)>(&Conditional));
+  ops.def("Conditional",
+          static_cast<XlaOp (*)(XlaOp, XlaOp, const XlaComputation&, XlaOp,
+                                const XlaComputation&)>(&Conditional));
+  ops.def("ConstantLiteral", &ConstantLiteral);
+  ops.def("ConvGeneralDilated", &ConvGeneralDilated, py::arg("lhs"),
+          py::arg("rhs"), py::arg("window_strides"), py::arg("padding"),
+          py::arg("lhs_dilation"), py::arg("rhs_dilation"),
+          py::arg("dimension_numbers"), py::arg("feature_group_count") = 1,
+          py::arg("batch_group_count") = 1,
+          py::arg("precision_config") = nullptr);
+  ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
+          py::arg("new_element_type"));
+  ops.def("CustomCall", &CustomCallWithLayout);
+  ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
+          py::arg("precision_config") = nullptr);
+  ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
+          py::arg("dimension_numbers"), py::arg("precision_config") = nullptr);
+  ops.def("DynamicSlice",
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
+                                absl::Span<const int64>)>(&DynamicSlice));
+  ops.def("DynamicUpdateSlice",
+          static_cast<XlaOp (*)(XlaOp, XlaOp, absl::Span<const XlaOp>)>(
+              &DynamicUpdateSlice));
+
+  ops.def("Fft", &Fft);
+
+  ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
+          py::arg("dimension_numbers"), py::arg("slice_sizes"),
+          py::arg("indices_are_sorted"));
+  ops.def("GetTupleElement", &GetTupleElement);
+  ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
+          py::arg("shape"), py::arg("config") = "");
+  ops.def("Iota",
+          static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64)>(&Iota));
+  ops.def("Iota",
+          static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota));
+  ops.def("Map", &Map);
+  ops.def("NextAfter", &NextAfter);
+  ops.def("OutfeedWithToken", &OutfeedWithToken, py::arg("operand"),
+          py::arg("token"), py::arg("shape_with_layout"),
+          py::arg("outfeed_config") = "");
+  ops.def("Pad", &Pad);
+  ops.def("Parameter", static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
+                                             const std::string&)>(&Parameter));
+  ops.def("Parameter",
+          static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
+                                const std::string&, const std::vector<bool>&)>(
+              &Parameter));
+  ops.def("QR",
+          [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
+            TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, full_matrices));
+            return std::make_pair(qr.q, qr.r);
+          });
+  ops.def(
+      "Eigh",
+      [](XlaOp a, bool lower, int64 max_iter,
+         float epsilon) -> std::pair<XlaOp, XlaOp> {
+        auto eigh = SelfAdjointEig(a, lower, max_iter, epsilon);
+        return std::make_pair(eigh.v, eigh.w);
+      },
+      py::arg("a"), py::arg("lower") = true, py::arg("max_iter") = 100,
+      py::arg("epsilon") = 1e-6);
+  ops.def(
+      "SVD",
+      [](XlaOp a, int64 max_iter,
+         float epsilon) -> std::tuple<XlaOp, XlaOp, XlaOp> {
+        auto svd = SVD(a, max_iter, epsilon);
+        return std::make_tuple(svd.u, svd.d, svd.v);
+      },
+      py::arg("a"), py::arg("max_iter") = 100, py::arg("epsilon") = 1e-6);
+  ops.def("Reduce",
+          static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
+                                absl::Span<const XlaOp>, const XlaComputation&,
+                                absl::Span<const int64>)>(&Reduce));
+  ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
+          py::arg("exponent_bits"), py::arg("mantissa_bits"));
+  ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding);
+  ops.def("ReplicaId", &ReplicaId);
+  ops.def("Reshape", static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
+                                           absl::Span<const int64>)>(&Reshape));
+  ops.def("Reshape",
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>)>(&Reshape));
+  ops.def("Rev", &Rev, py::arg("operand"), py::arg("dimensions"));
+  ops.def("RngNormal", &RngNormal);
+  ops.def("RngUniform", &RngUniform);
+  ops.def("Scatter", &Scatter);
+  ops.def("Select", &Select);
+  ops.def("SelectAndScatterWithGeneralPadding",
+          &SelectAndScatterWithGeneralPadding);
+  ops.def("Slice", &Slice);
+  ops.def("SliceInDim", &SliceInDim, py::arg("operand"), py::arg("start_index"),
+          py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
+  ops.def(
+      "Sort",
+      [](XlaBuilder* builder, absl::Span<const XlaOp> operands, int64 dimension,
+         absl::optional<const XlaComputation*> comparator) -> XlaOp {
+        return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+          std::vector<PrimitiveType> operand_types;
+          for (const auto& operand : operands) {
+            TF_ASSIGN_OR_RETURN(auto operand_shape, builder->GetShape(operand));
+            operand_types.push_back(operand_shape.element_type());
+          }
+
+          if (comparator) {
+            return Sort(operands, **comparator, dimension);
+          } else {
+            return Sort(operands,
+                        CreateScalarLtComputation(operand_types, builder),
+                        dimension);
+          }
+        });
+      },
+      py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1,
+      py::arg("comparator") = absl::nullopt);
+  ops.def("Transpose", &Transpose);
+  ops.def("TriangularSolve", &TriangularSolve);
+  ops.def("Tuple", &Tuple);
+  ops.def("While", &While);
+
+  ops.def("Igamma", &Igamma);
+  ops.def("Igammac", &Igammac);
+  ops.def("IgammaGradA", &IgammaGradA);
+  ops.def("RandomGammaGrad", &RandomGammaGrad);
+  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta);
+
+#define BINARY_OP(op)                                                 \
+  ops.def(                                                            \
+      #op,                                                            \
+      [](XlaOp a, XlaOp b, absl::optional<std::vector<int64>> dims) { \
+        return dims ? op(a, b, *dims) : op(a, b);                     \
+      },                                                              \
+      py::arg("lhs"), py::arg("rhs"),                                 \
+      py::arg("broadcast_dimensions") = absl::nullopt)
+  BINARY_OP(Eq);
+  BINARY_OP(Ne);
+  BINARY_OP(Ge);
+  BINARY_OP(Gt);
+  BINARY_OP(Lt);
+  BINARY_OP(Le);
+  BINARY_OP(Add);
+  BINARY_OP(Sub);
+  BINARY_OP(Mul);
+  BINARY_OP(Div);
+  BINARY_OP(Rem);
+  BINARY_OP(Max);
+  BINARY_OP(Min);
+  BINARY_OP(And);
+  BINARY_OP(Or);
+  BINARY_OP(Xor);
+  BINARY_OP(ShiftLeft);
+  BINARY_OP(ShiftRightArithmetic);
+  BINARY_OP(ShiftRightLogical);
+  BINARY_OP(Atan2);
+  BINARY_OP(Pow);
+  BINARY_OP(Complex);
+#undef BINARY_OP
+
+#define UNARY_OP(op) ops.def(#op, &op)
+  UNARY_OP(Not);
+  UNARY_OP(Clz);
+  UNARY_OP(Abs);
+  UNARY_OP(Exp);
+  UNARY_OP(Expm1);
+  UNARY_OP(Floor);
+  UNARY_OP(Ceil);
+  UNARY_OP(Round);
+  UNARY_OP(Log);
+  UNARY_OP(Log1p);
+  UNARY_OP(Sign);
+  UNARY_OP(Cos);
+  UNARY_OP(Sin);
+  UNARY_OP(Tanh);
+  UNARY_OP(IsFinite);
+  UNARY_OP(Neg);
+  UNARY_OP(Sqrt);
+  UNARY_OP(Rsqrt);
+  UNARY_OP(Square);
+  UNARY_OP(Reciprocal);
+  UNARY_OP(Erfc);
+  UNARY_OP(Erf);
+  UNARY_OP(ErfInv);
+  UNARY_OP(Lgamma);
+  UNARY_OP(Digamma);
+  UNARY_OP(BesselI0e);
+  UNARY_OP(BesselI1e);
+  UNARY_OP(Acos);
+  UNARY_OP(Asin);
+  UNARY_OP(Atan);
+  UNARY_OP(Tan);
+  UNARY_OP(Acosh);
+  UNARY_OP(Asinh);
+  UNARY_OP(Atanh);
+  UNARY_OP(Cosh);
+  UNARY_OP(Sinh);
+  UNARY_OP(Real);
+  UNARY_OP(Imag);
+  UNARY_OP(Conj);
+#undef UNARY_OP
+}
+
+// Helper to implement TraceMe as a context manager in Python.
+class TraceMeContextManager {
+ public:
+  explicit TraceMeContextManager(py::str name, py::kwargs kwargs)
+      : name_(std::move(name)), kwargs_(std::move(kwargs)) {}
+
+  void Enter() {
+    if (IsEnabled()) {
+      std::string name(name_);
+      // TODO(skye): we can use kwargs_.empty() once we upgrade to pybind11 2.4
+      // in workspace.bzl
+      if (kwargs_.size() != 0) {
+        absl::StrAppend(&name, "#");
+        bool first = true;
+        for (const auto& entry : kwargs_) {
+          absl::StrAppend(&name, first ? "" : ",",
+                          std::string(py::str(entry.first)), "=",
+                          std::string(py::str(entry.second)));
+          first = false;
+        }
+        absl::StrAppend(&name, "#");
+      }
+      traceme_.emplace(std::move(name));
+    }
+  }
+  py::object Exit(const py::object& ex_type, const py::object& ex_value,
+                  const py::object& traceback) {
+    traceme_.reset();
+    return py::none();
+  }
+
+  static bool IsEnabled() { return tensorflow::profiler::TraceMe::Active(); }
+
+ private:
+  py::str name_;
+  py::kwargs kwargs_;
+  absl::optional<tensorflow::profiler::TraceMe> traceme_;
+};
+
+void BuildProfilerSubmodule(py::module* m) {
+  py::module profiler =
+      m->def_submodule("profiler", "TensorFlow profiler integration");
+  py::class_<tensorflow::ProfilerServer,
+             std::unique_ptr<tensorflow::ProfilerServer>>
+      profiler_server_class(profiler, "ProfilerServer");
+  profiler.def(
+      "start_server",
+      [](int port) -> std::unique_ptr<tensorflow::ProfilerServer> {
+        auto server = absl::make_unique<tensorflow::ProfilerServer>();
+        server->StartProfilerServer(port);
+        return server;
+      },
+      py::arg("port"));
+
+  py::class_<TraceMeContextManager> traceme_class(profiler, "TraceMe");
+  traceme_class.def(py::init<py::str, py::kwargs>())
+      .def("__enter__", &TraceMeContextManager::Enter)
+      .def("__exit__", &TraceMeContextManager::Exit)
+      .def_static("IsEnabled", &TraceMeContextManager::IsEnabled);
+}
+
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
-  if (!InitializeNumpyAPIForTypes()) {
+  // Caution: import_array1 works by initializing a static variable
+  // (PyArray_API) which is *defined* in a NumPy header. import_array1() must
+  // therefore be called from the *same translation unit* as any users of
+  // NumPy C APIs.
+  auto init_numpy = []() -> bool {
+    // import_array1 might look like a function. It's not. It's a macro that
+    // calls `return`, which is why we wrap it in this strange-looking lambda.
+    import_array1(false);
+    return true;
+  };
+  if (!init_numpy() || !InitializeNumpyAPIForTypes()) {
     throw std::runtime_error("Unable to initialize Numpy API");
   }
 
@@ -737,7 +1041,21 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecuteOnLocalDevices", &PyLocalExecutable::ExecuteOnLocalDevices,
-           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def(
+          "get_hlo_modules",
+          [](const PyLocalExecutable& executable)
+              -> StatusOr<std::vector<std::shared_ptr<HloModule>>> {
+            std::vector<std::shared_ptr<HloModule>> modules;
+            modules.reserve(executable.executables().size());
+            for (const auto& local_exec : executable.executables()) {
+              if (!local_exec->executable()->has_module()) {
+                return InvalidArgument("Executable does not have HLO modules.");
+              }
+              modules.push_back(local_exec->executable()->shared_module());
+            }
+            return std::move(modules);
+          });
 
   py::class_<DebugOptions>(m, "DebugOptions")
       .def_property("xla_cpu_enable_fast_math",
@@ -782,9 +1100,80 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("GetSerializedProto", &GetComputationSerializedProto)
       .def("GetHloText", &GetComputationHloText)
       .def("GetHloDotGraph", &GetComputationHloDotGraph)
-      .def("Hash", &HashComputation);
+      .def("Hash", &HashComputation)
+      .def("get_hlo_module", &GetHloModule);
 
-  py::class_<XlaOp>(m, "XlaOp");
+  py::class_<HloPrintOptions> hlo_print_options_class(m, "HloPrintOptions");
+  hlo_print_options_class.def(py::init<>())
+      .def_static("short_parsable", &HloPrintOptions::ShortParsable)
+      .def_static("canonical", &HloPrintOptions::Canonical)
+      .def_static("fingerprint", &HloPrintOptions::Fingerprint)
+      .def_property("print_large_constants",
+                    &HloPrintOptions::print_large_constants,
+                    &HloPrintOptions::set_print_large_constants)
+      .def_property("print_metadata", &HloPrintOptions::print_metadata,
+                    &HloPrintOptions::set_print_metadata)
+      .def_property("print_backend_config",
+                    &HloPrintOptions::print_backend_config,
+                    &HloPrintOptions::set_print_backend_config)
+      .def_property("print_result_shape", &HloPrintOptions::print_result_shape,
+                    &HloPrintOptions::set_print_result_shape)
+      .def_property("print_operand_shape",
+                    &HloPrintOptions::print_operand_shape,
+                    &HloPrintOptions::set_print_operand_shape)
+      .def_property("print_operand_names",
+                    &HloPrintOptions::print_operand_names,
+                    &HloPrintOptions::set_print_operand_names)
+      .def_property("print_ids", &HloPrintOptions::print_ids,
+                    &HloPrintOptions::set_print_ids)
+      .def_property("print_extra_attributes",
+                    &HloPrintOptions::print_extra_attributes,
+                    &HloPrintOptions::set_print_extra_attributes)
+      .def_property("print_program_shape",
+                    &HloPrintOptions::print_program_shape,
+                    &HloPrintOptions::set_print_program_shape)
+      .def_property("print_percent", &HloPrintOptions::print_percent,
+                    &HloPrintOptions::set_print_percent)
+      .def_property("print_control_dependencies",
+                    &HloPrintOptions::print_control_dependencies,
+                    &HloPrintOptions::set_print_control_dependencies)
+      .def_property("compact_operands", &HloPrintOptions::compact_operands,
+                    &HloPrintOptions::set_compact_operands)
+      .def_property("include_layout_in_shapes",
+                    &HloPrintOptions::include_layout_in_shapes,
+                    &HloPrintOptions::set_include_layout_in_shapes)
+      .def_property("canonicalize_instruction_names",
+                    &HloPrintOptions::canonicalize_instruction_names,
+                    &HloPrintOptions::set_canonicalize_instruction_names)
+      .def_property("canonicalize_computations",
+                    &HloPrintOptions::canonicalize_computations,
+                    &HloPrintOptions::set_canonicalize_computations)
+      .def_property("indent_amount", &HloPrintOptions::indent_amount,
+                    &HloPrintOptions::set_indent_amount)
+      .def_property("is_in_nested_computation",
+                    &HloPrintOptions::is_in_nested_computation,
+                    &HloPrintOptions::set_is_in_nested_computation)
+      .def_property(
+          "leading_and_trailing_instructions_number",
+          &HloPrintOptions::leading_and_trailing_instructions_number,
+          &HloPrintOptions::set_leading_and_trailing_instructions_number);
+
+  py::class_<HloModule, std::shared_ptr<HloModule>> hlo_module_class(
+      m, "HloModule");
+  hlo_module_class.def(
+      "to_string",
+      static_cast<std::string (HloModule::*)(const HloPrintOptions&) const>(
+          &HloModule::ToString),
+      py::arg("options") = HloPrintOptions());
+
+  m.def("hlo_module_to_dot_graph",
+        [](const HloModule& hlo_module) -> StatusOr<std::string> {
+          return RenderGraph(*hlo_module.entry_computation(), /*label=*/"",
+                             hlo_module.config().debug_options(),
+                             RenderedGraphFormat::kDot);
+        });
+
+  py::class_<XlaOp> xla_op_class(m, "XlaOp");
 
   py::class_<XlaBuilder>(m, "XlaBuilder")
       .def(py::init([](const std::string& name) -> std::unique_ptr<XlaBuilder> {
@@ -815,238 +1204,6 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def("BufferToDLPackManagedTensor", BufferToDLPackManagedTensor);
   m.def("DLPackManagedTensorToBuffer", DLPackManagedTensorToBuffer);
 
-  // ops submodule, containing free functions that add operators to an
-  // XlaBuilder.
-  py::module ops = m.def_submodule("ops", "XLA operations");
-
-  ops.def("AfterAll", &AfterAll);
-  ops.def(
-      "AllReduce",
-      static_cast<XlaOp (*)(
-          XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
-          const absl::optional<ChannelHandle>&, const absl::optional<Shape>&)>(
-          &AllReduce));
-  ops.def("AllToAll", &AllToAll);
-  ops.def("CollectivePermute", &CollectivePermute);
-  ops.def("CreateToken", &CreateToken);
-  ops.def("CrossReplicaSum",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
-              &CrossReplicaSum));
-  ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
-          py::arg("new_element_type"));
-  ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));
-  ops.def("BroadcastInDim", &BroadcastInDim, py::arg("operand"),
-          py::arg("shape"), py::arg("broadcast_dimensions"));
-  ops.def("Call", &Call);
-  ops.def("Cholesky", &Cholesky, py::arg("a"), py::arg("lower") = true);
-  ops.def("Clamp", &Clamp);
-  ops.def("Collapse", &Collapse, py::arg("operand"), py::arg("dimensions"));
-  ops.def("ConcatInDim", &ConcatInDim);
-  ops.def("Conditional",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaComputation* const>,
-                                absl::Span<const XlaOp>)>(&Conditional));
-  ops.def("Conditional",
-          static_cast<XlaOp (*)(XlaOp, XlaOp, const XlaComputation&, XlaOp,
-                                const XlaComputation&)>(&Conditional));
-  ops.def("ConstantLiteral", &ConstantLiteral);
-  ops.def("ConvGeneralDilated", &ConvGeneralDilated, py::arg("lhs"),
-          py::arg("rhs"), py::arg("window_strides"), py::arg("padding"),
-          py::arg("lhs_dilation"), py::arg("rhs_dilation"),
-          py::arg("dimension_numbers"), py::arg("feature_group_count") = 1,
-          py::arg("batch_group_count") = 1,
-          py::arg("precision_config") = nullptr);
-  ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
-          py::arg("new_element_type"));
-  ops.def("CustomCall", &CustomCallWithLayout);
-  ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
-          py::arg("precision_config") = nullptr);
-  ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
-          py::arg("dimension_numbers"), py::arg("precision_config") = nullptr);
-  ops.def("DynamicSlice",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
-                                absl::Span<const int64>)>(&DynamicSlice));
-  ops.def("DynamicUpdateSlice",
-          static_cast<XlaOp (*)(XlaOp, XlaOp, absl::Span<const XlaOp>)>(
-              &DynamicUpdateSlice));
-
-  ops.def("Fft", &Fft);
-  py::enum_<FftType>(m, "FftType")
-      .value("FFT", FftType::FFT)
-      .value("IFFT", FftType::IFFT)
-      .value("RFFT", FftType::RFFT)
-      .value("IRFFT", FftType::IRFFT);
-
-  ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
-          py::arg("dimension_numbers"), py::arg("slice_sizes"),
-          py::arg("indices_are_sorted"));
-  ops.def("GetTupleElement", &GetTupleElement);
-  ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
-          py::arg("shape"), py::arg("config") = "");
-  ops.def("Iota",
-          static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64)>(&Iota));
-  ops.def("Iota",
-          static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota));
-  ops.def("Map", &Map);
-  ops.def("NextAfter", &NextAfter);
-  ops.def("OutfeedWithToken", &OutfeedWithToken, py::arg("operand"),
-          py::arg("token"), py::arg("shape_with_layout"),
-          py::arg("outfeed_config") = "");
-  ops.def("Pad", &Pad);
-  ops.def("Parameter", static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
-                                             const std::string&)>(&Parameter));
-  ops.def("Parameter",
-          static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
-                                const std::string&, const std::vector<bool>&)>(
-              &Parameter));
-  ops.def("QR",
-          [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
-            TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, full_matrices));
-            return std::make_pair(qr.q, qr.r);
-          });
-  ops.def(
-      "Eigh",
-      [](XlaOp a, bool lower, int64 max_iter,
-         float epsilon) -> std::pair<XlaOp, XlaOp> {
-        auto eigh = SelfAdjointEig(a, lower, max_iter, epsilon);
-        return std::make_pair(eigh.v, eigh.w);
-      },
-      py::arg("a"), py::arg("lower") = true, py::arg("max_iter") = 100,
-      py::arg("epsilon") = 1e-6);
-  ops.def(
-      "SVD",
-      [](XlaOp a, int64 max_iter,
-         float epsilon) -> std::tuple<XlaOp, XlaOp, XlaOp> {
-        auto svd = SVD(a, max_iter, epsilon);
-        return std::make_tuple(svd.u, svd.d, svd.v);
-      },
-      py::arg("a"), py::arg("max_iter") = 100, py::arg("epsilon") = 1e-6);
-  ops.def("Reduce",
-          static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
-                                absl::Span<const XlaOp>, const XlaComputation&,
-                                absl::Span<const int64>)>(&Reduce));
-  ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
-          py::arg("exponent_bits"), py::arg("mantissa_bits"));
-  ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding);
-  ops.def("ReplicaId", &ReplicaId);
-  ops.def("Reshape", static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
-                                           absl::Span<const int64>)>(&Reshape));
-  ops.def("Reshape",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>)>(&Reshape));
-  ops.def("Rev", &Rev, py::arg("operand"), py::arg("dimensions"));
-  ops.def("RngNormal", &RngNormal);
-  ops.def("RngUniform", &RngUniform);
-  ops.def("Scatter", &Scatter);
-  ops.def("Select", &Select);
-  ops.def("SelectAndScatterWithGeneralPadding",
-          &SelectAndScatterWithGeneralPadding);
-  ops.def("Slice", &Slice);
-  ops.def("SliceInDim", &SliceInDim, py::arg("operand"), py::arg("start_index"),
-          py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
-  ops.def(
-      "Sort",
-      [](XlaBuilder* builder, absl::Span<const XlaOp> operands, int64 dimension,
-         absl::optional<const XlaComputation*> comparator) -> XlaOp {
-        return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-          std::vector<PrimitiveType> operand_types;
-          for (const auto& operand : operands) {
-            TF_ASSIGN_OR_RETURN(auto operand_shape, builder->GetShape(operand));
-            operand_types.push_back(operand_shape.element_type());
-          }
-
-          if (comparator) {
-            return Sort(operands, **comparator, dimension);
-          } else {
-            return Sort(operands,
-                        CreateScalarLtComputation(operand_types, builder),
-                        dimension);
-          }
-        });
-      },
-      py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1,
-      py::arg("comparator") = absl::nullopt);
-  ops.def("Transpose", &Transpose);
-  ops.def("TriangularSolve", &TriangularSolve);
-  ops.def("Tuple", &Tuple);
-  ops.def("While", &While);
-
-  ops.def("Igamma", &Igamma);
-  ops.def("Igammac", &Igammac);
-  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta);
-
-#define BINARY_OP(op)                                                 \
-  ops.def(                                                            \
-      #op,                                                            \
-      [](XlaOp a, XlaOp b, absl::optional<std::vector<int64>> dims) { \
-        return dims ? op(a, b, *dims) : op(a, b);                     \
-      },                                                              \
-      py::arg("lhs"), py::arg("rhs"),                                 \
-      py::arg("broadcast_dimensions") = absl::nullopt)
-  BINARY_OP(Eq);
-  BINARY_OP(Ne);
-  BINARY_OP(Ge);
-  BINARY_OP(Gt);
-  BINARY_OP(Lt);
-  BINARY_OP(Le);
-  BINARY_OP(Add);
-  BINARY_OP(Sub);
-  BINARY_OP(Mul);
-  BINARY_OP(Div);
-  BINARY_OP(Rem);
-  BINARY_OP(Max);
-  BINARY_OP(Min);
-  BINARY_OP(And);
-  BINARY_OP(Or);
-  BINARY_OP(Xor);
-  BINARY_OP(ShiftLeft);
-  BINARY_OP(ShiftRightArithmetic);
-  BINARY_OP(ShiftRightLogical);
-  BINARY_OP(Atan2);
-  BINARY_OP(Pow);
-  BINARY_OP(Complex);
-#undef BINARY_OP
-
-#define UNARY_OP(op) ops.def(#op, &op)
-  UNARY_OP(Not);
-  UNARY_OP(Clz);
-  UNARY_OP(Abs);
-  UNARY_OP(Exp);
-  UNARY_OP(Expm1);
-  UNARY_OP(Floor);
-  UNARY_OP(Ceil);
-  UNARY_OP(Round);
-  UNARY_OP(Log);
-  UNARY_OP(Log1p);
-  UNARY_OP(Sign);
-  UNARY_OP(Cos);
-  UNARY_OP(Sin);
-  UNARY_OP(Tanh);
-  UNARY_OP(IsFinite);
-  UNARY_OP(Neg);
-  UNARY_OP(Sqrt);
-  UNARY_OP(Rsqrt);
-  UNARY_OP(Square);
-  UNARY_OP(Reciprocal);
-  UNARY_OP(Erfc);
-  UNARY_OP(Erf);
-  UNARY_OP(ErfInv);
-  UNARY_OP(Lgamma);
-  UNARY_OP(Digamma);
-  UNARY_OP(BesselI0e);
-  UNARY_OP(BesselI1e);
-  UNARY_OP(Acos);
-  UNARY_OP(Asin);
-  UNARY_OP(Atan);
-  UNARY_OP(Tan);
-  UNARY_OP(Acosh);
-  UNARY_OP(Asinh);
-  UNARY_OP(Atanh);
-  UNARY_OP(Cosh);
-  UNARY_OP(Sinh);
-  UNARY_OP(Real);
-  UNARY_OP(Imag);
-  UNARY_OP(Conj);
-#undef UNARY_OP
-
   py::enum_<TriangularSolveOptions::Transpose>(
       m, "TriangularSolveOptions_Transpose")
       .value("TRANSPOSE_INVALID", TriangularSolveOptions::TRANSPOSE_INVALID)
@@ -1075,6 +1232,15 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("type", &ChannelHandle::type)
       .def_property_readonly("handle", &ChannelHandle::handle)
       .def("__repr__", [](ChannelHandle* h) { return h->DebugString(); });
+
+  py::enum_<FftType>(m, "FftType")
+      .value("FFT", FftType::FFT)
+      .value("IFFT", FftType::IFFT)
+      .value("RFFT", FftType::RFFT)
+      .value("IRFFT", FftType::IRFFT);
+
+  BuildOpsSubmodule(&m);
+  BuildProfilerSubmodule(&m);
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

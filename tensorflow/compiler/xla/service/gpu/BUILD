@@ -115,11 +115,7 @@ cc_library(
 tf_cc_test(
     name = "custom_call_test",
     srcs = if_cuda_is_configured(["custom_call_test.cc"]),
-    tags = [
-        "gpu",
-        "no_oss",
-        "requires-gpu-sm35",
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
     ] + if_cuda_is_configured([
@@ -860,6 +856,7 @@ cc_library(
         ":gpu_fusible",
         ":instruction_fusion",
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_reachability",

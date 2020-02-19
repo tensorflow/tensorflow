@@ -44,14 +44,14 @@
 # ":example_parser_configuration" -- A library for extracting the
 #      tensorflow.Example proto configuration from a Graph.
 #
-# Public Android targets:
+# Public mobile targets, e.g. for Android:
 #
 # filegroup ":android_proto_srcs" - Protos
 # filegroup ":android_srcs" - Core sources
-# cc_library ":android_tensorflow_lib" - Native library
-# cc_library ":android_tensorflow_lib_lite" - Native library, without ops,
+# cc_library ":portable_tensorflow_lib" - Native library
+# cc_library ":portable_tensorflow_lib_lite" - Native library, without ops,
 #   supporting SELECTIVE_REGISTRATION feature.
-# portable_proto_library ":android_proto_lib" (Google-internal)
+# portable_proto_library ":portable_proto_lib" (Google-internal)
 #
 # Note that :framework and :lib have incomplete transitive dependencies (they
 # declare but do not define some symbols) if framework_shared_object=True
@@ -77,12 +77,14 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
-    "tf_defines_nortti_if_android",
-    "tf_features_nomodules_if_android",
+    "tf_defines_nortti_if_lite_protos",
+    "tf_features_nomodules_if_mobile",
     "tf_gen_op_libs",
     "tf_genrule_cmd_append_to_srcs",
     "tf_openmp_copts",
-    "tf_opts_nortti_if_android",
+    "tf_opts_nortti_if_lite_protos",
+    "tf_opts_nortti_if_mobile",
+    "tf_portable_full_lite_protos",
     "transitive_hdrs",
 )
 
@@ -91,9 +93,6 @@ load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
-
-# buildifier: disable=same-origin-load
-# load("//tensorflow:tensorflow.bzl", "tf_android_full_lite_protos")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
@@ -161,6 +160,7 @@ package_group(
         "//learning/freud/topic_models/tensorflow/...",
         "//perftools/accelerators/xprof/api/...",
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
+        "//smartass/brain/server/...",
     ],
 )
 
@@ -242,7 +242,7 @@ ERROR_CODES_PROTO_SRCS = [
     "protobuf/error_codes.proto",
     "//tensorflow/core/lib/core:error_codes.proto",
 ]
-# LINT.ThenChange(//tensorflow/core/android_proto_config.asciipb)
+# LINT.ThenChange(//tensorflow/core/portable_proto_config.asciipb)
 
 CORE_PROTO_SRCS = COMMON_PROTO_SRCS + EXAMPLE_PROTO_SRCS + FRAMEWORK_PROTO_SRCS + UTIL_PROTO_SRCS + PROFILER_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
 
@@ -472,6 +472,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:memory_types.h",
         "//tensorflow/core/framework:node_def_builder.h",
         "//tensorflow/core/framework:node_def_util.h",
+        "//tensorflow/core/framework:node_properties.h",
         "//tensorflow/core/framework:numeric_op.h",
         "//tensorflow/core/framework:numeric_types.h",
         "//tensorflow/core/framework:op.h",
@@ -1354,50 +1355,62 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-# Native library support for Android applications.  Does not contain
-# operators, use :android_tensorflow_lib if you want full operator
+# Native library support for mobile applications.  Does not contain
+# operators, use :portable_tensorflow_lib if you want full operator
 # support.
 #
 # If you just need TensorFlow types, e.g. Tensors, use
-# :android_tensorflow_lib_lite_no_runtime.
+# :portable_tensorflow_lib_lite_no_runtime.
 #
-# Compiles to a trivial library on non-Android to prevent irrelevant
-# build errors. If not building this as part of an android_binary,
+# These targets link against either full or lite protos depending
+# on the bazel define TENSORFLOW_PROTOS=full/lite respectively.
+#
+# Compiles to a trivial library on non-mobile to prevent irrelevant
+# build errors. If not building this e.g. as part of an android_binary,
 # a command such as the following must be used:
 # bazel build -c opt tensorflow/core:android_tensorflow_lib \
+# --define=TENSORFLOW_PROTOS=lite \
 # --crosstool_top=//external:android/crosstool \
 # --cpu=armeabi-v7a \
 # --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 cc_library(
-    name = "android_tensorflow_lib_lite",
-    srcs = if_android([":mobile_srcs"]),
-    copts = tf_copts(android_optimization_level_override = None),
-    defines = ["SUPPORT_SELECTIVE_REGISTRATION"],
-    linkopts = ["-lz"],
+    name = "portable_tensorflow_lib_lite",
+    srcs = if_mobile([":mobile_srcs"]),
+    copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
+    defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + tf_portable_full_lite_protos(
+        full = [],
+        lite = ["TENSORFLOW_LITE_PROTOS"],
+    ) + if_chromiumos(["IS_MOBILE_PLATFORM"]) + tf_defines_nortti_if_lite_protos(),
+    linkopts = if_android(["-lz"]),
     tags = [
         "manual",
         "notap",
     ],
     visibility = ["//visibility:public"],
-    deps = tf_portable_deps_no_runtime(),
+    deps = [
+        ":protos_all_cc_impl",
+        "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/core:mobile_additional_lib_deps",
+    ] + tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )
 
-cc_library(
-    name = "android_tensorflow_lib_lite_nortti",
-    srcs = if_android([":mobile_srcs"]),
-    copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_android(),
-    defines = [
-        "SUPPORT_SELECTIVE_REGISTRATION",
-    ] + tf_defines_nortti_if_android(),
-    linkopts = ["-lz"],
-    tags = [
-        "manual",
-        "notap",
-    ],
+alias(
+    name = "android_tensorflow_lib_lite",
+    actual = ":portable_tensorflow_lib_lite",
     visibility = ["//visibility:public"],
-    deps = tf_portable_deps_no_runtime(),
-    alwayslink = 1,
+)
+
+alias(
+    name = "android_tensorflow_lib_lite_nortti",
+    actual = ":portable_tensorflow_lib_lite",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "android_tensorflow_lib_lite_nortti_lite_protos",
+    actual = ":portable_tensorflow_lib_lite",
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -1417,14 +1430,14 @@ cc_library(
 cc_library(
     name = "ios_tensorflow_lib",
     srcs = if_ios([
-        ":android_op_registrations_and_gradients",
+        ":portable_op_registrations_and_gradients",
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
     copts = tf_copts() + ["-Os"],
     visibility = ["//visibility:public"],
     deps = [
-        ":ios_tensorflow_lib_lite",
+        ":portable_tensorflow_lib_lite",
         ":protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
@@ -1435,13 +1448,10 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+alias(
     name = "ios_tensorflow_lib_lite",
-    srcs = if_ios([":mobile_srcs"]),
-    copts = tf_copts() + ["-Os"],
+    actual = ":portable_tensorflow_lib_lite",
     visibility = ["//visibility:public"],
-    deps = tf_portable_deps_no_runtime(),
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1455,8 +1465,8 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":android_test_proto_lib",
         ":ios_tensorflow_lib",
+        ":portable_test_proto_lib",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
@@ -1464,27 +1474,40 @@ cc_library(
 
 # Full TensorFlow library with operator support. Use this unless reducing
 # binary size (by packaging a reduced operator set) is a concern.
-cc_library(
+alias(
     name = "android_tensorflow_lib",
-    srcs = if_android([":android_op_registrations_and_gradients"]),
-    copts = tf_copts(),
+    actual = ":portable_tensorflow_lib",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "portable_tensorflow_lib",
+    srcs = if_mobile([":portable_op_registrations_and_gradients"]),
+    copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
+    features = tf_features_nomodules_if_mobile(),
     tags = [
         "manual",
         "notap",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":android_tensorflow_lib_lite",
+        ":portable_tensorflow_lib_lite",
         ":protos_all_cc_impl",
-        "//tensorflow/core/kernels:android_tensorflow_kernels",
+        "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "//third_party/eigen3",
         "@com_google_protobuf//:protobuf",
     ],
     alwayslink = 1,
 )
 
-filegroup(
+alias(
     name = "android_op_registrations_and_gradients",
+    actual = ":portable_op_registrations_and_gradients",
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "portable_op_registrations_and_gradients",
     srcs = ["//tensorflow/c/kernels:android_all_ops"] + glob(
         [
             "ops/**/*.cc",
@@ -1506,12 +1529,20 @@ filegroup(
     testonly = 1,
     # TODO(andrewharp/nhua):
     # make more test-related sources portable e.g. "//tensorflow/core/platform:test.cc",
-    srcs = [
-        "//tensorflow/core/framework:android_test_hdrs",
-        "//tensorflow/core/framework:android_test_srcs",
-        "//tensorflow/core/platform:android_test_srcs",
-        "//tensorflow/core/util:android_test_srcs",
-    ],
+    srcs = tf_portable_full_lite_protos(
+        full = [
+            "//tensorflow/core/framework:android_test_hdrs",
+            "//tensorflow/core/framework:android_test_srcs",
+            "//tensorflow/core/platform:android_test_srcs",
+            "//tensorflow/core/util:android_test_srcs",
+        ],
+        lite = [
+            "//tensorflow/core/framework:android_test_hdrs",
+            "//tensorflow/core/framework:android_test_srcs_no_core",
+            "//tensorflow/core/platform:android_test_srcs",
+            "//tensorflow/core/util:android_test_srcs",
+        ],
+    ),
     visibility = ["//visibility:public"],
 )
 
@@ -1529,23 +1560,33 @@ filegroup(
 )
 
 # Portable library providing testing functionality for TensorFlow.
-cc_library(
+alias(
     name = "android_tensorflow_test_lib",
+    actual = ":portable_tensorflow_test_lib",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "portable_tensorflow_test_lib",
     testonly = 1,
-    srcs = if_android([":android_test_srcs"]),
+    srcs = if_mobile([
+        ":android_test_srcs_no_core",
+    ]),
     hdrs = [
         "//tensorflow/core/framework:android_test_hdrs",
         "//tensorflow/core/util:android_test_hdrs",
     ],
     copts = tf_copts(android_optimization_level_override = None),
+    features = tf_features_nomodules_if_mobile() + tf_opts_nortti_if_lite_protos(),
     tags = [
         "manual",
         "notap",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":android_tensorflow_lib",
+        ":portable_tensorflow_lib",
         ":protos_all_cc",
+        "//tensorflow/core/kernels:portable_tensorflow_kernels",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
@@ -1956,7 +1997,7 @@ cc_library(
         "//tensorflow/core/util:env_var",
         "//tensorflow/core/util:reporter",  # TODO(gunan): REMOVE as soon as cc_shared_library is supported.
         "@snappy",
-        "@zlib_archive//:zlib",
+        "@zlib",
         "@double_conversion//:double-conversion",
         "@com_google_protobuf//:protobuf",
     ] + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl(),
@@ -2283,6 +2324,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:bfloat16",
         "//tensorflow/core/framework:common_shape_fns",
         "//tensorflow/core/framework:node_def_util",
+        "//tensorflow/core/framework:node_properties",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/framework:op",
         "//tensorflow/core/framework:op_def_builder",
@@ -2495,6 +2537,7 @@ filegroup(
         "common_runtime/renamed_device.h",
         "common_runtime/rendezvous_mgr.h",
         "common_runtime/rendezvous_util.h",
+        "common_runtime/replicate_per_replica_nodes.h",
         "common_runtime/ring_reducer.h",
         "common_runtime/ring_alg.h",
         "common_runtime/ring_gatherer.h",
@@ -2563,6 +2606,7 @@ tf_cuda_library(
         "common_runtime/renamed_device.cc",
         "common_runtime/rendezvous_mgr.cc",
         "common_runtime/rendezvous_util.cc",
+        "common_runtime/replicate_per_replica_nodes.cc",
         "common_runtime/ring_alg.cc",
         "common_runtime/ring_gatherer.cc",
         "common_runtime/ring_reducer.cc",
@@ -2578,7 +2622,6 @@ tf_cuda_library(
         "//tensorflow/core/graph:core_cpu_impl_srcs",
         "//tensorflow/core/public:session.h",
         "//tensorflow/core/public:session_options.h",
-        "//tensorflow/core/public:version.h",
     ],
     hdrs = [":core_cpu_lib_headers"],
     copts = tf_copts() + tf_openmp_copts(),
@@ -2592,10 +2635,12 @@ tf_cuda_library(
         ":protos_all_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "//third_party/eigen3",
+        "//tensorflow/core/public:version",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
@@ -3032,7 +3077,7 @@ tf_cc_tests(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
 )
 
@@ -3685,6 +3730,25 @@ tf_cc_test(
         ":lib",
         ":test",
         ":test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime_replicate_per_replica_nodes_test",
+    size = "small",
+    srcs = ["common_runtime/replicate_per_replica_nodes_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core_cpu_internal",
+        ":framework",
+        ":test",
+        ":test_main",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -646,6 +646,18 @@ cc_binary(
 )
 
 cc_library(
+    name = "all_targets",
+    deps = [
+        ":aarch64_code_gen",
+        ":amdgpu_code_gen",
+        ":arm_code_gen",
+        ":nvptx_code_gen",
+        ":powerpc_code_gen",
+        ":x86_code_gen",
+    ],
+)
+
+cc_library(
     name = "aarch64_asm_parser",
     srcs = glob([
         "lib/Target/AArch64/AsmParser/*.c",
@@ -3740,7 +3752,7 @@ cc_library(
     deps = [
         ":config",
         ":demangle",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
 )
 

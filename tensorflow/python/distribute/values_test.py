@@ -1392,7 +1392,7 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
     vals = (constant_op.constant(1.), constant_op.constant([5., 6.0]),)
     per_replica = values.PerReplica(vals)
 
-    # Note: nest.map_structutre exercises nest.flatten and
+    # Note: nest.map_structure exercises nest.flatten and
     # nest.pack_sequence_as.
     result = nest.map_structure(
         lambda t: t + 10, per_replica, expand_composites=True)

@@ -4,6 +4,7 @@ load(
     "cc_header_only_library",
     "if_android",
     "if_cuda_or_rocm",
+    "if_mobile",
     "if_not_windows",
     "tf_cc_binary",
     "tf_cc_shared_object",
@@ -14,12 +15,20 @@ load(
     "tf_cuda_library",
     "tf_kernel_library",
     "tf_mkl_kernel_library",
-    "tf_opts_nortti_if_android",
+    "tf_opts_nortti_if_lite_protos",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+
+# For platform specific build config
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
@@ -3923,6 +3932,18 @@ tf_kernel_library(
     deps = MATH_DEPS,
 )
 
+cc_library(
+    name = "aggregate_ops_headers",
+    hdrs = [
+        "aggregate_ops.h",
+        "aggregate_ops_cpu.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_kernel_library(
     name = "argmax_op",
     prefix = "argmax_op",
@@ -6864,29 +6885,27 @@ filegroup(
 )
 # LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
 
-cc_library(
+alias(
     name = "android_tensorflow_kernels",
-    srcs = select({
-        "//tensorflow:android": [
-            "//tensorflow/core/kernels:android_core_ops",
-            "//tensorflow/core/kernels:android_extended_ops",
-        ],
-        "//conditions:default": [],
-    }),
-    copts = tf_copts(),
-    linkopts = select({
-        "//tensorflow:android": [
-            "-ldl",
-        ],
-        "//conditions:default": [],
-    }),
+    actual = ":portable_tensorflow_kernels",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "portable_tensorflow_kernels",
+    srcs = if_mobile([
+        "//tensorflow/core/kernels:android_core_ops",
+        "//tensorflow/core/kernels:android_extended_ops",
+    ]),
+    copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
+    linkopts = if_android(["-ldl"]),
     tags = [
         "manual",
         "notap",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/core:protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",

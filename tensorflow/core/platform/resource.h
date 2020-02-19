@@ -16,19 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_RESOURCE_H_
 #define TENSORFLOW_CORE_PLATFORM_RESOURCE_H_
 
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 
 // Tracks resource usage for tagged code paths.
-class ResourceTagger;
+class ResourceTagger {
+ public:
+  ResourceTagger(StringPiece key, StringPiece value);
+};
 
 }  // namespace tensorflow
-
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/resource.h"
-#else
-#include "tensorflow/core/platform/default/resource.h"
-#endif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_RESOURCE_H_

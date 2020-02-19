@@ -32,13 +32,12 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
-#include "tensorflow/lite/profiling/buffered_profiler.h"
-#include "tensorflow/lite/profiling/profile_summarizer.h"
+#include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
-#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
+#include "tensorflow/lite/tools/benchmark/profiling_listener.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
@@ -60,48 +59,6 @@ constexpr int kOpProfilingEnabledDefault = true;
 constexpr int kOpProfilingEnabledDefault = false;
 #endif
 
-// Dumps profiling events if profiling is enabled.
-class ProfilingListener : public BenchmarkListener {
- public:
-  ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries,
-                    std::string csv_file_path = "")
-      : interpreter_(interpreter),
-        profiler_(max_num_entries),
-        run_summarizer_(!csv_file_path.empty()),
-        init_summarizer_(!csv_file_path.empty()),
-        csv_file_path_(csv_file_path) {
-    TFLITE_BENCHMARK_CHECK(interpreter);
-    interpreter_->SetProfiler(&profiler_);
-
-    // We start profiling here in order to catch events that are recorded during
-    // the benchmark run preparation stage where TFLite interpreter is
-    // initialized and model graph is prepared.
-    profiler_.Reset();
-    profiler_.StartProfiling();
-  }
-
-  void OnBenchmarkStart(const BenchmarkParams& params) override;
-
-  void OnSingleRunStart(RunType run_type) override;
-
-  void OnSingleRunEnd() override;
-
-  void OnBenchmarkEnd(const BenchmarkResults& results) override;
-
- private:
-  void WriteOutput(const std::string& header, const string& data,
-                   std::ostream* stream) {
-    (*stream) << header << std::endl;
-    (*stream) << data << std::endl;
-  }
-
-  Interpreter* interpreter_;
-  profiling::BufferedProfiler profiler_;
-  profiling::ProfileSummarizer run_summarizer_;
-  profiling::ProfileSummarizer init_summarizer_;
-  std::string csv_file_path_;
-};
-
 // Dumps ruy profiling events if the ruy profiler is enabled.
 class RuyProfileListener : public BenchmarkListener {
  public:
@@ -112,47 +69,6 @@ class RuyProfileListener : public BenchmarkListener {
  private:
   std::unique_ptr<ruy::profiler::ScopeProfile> ruy_profile_;
 };
-
-void ProfilingListener::OnBenchmarkStart(const BenchmarkParams& params) {
-  // At this point, we have completed the prepration for benchmark runs
-  // including TFLite interpreter initialization etc. So we are going to process
-  // profiling events recorded during this stage.
-  profiler_.StopProfiling();
-  auto profile_events = profiler_.GetProfileEvents();
-  init_summarizer_.ProcessProfiles(profile_events, *interpreter_);
-  profiler_.Reset();
-}
-
-void ProfilingListener::OnSingleRunStart(RunType run_type) {
-  if (run_type == REGULAR) {
-    profiler_.Reset();
-    profiler_.StartProfiling();
-  }
-}
-
-void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
-  std::ofstream output_file(csv_file_path_);
-  std::ostream* output_stream = nullptr;
-  if (output_file.good()) {
-    output_stream = &output_file;
-  }
-  if (init_summarizer_.HasProfiles()) {
-    WriteOutput("Profiling Info for Benchmark Initialization:",
-                init_summarizer_.GetOutputString(),
-                output_stream == nullptr ? &TFLITE_LOG(INFO) : output_stream);
-  }
-  if (run_summarizer_.HasProfiles()) {
-    WriteOutput("Operator-wise Profiling Info for Regular Benchmark Runs:",
-                run_summarizer_.GetOutputString(),
-                output_stream == nullptr ? &TFLITE_LOG(INFO) : output_stream);
-  }
-}
-
-void ProfilingListener::OnSingleRunEnd() {
-  profiler_.StopProfiling();
-  auto profile_events = profiler_.GetProfileEvents();
-  run_summarizer_.ProcessProfiles(profile_events, *interpreter_);
-}
 
 void RuyProfileListener::OnBenchmarkStart(const BenchmarkParams& params) {
   ruy_profile_.reset(new ruy::profiler::ScopeProfile);

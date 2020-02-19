@@ -121,6 +121,13 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_fill(self):
+
+    def loop_fn(i):
+      return array_ops.fill((2, 3), i)
+
+    self._test_loop_fn(loop_fn, 3)
+
   def test_broadcast_to(self):
     x = random_ops.random_uniform([3, 2, 1, 3])
 
@@ -431,6 +438,27 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  def test_batch_to_space_nd(self):
+    x = random_ops.random_uniform([7, 5 * 2 * 3, 2, 2, 3, 2])
+    block_shapes = [2, 3]
+    crops = [[1, 2], [1, 0]]
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return array_ops.batch_to_space_nd(x1, block_shapes, crops)
+
+    self._test_loop_fn(loop_fn, 7)
+
+  def test_space_to_batch_nd(self):
+    x = random_ops.random_uniform([7, 5, 2 * 2 - 3, 2 * 3 - 1, 3, 2])
+    block_shapes = [2, 3]
+    paddings = [[1, 2], [1, 0]]
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return array_ops.space_to_batch_nd(x1, block_shapes, paddings)
+
+    self._test_loop_fn(loop_fn, 7)
 
 if __name__ == "__main__":
   test.main()

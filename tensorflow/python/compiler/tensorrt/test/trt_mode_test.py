@@ -18,8 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from unittest import skip  # pylint: disable=g-importing-member
+from unittest import SkipTest  # pylint: disable=g-importing-member
 
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -27,7 +28,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@skip("TrtModeTestBase defines a common base class for other tests")
 class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
   """Test squeeze on batch dim and some unary operations in TF-TRT."""
 
@@ -66,6 +66,12 @@ class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
         use_implicit_batch=implicit_batch)
     return conversion_params._replace(rewriter_config_template=rewriter_config)
 
+  @classmethod
+  def setUpClass(cls):
+    if cls is TrtModeTestBase:
+      raise SkipTest("TrtModeTestBase defines base class for other test.")
+    super(TrtModeTestBase, cls).setUpClass()
+
 
 class ImplicitBatchTest(TrtModeTestBase):
 
@@ -92,6 +98,14 @@ class ImplicitBatchTest(TrtModeTestBase):
 
 class ExplicitBatchTest(TrtModeTestBase):
 
+  def GetParams(self):
+    """We specify input/output masks with static (known) shapes."""
+    return self.BuildParamsWithMask(
+        self.GraphFn,
+        dtypes.float32, [[1, 12, 5]], [[12, 5]],
+        input_mask=[[True, True, True]],
+        output_mask=[[True, True]])
+
   def GetConversionParams(self, run_params):
     """Return a TrtConversionParams for test that enables explicit batch."""
     return super(ExplicitBatchTest, self).GetConversionParams(run_params, False)
@@ -108,6 +122,40 @@ class ExplicitBatchTest(TrtModeTestBase):
     In explicit batch mode the whole graph is converted using a single engine.
     """
     return ["TRTEngineOp_0"]
+
+  def ShouldRunTest(self, run_params):
+    # Only run for TRT 6 and above.
+    ver = get_linked_tensorrt_version()
+    return ver[0] >= 6 and (not run_params.use_calibration)
+
+
+class DynamicShapesTest(TrtModeTestBase):
+  """Test with dynamic input shapes.
+
+  DynamicShapesTest is different from ExplicitBatchTest in that it uses input
+  and output masks to change the input and output shapes to unknown shapes.
+  """
+
+  def GetParams(self):
+    """We specify input/output mask with dynamic (unknown) shapes."""
+    return self.BuildParamsWithMask(
+        self.GraphFn,
+        dtypes.float32, [[1, 12, 5]], [[12, 5]],
+        input_mask=[[False, False, False]],
+        output_mask=[[False, False]])
+
+  def GetConversionParams(self, run_params):
+    """Return a TrtConversionParams for test that enables explicit batch."""
+    return super(DynamicShapesTest, self).GetConversionParams(run_params, False)
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return ["TRTEngineOp_0"]
+
+  def ShouldRunTest(self, run_params):
+    # Only run for TRT 6 and above.
+    ver = get_linked_tensorrt_version()
+    return ver[0] >= 6 and (not run_params.use_calibration)
 
 
 if __name__ == "__main__":

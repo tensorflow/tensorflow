@@ -325,6 +325,8 @@ class Interpreter(object):
     tensor_quantization = self._interpreter.TensorQuantization(tensor_index)
     tensor_quantization_params = self._interpreter.TensorQuantizationParameters(
         tensor_index)
+    tensor_sparsity_params = self._interpreter.TensorSparsityParameters(
+        tensor_index)
 
     if not tensor_name or not tensor_type:
       raise ValueError('Could not get tensor details')
@@ -340,7 +342,8 @@ class Interpreter(object):
             'scales': tensor_quantization_params[0],
             'zero_points': tensor_quantization_params[1],
             'quantized_dimension': tensor_quantization_params[2],
-        }
+        },
+        'sparsity_parameters': tensor_sparsity_params
     }
 
     return details

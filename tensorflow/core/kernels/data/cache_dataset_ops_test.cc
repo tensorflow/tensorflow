@@ -13,6 +13,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/platform/path.h"
 
 namespace tensorflow {
 namespace data {
@@ -102,7 +103,7 @@ CacheDatasetParams CacheDatasetParams1() {
       /*node_name=*/"tensor_slice");
   return CacheDatasetParams(
       std::move(tensor_slice_dataset_params),
-      /*filename=*/absl::StrCat(testing::TmpDir(), "/cache_data"),
+      /*filename=*/io::JoinPath(testing::TmpDir(), "cache_data"),
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({3, 1})}, kNodeName);
 }
@@ -114,7 +115,7 @@ CacheDatasetParams CacheDatasetParams2() {
       /*node_name=*/"tensor_slice");
   return CacheDatasetParams(
       std::move(tensor_slice_dataset_params),
-      /*filename=*/absl::StrCat(testing::TmpDir(), "/cache_data"),
+      /*filename=*/io::JoinPath(testing::TmpDir(), "cache_data"),
       /*output_dtypes=*/{DT_INT64},
       /*output_shapes=*/{PartialTensorShape({})}, kNodeName);
 }
@@ -181,8 +182,8 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
 
   // Test the read mode.
   TF_ASSERT_OK(dataset_->MakeIterator(
-      iterator_ctx_.get(), test_case.dataset_params.iterator_prefix(),
-      &iterator_));
+      iterator_ctx_.get(), /*parent=*/nullptr,
+      test_case.dataset_params.iterator_prefix(), &iterator_));
   end_of_sequence = false;
   out_tensors.clear();
   while (!end_of_sequence) {
@@ -321,8 +322,8 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
     end_of_sequence = false;
     out_tensors.clear();
     TF_ASSERT_OK(dataset_->MakeIterator(
-        iterator_ctx_.get(), test_case.dataset_params.iterator_prefix(),
-        &iterator_));
+        iterator_ctx_.get(), /*parent=*/nullptr,
+        test_case.dataset_params.iterator_prefix(), &iterator_));
   }
 
   std::unique_ptr<SerializationContext> serialization_ctx;

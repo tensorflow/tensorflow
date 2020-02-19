@@ -658,6 +658,17 @@ def ctc_loss_and_grad(logits, labels, label_length, logit_length, unique=None):
     olabel_log_probs = _state_to_olabel(labels, num_labels, fwd_bwd_log_probs)
 
   grad = math_ops.exp(ilabel_log_probs) - math_ops.exp(olabel_log_probs)
+
+  # Applies the sequence mask for the gradient. It is enough to appply the mask
+  # only for ilabel_log_probs because olabel_log_probs already consider the
+  # mask. However, it is just safe and clean to apply it for the gradient.
+  max_logit_length = _get_dim(logits, 0)
+  logit_mask = array_ops.sequence_mask(logit_length, max_logit_length,
+                                       dtypes.float32)
+  logit_mask = array_ops.transpose(logit_mask, perm=[1, 0])
+  logit_mask = array_ops.expand_dims(logit_mask, axis=2)
+  grad *= logit_mask
+
   loss = -log_likelihood
   return loss, grad
 
@@ -937,7 +948,7 @@ def ctc_loss_dense(labels,
     The dense implementation supports both CPU, GPU and TPU. A fast path is
     provided that significantly improves memory use for large vocabulary if the
     caller preprocesses label sequences to get unique label indices on the CPU
-    (eg. in the data input pipeline) using ctc_ops.unique and simplies this in
+    (eg. in the data input pipeline) using ctc_ops.unique and simplifies this in
     the optional "unique" kwarg. This is especially useful for TPU and GPU but
     also works with if used on CPU.
 

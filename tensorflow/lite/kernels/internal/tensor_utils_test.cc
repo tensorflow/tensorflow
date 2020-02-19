@@ -272,7 +272,7 @@ TEST(uKernels, AsymmetricQuantizeFloatsAllZerosTest) {
   int32_t test_offset;
   AsymmetricQuantizeFloats(input, kVectorSize, output, &test_scale,
                            &test_offset);
-  EXPECT_EQ(test_scale, 0);
+  EXPECT_EQ(test_scale, 1);
   EXPECT_EQ(test_offset, 0);
   EXPECT_THAT(output, testing::ElementsAreArray({0, 0, 0, 0, 0, 0, 0, 0, 0}));
 }
@@ -394,6 +394,78 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
   };
 
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+TEST(uKernels, HybridMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
+  CpuBackendContext context;
+  const std::vector<int8_t> input = {
+      4,   -41, 5,   -41, 22,  17,  -30, 24,  13,  -47, 18,  9,   -11, -30, 16,
+      1,   -47, 12,  36,  -20, 27,  -3,  0,   -51, -31, 3,   -8,  -38, 43,  23,
+      12,  1,   11,  -23, -26, 23,  14,  -9,  -44, 22,  21,  -30, 3,   -47, -26,
+      -21, -24, 1,   -44, 34,  -11, -23, -28, 26,  -38, 19,  35,  9,   23,  6,
+      -42, -25, 28,  1,   4,   -41, 5,   -41, 22,  17,  -30, 24,  13,  -47, 18,
+      9,   -11, -30, 16,  1,   -47, 12,  36,  -20, 27,  -3,  0,   -51, -31, 3,
+      -8,  -38, 43,  23,  12,  1,   11,  -23, -26, 23,  14,  -9,  -44, 22,  21,
+      -30, 3,   -47, -26, -21, -24, 1,   -44, 34,  -11, -23, -28, 26,  -38, 19,
+      35,  9,   23,  6,   -42, -25, 28,  1,
+  };
+  const std::vector<int32_t> input_offsets = {1, 1, 1, 1};
+
+  const std::vector<float> scaling_factors = {
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+  };
+
+  const std::vector<int8_t> input_to_gate_weights = {
+      -10, -4,  -8,  16,  4,  -16, -1,  11,  1,   2,   -25, 19,  7,   9,   2,
+      1,   -24, -2,  10,  -7, 7,   -5,  -2,  3,   4,   3,   -4,  -7,  -11, -13,
+      -18, 2,   11,  10,  12, -9,  17,  -15, -5,  20,  -6,  -11, 2,   -6,  -18,
+      15,  4,   3,   4,   -9, -2,  -3,  -9,  -13, 17,  -21, 5,   3,   -12, 0,
+      -4,  9,   -5,  4,   10, -2,  8,   1,   -10, -6,  1,   -9,  10,  11,  -1,
+      -5,  4,   -7,  -4,  5,  -4,  4,   12,  -7,  -5,  -9,  -19, 6,   -4,  12,
+      -17, -22, 0,   9,   -4, 6,   -5,  5,   -8,  8,   3,   15,  -18, -18, 5,
+      3,   -12, 5,   -10, 7,  7,   7,   -9,  17,  2,   -11, -25, 3,   19,  -6,
+      7,   1,   7,   5,   -3, 11,  3,   8,   0,   -8,  8,   -2,  -2,  -12, 14,
+      -5,  7,   8,   16,  20, -16, -5,  -5,  9,   1,   -10, -6,  14,  10,  -12,
+      10,  -6,  5,   0,   3,  8,   -9,  -13, -2,  10,  4,   4,   -16, -17, -9,
+      16,  -5,  14,  -9,  -5, -12, 0,   17,  6,   -1,  11,  16,  -20, 1,   -11,
+      -1,  -10, -21, 13,  4,  -12, -7,  0,   -14, -6,  3,   12,  -4,  6,   -18,
+      -3,  -1,  14,  -8,  -6, -15, 5,   12,  -3,  -10, 4,   6,   13,  -5,  -20,
+      0,   3,   -3,  -7,  1,  2,   -10, 7,   -3,  6,   1,   -12, 6,   14,  -5,
+      -20, 0,   3,   -3,  -7, 1,   2,   -10, 7,   -3,  6,   1,   -12, 6,   15,
+      -5,  -20, 0,   3,   -3, -7,  1,   2,   -10, 7,   -3,  6,   1,   -12, 6,
+      16,
+  };
+
+  std::vector<int32_t> scratch(5 * 8, 0);
+  std::vector<float> output(4 * 8, 0);
+  int32_t* row_sums = scratch.data() + 8 * 4;
+  bool compute_row_sums = true;
+  MatrixBatchVectorMultiplyAccumulate(
+      input_to_gate_weights.data(), /*m_rows=*/8, /*m_cols=*/32, input.data(),
+      scaling_factors.data(), /*n_batch*/ 4, output.data(), 1, nullptr,
+      input_offsets.data(), scratch.data(), row_sums, &compute_row_sums,
+      &context);
+
+  const std::vector<float_t> expected_output = {
+      -228, 1548,  937, -166, -1164, -1578, -278,  303, 839,  -820,  132,
+      1733, -1858, 58,  -425, -587,  -228,  1548,  937, -166, -1164, -1578,
+      -278, 303,   839, -820, 132,   1733,  -1858, 58,  -425, -587,
+  };
+
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+  EXPECT_THAT(compute_row_sums, false);
+
+  std::vector<float> output2(4 * 8, 0);
+  MatrixBatchVectorMultiplyAccumulate(
+      input_to_gate_weights.data(), /*m_rows=*/8, /*m_cols=*/32, input.data(),
+      scaling_factors.data(), /*n_batch*/ 4, output2.data(), 1, nullptr,
+      input_offsets.data(), scratch.data(), row_sums, &compute_row_sums,
+      &context);
+
+  EXPECT_THAT(output2, testing::ElementsAreArray(expected_output));
 }
 
 // Qautnized matmul with 2 * 30 input and 9 * 30 matrix.
@@ -848,8 +920,7 @@ std::vector<float> TestSparseDotprodMatrixBatchVectorMultiply(
   MatrixVectorData data = SetupMatrixVectorData(rows, cols, batch, negative);
   SparseMatrixBatchVectorMultiplyAccumulate(
       data.sparse_matrix.data(), data.ledger.data(), rows, cols,
-      data.vectors.data(), data.scale_factors.data(), batch, &data.results[0],
-      1);
+      data.vectors.data(), data.scale_factors.data(), batch, &data.results[0]);
   return data.results;
 }
 
@@ -1246,8 +1317,7 @@ TEST(uKernels, SparseMatrixBatchVectorMultiplyAccumulateTest) {
 
   std::vector<float> sparse_output(kRow * kBatch, 0.0);
   SparseMatrixBatchVectorMultiplyAccumulate(
-      matrix_values, ledger, kRow, kCol, vector, kBatch, sparse_output.data(),
-      /*result_stride=*/1);
+      matrix_values, ledger, kRow, kCol, vector, kBatch, sparse_output.data());
 
   EXPECT_THAT(sparse_output,
               ElementsAreArray(ArrayFloatNear(dense_output, 1e-4)));
@@ -1331,8 +1401,7 @@ TEST(uKernels,
   std::vector<float> sparse_output(kRow * kBatch, 0.0);
   SparseMatrixBatchVectorMultiplyAccumulate(
       quantized_matrix_values, ledger, kRow, kCol, quantized_vector,
-      result_scaling_factor, kBatch, sparse_output.data(),
-      /*result_stride=*/1);
+      result_scaling_factor, kBatch, sparse_output.data());
 
   EXPECT_THAT(sparse_output,
               ElementsAreArray(ArrayFloatNear(
@@ -1618,7 +1687,7 @@ TEST(uKernels, BatchVectorBatchVectorDotProductTest) {
                                                -0.1, 0.1,  -0.1, 0.1,  -0.1};
   std::vector<float> output(kBatch);
   BatchVectorBatchVectorDotProduct(input1, input2, kVectorSize, kBatch,
-                                   output.data(), /*result_stride=*/1);
+                                   output.data());
   EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({0.5, 1.75})));
 }
 
@@ -1631,7 +1700,7 @@ TEST(uKernels, BatchVectorBatchVectorDotProductIntegerTest) {
                                                  -1, 1,  -1, 1,  1};
   std::vector<int32_t> output(kBatch);
   BatchVectorBatchVectorDotProduct(input1, input2, kVectorSize, kBatch,
-                                   output.data(), /*result_stride=*/1);
+                                   output.data());
   EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({40, 85})));
 }
 
@@ -1894,7 +1963,7 @@ void BM_DotprodSparseMultiply(benchmark::State& state) {
     tflite::tensor_utils::SparseMatrixBatchVectorMultiplyAccumulate(
         data.sparse_matrix.data(), data.ledger.data(), data.rows, data.cols,
         data.vectors.data(), data.scale_factors.data(), data.batch,
-        &data.results[0], 1);
+        &data.results[0]);
     testing::DoNotOptimize(data.results[2]);
   }
 }

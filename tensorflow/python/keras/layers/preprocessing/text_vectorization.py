@@ -69,7 +69,7 @@ _OOV_IDF_NAME = "oov_idf"
 _ACCUMULATOR_VOCAB_NAME = "vocab"
 # The total counts of each token in the vocabulary
 _ACCUMULATOR_COUNTS_NAME = "counts"
-# The number of doccumeents / examples that each token appears in.
+# The number of documents / examples that each token appears in.
 _ACCUMULATOR_DOCUMENT_COUNTS = "document_counts"
 # The total number of documents / examples in the dataset.
 _ACCUMULATOR_NUM_DOCUMENTS = "num_documents"

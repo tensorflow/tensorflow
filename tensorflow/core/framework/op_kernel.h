@@ -31,7 +31,9 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op.h"  // TODO(b/62899350): Remove
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/session_state.h"
@@ -85,19 +87,18 @@ class OpKernel {
   // expensive initialization in the descendant's constructor.
   explicit OpKernel(OpKernelConstruction* context);
 
-  // Specialized constructor that enables the descendant to provide a different
-  // `NodeDef` value. For example, this constructor can be used to provide a
-  // stripped-down `NodeDef` that does not contain the full set of attrs (such
-  // as tensor values) if the descendant stores them in a different form.
-  explicit OpKernel(OpKernelConstruction* context,
-                    std::unique_ptr<const NodeDef> node_def,
-                    bool is_deferred = false);
-
   // Specialized constructor that allows a kernel implementation to mark itself
   // as a "deferred" op. If true, the executor will provide access to the
   // `OpKernelContext::inc_num_deferred_ops_function()` and
   // `OpKernelContext::dec_num_deferred_ops_function()` methods at run-time.
-  explicit OpKernel(OpKernelConstruction* context, bool is_deferred);
+  OpKernel(OpKernelConstruction* context, bool is_deferred);
+
+  // Specialized constructor that enables the descendant to provide a custom
+  // `NodeDef` value. For example, this constructor can be used to provide a
+  // stripped-down `NodeDef` that does not contain the full set of attrs (such
+  // as tensor values) if the descendant stores them in a different form.
+  OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
+           bool is_deferred);
 
   virtual ~OpKernel();
 
@@ -170,24 +171,26 @@ class OpKernel {
   }
 
   // Accessors.
-  const NodeDef& def() const { return *def_; }
-  const string& name() const;              // Same as def().name()
+  const NodeDef& def() const { return props_->node_def; }
+  const string& name() const { return props_->node_def.name(); }
   absl::string_view name_view() const { return name_view_; }
-  const string& type_string() const;       // Same as def().op()
+  const string& type_string() const { return props_->node_def.op(); }
   absl::string_view type_string_view() const { return type_string_view_; }
-  const string& requested_device() const;  // Same as def().device()
+  const string& requested_input(int i) const {
+    return props_->node_def.input(i);
+  }
+  const string& requested_device() const { return props_->node_def.device(); }
 
-  int num_inputs() const { return input_types_.size(); }
-  DataType input_type(int i) const { return input_types_[i]; }
-  const DataTypeVector& input_types() const { return input_types_; }
+  int num_inputs() const { return props_->input_types.size(); }
+  DataType input_type(int i) const { return props_->input_types[i]; }
+  const DataTypeVector& input_types() const { return props_->input_types; }
   const MemoryTypeVector& input_memory_types() const {
     return input_memory_types_;
   }
-  const string& requested_input(int i) const;  // Same as def().input(i)
 
-  int num_outputs() const { return output_types_.size(); }
-  DataType output_type(int o) const { return output_types_[o]; }
-  const DataTypeVector& output_types() const { return output_types_; }
+  int num_outputs() const { return props_->output_types.size(); }
+  DataType output_type(int o) const { return props_->output_types[o]; }
+  const DataTypeVector& output_types() const { return props_->output_types; }
   const MemoryTypeVector& output_memory_types() const {
     return output_memory_types_;
   }
@@ -205,11 +208,12 @@ class OpKernel {
   // necessary for cost analysis.
   virtual string TraceString(OpKernelContext* ctx, bool verbose);
 
+ protected:
+  string GetTraceArgument(OpKernelContext* ctx);
+
  private:
-  const std::unique_ptr<const NodeDef> def_;
-  const DataTypeVector input_types_;
+  const std::shared_ptr<const NodeProperties> props_;
   const MemoryTypeVector input_memory_types_;
-  const DataTypeVector output_types_;
   const MemoryTypeVector output_memory_types_;
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
@@ -281,12 +285,10 @@ class PersistentTensor {
 class OpKernelConstruction {
  public:
   OpKernelConstruction(DeviceType device_type, DeviceBase* device,
-                       Allocator* allocator, const NodeDef* node_def,
-                       const OpDef* op_def, FunctionLibraryRuntime* flib,
+                       Allocator* allocator, FunctionLibraryRuntime* flib,
                        ResourceMgr* resource_mgr,
-                       const DataTypeSlice& input_types,
+                       const std::shared_ptr<const NodeProperties>& props,
                        const MemoryTypeSlice& input_memory_types,
-                       const DataTypeSlice& output_types,
                        const MemoryTypeSlice& output_memory_types,
                        int graph_def_version, Status* status);
 
@@ -327,20 +329,22 @@ class OpKernelConstruction {
                              Tensor** out_tensor);
 
   // User-supplied configuration of this operation.
-  const NodeDef& def() const { return *def_; }
+  const NodeDef& def() const { return props_->node_def; }
 
   // For inspecting the inputs to this operation.
-  int num_inputs() const { return input_types_.size(); }
-  DataType input_type(int i) const { return input_types_[i]; }
-  const DataTypeSlice& input_types() const { return input_types_; }
+  int num_inputs() const { return props_->input_types.size(); }
+  DataType input_type(int i) const { return props_->input_types[i]; }
+  const DataTypeSlice& input_types() const { return props_->input_types_slice; }
   const MemoryTypeSlice& input_memory_types() const {
     return input_memory_types_;
   }
 
   // For inspecting the outputs expected from this operation.
-  int num_outputs() const { return output_types_.size(); }
-  DataType output_type(int i) const { return output_types_[i]; }
-  const DataTypeSlice& output_types() const { return output_types_; }
+  int num_outputs() const { return props_->output_types.size(); }
+  DataType output_type(int i) const { return props_->output_types[i]; }
+  const DataTypeSlice& output_types() const {
+    return props_->output_types_slice;
+  }
   const MemoryTypeSlice& output_memory_types() const {
     return output_memory_types_;
   }
@@ -400,19 +404,15 @@ class OpKernelConstruction {
   const DeviceType device_type_;
   DeviceBase* const device_;
   Allocator* allocator_;
-  const NodeDef* def_;
-  const OpDef* op_def_;
   FunctionLibraryRuntime* flib_;
   ResourceMgr* const resource_mgr_;
-  DataTypeSlice input_types_;
+  std::shared_ptr<const NodeProperties> props_;
   MemoryTypeSlice input_memory_types_;
-  DataTypeSlice output_types_;
   MemoryTypeSlice output_memory_types_;
   const int graph_def_version_;
   Status* status_;
 
-  // Allow op_def_ across from OpKernel, but not from subclasses.
-  // TODO(irving): Remove protos from this header entirely.
+  // Allow access from OpKernel ctor.
   friend class OpKernel;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelConstruction);
@@ -1401,15 +1401,23 @@ const Eigen::SyclDevice& OpKernelContext::eigen_device() const;
 std::unique_ptr<OpKernel> CreateOpKernel(DeviceType device_type,
                                          DeviceBase* device,
                                          Allocator* allocator,
-                                         const NodeDef& def,
+                                         const NodeDef& node_def,
                                          int graph_def_version, Status* status);
+
+std::unique_ptr<OpKernel> CreateOpKernel(
+    DeviceType device_type, DeviceBase* device, Allocator* allocator,
+    const std::shared_ptr<const NodeProperties>& props, int graph_def_version,
+    Status* status);
+
 Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                       Allocator* allocator, FunctionLibraryRuntime* flib,
-                      const NodeDef& def, int graph_def_version,
-                      OpKernel** kernel);
+                      const std::shared_ptr<const NodeProperties>& props,
+                      int graph_def_version, OpKernel** kernel);
+
 Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                       Allocator* allocator, FunctionLibraryRuntime* flib,
-                      ResourceMgr* resource_mgr, const NodeDef& def,
+                      ResourceMgr* resource_mgr,
+                      const std::shared_ptr<const NodeProperties>& props,
                       int graph_def_version, OpKernel** kernel);
 
 // Returns into 'device_types' the subset of prioritized_types that this
@@ -1769,19 +1777,6 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
   ctx_->set_output_ref(i, mu, tensor_for_ref);
 }
 
-// Convenience macros for asserting and handling exceptional conditions.
-// Analogous to the CHECK* macros provided by logging.h.
-//
-// Example use:
-// void Compute(OperationContext* context) {
-//   OP_REQUIRES(context, context->num_inputs() == 2,
-//               errors::InvalidArgument("FooOp requires 2 arguments"));
-//   ...
-//   Status status = SomeUncertainMethod();
-//   OP_REQUIRES_OK(context, status);
-//   ...
-// }
-
 // Generate a fatal error if OP_REQUIRES or OP_REQUIRES_OK are used in
 // AsyncOpKernel implementations. If these macros are used and the condition
 // does not hold, the `done` callback will never be called and the system will
@@ -1794,44 +1789,6 @@ inline void CheckNotInComputeAsync(XlaOpKernelContext*, const char*) {}
 inline void CheckNotInComputeAsync(OpKernelConstruction*, const char*) {}
 void CheckNotInComputeAsync(OpKernelContext* ctx,
                             const char* correct_macro_name);
-
-#define OP_REQUIRES(CTX, EXP, STATUS)                     \
-  do {                                                    \
-    if (!TF_PREDICT_TRUE(EXP)) {                          \
-      CheckNotInComputeAsync((CTX), "OP_REQUIRES_ASYNC"); \
-      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS));    \
-      return;                                             \
-    }                                                     \
-  } while (0)
-
-#define OP_REQUIRES_OK(CTX, ...)                             \
-  do {                                                       \
-    ::tensorflow::Status _s(__VA_ARGS__);                    \
-    if (!TF_PREDICT_TRUE(_s.ok())) {                         \
-      CheckNotInComputeAsync((CTX), "OP_REQUIRES_OK_ASYNC"); \
-      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s);  \
-      return;                                                \
-    }                                                        \
-  } while (0)
-
-#define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK)  \
-  do {                                                 \
-    if (!TF_PREDICT_TRUE(EXP)) {                       \
-      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS)); \
-      (CALLBACK)();                                    \
-      return;                                          \
-    }                                                  \
-  } while (0)
-
-#define OP_REQUIRES_OK_ASYNC(CTX, STATUS, CALLBACK)         \
-  do {                                                      \
-    ::tensorflow::Status _s(STATUS);                        \
-    if (!TF_PREDICT_TRUE(_s.ok())) {                        \
-      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s); \
-      (CALLBACK)();                                         \
-      return;                                               \
-    }                                                       \
-  } while (0)
 
 }  // namespace tensorflow
 

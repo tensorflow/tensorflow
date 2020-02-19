@@ -1340,7 +1340,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual([0, -1, -1, 2], sess.run(output1))
         self.assertAllEqual([2, 0, 1, -1], sess.run(output2))
 
-  def test_perserve_argspec(self, cycles):
+  def test_preserve_argspec(self, cycles):
+
     def f(a, b, c):  # pylint: disable=unused-argument
       return None
 

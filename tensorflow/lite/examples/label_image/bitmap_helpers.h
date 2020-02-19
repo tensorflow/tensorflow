@@ -31,12 +31,10 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
             int wanted_channels, Settings* s);
 
 // explicit instantiation
-template void resize<float>(float*, unsigned char*, int, int, int, int, int,
-                            int, Settings*);
-template void resize<int8_t>(int8_t*, unsigned char*, int, int, int, int, int,
-                             int, Settings*);
 template void resize<uint8_t>(uint8_t*, unsigned char*, int, int, int, int, int,
                               int, Settings*);
+template void resize<float>(float*, unsigned char*, int, int, int, int, int,
+                            int, Settings*);
 
 }  // namespace label_image
 }  // namespace tflite

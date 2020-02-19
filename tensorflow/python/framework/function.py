@@ -290,7 +290,7 @@ class _DefinedFunction(object):
     device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
     # pylint: enable=protected-access
 
-    # Get the innermost device if possbile.
+    # Get the innermost device if possible.
     self._caller_device = device_funcs[-1] if device_funcs else None
 
     # Cached OpDef for this function. When C API is enabled, this is
@@ -804,12 +804,28 @@ class _FuncGraph(ops.Graph):
         return var.value()
       return var
 
-  def _create_op_internal(self, op_type, inputs, dtypes=None, **kwargs):  # pylint: disable=redefined-outer-name
+  def _create_op_internal(
+      self,
+      op_type,
+      inputs,
+      dtypes=None,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_device=True):
     for i, x in enumerate(inputs):
       if isinstance(x, ops.EagerTensor) or x.graph is not self:
         inputs[i] = self.capture(x)
     return super(_FuncGraph, self)._create_op_internal(
-        op_type, inputs, dtypes=dtypes, **kwargs)
+        op_type,
+        inputs,
+        dtypes=dtypes,
+        input_types=input_types,
+        name=name,
+        attrs=attrs,
+        op_def=op_def,
+        compute_device=compute_device)
 
   def capture(self, tensor, name=None):
     """Adds the given tensor to this graph and returns the captured tensor."""

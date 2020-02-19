@@ -76,10 +76,8 @@ class DebugEventsWriterTest : public ::testing::Test {
     if (env()->IsDirectory(dump_root_).ok()) {
       int64 undeleted_files = 0;
       int64 undeleted_dirs = 0;
-      ASSERT_TRUE(
-          env()
-              ->DeleteRecursively(dump_root_, &undeleted_files, &undeleted_dirs)
-              .ok());
+      TF_ASSERT_OK(env()->DeleteRecursively(dump_root_, &undeleted_files,
+                                            &undeleted_dirs));
       ASSERT_EQ(0, undeleted_files);
       ASSERT_EQ(0, undeleted_dirs);
     }
@@ -594,6 +592,9 @@ TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferNoFlush) {
   // Before FlushExecutionFiles() is called, the file should be empty.
   ReadDebugEventProtos(writer, DebugEventFileType::EXECUTION, &actuals);
   EXPECT_EQ(actuals.size(), 0);
+
+  // Close the writer so the files can be safely deleted.
+  TF_ASSERT_OK(writer->Close());
 }
 
 TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferFlush) {
@@ -688,6 +689,9 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferNoFlush) {
   ReadDebugEventProtos(writer, DebugEventFileType::GRAPH_EXECUTION_TRACES,
                        &actuals);
   EXPECT_EQ(actuals.size(), 0);
+
+  // Close the writer so the files can be safely deleted.
+  TF_ASSERT_OK(writer->Close());
 }
 
 TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
@@ -840,6 +844,9 @@ TEST_F(DebugEventsWriterTest, DisableCyclicBufferBeahavior) {
     EXPECT_EQ(actuals[i].graph_execution_trace().tfdbg_context_id(),
               strings::Printf("graph_%.2ld", i));
   }
+
+  // Close the writer so the files can be safely deleted.
+  TF_ASSERT_OK(writer->Close());
 }
 
 }  // namespace tfdbg

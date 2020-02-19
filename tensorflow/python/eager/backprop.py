@@ -38,6 +38,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -123,7 +124,7 @@ class _MockOp(object):
 
 
 def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
-                       out_grads, skip_input_indices):
+                       out_grads, skip_input_indices, forward_pass_name_scope):
   """Calls the gradient function of the op.
 
   Args:
@@ -135,6 +136,7 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
     out_grads: gradients of the operation wrt its outputs.
     skip_input_indices: a tuple that is passed to the gradient function,
       indicating which inputs to skip calculating the gradient for
+    forward_pass_name_scope: the namescope of the op in the forward pass.
 
   Returns:
     The gradients with respect to the inputs of the function, as a list.
@@ -144,7 +146,17 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
   if grad_fn is None:
     return [None] * num_inputs
 
-  return grad_fn(mock_op, *out_grads)
+  # This does not work with v1 TensorArrays.
+  if ops.executing_eagerly_outside_functions(
+  ) or control_flow_util.EnableControlFlowV2(ops.get_default_graph()):
+    if forward_pass_name_scope:
+      gradient_name_scope = "gradient_tape/" + forward_pass_name_scope + "/"
+    else:
+      gradient_name_scope = "gradient_tape/"
+    with ops.name_scope(gradient_name_scope):
+      return grad_fn(mock_op, *out_grads)
+  else:
+    return grad_fn(mock_op, *out_grads)
 
 
 pywrap_tfe.TFE_Py_RegisterGradientFunction(_gradient_function)
@@ -155,7 +167,8 @@ def _must_record_gradient():
 
 
 def _record_gradient(op_name, inputs, attrs, results):
-  return pywrap_tfe.TFE_Py_RecordGradient(op_name, inputs, attrs, results)
+  return pywrap_tfe.TFE_Py_RecordGradient(op_name, inputs, attrs, results,
+                                          ops.get_name_scope())
 
 
 execute.must_record_gradient = _must_record_gradient
@@ -625,12 +638,13 @@ def _num_elements(grad):
   """The number of elements in the `grad` tensor."""
   if isinstance(grad, ops.Tensor):
     shape_tuple = grad._shape_tuple()  # pylint: disable=protected-access
-    if shape_tuple is None or None in shape_tuple:
-      return 0
-    return functools.reduce(operator.mul, shape_tuple, 1)
-  if isinstance(grad, ops.IndexedSlices):
-    return functools.reduce(operator.mul, grad.values._shape_tuple(), 1)  # pylint: disable=protected-access
-  raise ValueError("`grad` not a Tensor or IndexedSlices.")
+  elif isinstance(grad, ops.IndexedSlices):
+    shape_tuple = grad.values._shape_tuple()  # pylint: disable=protected-access
+  else:
+    raise ValueError("`grad` not a Tensor or IndexedSlices.")
+  if shape_tuple is None or None in shape_tuple:
+    return 0
+  return functools.reduce(operator.mul, shape_tuple, 1)
 
 
 def _fast_fill(value, shape, dtype):

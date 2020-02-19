@@ -711,7 +711,7 @@ def _build_network_on_replica(model, mode, inputs=None, targets=None):
   placeholders for the input and the output that are not accessible till we
   call iterator.get_next() inside the step_fn for `fit`/`evaluate`/`predict`.
 
-  The sharing of weights and layers between the old and the new model gaurantee
+  The sharing of weights and layers between the old and the new model guarantee
   that we're using Strategy variables and any updates on either model are
   reflected correctly in callbacks and loop iterations.
 
@@ -935,7 +935,7 @@ def _make_execution_function_with_cloning(model, mode):
     distributed_model = get_distributed_model(model, mode)
   assert distributed_model
 
-  # Also create an execution fuction on that distributed model.
+  # Also create an execution function on that distributed model.
   if context.executing_eagerly():
     distributed_function = _make_eager_execution_function(model, mode)
   else:

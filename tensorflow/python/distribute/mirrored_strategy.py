@@ -260,7 +260,7 @@ def _group_device_list(devices):
 
   Returns:
     a dict of list of device strings mapping from task_type to a list of devices
-    for the task_type in the asceding order of task_id.
+    for the task_type in the ascending order of task_id.
   """
   assert not _is_device_list_single_worker(devices)
   device_dict = {}
@@ -578,7 +578,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       with ops.device(colocate_with.device):
         return next_creator(**kwargs)
     else:
-      devices = colocate_with.devices
+      devices = colocate_with._devices  # pylint: disable=protected-access
 
     def _real_mirrored_creator(**kwargs):  # pylint: disable=g-missing-docstring
       value_list = []

@@ -3,6 +3,7 @@
 #   related to dist-strat used by Keras..
 
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -374,14 +375,11 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "multi_worker_callback_tf2_test",
     srcs = ["multi_worker_callback_tf2_test.py"],
+    python_version = "PY3",
     shard_count = 10,
-    tags = [
-        "manual",  # TODO(b/148795660): Reenable once the flakiness is fixed.
-        "notap",
-    ],
     deps = [
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",

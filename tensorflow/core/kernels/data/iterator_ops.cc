@@ -91,8 +91,11 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
         [cm = params.cancellation_manager]() { cm->StartCancel(); },
         &deregister_fn));
     auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
+    uint64 start_time_us = ctx->env()->NowMicros();
     auto val = captured_state->iterator->GetNext(
         IteratorContext(std::move(params)), out_tensors, end_of_sequence);
+    metrics::RecordTFDataGetNextDuration(ctx->env()->NowMicros() -
+                                         start_time_us);
     metrics::RecordTFDataBytesFetched(GetTotalBytes(*out_tensors));
     return val;
   }
@@ -188,7 +191,8 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   {
     auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
     TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
-                                             "Iterator", &iterator));
+                                             /*parent=*/nullptr, "Iterator",
+                                             &iterator));
     TF_RETURN_IF_ERROR(
         VerifyTypesMatch(output_dtypes_, iterator->output_dtypes()));
     TF_RETURN_IF_ERROR(
@@ -562,8 +566,8 @@ class ToSingleElementOp : public HybridAsyncOpKernel {
 
     IteratorContext iter_ctx(std::move(params));
     std::unique_ptr<IteratorBase> iterator;
-    TF_RETURN_IF_ERROR(
-        dataset->MakeIterator(&iter_ctx, "SingleElementIterator", &iterator));
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(
+        &iter_ctx, /*parent=*/nullptr, "SingleElementIterator", &iterator));
 
     std::vector<Tensor> components;
     components.reserve(dataset->output_dtypes().size());
@@ -633,8 +637,8 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
         captured_func->Instantiate(&iter_ctx, &instantiated_captured_func));
 
     std::unique_ptr<IteratorBase> iterator;
-    TF_RETURN_IF_ERROR(
-        dataset->MakeIterator(&iter_ctx, "ReduceIterator", &iterator));
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(&iter_ctx, /*parent=*/nullptr,
+                                             "ReduceIterator", &iterator));
 
     // Iterate through the input dataset.
     while (true) {

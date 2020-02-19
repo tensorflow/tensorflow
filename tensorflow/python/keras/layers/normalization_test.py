@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -457,7 +458,6 @@ class NormalizationLayersGraphModeOnlyTest(
       x2 = model.predict(val_a)
       self.assertAllClose(x1, x2, atol=1e-7)
 
-  @tf_test_util.run_deprecated_v1
   def test_batchnorm_trainable(self, layer):
     """Tests that batchnorm layer is trainable when learning phase is enabled.
 
@@ -469,7 +469,7 @@ class NormalizationLayersGraphModeOnlyTest(
     """
     # TODO(fchollet): enable in all execution modes when issue with
     # learning phase setting is resolved.
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       bn_mean = 0.5
       bn_std = 10.
       val_a = np.expand_dims(np.arange(10.), axis=1)
