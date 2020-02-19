@@ -2309,9 +2309,11 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
               shared_cache,
               {b_.getInt32(0), constant(j), thread_id_info.lane_id}));
           llvm::Value* initial_value = reduction_info.GetInitialValues()[i];
-          llvm::Value* initial_value_addr = b_.CreateAlloca(element_type);
-          b_.CreateStore(initial_value, initial_value_addr);
-
+          llvm::Value* initial_value_addr =
+              shared_to_global(llvm_ir::EmitAllocaAtFunctionEntry(
+                  element_type, "initial_value_addr", &b_));
+          llvm::Value* store_ =
+              b_.CreateStore(initial_value, initial_value_addr);
           llvm::Value* warp_exists = b_.CreateICmpULT(
               thread_id_info.thread_id_x,
               constant(mapping_scheme.GetNumThreadsX() / kWarpSize));
