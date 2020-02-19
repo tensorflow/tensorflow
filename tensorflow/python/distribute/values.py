@@ -92,11 +92,6 @@ class DistributedValues(object):
     """Returns a representative component."""
     return self._values[0]
 
-  # TODO(josh11b): Replace experimental_local_results with this?
-  @property
-  def values(self):
-    return self._values
-
   @property
   def _devices(self):
     return tuple(v.device for v in self._values)
@@ -138,6 +133,11 @@ class DistributedDelegate(DistributedValues):
     # TODO(priyag): This needs to be made robust against pitfalls from mix use
     # __getattr__ and @property. See b/120402273.
     return getattr(self._get(), name)
+
+  @property
+  def values(self):
+    """Returns the per replica values."""
+    return self._values
 
   def _get_as_operand(self):
     """Returns the value for operations for the current device.
@@ -271,6 +271,11 @@ class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
   def _type_spec(self):
     return PerReplicaSpec(
         *(type_spec.type_spec_from_value(v) for v in self._values))
+
+  @property
+  def values(self):
+    """Returns the per replica values."""
+    return self._values
 
 
 class PerReplicaSpec(type_spec.TypeSpec):
@@ -824,7 +829,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
         if update_replica_id is not None:
           # We are calling an assign function on the mirrored variable in an
           # update context.
-          return f(self.values[update_replica_id], *args, **kwargs)
+          return f(self._values[update_replica_id], *args, **kwargs)
 
         # We are calling assign on the mirrored variable in cross replica
         # context, use `strategy.extended.update()` to update the variable.
