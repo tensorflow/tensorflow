@@ -1414,7 +1414,10 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["gather_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
