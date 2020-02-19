@@ -4395,7 +4395,7 @@ bool MIOpenSupport::DoPoolForward(
       bool cache_hit = m_pooling_cache_allowed && m_pooling_cache.find(input_data.opaque(), input_dimensions,
         output_dimensions,
         pooling_dimensions,
-        type, 
+        miopenFloat, 
         pdesc);
       if(cache_hit) {
         // reusing the same buffer
@@ -4411,7 +4411,8 @@ bool MIOpenSupport::DoPoolForward(
           output_dimensions,
           pooling_dimensions,
           miopenFloat, 
-          wsp_mem, workspace_size);
+          wsp_mem, workspace_size,
+          AsGpuStreamValue(stream));
       }
     }
   }
