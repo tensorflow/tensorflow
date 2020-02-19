@@ -168,16 +168,16 @@ class Adam(optimizer_v2.OptimizerV2):
     beta_2_power = math_ops.pow(beta_2_t, local_step)
     lr = (apply_state[(var_device, var_dtype)]['lr_t'] *
           (math_ops.sqrt(1 - beta_2_power) / (1 - beta_1_power)))
-    apply_state[(var_device, var_dtype)].update(dict(
-        lr=lr,
-        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
-        beta_1_t=beta_1_t,
-        beta_1_power=beta_1_power,
-        one_minus_beta_1_t=1 - beta_1_t,
-        beta_2_t=beta_2_t,
-        beta_2_power=beta_2_power,
-        one_minus_beta_2_t=1 - beta_2_t
-    ))
+    apply_state[(var_device, var_dtype)].update(
+        dict(
+            lr=lr,
+            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            beta_1_t=beta_1_t,
+            beta_1_power=beta_1_power,
+            one_minus_beta_1_t=1 - beta_1_t,
+            beta_2_t=beta_2_t,
+            beta_2_power=beta_2_power,
+            one_minus_beta_2_t=1 - beta_2_t))
 
   def set_weights(self, weights):
     params = self.weights

@@ -73,8 +73,6 @@ namespace eager {
 class RemoteMgr;
 }  // namespace eager
 
-class ProfilerServer;
-
 // LINT.IfChange
 // Note: Keep in sync with exported copy of enum in eager/c_api.h.
 enum ContextDevicePlacementPolicy {
@@ -600,9 +598,6 @@ class EagerContext : public core::RefCounted {
   WorkerEnv* worker_env_ = nullptr;
   std::shared_ptr<WorkerSession> worker_session_;
   std::unique_ptr<eager::EagerClientCache> remote_eager_workers_;
-
-  // Starts a thread for profiling service.
-  std::unique_ptr<ProfilerServer> profiler_server_;
 
   mutex remote_state_mu_;
 

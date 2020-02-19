@@ -30,11 +30,11 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.preprocessing import sequence
+from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 _RANDOM_SEED = 1337

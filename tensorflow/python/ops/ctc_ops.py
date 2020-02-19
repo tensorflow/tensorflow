@@ -658,6 +658,17 @@ def ctc_loss_and_grad(logits, labels, label_length, logit_length, unique=None):
     olabel_log_probs = _state_to_olabel(labels, num_labels, fwd_bwd_log_probs)
 
   grad = math_ops.exp(ilabel_log_probs) - math_ops.exp(olabel_log_probs)
+
+  # Applies the sequence mask for the gradient. It is enough to appply the mask
+  # only for ilabel_log_probs because olabel_log_probs already consider the
+  # mask. However, it is just safe and clean to apply it for the gradient.
+  max_logit_length = _get_dim(logits, 0)
+  logit_mask = array_ops.sequence_mask(logit_length, max_logit_length,
+                                       dtypes.float32)
+  logit_mask = array_ops.transpose(logit_mask, perm=[1, 0])
+  logit_mask = array_ops.expand_dims(logit_mask, axis=2)
+  grad *= logit_mask
+
   loss = -log_likelihood
   return loss, grad
 

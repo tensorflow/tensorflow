@@ -410,10 +410,13 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_hlo::AddOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::AndOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::CeilOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::CompareOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::CopyOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::ExpOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::MulOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::NegOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::RemOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::SelectOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::SubOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::TanhOp, false>>(context);
 }

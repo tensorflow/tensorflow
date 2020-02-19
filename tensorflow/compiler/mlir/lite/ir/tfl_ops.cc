@@ -1108,10 +1108,10 @@ static LogicalResult VerifySplitOpOutputTypes(
   for (int64_t i = 0; i < num_splits; ++i) {
     auto expected_output_type = get_expected_output_type(i);
     Value output = op->getResult(i);
-    auto output_type = output.getType().dyn_cast<RankedTensorType>();
-    if (!output_type || output_type != expected_output_type)
+    if (failed(verifyCompatibleShape(output.getType(), expected_output_type)))
       return op->emitOpError()
-             << "output #" << i << " should be " << expected_output_type;
+             << "output #" << i << " should be " << expected_output_type
+             << " instead got " << output.getType();
   }
   return success();
 }
@@ -1788,24 +1788,27 @@ struct WhileResultOperandsMatchAndImplicitCapture
 
     // Remove block arguments not used in either cond or body. This leaves the
     // block arguments of body and cond matching still.
-    for (auto it :
-         llvm::zip(body_block.getArguments(), cond_block.getArguments())) {
-      int index = std::get<0>(it).getArgNumber();
-      auto value = while_op.getOperand(index);
-      if (std::get<0>(it).use_empty() && std::get<1>(it).use_empty() &&
+    int arg_index = 0;
+    for (int while_index = 0, e = while_op.getNumOperands(); while_index < e;
+         ++while_index) {
+      auto value = while_op.getOperand(while_index);
+      if (body_block.getArgument(arg_index).use_empty() &&
+          cond_block.getArgument(arg_index).use_empty() &&
           // This could be relaxed and casts inserted.
-          while_op.getResult(index).getType() == value.getType()) {
+          while_op.getResult(while_index).getType() == value.getType()) {
         unchanged = false;
-        body_block.eraseArgument(index);
-        cond_block.eraseArgument(index);
+        body_block.eraseArgument(arg_index);
+        cond_block.eraseArgument(arg_index);
 
         // Mark operand as constant and replace all uses with input to while.
-        while_op.getResult(index).replaceAllUsesWith(value);
-        const_operand[index] = true;
+        while_op.getResult(while_index).replaceAllUsesWith(value);
+        const_operand[while_index] = true;
       } else {
         new_operands.push_back(value);
-        types.push_back(value.getType());
-        new_body_yield.push_back(yield.getOperand(index));
+        new_body_yield.push_back(yield.getOperand(while_index));
+        auto type = while_op.getResult(while_index).getType();
+        types.push_back(type);
+        ++arg_index;
       }
     }
 
@@ -1820,11 +1823,11 @@ struct WhileResultOperandsMatchAndImplicitCapture
                           /*resizableOperandList=*/true));
 
     for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
-    int index = 0;
-    for (int i = 0, e = op->getNumResults(); i < e; ++i) {
-      if (const_operand[i]) continue;
-      op->getResult(index).replaceAllUsesWith(new_op->getResult(index));
-      ++index;
+    int new_index = 0;
+    for (int op_index = 0, e = op->getNumResults(); op_index < e; ++op_index) {
+      if (const_operand[op_index]) continue;
+      op->getResult(op_index).replaceAllUsesWith(new_op->getResult(new_index));
+      ++new_index;
     }
     rewriter.eraseOp(op);
 
@@ -1869,6 +1872,7 @@ LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.cc.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+#include "tensorflow/compiler/mlir/lite/runtime_verifiers.inc"
 
 Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
                                                       Attribute value,

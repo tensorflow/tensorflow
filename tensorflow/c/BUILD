@@ -536,6 +536,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 

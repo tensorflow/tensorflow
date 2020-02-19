@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/subprocess.h"
 
 namespace xla {
@@ -39,14 +41,8 @@ StatusOr<bool> RunFileCheck(const std::string& input,
   TF_RETURN_IF_ERROR(tensorflow::WriteStringToFile(env, pattern_path, pattern));
 
   // Invoke FileCheck to check whether input matches `pattern`.
-  const char* file_check_path_suffix =
-      "org_tensorflow/external/llvm-project/llvm/FileCheck";
-  string file_check_path;
-  if (const char* test_srcdir = getenv("TEST_SRCDIR")) {
-    file_check_path = JoinPath(test_srcdir, file_check_path_suffix);
-  } else {
-    file_check_path = file_check_path_suffix;
-  }
+  string file_check_path = tensorflow::GetDataDependencyFilepath(
+      JoinPath("external", "llvm-project", "llvm", "FileCheck"));
 
   tensorflow::SubProcess file_check_process;
   file_check_process.SetProgram(

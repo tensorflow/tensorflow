@@ -54,6 +54,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -204,9 +205,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
-        "//tensorflow/python/profiler/internal:_pywrap_profiler_session",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
 
@@ -231,9 +231,7 @@ py_library(
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
-        "//tensorflow/python:c_api_util",
-        "//tensorflow/python:pywrap_tf_session",
-        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
 

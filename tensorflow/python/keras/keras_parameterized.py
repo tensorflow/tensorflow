@@ -27,6 +27,7 @@ from absl.testing import parameterized
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -399,10 +400,11 @@ def run_all_keras_modes(test_or_class=None,
 
 
 def _v1_session_test(f, test_or_class, config, *args, **kwargs):
-  with context.graph_mode(), testing_utils.run_eagerly_scope(False):
-    with testing_utils.experimental_run_tf_function_scope(False):
-      with test_or_class.test_session(use_gpu=True, config=config):
-        f(test_or_class, *args, **kwargs)
+  with ops.get_default_graph().as_default():
+    with testing_utils.run_eagerly_scope(False):
+      with testing_utils.experimental_run_tf_function_scope(False):
+        with test_or_class.test_session(use_gpu=True, config=config):
+          f(test_or_class, *args, **kwargs)
 
 
 def _v2_eager_test(f, test_or_class, *args, **kwargs):

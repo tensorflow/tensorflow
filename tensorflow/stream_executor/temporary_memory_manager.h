@@ -25,10 +25,10 @@ limitations under the License.
 #include <memory>
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
 namespace stream_executor {

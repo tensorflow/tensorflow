@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
@@ -25,6 +28,8 @@ namespace TF {
 
 namespace {
 
+// LayoutAssignmentPass assigns optimal data layout (data format) for all
+// layout sensitive operations.
 class LayoutAssignmentPass : public FunctionPass<LayoutAssignmentPass> {
  public:
   LayoutAssignmentPass() = default;
@@ -37,6 +42,14 @@ class LayoutAssignmentPass : public FunctionPass<LayoutAssignmentPass> {
   Option<std::string> force_data_format_{
       *this, "force-data-format",
       llvm::cl::desc("Force data format for all layout sensitive ops")};
+};
+
+// MoveTransposesPass moves all Transpose ops to the beginning or to the end of
+// the basic block where they are defined. This will allow canonicalzer to
+// delete redundant transposes.
+class MoveTransposesPass : public FunctionPass<MoveTransposesPass> {
+ public:
+  void runOnFunction() final;
 };
 
 using Permutation = SmallVector<int64_t, 4>;
@@ -128,10 +141,116 @@ void LayoutAssignmentPass::runOnFunction() {
   });
 }
 
+// Move Transpose operations that permute `op` results before the `op`.
+void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
+  // TODO(ezhulenev): Move transpose across layout sensitive operations.
+  if (!op->hasTrait<OpTrait::TF::LayoutAgnostic>()) return;
+
+  // Transpose operations that use operation results.
+  SmallVector<TransposeOp, 2> transpose_ops;
+
+  // Constant operation that defines permutation indices for result transposes.
+  ConstOp permutation_op;
+
+  // All operation results must be used by transpose operations with the same
+  // permutation indices.
+  for (OpResult result : op->getResults()) {
+    for (Operation* user : result.getUsers()) {
+      // Result user must be a transpose operation.
+      TransposeOp transpose = dyn_cast<TransposeOp>(user);
+      if (!transpose) return;
+
+      // With permutation defined by constant operation.
+      ConstOp perm =
+          dyn_cast_or_null<ConstOp>(transpose.getOperand(1).getDefiningOp());
+      if (!perm) return;
+
+      // With the same permutation indices.
+      auto dense_elem_attr = perm.value().dyn_cast<DenseElementsAttr>();
+      if (!dense_elem_attr) return;
+
+      if (!permutation_op) permutation_op = perm;
+
+      // Check that permutation matches for all result transposes.
+      if (perm.value() != permutation_op.value()) return;
+
+      // Add a transpose operation for later reuse.
+      transpose_ops.push_back(transpose);
+    }
+  }
+
+  // Nothing to do here.
+  if (!permutation_op || transpose_ops.empty()) return;
+
+  // At this point we checked that we can safely move Transpose node before
+  // `op`, and bypass all result transposes.
+  Location loc = op->getLoc();
+
+  // Move constant op defining result permutation to the beginning of the block.
+  permutation_op.getOperation()->moveBefore(&op->getBlock()->front());
+
+  // Bypass Transpose nodes for all results.
+  for (OpResult result : op->getResults()) {
+    result.setType(cast<TransposeOp>(*result.getUsers().begin()).y().getType());
+    for (Operation* transpose : result.getUsers()) {
+      transpose->getResult(0).replaceAllUsesWith(result);
+    }
+  }
+
+  // Maybe add a Transpose node for all operands (or reuse existing transposes).
+  OpBuilder builder(op);
+  builder.setInsertionPoint(op);
+
+  for (OpOperand& operand : op->getOpOperands()) {
+    // Try to push transpose further up.
+    if (Operation* operand_op = operand.get().getDefiningOp())
+      work_list->push_back(operand_op);
+
+    // Try to reuse result transposes.
+    TransposeOp transpose;
+    if (!transpose_ops.empty()) {
+      transpose = transpose_ops.pop_back_val();
+      transpose.getOperation()->moveBefore(op);
+      transpose.setOperand(0, operand.get());
+      transpose.setOperand(1, permutation_op);
+    } else {
+      transpose =
+          builder.create<TransposeOp>(loc, operand.get(), permutation_op);
+    }
+
+    operand.set(transpose);
+  }
+
+  // Remove unused transpose operations.
+  while (!transpose_ops.empty()) {
+    TransposeOp transpose = transpose_ops.pop_back_val();
+    transpose.erase();
+  }
+}
+
+void MoveTransposesPass::runOnFunction() {
+  FuncOp func = getFunction();
+
+  SmallVector<Operation*, 8> work_list;
+
+  func.walk([&](TransposeOp transpose) {
+    for (auto operand : transpose.getOperands()) {
+      if (auto op = operand.getDefiningOp()) work_list.push_back(op);
+    }
+  });
+
+  while (!work_list.empty()) {
+    Operation* op = work_list.pop_back_val();
+    MoveTransposeBefore(op, &work_list);
+  }
+}
+
 }  // namespace
 
-static PassRegistration<LayoutAssignmentPass> pass("tf-layout-assignment",
-                                                   "Layout assignment pass");
+static PassRegistration<LayoutAssignmentPass> layout_assignment(
+    "tf-layout-assignment", "Layout assignment pass");
+static PassRegistration<MoveTransposesPass> move_transposes(
+    "tf-move-transposes", "Move transposes pass");
 
 }  // namespace TF
 }  // namespace mlir

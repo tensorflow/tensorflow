@@ -304,6 +304,7 @@ tensorflow::profiler::AnnotationStack::ThreadAnnotationStack
 
 [profiler_session_impl] # profiler
 tensorflow::ProfilerSession::Create
+tensorflow::ProfilerSession::CollectData
 tensorflow::ProfilerSession::SerializeToString
 tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession

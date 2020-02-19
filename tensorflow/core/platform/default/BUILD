@@ -301,6 +301,20 @@ cc_library(
 )
 
 cc_library(
+    name = "resource",
+    srcs = ["resource.cc"],
+    hdrs = ["//tensorflow/core/platform:resource.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+cc_library(
     name = "resource_loader",
     testonly = 1,
     srcs = ["resource_loader.cc"],
@@ -312,6 +326,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:path",
         "@bazel_tools//tools/cpp/runfiles",
     ],
 )
@@ -418,6 +433,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:net",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:types",
         "@com_google_googletest//:gtest",
@@ -501,6 +517,7 @@ filegroup(
         "port.cc",
         "posix_file_system.cc",
         "posix_file_system.h",
+        "resource.cc",
         "stacktrace.h",
         "tracing_impl.h",
     ],

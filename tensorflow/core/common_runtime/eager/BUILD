@@ -77,7 +77,6 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/distributed_runtime:worker_session",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
-            "//tensorflow/core/profiler/rpc:profiler_server",
         ],
     }),
 )
@@ -405,6 +404,7 @@ tf_cc_test(
     deps = [
         ":eager_op_rewrite_registry",
         "//tensorflow/core:lib",
+        "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

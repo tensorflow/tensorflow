@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
 
 namespace stream_executor {

@@ -809,6 +809,7 @@ bool IsPinnableOp(const string& op_type) {
       "RandomStandardNormal",
       "StatelessRandomUniform",
       "StatelessRandomUniformInt",
+      "StatelessRandomUniformFullInt",
       "StatelessRandomNormal",
   });
 

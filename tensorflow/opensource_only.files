@@ -95,6 +95,7 @@ tensorflow/third_party/gpus/cuda/build_defs.bzl.tpl
 tensorflow/third_party/gpus/cuda/cuda_config.h.tpl
 tensorflow/third_party/gpus/cuda_configure.bzl
 tensorflow/third_party/gpus/find_cuda_config.py
+tensorflow/third_party/gpus/find_cuda_config.py.gz.base64
 tensorflow/third_party/gpus/rocm/BUILD
 tensorflow/third_party/gpus/rocm/BUILD.tpl
 tensorflow/third_party/gpus/rocm/build_defs.bzl.tpl
@@ -267,6 +268,7 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5.1/build_defs.b
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt6.0/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt6.0/build_defs.bzl
+tensorflow/third_party/toolchains/preconfig/win/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_025/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_026/BUILD
@@ -307,6 +309,9 @@ tensorflow/tools/ci_build/release/macos/cpu_py37_full/nonpip_v1.sh
 tensorflow/tools/ci_build/release/macos/cpu_py37_full/pip.sh
 tensorflow/tools/ci_build/release/macos/cpu_py37_full/pip_v1.sh
 tensorflow/tools/ci_build/release/macos/cpu_py37_full/release.sh
+tensorflow/tools/ci_build/release/macos/cpu_py38_full/nightly_release.sh
+tensorflow/tools/ci_build/release/macos/cpu_py38_full/nonpip.sh
+tensorflow/tools/ci_build/release/macos/cpu_py38_full/pip.sh
 tensorflow/tools/ci_build/release/ubuntu_16/cpu_py2_full/nightly_release.sh
 tensorflow/tools/ci_build/release/ubuntu_16/cpu_py2_full/nonpip.sh
 tensorflow/tools/ci_build/release/ubuntu_16/cpu_py2_full/nonpip_v1.sh

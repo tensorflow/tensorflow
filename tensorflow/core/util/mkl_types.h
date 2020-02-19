@@ -20,8 +20,6 @@ limitations under the License.
 namespace tensorflow {
 
 #ifdef ENABLE_MKLDNN_V1
-// TODO(mdfaijul): Temporarily commenting out redefining mkldnn type.
-// typedef uint16_t mkldnn_bfloat16_t;
 #define ADD_MD add_md
 #define ALGORITHM mkldnn::algorithm
 #define ALGORITHM_UNDEF ALGORITHM::undef
@@ -35,11 +33,13 @@ namespace tensorflow {
   md, tensor, net, net_args, engine
 #define GET_DESC get_desc()
 #define GET_FORMAT_FROM_SHAPE(src_mkl_shape) MklTensorFormat::FORMAT_BLOCKED
+#define GET_BLOCK_STRIDES(strides, idx) strides
 #define GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm) \
   { {dims}, MklDnnType<type>(), fm }
 #define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) mem_ptr->get_desc()
 #define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \
   GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr)
+#define GET_MEMORY_SIZE_FROM_MD(md, engine) md.get_size()
 #define GET_SRC_DESC_FROM_OP_PD(op_pd) op_pd->src_desc()
 #define GET_DIFF_DST_DESC_FROM_OP_PD(op_pd) op_pd->diff_dst_desc()
 #define GET_WORKSPACE_DESC_FROM_OP_PD(op_pd) op_pd->workspace_desc()
@@ -129,8 +129,11 @@ namespace tensorflow {
 #define GET_DESC get_primitive_desc()
 #define GET_FORMAT_FROM_SHAPE(src_mkl_shape) \
   static_cast<memory::format>(src_mkl_shape.GetMklLayout().data.format)
+#define GET_BLOCK_STRIDES(strides, idx) strides[(idx)]
 #define GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm) \
   { {dims}, MklDnnType<type>(), fm }
+#define GET_MEMORY_SIZE_FROM_MD(md, engine) \
+  memory::primitive_desc(md, engine).get_size()
 #define GET_SRC_DESC_FROM_OP_PD(op_pd) op_pd.get()->src_primitive_desc()
 #define GET_DIFF_DST_DESC_FROM_OP_PD(op_pd) \
   op_pd.get()->diff_dst_primitive_desc()

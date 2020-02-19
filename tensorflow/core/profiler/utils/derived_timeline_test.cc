@@ -78,7 +78,7 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
 
 // Checks that the TF op events are expanded.
 TEST(DerivedTimelineTest, TfOpLineTest) {
-  const absl::string_view kTfOpName = "Mul";
+  const absl::string_view kTfOpName = "mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
   EventGroupNameMap event_group_name_map;
@@ -120,7 +120,7 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
 // Checks that the dependency between the step line and the TF op line prevents
 // TF op events from being expanded.
 TEST(DerivedTimelineTest, DependencyTest) {
-  const absl::string_view kTfOpName = "Mul";
+  const absl::string_view kTfOpName = "mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
   EventGroupNameMap event_group_name_map({{0, "train 0"}, {1, "train 1"}});
@@ -152,6 +152,56 @@ TEST(DerivedTimelineTest, DependencyTest) {
     EXPECT_TRUE(line_visitor.Id() == kThreadIdStepInfo ||
                 line_visitor.Id() == kThreadIdTfOp);
     EXPECT_EQ(line_visitor.NumEvents(), 2);
+  });
+}
+
+// Checks that the TF op events are expanded.
+TEST(DerivedTimelineTest, TfOpNameScopeTest) {
+  const absl::string_view kTfOpName = "scope1/scope2/mul:Mul";
+  const absl::string_view kKernelDetails = "kernel_details";
+  XSpace space;
+  EventGroupNameMap event_group_name_map;
+  XPlane* plane = space.add_planes();
+  XPlaneBuilder plane_builder(plane);
+  auto line_builder = plane_builder.GetOrCreateLine(0);
+  auto first_event =
+      CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100, {});
+  first_event.AddStatValue(
+      *plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
+      kTfOpName);
+  first_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
+                               GetStatTypeStr(StatType::kKernelDetails)),
+                           kKernelDetails);
+  auto second_event =
+      CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300, {});
+  second_event.AddStatValue(
+      *plane_builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
+      kTfOpName);
+  second_event.AddStatValue(*plane_builder.GetOrCreateStatMetadata(
+                                GetStatTypeStr(StatType::kKernelDetails)),
+                            kKernelDetails);
+  GenerateDerivedTimeLines(event_group_name_map, &space);
+  XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
+  // The TF name scope line and the TF op line are added.
+  EXPECT_EQ(plane_visitor.NumLines(), 3);
+  plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
+    int64 line_id = line_visitor.Id();
+    if (line_id == 0) {
+      return;
+    } else if (line_id == kThreadIdTfNameScope) {
+      EXPECT_EQ(line_visitor.NumEvents(), 2);
+      line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
+        EXPECT_EQ(event_visitor.OffsetPs(), 0);
+        EXPECT_EQ(event_visitor.DurationPs(), 500);
+      });
+    } else if (line_id == kThreadIdTfOp) {
+      EXPECT_EQ(line_visitor.NumEvents(), 1);
+      line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
+        EXPECT_EQ(event_visitor.Name(), kTfOpName);
+        EXPECT_EQ(event_visitor.OffsetPs(), 0);
+        EXPECT_EQ(event_visitor.DurationPs(), 500);
+      });
+    }
   });
 }
 

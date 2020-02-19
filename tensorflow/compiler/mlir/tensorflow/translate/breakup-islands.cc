@@ -42,8 +42,8 @@ namespace mlir {
 
 namespace {
 
-struct BreakUpIslands : OperationPass<BreakUpIslands, FuncOp> {
-  void runOnOperation() final;
+struct BreakUpIslands : FunctionPass<BreakUpIslands> {
+  void runOnFunction() final;
 
   void BreakUpIsland(tf_executor::IslandOp island_op,
                      const TF::SideEffectAnalysis& side_effect_analysis,
@@ -51,8 +51,8 @@ struct BreakUpIslands : OperationPass<BreakUpIslands, FuncOp> {
                          new_control_inputs);
 };
 
-void BreakUpIslands::runOnOperation() {
-  auto graph_op_range = getOperation().getBody().front().without_terminator();
+void BreakUpIslands::runOnFunction() {
+  auto graph_op_range = getFunction().getBody().front().without_terminator();
   tf_executor::GraphOp graph_op;
   if (graph_op_range.begin() != graph_op_range.end() &&
       std::next(graph_op_range.begin()) == graph_op_range.end()) {

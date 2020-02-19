@@ -2944,15 +2944,15 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
 
   PyObject* op_outputs;
   bool op_outputs_tuple_created = false;
-  std::pair<bool, tensorflow::gtl::FlatSet<int>>* outputs_not_required;
 
-  if (OpGradientDoesntRequireOutputIndices(c_op_name, &outputs_not_required)) {
-    if (outputs_not_required->first) {
+  if (const auto unused_output_indices =
+          OpGradientUnusedOutputIndices(c_op_name)) {
+    if (unused_output_indices->empty()) {
       op_outputs = Py_None;
     } else {
       op_outputs_tuple_created = true;
-      op_outputs = CopySequenceSettingIndicesToNull(
-          results, outputs_not_required->second);
+      op_outputs =
+          CopySequenceSettingIndicesToNull(results, *unused_output_indices);
     }
   } else {
     op_outputs = results;
@@ -2960,15 +2960,15 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
 
   PyObject* op_inputs;
   bool op_inputs_tuple_created = false;
-  std::pair<bool, tensorflow::gtl::FlatSet<int>>* inputs_not_required;
 
-  if (OpGradientDoesntRequireInputIndices(c_op_name, &inputs_not_required)) {
-    if (inputs_not_required->first) {
+  if (const auto unused_input_indices =
+          OpGradientUnusedInputIndices(c_op_name)) {
+    if (unused_input_indices->empty()) {
       op_inputs = Py_None;
     } else {
       op_inputs_tuple_created = true;
       op_inputs =
-          CopySequenceSettingIndicesToNull(inputs, inputs_not_required->second);
+          CopySequenceSettingIndicesToNull(inputs, *unused_input_indices);
     }
   } else {
     op_inputs = inputs;

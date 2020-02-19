@@ -367,7 +367,7 @@ TEST(CAPI, TensorHandleCopyBetweenTwoGPUDevicesAsync) {
 void TensorHandleSilentCopy(bool async,
                             TFE_ContextDevicePlacementPolicy global_policy,
                             TFE_ContextDevicePlacementPolicy thread_policy,
-                            bool mirror, bool cpu_op) {
+                            bool cpu_op) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
@@ -390,12 +390,6 @@ void TensorHandleSilentCopy(bool async,
     TFE_TensorHandle* hgpu = TFE_TensorHandleCopyToDevice(
         hcpu, ctx, gpu_device_name.c_str(), status.get());
     ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-    if (mirror) {
-      TFE_TensorHandleEnableImplicitMirroring(hcpu, status.get());
-      ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-      TFE_TensorHandleEnableImplicitMirroring(hgpu, status.get());
-      ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-    }
 
     TFE_Op* matmul = MatMulOp(ctx, hcpu, hgpu);
     if (cpu_op) {
@@ -419,21 +413,10 @@ void TensorHandleSilentCopy(bool async,
     auto arg1 = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
                     hgpu->handle.get())
                     ->Handle();
-    if (mirror) {
-      // The input handles should never change since they have been mirrored.
-      ASSERT_EQ(matmul->operation.Inputs()[0], arg0);
-      ASSERT_EQ(matmul->operation.Inputs()[1], arg1);
-    } else {
-      if (cpu_op) {
-        ASSERT_EQ(matmul->operation.Inputs()[0], arg0);
-        // The GPU handle should be replaced with a CPU copy
-        ASSERT_NE(matmul->operation.Inputs()[1], arg1);
-      } else {
-        // The CPU handle should be replaced with a GPU copy
-        ASSERT_NE(matmul->operation.Inputs()[0], arg0);
-        ASSERT_EQ(matmul->operation.Inputs()[1], arg1);
-      }
-    }
+
+    // The input handles should never change since they have been mirrored.
+    ASSERT_EQ(matmul->operation.Inputs()[0], arg0);
+    ASSERT_EQ(matmul->operation.Inputs()[1], arg1);
 
     TFE_DeleteOp(matmul);
     TFE_DeleteTensorHandle(retvals[0]);
@@ -450,27 +433,19 @@ void TensorHandleSilentCopy(bool async,
 }
 TEST(CAPI, TensorHandleSilentCopy) {
   TensorHandleSilentCopy(false, TFE_DEVICE_PLACEMENT_SILENT,
-                         TFE_DEVICE_PLACEMENT_SILENT, false, false);
+                         TFE_DEVICE_PLACEMENT_SILENT, false);
 }
 TEST(CAPI, TensorHandleSilentCopyAsync) {
   TensorHandleSilentCopy(true, TFE_DEVICE_PLACEMENT_SILENT,
-                         TFE_DEVICE_PLACEMENT_SILENT, false, false);
+                         TFE_DEVICE_PLACEMENT_SILENT, false);
 }
 TEST(CAPI, TensorHandleSilentCopyLocalPolicy) {
   TensorHandleSilentCopy(false, TFE_DEVICE_PLACEMENT_EXPLICIT,
-                         TFE_DEVICE_PLACEMENT_SILENT, false, false);
+                         TFE_DEVICE_PLACEMENT_SILENT, false);
 }
 TEST(CAPI, TensorHandleSilentCopyLocalPolicyAsync) {
   TensorHandleSilentCopy(true, TFE_DEVICE_PLACEMENT_EXPLICIT,
-                         TFE_DEVICE_PLACEMENT_SILENT, false, false);
-}
-TEST(CAPI, TensorHandleMirrorCopy) {
-  TensorHandleSilentCopy(false, TFE_DEVICE_PLACEMENT_SILENT,
-                         TFE_DEVICE_PLACEMENT_SILENT, true, false);
-}
-TEST(CAPI, TensorHandleMirrorCopyCpu) {
-  TensorHandleSilentCopy(false, TFE_DEVICE_PLACEMENT_SILENT,
-                         TFE_DEVICE_PLACEMENT_SILENT, true, true);
+                         TFE_DEVICE_PLACEMENT_SILENT, false);
 }
 
 void SetAndGetOpDevices(bool async) {

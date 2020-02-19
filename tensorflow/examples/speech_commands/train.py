@@ -78,8 +78,8 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-import tensorflow.examples.speech_commands.input_data as input_data
-import tensorflow.examples.speech_commands.models as models
+import input_data
+import models
 from tensorflow.python.platform import gfile
 
 FLAGS = None
@@ -132,7 +132,7 @@ def main(_):
   else:
     fingerprint_input = input_placeholder
 
-  logits, dropout_prob = models.create_model(
+  logits, dropout_rate = models.create_model(
       fingerprint_input,
       model_settings,
       FLAGS.model_architecture,
@@ -248,7 +248,7 @@ def main(_):
             fingerprint_input: train_fingerprints,
             ground_truth_input: train_ground_truth,
             learning_rate_input: learning_rate_value,
-            dropout_prob: 0.5
+            dropout_rate: 0.5
         })
     train_writer.add_summary(train_summary, training_step)
     tf.compat.v1.logging.info(
@@ -271,7 +271,7 @@ def main(_):
             feed_dict={
                 fingerprint_input: validation_fingerprints,
                 ground_truth_input: validation_ground_truth,
-                dropout_prob: 1.0
+                dropout_rate: 0.0
             })
         validation_writer.add_summary(validation_summary, training_step)
         batch_size = min(FLAGS.batch_size, set_size - i)
@@ -305,7 +305,7 @@ def main(_):
         feed_dict={
             fingerprint_input: test_fingerprints,
             ground_truth_input: test_ground_truth,
-            dropout_prob: 1.0
+            dropout_rate: 0.0
         })
     batch_size = min(FLAGS.batch_size, set_size - i)
     total_accuracy += (test_accuracy * batch_size) / set_size

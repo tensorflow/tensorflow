@@ -3,6 +3,7 @@
 #   related to dist-strat used by Keras..
 
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(

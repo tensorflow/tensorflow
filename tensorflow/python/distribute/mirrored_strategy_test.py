@@ -714,18 +714,18 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEqual(7.0, self.evaluate(mirrored_var.values[0]))
       self.assertEqual(7.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
       # read_value == False
       self.evaluate(mirrored_var.assign_add(2.0, read_value=False))
       self.assertEqual(9.0, self.evaluate(mirrored_var.values[0]))
       self.assertEqual(9.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
   def testAssignAddMirroredVarReplicaContext(self, distribution):
     def var_fn():
@@ -780,9 +780,9 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEqual(3.0, self.evaluate(mirrored_var.values[0]))
       self.assertEqual(3.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
   def testAssignSubMirroredVarReplicaContext(self, distribution):
     def var_fn():
@@ -1334,7 +1334,7 @@ class FunctionTest(test.TestCase):
     def forward(x, w, b):
       return x * w + b
     x = constant_op.constant([1.0], name="x_useless")
-    concrete_forward = forward.get_concrete_function(x, w.primary, b.primary)
+    concrete_forward = forward.get_concrete_function(x, w._primary, b._primary)
 
     with ms.scope():
       def replica_fn():
@@ -1350,8 +1350,8 @@ class FunctionTest(test.TestCase):
       g1, g2 = step_fn()
       run_metadata = context.export_run_metadata()
       context.disable_run_metadata()
-      self.assertEqual(self.evaluate(g1.primary), 1.0)
-      self.assertEqual(self.evaluate(g2.primary), 1.0)
+      self.assertEqual(self.evaluate(g1._primary), 1.0)
+      self.assertEqual(self.evaluate(g2._primary), 1.0)
 
       # Verify that this node runs on both devices.
       node_name = "gradients_mul_grad_mul_1_x"

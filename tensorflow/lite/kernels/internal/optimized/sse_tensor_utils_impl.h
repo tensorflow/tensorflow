@@ -48,7 +48,7 @@ void SseSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, int result_stride);
+    float* __restrict__ result);
 
 #endif  // __SSSE3__
 

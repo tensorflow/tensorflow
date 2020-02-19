@@ -126,6 +126,7 @@ size_t WriteOneDimensionalArray(JNIEnv* env, jobject object, TfLiteType type,
       env->GetLongArrayRegion(long_array, 0, num_elements, long_dst);
       return to_copy;
     }
+    case kTfLiteInt8:
     case kTfLiteUInt8: {
       jbyteArray byte_array = static_cast<jbyteArray>(array);
       jbyte* byte_dst = static_cast<jbyte*>(dst);
@@ -174,6 +175,7 @@ size_t ReadOneDimensionalArray(JNIEnv* env, TfLiteType data_type,
                               static_cast<const jlong*>(src));
       return size;
     }
+    case kTfLiteInt8:
     case kTfLiteUInt8: {
       jbyteArray byte_array = static_cast<jbyteArray>(dst);
       env->SetByteArrayRegion(byte_array, 0, len,

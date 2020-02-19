@@ -208,6 +208,7 @@ cc_library(
         "ir/tfl_ops.h.inc",
         "ir/tfl_ops_interface.cc.inc",
         "ir/tfl_ops_interface.h.inc",
+        "runtime_verifiers.inc",
         "utils/attribute_utils.cc",
     ],
     hdrs = [
@@ -303,12 +304,14 @@ cc_library(
         "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
+        "transforms/runtime_type_verify.cc",
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
         "transforms/unroll_batch_matmul.cc",
         "transforms/while_loop_outline.cc",
     ],
     hdrs = [
+        "ir/tfl_ops_interface.h.inc",
         "transforms/dilated_conv.h",
         "transforms/passes.h",
         "transforms/unroll_batch_matmul.h",
@@ -461,9 +464,9 @@ cc_library(
 )
 
 tf_native_cc_binary(
-    name = "operator-converter-gen",
+    name = "converter-gen",
     srcs = [
-        "operator_converter_gen.cc",
+        "converter_gen.cc",
     ],
     deps = [
         "@llvm-project//llvm:support",
@@ -473,14 +476,18 @@ tf_native_cc_binary(
 )
 
 gentbl(
-    name = "operator_converter_inc",
+    name = "converter_inc",
     tbl_outs = [
         (
-            "",  # This driver has no options.
+            "--gen-operator-converters",
             "operator_converters.inc",
         ),
+        (
+            "--gen-runtime-verifiers",
+            "runtime_verifiers.inc",
+        ),
     ],
-    tblgen = ":operator-converter-gen",
+    tblgen = ":converter-gen",
     td_file = "ir/tfl_ops.td",
     td_srcs = [
         ":tensorflow_lite_ops_td_files",
@@ -584,8 +591,6 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:QuantOpsDialectRegistration",
-        "@llvm-project//mlir:StandardDialectRegistration",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Translation",
@@ -652,6 +657,7 @@ tf_cc_binary(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -699,7 +705,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:QuantOpsDialectRegistration",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -733,7 +738,6 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:QuantOpsDialectRegistration",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],

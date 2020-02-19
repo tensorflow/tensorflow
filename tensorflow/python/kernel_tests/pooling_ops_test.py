@@ -605,6 +605,10 @@ class PoolingTest(test.TestCase):
         use_gpu=use_gpu)
 
   @test_util.run_deprecated_v1
+  @test_util.xla_allow_fallback(
+      "Allow VECT_* data formats on newer hardware versions which XLA does not"
+      " handle."
+  )
   def testMaxPooling(self):
     for use_gpu in True, False:
       self._testMaxPoolValidPadding(use_gpu)
