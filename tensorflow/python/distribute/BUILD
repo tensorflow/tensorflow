@@ -1275,7 +1275,7 @@ distribute_py_test(
     srcs = ["keras_save_load_test.py"],
     full_precision = True,
     main = "keras_save_load_test.py",
-    shard_count = 5,
+    shard_count = 7,
     tags = [
         "multi_and_single_gpu",
     ],
