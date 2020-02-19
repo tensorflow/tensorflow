@@ -112,12 +112,26 @@ static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
   return mlir::success();
 }
 
-// Return true if `type` is a tensor of `!tf.resource`. This is the type that is
-// used to represent mutable variables on exported functions' bound inputs.
-static bool IsResourceVarType(Type type) {
-  TensorType tensor_type = type.dyn_cast<TensorType>();
-  if (!tensor_type) return false;
-  return tensor_type.getElementType().isa<TF::ResourceType>();
+static LogicalResult VerifyBoundInputArgType(Operation *op_for_diagnostics,
+                                             Type arg_type,
+                                             GlobalTensorOp global_tensor) {
+  if (global_tensor.is_mutable()) {
+    auto expected_type = RankedTensorType::get(
+        {}, TF::ResourceType::get({global_tensor.type().cast<TensorType>()},
+                                  arg_type.getContext()));
+    if (arg_type != expected_type) {
+      return op_for_diagnostics->emitError()
+             << "mutable bound input with type " << arg_type
+             << " expected to have type " << expected_type;
+    }
+  } else {
+    if (arg_type != global_tensor.type()) {
+      return op_for_diagnostics->emitError()
+             << "bound input for immutable 'tf_saved_model.global_tensor' must "
+                "match the global tensor's type";
+    }
+  }
+  return success();
 }
 
 LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
@@ -137,20 +151,7 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
                              << symbol_name << "'";
     }
     auto arg_type = cast<FuncOp>(op).getArgument(arg_index).getType();
-    if (global_tensor.is_mutable()) {
-      if (!IsResourceVarType(arg_type)) {
-        return op->emitError()
-               << "bound inputs for mutable 'tf_saved_model.global_tensor's "
-                  "must be tensors of '!tf.resource'";
-      }
-    } else {
-      if (arg_type != global_tensor.type()) {
-        return op->emitError() << "bound input for immutable "
-                                  "'tf_saved_model.global_tensor' must "
-                                  "match the global tensor's type";
-      }
-    }
-    return success();
+    return VerifyBoundInputArgType(op, arg_type, global_tensor);
   }
   if (named_attr.first == "tf_saved_model.index_path") {
     return VerifyIndexPath(op, named_attr);
