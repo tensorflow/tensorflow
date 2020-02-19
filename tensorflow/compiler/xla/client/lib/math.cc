@@ -693,7 +693,10 @@ XlaOp Digamma(XlaOp input) {
 
 namespace {
 
+enum kIgammaMode { VALUE, DERIVATIVE, SAMPLE_DERIVATIVE };
+
 // Helper function for computing Igamma using a power series.
+template <kIgammaMode mode>
 XlaOp IgammaSeries(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
                    xla::PrimitiveType type) {
   // vals: (enabled, r, c, ans, x)
@@ -715,24 +718,60 @@ XlaOp IgammaSeries(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
     XlaOp c = vals[2];
     XlaOp ans = vals[3];
     XlaOp x = vals[4];
+    XlaOp dc_da = vals[5];
+    XlaOp dans_da = vals[6];
+
     r = r + ScalarLike(r, 1);
+    dc_da = dc_da * (x / r) + (ScalarLike(r, -1) * c * x) / (r * r);
+    dans_da = dans_da + dc_da;
     c = c * (x / r);
     ans = ans + c;
+    XlaOp conditional;
+    if (mode == VALUE) {
+      conditional = And(enabled, Gt(c / ans, Epsilon(builder, type)));
+    } else {
+      conditional =
+          And(enabled, Gt(Abs(dc_da / dans_da), Epsilon(builder, type)));
+    }
+
     return std::vector<XlaOp>{
-        And(enabled, Gt(c / ans, Epsilon(builder, type))),
-        Select(enabled, r, vals[1]), Select(enabled, c, vals[2]),
-        Select(enabled, ans, vals[3]), Select(enabled, x, vals[4])};
+        conditional,
+        Select(enabled, r, vals[1]),
+        Select(enabled, c, vals[2]),
+        Select(enabled, ans, vals[3]),
+        Select(enabled, x, vals[4]),
+        Select(enabled, dc_da, vals[5]),
+        Select(enabled, dans_da, vals[6]),
+    };
   };
   auto& b = *ax.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    std::vector<XlaOp> vals = {enabled, a, FullLike(a, 1), FullLike(a, 1), x};
+    std::vector<XlaOp> vals = {
+        enabled,        a, FullLike(a, 1), FullLike(a, 1), x, FullLike(a, 0),
+        FullLike(a, 0),
+    };
+
     TF_ASSIGN_OR_RETURN(vals, WhileLoopHelper(cond, body, vals, "igamma", &b));
     XlaOp ans = vals[3];
-    return (ans * ax) / a;
+    XlaOp dans_da = vals[6];
+    if (mode == VALUE) {
+      return (ans * ax) / a;
+    }
+
+    XlaOp dlogax_da = Log(x) - Digamma(a + ScalarLike(a, 1));
+
+    switch (mode) {
+      case DERIVATIVE:
+        return ax * (ans * dlogax_da + dans_da) / a;
+      case SAMPLE_DERIVATIVE:
+      default:
+        return -(dans_da + ans * dlogax_da) * x / a;
+    }
   });
 }
 
 // Helper function for computing Igammac using a continued fraction.
+template <kIgammaMode mode>
 XlaOp IgammacContinuedFraction(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
                                xla::PrimitiveType type) {
   // vals: enabled, ans, t, y, z, c, pkm1, qkm1, pkm2, qkm2
@@ -754,6 +793,13 @@ XlaOp IgammacContinuedFraction(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
     XlaOp qkm1 = vals[7];
     XlaOp pkm2 = vals[8];
     XlaOp qkm2 = vals[9];
+
+    XlaOp dpkm2_da = vals[10];
+    XlaOp dqkm2_da = vals[11];
+    XlaOp dpkm1_da = vals[12];
+    XlaOp dqkm1_da = vals[13];
+    XlaOp dans_da = vals[14];
+
     c = c + ScalarLike(c, 1);
     y = y + ScalarLike(y, 1);
     z = z + ScalarLike(z, 2);
@@ -762,18 +808,46 @@ XlaOp IgammacContinuedFraction(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
     XlaOp qk = qkm1 * z - qkm2 * yc;
     XlaOp qk_is_nonzero = Ne(qk, ScalarLike(qk, 0));
     XlaOp r = pk / qk;
+
     t = Select(qk_is_nonzero, Abs((ans - r) / r), FullLike(t, 1));
     ans = Select(qk_is_nonzero, r, ans);
+
+    XlaOp dpk_da = dpkm1_da * z - pkm1 - dpkm2_da * yc + pkm2 * c;
+    XlaOp dqk_da = dqkm1_da * z - qkm1 - dqkm2_da * yc + qkm2 * c;
+    XlaOp dans_da_new =
+        Select(qk_is_nonzero, (dpk_da - ans * dqk_da) / qk, dans_da);
+    XlaOp grad_conditional =
+        Select(qk_is_nonzero, Abs(dans_da_new - dans_da), FullLike(dans_da, 1));
+
     pkm2 = pkm1;
     pkm1 = pk;
     qkm2 = qkm1;
     qkm1 = qk;
+
+    dpkm2_da = dpkm1_da;
+    dqkm2_da = dqkm1_da;
+    dpkm1_da = dpk_da;
+    dqkm1_da = dqk_da;
+
     XlaOp rescale = Gt(Abs(pk), Reciprocal(Epsilon(builder, type)));
     pkm2 = Select(rescale, pkm2 * Epsilon(builder, type), pkm2);
     pkm1 = Select(rescale, pkm1 * Epsilon(builder, type), pkm1);
     qkm2 = Select(rescale, qkm2 * Epsilon(builder, type), qkm2);
     qkm1 = Select(rescale, qkm1 * Epsilon(builder, type), qkm1);
-    return std::vector<XlaOp>{And(enabled, Gt(t, Epsilon(builder, type))),
+
+    dpkm2_da = Select(rescale, dpkm2_da * Epsilon(builder, type), dpkm2_da);
+    dqkm2_da = Select(rescale, dqkm2_da * Epsilon(builder, type), dqkm2_da);
+    dpkm1_da = Select(rescale, dpkm1_da * Epsilon(builder, type), dpkm1_da);
+    dqkm1_da = Select(rescale, dqkm1_da * Epsilon(builder, type), dqkm1_da);
+
+    XlaOp conditional;
+    if (mode == VALUE) {
+      conditional = And(enabled, Gt(t, Epsilon(builder, type)));
+    } else {
+      conditional = And(enabled, Gt(grad_conditional, Epsilon(builder, type)));
+    }
+
+    return std::vector<XlaOp>{conditional,
                               Select(enabled, ans, vals[1]),
                               Select(enabled, t, vals[2]),
                               Select(enabled, y, vals[3]),
@@ -782,7 +856,12 @@ XlaOp IgammacContinuedFraction(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
                               Select(enabled, pkm1, vals[6]),
                               Select(enabled, qkm1, vals[7]),
                               Select(enabled, pkm2, vals[8]),
-                              Select(enabled, qkm2, vals[9])};
+                              Select(enabled, qkm2, vals[9]),
+                              Select(enabled, dpkm2_da, vals[10]),
+                              Select(enabled, dqkm2_da, vals[11]),
+                              Select(enabled, dpkm1_da, vals[12]),
+                              Select(enabled, dqkm1_da, vals[13]),
+                              Select(enabled, dans_da_new, vals[14])};
   };
 
   auto& b = *ax.builder();
@@ -796,11 +875,31 @@ XlaOp IgammacContinuedFraction(XlaOp ax, XlaOp x, XlaOp a, XlaOp enabled,
     XlaOp qkm1 = z * x;
     XlaOp ans = pkm1 / qkm1;
     XlaOp t = FullLike(x, 1);
-    std::vector<XlaOp> vals = {enabled, ans,  t,    y,    z,
-                               c,       pkm1, qkm1, pkm2, qkm2};
+    XlaOp dpkm2_da = FullLike(x, 0);
+    XlaOp dqkm2_da = FullLike(x, 0);
+    XlaOp dpkm1_da = FullLike(x, 0);
+    XlaOp dqkm1_da = -x;
+    XlaOp dans_da = (dpkm1_da - ans * dqkm1_da) / qkm1;
+    std::vector<XlaOp> vals = {enabled,  ans,      t,        y,        z,
+                               c,        pkm1,     qkm1,     pkm2,     qkm2,
+                               dpkm2_da, dqkm2_da, dpkm1_da, dqkm1_da, dans_da};
+
     TF_ASSIGN_OR_RETURN(vals, WhileLoopHelper(cond, body, vals, "igammac", &b));
     ans = vals[1];
-    return ans * ax;
+    if (mode == VALUE) {
+      return ans * ax;
+    }
+
+    dans_da = vals[14];
+    XlaOp dlogax_da = Log(x) - Digamma(a);
+
+    switch (mode) {
+      case DERIVATIVE:
+        return ax * (ans * dlogax_da + dans_da);
+      case SAMPLE_DERIVATIVE:
+      default:
+        return -(dans_da + ans * dlogax_da) * x;
+    }
   });
 }
 
@@ -820,9 +919,9 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
     const double nan = std::numeric_limits<double>::quiet_NaN();
     XlaOp output = Select(
         use_igammac,
-        ScalarLike(a, 1) -
-            IgammacContinuedFraction(ax, x, a, And(enabled, use_igammac), type),
-        IgammaSeries(ax, x, a, And(enabled, Not(use_igammac)), type));
+        ScalarLike(a, 1) - IgammacContinuedFraction<VALUE>(
+                               ax, x, a, And(enabled, use_igammac), type),
+        IgammaSeries<VALUE>(ax, x, a, And(enabled, Not(use_igammac)), type));
     output = Select(underflow, ZerosLike(output), output);
     output = Select(x_is_zero, ZerosLike(output), output);
     output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
@@ -852,6 +951,101 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
   });
 }
 
+XlaOp IgammaGradA(XlaOp a, XlaOp x) {
+  auto& b = *a.builder();
+  auto doit = [&b](XlaOp a, XlaOp x, PrimitiveType type) -> XlaOp {
+    XlaOp is_nan = Or(IsNan(a), IsNan(x));
+    XlaOp x_is_zero = Eq(x, ScalarLike(x, 0));
+    XlaOp domain_error = Or(Lt(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
+    XlaOp use_igammac = And(Gt(x, ScalarLike(x, 1)), Gt(x, a));
+    XlaOp ax = a * Log(x) - x - Lgamma(a);
+    XlaOp underflow = Lt(ax, -Log(MaxFiniteValue(&b, type)));
+    ax = Exp(ax);
+    XlaOp enabled = Not(Or(Or(Or(x_is_zero, domain_error), underflow), is_nan));
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    XlaOp output = Select(use_igammac,
+                          -IgammacContinuedFraction<DERIVATIVE>(
+                              ax, x, a, And(enabled, use_igammac), type),
+                          IgammaSeries<DERIVATIVE>(
+                              ax, x, a, And(enabled, Not(use_igammac)), type));
+    output = Select(underflow, ZerosLike(output), output);
+    output = Select(x_is_zero, ZerosLike(output), output);
+    output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
+    return output;
+  };
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
+    TF_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
+    if (a_shape != x_shape) {
+      return InvalidArgument(
+          "Arguments to IgammaGradA must have equal shapes and types; got %s "
+          "and %s",
+          a_shape.ToString(), x_shape.ToString());
+    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IgammaGradA", a));
+    bool needs_upcast =
+        a_shape.element_type() == F16 || a_shape.element_type() == BF16;
+
+    if (needs_upcast) {
+      a = ConvertElementType(a, F32);
+      x = ConvertElementType(x, F32);
+    }
+    XlaOp result = doit(a, x, a_shape.element_type());
+    if (needs_upcast) {
+      result = ConvertElementType(result, a_shape.element_type());
+    }
+    return result;
+  });
+}
+
+// Gradient of Gamma sample from Gamma(a, 1) with respect to `a`.
+XlaOp RandomGammaGrad(XlaOp a, XlaOp x) {
+  auto& b = *a.builder();
+  auto doit = [&b](XlaOp a, XlaOp x, PrimitiveType type) -> XlaOp {
+    XlaOp is_nan = Or(IsNan(a), IsNan(x));
+    XlaOp x_is_zero = Eq(x, ScalarLike(x, 0));
+    XlaOp domain_error = Or(Lt(x, ScalarLike(x, 0)), Le(a, ScalarLike(a, 0)));
+    XlaOp use_igammac = And(Gt(x, ScalarLike(x, 1)), Gt(x, a));
+    XlaOp ax = a * Log(x) - x - Lgamma(a);
+    XlaOp underflow = Lt(ax, -Log(MaxFiniteValue(&b, type)));
+    ax = Exp(ax);
+    XlaOp enabled = Not(Or(Or(Or(x_is_zero, domain_error), underflow), is_nan));
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    XlaOp output = Select(use_igammac,
+                          -IgammacContinuedFraction<SAMPLE_DERIVATIVE>(
+                              ax, x, a, And(enabled, use_igammac), type),
+                          IgammaSeries<SAMPLE_DERIVATIVE>(
+                              ax, x, a, And(enabled, Not(use_igammac)), type));
+    output = Select(underflow, ZerosLike(output), output);
+    output = Select(x_is_zero, ZerosLike(output), output);
+    output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
+    return output;
+  };
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
+    TF_ASSIGN_OR_RETURN(auto x_shape, b.GetShape(x));
+    if (a_shape != x_shape) {
+      return InvalidArgument(
+          "Arguments to RandomGammaGrad must have equal shapes and types; got "
+          "%s and %s",
+          a_shape.ToString(), x_shape.ToString());
+    }
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("RandomGammaGrad", a));
+    bool needs_upcast =
+        a_shape.element_type() == F16 || a_shape.element_type() == BF16;
+
+    if (needs_upcast) {
+      a = ConvertElementType(a, F32);
+      x = ConvertElementType(x, F32);
+    }
+    XlaOp result = doit(a, x, a_shape.element_type());
+    if (needs_upcast) {
+      result = ConvertElementType(result, a_shape.element_type());
+    }
+    return result;
+  });
+}
+
 XlaOp Igammac(XlaOp a, XlaOp x) {
   auto& b = *a.builder();
   auto doit = [&b](XlaOp a, XlaOp x, PrimitiveType type) -> XlaOp {
@@ -863,10 +1057,10 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
     ax = Exp(ax);
     XlaOp result =
         Select(use_igamma,
-               ScalarLike(a, 1) -
-                   IgammaSeries(ax, x, a, And(enabled, use_igamma), type),
-               IgammacContinuedFraction(ax, x, a, And(enabled, Not(use_igamma)),
-                                        type));
+               ScalarLike(a, 1) - IgammaSeries<VALUE>(
+                                      ax, x, a, And(enabled, use_igamma), type),
+               IgammacContinuedFraction<VALUE>(
+                   ax, x, a, And(enabled, Not(use_igamma)), type));
     return Select(underflow, ZerosLike(a),
                   Select(out_of_range, FullLike(a, 1), result));
   };
