@@ -49,7 +49,21 @@ class LayoutAssignmentPass : public FunctionPass<LayoutAssignmentPass> {
 // delete redundant transposes.
 class MoveTransposesPass : public FunctionPass<MoveTransposesPass> {
  public:
+  enum class Direction { kBegin, kEnd };
+
+  MoveTransposesPass() = default;
+  MoveTransposesPass(const MoveTransposesPass& pass) {}
+
   void runOnFunction() final;
+
+ private:
+  Option<Direction> direction_{
+      *this, "direction",
+      llvm::cl::desc("Move transposes to the beginning or the end of the block "
+                     "where they are defined."),
+      llvm::cl::values(
+          clEnumValN(Direction::kBegin, "begin", "beginning of the block"),
+          clEnumValN(Direction::kEnd, "end", "end of the block"))};
 };
 
 using Permutation = SmallVector<int64_t, 4>;
@@ -228,20 +242,119 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
   }
 }
 
+// Move Transpose operations that permute `op` operands after the `op`.
+void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
+  // TODO(ezhulenev): Move transpose across layout sensitive operations.
+  if (!op->hasTrait<OpTrait::TF::LayoutAgnostic>()) return;
+
+  // Transpose operations that are operands of the `op`.
+  SmallVector<TransposeOp, 2> transpose_ops;
+
+  // Constant operation that defines permutation indices for operand transposes.
+  ConstOp permutation_op;
+
+  // All operation operands must be transpose operations with the same
+  // permutation indices.
+  for (OpOperand& operand : op->getOpOperands()) {
+    // Operand must be defined by a transpose op.
+    TransposeOp transpose =
+        dyn_cast_or_null<TransposeOp>(operand.get().getDefiningOp());
+    if (!transpose) return;
+
+    // With permutation defined by constant operation.
+    ConstOp perm =
+        dyn_cast_or_null<ConstOp>(transpose.getOperand(1).getDefiningOp());
+    if (!perm) return;
+
+    // With the same permutation indices.
+    auto dense_elem_attr = perm.value().dyn_cast<DenseElementsAttr>();
+    if (!dense_elem_attr) return;
+
+    if (!permutation_op) permutation_op = perm;
+
+    // Check that permutation matches for all result transposes.
+    if (perm.value() != permutation_op.value()) return;
+
+    // Add a transpose operation for later reuse only if it's used once.
+    if (transpose.getResult().hasOneUse()) transpose_ops.push_back(transpose);
+  }
+
+  // Nothing to do here.
+  if (!permutation_op) return;
+
+  // At this point we checked that we can safely move Transpose node after
+  // `op`, bypass all operands transposes, and transpose op results.
+  Location loc = op->getLoc();
+
+  // Move constant op defining result permutation to the beginning of the block.
+  permutation_op.getOperation()->moveBefore(&op->getBlock()->front());
+
+  // Bypass Transpose nodes for all operands.
+  for (OpOperand& operand : op->getOpOperands()) {
+    TransposeOp transpose =
+        dyn_cast<TransposeOp>(operand.get().getDefiningOp());
+    operand.set(transpose.getOperand(0));
+  }
+
+  // Maybe add Transpose nodes for all results (or reuse existing transposes).
+  OpBuilder builder(op);
+  builder.setInsertionPoint(op);
+
+  for (OpResult result : op->getResults()) {
+    result.setType(op->getOperand(0).getType());
+
+    // Try to push transpose further down.
+    for (Operation* user : result.getUsers()) work_list->push_back(user);
+
+    // Try to reuse operand transposes.
+    TransposeOp transpose;
+    if (!transpose_ops.empty()) {
+      transpose = transpose_ops.pop_back_val();
+      transpose.getOperation()->moveBefore(op->getNextNode());
+      transpose.setOperand(0, result);
+      transpose.setOperand(1, permutation_op);
+    } else {
+      transpose = builder.create<TransposeOp>(loc, result, permutation_op);
+    }
+
+    // Forward all users to the transpose operation.
+    result.replaceAllUsesWith(transpose);
+    transpose.setOperand(0, result);
+  }
+
+  // Remove unused transpose operations.
+  while (!transpose_ops.empty()) {
+    TransposeOp transpose = transpose_ops.pop_back_val();
+    transpose.erase();
+  }
+}
+
 void MoveTransposesPass::runOnFunction() {
   FuncOp func = getFunction();
 
   SmallVector<Operation*, 8> work_list;
 
   func.walk([&](TransposeOp transpose) {
-    for (auto operand : transpose.getOperands()) {
-      if (auto op = operand.getDefiningOp()) work_list.push_back(op);
+    if (direction_ == Direction::kBegin) {
+      // Try to push transpose before the operand operation.
+      for (auto operand : transpose.getOperands()) {
+        if (auto op = operand.getDefiningOp()) work_list.push_back(op);
+      }
+    } else {
+      // Try to push transpose after the user operation.
+      for (Operation* user : transpose.y().getUsers()) {
+        work_list.push_back(user);
+      }
     }
   });
 
   while (!work_list.empty()) {
     Operation* op = work_list.pop_back_val();
-    MoveTransposeBefore(op, &work_list);
+    if (direction_ == Direction::kBegin) {
+      MoveTransposeBefore(op, &work_list);
+    } else if (direction_ == Direction::kEnd) {
+      MoveTransposeAfter(op, &work_list);
+    }
   }
 }
 
