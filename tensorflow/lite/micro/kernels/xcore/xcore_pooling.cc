@@ -8,9 +8,9 @@ namespace xcore {
 
 template<int N, class T>
 T unpack(const uint8_t *buffer) {
-    T retval =0;
+    T retval = 0;
     for (int i=0; i<N; ++i)
-        retval |= buffer[i] << (i << 3*i);
+        retval |= buffer[i] << (8*i);
     return retval;
 }
 
@@ -171,7 +171,7 @@ namespace avgpool_global {
 
         auto* user_data = reinterpret_cast<UserData*>(node->user_data);
 
-        user_data->bias= unpack<4, int32_t>(&bss->data.uint8[0]);
+        user_data->bias = unpack<4, int32_t>(&bss->data.uint8[0]);
         user_data->scale = unpack<1, uint32_t>(&bss->data.uint8[4]);
         user_data->shift = unpack<2, uint32_t>(&bss->data.uint8[5]);
 
