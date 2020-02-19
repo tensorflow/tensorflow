@@ -23,6 +23,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "atrace_profiler",
+    srcs = ["atrace_profiler.cc"],
+    hdrs = ["atrace_profiler.h"],
+    copts = common_copts,
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/lite/core/api",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "platform_profiler",
+    srcs = ["platform_profiler.cc"],
+    hdrs = ["platform_profiler.h"],
+    copts = common_copts,
+    deps = [
+        "//tensorflow/lite/core/api",
+    ] + select({
+        "//tensorflow:android": [":atrace_profiler"],
+        "//conditions:default": [],
+    }),
+)
+
 cc_test(
     name = "profiler_test",
     srcs = ["profiler_test.cc"],
