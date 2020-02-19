@@ -732,9 +732,9 @@ inline Status ConvertMklToTF(OpKernelContext* context,
     }
     return Status::OK();
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
-                       string(e.message) + ", in file " + string(__FILE__) +
-                       ":" + std::to_string(__LINE__);
+    string error_msg = "Status: " + std::to_string(e.status) +
+                       ", message: " + string(e.message) + ", in file " +
+                       string(__FILE__) + ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
 }
@@ -1254,8 +1254,8 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
   } catch (mkldnn::error& e) {
     return Status(error::Code::INTERNAL,
                   tensorflow::strings::StrCat(
-                      "Failed to create blocked memory descriptor.", "Status: ",
-                      e.status, ", message: ", e.message));
+                      "Failed to create blocked memory descriptor.",
+                      "Status: ", e.status, ", message: ", e.message));
   }
 #else
   // We have to construct memory descriptor in a C style. This is not at all
@@ -2160,12 +2160,6 @@ void execute_primitives(
     primitives.at(i).execute(*stream, net_args.at(i));
   }
 }
-#endif  // ENABLE_MKLDNN_V1
-
-#ifdef ENABLE_MKLDNN_V1
-#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemDesc()
-#else
-#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemPrimDesc()
 #endif  // ENABLE_MKLDNN_V1
 
 }  // namespace tensorflow
