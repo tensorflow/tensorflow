@@ -261,8 +261,25 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
 
 // Move Transpose operations that permute `op` operands after the `op`.
 void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
-  // TODO(ezhulenev): Move transpose across layout sensitive operations.
-  if (!op->hasTrait<OpTrait::TF::LayoutAgnostic>()) return;
+  // Indices of operands and results that depend on data layout.
+  SmallVector<unsigned, 4> layout_dependent_operands;
+  SmallVector<unsigned, 4> layout_dependent_results;
+
+  auto fold_operands = dyn_cast<FoldOperandsTransposeInterface>(op);
+  bool layout_agnostic = op->hasTrait<OpTrait::TF::LayoutAgnostic>();
+
+  if (fold_operands) {
+    layout_dependent_operands = fold_operands.GetLayoutDependentArgs();
+    layout_dependent_results = fold_operands.GetLayoutDependentResults();
+
+  } else if (layout_agnostic) {
+    // For layout agnostic operation (e.g. element wise operations) all operands
+    // and results must have the same data layout.
+    for (unsigned i = 0; i < op->getNumOperands(); ++i)
+      layout_dependent_operands.push_back(i);
+    for (unsigned i = 0; i < op->getNumResults(); ++i)
+      layout_dependent_results.push_back(i);
+  }
 
   // Transpose operations that are operands of the `op`.
   SmallVector<TransposeOp, 2> transpose_ops;
@@ -270,9 +287,11 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
   // Constant operation that defines permutation indices for operand transposes.
   ConstOp permutation_op;
 
-  // All operation operands must be transpose operations with the same
+  // Layout dependent operands must be transpose operations with the same
   // permutation indices.
-  for (OpOperand& operand : op->getOpOperands()) {
+  for (unsigned idx : layout_dependent_operands) {
+    OpOperand& operand = op->getOpOperand(idx);
+
     // Operand must be defined by a transpose op.
     TransposeOp transpose =
         dyn_cast_or_null<TransposeOp>(operand.get().getDefiningOp());
@@ -299,6 +318,22 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
   // Nothing to do here.
   if (!permutation_op) return;
 
+  // All results after transpose must preserve the original result type.
+  SmallVector<Type, 4> original_type(op->getNumResults());
+  for (unsigned idx : layout_dependent_results)
+    original_type[idx] = op->getResult(idx).getType();
+
+  // Check if we can fold transpose into the operation.
+  if (fold_operands) {
+    SmallVector<int64_t, 8> permutation;
+
+    auto attr = permutation_op.value().cast<DenseElementsAttr>();
+    for (auto value : attr.getIntValues())
+      permutation.push_back(value.getSExtValue());
+
+    if (failed(fold_operands.FoldOperandsPermutation(permutation))) return;
+  }
+
   // At this point we checked that we can safely move Transpose node after
   // `op`, bypass all operands transposes, and transpose op results.
   Location loc = op->getLoc();
@@ -306,19 +341,25 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
   // Move constant op defining result permutation to the beginning of the block.
   permutation_op.getOperation()->moveBefore(&op->getBlock()->front());
 
-  // Bypass Transpose nodes for all operands.
-  for (OpOperand& operand : op->getOpOperands()) {
+  // Bypass Transpose nodes for layout dependent operands.
+  for (unsigned idx : layout_dependent_operands) {
+    OpOperand& operand = op->getOpOperand(idx);
     TransposeOp transpose =
         dyn_cast<TransposeOp>(operand.get().getDefiningOp());
     operand.set(transpose.getOperand(0));
   }
 
-  // Maybe add Transpose nodes for all results (or reuse existing transposes).
+  // Maybe add Transpose nodes for layout dependent results
+  // (or reuse existing transposes).
   OpBuilder builder(op);
   builder.setInsertionPoint(op);
 
-  for (OpResult result : op->getResults()) {
-    result.setType(op->getOperand(0).getType());
+  for (unsigned idx : layout_dependent_results) {
+    OpResult result = op->getResult(idx);
+
+    // Forward operand type only for layout agnostic operations, operations with
+    // custom folding will update the result type in `FoldOperandsPermutation`.
+    if (layout_agnostic) result.setType(op->getOperand(0).getType());
 
     // Try to push transpose further down.
     for (Operation* user : result.getUsers()) work_list->push_back(user);
@@ -330,6 +371,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
       transpose.getOperation()->moveBefore(op->getNextNode());
       transpose.setOperand(0, result);
       transpose.setOperand(1, permutation_op);
+      transpose.getResult().setType(original_type[idx]);
     } else {
       transpose = builder.create<TransposeOp>(loc, result, permutation_op);
     }

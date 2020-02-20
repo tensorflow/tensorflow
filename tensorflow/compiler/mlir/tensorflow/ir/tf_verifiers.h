@@ -29,6 +29,12 @@ namespace TF {
 //     [0, getNumOperands/getNumResults) range.
 LogicalResult VerifyLayoutSensitiveInterface(Operation* op);
 
+// Verifies correctness of ops implementing FoldOperandsTransposeInterface (see
+// definition in tf_op_base.td):
+// (1) Layout dependent arguments and results indices must be in
+//     [0, getNumOperands/getNumResults) range.
+LogicalResult VerifyFoldOperandsTransposeInterface(Operation* op);
+
 }  // namespace TF
 }  // namespace mlir
 

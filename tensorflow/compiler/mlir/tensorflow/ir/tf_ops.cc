@@ -1351,6 +1351,65 @@ void MaxOp::build(Builder *builder, OperationState &result, Value input,
 }
 
 //===----------------------------------------------------------------------===//
+// MaxPoolOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MaxPoolOp::FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation) {
+  MLIRContext *context = getParentOfType<ModuleOp>().getContext();
+
+  // For now we only support folding of NCHW->NHWC and NHWC->NCHW permutations.
+  if (data_format() == "NHWC") {
+    static constexpr std::array<int64_t, 4> kPerm = {0, 2, 3, 1};  // to NHWC
+    if (permutation != ArrayRef<int64_t>(kPerm)) return failure();
+
+    setAttr("data_format", StringAttr::get("NCHW", context));
+
+  } else if (data_format() == "NCHW") {
+    static constexpr std::array<int64_t, 4> kPerm = {0, 3, 1, 2};  // to NCHW
+    if (permutation != ArrayRef<int64_t>(kPerm)) return failure();
+
+    setAttr("data_format", StringAttr::get("NHWC", context));
+
+  } else {
+    return failure();
+  }
+
+  auto shuffle_attr = [&](ArrayAttr attr) -> ArrayAttr {
+    SmallVector<Attribute, 4> values{attr.begin(), attr.end()};
+    SmallVector<Attribute, 4> shuffled(values.size());
+
+    for (size_t i = 0; i < permutation.size(); ++i)
+      shuffled[permutation[i]] = values[i];
+
+    return ArrayAttr::get(shuffled, context);
+  };
+
+  setAttr("strides", shuffle_attr(strides()));
+  setAttr("ksize", shuffle_attr(ksize()));
+
+  auto shuffle_type = [&](Type type) -> Type {
+    if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+      ArrayRef<int64_t> shape = ranked_type.getShape();
+      assert(permutation.size() == shape.size());
+
+      SmallVector<int64_t, 4> new_shape(permutation.size());
+      for (size_t i = 0; i < permutation.size(); ++i)
+        new_shape[permutation[i]] = shape[i];
+
+      return RankedTensorType::get(new_shape, ranked_type.getElementType());
+    }
+
+    return type;
+  };
+
+  OpResult result = getOperation()->getResult(0);
+  result.setType(shuffle_type(result.getType()));
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MaxPoolGradOp
 //===----------------------------------------------------------------------===//
 

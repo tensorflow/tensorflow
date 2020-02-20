@@ -508,8 +508,8 @@ Broadcasting is supported, so `value` may have any number of dimensions.
 
   let extraClassDeclaration = [{
     // TF_LayoutSensitiveInterface:
-    SmallVector<int64_t, 4> GetLayoutDependentArgs() { return {0}; }
-    SmallVector<int64_t, 4> GetLayoutDependentResults() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
   }];
 }
 
@@ -3675,7 +3675,7 @@ retained with length 1.
   >];
 }
 
-def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
+def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
   let summary = "Performs max pooling on the input.";
 
   let description = [{
@@ -3695,6 +3695,13 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    // TF_FoldOperandsTransposeInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
+  }];
 }
 
 def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
