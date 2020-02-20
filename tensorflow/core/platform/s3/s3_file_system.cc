@@ -292,6 +292,7 @@ class S3WritableFile : public WritableFile {
         "application/octet-stream", Aws::Map<Aws::String, Aws::String>());
     handle->WaitUntilFinished();
     int retries = 0;
+
     while (handle->GetStatus() == Aws::Transfer::TransferStatus::FAILED &&
            retries++ < kUploadRetries) {
       // if multipart upload was used, only the failed parts will be re-sent
@@ -300,6 +301,7 @@ class S3WritableFile : public WritableFile {
       transfer_manager_.get()->RetryUpload(outfile_, handle);
       handle->WaitUntilFinished();
     }
+
     if (handle->GetStatus() != Aws::Transfer::TransferStatus::COMPLETED) {
       auto error = handle->GetLastError();
       if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
@@ -711,7 +713,7 @@ Status S3FileSystem::CopyFile(const Aws::String& source_bucket, const Aws::Strin
   Aws::String source = Aws::String((source_bucket + "/" + source_key).c_str());
   Aws::String source_full_path = Aws::String("s3://") + source;
   uint64 file_length;
-  TF_RETURN_IF_ERROR(this->GetFileSize(std::string(source_full_path.c_str()), &file_length));
+  TF_RETURN_IF_ERROR(this->GetFileSize(string(source_full_path.c_str()), &file_length));
   int num_parts;
   if (file_length <= multi_part_copy_part_size_) {
     num_parts = 1;
@@ -722,12 +724,12 @@ Status S3FileSystem::CopyFile(const Aws::String& source_bucket, const Aws::Strin
   if (num_parts == 1) {
     return SimpleCopy(source, target_bucket, target_key);
   } else if (num_parts > 10000) {
-    std::ostringstream s;
-    s << "MultiPartCopy with number of parts more than 10000 is not supported. Your object "
-      << source << " required " << num_parts << " as multi_part_copy_part_size is set to "
-      << multi_part_copy_part_size_ << ". You can control this part size using the environment variable "
-    "S3_MULTI_PART_COPY_PART_SIZE to increase it.";
-    return tensorflow::errors::Unimplemented(s.str());
+    string message = strings::StrCat(
+      "MultiPartCopy with number of parts more than 10000 is not supported. Your object ",
+      source, " required ", num_parts, " as multi_part_copy_part_size is set to ",
+      multi_part_copy_part_size_, ". You can control this part size using the environment variable ",
+      "S3_MULTI_PART_COPY_PART_SIZE to increase it.");
+    return tensorflow::errors::Unimplemented(message);
   } else {
     return MultiPartCopy(source, target_bucket, target_key, num_parts, file_length);
   }
@@ -798,9 +800,7 @@ Status S3FileSystem::MultiPartCopy(const Aws::String& source,
         endPos = file_length - 1;
       }
 
-      std::ostringstream rangeStream;
-      rangeStream << "bytes=" << startPos << "-" << std::to_string(endPos);
-      string range = rangeStream.str();
+      string range = strings::StrCat("bytes=", startPos, "-", endPos);
 
       Aws::S3::Model::UploadPartCopyRequest uploadPartCopyRequest;
       uploadPartCopyRequest.SetBucket(target_bucket);
