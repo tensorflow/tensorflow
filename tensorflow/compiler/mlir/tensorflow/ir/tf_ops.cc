@@ -151,6 +151,26 @@ static bool AreCastCompatible(Type a, Type b) {
          b_kind == TensorFlowTypes::VARIANT;
 }
 
+static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
+                                       DenseIntElementsAttr perm1) {
+  if (perm0.getNumElements() == 0 || perm1.getNumElements() == 0) return false;
+  if (perm0.getNumElements() != perm1.getNumElements()) return false;
+
+  SmallVector<int64_t, 8> perm0_values;
+  for (auto value : perm0.getIntValues())
+    perm0_values.push_back(value.getSExtValue());
+
+  SmallVector<int64_t, 8> perm1_values;
+  for (auto value : perm1.getIntValues())
+    perm1_values.push_back(value.getSExtValue());
+
+  for (int i = 0; i < perm0_values.size(); ++i) {
+    if (perm0_values[perm1_values[i]] != i) return false;
+  }
+
+  return true;
+}
+
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
   return dim_or_rank == -1;
 }
@@ -2723,23 +2743,46 @@ void TransposeOp::build(Builder *builder, OperationState &result, Value x,
                             perm);
 }
 
-OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
-  auto const_perm = dyn_cast_or_null<TF::ConstOp>(perm().getDefiningOp());
+namespace {
 
-  if (!const_perm) {
-    return {};
-  }
+OpFoldResult FoldIdentityTranspose(TransposeOp op) {
+  auto const_perm = dyn_cast_or_null<TF::ConstOp>(op.perm().getDefiningOp());
+  if (!const_perm) return {};
 
   auto const_value = const_perm.value();
-
   const auto &elements = const_value.getValues<APInt>();
+
   for (auto it : llvm::enumerate(elements)) {
-    if (it.index() != it.value()) {
-      return {};
-    }
+    if (it.index() != it.value()) return {};
   }
 
-  return x();
+  return op.x();
+}
+
+OpFoldResult FoldCancellableTranspose(TransposeOp op) {
+  // Operand is a TransposeOp.
+  auto transpose = dyn_cast_or_null<TF::TransposeOp>(op.x().getDefiningOp());
+  if (!transpose) return {};
+
+  // Permutations defined by constant operations.
+  auto perm0 = dyn_cast_or_null<TF::ConstOp>(op.perm().getDefiningOp());
+  auto perm1 = dyn_cast_or_null<TF::ConstOp>(transpose.perm().getDefiningOp());
+  if (!perm0 || !perm1) return {};
+
+  // With permutation indices that cancel each other
+  auto perm0_value = perm0.value().cast<DenseIntElementsAttr>();
+  auto perm1_value = perm1.value().cast<DenseIntElementsAttr>();
+  if (!AreCancellablePermutations(perm0_value, perm1_value)) return {};
+
+  return transpose.x();
+}
+
+}  // namespace
+
+OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
+  if (auto folded = FoldIdentityTranspose(*this)) return folded;
+  if (auto folded = FoldCancellableTranspose(*this)) return folded;
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

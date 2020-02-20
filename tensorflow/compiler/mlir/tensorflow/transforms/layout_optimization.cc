@@ -18,7 +18,9 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassManager.h"  // TF:llvm-project
 #include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Transforms/Passes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 #define DEBUG_TYPE "tf-layout-optimization"
@@ -28,11 +30,25 @@ namespace TF {
 
 namespace {
 
+// Layout optimization pipeline composes layout assignment and move transposes
+// passes to pick the optimal layout for all layout sensitive operations, and
+// cancel all redundant transposes.
+struct LayoutOptimizationPipelineOptions
+    : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
+  Option<std::string> force_data_format{
+      *this, "force-data-format",
+      llvm::cl::desc("Force data format for all layout sensitive ops")};
+};
+
 // LayoutAssignmentPass assigns optimal data layout (data format) for all
 // layout sensitive operations.
 class LayoutAssignmentPass : public FunctionPass<LayoutAssignmentPass> {
  public:
   LayoutAssignmentPass() = default;
+  explicit LayoutAssignmentPass(const std::string& force_data_format) {
+    force_data_format_ = force_data_format;
+  }
+
   LayoutAssignmentPass(const LayoutAssignmentPass& pass) {}
 
   void runOnFunction() final;
@@ -52,6 +68,7 @@ class MoveTransposesPass : public FunctionPass<MoveTransposesPass> {
   enum class Direction { kBegin, kEnd };
 
   MoveTransposesPass() = default;
+  explicit MoveTransposesPass(Direction direction) { direction_ = direction; }
   MoveTransposesPass(const MoveTransposesPass& pass) {}
 
   void runOnFunction() final;
@@ -356,6 +373,30 @@ void MoveTransposesPass::runOnFunction() {
       MoveTransposeAfter(op, &work_list);
     }
   }
+
+  func.walk([&](TransposeOp transpose) {
+    OpBuilder builder(transpose);
+    SmallVector<Value, 1> fold_result;
+    if (succeeded(builder.tryFold(transpose.getOperation(), fold_result))) {
+      assert(fold_result.size() == 1);
+      transpose.replaceAllUsesWith(fold_result[0]);
+    }
+  });
+}
+
+void CreateLayoutOptimizationPipeline(
+    OpPassManager& pm,  // NOLINT - MLIR contract is pass by mutable reference.
+    const LayoutOptimizationPipelineOptions& options) {
+  using Direction = MoveTransposesPass::Direction;
+
+  // Assign optimal layout for layout sensitive ops.
+  pm.addPass(std::make_unique<LayoutAssignmentPass>(options.force_data_format));
+
+  // Move transposes to the beginning of the block and try to fold them.
+  pm.addPass(std::make_unique<MoveTransposesPass>(Direction::kBegin));
+
+  // Move transposes to the end of the block and try to fold them.
+  pm.addPass(std::make_unique<MoveTransposesPass>(Direction::kEnd));
 }
 
 }  // namespace
@@ -364,6 +405,12 @@ static PassRegistration<LayoutAssignmentPass> layout_assignment(
     "tf-layout-assignment", "Layout assignment pass");
 static PassRegistration<MoveTransposesPass> move_transposes(
     "tf-move-transposes", "Move transposes pass");
+
+static mlir::PassPipelineRegistration<LayoutOptimizationPipelineOptions>
+    pipeline("tf-layout-optimization",
+             "Assigns optimal data layout to all layout sensitive operations "
+             "and cancel redundant transpose operations.",
+             CreateLayoutOptimizationPipeline);
 
 }  // namespace TF
 }  // namespace mlir
