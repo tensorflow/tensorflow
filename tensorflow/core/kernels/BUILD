@@ -7990,6 +7990,11 @@ tf_cc_test_mkl(
     name = "mkl_dequantize_op_test",
     size = "small",
     srcs = ["mkl_dequantize_op_test.cc"],
+    # TODO(b/149940073): Re-enable.
+    tags = [
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":mkl_dequantize_op",
         ":mkl_tfconv_op",
