@@ -28,13 +28,15 @@ namespace tensorflow {
 
 // Fuse Operation
 template <typename Device, typename T>
-class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
+class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
  public:
   explicit MklFusedMatMulOp(OpKernelConstruction* ctx)
-      : MklDnnMatMulOpBase<T>(ctx) {
+      : MklDnnMatMulOpBase<T, T>(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("fused_ops", &fused_ops_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("is_filter_const", &(this->is_weight_const_)));
 
     OP_REQUIRES(ctx, fused_ops_.size() <= 2,
                 errors::InvalidArgument(
@@ -58,13 +60,13 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
     MklDnnShape weight_mkl_shape;
     GetMklShape(ctx, this->kInputIndexSrc, &src_mkl_shape);
     GetMklShape(ctx, this->kInputIndexWeight, &weight_mkl_shape);
+    OP_REQUIRES(ctx, !weight_mkl_shape.IsMklTensor(),
+                errors::InvalidArgument("Weight should not be in MKL Layout"));
 
     // Get shapes of input tensors
     auto src_tf_shape = src_mkl_shape.IsMklTensor() ? src_mkl_shape.GetTfShape()
                                                     : src_tensor.shape();
-    auto weight_tf_shape = weight_mkl_shape.IsMklTensor()
-                               ? weight_mkl_shape.GetTfShape()
-                               : weight_tensor.shape();
+    auto weight_tf_shape = weight_tensor.shape();
 
     // Check the constraint of input matrix and bias
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(src_tf_shape),
@@ -106,8 +108,13 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
     MEMORY_FORMAT weight_format =
         transpose_b_ ? MEMORY_FORMAT::oi : MEMORY_FORMAT::io;
 
-    MklDnnMatMulFwdParams matmul_params(src_dims, weight_dims, bias_dims,
-                                        dst_dims, weight_format);
+    // Set weight format for primitive:
+    //   1. const, let MKL-DNN determine format because it will be cached;
+    //   2. var, keep the original format to avoid reordering.
+    MklDnnMatMulFwdParams matmul_params(
+        src_dims, weight_dims, bias_dims, dst_dims,
+        (this->is_weight_const_) ? MEMORY_FORMAT::any : weight_format);
+
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
@@ -118,7 +125,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
     std::shared_ptr<mkldnn::inner_product_forward::primitive_desc> matmul_pd =
         matmul_prim->GetPrimitiveDesc();
 
-    if (src_mkl_shape.IsMklTensor() && weight_mkl_shape.IsMklTensor()) {
+    if (src_mkl_shape.IsMklTensor()) {
       this->AllocateOutputTensor(ctx, *matmul_pd, dst_dims,
                                  MKL_TENSOR_FORMAT_NC, &dst_tensor);
     } else {
@@ -141,7 +148,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
       T* bias_data = const_cast<T*>(bias_tensor.flat<T>().data());
       T* dst_data = const_cast<T*>(dst_tensor->flat<T>().data());
 
-      // Any input is MKL format, reorder it if necessary.
+      // Reorder input if necessary.
       MklDnnData<T> src_mkl(&(this->cpu_engine_));
       MklDnnData<T> weight_mkl(&(this->cpu_engine_));
 
@@ -159,13 +166,29 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
         }
       }
 
-      if (weight_mkl_shape.IsMklTensor()) {
-        memory::desc input_md = weight_mkl_shape.GetMklLayout();
-#ifdef ENABLE_MKLDNN_V1
-        if (input_md != matmul_pd->weight_desc()) {
-#else
-        if (input_md.data.format != weight_format) {
-#endif  // ENABLE_MKLDNN_V1
+      // Get cached data when weight is const.
+      memory::format expected_format = matmul_prim->GetWeightMemoryFormat();
+      DCHECK(expected_format != weight_format && this->is_weight_const_);
+      if (this->is_weight_const_) {
+        T* cached_weight_data = nullptr;
+        if (this->IsWeightCacheEmpty(ctx)) {
+          auto weight_md =
+              memory::desc(weight_dims, MklDnnType<T>(), weight_format);
+          this->CacheWeight(ctx, matmul_pd, cached_weight_data, weight_tensor,
+                            weight_mkl, weight_md);
+        }
+        cached_weight_data = this->GetCachedWeight(ctx, expected_format);
+
+        // Cache weight may fail when it gets different format in different
+        // iteration. Fallback to reoder if it happens.
+        // TODO: Fix this slow path.
+        if (cached_weight_data != nullptr) {
+          weight_data = cached_weight_data;
+        } else {
+          memory::desc input_md =
+              memory::desc(weight_dims, MklDnnType<T>(), weight_format);
+
+          //>>>>>>> master
           weight_mkl.SetUsrMem(input_md, weight_data);
           weight_mkl.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
               matmul_pd.get()->PRIMITIVE_DESC_WEIGHTS, this->cpu_engine_));

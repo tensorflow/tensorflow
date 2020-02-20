@@ -622,6 +622,10 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
   return Status::OK();
 }
 
+const FunctionDef* EagerContext::GetFunctionDef(const string& function_name) {
+  return func_lib_def_.Find(function_name);
+}
+
 Status EagerContext::RemoveFunction(const string& func) {
   bool is_last_ref = false;
   {
@@ -744,7 +748,7 @@ Status EagerContext::FindCustomDeviceFromName(const string& device_name,
 
 void EagerContext::RegisterCustomDevice(const string& device_name,
                                         std::unique_ptr<CustomDevice> device) {
-  custom_devices_[device_name] = std::move(device);
+  custom_devices_.emplace(device_name, std::move(device));
 }
 
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {

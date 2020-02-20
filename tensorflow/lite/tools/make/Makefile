@@ -68,6 +68,10 @@ ifeq ($(HOST_OS),windows)
 CXXFLAGS += -fext-numeric-literals -D__LITTLE_ENDIAN__
 endif
 
+ifeq ($(TARGET),ios)
+CXXFLAGS += --std=c++11
+endif
+
 # Auto-detect optimization opportunity if building natively.
 ifeq ($(HOST_OS),$(TARGET))
 ifeq ($(HOST_ARCH),$(TARGET_ARCH))

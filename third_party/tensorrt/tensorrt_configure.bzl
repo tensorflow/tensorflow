@@ -14,6 +14,7 @@ load(
 )
 load(
     "//third_party/remote_config:common.bzl",
+    "config_repo_label",
     "get_cpu_value",
     "get_host_environ",
 )
@@ -153,20 +154,20 @@ def _tensorrt_configure_impl(repository_ctx):
     if get_host_environ(repository_ctx, _TF_TENSORRT_CONFIG_REPO) != None:
         # Forward to the pre-configured remote repository.
         remote_config_repo = repository_ctx.os.environ[_TF_TENSORRT_CONFIG_REPO]
-        repository_ctx.template("BUILD", Label(remote_config_repo + ":BUILD"), {})
+        repository_ctx.template("BUILD", config_repo_label(remote_config_repo, ":BUILD"), {})
         repository_ctx.template(
             "build_defs.bzl",
-            Label(remote_config_repo + ":build_defs.bzl"),
+            config_repo_label(remote_config_repo, ":build_defs.bzl"),
             {},
         )
         repository_ctx.template(
             "tensorrt/include/tensorrt_config.h",
-            Label(remote_config_repo + ":tensorrt/include/tensorrt_config.h"),
+            config_repo_label(remote_config_repo, ":tensorrt/include/tensorrt_config.h"),
             {},
         )
         repository_ctx.template(
             "LICENSE",
-            Label(remote_config_repo + ":LICENSE"),
+            config_repo_label(remote_config_repo, ":LICENSE"),
             {},
         )
         return

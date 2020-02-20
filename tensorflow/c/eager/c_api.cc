@@ -1277,10 +1277,12 @@ void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
 }
 
 const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
-  tensorflow::Device* device = (op->operation.Device() == nullptr)
-                                   ? op->operation.EagerContext().HostCPU()
-                                   : op->operation.Device();
-  return device->name().c_str();
+  absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> variant_device =
+      (op->operation.Device() == tensorflow::kVariantDeviceNull)
+          ? op->operation.EagerContext().HostCPU()
+          : op->operation.Device();
+  return absl::visit([](auto* device) { return device->name().c_str(); },
+                     variant_device);
 }
 
 void TFE_OpSetXLACompilation(TFE_Op* op, unsigned char enable) {

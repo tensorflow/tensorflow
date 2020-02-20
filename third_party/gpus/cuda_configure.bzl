@@ -39,6 +39,7 @@ load(
 )
 load(
     "//third_party/remote_config:common.bzl",
+    "config_repo_label",
     "err_out",
     "execute",
     "get_bash_bin",
@@ -471,11 +472,14 @@ def _check_cuda_libs(repository_ctx, script_path, libs):
         cmd += "f.write('%s' + linesep);" % line
     cmd += "f.close();"
     cmd += "from os import system;"
-    args = " ".join([path + " " + str(check) for path, check in libs])
+    args = " ".join(["\"" + path + "\" " + str(check) for path, check in libs])
     cmd += "system('%s script.py %s');" % (python_bin, args)
 
     all_paths = [path for path, _ in libs]
     checked_paths = execute(repository_ctx, [python_bin, "-c", cmd]).stdout.splitlines()
+
+    # Filter out empty lines from splitting on '\r\n' on Windows
+    checked_paths = [path for path in checked_paths if len(path) > 0]
     if all_paths != checked_paths:
         auto_configure_fail("Error with installed CUDA libs. Expected '%s'. Actual '%s'." % (all_paths, checked_paths))
 
@@ -1156,17 +1160,17 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
     )
     repository_ctx.template(
         "cuda/BUILD",
-        Label(remote_config_repo + "/cuda:BUILD"),
+        config_repo_label(remote_config_repo, "cuda:BUILD"),
         {},
     )
     repository_ctx.template(
         "cuda/build_defs.bzl",
-        Label(remote_config_repo + "/cuda:build_defs.bzl"),
+        config_repo_label(remote_config_repo, "cuda:build_defs.bzl"),
         {},
     )
     repository_ctx.template(
         "cuda/cuda/cuda_config.h",
-        Label(remote_config_repo + "/cuda:cuda/cuda_config.h"),
+        config_repo_label(remote_config_repo, "cuda:cuda/cuda_config.h"),
         {},
     )
 

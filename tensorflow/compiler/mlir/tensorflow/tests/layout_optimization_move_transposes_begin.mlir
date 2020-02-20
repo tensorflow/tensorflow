@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-move-transposes -verify-diagnostics | FileCheck %s --dump-input=always
+// RUN: tf-opt %s -tf-move-transposes=direction=begin -verify-diagnostics | FileCheck %s --dump-input=always
 
 // CHECK-LABEL: func @move_across_single_op
 func @move_across_single_op(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x8x4x4xf32> {

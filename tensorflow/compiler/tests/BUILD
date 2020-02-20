@@ -336,21 +336,6 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "searchsorted_op_test",
-    size = "small",
-    timeout = "moderate",
-    srcs = ["searchsorted_op_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-    ],
-    deps = [
-        ":xla_test",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-tf_xla_py_test(
     name = "svd_op_test",
     size = "medium",
     srcs = ["svd_op_test.py"],
@@ -1414,7 +1399,10 @@ tf_xla_py_test(
     size = "medium",
     srcs = ["gather_test.py"],
     python_version = "PY3",
-    tags = ["optonly"],
+    tags = [
+        "no_pip",
+        "optonly",
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

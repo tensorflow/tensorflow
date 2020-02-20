@@ -278,5 +278,13 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
   });
 }
 
+uint64 GetStartTimestampNs(const XPlane& plane) {
+  int64 plane_timestamp = 0;
+  for (const auto& line : plane.lines()) {
+    plane_timestamp = std::min<int64>(plane_timestamp, line.timestamp_ns());
+  }
+  return plane_timestamp;
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

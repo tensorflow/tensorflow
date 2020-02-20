@@ -19,6 +19,7 @@ load(
 )
 load(
     "//third_party/remote_config:common.bzl",
+    "config_repo_label",
     "get_cpu_value",
     "get_host_environ",
 )
@@ -116,7 +117,7 @@ def _create_local_nccl_repository(repository_ctx):
 def _create_remote_nccl_repository(repository_ctx, remote_config_repo):
     repository_ctx.template(
         "BUILD",
-        Label(remote_config_repo + ":BUILD"),
+        config_repo_label(remote_config_repo, ":BUILD"),
         {},
     )
 
@@ -124,7 +125,7 @@ def _create_remote_nccl_repository(repository_ctx, remote_config_repo):
     if nccl_version == "":
         repository_ctx.template(
             "build_defs.bzl",
-            Label(remote_config_repo + ":build_defs.bzl"),
+            config_repo_label(remote_config_repo, ":build_defs.bzl"),
             {},
         )
 

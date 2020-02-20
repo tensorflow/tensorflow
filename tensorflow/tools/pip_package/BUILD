@@ -1,7 +1,7 @@
 # Description:
 #  Tools for building the TensorFlow pip package.
 
-load("//tensorflow:tensorflow.bzl", "if_windows", "if_xla_available", "transitive_hdrs")
+load("//tensorflow:tensorflow.bzl", "if_windows", "transitive_hdrs")
 load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
@@ -27,6 +27,7 @@ transitive_hdrs(
     name = "included_headers",
     deps = [
         "//tensorflow/c/experimental:network",
+        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -126,9 +127,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/docs:generate_lib",
     "//tensorflow/tools/docs:parser",
     "//tensorflow/tools/docs:py_guide_parser",
-] + if_xla_available([
-    "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
-])
+]
 
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
@@ -199,6 +198,9 @@ filegroup(
         "//tensorflow:no_aws_support": [],
         "//conditions:default": [
             "@aws//:LICENSE",
+            "@aws-c-common//:LICENSE",
+            "@aws-c-event-stream//:LICENSE",
+            "@aws-checksums//:LICENSE",
         ],
     }) + select({
         "//tensorflow:android": [],

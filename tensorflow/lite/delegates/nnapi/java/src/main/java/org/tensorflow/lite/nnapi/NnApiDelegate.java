@@ -65,24 +65,35 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
     }
 
     public Options setAcceleratorName(String name) {
-      this.accelerator_name = name;
+      this.acceleratorName = name;
       return this;
     }
 
-    public Options setCacheDir(String name) {
-      this.cache_dir = name;
+    public Options setCacheDir(String cacheDir) {
+      this.cacheDir = cacheDir;
       return this;
     }
 
-    public Options setModelToken(String name) {
-      this.model_token = name;
+    public Options setModelToken(String modelToken) {
+      this.modelToken = modelToken;
       return this;
     }
 
-    int executionPreference = EXECUTION_PREFERENCE_UNDEFINED;
-    String accelerator_name = null;
-    String cache_dir = null;
-    String model_token = null;
+    /**
+     * Sets the maximum number of graph partitions that the delegate will try to delegate. If more
+     * partitions could be delegated than the limit, the ones with the larger number of nodes will
+     * be chosen. If unset it will use the NNAPI default limit.
+     */
+    public Options setMaxNumberOfDelegatedPartitions(int limit) {
+      this.maxDelegatedPartitions = limit;
+      return this;
+    }
+
+    private int executionPreference = EXECUTION_PREFERENCE_UNDEFINED;
+    private String acceleratorName = null;
+    private String cacheDir = null;
+    private String modelToken = null;
+    private Integer maxDelegatedPartitions = null;
   }
 
   public NnApiDelegate(Options options) {
@@ -91,9 +102,10 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
     delegateHandle =
         createDelegate(
             options.executionPreference,
-            options.accelerator_name,
-            options.cache_dir,
-            options.model_token);
+            options.acceleratorName,
+            options.cacheDir,
+            options.modelToken,
+            options.maxDelegatedPartitions != null ? options.maxDelegatedPartitions : -1);
   }
 
   public NnApiDelegate() {
@@ -118,8 +130,13 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
     }
   }
 
+  //
   private static native long createDelegate(
-      int preference, String device_name, String cache_dir, String model_token);
+      int preference,
+      String deviceName,
+      String cacheDir,
+      String modelToken,
+      int maxDelegatedPartitions);
 
   private static native void deleteDelegate(long delegateHandle);
 }

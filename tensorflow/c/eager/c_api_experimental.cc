@@ -569,3 +569,22 @@ void TFE_TensorHandleEnableImplicitMirroring(TFE_TensorHandle* h,
   h->handle->EnableImplicitMirroring();
   status->status = tensorflow::Status::OK();
 }
+
+void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
+                               TF_Buffer* buf, TF_Status* status) {
+  auto* function_def = ctx->context->FindFunctionDef(function_name);
+  if (function_def == nullptr) {
+    status->status = tensorflow::errors::NotFound(
+        "Unable to find FunctionDef with name: ", function_name);
+    return;
+  }
+  string str = function_def->SerializeAsString();
+  void* data = tensorflow::port::Malloc(str.length());
+  str.copy(static_cast<char*>(data), str.length(), 0);
+  buf->data = data;
+  buf->length = str.length();
+  buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+  status->status = tensorflow::Status::OK();
+}

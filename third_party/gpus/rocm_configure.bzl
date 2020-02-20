@@ -21,6 +21,7 @@ load(
 )
 load(
     "//third_party/remote_config:common.bzl",
+    "config_repo_label",
     "err_out",
     "execute",
     "files_exist",
@@ -797,17 +798,17 @@ def _create_remote_rocm_repository(repository_ctx, remote_config_repo):
     )
     repository_ctx.template(
         "rocm/BUILD",
-        Label(remote_config_repo + "/rocm:BUILD"),
+        config_repo_label(remote_config_repo, "rocm:BUILD"),
         {},
     )
     repository_ctx.template(
         "rocm/build_defs.bzl",
-        Label(remote_config_repo + "/rocm:build_defs.bzl"),
+        config_repo_label(remote_config_repo, "rocm:build_defs.bzl"),
         {},
     )
     repository_ctx.template(
         "rocm/rocm/rocm_config.h",
-        Label(remote_config_repo + "/rocm:rocm/rocm_config.h"),
+        config_repo_label(remote_config_repo, "rocm:rocm/rocm_config.h"),
         {},
     )
 
