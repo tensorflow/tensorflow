@@ -165,6 +165,10 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass();
 // `tf_device.replicate` island.
 std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateToIslandPass();
 
+// Creates a pass that creates `tf_executor.island` from a single
+// `tf_device.parallel_execute` island.
+std::unique_ptr<OpPassBase<FuncOp>> CreateParallelExecuteToIslandsPass();
+
 // Creates a pass that annotates whether a LaunchFuncOp's parameters have the
 // same data across replicas.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateAnnotateParameterReplicationPass();
