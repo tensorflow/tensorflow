@@ -24,12 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
-using mlir::Builder;
-using mlir::FunctionPass;
-using mlir::OpPassBase;
-using mlir::OwningRewritePatternList;
-using mlir::PassRegistration;
-
 namespace mlir {
 namespace {
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_to_standard.inc"
@@ -37,16 +31,14 @@ namespace {
 namespace xla_hlo {
 namespace {
 
-struct CompareIConvert : public RewritePattern {
-  explicit CompareIConvert(MLIRContext *context)
-      : RewritePattern("xla_hlo.compare", 1, context) {}
+class CompareIConvert : public OpRewritePattern<xla_hlo::CompareOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(Operation *op,
+  PatternMatchResult matchAndRewrite(xla_hlo::CompareOp op,
                                      PatternRewriter &rewriter) const override {
-    auto compare_op = cast<CompareOp>(op);
-
-    auto lhs = compare_op.lhs();
-    auto rhs = compare_op.rhs();
+    auto lhs = op.lhs();
+    auto rhs = op.rhs();
     auto lhs_type = lhs.getType().cast<TensorType>();
     auto rhs_type = rhs.getType().cast<TensorType>();
 
@@ -57,7 +49,7 @@ struct CompareIConvert : public RewritePattern {
         !rhs_type.getElementType().isa<IntegerType>())
       return matchFailure();
 
-    auto comparison_direction = compare_op.comparison_direction();
+    auto comparison_direction = op.comparison_direction();
     auto compare_predicate =
         llvm::StringSwitch<Optional<CmpIPredicate>>(comparison_direction)
             .Case("EQ", CmpIPredicate::eq)
@@ -76,16 +68,14 @@ struct CompareIConvert : public RewritePattern {
   }
 };
 
-struct CompareFConvert : public RewritePattern {
-  explicit CompareFConvert(MLIRContext *context)
-      : RewritePattern("xla_hlo.compare", 1, context) {}
+class CompareFConvert : public OpRewritePattern<xla_hlo::CompareOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(Operation *op,
+  PatternMatchResult matchAndRewrite(xla_hlo::CompareOp op,
                                      PatternRewriter &rewriter) const override {
-    auto compare_op = cast<CompareOp>(op);
-
-    auto lhs = compare_op.lhs();
-    auto rhs = compare_op.rhs();
+    auto lhs = op.lhs();
+    auto rhs = op.rhs();
     auto lhs_type = lhs.getType().cast<TensorType>();
     auto rhs_type = rhs.getType().cast<TensorType>();
 
@@ -96,7 +86,7 @@ struct CompareFConvert : public RewritePattern {
         !rhs_type.getElementType().isa<FloatType>())
       return matchFailure();
 
-    auto comparison_direction = compare_op.comparison_direction();
+    auto comparison_direction = op.comparison_direction();
     CmpFPredicate compare_predicate =
         llvm::StringSwitch<CmpFPredicate>(comparison_direction)
             .Case("EQ", CmpFPredicate::OEQ)
@@ -116,8 +106,6 @@ struct CompareFConvert : public RewritePattern {
 };
 
 }  // end anonymous namespace
-}  // end namespace xla_hlo
-}  // end namespace mlir
 
 namespace {
 struct LegalizeToStandard : public FunctionPass<LegalizeToStandard> {
@@ -126,13 +114,12 @@ struct LegalizeToStandard : public FunctionPass<LegalizeToStandard> {
 };
 }  // end anonymous namespace
 
-std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
-mlir::xla_hlo::createLegalizeToStdPass() {
+std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>> createLegalizeToStdPass() {
   return std::make_unique<LegalizeToStandard>();
 }
 
-void mlir::xla_hlo::PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
-                                             mlir::MLIRContext *ctx) {
+void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
+                              mlir::MLIRContext *ctx) {
   mlir::populateWithGenerated(ctx, patterns);
   patterns
       ->insert<mlir::xla_hlo::CompareFConvert, mlir::xla_hlo::CompareIConvert>(
@@ -148,3 +135,6 @@ void LegalizeToStandard::runOnFunction() {
 
 static PassRegistration<LegalizeToStandard> legalize_pass(
     "xla-legalize-to-std", "Legalize from XLA dialect to standard dialect");
+
+}  // end namespace xla_hlo
+}  // end namespace mlir
