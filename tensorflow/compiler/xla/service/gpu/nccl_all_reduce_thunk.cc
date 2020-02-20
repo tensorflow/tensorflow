@@ -154,10 +154,6 @@ ncclRedOp_t ReductionKindToNccl(ReductionKind kind) {
   }
 }
 
-PrimitiveType AllReducePrimitiveType(const HloInstruction* instr) {
-  return instr->operand(0)->shape().element_type();
-}
-
 absl::optional<ncclDataType_t> DatatypeToNccl(PrimitiveType element_type) {
   switch (element_type) {
     case S8:
@@ -402,9 +398,6 @@ RendezvousNcclAllReduce::SubmitParticipantImpl(
   VLOG(3) << "Performing all reduce from device ordinal: "
           << participant.device_ordinal;
   ncclRedOp_t computation = ReductionKindToNccl(participant.reduction_kind);
-  absl::optional<ncclDataType_t> allreduce_datatype =
-      DatatypeToNccl(participant.primitive_type);
-  CHECK(allreduce_datatype.has_value());
 
   se::StreamExecutor* executor = participant.stream->parent();
   se::cuda::ScopedActivateExecutorContext scoped_context(executor);
@@ -412,19 +405,26 @@ RendezvousNcclAllReduce::SubmitParticipantImpl(
       participant.stream->implementation()->GpuStreamMemberHack());
   VLOG(3) << "Using stream pointer: " << cu_stream
           << " on device: " << participant.device_ordinal;
-  void* send_buffer = participant.source_data.opaque();
-  void* recv_buffer = participant.destination_data.opaque();
-  VLOG(3) << absl::StreamFormat(
-      "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
-      "comm=%p, stream=%p)",
-      send_buffer, recv_buffer, participant.element_count,
-      static_cast<const void*>(comm), cu_stream);
-  XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
-                                         /*count=*/participant.element_count,
-                                         /*datatype=*/*allreduce_datatype,
-                                         /*op=*/computation,
-                                         /*comm=*/comm,
-                                         /*stream=*/*cu_stream));
+  XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
+  for (auto& buffer : participant.buffers) {
+    void* send_buffer = buffer.source_data.opaque();
+    void* recv_buffer = buffer.destination_data.opaque();
+    absl::optional<ncclDataType_t> allreduce_datatype =
+        DatatypeToNccl(buffer.primitive_type);
+    CHECK(allreduce_datatype.has_value());
+    VLOG(3) << absl::StreamFormat(
+        "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
+        "comm=%p, stream=%p)",
+        send_buffer, recv_buffer, buffer.element_count,
+        static_cast<const void*>(comm), cu_stream);
+    XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
+                                           /*count=*/buffer.element_count,
+                                           /*datatype=*/*allreduce_datatype,
+                                           /*op=*/computation,
+                                           /*comm=*/comm,
+                                           /*stream=*/*cu_stream));
+  }
+  XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing all reduce for ordinal: "
           << participant.device_ordinal;
@@ -453,11 +453,14 @@ struct NcclAllReduceThunk::AuxData {
 };
 
 /*static*/ bool NcclAllReduceThunk::CanImplement(const HloInstruction* crs) {
+  auto operands_are_supported = [crs]() {
+    return absl::c_all_of(crs->operands(), [](HloInstruction* operand) {
+      return LayoutUtil::IsDenseArray(operand->shape()) &&
+             DatatypeToNccl(operand->shape().element_type()).has_value();
+    });
+  };
   return MatchReductionComputation(crs->to_apply()).has_value() &&
-         DatatypeToNccl(AllReducePrimitiveType(crs)).has_value() &&
-         crs->IsCrossReplicaAllReduce() &&
-         crs->operand_count() == 1 &&  // One array to reduce.
-         LayoutUtil::IsDenseArray(crs->operand(0)->shape());
+         crs->IsCrossReplicaAllReduce() && operands_are_supported();
 }
 
 /*static*/ absl::flat_hash_set<int>
@@ -471,16 +474,14 @@ NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
 }
 
 NcclAllReduceThunk::NcclAllReduceThunk(
-    int64 replica_count, int64 element_count,
-    const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer,
+    int64 replica_count, std::vector<NcclAllReduceThunk::Buffer> buffers,
     const HloInstruction* all_reduce)
     : Thunk(Thunk::kNcclAllReduce, all_reduce),
       replica_count_(replica_count),
-      element_count_(element_count),
-      source_buffer_(source_buffer),
-      destination_buffer_(destination_buffer),
-      aux_data_(absl::make_unique<AuxData>()) {}
+      buffers_(std::move(buffers)),
+      aux_data_(absl::make_unique<AuxData>()) {
+  CHECK_EQ(hlo_instruction()->operand_count(), buffers_.size());
+}
 
 // Figures out which devices (named by their replica-ids) are participating in
 // the all-reduce subgroup that contains device_ordinal.
@@ -506,18 +507,24 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
           << absl::StrJoin(participating_replicas, ", ");
 
   AllReduceParticipantData participant(rendezvous_key);
-  participant.element_count = element_count_;
   participant.device_ordinal = device_ordinal;
-  participant.source_data =
-      params.buffer_allocations->GetDeviceAddress(source_buffer_);
-  participant.destination_data =
-      params.buffer_allocations->GetDeviceAddress(destination_buffer_);
+  for (size_t i = 0; i < buffers_.size(); ++i) {
+    const NcclAllReduceThunk::Buffer& buffer = buffers_[i];
+    AllReduceParticipantData::Buffer pbuffer;
+    pbuffer.element_count = buffer.element_count;
+    pbuffer.source_data =
+        params.buffer_allocations->GetDeviceAddress(buffer.source_buffer);
+    pbuffer.destination_data =
+        params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer);
+    pbuffer.primitive_type =
+        hlo_instruction()->operand(i)->shape().element_type();
+    participant.buffers.push_back(pbuffer);
+  }
   participant.stream = params.stream;
   auto reduction_kind =
       MatchReductionComputation(hlo_instruction()->to_apply());
   CHECK(reduction_kind.has_value());
   participant.reduction_kind = *reduction_kind;
-  participant.primitive_type = AllReducePrimitiveType(hlo_instruction());
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<NcclClique> clique,
