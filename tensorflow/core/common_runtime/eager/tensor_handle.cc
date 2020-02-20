@@ -143,7 +143,7 @@ TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
       ctx_(ctx),
       is_remote_(false),
       is_async_(false),
-      implicit_mirroring_(true),
+      implicit_mirroring_(false),
       is_ready_(true),
       tensor_handle_data_(std::move(t)) {
   DVLOG(3) << "Creating Local TensorHandle: " << this
@@ -164,7 +164,7 @@ TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
       ctx_(ctx),
       is_remote_(false),
       is_async_(false),
-      implicit_mirroring_(true),
+      implicit_mirroring_(false),
       is_ready_(true),
       handle_dtypes_and_shapes_(resource_handle.dtypes_and_shapes()),
       tensor_handle_data_(std::move(t)) {
@@ -185,7 +185,7 @@ TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
       ctx_(ctx),
       is_remote_(false),
       is_async_(false),
-      implicit_mirroring_(true),
+      implicit_mirroring_(false),
       is_ready_(true),
       tensor_handle_data_(std::move(t)) {
   // TODO(allenl): Figure out a better op_device story for custom devices,
@@ -220,7 +220,7 @@ TensorHandle::TensorHandle(std::unique_ptr<EmptyLocalTensorHandleData> t,
       ctx_(ctx),
       is_remote_(false),
       is_async_(async),
-      implicit_mirroring_(true),
+      implicit_mirroring_(false),
       is_ready_(!async),
       tensor_handle_data_(std::move(t)) {
   DVLOG(3) << "Creating empty Local TensorHandle: " << this
@@ -261,7 +261,7 @@ TensorHandle::TensorHandle(std::unique_ptr<RemoteTensorHandleData> t,
       ctx_(ctx),
       is_remote_(true),
       is_async_(false),
-      implicit_mirroring_(true),
+      implicit_mirroring_(false),
       is_ready_(true),
       tensor_handle_data_(std::move(t)) {
   DVLOG(3) << "Creating Remote TensorHandle: " << this
@@ -298,7 +298,7 @@ TensorHandle::TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
       ctx_(ctx),
       is_remote_(true),
       is_async_(true),
-      implicit_mirroring_(true),
+      implicit_mirroring_(false),
       is_ready_(false),
       tensor_handle_data_(std::move(t)) {
   DVLOG(3) << "Creating Unshaped Remote TensorHandle: " << this
