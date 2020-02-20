@@ -617,7 +617,6 @@ class FileIoTest(test.TestCase):
     _ = [i for i in info.items()]
   
   def testHasAtomicMove(self):
-    self.assertFalse(file_io.has_atomic_move('s3://x/y'))
     self.assertTrue(file_io.has_atomic_move('/a/b/c'))
     
 
