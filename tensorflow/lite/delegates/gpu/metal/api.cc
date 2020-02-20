@@ -266,10 +266,12 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::TANH:
       *tasks = ElementwiseWithOneInput(node_id, inputs[0], outputs[0], op_type);
       break;
-    case OperationType::SUB:
     case OperationType::DIV:
+    case OperationType::MAXIMUM:
+    case OperationType::MINIMUM:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
+    case OperationType::SUB:
       *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type);
       break;
     case OperationType::BATCH_NORMALIZATION:
