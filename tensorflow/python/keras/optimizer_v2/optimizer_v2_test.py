@@ -242,7 +242,7 @@ class OptimizerTest(test.TestCase):
 
       sgd = gradient_descent.SGD(3.0)
       grads_and_vars = sgd._compute_gradients(f, [x])
-      self.assertEqual(1, len(grads_and_vars))
+      self.assertLen(grads_and_vars, 1)
       grad, x_as_var = grads_and_vars[0]
       self.assertIs(x, x_as_var)
       self.assertEqual(2.0, self.evaluate(grad))
