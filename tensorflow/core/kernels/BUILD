@@ -5175,6 +5175,7 @@ cc_library(
 REQUIRED_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
+    "//tensorflow/core:protos_all_cc",
 ]
 
 tf_kernel_library(
