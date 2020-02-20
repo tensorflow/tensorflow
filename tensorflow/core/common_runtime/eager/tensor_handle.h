@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
 #include "tensorflow/core/platform/fingerprint.h"
@@ -146,6 +145,8 @@ class TensorHandle : public core::RefCounted {
   Status NumDims(int* num_dims) const;
   Status Dim(int dim_index, int64* dim) const;
   Status NumElements(int64* num_elements) const;
+
+  Status Unprotect(const Device* d);
 
   // Checks if a mirror tensor exists for the specified device. Mirrors are only
   // maintained for local devices, like CPUs & GPUs. Note a mirror may be empty,

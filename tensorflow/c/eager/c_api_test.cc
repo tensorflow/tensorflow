@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string.h>
 
+#include <string>
+
 #include "absl/strings/match.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
@@ -582,6 +584,91 @@ TEST(CAPI, TensorHandleDevices) {
   TFE_DeleteExecutor(executor);
   TFE_DeleteContext(ctx);
 }
+
+void ExecuteAdd(bool async, bool forward_input) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* n = TestMatrixTensorHandle100x100();
+  // If a GPU exists, copy the handle to GPU so that we can exercise
+  // unprotecting a mirror.
+  std::string gpu_device_name;
+  if (GetDeviceName(ctx, &gpu_device_name, "GPU")) {
+    TFE_TensorHandle* n_gpu =
+        TFE_TensorHandleCopyToDevice(n, ctx, gpu_device_name.c_str(), status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_TensorHandleEnableImplicitMirroring(n_gpu, status);
+    TFE_DeleteTensorHandle(n);
+    n = n_gpu;
+  }
+
+  TFE_TensorHandle* m = TestMatrixTensorHandle100x100();
+
+  // Store pointer to raw buffer for validation of forwarding behaviour.
+  TF_Tensor* orig = TFE_TensorHandleResolve(n, status);
+  void* orig_ptr = TF_TensorData(orig);
+  TF_DeleteTensor(orig);
+
+  TFE_Op* add_op = AddOp(ctx, n, m);
+  std::string cpu_device_name;
+  ASSERT_TRUE(GetDeviceName(ctx, &cpu_device_name, "CPU"));
+  TFE_OpSetDevice(add_op, cpu_device_name.c_str(), status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  if (forward_input) {
+    TFE_DeleteTensorHandle(n);
+  }
+
+  int num_retvals = 1;
+
+  if (async) {
+    // Enqueue dummy ops so we backlog async execution & actually test async.
+    for (int i = 0; i < 10000; ++i) {
+      TFE_TensorHandle* dummy = nullptr;
+      TFE_Execute(add_op, &dummy, &num_retvals, status);
+      ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+      TFE_DeleteTensorHandle(dummy);
+    }
+  }
+
+  TFE_TensorHandle* retval = nullptr;
+  TFE_Execute(add_op, &retval, &num_retvals, status);
+  EXPECT_EQ(1, num_retvals);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  if (!forward_input) {
+    TFE_DeleteTensorHandle(n);
+  }
+  TFE_DeleteOp(add_op);
+
+  TF_Tensor* t = TFE_TensorHandleResolve(retval, status);
+  if (forward_input || async) {
+    EXPECT_EQ(orig_ptr, TF_TensorData(t));
+  } else {
+    EXPECT_NE(orig_ptr, TF_TensorData(t));
+  }
+
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteTensorHandle(m);
+  TFE_DeleteTensorHandle(retval);
+  TFE_DeleteContext(ctx);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  float result[100 * 100] = {0};
+  EXPECT_EQ(sizeof(result), TF_TensorByteSize(t));
+  memcpy(&result[0], TF_TensorData(t), TF_TensorByteSize(t));
+  TF_DeleteTensor(t);
+  for (int i = 0; i < 100 * 100; ++i) {
+    EXPECT_EQ(2.0f, result[i]);
+  }
+  TF_DeleteStatus(status);
+}
+TEST(CAPI, ExecuteAdd) { ExecuteAdd(false, false); }
+TEST(CAPI, ExecuteAddAsync) { ExecuteAdd(true, false); }
+TEST(CAPI, ExecuteAddForward) { ExecuteAdd(false, true); }
+TEST(CAPI, ExecuteAddForwardAsync) { ExecuteAdd(true, true); }
 
 void Execute_MatMul_CPU(bool async) {
   TF_Status* status = TF_NewStatus();

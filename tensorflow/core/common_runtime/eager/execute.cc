@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
@@ -64,7 +65,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -583,20 +583,19 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 
   Status s;
   if (async) {
-    auto node = absl::make_unique<ExecuteNode>(
+    auto node = absl::make_unique<AsyncExecuteNode>(
         &ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
         graph_collector, output_dtypes, op->GetCancellationManager(),
-        executor.Async(), absl::Span<TensorHandle*>(retvals, num_outputs));
+        absl::Span<TensorHandle*>(retvals, num_outputs));
     // For async mode, execution order will make sure that all
     // input handles are ready before executing them.
     // TODO(b/137118203): Consider executing "cheap" kernels inline for
     // performance.
     s = executor.AddOrExecute(std::move(node));
   } else {
-    ExecuteNode node(&ctx, op->Inputs(), op->remote_func_params(),
-                     std::move(kernel), graph_collector, output_dtypes,
-                     op->GetCancellationManager(), executor.Async(),
-                     {retvals, num_outputs});
+    ExecuteNode node(&ctx, op->Inputs(), op->remote_func_params(), kernel,
+                     graph_collector, output_dtypes,
+                     op->GetCancellationManager(), {retvals, num_outputs});
     s = executor.SyncExecute(&node);
   }
   // Since the operation failed, we need to Unref any outputs that were
@@ -978,7 +977,7 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
 
 // TODO(gjn): Consider moving into ExecuteNode class
 Status EagerKernelExecute(
-    EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
+    EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4>& op_inputs,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
     const core::RefCountPtr<KernelAndDevice>& kernel,
     GraphCollector* graph_collector, CancellationManager* cancellation_manager,

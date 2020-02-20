@@ -34,9 +34,6 @@ TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Op* op_to_reset,
                                        const char* raw_device_name,
                                        TF_Status* status);
 
-TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
-                                              TF_Status* status);
-
 // Enables only graph collection in RunMetadata on the functions executed from
 // this context.
 TF_CAPI_EXPORT extern void TFE_ContextEnableGraphCollection(TFE_Context* ctx);
