@@ -48,6 +48,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/autograph/utils",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "//third_party/py/numpy",
     ],
 )
