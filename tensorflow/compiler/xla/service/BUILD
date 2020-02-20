@@ -4347,6 +4347,7 @@ cc_library(
         ":call_graph",
         ":hlo",
         ":hlo_pass",
+        ":hlo_query",
         ":pattern_matcher",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
