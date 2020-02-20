@@ -133,6 +133,30 @@ func @broadcast(%operand: memref<5xf32>, %result: memref<10x5xf32>) {
   return
 }
 
+// CHECK-LABEL: func @dyn_broadcast
+func @dyn_broadcast(%operand: memref<?x?xf32>) {
+  %tensor_operand = tensor_load %operand : memref<?x?xf32>
+  %shape = "compute.shape"() : () -> tensor<3xi64>
+  %tensor_result = "xla_hlo.dynamic_broadcast_in_dim"(%tensor_operand, %shape)
+      {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
+        : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
+  // CHECK: %[[SHAPE:.*]] = "compute.shape"()
+  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK: %[[EL0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<3xi64>
+  // CHECK: %[[IC0:.*]]  = index_cast %[[EL0]] : i64 to index
+  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK: %[[EL1:.*]] = extract_element %[[SHAPE]][%[[C1]]] : tensor<3xi64>
+  // CHECK: %[[IC1:.*]]  = index_cast %[[EL1]] : i64 to index
+  // CHECK: %[[C2:.*]] = constant 2 : index
+  // CHECK: %[[EL2:.*]] = extract_element %[[SHAPE]][%[[C2]]] : tensor<3xi64>
+  // CHECK: %[[IC2:.*]]  = index_cast %[[EL2]] : i64 to index
+  // CHECK: %[[RESULT:.*]] = alloc(%[[IC0]], %[[IC1]], %[[IC2]])
+  // CHECK-NEXT: "xla_lhlo.broadcast_in_dim"(%{{.*}}, %[[RESULT]]) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
+  // Do not store the value back to avoid the tensor-store being rewritten to
+  // a copy into the pre-allocated argument.
+  return
+}
+
 // CHECK-LABEL: func @iota
 func @iota(%result: memref<10xi32>) {
   %tensor_result = "xla_hlo.iota"()
