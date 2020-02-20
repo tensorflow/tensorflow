@@ -3665,6 +3665,7 @@ def _outputs_for_branch(func_name, indices, pfor_input, inputs):
 
 
 @RegisterPFor("StatelessIf")
+@RegisterPFor("If")
 def _convert_stateless_if(pfor_input):
   cond, cond_stacked, _ = pfor_input.input(0)
   inputs = pfor_input.inputs[1:]
@@ -3695,6 +3696,12 @@ def _convert_stateless_if(pfor_input):
                                        pfor_input, else_inputs)
 
     assert len(then_outputs) == len(else_outputs)
+    # Note that if the "then" and "else" branches are updating the same state,
+    # and possibly reading them as well, it could lead to undefined behavior
+    # since the ordering of those operations is not well defined.
+    # One possibility is to order all the "then" branches to execute before all
+    # the "else" branches so that the side-effects in the former are visible to
+    # the latter. For now, we leave that as undefined behavior.
     outputs = []
     # Merge outputs
     for then_output, else_output in zip(then_outputs, else_outputs):
