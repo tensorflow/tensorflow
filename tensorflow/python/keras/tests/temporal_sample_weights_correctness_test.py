@@ -20,13 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python import tf2
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import optimizer_v2
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
+from tensorflow.python.util import nest
 
 
 class Bias(layers.Layer):
@@ -102,7 +102,7 @@ def run_with_different_sample_weight_mode_inputs(fn, partial_sw=True):
 
 
 @keras_parameterized.run_with_all_model_types(exclude_models=['sequential'])
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TestMetricsCorrectnessMultiIOTemporal(keras_parameterized.TestCase):
 
   def custom_generator_multi_io_temporal(self, sample_weights=None):
@@ -116,13 +116,6 @@ class TestMetricsCorrectnessMultiIOTemporal(keras_parameterized.TestCase):
     """
     batch_size = 3
     num_samples = 3
-    if sample_weights:
-      assert len(sample_weights) == 2
-      w1 = sample_weights[0]
-      w2 = sample_weights[1]
-    else:
-      w1 = None
-      w2 = None
     iteration = 0
     while True:
       batch_index = iteration * batch_size % num_samples
@@ -132,13 +125,10 @@ class TestMetricsCorrectnessMultiIOTemporal(keras_parameterized.TestCase):
       x = [self.x[start:end], self.x[start:end]]
       y = [self.y1[start:end], self.y2[start:end]]
       if sample_weights:
-        w = [
-            None if w1 is None else w1[start:end],
-            None if w2 is None else w2[start:end]
-        ]
+        sw = nest.map_structure(lambda w: w[start:end], sample_weights)
       else:
-        w = None
-      yield x, y, w
+        sw = None
+      yield x, y, sw
 
   def setUp(self):
     super(TestMetricsCorrectnessMultiIOTemporal, self).setUp()
@@ -146,11 +136,6 @@ class TestMetricsCorrectnessMultiIOTemporal(keras_parameterized.TestCase):
     self.x = np.asarray([[0.], [1.], [2.]])
     self.y1 = np.asarray([[[.5], [1.]], [[2.], [2.5]], [[3.5], [2.5]]])
     self.y2 = np.asarray([[[.5], [1.5]], [[2.], [1.5]], [[3.5], [3.]]])
-
-    if tf2.enabled():
-      self.wmae = 'mae_2'
-    else:
-      self.wmae = 'weighted_mae_2'
 
     # Without weights:
     # Epoch 1 - bias = 0
@@ -172,8 +157,8 @@ class TestMetricsCorrectnessMultiIOTemporal(keras_parameterized.TestCase):
     self.expected_fit_result = {
         'output_1_mae': [1, 0.9],
         'output_2_mae': [1, 0.9],
-        'output_1_' + self.wmae: [1, 0.9],
-        'output_2_' + self.wmae: [1, 0.9],
+        'output_1_mae_2': [1, 0.9],
+        'output_2_mae_2': [1, 0.9],
         'loss': [2., 1.8],
         'output_1_loss': [1, 0.9],
         'output_2_loss': [1, 0.9],
@@ -229,8 +214,8 @@ class TestMetricsCorrectnessMultiIOTemporal(keras_parameterized.TestCase):
     self.expected_fit_result_with_weights = {
         'output_1_mae': [1, 0.875],
         'output_2_mae': [1, 0.875],
-        'output_1_' + self.wmae: [1, 0.875],
-        'output_2_' + self.wmae: [1, 0.875],
+        'output_1_mae_2': [1, 0.875],
+        'output_2_mae_2': [1, 0.875],
         'loss': [2.5, 2.1875],
         'output_1_loss': [1.25, 1.09375],
         'output_2_loss': [1.25, 1.09375],
@@ -239,8 +224,8 @@ class TestMetricsCorrectnessMultiIOTemporal(keras_parameterized.TestCase):
     self.expected_fit_result_with_weights_output_2 = {
         'output_1_mae': [1., 0.9],
         'output_2_mae': [1, 0.875],
-        'output_1_' + self.wmae: [1., 0.9],
-        'output_2_' + self.wmae: [1., 0.875],
+        'output_1_mae_2': [1., 0.9],
+        'output_2_mae_2': [1., 0.875],
         'loss': [2.25, 1.99375],
         'output_1_loss': [1., 0.9],
         'output_2_loss': [1.25, 1.09375],
@@ -461,7 +446,7 @@ class TestMetricsCorrectnessMultiIOTemporal(keras_parameterized.TestCase):
     def _train_and_assert(model):
       history = model.fit_generator(
           self.custom_generator_multi_io_temporal(
-              sample_weights=[None, self.sample_weight_2]),
+              sample_weights={'output_2': self.sample_weight_2}),
           steps_per_epoch=1,
           epochs=2)
       for key, value in self.expected_fit_result_with_weights_output_2.items():
@@ -506,7 +491,7 @@ class TestMetricsCorrectnessMultiIOTemporal(keras_parameterized.TestCase):
                            })
       eval_result = model.evaluate_generator(
           self.custom_generator_multi_io_temporal(
-              sample_weights=[None, self.sample_weight_2]),
+              sample_weights={'output_2': self.sample_weight_2}),
           steps=2)
       self.assertAllClose(eval_result,
                           self.expected_batch_result_with_weights_output_2,
@@ -517,9 +502,7 @@ class TestMetricsCorrectnessMultiIOTemporal(keras_parameterized.TestCase):
   def test_error_on_fit_with_class_weight(self):
 
     def _train_and_assert(model):
-      with self.assertRaisesRegex(
-          ValueError,
-          r'`class_weight` not supported for 3\+ dimensional targets.'):
+      with self.assertRaises(ValueError):
         model.fit([self.x, self.x], [self.y1, self.y2],
                   class_weight={'output_1': {
                       .5: .5,

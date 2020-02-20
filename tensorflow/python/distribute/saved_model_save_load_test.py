@@ -35,8 +35,12 @@ class SavedModelKerasModelTest(test_base.TestSavedModelBase):
   def _save_model(self, model, saved_dir):
     saved_model.save(model, saved_dir)
 
-  def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
-                          output_name, experimental_run_tf_function):
+  def _load_and_run_model(self,
+                          distribution,
+                          saved_dir,
+                          predict_dataset,
+                          experimental_run_tf_function,
+                          output_name='output_1'):
     return test_base.load_and_run_with_saved_model_api(distribution, saved_dir,
                                                        predict_dataset,
                                                        output_name)
@@ -100,8 +104,12 @@ class SavedModelTFModuleTest(test_base.TestSavedModelBase):
     call = model.__call__.get_concrete_function(tensor_spec.TensorSpec(None))
     saved_model.save(model, saved_dir, signatures=call)
 
-  def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
-                          output_name, experimental_run_tf_function):
+  def _load_and_run_model(self,
+                          distribution,
+                          saved_dir,
+                          predict_dataset,
+                          experimental_run_tf_function,
+                          output_name='output_1'):
     del output_name, experimental_run_tf_function
     model = saved_model.load(saved_dir)
     return self._predict_with_model(distribution, model, predict_dataset)

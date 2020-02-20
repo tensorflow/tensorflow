@@ -11,7 +11,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["src/testdata/add.bin"])
+exports_files([
+    "src/testdata/add.bin",
+    "src/testdata/add_unknown_dimensions.bin",
+])
 
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
@@ -226,6 +229,7 @@ java_test(
     ],
     data = [
         "src/testdata/add.bin",
+        "src/testdata/add_unknown_dimensions.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],

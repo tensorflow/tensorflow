@@ -1514,6 +1514,7 @@ class Session(BaseSession):
   example:
 
   ```python
+  tf.compat.v1.disable_eager_execution() # need to disable eager in TF2.x
   # Build a graph.
   a = tf.constant(5.0)
   b = tf.constant(6.0)
@@ -1523,7 +1524,7 @@ class Session(BaseSession):
   sess = tf.compat.v1.Session()
 
   # Evaluate the tensor `c`.
-  print(sess.run(c))
+  print(sess.run(c)) # prints 30.0
   ```
 
   A session may own resources, such as

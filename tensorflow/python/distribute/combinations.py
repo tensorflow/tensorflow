@@ -204,6 +204,14 @@ class NamedDistribution(object):
     return self._name
 
 
+def concat(*combined):
+  """Concats combinations."""
+  result = []
+  for one in combined:
+    result += one
+  return result
+
+
 _defaults = framework_combinations.generate.keywords["test_combinations"]
 
 generate = functools.partial(

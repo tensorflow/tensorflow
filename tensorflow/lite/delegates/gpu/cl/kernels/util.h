@@ -138,6 +138,28 @@ class TensorCodeGenerator {
       const std::string& s, const std::string& b,
       TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
 
+  // Optimization for textures, so as in opencl we can use read_imagef for any
+  // texture type.
+  std::string ReadAsTypeWHS(
+      DataType type, const std::string& x, const std::string& y,
+      const std::string& s,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadAsTypeWHSB(
+      DataType type, const std::string& x, const std::string& y,
+      const std::string& s, const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadAsTypeWHDS(
+      DataType type, const std::string& x, const std::string& y,
+      const std::string& z, const std::string& s,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
+  std::string ReadAsTypeWHDSB(
+      DataType type, const std::string& x, const std::string& y,
+      const std::string& z, const std::string& s, const std::string& b,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+
   std::string WriteWHS(const std::string& var_name, const std::string& x,
                        const std::string& y, const std::string& s) const;
 
@@ -160,6 +182,9 @@ class TensorCodeGenerator {
   // texture type.
   std::string ReadAsFloat(
       const std::string& global_address,
+      TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
+  std::string ReadAsType(
+      DataType type, const std::string& global_address,
       TextureAddressMode address_mode = TextureAddressMode::DONT_CARE) const;
   std::string Write(const std::string& var_name,
                     const std::string& global_address) const;

@@ -63,7 +63,8 @@ class ElementwiseTwoInput : public ElementwiseOperation {
                                const BroadcastSettings& broadcast)
       : ElementwiseOperation(definition),
         op_type_(op_type),
-        broadcast_(broadcast) {}
+        broadcast_(broadcast),
+        use_scalar_para_(false) {}
 
   // Move only
   ElementwiseTwoInput(ElementwiseTwoInput&& operation);
@@ -75,12 +76,23 @@ class ElementwiseTwoInput : public ElementwiseOperation {
   std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
   Status BindArguments(CLKernel* kernel) override;
+  inline void SetScalarPara(FLT scalar) {
+    scalar_para_ = scalar;
+    use_scalar_para_ = true;
+  }
 
  private:
   int link_index_;
   OperationType op_type_;
   BroadcastSettings broadcast_;
+  FLT scalar_para_;
+  bool use_scalar_para_;
 };
+
+ElementwiseTwoInput CreateElementwiseTwoInput(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const OperationType& op_type, const BroadcastSettings& broadcast,
+    const ElementwiseAttributes& attr);
 
 ElementwiseTwoInput CreateElementwiseTwoInput(
     const OperationDef& definition, const OperationType& op_type,

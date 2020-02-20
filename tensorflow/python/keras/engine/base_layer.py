@@ -22,6 +22,7 @@ import collections
 import functools
 import itertools
 import threading
+import weakref
 
 import numpy as np
 import six
@@ -230,6 +231,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # A list of metric instances corresponding to the symbolic metric tensors
     # added using the `add_metric` API.
     self._metrics = []
+    # Ensures the same metric is not added multiple times in `MirroredStrategy`.
+    self._metrics_lock = threading.Lock()
 
     # Both graph and subclassed networks have a dtype policy. For graph
     # networks, the policy's compute and variable dtypes are ignored, but other
@@ -849,10 +852,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           if hasattr(self, '_set_inputs') and not self.inputs:
             # Subclassed network: explicitly set metadata normally set by
             # a call to self._set_inputs().
-            # TODO(b/120997007): This should be done in Eager as well, but
-            # causes garbage collection issues because of the placeholders
-            # created on the default Keras graph.
-            self._set_inputs(inputs, outputs)
+            self._set_inputs(cast_inputs, outputs)
       else:
         # Eager execution on data tensors.
         with backend.name_scope(self._name_scope()):
@@ -863,6 +863,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             outputs = self.call(cast_inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks)
+          if hasattr(self, '_set_save_spec'):
+            self._set_save_spec(cast_inputs)
 
     return outputs
 
@@ -1146,7 +1148,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     collected_metrics = []
     all_layers = self._gather_unique_layers()
     for layer in all_layers:
-      collected_metrics.extend(layer._metrics)
+      with layer._metrics_lock:
+        collected_metrics.extend(layer._metrics)
     return collected_metrics
 
   @doc_controls.for_subclass_implementers
@@ -1938,20 +1941,29 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # on it, otherwise we create a new metric instance and
     # add it to the `metrics` list.
     metric_obj = getattr(value, '_metric_obj', None)
-    if metric_obj:
-      name = metric_obj.name
+    # Tensors that come from a Metric object already updated the Metric state.
+    should_update_state = not metric_obj
+    name = metric_obj.name if metric_obj else name
 
-    match = self._get_existing_metric(name)
-    if match:
-      # Tensors that come from a Metric object already updated the Metric state.
-      if not metric_obj:
-        match(value)
-      return
+    with self._metrics_lock:
+      match = self._get_existing_metric(name)
+      if match:
+        metric_obj = match
+      elif metric_obj:
+        self._metrics.append(metric_obj)
+      else:
+        from tensorflow.python.keras import metrics as metrics_mod  # pylint:disable=g-import-not-at-top
+        if aggregation is None:
+          raise ValueError(
+              '`aggregation` must be specified when passing a `Tensor` '
+              'to `add_metric`.')
+        assert aggregation is not None
+        metric_obj = metrics_mod.Mean(name=name, dtype=value.dtype)
+        self._metrics.append(metric_obj)
 
-    if not metric_obj:
-      assert aggregation is not None
-      metric_obj, _ = base_layer_utils.create_mean_metric(value, name)
-    self._metrics.append(metric_obj)
+    if should_update_state:
+      metric_obj(value)
+    return
 
   def _symbolic_add_metric(self, value, aggregation=None, name=None):
     base_layer_utils.check_graph_consistency(value, method='add_metric')
@@ -2259,7 +2271,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     layers = trackable_layer_utils.filter_empty_layer_containers(self._layers)
     # Keep track of each top-level layers' `trainable` as well as the
     # state of all of its sublayers.
-    trainable_state = {self: self.trainable}
+    trainable_state = weakref.WeakKeyDictionary()
+    trainable_state[self] = self.trainable
     for layer in layers:
       trainable_state.update(layer._get_trainable_state())
     return trainable_state
@@ -2565,10 +2578,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # so shouldn't be copied.
     state = self.__dict__.copy()
     state.pop('_thread_local', None)
+    state.pop('_metrics_lock', None)
     return state
 
   def __setstate__(self, state):
     state['_thread_local'] = threading.local()
+    state['_metrics_lock'] = threading.Lock()
     # Bypass Trackable logic as `__dict__` already contains this info.
     object.__setattr__(self, '__dict__', state)
 

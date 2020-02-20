@@ -13,6 +13,7 @@ load(
     "PYTHON_LIB_PATH",
     "TF_PYTHON_CONFIG_REPO",
     "auto_config_fail",
+    "config_repo_label",
     "execute",
     "get_bash_bin",
     "get_host_environ",
@@ -249,7 +250,7 @@ def _create_local_python_repository(repository_ctx):
 def _create_remote_python_repository(repository_ctx, remote_config_repo):
     """Creates pointers to a remotely configured repo set up to build with Python.
     """
-    repository_ctx.template("BUILD", Label(remote_config_repo + ":BUILD"), {})
+    repository_ctx.template("BUILD", config_repo_label(remote_config_repo, ":BUILD"), {})
 
 def _python_autoconf_impl(repository_ctx):
     """Implementation of the python_autoconf repository rule."""
@@ -261,14 +262,24 @@ def _python_autoconf_impl(repository_ctx):
     else:
         _create_local_python_repository(repository_ctx)
 
+_ENVIRONS = [
+    BAZEL_SH,
+    PYTHON_BIN_PATH,
+    PYTHON_LIB_PATH,
+]
+
+remote_python_configure = repository_rule(
+    implementation = _create_local_python_repository,
+    environ = _ENVIRONS,
+    remotable = True,
+    attrs = {
+        "environ": attr.string_dict(),
+    },
+)
+
 python_configure = repository_rule(
     implementation = _python_autoconf_impl,
-    environ = [
-        BAZEL_SH,
-        PYTHON_BIN_PATH,
-        PYTHON_LIB_PATH,
-        TF_PYTHON_CONFIG_REPO,
-    ],
+    environ = _ENVIRONS + [TF_PYTHON_CONFIG_REPO],
 )
 """Detects and configures the local Python.
 

@@ -106,7 +106,9 @@ ElementwiseTwoInput::ElementwiseTwoInput(ElementwiseTwoInput&& operation)
     : ElementwiseOperation(std::move(operation)),
       link_index_(operation.link_index_),
       op_type_(operation.op_type_),
-      broadcast_(operation.broadcast_) {}
+      broadcast_(operation.broadcast_),
+      scalar_para_(operation.scalar_para_),
+      use_scalar_para_(operation.use_scalar_para_) {}
 
 ElementwiseTwoInput& ElementwiseTwoInput::operator=(
     ElementwiseTwoInput&& operation) {
@@ -114,30 +116,43 @@ ElementwiseTwoInput& ElementwiseTwoInput::operator=(
     link_index_ = operation.link_index_;
     op_type_ = operation.op_type_;
     broadcast_ = operation.broadcast_;
+    scalar_para_ = operation.scalar_para_;
+    use_scalar_para_ = operation.use_scalar_para_;
     ElementwiseOperation::operator=(std::move(operation));
   }
   return *this;
 }
 
-void ElementwiseTwoInput::SetLinkIndex(int index) { link_index_ = index; }
+void ElementwiseTwoInput::SetLinkIndex(int index) {
+  link_index_ = index;
+  if (use_scalar_para_) {
+    scalar_para_.SetName(absl::StrCat("scalar_para_", index));
+  }
+}
 
 std::string ElementwiseTwoInput::GetCoreCode(
     const LinkingContext& context) const {
-  const std::string size_name = "src_size_" + std::to_string(link_index_);
-  TensorCodeGenerator src_tensor(
-      absl::StrCat("src_data_", link_index_),
-      WHSPoint{size_name + ".x", size_name + ".y", size_name + ".z"},
-      definition_.src_tensors[1]);
-  const std::string x_coord = broadcast_.width ? "0" : context.x_coord;
-  const std::string y_coord = broadcast_.height ? "0" : context.y_coord;
-  const std::string s_coord = broadcast_.channels ? "0" : context.s_coord;
-  const std::string second_var = "second_var_" + std::to_string(link_index_);
-  std::string result = "  FLT4 " + second_var + " = " +
-                       src_tensor.ReadWHS(x_coord, y_coord, s_coord) + ";\n";
-  if (broadcast_.channels) {
-    result += "  " + second_var + ".y = " + second_var + ".x;\n";
-    result += "  " + second_var + ".z = " + second_var + ".x;\n";
-    result += "  " + second_var + ".w = " + second_var + ".x;\n";
+  std::string result;
+  std::string second_var;
+  if (use_scalar_para_) {
+    second_var = absl::StrCat("(FLT)(", scalar_para_.GetName(), ")");
+  } else {
+    const std::string size_name = "src_size_" + std::to_string(link_index_);
+    TensorCodeGenerator src_tensor(
+        absl::StrCat("src_data_", link_index_),
+        WHSPoint{size_name + ".x", size_name + ".y", size_name + ".z"},
+        definition_.src_tensors[1]);
+    const std::string x_coord = broadcast_.width ? "0" : context.x_coord;
+    const std::string y_coord = broadcast_.height ? "0" : context.y_coord;
+    const std::string s_coord = broadcast_.channels ? "0" : context.s_coord;
+    second_var = "second_var_" + std::to_string(link_index_);
+    result = "  FLT4 " + second_var + " = " +
+             src_tensor.ReadWHS(x_coord, y_coord, s_coord) + ";\n";
+    if (broadcast_.channels) {
+      result += "  " + second_var + ".y = " + second_var + ".x;\n";
+      result += "  " + second_var + ".z = " + second_var + ".x;\n";
+      result += "  " + second_var + ".w = " + second_var + ".x;\n";
+    }
   }
   switch (op_type_) {
     case OperationType::ADD:
@@ -145,6 +160,12 @@ std::string ElementwiseTwoInput::GetCoreCode(
       break;
     case OperationType::DIV:
       result += "$0 /= $1;\n";
+      break;
+    case OperationType::MAXIMUM:
+      result += "$0 = max($0, $1);\n";
+      break;
+    case OperationType::MINIMUM:
+      result += "$0 = min($0, $1);\n";
       break;
     case OperationType::MUL:
       result += "$0 *= $1;\n";
@@ -167,18 +188,42 @@ std::string ElementwiseTwoInput::GetCoreCode(
 
 std::string ElementwiseTwoInput::GetArgsDeclaration() const {
   std::string args;
-  absl::StrAppend(&args, ",\n",
-                  GetTensorDeclaration(AccessType::READ,
-                                       absl::StrCat("src_data_", link_index_),
-                                       definition_.src_tensors[1]));
-  absl::StrAppend(&args, ",\n   int4 src_size_", link_index_);
+  if (use_scalar_para_) {
+    absl::StrAppend(&args, ",\n    ", scalar_para_.GetDeclaration());
+  } else {
+    absl::StrAppend(&args, ",\n",
+                    GetTensorDeclaration(AccessType::READ,
+                                         absl::StrCat("src_data_", link_index_),
+                                         definition_.src_tensors[1]));
+    absl::StrAppend(&args, ",\n   int4 src_size_", link_index_);
+  }
   return args;
 }
 
 Status ElementwiseTwoInput::BindArguments(CLKernel* kernel) {
-  RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[1]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetWBatchedHSB()));
+  if (use_scalar_para_) {
+    RETURN_IF_ERROR(kernel->SetBytesAuto(scalar_para_));
+  } else {
+    RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[1]->GetMemoryPtr()));
+    RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetWBatchedHSB()));
+  }
   return OkStatus();
+}
+
+ElementwiseTwoInput CreateElementwiseTwoInput(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const OperationType& op_type, const BroadcastSettings& broadcast,
+    const ElementwiseAttributes& attr) {
+  ElementwiseTwoInput operation(definition, op_type, broadcast);
+  auto scalar = absl::get_if<float>(&attr.param);
+  if (scalar) {
+    const auto scalar_precision = creation_context.device->IsPowerVR()
+                                      ? CalculationsPrecision::F32
+                                      : definition.precision;
+    operation.SetScalarPara(FLT(scalar_precision, *scalar));
+  }
+  operation.SetLinkIndex(0);
+  return operation;
 }
 
 ElementwiseTwoInput CreateElementwiseTwoInput(

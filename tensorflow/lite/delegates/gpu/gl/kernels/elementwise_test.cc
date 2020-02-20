@@ -100,6 +100,64 @@ TEST(ElementwiseTest, Log) {
               Pointwise(FloatNear(1e-6), {0.0, 1.14473, 0.0, 0.0}));
 }
 
+TEST(ElementwiseTest, Maximum) {
+  OperationType op_type = OperationType::MAXIMUM;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model(
+      {/*type=*/ToString(op_type), /*attributes=*/{}},
+      /*inputs=*/{GetTensorRef(0, shape), GetTensorRef(1, shape)},
+      /*outputs=*/{GetTensorRef(2, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, -6.2, 2.0, -3.0}));
+  ASSERT_TRUE(model.PopulateTensor(1, {1.0, 2.0, 3.0, -2.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {1.0, 2.0, 3.0, -2.0}));
+}
+
+TEST(ElementwiseTest, MaximumWithScalar) {
+  OperationType op_type = OperationType::MAXIMUM;
+  const BHWC shape(1, 2, 2, 1);
+  ElementwiseAttributes attr;
+  attr.param = -1.0f;
+  SingleOpModel model(
+      {/*type=*/ToString(op_type), /*attributes=*/std::move(attr)},
+      /*inputs=*/{GetTensorRef(0, shape)},
+      /*outputs=*/{GetTensorRef(2, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, -6.2, 2.0, -3.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {0.0, -1.0, 2.0, -1.0}));
+}
+
+TEST(ElementwiseTest, Minimum) {
+  OperationType op_type = OperationType::MINIMUM;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model(
+      {/*type=*/ToString(op_type), /*attributes=*/{}},
+      /*inputs=*/{GetTensorRef(0, shape), GetTensorRef(1, shape)},
+      /*outputs=*/{GetTensorRef(2, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, -6.2, 2.0, -3.0}));
+  ASSERT_TRUE(model.PopulateTensor(1, {1.0, 2.0, 3.0, -2.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {0.0, -6.2, 2.0, -3.0}));
+}
+
+TEST(ElementwiseTest, MinimumWithScalar) {
+  OperationType op_type = OperationType::MINIMUM;
+  const BHWC shape(1, 2, 2, 1);
+  ElementwiseAttributes attr;
+  attr.param = -1.0f;
+  SingleOpModel model(
+      {/*type=*/ToString(op_type), /*attributes=*/std::move(attr)},
+      /*inputs=*/{GetTensorRef(0, shape)},
+      /*outputs=*/{GetTensorRef(2, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0, -6.2, 2.0, -3.0}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {-1.0, -6.2, -1.0, -3.0}));
+}
+
 TEST(ElementwiseTest, Pow) {
   OperationType op_type = OperationType::POW;
   const BHWC shape(1, 2, 2, 1);

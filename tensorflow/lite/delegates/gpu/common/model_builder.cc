@@ -389,6 +389,39 @@ Status CheckInputsOutputs(const TfLiteContext* context,
   return OkStatus();
 }
 
+// The function checks input tensors including 1 constant tensor.
+Status CheckInputsOutputsAllowingOneConstInput(const TfLiteContext* context,
+                                               const TfLiteNode* tflite_node,
+                                               int inputs, int outputs) {
+  int number_of_const_inputs = 0;
+  int number_of_runtime_inputs = 0;
+  for (int i = 0; i < tflite_node->inputs->size; i++) {
+    if (IsConstantTensor(&context->tensors[tflite_node->inputs->data[i]])) {
+      number_of_const_inputs++;
+    } else {
+      number_of_runtime_inputs++;
+    }
+  }
+  if (tflite_node->inputs->size != inputs) {
+    return InternalError(absl::StrFormat(
+        "Expected %d input tensor(s), but node has %d input(s).", inputs,
+        tflite_node->inputs->size));
+  }
+  if (number_of_const_inputs > 1) {
+    return InternalError(absl::StrFormat(
+        "Expected 1 const input tensor, but node has %d const input(s).",
+        number_of_const_inputs));
+  }
+  int runtime_outputs = GetNumberOfRuntimeOutputsForNode(context, tflite_node);
+  if (runtime_outputs != outputs) {
+    return InternalError(
+        absl::StrFormat("Expected %d output tensor(s), but node has %d runtime "
+                        "output(s).",
+                        outputs, runtime_outputs));
+  }
+  return OkStatus();
+}
+
 // A parser responsible for parsing TFLite operation and adding it to a graph.
 class TFLiteOperationParser {
  public:
@@ -642,6 +675,55 @@ Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
   }
 }
 
+Status ParseInputsWithConstTensor(Node* node, ObjectReader* reader,
+                                  TensorOrScalar* tensor_or_scalar) {
+  const std::string& opname = node->operation.type;
+
+  // Determine runtime/constant tensors.
+  const TfLiteTensor* input0 = reader->GetInputTensor(0);
+  if (!input0) {
+    return InvalidArgumentError("Couldn't get the 1st input tensor for " +
+                                opname);
+  }
+  const TfLiteTensor* input1 = reader->GetInputTensor(1);
+  if (!input1) {
+    return InvalidArgumentError("Couldn't get the 2nd input tensor for " +
+                                opname);
+  }
+  const bool constant_tensor0 = IsConstantTensor(input0);
+  const bool constant_tensor1 = IsConstantTensor(input1);
+  if (constant_tensor0 && constant_tensor1) {
+    return InvalidArgumentError("No runtime input tensors for " + opname);
+  }
+  const bool runtime_tensor0 = !constant_tensor0;
+  const bool runtime_tensor1 = !constant_tensor1;
+
+  if (runtime_tensor0 && runtime_tensor1) {
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddInput(node, 1));
+  } else {
+    int runtime_tensor = 0;
+    int constant_tensor = 1;
+    TfLiteIntArray* constant_dims = input1->dims;
+    if (constant_tensor0 && runtime_tensor1) {
+      runtime_tensor = 1;
+      constant_tensor = 0;
+      constant_dims = input0->dims;
+    }
+    RETURN_IF_ERROR(reader->AddInput(node, runtime_tensor));
+    if (constant_dims->size <= 0) {
+      Tensor<Scalar, DataType::FLOAT32> tensor;
+      RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
+      *tensor_or_scalar = tensor.data[0];
+    } else {
+      Tensor<Linear, DataType::FLOAT32> tensor;
+      RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
+      *tensor_or_scalar = std::move(tensor);
+    }
+  }
+  return OkStatus();
+}
+
 class AddOperationParser : public TFLiteOperationParser {
  public:
   Status IsSupported(const TfLiteContext* context,
@@ -663,51 +745,11 @@ class AddOperationParser : public TFLiteOperationParser {
     // considers 2 input cases.  The underlying GPU shader programs can accept
     // more inputs, but the logic below would have to be expanded.
 
-    // Determine runtime/constant tensors.
-    const TfLiteTensor* input0 = reader->GetInputTensor(0);
-    if (!input0) {
-      return InvalidArgumentError("Couldn't get the 1st input tensor for ADD.");
-    }
-    const TfLiteTensor* input1 = reader->GetInputTensor(1);
-    if (!input1) {
-      return InvalidArgumentError("Couldn't get the 2nd input tensor for ADD.");
-    }
-    const bool constant_tensor0 = IsConstantTensor(input0);
-    const bool constant_tensor1 = IsConstantTensor(input1);
-    if (constant_tensor0 && constant_tensor1) {
-      return InvalidArgumentError("No runtime input tensors for ADD.");
-    }
-    const bool runtime_tensor0 = !constant_tensor0;
-    const bool runtime_tensor1 = !constant_tensor1;
-
     Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::ADD);
     RETURN_IF_ERROR(reader->AddOutputs(node));
-
     AddAttributes attr;
-    if (runtime_tensor0 && runtime_tensor1) {
-      RETURN_IF_ERROR(reader->AddInput(node, 0));
-      RETURN_IF_ERROR(reader->AddInput(node, 1));
-    } else {
-      int runtime_tensor = 0;
-      int constant_tensor = 1;
-      TfLiteIntArray* constant_dims = input1->dims;
-      if (constant_tensor0 && runtime_tensor1) {
-        runtime_tensor = 1;
-        constant_tensor = 0;
-        constant_dims = input0->dims;
-      }
-      RETURN_IF_ERROR(reader->AddInput(node, runtime_tensor));
-      if (constant_dims->size <= 0) {
-        Tensor<Scalar, DataType::FLOAT32> tensor;
-        RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
-        attr.param = tensor.data[0];
-      } else {
-        Tensor<Linear, DataType::FLOAT32> tensor;
-        RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
-        attr.param = std::move(tensor);
-      }
-    }
+    RETURN_IF_ERROR(ParseInputsWithConstTensor(node, reader, &attr.param));
     node->operation.attributes = std::move(attr);
     const auto* tf_options =
         reinterpret_cast<const TfLiteAddParams*>(tflite_node->builtin_data);
@@ -1053,6 +1095,11 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
     } else if (IsTwoArgumentOperation()) {
       RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node, /*inputs=*/2,
                                          /*outputs=*/1));
+    } else if (IsTwoArgumentOperationWithConst()) {
+      RETURN_IF_ERROR(CheckInputsOutputsAllowingOneConstInput(context,
+                                                              tflite_node,
+                                                              /*inputs=*/2,
+                                                              /*outputs=*/1));
     } else {
       return InvalidArgumentError("Op can only handle 1 or 2 operand(s).");
     }
@@ -1103,6 +1150,16 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
         RETURN_IF_ERROR(
             MaybeFuseActivationToTheSingleOutput(activation, graph, node));
       }
+    } else if (IsTwoArgumentOperationWithConst()) {
+      ElementwiseAttributes attr;
+      RETURN_IF_ERROR(ParseInputsWithConstTensor(node, reader, &attr.param));
+      auto const_vector =
+          absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
+              &attr.param);
+      if (const_vector) {
+        return InvalidArgumentError("Constant vector is not supported");
+      }
+      node->operation.attributes = std::move(attr);
     } else {
       return InvalidArgumentError("Incorrect operation type passed");
     }
@@ -1155,6 +1212,16 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::POW:
       case OperationType::SQUARED_DIFF:
       case OperationType::SUB:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  bool IsTwoArgumentOperationWithConst() const {
+    switch (operation_type_) {
+      case OperationType::MINIMUM:
+      case OperationType::MAXIMUM:
         return true;
       default:
         return false;
@@ -2547,10 +2614,16 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return absl::make_unique<ElementwiseOperationParser>(OperationType::LOG);
     case kTfLiteBuiltinLstm:
       return absl::make_unique<LSTMOperationParser>();
+    case kTfLiteBuiltinMaximum:
+      return absl::make_unique<ElementwiseOperationParser>(
+          OperationType::MAXIMUM);
     case kTfLiteBuiltinMaxPool2d:
       return absl::make_unique<Pooling2DOperationParser>(PoolingType::MAX);
     case kTfLiteBuiltinMean:
       return absl::make_unique<MeanOperationParser>();
+    case kTfLiteBuiltinMinimum:
+      return absl::make_unique<ElementwiseOperationParser>(
+          OperationType::MINIMUM);
     case kTfLiteBuiltinMirrorPad:
       return absl::make_unique<PadOperationParser>(/*mirror_pad=*/true);
     case kTfLiteBuiltinMul:

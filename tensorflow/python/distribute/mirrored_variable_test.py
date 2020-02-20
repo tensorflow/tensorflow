@@ -532,8 +532,10 @@ class MirroredVariableCreationTest(test.TestCase):
       expected_mean = 0.0
       for i, _ in enumerate(distribution.extended.worker_devices):
         # Should see different values on different devices.
-        v_sum_value = self.evaluate(ret_v_sum.values[i].read_value())
-        v_mean_value = self.evaluate(ret_v_mean.values[i].read_value())
+        v_sum_value = self.evaluate(
+            distribution.experimental_local_results(ret_v_sum)[i].read_value())
+        v_mean_value = self.evaluate(
+            distribution.experimental_local_results(ret_v_mean)[i].read_value())
         expected = i + 3.0
         self.assertEqual(expected, v_sum_value)
         expected_sum += expected

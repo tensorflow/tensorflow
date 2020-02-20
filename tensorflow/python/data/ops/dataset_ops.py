@@ -1800,10 +1800,18 @@ name=None))
 
     A "window" is a finite dataset of flat elements of size `size` (or possibly
     fewer if there are not enough input elements to fill the window and
-    `drop_remainder` evaluates to false).
+    `drop_remainder` evaluates to `False`).
+
+    The `shift` argument determines the number of input elements by which the
+    window moves on each iteration.  If windows and elements are both numbered
+    starting at 0, the first element in window `k` will be element `k * shift`
+    of the input dataset. In particular, the first element of the first window
+    will always be the first element of the input dataset.
 
     The `stride` argument determines the stride of the input elements, and the
     `shift` argument determines the shift of the window.
+
+    For example:
 
     >>> dataset = tf.data.Dataset.range(7).window(2)
     >>> for window in dataset:
@@ -1848,15 +1856,16 @@ name=None))
 
     Args:
       size: A `tf.int64` scalar `tf.Tensor`, representing the number of elements
-        of the input dataset to combine into a window.
+        of the input dataset to combine into a window. Must be positive.
       shift: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-        forward shift of the sliding window in each iteration. Defaults to
-        `size`.
+        number of input elements by which the window moves in each iteration.
+        Defaults to `size`. Must be positive.
       stride: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-        stride of the input elements in the sliding window.
+        stride of the input elements in the sliding window. Must be positive.
+        The default value of 1 means "retain every input element".
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
-        whether a window should be dropped in case its size is smaller than
-        `window_size`.
+        whether the last window should be dropped if its size is smaller than
+        `size`.
 
     Returns:
       Dataset: A `Dataset` of (nests of) windows -- a finite datasets of flat
