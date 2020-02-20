@@ -241,8 +241,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                bias, output);
 
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           filter->type);
+      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
+                         filter->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

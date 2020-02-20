@@ -36,8 +36,7 @@ void* GpuManagedAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   ptr = reinterpret_cast<void*>(result);
 #elif TENSORFLOW_USE_ROCM
   void** result = 0;
-  CHECK_EQ(hipHostMalloc(&result, num_bytes, 0),
-           0);
+  CHECK_EQ(hipHostMalloc(&result, num_bytes, 0), 0);
   ptr = reinterpret_cast<void*>(result);
 #endif
   CHECK(!(reinterpret_cast<uintptr_t>(ptr) & (alignment - 1)));

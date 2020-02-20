@@ -702,6 +702,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimization_options.graph = &graph;
   optimization_options.flib_def = &data->lib_def_;
   optimization_options.device_set = &device_set_;
+  optimization_options.is_function_graph = true;
 
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(

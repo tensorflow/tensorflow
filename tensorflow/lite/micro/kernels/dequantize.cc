@@ -66,9 +66,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             GetTensorShape(output), GetTensorData<float>(output));
         break;
       default:
-        context->ReportError(context, "Input %s, output %s not supported.",
-                             TfLiteTypeGetName(input->type),
-                             TfLiteTypeGetName(output->type));
+        TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
+                           TfLiteTypeGetName(input->type),
+                           TfLiteTypeGetName(output->type));
         return kTfLiteError;
     }
   } else if (output->type == kTfLiteInt32) {
@@ -97,15 +97,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         break;
       }
       default:
-        context->ReportError(context, "Input %s, output %s not supported.",
-                             TfLiteTypeGetName(input->type),
-                             TfLiteTypeGetName(output->type));
+        TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
+                           TfLiteTypeGetName(input->type),
+                           TfLiteTypeGetName(output->type));
         return kTfLiteError;
     }
   } else {
-    context->ReportError(context, "Input %s, output %s not supported.",
-                         TfLiteTypeGetName(input->type),
-                         TfLiteTypeGetName(output->type));
+    TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
+                       TfLiteTypeGetName(input->type),
+                       TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
 

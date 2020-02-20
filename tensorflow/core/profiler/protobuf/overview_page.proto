@@ -38,6 +38,10 @@ message OverviewPageAnalysis {
   double flop_rate_utilization_relative_to_roofline_percent = 7;
   // Memory bandwidth utilization relative to the hw limit in percentage.
   double memory_bw_utilization_relative_to_hw_limit_percent = 8;
+  // Percentage of device computation that is 16-bit.
+  double device_compute_16bit_percent = 9;
+  // Percentage of device computation that is 32-bit.
+  double device_compute_32bit_percent = 10;
 }
 
 // Overview result for a performance tip to users.
@@ -59,6 +63,9 @@ message GenericRecommendation {
   // A statement that recommends if we need to further investigate all-other
   // performance.
   string all_other_statement = 4;
+  // A statement that recommends if the user should try using lower precision.
+  // Shows this statement to users only if it is not empty.
+  string precision_statement = 5;
 }
 
 // Overview result for the recommendation section.

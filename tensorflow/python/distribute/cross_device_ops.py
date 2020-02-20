@@ -435,7 +435,7 @@ def _group_value_by_device(per_replica_values):
     ]
 
   Args:
-    per_replica_values: a list of PerReplica obejcts.
+    per_replica_values: a list of PerReplica objects.
 
   Returns:
     a list of lists, each sublist has components for its corresponding device of

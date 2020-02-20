@@ -446,9 +446,10 @@ LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
                                      {while_op.cond(), while_op.body()},
                                      graph_version, max_iteration);
   } else if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
-    return PropagateShapeToFunctions(module, call_op.getOperandTypes(),
-                                     {call_op.f()}, graph_version,
-                                     max_iteration);
+    if (call_op.f().isa<FlatSymbolRefAttr>())
+      return PropagateShapeToFunctions(module, call_op.getOperandTypes(),
+                                       {call_op.f().getRootReference()},
+                                       graph_version, max_iteration);
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.

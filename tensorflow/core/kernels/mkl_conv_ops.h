@@ -55,6 +55,7 @@ namespace tensorflow {
 #define MKLDNN_SIZE_DTYPE int
 #endif  // ENABLE_MKLDNN_V1
 
+using ConvFwdDesc = mkldnn::convolution_forward::desc;
 using ConvFwdPd = mkldnn::convolution_forward::primitive_desc;
 
 class MklDnnConvUtil {

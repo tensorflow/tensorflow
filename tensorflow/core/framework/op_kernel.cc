@@ -163,11 +163,9 @@ Status OpKernel::OutputRange(StringPiece output_name, int* start,
   }
 }
 
-string OpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
-  string trace_string = strings::StrCat(name_view(), ":", type_string_view());
-  if (!verbose) return trace_string;
+string OpKernel::GetTraceArgument(OpKernelContext* ctx) {
   int num_inputs = ctx->num_inputs();
-  if (num_inputs == 0) return trace_string;
+  if (num_inputs == 0) return "";
   std::vector<string> tensor_shapes;
   tensor_shapes.reserve(num_inputs);
   for (int i = 0; i < num_inputs; i++) {
@@ -184,8 +182,15 @@ string OpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
     tensor_shapes.emplace_back(strings::StrCat(
         DataTypeString(input_dtype), ctx->input(i).shape().DebugString()));
   }
-  return strings::StrCat(trace_string, "#shape=(",
-                         absl::StrJoin(tensor_shapes, ";"), ")#");
+  return strings::StrCat("shape=(", absl::StrJoin(tensor_shapes, ";"), ")");
+}
+
+string OpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
+  string trace_string = strings::StrCat(name_view(), ":", type_string_view());
+  if (!verbose) return trace_string;
+  string trace_args = GetTraceArgument(ctx);
+  if (trace_args.empty()) return trace_string;
+  return strings::StrCat(trace_string, "#", trace_args, "#");
 }
 
 void AsyncOpKernel::Compute(OpKernelContext* context) {

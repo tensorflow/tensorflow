@@ -227,8 +227,7 @@ class InfNanMonitor(BaseMonitor):
             num_nan=num_nan,
             execution_index=execution_index,
             graph_execution_trace_index=graph_execution_trace_index))
-    elif tensor_debug_mode in (
-        debug_event_pb2.TensorDebugMode.FULL_HEALTH):
+    elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_HEALTH:
       raise NotImplementedError(
           "InfNanMonitor does not support FULL_HEALTH tensor-debug mode yet.")
 

@@ -582,7 +582,7 @@ def _create_call_fn_decorator(layer, wrapped_call):
 
 
 def _wrap_unconditional_loss(loss_fn, index):
-  """Wraps callable/unconditonal loss, returning a serializable function."""
+  """Wraps callable/unconditional loss, returning a serializable function."""
   # Extract original loss function from partial function
   fn = loss_fn.args[0] if isinstance(loss_fn, functools.partial) else loss_fn
   if isinstance(fn, def_function.Function):

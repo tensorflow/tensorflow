@@ -100,7 +100,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
       reinterpret_cast<const uint8_t*>(allocation->base()),
       allocation->bytes());
   if (!VerifyModelBuffer(base_verifier)) {
-    error_reporter->Report("The model is not a valid Flatbuffer file");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "The model is not a valid Flatbuffer file");
     return nullptr;
   }
 
@@ -136,7 +137,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
   flatbuffers::Verifier base_verifier(
       reinterpret_cast<const uint8_t*>(caller_owned_buffer), buffer_size);
   if (!VerifyModelBuffer(base_verifier)) {
-    error_reporter->Report("The model is not a valid Flatbuffer buffer");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "The model is not a valid Flatbuffer buffer");
     return nullptr;
   }
 

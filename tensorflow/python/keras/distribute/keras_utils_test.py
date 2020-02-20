@@ -30,12 +30,12 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import losses
 from tensorflow.python.keras.distribute import distribute_strategy_test as keras_test_lib
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
 

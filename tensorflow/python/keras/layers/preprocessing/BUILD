@@ -11,6 +11,14 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "testdata",
+    srcs = [
+        "testdata/repeated_vocab.txt",
+        "testdata/vocab.txt",
+    ],
+)
+
 py_library(
     name = "preprocessing",
     srcs = [
@@ -23,6 +31,7 @@ py_library(
         ":hashing",
         ":image_preprocessing",
         ":normalization",
+        ":preprocessing_stage",
         ":preprocessing_test_utils",
         ":reduction",
         ":text_vectorization",
@@ -205,6 +214,20 @@ py_library(
 )
 
 py_library(
+    name = "preprocessing_stage",
+    srcs = [
+        "preprocessing_stage.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras/engine:base_preprocessing_layer",
+    ],
+)
+
+py_library(
     name = "preprocessing_test_utils",
     srcs = ["preprocessing_test_utils.py"],
     srcs_version = "PY2AND3",
@@ -264,6 +287,7 @@ tf_py_test(
     name = "index_lookup_test",
     size = "medium",
     srcs = ["index_lookup_test.py"],
+    data = [":testdata"],
     python_version = "PY3",
     deps = [
         ":index_lookup",
@@ -291,10 +315,9 @@ cuda_py_test(
 )
 
 tf_py_test(
-    name = "preprocessing_normalization_test",
+    name = "normalization_test",
     size = "small",
     srcs = ["normalization_test.py"],
-    main = "normalization_test.py",
     python_version = "PY3",
     deps = [
         ":normalization",
@@ -305,10 +328,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "preprocessing_text_vectorization_test",
+    name = "text_vectorization_test",
     size = "medium",
     srcs = ["text_vectorization_test.py"],
-    main = "text_vectorization_test.py",
     python_version = "PY3",
     deps = [
         ":preprocessing_test_utils",
@@ -344,6 +366,19 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "preprocessing_stage_test",
+    srcs = ["preprocessing_stage_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":preprocessing_stage",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

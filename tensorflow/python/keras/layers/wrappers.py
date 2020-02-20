@@ -93,43 +93,21 @@ class TimeDistributed(Wrapper):
   The input should be at least 3D, and the dimension of index one
   will be considered to be the temporal dimension.
 
-  Consider a batch of 32 samples,
-  where each sample is a sequence of 10 vectors of 16 dimensions.
-  The batch input shape of the layer is then `(32, 10, 16)`,
-  and the `input_shape`, not including the samples dimension, is `(10, 16)`.
+  Consider a batch of 32 video samples, where each sample is a 128x128 RGB image
+  with `channels_last` data format, across 10 timesteps.
+  The batch input shape is `(32, 10, 128, 128, 3)`.
 
-  You can then use `TimeDistributed` to apply a `Dense` layer
-  to each of the 10 timesteps, independently:
+  You can then use `TimeDistributed` to apply a `Conv2D` layer to each of the
+  10 timesteps, independently:
 
-  ```python
-  # as the first layer in a model
-  model = Sequential()
-  model.add(TimeDistributed(Dense(8), input_shape=(10, 16)))
-  # now model.output_shape == (None, 10, 8)
-  ```
-
-  The output will then have shape `(32, 10, 8)`.
-
-  In subsequent layers, there is no need for the `input_shape`:
-
-  ```python
-  model.add(TimeDistributed(Dense(32)))
-  # now model.output_shape == (None, 10, 32)
-  ```
-
-  The output will then have shape `(32, 10, 32)`.
-
-  `TimeDistributed` can be used with arbitrary layers, not just `Dense`,
-  for instance with a `Conv2D` layer:
-
-  ```python
-  model = Sequential()
-  model.add(TimeDistributed(Conv2D(64, (3, 3)),
-                            input_shape=(10, 299, 299, 3)))
-  ```
+  >>> inputs = tf.keras.Input(shape=(10, 128, 128, 3))
+  >>> conv_2d_layer = tf.keras.layers.Conv2D(64, (3, 3))
+  >>> outputs = tf.keras.layers.TimeDistributed(conv_2d_layer)(inputs)
+  >>> outputs.shape
+  TensorShape([None, 10, 126, 126, 64])
 
   Arguments:
-    layer: a layer instance.
+    layer: a `tf.keras.layers.Layer` instance.
 
   Call arguments:
     inputs: Input tensor.
@@ -141,14 +119,15 @@ class TimeDistributed(Wrapper):
       wrapped layer (only if the layer supports this argument).
 
   Raises:
-    ValueError: If not initialized with a `Layer` instance.
+    ValueError: If not initialized with a `tf.keras.layers.Layer` instance.
   """
 
   def __init__(self, layer, **kwargs):
     if not isinstance(layer, Layer):
       raise ValueError(
           'Please initialize `TimeDistributed` layer with a '
-          '`Layer` instance. You passed: {input}'.format(input=layer))
+          '`tf.keras.layers.Layer` instance. You passed: {input}'.format(
+              input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
     self._supports_ragged_inputs = True

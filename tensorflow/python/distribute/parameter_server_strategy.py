@@ -50,7 +50,7 @@ _LOCAL_CPU = "/device:CPU:0"
 class ParameterServerStrategy(distribute_lib.Strategy):
   """An asynchronous multi-worker parameter server tf.distribute strategy.
 
-  This strategy requires two jobs: workers and parameter servers. Variables and
+  This strategy requires two roles: workers and parameter servers. Variables and
   updates to those variables will be assigned to parameter servers and other
   operations are assigned to workers.
 
@@ -550,7 +550,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
                  cluster_spec=None,
                  task_type=None,
                  task_id=None):
-    """Configures the strategy class with `cluser_spec`.
+    """Configures the strategy class with `cluster_spec`.
 
     The strategy object will be re-initialized if `cluster_spec` is passed to
     `configure` but was not passed when instantiating the strategy.

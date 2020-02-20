@@ -67,7 +67,8 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   ptrs[1] = scratch.opaque();
   se::DeviceMemory<void*> tuple_addr(
       buffer_allocations.GetDeviceAddress(tuple_result_buffer_));
-  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, params.stream);
+  SafeH2DMemcpy(tuple_addr, std::move(ptrs), kNumOutputs, params.stream,
+                params.deferred_host_callbacks);
 
   if (!params.stream->ok()) {
     return InternalError("ConvolutionThunk::ExecuteOnStream failed.");

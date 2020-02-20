@@ -122,7 +122,7 @@ def _model_loss(model,
   if any(
       isinstance(input_t, (np.ndarray, float, int))
       for input_t in nest.flatten(inputs)):
-    inputs = nest.map_structure(ops.convert_to_tensor, inputs)
+    inputs = nest.map_structure(ops.convert_to_tensor_v2, inputs)
 
   outs = model(inputs, **kwargs)
   outs = nest.flatten(outs)
@@ -132,7 +132,7 @@ def _model_loss(model,
   # TODO(sallymatson/psv): check if we should do same mismatch fix for weights
   if sample_weights:
     sample_weights = [
-        training_utils.cast_if_floating_dtype(ops.convert_to_tensor(val))
+        training_utils.cast_if_floating_dtype(ops.convert_to_tensor_v2(val))
         if val is not None else None for val in sample_weights
     ]
 
@@ -274,6 +274,7 @@ def _process_single_batch(model,
           if isinstance(model.optimizer,
                         loss_scale_optimizer.LossScaleOptimizer):
             grads = model.optimizer.get_unscaled_gradients(grads)
+          grads = model.optimizer._clip_gradients(grads)
           model.optimizer.apply_gradients(zip(grads, trainable_weights))
       else:
         logging.warning('The list of trainable weights is empty. Make sure that'

@@ -44,7 +44,7 @@ class Scope(object):
 
   Scope objects are mutable during construction only, and must be frozen using
   `Scope.finalize()` before use. Furthermore, a scope is consistent only after
-  all its chiledren have been frozen. While analysing code blocks, scopes are
+  all its children have been frozen. While analysing code blocks, scopes are
   being gradually built, from the innermost scope outward. Freezing indicates
   that the analysis of a code block is complete. Once frozen, mutation is no
   longer allowed. `is_final` tracks whether the scope is frozen or not. Certain

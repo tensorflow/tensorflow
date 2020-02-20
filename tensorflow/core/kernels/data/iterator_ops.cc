@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/resource.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -516,6 +517,8 @@ void HybridAsyncOpKernel::Compute(OpKernelContext* ctx) {
 }
 
 Status MakeIteratorOp::DoCompute(OpKernelContext* ctx) {
+  tensorflow::ResourceTagger tag = tensorflow::ResourceTagger(
+      kTFDataResourceTag, ctx->op_kernel().type_string());
   DatasetBase* dataset;
   TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
   IteratorResource* iterator_resource;
@@ -526,6 +529,8 @@ Status MakeIteratorOp::DoCompute(OpKernelContext* ctx) {
 }
 
 void DeleteIteratorOp::Compute(OpKernelContext* ctx) {
+  tensorflow::ResourceTagger tag = tensorflow::ResourceTagger(
+      kTFDataResourceTag, ctx->op_kernel().type_string());
   ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
   // The iterator resource is guaranteed to exist because the variant tensor
   // wrapping the deleter is provided as an unused input to this op, which
@@ -542,6 +547,8 @@ class ToSingleElementOp : public HybridAsyncOpKernel {
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override {
+    tensorflow::ResourceTagger tag = tensorflow::ResourceTagger(
+        kTFDataResourceTag, ctx->op_kernel().type_string());
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
 
@@ -599,6 +606,8 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override {
+    tensorflow::ResourceTagger tag = tensorflow::ResourceTagger(
+        kTFDataResourceTag, ctx->op_kernel().type_string());
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(ctx->input(0), &dataset));
     OpInputList inputs;
@@ -736,6 +745,8 @@ class OneShotIteratorOp : public AsyncOpKernel {
   // running the initialization function, we must implement this
   // kernel as an async kernel.
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    tensorflow::ResourceTagger tag = tensorflow::ResourceTagger(
+        kTFDataResourceTag, ctx->op_kernel().type_string());
     {
       mutex_lock l(mu_);
       if (iterator_resource_ == nullptr && initialization_status_.ok()) {
@@ -898,7 +909,8 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
             ",iter_num=", ctx->frame_iter().iter_id, "#");
       },
       profiler::kInfo);
-
+  tensorflow::ResourceTagger tag = tensorflow::ResourceTagger(
+      kTFDataResourceTag, ctx->op_kernel().type_string());
   IteratorResource* iterator;
   TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
   core::ScopedUnref unref_iterator(iterator);
@@ -917,6 +929,8 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
 }
 
 Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
+  tensorflow::ResourceTagger tag = tensorflow::ResourceTagger(
+      kTFDataResourceTag, ctx->op_kernel().type_string());
   IteratorResource* iterator;
   TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
   core::ScopedUnref unref_iterator(iterator);
@@ -1031,6 +1045,8 @@ SerializeIteratorOp::SerializeIteratorOp(OpKernelConstruction* ctx)
 }
 
 void SerializeIteratorOp::Compute(OpKernelContext* ctx) {
+  tensorflow::ResourceTagger tag = tensorflow::ResourceTagger(
+      kTFDataResourceTag, ctx->op_kernel().type_string());
   const Tensor& resource_handle_t = ctx->input(0);
   OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
               errors::InvalidArgument("resource_handle must be a scalar"));
@@ -1054,6 +1070,8 @@ void SerializeIteratorOp::Compute(OpKernelContext* ctx) {
 }
 
 void DeserializeIteratorOp::Compute(OpKernelContext* ctx) {
+  tensorflow::ResourceTagger tag = tensorflow::ResourceTagger(
+      kTFDataResourceTag, ctx->op_kernel().type_string());
   // Validate that the handle corresponds to a real resource, and
   // that it is an IteratorResource.
   IteratorResource* iterator_resource;

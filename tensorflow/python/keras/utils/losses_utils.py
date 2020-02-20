@@ -101,7 +101,7 @@ def compute_weighted_loss(losses,
     # to multiple replicas. Used only for estimator + v1 optimizer flow.
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 
-    losses = ops.convert_to_tensor(losses)
+    losses = ops.convert_to_tensor_v2(losses)
     input_dtype = losses.dtype
     weighted_losses = tf_losses_utils.scale_losses_by_sample_weight(
         losses, sample_weight)

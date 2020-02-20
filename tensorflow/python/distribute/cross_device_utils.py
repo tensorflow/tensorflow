@@ -761,7 +761,7 @@ def stitch_values(values_and_indices_list):
 
   Args:
     values_and_indices_list: a list of tuples of values and indices indicating
-      the values and postions in the returned list.
+      the values and positions in the returned list.
 
   Returns:
     a stitched list of values.

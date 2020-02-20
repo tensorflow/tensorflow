@@ -47,7 +47,7 @@ static inline void ApplyTimeWeightsBiasAndActivation(
     float* scratch_ptr_batch = GetTensorData<float>(scratch) + b * num_filters;
     tensor_utils::BatchVectorBatchVectorDotProduct(
         GetTensorData<float>(weights_time), state_ptr_batch, memory_size,
-        num_filters, scratch_ptr_batch, /*result_stride=*/1);
+        num_filters, scratch_ptr_batch);
   }
 
   // Initialize output with bias if provided.
@@ -150,7 +150,7 @@ inline void EvalIntegerSVDF(
           GetTensorData<int32_t>(scratch_tensor) + b * n_filter;
       tensor_utils::BatchVectorBatchVectorDotProduct(
           GetTensorData<int16_t>(weights_time_tensor), state_ptr_batch,
-          n_memory, n_filter, scratch_ptr_batch, /*result_stride=*/1);
+          n_memory, n_filter, scratch_ptr_batch);
     }
   }
 

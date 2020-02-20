@@ -101,10 +101,6 @@ class DistributedValues(object):
   def devices(self):
     return tuple(v.device for v in self._values)
 
-  @property
-  def is_tensor_like(self):
-    return all(tensor_util.is_tensor(v) for v in self._values)
-
   def __str__(self):
     debug_str = ",\n".join(
         "  %d: %s" % (i, v) for i, v in enumerate(self._values))

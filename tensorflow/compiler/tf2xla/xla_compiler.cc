@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
@@ -162,9 +163,9 @@ Status BuildComputation(
     std::unique_ptr<xla::XlaOp> token_output,
     const XlaCompiler::ShapeRepresentationFn& shape_representation_fn,
     bool is_entry_computation, bool return_updated_values_for_all_resources,
-    bool always_return_tuple, xla::XlaBuilder* builder,
-    xla::XlaComputation* computation, int* num_computation_outputs,
-    int* num_nonconst_outputs,
+    bool always_return_tuple, bool use_tuple_arg, bool alias_resource_update,
+    xla::XlaBuilder* builder, xla::XlaComputation* computation,
+    int* num_computation_outputs, int* num_nonconst_outputs,
     std::vector<XlaCompiler::OutputDescription>* outputs,
     std::vector<XlaCompiler::ResourceUpdate>* resource_updates,
     xla::Shape* output_shape) {
@@ -284,6 +285,7 @@ Status BuildComputation(
           !grad.second->value().IsIdenticalTo(grad.second->initial_value()) ||
           arg.tensor_array_gradients.count(grad.first) == 0;
     }
+
     if (return_updated_values_for_all_resources || modified) {
       resource_updates->emplace_back();
       XlaCompiler::ResourceUpdate& update = resource_updates->back();
@@ -291,6 +293,21 @@ Status BuildComputation(
       update.type = resource->type();
       update.shape = resource->shape();
       update.modified = modified;
+      if (is_entry_computation && always_return_tuple &&
+          arg.resource_kind != XlaResource::kTensorArray &&
+          alias_resource_update) {
+        // Assuming tuple arg and results are used.
+        int64 output_index = elems.size();
+        if (use_tuple_arg) {
+          builder->SetUpAlias(/*output_index=*/{output_index},
+                              /*param_number=*/0,
+                              /*param_index=*/{update.input_index});
+        } else {
+          builder->SetUpAlias(/*output_index=*/{output_index},
+                              /*param_number=*/update.input_index,
+                              /*param_index=*/{});
+        }
+      }
       for (const auto& grad : resource->tensor_array_gradients()) {
         update.tensor_array_gradients_accessed.insert(grad.first);
       }
@@ -750,7 +767,7 @@ Status XlaCompiler::CompileFunction(
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(
-      CompileGraph(options, function_id, std::move(graph), args, {}, result));
+      CompileGraph(options, function_id, std::move(graph), args, result));
   VLOG(1) << "====================================================";
 
   cache_[{function_id, arg_vector}] = *result;
@@ -1192,8 +1209,7 @@ Status XlaCompiler::CompileSingleOp(
   }
   FixupSourceAndSinkEdges(graph.get());
 
-  return CompileGraph(options, node_def.name(), std::move(graph), args, {},
-                      result);
+  return CompileGraph(options, node_def.name(), std::move(graph), args, result);
 }
 
 namespace {
@@ -1291,7 +1307,6 @@ void ConvertConstantsToExpressions(xla::XlaBuilder* builder,
 Status XlaCompiler::CompileGraph(
     const XlaCompiler::CompileOptions& options, string const& name,
     std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
-    absl::Span<const xla::XlaBuilder::InputOutputAlias> user_aliases,
     CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
 
@@ -1343,12 +1358,6 @@ Status XlaCompiler::CompileGraph(
       arg_shardings, &arg_expressions, &result->input_mapping,
       &result->xla_input_shapes, options.is_entry_computation));
   context->set_args(std::move(arg_expressions));
-
-  // Propagate any aliases given to us by the user.
-  for (const xla::XlaBuilder::InputOutputAlias& alias : user_aliases) {
-    builder.SetUpAlias(alias.output_index, alias.param_number,
-                       alias.param_index);
-  }
 
   PushNodeTokenMapping();
   // Use std::set instead of std::unordered_set to ensure determinism.
@@ -1402,7 +1411,8 @@ Status XlaCompiler::CompileGraph(
                                    : ShapeRepresentationFn{},
       options.is_entry_computation,
       options.return_updated_values_for_all_resources,
-      options.always_return_tuple, &builder, result->computation.get(),
+      options.always_return_tuple, options.use_tuple_arg,
+      options.alias_resource_update, &builder, result->computation.get(),
       &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
       &result->resource_updates, &result->xla_output_shape));
 

@@ -384,15 +384,6 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
   Given a potentially ragged tenor `input`, this operation inserts a
   dimension with size 1 at the dimension `axis` of `input`'s shape.
 
-  * If `input` is a `Tensor`, then this is equivalent to
-    `tf.expand_dims`.
-  * If `input` is ragged, and `axis=0`, then the new dimension will be
-    uniform; but the previously outermost dimension will become ragged.
-  * If `input` is ragged, and `0 < axis < input.ragged_rank`, then the
-    new dimension will be ragged.
-  * If `input` is ragged, and axis >= input.ragged_rank`, then the new
-    dimension will be uniform.
-
   The following table gives some examples showing how `ragged.expand_dims`
   impacts the shapes of different input tensors.  Ragged dimensions are
   indicated by enclosing them in parentheses.
@@ -402,9 +393,9 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
   `[D1, D2]`              |  `0` | `[1, D1, D2]`
   `[D1, D2]`              |  `1` | `[D1, 1, D2]`
   `[D1, D2]`              |  `2` | `[D1, D2, 1]`
-  `[D1, (D2), (D3), D4]`  |  `0` | `[1, (D1), (D2), (D3), D4]`
-  `[D1, (D2), (D3), D4]`  |  `1` | `[D1, (1), (D2), (D3), D4]`
-  `[D1, (D2), (D3), D4]`  |  `2` | `[D1, (D2), (1), (D3), D4]`
+  `[D1, (D2), (D3), D4]`  |  `0` | `[1, D1, (D2), (D3), D4]`
+  `[D1, (D2), (D3), D4]`  |  `1` | `[D1, 1, (D2), (D3), D4]`
+  `[D1, (D2), (D3), D4]`  |  `2` | `[D1, (D2), 1, (D3), D4]`
   `[D1, (D2), (D3), D4]`  |  `3` | `[D1, (D2), (D3), 1, D4]`
   `[D1, (D2), (D3), D4]`  |  `4` | `[D1, (D2), (D3), D4, 1]`
 
@@ -427,11 +418,11 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
 
   >>> expanded = tf.expand_dims(rt, axis=0)
   >>> print(expanded.shape, expanded)
-  (1, None, None) <tf.RaggedTensor [[[1, 2], [3]]]>
+  (1, 2, None) <tf.RaggedTensor [[[1, 2], [3]]]>
 
   >>> expanded = tf.expand_dims(rt, axis=1)
   >>> print(expanded.shape, expanded)
-  (2, None, None) <tf.RaggedTensor [[[1, 2]], [[3]]]>
+  (2, 1, None) <tf.RaggedTensor [[[1, 2]], [[3]]]>
 
   >>> expanded = tf.expand_dims(rt, axis=2)
   >>> print(expanded.shape, expanded)
@@ -446,18 +437,15 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
 
     ndims = None if input.shape.ndims is None else input.shape.ndims + 1
     axis = ragged_util.get_positive_axis(axis, ndims)
-    if axis == 0:
-      values = input
-      splits = array_ops.stack([0, input.nrows()])
-    elif axis == 1:
-      values = input
-      splits = math_ops.range(input.nrows() + 1)
-    else:
-      values = expand_dims(input.values, axis - 1)
-      splits = input.row_splits
 
-    return ragged_tensor.RaggedTensor.from_row_splits(values, splits,
-                                                      validate=False)
+    if axis == 0:
+      return ragged_tensor.RaggedTensor.from_uniform_row_length(
+          input, uniform_row_length=input.nrows(), nrows=1, validate=False)
+    elif axis == 1:
+      return ragged_tensor.RaggedTensor.from_uniform_row_length(
+          input, uniform_row_length=1, nrows=input.nrows(), validate=False)
+    else:
+      return input.with_values(expand_dims(input.values, axis - 1))
 
 
 #===============================================================================
