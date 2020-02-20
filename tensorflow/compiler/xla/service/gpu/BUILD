@@ -1285,6 +1285,7 @@ cc_library(
         ":reduction_dimension_grouper",
         ":reduction_layout_normalizer",
         ":target_constants",
+        ":tree_reduction_rewriter",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:hlo",
