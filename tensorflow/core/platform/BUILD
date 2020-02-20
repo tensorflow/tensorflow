@@ -914,6 +914,7 @@ tf_cc_test(
         "//tensorflow/core/platform/testdata:test_stderr",
     ],
     deps = [
+        ":path",
         ":resource_loader",
         ":strcat",
         ":subprocess",
