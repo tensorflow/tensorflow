@@ -54,7 +54,7 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
 // Default is reading from TF_DUMP_GRAPH_PREFIX, and if the string is 'sponge'
 // read from TEST_UNDECLARED_OUTPUTS_DIR. Returns nullptr if the directory
 // cannot be determined and generates a warning message.
-const char* GetDumpDirFromEnvVar();
+std::string GetDumpDirFromEnvVar();
 
 }  // namespace tensorflow
 

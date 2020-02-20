@@ -3,6 +3,10 @@
 
 // All tests also test for idempotence.
 
+// Test that external functions aren't processed (used to crash).
+// CHECK-LABEL: func @unused_external_func
+func @unused_external_func()
+
 func @multiple_return(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
   %graph:2 = tf_executor.graph {
     %island:3 = tf_executor.island {

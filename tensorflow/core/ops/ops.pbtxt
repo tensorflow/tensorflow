@@ -16170,6 +16170,13 @@ op {
     }
   }
   attr {
+    name: "exponential_avg_factor"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
     name: "data_format"
     type: "string"
     default_value {
@@ -16523,6 +16530,13 @@ op {
     }
   }
   attr {
+    name: "exponential_avg_factor"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
     name: "data_format"
     type: "string"
     default_value {
@@ -16614,6 +16628,13 @@ op {
     type: "float"
     default_value {
       f: 0.0001
+    }
+  }
+  attr {
+    name: "exponential_avg_factor"
+    type: "float"
+    default_value {
+      f: 1
     }
   }
   attr {

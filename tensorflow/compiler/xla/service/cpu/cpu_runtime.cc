@@ -262,7 +262,8 @@ class CpuAllReduceRendezvous : public xla::Rendezvous<std::nullptr_t> {
  protected:
   xla::StatusOr<std::pair<std::nullptr_t, bool>> SubmitParticipantImpl(
       xla::AllReduceParticipantData participant) override {
-    xla::PrimitiveType datatype = participant.primitive_type;
+    TF_RET_CHECK(participant.buffers.size() == 1);
+    xla::PrimitiveType datatype = participant.buffers.front().primitive_type;
     bool primary = [&] {
       tensorflow::mutex_lock lock(mu_);
       if (!initialized_) {
@@ -316,10 +317,8 @@ class CpuAllReduceRendezvous : public xla::Rendezvous<std::nullptr_t> {
     using T = typename xla::primitive_util::PrimitiveTypeToNative<PT>::type;
     tensorflow::mutex_lock lock(mu_);
     CHECK(!participants_.empty());
-    xla::int64 element_count = participant.element_count;
     xla::ReductionKind reduction_kind = participant.reduction_kind;
     for (const auto& p : participants_) {
-      CHECK_EQ(p.element_count, element_count);
       CHECK(p.reduction_kind == reduction_kind);
     }
 
@@ -329,11 +328,19 @@ class CpuAllReduceRendezvous : public xla::Rendezvous<std::nullptr_t> {
     output_buffers.reserve(participants_.size());
 
     for (auto& p : participants_) {
-      input_buffers.emplace_back(static_cast<T*>(p.source_data.opaque()),
-                                 element_count);
-      output_buffers.emplace_back(static_cast<T*>(p.destination_data.opaque()),
-                                  element_count);
+      CHECK_EQ(p.buffers.size(), 1);
+      CHECK_EQ(p.buffers.front().element_count,
+               participants_.front().buffers.front().element_count);
+      xla::int64 element_count = participant.buffers.front().element_count;
+      input_buffers.emplace_back(
+          static_cast<T*>(p.buffers.front().source_data.opaque()),
+          element_count);
+      output_buffers.emplace_back(
+          static_cast<T*>(p.buffers.front().destination_data.opaque()),
+          element_count);
     }
+    xla::int64 element_count =
+        participants_.front().buffers.front().element_count;
 
     auto compute = [reduction_kind](T a, T b) -> T {
       switch (reduction_kind) {
@@ -416,7 +423,6 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
   xla::RendezvousKey rendezvous_key(run_options->run_id(),
                                     participating_replicas_vec, op_kind, op_id);
 
-
   auto shape_str = ShapeString(shape_ptr, shape_length);
   VLOG(2) << "All-reduce input/output shape : " << shape_str;
 
@@ -426,14 +432,16 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
       << "All-reduce on CPU is implemented only for dense arrays";
 
   xla::AllReduceParticipantData participant(rendezvous_key);
-  participant.element_count = xla::ShapeUtil::ElementsIn(shape);
   participant.device_ordinal = device_ordinal;
-  participant.primitive_type = shape.element_type();
   participant.stream = run_options->stream();
-  participant.source_data =
+  xla::AllReduceParticipantData::Buffer buffer;
+  buffer.element_count = xla::ShapeUtil::ElementsIn(shape);
+  buffer.primitive_type = shape.element_type();
+  buffer.source_data =
       se::DeviceMemoryBase(input_buffer, xla::ShapeUtil::ByteSizeOf(shape));
-  participant.destination_data =
+  buffer.destination_data =
       se::DeviceMemoryBase(output_buffer, xla::ShapeUtil::ByteSizeOf(shape));
+  participant.buffers = {buffer};
   participant.reduction_kind = static_cast<xla::ReductionKind>(reduction_kind);
 
   TF_CHECK_OK(

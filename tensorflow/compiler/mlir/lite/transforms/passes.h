@@ -91,6 +91,9 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeTFWhilePass();
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateWhileOutlinePass();
 
+// Verifies runtime supports types used.
+std::unique_ptr<OpPassBase<FuncOp>> CreateRuntimeTypeVerifyPass();
+
 }  // namespace TFL
 
 }  // namespace mlir

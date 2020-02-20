@@ -41,7 +41,6 @@ Status EagerOperation::Reset(
         "registered in the binary running in this process.");
   }
   attrs_.Reset(op);
-  device_ = nullptr;
   use_xla_ = false;
   is_function_ = is_function;
   cancellation_manager_ = nullptr;
@@ -133,11 +132,20 @@ Status EagerOperation::SetDeviceName(const char* device, const bool reset) {
           DeviceNameUtils::HasSomeDetails(device_parsed_name_)
               ? DeviceNameUtils::ParsedNameToString(device_parsed_name_)
               : "";
+      CustomDevice* custom_device;
+      if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device).ok()) {
+        device_ = custom_device;
+      } else {
+        // Device placement for physical devices happens lazily in
+        // EagerExecute/EagerRemoteExecute, and can depend on the inputs.
+        device_ = kVariantDeviceNull;
+      }
     }
   } else if (reset) {
     raw_device_name_.clear();
     device_name_.clear();
     device_parsed_name_.Clear();
+    device_ = kVariantDeviceNull;
   }
   return Status::OK();
 }
@@ -160,8 +168,8 @@ string EagerOperation::DebugString() const {
 
   strings::StrAppend(&out, "Name: ", Name(), "\n");
   strings::StrAppend(&out, "Device Name: [", device_name_, "]\n");
-  strings::StrAppend(
-      &out, "Device: ", Device() ? Device()->DebugString() : "[]", "\n");
+  strings::StrAppend(&out, "Device: ", VariantDeviceDebugString(Device()),
+                     "\n");
   for (const auto& input : inputs_) {
     VLOG(1) << "Input ptr: " << input;
     strings::StrAppend(&out, "Input: ", input->DebugString(), "\n");

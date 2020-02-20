@@ -204,6 +204,8 @@ py_library(
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/signal",
         "//tensorflow/python/profiler",
+        "//tensorflow/python/profiler:profiler_client",
+        "//tensorflow/python/profiler:profiler_v2",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:module_util",
         "//tensorflow/python/tools/api/generator:create_python_api",
@@ -2531,6 +2533,7 @@ tf_py_test(
     deps = [
         ":control_flow_ops",
         ":errors",
+        ":framework_combinations",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
         ":platform_test",
@@ -2622,6 +2625,8 @@ tf_py_test(
 tf_gen_op_wrapper_private_py(
     name = "array_ops_gen",
     visibility = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -2635,6 +2640,8 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "bitwise_ops_gen",
     visibility = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/quantization:__pkg__",
@@ -2830,6 +2837,8 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "math_ops_gen",
     visibility = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -2840,6 +2849,8 @@ tf_gen_op_wrapper_private_py(
 tf_gen_op_wrapper_private_py(
     name = "nn_ops_gen",
     visibility = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/compiler/tests:__pkg__",
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",

@@ -570,6 +570,9 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
       eager::RegisterFunctionOp* register_function =
           request->add_queue()->mutable_register_function();
       *register_function->mutable_function_def() = *function_defs[j];
+      StripDefaultAttributes(
+          *OpRegistry::Global(),
+          register_function->mutable_function_def()->mutable_node_def());
       auto* response = new eager::EnqueueResponse;
       eager_client->StreamingEnqueueAsync(
           request, response, [request, response](const Status& s) {
@@ -620,6 +623,10 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
     }
   }
   return Status::OK();
+}
+
+const FunctionDef* EagerContext::GetFunctionDef(const string& function_name) {
+  return func_lib_def_.Find(function_name);
 }
 
 Status EagerContext::RemoveFunction(const string& func) {
@@ -744,7 +751,7 @@ Status EagerContext::FindCustomDeviceFromName(const string& device_name,
 
 void EagerContext::RegisterCustomDevice(const string& device_name,
                                         std::unique_ptr<CustomDevice> device) {
-  custom_devices_[device_name] = std::move(device);
+  custom_devices_.emplace(device_name, std::move(device));
 }
 
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {

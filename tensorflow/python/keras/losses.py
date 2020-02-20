@@ -95,6 +95,17 @@ class Loss(object):
     # SUM_OVER_BATCH is only allowed in losses managed by `fit` or
     # CannedEstimators.
     self._allow_sum_over_batch_size = False
+    self._set_name_scope()
+
+  def _set_name_scope(self):
+    """Creates a valid `name_scope` name."""
+    if self.name is None:
+      self._name_scope = self.__class__.__name__
+    elif self.name == '<lambda>':
+      self._name_scope = 'lambda'
+    else:
+      # E.g. '_my_loss' => 'my_loss'
+      self._name_scope = self.name.strip('_')
 
   def __call__(self, y_true, y_pred, sample_weight=None):
     """Invokes the `Loss` instance.
@@ -124,10 +135,9 @@ class Loss(object):
     """
     # If we are wrapping a lambda function strip '<>' from the name as it is not
     # accepted in scope name.
-    scope_name = 'lambda' if self.name == '<lambda>' else self.name
     graph_ctx = tf_utils.graph_context_for_symbolic_tensors(
         y_true, y_pred, sample_weight)
-    with K.name_scope(scope_name or self.__class__.__name__), graph_ctx:
+    with K.name_scope(self._name_scope), graph_ctx:
       losses = self.call(y_true, y_pred)
       return losses_utils.compute_weighted_loss(
           losses, sample_weight, reduction=self._get_reduction())

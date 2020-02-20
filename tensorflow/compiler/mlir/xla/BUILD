@@ -131,12 +131,24 @@ cc_library(
 )
 
 cc_library(
-    name = "lhlo_legalize_to_affine",
-    srcs = ["transforms/lhlo_legalize_to_affine.cc"],
+    name = "map_xla_to_scalar_op",
+    srcs = [],
     hdrs = ["transforms/map_xla_to_scalar_op.h"],
     deps = [
         ":hlo",
         ":lhlo",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
+    name = "lhlo_legalize_to_affine",
+    srcs = ["transforms/lhlo_legalize_to_affine.cc"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+        ":map_xla_to_scalar_op",
         "//tensorflow/compiler/xla:status",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
@@ -151,13 +163,12 @@ cc_library(
 cc_library(
     name = "xla_legalize_to_linalg",
     srcs = ["transforms/xla_legalize_to_linalg.cc"],
-    hdrs = ["transforms/map_xla_to_scalar_op.h"],
     deps = [
         ":hlo",
         ":lhlo",
+        ":map_xla_to_scalar_op",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AllPassesAndDialects",  # TODO: only Linalg is needed
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:Pass",
@@ -170,10 +181,10 @@ cc_library(
 cc_library(
     name = "lhlo_legalize_to_gpu",
     srcs = ["transforms/lhlo_legalize_to_gpu.cc"],
-    hdrs = ["transforms/map_xla_to_scalar_op.h"],
     deps = [
         ":hlo",
         ":lhlo",
+        ":map_xla_to_scalar_op",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:GPUDialect",
@@ -193,7 +204,6 @@ cc_library(
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
-        "@llvm-project//mlir:AllPassesAndDialects",  # TODO: only Linalg is needed
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",

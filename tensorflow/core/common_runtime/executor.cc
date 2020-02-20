@@ -654,7 +654,7 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     item->input_start = frame_info->total_inputs;
     frame_info->total_inputs += n->num_inputs();
 
-    Status s = params_.create_kernel(n->def(), &item->kernel);
+    Status s = params_.create_kernel(n->properties(), &item->kernel);
     if (!s.ok()) {
       item->kernel = nullptr;
       s = AttachDef(s, *n);
@@ -2160,9 +2160,10 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      TaggedNodeSeq* ready) {
   profiler::TraceMe activity(
       [&]() {
-        return strings::StrCat(
-            "ExecutorPropagateOutputs:", item->kernel->name_view(),
-            "#id=", step_id_, "#");
+        return strings::StrCat("ExecutorPropagateOutputs#", "id=", step_id_,
+                               ",kernel_name=", item->kernel->name_view(),
+                               ",num_output_edges=", item->num_output_edges,
+                               "#");
       },
       profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
@@ -2974,12 +2975,12 @@ Status NewLocalExecutor(const LocalExecutorParams& params, const Graph& graph,
 }
 
 Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
-                             const NodeDef& ndef, int graph_def_version,
-                             OpKernel** kernel) {
+                             const std::shared_ptr<const NodeProperties>& props,
+                             int graph_def_version, OpKernel** kernel) {
   const auto device_type = DeviceType(device->attributes().device_type());
   auto allocator = device->GetAllocator(AllocatorAttributes());
   return CreateOpKernel(device_type, device, allocator, flib,
-                        device->resource_manager(), ndef, graph_def_version,
+                        device->resource_manager(), props, graph_def_version,
                         kernel);
 }
 

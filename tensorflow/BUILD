@@ -505,13 +505,15 @@ selects.config_setting_group(
 package_group(
     name = "internal",
     packages = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/...",
         "//learning/brain/swift/x10/...",
         "//perftools/accelerators/xprof/api/...",
+        "//third_party/py/autograph/...",
+        "//third_party/swift/tensorflow/x10/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
-        "//third_party/py/autograph/...",
-        "//third_party/swift/tensorflow/x10/...",
     ],
 )
 
@@ -545,8 +547,8 @@ cc_library(
     name = "grpc",
     visibility = ["//visibility:public"],
     deps = select({
-        ":linux_s390x": ["@grpc//:grpc_unsecure"],
-        "//conditions:default": ["@grpc"],
+        ":linux_s390x": ["@com_github_grpc_grpc//:grpc_unsecure"],
+        "//conditions:default": ["@com_github_grpc_grpc//:grpc"],
     }),
 )
 
@@ -554,8 +556,8 @@ cc_library(
     name = "grpc++",
     visibility = ["//visibility:public"],
     deps = select({
-        ":linux_s390x": ["@grpc//:grpc++_unsecure"],
-        "//conditions:default": ["@grpc//:grpc++"],
+        ":linux_s390x": ["@com_github_grpc_grpc//:grpc++_unsecure"],
+        "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
     }),
 )
 

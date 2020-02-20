@@ -45,6 +45,17 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %1 : tensor<*xf32>
   }
 
+// CHECK-LABEL: func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<?xf32>
+func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
+  br ^bb1
+^bb1:
+// CHECK: %[[IDENTITY:.*]] = "tf.Identity"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+// CHECK: return %[[IDENTITY]] : tensor<?xf32>
+  %ret = "tf.Identity"(%arg0) : (tensor<?xf32>) -> tensor<*xf32>
+  return %ret : tensor<*xf32>
+}
+
+
 // Tests the case where an inference opportunity relies on folding.
 
 // CHECK-LABEL: func @simple_folding

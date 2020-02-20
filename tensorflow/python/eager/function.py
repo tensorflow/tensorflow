@@ -2271,7 +2271,8 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
     flatten_inputs = nest.flatten_up_to(
         input_signature,
         inputs[:len(input_signature)],
-        expand_composites=True)
+        expand_composites=True,
+        check_types=False)  # lists are convert to tuples for `tf.data`.
   except ValueError:
     raise ValueError("Structure of Python function inputs does not match "
                      "input_signature:\n%s" %
