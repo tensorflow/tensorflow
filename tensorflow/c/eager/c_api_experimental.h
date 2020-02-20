@@ -475,6 +475,11 @@ typedef struct TFE_CustomDevice {
 void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
                               const char* device_name, void* device_info);
 
+TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
+                                                     const char* function_name,
+                                                     TF_Buffer* buf,
+                                                     TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_FULLY_CONNECTED_TEXTURE_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_FULLY_CONNECTED_TEXTURE_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_FULLY_CONNECTED_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_FULLY_CONNECTED_H_
 
 #include <vector>
 
@@ -34,24 +34,25 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class FullyConnectedTexture : public GPUOperation {
+class FullyConnected : public GPUOperation {
  public:
-  FullyConnectedTexture() = default;
+  FullyConnected() = default;
   Status AddToQueue(CLCommandQueue* queue) override;
 
   Status Compile(const CreationContext& creation_context) override;
 
   // Move only
-  FullyConnectedTexture(FullyConnectedTexture&& kernel);
-  FullyConnectedTexture& operator=(FullyConnectedTexture&& kernel);
-  FullyConnectedTexture(const FullyConnectedTexture&) = delete;
-  FullyConnectedTexture& operator=(const FullyConnectedTexture&) = delete;
+  FullyConnected(FullyConnected&& kernel);
+  FullyConnected& operator=(FullyConnected&& kernel);
+  FullyConnected(const FullyConnected&) = delete;
+  FullyConnected& operator=(const FullyConnected&) = delete;
 
  private:
-  explicit FullyConnectedTexture(const OperationDef& definition);
-  friend Status CreateFullyConnectedTexture(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const FullyConnectedAttributes& attr, FullyConnectedTexture* result);
+  explicit FullyConnected(const OperationDef& definition);
+  friend Status CreateFullyConnected(const CreationContext& creation_context,
+                                     const OperationDef& definition,
+                                     const FullyConnectedAttributes& attr,
+                                     FullyConnected* result);
 
   template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
@@ -68,7 +69,7 @@ class FullyConnectedTexture : public GPUOperation {
 };
 
 template <DataType T>
-Status FullyConnectedTexture::UploadWeights(
+Status FullyConnected::UploadWeights(
     const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
@@ -92,7 +93,7 @@ Status FullyConnectedTexture::UploadWeights(
 }
 
 template <DataType T, typename S>
-void FullyConnectedTexture::RearrangeWeights(
+void FullyConnected::RearrangeWeights(
     const ::tflite::gpu::Tensor<OHWI, T>& weights, absl::Span<S> dst) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
@@ -122,13 +123,13 @@ void FullyConnectedTexture::RearrangeWeights(
   }
 }
 
-Status CreateFullyConnectedTexture(const CreationContext& creation_context,
-                                   const OperationDef& definition,
-                                   const FullyConnectedAttributes& attr,
-                                   FullyConnectedTexture* result);
+Status CreateFullyConnected(const CreationContext& creation_context,
+                            const OperationDef& definition,
+                            const FullyConnectedAttributes& attr,
+                            FullyConnected* result);
 
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_FULLY_CONNECTED_TEXTURE_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_FULLY_CONNECTED_H_

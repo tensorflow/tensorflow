@@ -788,12 +788,17 @@ bool VariantDeviceIsCustom(
   return variant_device.index() != 0;
 }
 
-string VariantDeviceDebugString(
-    absl::variant<Device*, CustomDevice*> variant_device) {
-  if (VariantDeviceIsCustom(variant_device)) {
-    return absl::get<CustomDevice*>(variant_device)->name();
+string VariantDeviceName(absl::variant<Device*, CustomDevice*> device) {
+  return absl::visit([](auto* device) { return device->name(); }, device);
+}
+
+string VariantDeviceDebugString(absl::variant<Device*, CustomDevice*> device) {
+  if (device == kVariantDeviceNull) {
+    return "[]";
+  } else if (VariantDeviceIsCustom(device)) {
+    return absl::get<CustomDevice*>(device)->name();
   } else {
-    return absl::get<Device*>(variant_device)->DebugString();
+    return absl::get<Device*>(device)->DebugString();
   }
 }
 
@@ -816,7 +821,7 @@ string TensorHandle::DebugString() const {
   string device_debug = VariantDeviceDebugString(device_);
   strings::StrAppend(&out, "Device: ", device_debug);
   bool is_cpu =
-      !VariantDeviceIsCustom(device_) && absl::get<Device*>(device_) != nullptr;
+      !VariantDeviceIsCustom(device_) && device_ != kVariantDeviceNull;
   // Consider supporting non-CPU tensors and CPU tensors with a device_ set to
   // non-NULL if needed.
   strings::StrAppend(&out, ", Tensor: ",

@@ -660,6 +660,9 @@ size_t TRT_ShapedWeights::size_bytes() const {
       data_type_size = 2;
       break;
     case nvinfer1::DataType::kINT8:
+#if IS_TRT_VERSION_GE(7, 0, 0, 0)
+    case nvinfer1::DataType::kBOOL:
+#endif
       data_type_size = 1;
       break;
   }

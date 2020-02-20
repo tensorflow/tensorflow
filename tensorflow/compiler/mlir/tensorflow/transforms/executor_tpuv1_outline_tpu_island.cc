@@ -133,9 +133,23 @@ void TPUBridgeExecutorIslandOutlining::runOnModule() {
         /*executor_type=*/builder.getStringAttr(""));
     SmallVector<Value, 16> yield_operands(call_op.getResults());
     builder.create<YieldOp>(island_op.getLoc(), yield_operands);
+  }
 
-    // TODO(aminim): handle transitively referenced function and clone them in
-    // the new module.
+  // Outlined all the transitively called functions by moving them in the
+  // outlined module.
+  for (FuncOp func : outlined_module.getOps<FuncOp>()) {
+    func.walk([&](Operation *op) {
+      for (NamedAttribute attr : op->getAttrs()) {
+        auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>();
+        if (!symbol_ref) continue;
+        if (outlined_symbol_table.lookup<FuncOp>(symbol_ref.getValue()))
+          continue;
+        FuncOp callee = symbol_table.lookup<FuncOp>(symbol_ref.getValue());
+        callee.getOperation()->getBlock()->getOperations().remove(
+            callee.getOperation());
+        outlined_symbol_table.insert(callee);
+      }
+    });
   }
 }
 

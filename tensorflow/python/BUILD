@@ -204,6 +204,8 @@ py_library(
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/signal",
         "//tensorflow/python/profiler",
+        "//tensorflow/python/profiler:profiler_client",
+        "//tensorflow/python/profiler:profiler_v2",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:module_util",
         "//tensorflow/python/tools/api/generator:create_python_api",
@@ -2531,6 +2533,7 @@ tf_py_test(
     deps = [
         ":control_flow_ops",
         ":errors",
+        ":framework_combinations",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
         ":platform_test",

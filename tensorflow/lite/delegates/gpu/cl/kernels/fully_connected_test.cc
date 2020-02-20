@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/fully_connected_texture.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/fully_connected.h"
 
 #include <vector>
 
@@ -31,7 +31,7 @@ namespace gpu {
 namespace cl {
 namespace {
 
-TEST_F(OpenCLOperationTest, FullyConnectedTexture) {
+TEST_F(OpenCLOperationTest, FullyConnected) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 1, 1, 4);
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
@@ -51,9 +51,9 @@ TEST_F(OpenCLOperationTest, FullyConnectedTexture) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      FullyConnectedTexture operation;
-      ASSERT_OK(CreateFullyConnectedTexture(creation_context_, op_def, attr,
-                                            &operation));
+      FullyConnected operation;
+      ASSERT_OK(
+          CreateFullyConnected(creation_context_, op_def, attr, &operation));
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 1, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {14.5f, 37.5f}));

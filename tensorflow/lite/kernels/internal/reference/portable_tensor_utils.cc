@@ -77,15 +77,16 @@ void PortableAsymmetricQuantizeFloats(const float* values, const int size,
   const int32_t kMaxScale = 127;
   const double qmin_double = kMinScale;
   const double qmax_double = kMaxScale;
-  float rmin = 0.0, rmax = 0.0;
   const auto minmax = std::minmax_element(values, values + size);
-  rmin = rmin < *minmax.first ? rmin : *minmax.first;
-  rmax = rmax > *minmax.second ? rmax : *minmax.second;
+  const double rmin = std::fmin(0, *minmax.first);
+  const double rmax = std::fmax(0, *minmax.second);
   if (rmin == rmax) {
-    *scaling_factor = 0;
+    memset(quantized_values, 0, size * sizeof(int8_t));
+    *scaling_factor = 1;
     *offset = 0;
+    return;
   } else {
-    const double scale = (rmax - rmin) / (qmax_double - qmin_double);
+    double scale = (rmax - rmin) / (qmax_double - qmin_double);
     const double zero_point_from_min = qmin_double - rmin / scale;
     const double zero_point_from_max = qmax_double - rmax / scale;
     const double zero_point_from_min_error =
@@ -97,9 +98,9 @@ void PortableAsymmetricQuantizeFloats(const float* values, const int size,
             ? zero_point_from_min
             : zero_point_from_max;
     int8 nudged_zero_point = 0;
-    if (zero_point_double < qmin_double) {
+    if (zero_point_double <= qmin_double) {
       nudged_zero_point = kMinScale;
-    } else if (zero_point_double > qmax_double) {
+    } else if (zero_point_double >= qmax_double) {
       nudged_zero_point = kMaxScale;
     } else {
       nudged_zero_point = static_cast<int8>(round(zero_point_double));
@@ -107,8 +108,7 @@ void PortableAsymmetricQuantizeFloats(const float* values, const int size,
     *scaling_factor = scale;
     *offset = nudged_zero_point;
   }
-  const float scaling_factor_inv =
-      *scaling_factor == 0 ? 0 : 1.0 / *scaling_factor;
+  const float scaling_factor_inv = 1.0 / *scaling_factor;
   for (int i = 0; i < size; ++i) {
     const int32_t quantized_value = static_cast<int32_t>(
         TfLiteRound(*offset + values[i] * scaling_factor_inv));
@@ -172,6 +172,10 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* row_ptr = matrix;
     for (int row = 0; row < m_rows; ++row, result += result_stride) {
       int32_t dotprod = 0;
+      float scale = batch_scaling_factor;
+      if (per_channel_scale) {
+        scale *= per_channel_scale[row];
+      }
 #if defined(__GNUC__)
       // Prefetch the row to cache.
       __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
@@ -180,7 +184,46 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
       for (int col = 0; col < m_cols; ++col, ++row_ptr) {
         dotprod += (*row_ptr) * (vectors[col] - batch_offset);
       }  // for col
-      *result += dotprod * batch_scaling_factor * per_channel_scale[row];
+      *result += dotprod * scale;
+    }  // for row
+  }    // for batch
+}
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset,
+    int32_t* scratch, int32_t* row_sums, bool* compute_row_sums,
+    CpuBackendContext* context) {
+  if (!compute_row_sums || *compute_row_sums) {
+    memset(row_sums, 0, sizeof(int32_t) * m_rows);
+    PortableReductionSumVector(matrix, row_sums, m_rows, m_cols);
+    if (compute_row_sums) {
+      *compute_row_sums = false;
+    }
+  }
+
+  for (int batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
+    const float batch_scaling_factor = scaling_factors[batch];
+    const float batch_offset = input_offset[batch];
+    const int8_t* row_ptr = matrix;
+    for (int row = 0; row < m_rows; ++row, result += result_stride) {
+      int32_t dotprod = 0;
+      float scale = batch_scaling_factor;
+      if (per_channel_scale) {
+        scale *= per_channel_scale[row];
+      }
+#if defined(__GNUC__)
+      // Prefetch the row to cache.
+      __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
+                         3 /* temporal locality */);
+#endif
+      for (int col = 0; col < m_cols; ++col, ++row_ptr) {
+        dotprod += (*row_ptr) * vectors[col];
+      }  // for col
+      dotprod -= row_sums[row] * batch_offset;
+      *result += dotprod * scale;
     }  // for row
   }    // for batch
 }
@@ -579,6 +622,17 @@ void PortableReductionSumVector(const int32_t* input_vector,
                                 int32_t* output_vector, int output_size,
                                 int reduction_size) {
   const int32_t* input_vector_ptr = input_vector;
+  for (int o = 0; o < output_size; o++) {
+    for (int r = 0; r < reduction_size; r++) {
+      output_vector[o] += *input_vector_ptr++;
+    }
+  }
+}
+
+void PortableReductionSumVector(const int8_t* input_vector,
+                                int32_t* output_vector, int output_size,
+                                int reduction_size) {
+  const int8_t* input_vector_ptr = input_vector;
   for (int o = 0; o < output_size; o++) {
     for (int r = 0; r < reduction_size; r++) {
       output_vector[o] += *input_vector_ptr++;
