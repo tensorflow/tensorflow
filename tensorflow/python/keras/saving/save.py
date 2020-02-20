@@ -29,11 +29,11 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import keras_export
 
-# pylint:disable=g-inconsistent-quotes
+# pylint: disable=g-inconsistent-quotes
 network = LazyLoader(
     "network", globals(),
     "tensorflow.python.keras.engine.network")
-# pylint:enable=g-inconsistent-quotes
+# pylint: enable=g-inconsistent-quotes
 
 # pylint: disable=g-import-not-at-top
 if sys.version_info >= (3, 4):
