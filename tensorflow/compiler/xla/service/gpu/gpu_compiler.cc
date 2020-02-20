@@ -112,6 +112,7 @@ limitations under the License.
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -339,6 +340,16 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   return pipeline.Run(hlo_module).status();
 }
 
+// TODO(cheshire): Duplication with gpu_conv_algorithm picker, figure out a
+// right way to share this.
+static bool RequireDeterminism() {
+  bool deterministic_ops = false;
+  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                             /*default_val=*/false,
+                                             &deterministic_ops));
+  return deterministic_ops;
+}
+
 Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
@@ -360,7 +371,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   options.set_is_layout_sensitive(true);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
-  if (hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
+  if (RequireDeterminism() ||
+      hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
     pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>();
   }
 
