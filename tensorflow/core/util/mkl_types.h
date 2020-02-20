@@ -111,6 +111,7 @@ namespace tensorflow {
 #define TENSOR_FORMAT MKL_TENSOR_FORMAT
 #define TENSOR_FORMAT_NHWC MKL_TENSOR_FORMAT_NHWC
 #define TENSOR_MAX_DIMS MKLDNN_MAX_NDIMS
+#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemDesc()
 
 #else
 
@@ -208,6 +209,7 @@ namespace tensorflow {
 #define SUMMAND_MD summand_pd
 #define TENSOR_FORMAT TensorFormat
 #define TENSOR_FORMAT_NHWC FORMAT_NHWC
+#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemPrimDesc()
 #endif  // ENABLE_MKLDNN_V1
 
 }  // namespace tensorflow
