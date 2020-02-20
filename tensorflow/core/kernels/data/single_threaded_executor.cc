@@ -108,7 +108,8 @@ class SingleThreadedExecutorImpl : public Executor {
       KernelState& kernel_state = kernels_[kernel_index];
       node_to_index_map[n] = kernel_index;
 
-      TF_RETURN_IF_ERROR(params_.create_kernel(n->def(), &kernel_state.kernel));
+      TF_RETURN_IF_ERROR(
+          params_.create_kernel(n->properties(), &kernel_state.kernel));
       kernel_state.num_inputs = n->num_inputs();
       kernel_state.num_outputs = n->num_outputs();
 

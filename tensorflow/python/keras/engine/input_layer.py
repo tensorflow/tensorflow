@@ -132,6 +132,7 @@ class InputLayer(base_layer.Layer):
     self.ragged = ragged
     self.batch_size = batch_size
     self.supports_masking = True
+    self._supports_ragged_inputs = True
 
     if isinstance(input_shape, tensor_shape.TensorShape):
       input_shape = tuple(input_shape.as_list())

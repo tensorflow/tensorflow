@@ -123,6 +123,8 @@ class LayerCorrectnessTest(keras_parameterized.TestCase):
       ('BatchNormalization', normalization_v2.BatchNormalization, (2, 2),
        1e-2, 1e-2),
       ('LayerNormalization', normalization.LayerNormalization, (2, 2)),
+      ('LayerNormalizationUnfused',
+       lambda: normalization.LayerNormalization(axis=1), (2, 2, 2)),
       ('MaxPooling2D', pooling.MaxPooling2D, (2, 2, 2, 1)),
       ('AveragePooling2D', pooling.AveragePooling2D, (2, 2, 2, 1)),
       ('GlobalMaxPooling2D', pooling.GlobalMaxPooling2D, (2, 2, 2, 1)),

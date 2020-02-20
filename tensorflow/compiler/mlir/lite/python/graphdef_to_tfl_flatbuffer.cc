@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -277,6 +278,11 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   pass_config.lower_tensor_list_ops = true;
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
+  // Convert back to outlined while format for export back to flatbuffer.
+  if (pass_config.legalize_tf_while) {
+    pm.addPass(mlir::TFL::CreateWhileOutlinePass());
+  }
+  pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,

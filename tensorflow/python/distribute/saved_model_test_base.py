@@ -57,7 +57,8 @@ strategies = [
     strategy_combinations.mirrored_strategy_with_one_gpu,
     strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
     strategy_combinations.mirrored_strategy_with_two_gpus,
-    strategy_combinations.tpu_strategy
+    strategy_combinations.tpu_strategy,
+    strategy_combinations.central_storage_strategy_with_two_gpus,
 ]
 
 
@@ -141,7 +142,7 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
   def _save_model(self, model, saved_dir):
     """Save the given model to the given saved_dir.
 
-    This method needs to be implemeted by the subclasses.
+    This method needs to be implemented by the subclasses.
 
     Args:
       model: a keras model object to save.
@@ -149,8 +150,12 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
     """
     raise NotImplementedError('must be implemented in descendants')
 
-  def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
-                          output_name, experimental_run_tf_function):
+  def _load_and_run_model(self,
+                          distribution,
+                          saved_dir,
+                          predict_dataset,
+                          experimental_run_tf_function,
+                          output_name='output_1'):
     """Load the model and run 1 step of predict with it.
 
     This method must be implemented by the subclasses.
@@ -161,10 +166,10 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
       saved_dir: the string representing the path where the model is saved.
       predict_dataset: the data used to do the predict on the model for
         cross_replica context.
-      output_name: the string representing the name of the output layer of the
-        model.
       experimental_run_tf_function: Whether to use the single execution path
         for models.
+      output_name: the string representing the name of the output layer of the
+        model.
     """
 
     raise NotImplementedError('must be implemented in descendants')
@@ -210,10 +215,6 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
           distribution=distribution,
           saved_dir=saved_dir,
           predict_dataset=predict_dataset,
-          # Note that subclassed model's output names aren't defined until after
-          # the model is built (in these tests, this occurs when the model is
-          # trained).
-          output_name=getattr(model, 'output_names', [None])[0],
           experimental_run_tf_function=experimental_run_tf_function)
 
     tolerance = get_tolerance(None, distribution)
@@ -247,7 +248,6 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
         distribution=None,
         saved_dir=saved_dir,
         predict_dataset=predict_dataset,
-        output_name=getattr(model, 'output_names', [None])[0],
         experimental_run_tf_function=experimental_run_tf_function)
 
     tolerance = get_tolerance(distribution, None)
@@ -284,7 +284,6 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
           distribution=distribution_for_restoring,
           saved_dir=saved_dir,
           predict_dataset=predict_dataset,
-          output_name=getattr(model, 'output_names', [None])[0],
           experimental_run_tf_function=experimental_run_tf_function)
 
     tolerance = get_tolerance(distribution_for_saving,

@@ -121,6 +121,7 @@ class NNFreeModel {
   }
 
  private:
+  // NnApi instance to use. Not owned by this object.
   const NnApi* nnapi_;
 };
 // RAII NN API Compilation Destructor for use with std::unique_ptr
@@ -132,6 +133,19 @@ class NNFreeCompilation {
   }
 
  private:
+  // NnApi instance to use. Not owned by this object.
+  const NnApi* nnapi_;
+};
+// RAII NN API Execution Destructor for use with std::unique_ptr
+class NNFreeExecution {
+ public:
+  explicit NNFreeExecution(const NnApi* nnapi) : nnapi_(nnapi) {}
+  void operator()(ANeuralNetworksExecution* execution) {
+    nnapi_->ANeuralNetworksExecution_free(execution);
+  }
+
+ private:
+  // NnApi instance to use. Not owned by this object.
   const NnApi* nnapi_;
 };
 
@@ -146,6 +160,7 @@ class NNMemory {
   uint8_t* get_data_ptr() { return data_ptr_; }
 
  private:
+  // NnApi instance to use. Not owned by this object.
   const NnApi* nnapi_;
   int fd_ = 0;
   size_t byte_size_ = 0;

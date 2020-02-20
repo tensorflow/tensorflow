@@ -32,13 +32,12 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
-#include "tensorflow/lite/profiling/buffered_profiler.h"
-#include "tensorflow/lite/profiling/profile_summarizer.h"
+#include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
-#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
+#include "tensorflow/lite/tools/benchmark/profiling_listener.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
@@ -60,36 +59,6 @@ constexpr int kOpProfilingEnabledDefault = true;
 constexpr int kOpProfilingEnabledDefault = false;
 #endif
 
-// Dumps profiling events if profiling is enabled.
-class ProfilingListener : public BenchmarkListener {
- public:
-  ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
-      : interpreter_(interpreter), profiler_(max_num_entries) {
-    TFLITE_BENCHMARK_CHECK(interpreter);
-    interpreter_->SetProfiler(&profiler_);
-
-    // We start profiling here in order to catch events that are recorded during
-    // the benchmark run preparation stage where TFLite interpreter is
-    // initialized and model graph is prepared.
-    profiler_.Reset();
-    profiler_.StartProfiling();
-  }
-
-  void OnBenchmarkStart(const BenchmarkParams& params) override;
-
-  void OnSingleRunStart(RunType run_type) override;
-
-  void OnSingleRunEnd() override;
-
-  void OnBenchmarkEnd(const BenchmarkResults& results) override;
-
- private:
-  Interpreter* interpreter_;
-  profiling::BufferedProfiler profiler_;
-  profiling::ProfileSummarizer run_summarizer_;
-  profiling::ProfileSummarizer init_summarizer_;
-};
-
 // Dumps ruy profiling events if the ruy profiler is enabled.
 class RuyProfileListener : public BenchmarkListener {
  public:
@@ -100,41 +69,6 @@ class RuyProfileListener : public BenchmarkListener {
  private:
   std::unique_ptr<ruy::profiler::ScopeProfile> ruy_profile_;
 };
-
-void ProfilingListener::OnBenchmarkStart(const BenchmarkParams& params) {
-  // At this point, we have completed the prepration for benchmark runs
-  // including TFLite interpreter initialization etc. So we are going to process
-  // profiling events recorded during this stage.
-  profiler_.StopProfiling();
-  auto profile_events = profiler_.GetProfileEvents();
-  init_summarizer_.ProcessProfiles(profile_events, *interpreter_);
-  profiler_.Reset();
-}
-
-void ProfilingListener::OnSingleRunStart(RunType run_type) {
-  if (run_type == REGULAR) {
-    profiler_.Reset();
-    profiler_.StartProfiling();
-  }
-}
-
-void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
-  if (init_summarizer_.HasProfiles()) {
-    TFLITE_LOG(INFO) << "Profiling Info for Benchmark Initialization:";
-    TFLITE_LOG(INFO) << init_summarizer_.GetOutputString();
-  }
-  if (run_summarizer_.HasProfiles()) {
-    TFLITE_LOG(INFO)
-        << "Operator-wise Profiling Info for Regular Benchmark Runs:";
-    TFLITE_LOG(INFO) << run_summarizer_.GetOutputString();
-  }
-}
-
-void ProfilingListener::OnSingleRunEnd() {
-  profiler_.StopProfiling();
-  auto profile_events = profiler_.GetProfileEvents();
-  run_summarizer_.ProcessProfiles(profile_events, *interpreter_);
-}
 
 void RuyProfileListener::OnBenchmarkStart(const BenchmarkParams& params) {
   ruy_profile_.reset(new ruy::profiler::ScopeProfile);
@@ -272,6 +206,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
       BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
   default_params.AddParam("max_profiling_buffer_entries",
                           BenchmarkParam::Create<int32_t>(1024));
+  default_params.AddParam("profiling_output_csv_file",
+                          BenchmarkParam::Create<std::string>(""));
 
   for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
     delegate_util->AddParams(&default_params);
@@ -310,7 +246,11 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                        "require delegate to run the entire graph"),
       CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
       CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
-                          "max profiling buffer entries")};
+                          "max profiling buffer entries"),
+      CreateFlag<std::string>(
+          "profiling_output_csv_file", &params_,
+          "File path to export profile data as CSV, if not set "
+          "prints to stdout.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -344,6 +284,9 @@ void BenchmarkTfLiteModel::LogParams() {
                    << params_.Get<bool>("enable_op_profiling") << "]";
   TFLITE_LOG(INFO) << "Max profiling buffer entries: ["
                    << params_.Get<int32_t>("max_profiling_buffer_entries")
+                   << "]";
+  TFLITE_LOG(INFO) << "CSV File to export profiling data to: ["
+                   << params_.Get<std::string>("profiling_output_csv_file")
                    << "]";
 
   for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
@@ -622,8 +565,8 @@ std::unique_ptr<BenchmarkListener>
 BenchmarkTfLiteModel::MayCreateProfilingListener() const {
   if (!params_.Get<bool>("enable_op_profiling")) return nullptr;
   return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
-      interpreter_.get(),
-      params_.Get<int32_t>("max_profiling_buffer_entries")));
+      interpreter_.get(), params_.Get<int32_t>("max_profiling_buffer_entries"),
+      params_.Get<std::string>("profiling_output_csv_file")));
 }
 
 TfLiteStatus BenchmarkTfLiteModel::RunImpl() { return interpreter_->Invoke(); }

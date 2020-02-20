@@ -1,0 +1,11 @@
+HloModule Add
+
+ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
+  %x = f32[2,2]{1,0} parameter(0)
+  %y = f32[2,2]{1,0} parameter(1)
+  ROOT %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
+}
+
+// CHECK: func @add(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
+// CHECK:   "xla_lhlo.add"(%[[ARG0]], %[[ARG1]], %[[ARG2]]) : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
+// CHECK: }

@@ -265,6 +265,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tf_session",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -733,9 +734,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/check_numerics_callback_test.py"],
     python_version = "PY3",
-    tags = [
-        "notap",  # b/148484328
-    ],
     deps = [
         ":check_numerics_callback",
         "//tensorflow/python:framework_test_lib",
@@ -1151,6 +1149,7 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:pywrap_tf_session",
         "//third_party/py/numpy",
     ],
 )

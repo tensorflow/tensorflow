@@ -135,6 +135,14 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
       strings::safe_strto64(request_timeout_str, &request_timeout);
     }
     cfg.requestTimeoutMs = request_timeout;
+    const char* ca_file = getenv("S3_CA_FILE");
+    if (ca_file) {
+      cfg.caFile = Aws::String(ca_file);
+    }
+    const char* ca_path = getenv("S3_CA_PATH");
+    if (ca_path) {
+      cfg.caPath = Aws::String(ca_path);
+    }
 
     init = true;
   }
@@ -482,9 +490,9 @@ Status S3FileSystem::FileExists(const string& fname) {
 Status S3FileSystem::GetChildren(const string& dir,
                                  std::vector<string>* result) {
   string bucket, prefix;
-  TF_RETURN_IF_ERROR(ParseS3Path(dir, false, &bucket, &prefix));
+  TF_RETURN_IF_ERROR(ParseS3Path(dir, true, &bucket, &prefix));
 
-  if (prefix.back() != '/') {
+  if (!prefix.empty() && prefix.back() != '/') {
     prefix.push_back('/');
   }
 

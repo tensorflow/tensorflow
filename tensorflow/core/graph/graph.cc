@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -37,23 +37,7 @@ namespace tensorflow {
 
 const int Graph::kControlSlot = -1;
 
-struct NodeProperties {
- public:
-  NodeProperties(const OpDef* op_def, NodeDef node_def,
-                 const DataTypeSlice inputs, const DataTypeSlice outputs)
-      : op_def(op_def),
-        node_def(std::move(node_def)),
-        input_types(inputs.begin(), inputs.end()),
-        output_types(outputs.begin(), outputs.end()) {}
-
-  const OpDef* op_def;  // not owned
-  NodeDef node_def;
-  const DataTypeVector input_types;
-  const DataTypeVector output_types;
-};
-
 // Node
-
 #define REF_CLASS(key, value) \
   {key, value}, { "Ref" key, value }
 
@@ -97,7 +81,8 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"StatelessIf", NC_IF},
         {"While", NC_WHILE},
         {"StatelessWhile", NC_WHILE},
-        // Not using the constants defined in FunctionLibraryDefinition for the
+        // Not using the constants defined in FunctionLibraryDefinition
+        // for the
         // 4 ops below because android inference library does not link
         // tf.function related files.
         {"_Arg", NC_ARG},

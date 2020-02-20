@@ -75,15 +75,21 @@ void EvalIntegerSVDF(
   int32_t scratch_tensor[kScratchTensorMaxSize];
   int32_t scratch_output_tensor[kScratchTensorMaxSize];
 
-  // Rewrite last bit of state.
+  // Shift states. No need to set last state, the matmul is not accumulative.
   {
     for (int b = 0; b < n_batch; ++b) {
       int16_t* state_ptr_batch =
           GetTensorData<int16_t>(activation_state_tensor) +
           b * n_memory * n_filter;
-      for (int c = 0; c < n_filter; ++c) {
-        int16_t* state_ptr = state_ptr_batch + c * n_memory;
-        state_ptr[n_memory - 1] = 0;
+      for (int f = 0; f < n_filter; ++f) {
+        // Shift the vector left:
+        int16_t* batch_ptr = state_ptr_batch;
+        int16_t* batch_start = state_ptr_batch + 1;
+        int16_t* batch_end = state_ptr_batch + n_memory;
+        while (batch_start != batch_end) {
+          *batch_ptr++ = *batch_start++;
+        }
+        state_ptr_batch += n_memory;
       }
     }
   }
@@ -145,6 +151,12 @@ void EvalIntegerSVDF(
         dot_prod_56 = AE_MAXQ56S(dot_prod_56, output_int16_min_56);
         dot_prod_56 = AE_MINQ56S(dot_prod_56, output_int16_max_56);
         // Truncate immediately since the QR register is already 32 bit aligned:
+        // This assumes state is symmetrically quantized. Otherwise last bit of
+        // state should be initialized to its zero point and accumulate the
+        // dot_prod.
+        // Equivalent as the following:
+        //     result_in_batch = zero point, which happens to be zero.
+        //     result_in_batch += dot_prod_56.
         *result_in_batch = AE_TRUNCA32Q48(dot_prod_56);
         result_in_batch += n_memory;
       }
@@ -238,26 +250,6 @@ void EvalIntegerSVDF(
           static_cast<int8_t>(AE_TRUNCA32Q48(x_56));
     }
   }
-
-  // Shift state.
-  {
-    for (int b = 0; b < n_batch; ++b) {
-      int16_t* state_ptr_batch =
-          GetTensorData<int16_t>(activation_state_tensor) +
-          b * n_memory * n_filter;
-      for (int f = 0; f < n_filter; ++f) {
-        // Shift the vector left:
-        int16_t* batch_ptr = state_ptr_batch;
-        int16_t* batch_start = state_ptr_batch + 1;
-        int16_t* batch_end = state_ptr_batch + n_memory;
-        while (batch_start != batch_end) {
-          *batch_ptr++ = *batch_start++;
-        }
-        state_ptr_batch[n_memory - 1] = 0;
-        state_ptr_batch += n_memory;
-      }
-    }
-  }
 }
 
 }  // namespace
@@ -296,8 +288,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* weights_time =
       GetInput(context, node, kWeightsTimeTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
-  TfLiteTensor* activation_state =
-      &context->tensors[node->inputs->data[kInputActivationStateTensor]];
+  const TfLiteTensor* activation_state =
+      GetInput(context, node, kInputActivationStateTensor);
 
   // Define input constants based on input tensor definition above:
   const int rank = params->rank;
@@ -309,8 +301,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int memory_size = weights_time->dims->data[1];
 
   if (input->type != kTfLiteInt8) {
-    context->ReportError(context,
-                         "HiFi Mini kernel SVDF only supports full integer.");
+    TF_LITE_KERNEL_LOG(context,
+                       "HiFi Mini kernel SVDF only supports full integer.");
     return kTfLiteError;
   }
 
@@ -409,7 +401,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetInput(context, node, kWeightsTimeTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* activation_state =
-      &context->tensors[node->inputs->data[kInputActivationStateTensor]];
+      GetVariableInput(context, node, kInputActivationStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActRelu);
 

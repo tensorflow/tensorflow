@@ -51,6 +51,6 @@ void RespondToDetection(tflite::ErrorReporter* error_reporter,
     digitalWrite(LEDR, LOW);
   }
 
-  error_reporter->Report("Person score: %d No person score: %d", person_score,
-                         no_person_score);
+  TF_LITE_REPORT_ERROR(error_reporter, "Person score: %d No person score: %d",
+                       person_score, no_person_score);
 }

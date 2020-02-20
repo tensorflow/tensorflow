@@ -24,13 +24,13 @@ import copy
 import itertools
 import json
 import os
-import threading
 
 import numpy as np
 import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
@@ -40,6 +40,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import compile_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_module
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training_utils
@@ -50,6 +51,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
@@ -198,56 +200,26 @@ class Network(base_layer.Layer):
     generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic',
                                            'autocast'})
 
-    # Object to store all thread local layer properties.
-    self._thread_local = threading.local()
+    super(Network, self).__init__(name=name, **kwargs)
 
-    self._init_set_name(name, zero_based=True)
-    self._activity_regularizer = None
-    # This acts just like the `trainable` attribute of any layer instance.
-    self._trainable = kwargs.get('trainable', True)
-    # This attribute has no effect if the model is created using the Functional
-    # API. Instead, `model.dynamic` is determined based on the internal layers.
-    self._dynamic = kwargs.get('dynamic', False)
+    self.output_names = None
+    self.input_names = None
     self._is_compiled = False
-    self._layers = []
+    self._saved_model_inputs_spec = None
 
     # This is True for Sequential networks and Functional networks.
     self._compute_output_and_mask_jointly = False
 
-    self.supports_masking = False
     if not hasattr(self, 'optimizer'):
       # Don't reset optimizer if already set.
       self.optimizer = None
 
-    # Private attributes to implement compatibility with Layer.
-    self._maybe_create_attribute('_trainable_weights', [])
-    self._maybe_create_attribute('_non_trainable_weights', [])
-    self._updates = []  # Used in symbolic mode only.
-    self._losses = []
-    self._callable_losses = []
-    # A list of metric instances corresponding to the symbolic metric tensors
-    # added using the `add_metric` API.
-    self._metrics = []
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
     if context.executing_eagerly():
       self._graph = None
     else:
       self._graph = ops.get_default_graph()  # Used in symbolic mode only.
-
-    # Both graph and subclassed networks have a dtype policy. For graph
-    # networks, the policy's compute and variable dtypes are ignored, but other
-    # fields, like the loss scale, are used by Models. For subclassed networks,
-    # the compute and variable dtypes are used as like any ordinary layer.
-    self._set_dtype_policy(kwargs.get('dtype', None))
-
-    # All layers in order of horizontal graph traversal.
-    # Entries are unique. Includes input and output layers.
-    self._maybe_create_attribute('_layers', [])
-
-    # Used in symbolic mode only, only in conjunction with graph-networks
-    self._outbound_nodes = []
-    self._inbound_nodes = []
 
     self._trackable_saver = (
         trackable_utils.saver_with_op_caching(self))
@@ -277,6 +249,7 @@ class Network(base_layer.Layer):
     # A Network does not create weights of its own, thus it is already
     # built.
     self.built = True
+    self._build_input_shape = nest.map_structure(lambda x: x.shape, inputs)
     self._compute_output_and_mask_jointly = True
     self._is_graph_network = True
     # `_expects_training_arg` is True since the `training` argument is always
@@ -358,6 +331,7 @@ class Network(base_layer.Layer):
         self._feed_inputs.append(layer.input)
 
     self._compute_tensor_usage_count()
+    self._set_save_spec(self._nested_inputs)
 
   def _set_output_names(self):
     """Assigns unique names to the Network's outputs.
@@ -386,9 +360,10 @@ class Network(base_layer.Layer):
     self._autocast = kwargs.get('autocast',
                                 base_layer_utils.v2_dtype_behavior_enabled())
     self._supports_ragged_inputs = None
-    self.outputs = []
-    self.inputs = []
+    self.outputs = None
+    self.inputs = None
     self.built = False
+    self._build_input_shape = None
 
   @property
   @trackable_layer_utils.cache_recursive_attribute('dynamic')
@@ -400,7 +375,7 @@ class Network(base_layer.Layer):
   @property
   def _layer_checkpoint_dependencies(self):
     """Dictionary of layer dependencies to be included in the checkpoint."""
-    # Use getattr becuase this function can be called from __setattr__, at which
+    # Use getattr because this function can be called from __setattr__, at which
     # point the _is_graph_network attribute has not been created.
     if (not getattr(self, '_is_graph_network', False) and
         base_layer_utils.is_subclassed(self)):
@@ -604,24 +579,7 @@ class Network(base_layer.Layer):
         A list of `InputSpec` instances (one per input to the model)
             or a single instance if the model has only one input.
     """
-    # If subclassed model, can't assume anything.
-    if not self._is_graph_network:
-      return None
-
-    specs = []
-    for layer in self._input_layers:
-      if layer.input_spec is None:
-        specs.append(None)
-      else:
-        if not isinstance(layer.input_spec, list):
-          raise TypeError('Layer ' + layer.name +
-                          ' has an input_spec attribute that '
-                          'is not a list. We expect a list. '
-                          'Found input_spec = ' + str(layer.input_spec))
-        specs += layer.input_spec
-    if len(specs) == 1:
-      return specs[0]
-    return specs
+    return
 
   @base_layer_utils.default
   def build(self, input_shape):
@@ -652,7 +610,7 @@ class Network(base_layer.Layer):
       on real tensor data.
     """
     if self._is_graph_network:
-      self.built = True
+      super(Network, self).build(input_shape)
       return
 
     # If subclass network
@@ -679,6 +637,11 @@ class Network(base_layer.Layer):
         if isinstance(input_shape, list):
           x = [base_layer_utils.generate_placeholders_from_shape(shape)
                for shape in input_shape]
+        elif isinstance(input_shape, dict):
+          x = {
+              k: base_layer_utils.generate_placeholders_from_shape(shape)
+              for k, shape in input_shape.items()
+          }
         else:
           x = base_layer_utils.generate_placeholders_from_shape(input_shape)
 
@@ -717,7 +680,7 @@ class Network(base_layer.Layer):
                            'model, `call` your model on real tensor data (of '
                            'the correct dtype).')
 
-    self.built = True
+    super(Network, self).build(input_shape)
 
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
@@ -757,7 +720,9 @@ class Network(base_layer.Layer):
                        ': model has ' + str(len(self._input_layers)) +
                        ' tensor inputs.')
 
-    cache_key = generic_utils.object_list_uid(input_shape)
+    # Use the tuple of TensorShape as the cache key, since tuple is hashable
+    # and can be used as hash key.
+    cache_key = tuple(tf_utils.convert_shapes(input_shape, to_tuples=True))
     if cache_key in self._output_shape_cache:
       # Cache hit. Return shapes as TensorShapes.
       return self._output_shape_cache[cache_key]
@@ -865,8 +830,7 @@ class Network(base_layer.Layer):
     tensor_dict = {}
 
     for x, y in zip(self.inputs, inputs):
-      x_id = str(id(x))
-      tensor_dict[x_id] = [y] * self._tensor_usage_count[x_id]
+      # Set shape and dtype based on `keras.Input`s.
       if isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor):
         try:
           y.set_shape(y.shape.merge_with(x.shape))
@@ -875,6 +839,11 @@ class Network(base_layer.Layer):
               'Model was constructed with shape {} for input {}, but it was '
               're-called on a Tensor with incompatible shape {}.'
               .format(x, x.shape, y.shape))
+      if isinstance(x, (ops.Tensor, composite_tensor.CompositeTensor)):
+        y = math_ops.cast(y, dtype=x.dtype)
+
+      x_id = str(id(x))
+      tensor_dict[x_id] = [y] * self._tensor_usage_count[x_id]
 
     depth_keys = list(self._nodes_by_depth.keys())
     depth_keys.sort(reverse=True)
@@ -910,7 +879,9 @@ class Network(base_layer.Layer):
 
           # Map Keras tensors in kwargs to their computed value.
           def _map_tensor_if_from_keras_layer(t):
-            if isinstance(t, ops.Tensor) and hasattr(t, '_keras_history'):
+            if (isinstance(t,
+                           (ops.Tensor, composite_tensor.CompositeTensor)) and
+                hasattr(t, '_keras_history')):
               t_id = str(id(t))
               return tensor_dict[t_id].pop()
             return t
@@ -936,7 +907,7 @@ class Network(base_layer.Layer):
 
     if output_shapes is not None:
       input_shapes = [x.shape for x in inputs]
-      cache_key = generic_utils.object_list_uid(input_shapes)
+      cache_key = tuple(tf_utils.convert_shapes(input_shapes, to_tuples=True))
       self._output_shape_cache[cache_key] = nest.pack_sequence_as(
           self._nested_outputs, output_shapes)
 
@@ -1092,28 +1063,7 @@ class Network(base_layer.Layer):
         ValueError: For invalid/unknown format arguments.
     """
     self._assert_weights_created()
-    filepath_is_h5 = _is_hdf5_filepath(filepath)
-    if save_format is None:
-      if filepath_is_h5:
-        save_format = 'h5'
-      else:
-        save_format = 'tf'
-    else:
-      user_format = save_format.lower().strip()
-      if user_format in ('tensorflow', 'tf'):
-        save_format = 'tf'
-      elif user_format in ('hdf5', 'h5', 'keras'):
-        save_format = 'h5'
-      else:
-        raise ValueError(
-            'Unknown format "%s". Was expecting one of {"tf", "h5"}.' % (
-                save_format,))
-    if save_format == 'tf' and filepath_is_h5:
-      raise ValueError(
-          ('save_weights got save_format="tf"/"tensorflow", but the '
-           'filepath ("%s") looks like an HDF5 file. Omit the ".h5"/".keras" '
-           'when saving in TensorFlow format.')
-          % filepath)
+    save_format = validate_save_format(filepath, save_format)
 
     if save_format == 'h5' and h5py is None:
       raise ImportError(
@@ -1500,8 +1450,9 @@ class Network(base_layer.Layer):
           kwargs = copy.copy(node.arguments) if node.arguments else {}
 
           for tensor in nest.flatten(kwargs):
-            if isinstance(tensor, ops.Tensor) and hasattr(tensor,
-                                                          '_keras_history'):
+            if (isinstance(tensor,
+                           (ops.Tensor, composite_tensor.CompositeTensor)) and
+                hasattr(tensor, '_keras_history')):
               tensor_usage_count[str(id(tensor))] += 1
 
           for tensor in nest.flatten(node.input_tensors):
@@ -1560,6 +1511,32 @@ class Network(base_layer.Layer):
     new_nodes.extend(add_metric_layer.inbound_nodes)
     new_layers.append(add_metric_layer)
     self._insert_layers(new_layers, new_nodes)
+
+  @trackable.no_automatic_dependency_tracking
+  def _set_save_spec(self, inputs):
+    if self._saved_model_inputs_spec is not None:
+      return  # Already set.
+
+    input_names = self.input_names
+    if not input_names:
+      input_names = compile_utils.create_pseudo_input_names(inputs)
+
+    flat_inputs = nest.flatten(inputs)
+    specs = []
+    for name, tensor in zip(input_names, flat_inputs):
+      specs.append(
+          tf_utils.get_tensor_spec(tensor, dynamic_batch=False, name=name))
+    specs = nest.pack_sequence_as(inputs, specs)
+
+    self._saved_model_inputs_spec = specs
+
+  def _get_save_spec(self, dynamic_batch=True):
+    if self._saved_model_inputs_spec is None:
+      return None
+
+    return nest.map_structure(
+        lambda t: tf_utils.get_tensor_spec(t, dynamic_batch=dynamic_batch),
+        self._saved_model_inputs_spec)
 
   @property
   def _trackable_saved_model_saver(self):
@@ -2109,3 +2086,67 @@ def get_network_config(network, serialize_layer_fn=None):
   model_outputs = tf_utils.convert_inner_node_data(model_outputs)
   config['output_layers'] = model_outputs
   return config
+
+
+def validate_save_format(filepath, save_format, default='tf'):
+  """Validates `save_format` argument passed to methods used for saving.
+
+  Returns either 'tf' or 'h5', indicating whether to save the model
+  to Tensorflow SavedModel or HDF5. Output will default to 'tf' in TF2.X and
+  'h5' in TF1.X.
+
+  Defaults to 'h5' if `filepath` is a path to a hdf5 file (having suffix '.h5'
+  or '.hdf5' or '.keras') or is an h5py.File object.
+
+  Args:
+    filepath: Value of the `filepath` argument passed to the method.
+      Can be: - String - h5py.File object
+    save_format: String, value of the 'save_format' argument as passed.
+    default: Default format if save_format isn't specified and the filepath
+      doesn't indicate that the format is 'h5'.
+
+  Returns:
+    save_format: String, 'h5' or 'tf'. The processed
+    value of the `save_format` argument.
+
+  Raises:
+    ValueError: If
+      - `filepath` is not a String or an h5py.File object.
+      - `save_format` is not valid. Valid values are "tensorflow", "tf" for
+        saving in SavedModel format, and "hdf5", "keras" or "h5" for saving in
+        h5 format.
+      - `save_format` is "tf" but `filepath` is a path to a h5 file.
+      - `save_format` is "tf" but `filepath` is an h5py.File object.
+  """
+  if not isinstance(filepath, (str, h5py.File)):
+    raise ValueError(
+        'Expected `filepath` to be a String or h5py.File object. Got '
+        'unsupported value %s of type %s' % (filepath, type(filepath)))
+
+  filepath_is_h5py_file = h5py is not None and isinstance(filepath, h5py.File)
+  filepath_is_h5 = isinstance(filepath, str) and _is_hdf5_filepath(filepath)
+  if save_format is None:
+    if filepath_is_h5 or filepath_is_h5py_file:
+      save_format = 'h5'
+    else:
+      save_format = default
+  else:
+    user_format = save_format.lower().strip()
+    if user_format in ('tensorflow', 'tf'):
+      save_format = 'tf'
+    elif user_format in ('hdf5', 'h5', 'keras'):
+      save_format = 'h5'
+    else:
+      raise ValueError(
+          'Unknown format "%s". Was expecting one of {"tf", "h5"}.' %
+          (save_format))
+  if save_format == 'tf' and filepath_is_h5:
+    raise ValueError(
+        ('Got save_format="tf"/"tensorflow", but the filepath ("%s") looks '
+         'like an HDF5 file. Omit the ".h5"/".keras" when saving in '
+         'TensorFlow format.') % filepath)
+  if save_format == 'tf' and filepath_is_h5py_file:
+    raise ValueError(
+        'Got save_format="tf"/"tensorflow", but the given `filepath`'
+        'is an h5py.File object.')
+  return save_format

@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -51,7 +50,7 @@ class OptimizeInputOutputBufferAlias : public HloModulePass {
   ~OptimizeInputOutputBufferAlias() override = default;
 
   absl::string_view name() const override {
-    return "optimize_input_output_buffer_alias";
+    return "optimize_input_output_buffer_alias.h";
   }
 
   StatusOr<bool> Run(HloModule* module) override;
@@ -59,8 +58,7 @@ class OptimizeInputOutputBufferAlias : public HloModulePass {
  private:
   friend class OptimizeInputOutputBufferAliasTest;
 
-  StatusOr<bool> Build(absl::Span<const Shape* const> input_shapes,
-                       const Shape& output_shape,
+  StatusOr<bool> Build(const Shape& input_shape, const Shape& output_shape,
                        HloInputOutputAliasConfig* alias_config);
 };
 

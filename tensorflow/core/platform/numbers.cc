@@ -62,7 +62,7 @@ T locale_independent_strtonum(const char* str, const char** endptr) {
   string special_num_str;
   s >> special_num_str;
 
-  for (int i = 0; i < special_num_str.length(); ++i) {
+  for (size_t i = 0; i < special_num_str.length(); ++i) {
     special_num_str[i] =
         std::tolower(special_num_str[i], std::locale::classic());
   }

@@ -366,6 +366,8 @@ renames = {
         'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
     'tf.estimator.tpu.experimental.EmbeddingConfigSpec':
         'tf.compat.v1.estimator.tpu.experimental.EmbeddingConfigSpec',
+    'tf.executing_eagerly_outside_functions':
+        'tf.compat.v1.executing_eagerly_outside_functions',
     'tf.experimental.output_all_intermediates':
         'tf.compat.v1.experimental.output_all_intermediates',
     'tf.expm1':
@@ -849,7 +851,7 @@ renames = {
     'tf.nn.ctc_beam_search_decoder_v2':
         'tf.nn.ctc_beam_search_decoder',
     'tf.nn.ctc_loss_v2':
-        'tf.nn.ctc_loss',
+        'tf.compat.v1.nn.ctc_loss_v2',
     'tf.nn.depthwise_conv2d_native':
         'tf.compat.v1.nn.depthwise_conv2d_native',
     'tf.nn.depthwise_conv2d_native_backprop_filter':
@@ -1328,6 +1330,8 @@ renames = {
         'tf.compat.v1.to_int64',
     'tf.tpu.CrossShardOptimizer':
         'tf.compat.v1.tpu.CrossShardOptimizer',
+    'tf.tpu.PaddingSpec':
+        'tf.compat.v1.tpu.PaddingSpec',
     'tf.tpu.batch_parallel':
         'tf.compat.v1.tpu.batch_parallel',
     'tf.tpu.bfloat16_scope':

@@ -218,14 +218,14 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         Softmax2DQuantized(input, output, params, op_data);
         return kTfLiteOk;
       }
-      context->ReportError(context,
-                           "Only 2D tensors supported currently, got %dD.",
-                           NumDimensions(input));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only 2D tensors supported currently, got %dD.",
+                         NumDimensions(input));
       return kTfLiteError;
     }
     default:
-      context->ReportError(context, "Only int8_t supported currently, got %d.",
-                           input->type);
+      TF_LITE_KERNEL_LOG(context, "Only int8_t supported currently, got %d.",
+                         input->type);
       return kTfLiteError;
   }
 }

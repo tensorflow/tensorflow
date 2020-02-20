@@ -68,10 +68,10 @@ MICROLITE_LIBS := -lm
 # There are no rules for compiling objects for the host system (since we don't
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
-CXXFLAGS := -O3 -DNDEBUG
+CXXFLAGS := -O3
 CXXFLAGS += -std=c++11 -g -DTF_LITE_STATIC_MEMORY
 CXXFLAGS += -fno-rtti
-CCFLAGS := -DNDEBUG -g -DTF_LITE_STATIC_MEMORY
+CCFLAGS := -g -DTF_LITE_STATIC_MEMORY
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
@@ -80,6 +80,8 @@ CC_PREFIX :=
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
 MICROLITE_LIB_NAME := libtensorflow-microlite.a
+
+MICRO_LITE_EXAMPLE_TESTS := $(wildcard tensorflow/lite/micro/examples/*/Makefile.inc)
 
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/micro/*test.cc) \
@@ -146,6 +148,8 @@ tensorflow/lite/kernels/internal/reference/pooling.h \
 tensorflow/lite/kernels/internal/reference/prelu.h \
 tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h \
 tensorflow/lite/kernels/internal/reference/quantize.h \
+tensorflow/lite/kernels/internal/reference/reduce.h \
+tensorflow/lite/kernels/internal/reference/requantize.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
@@ -240,7 +244,7 @@ CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${CC_TOOL}
 AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
 # Load the examples.
-include $(wildcard tensorflow/lite/micro/examples/*/Makefile.inc)
+include $(MICRO_LITE_EXAMPLE_TESTS)
 
 # Create rules for downloading third-party dependencies.
 THIRD_PARTY_TARGETS :=
@@ -307,6 +311,9 @@ $(foreach TEST_TARGET,$(filter tensorflow/lite/micro/kernels/%,$(MICROLITE_TEST_
 $(eval $(call microlite_test,kernel_$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
 test: $(MICROLITE_TEST_TARGETS)
+
+# Just build the test targets
+build: $(MICROLITE_BUILD_TARGETS)
 
 generate_projects: $(ALL_PROJECT_TARGETS)
 

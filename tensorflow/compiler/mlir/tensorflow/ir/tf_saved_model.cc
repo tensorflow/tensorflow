@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // TF:llvm-project
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace tf_saved_model {
@@ -64,6 +65,13 @@ static LogicalResult Verify(GlobalTensorOp global_tensor) {
           global_tensor.type(), global_tensor.value().Attribute::getType()))) {
     return global_tensor.emitError() << "'type' and 'value' attributes should "
                                         "have compatible tensor types";
+  }
+  if (!global_tensor.is_mutable()) {
+    if (!global_tensor.type().cast<TensorType>().hasStaticShape()) {
+      return global_tensor.emitError()
+             << "'type' attribute for immutable 'tf_saved_model.global_tensor' "
+                "should have a static shape";
+    }
   }
   return success();
 }
@@ -104,6 +112,28 @@ static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
   return mlir::success();
 }
 
+static LogicalResult VerifyBoundInputArgType(Operation *op_for_diagnostics,
+                                             Type arg_type,
+                                             GlobalTensorOp global_tensor) {
+  if (global_tensor.is_mutable()) {
+    auto expected_type = RankedTensorType::get(
+        {}, TF::ResourceType::get({global_tensor.type().cast<TensorType>()},
+                                  arg_type.getContext()));
+    if (arg_type != expected_type) {
+      return op_for_diagnostics->emitError()
+             << "mutable bound input with type " << arg_type
+             << " expected to have type " << expected_type;
+    }
+  } else {
+    if (arg_type != global_tensor.type()) {
+      return op_for_diagnostics->emitError()
+             << "bound input for immutable 'tf_saved_model.global_tensor' must "
+                "match the global tensor's type";
+    }
+  }
+  return success();
+}
+
 LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     Operation *op, unsigned region_index, unsigned arg_index,
     NamedAttribute named_attr) {
@@ -120,8 +150,8 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
                                 "reference a valid symbol, got invalid symbol '"
                              << symbol_name << "'";
     }
-    // TODO(silvasean): Check that argument type matches with the value.
-    return success();
+    auto arg_type = cast<FuncOp>(op).getArgument(arg_index).getType();
+    return VerifyBoundInputArgType(op, arg_type, global_tensor);
   }
   if (named_attr.first == "tf_saved_model.index_path") {
     return VerifyIndexPath(op, named_attr);
@@ -140,6 +170,22 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionResultAttribute(
 
   return op->emitError() << "unknown tf_saved_model dialect result attribute '"
                          << named_attr.first << "'";
+}
+
+static bool HasAnyTfSavedModelArgAttr(FuncOp func) {
+  for (int i = 0, e = func.getNumArguments(); i < e; i++) {
+    if (func.getArgAttr(i, "tf_saved_model.index_path") ||
+        func.getArgAttr(i, "tf_saved_model.bound_input")) {
+      return true;
+    }
+  }
+  for (int i = 0, e = func.getNumResults(); i < e; i++) {
+    if (func.getResultAttr(i, "tf_saved_model.index_path") ||
+        func.getResultAttr(i, "tf_saved_model.bound_input")) {
+      return true;
+    }
+  }
+  return false;
 }
 
 static LogicalResult VerifySavedModelModule(
@@ -166,6 +212,15 @@ static LogicalResult VerifySavedModelModule(
             .append("duplicate exported name '", exported_name, "'")
             .attachNote(p.first->getSecond()->getLoc())
             .append("previously seen here");
+      }
+    }
+  }
+  for (auto func : module.getOps<FuncOp>()) {
+    if (HasAnyTfSavedModelArgAttr(func)) {
+      if (!IsExported(func)) {
+        return func.emitError()
+               << "can only apply 'tf_saved_model' argument attributes "
+                  "to exported functions";
       }
     }
   }

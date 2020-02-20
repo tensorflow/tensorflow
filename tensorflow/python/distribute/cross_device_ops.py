@@ -34,6 +34,7 @@ from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -61,13 +62,9 @@ def validate_destinations(destinations):
   """Validates the `destination` is one of expected types."""
   if not isinstance(
       destinations,
-      (
-          value_lib.DistributedValues,
-          resource_variable_ops.BaseResourceVariable,
-          ops.Tensor,
-          value_lib.AggregatingVariable,
-          six.string_types,
-          value_lib.TPUMirroredVariable)):
+      (value_lib.DistributedValues, ops.Tensor, value_lib.AggregatingVariable,
+       six.string_types, value_lib.TPUMirroredVariable)
+  ) and not resource_variable_ops.is_resource_variable(destinations):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, or a device string.")
 
@@ -157,7 +154,7 @@ def _validate_value_destination_pairs(value_destination_pairs):
 # CrossDeviceOps.
 def get_devices_from(destinations):
   if isinstance(destinations, value_lib.DistributedValues):
-    return destinations.devices
+    return destinations._devices  # pylint: disable=protected-access
   elif isinstance(destinations, six.string_types):
     return (device_util.resolve(destinations),)
   return (device_util.resolve(destinations.device),)
@@ -438,18 +435,18 @@ def _group_value_by_device(per_replica_values):
     ]
 
   Args:
-    per_replica_values: a list of PerReplica obejcts.
+    per_replica_values: a list of PerReplica objects.
 
   Returns:
     a list of lists, each sublist has components for its corresponding device of
       PerReplica objects, paired with a None.
   """
-  destinations = per_replica_values[0].devices
+  destinations = per_replica_values[0]._devices  # pylint: disable=protected-access
   grouped = [[] for _ in range(len(destinations))]
   for per_replica_value in per_replica_values:
     # pylint: disable=protected-access
     for i, v in enumerate(per_replica_value.values):
-      assert per_replica_value.devices == destinations
+      assert per_replica_value._devices == destinations
       grouped[i].append((v, None))
   return grouped
 
@@ -592,57 +589,10 @@ class _ConcatAndSplitPacker(object):
     return aggregated_device_grads
 
 
-class _AggregateSmallTensorPacker(object):
-  """Concatenate small gradient tensors together for reduction."""
-
-  def __init__(self,
-               agg_small_grads_max_bytes=1048576,
-               agg_small_grads_max_group=16):
-    """Initialize the _AggregateSmallTensorPacker object.
-
-    Args:
-      agg_small_grads_max_bytes: largest tensor eligible for aggregation,
-        in number of bytes.
-      agg_small_grads_max_group: largest permitted aggregation of small
-        tensors.
-
-    Raises:
-      ValueError: if `agg_small_grads_max_bytes` or `agg_small_grads_max_group`
-        is not greater than 0.
-    """
-    if agg_small_grads_max_bytes <= 0 or agg_small_grads_max_group <= 0:
-      raise ValueError("agg_small_grads_max_bytes and agg_small_grads_max_group"
-                       " should both be greater than zero.")
-    self.agg_small_grads_max_bytes = agg_small_grads_max_bytes
-    self.agg_small_grads_max_group = agg_small_grads_max_group
-
-  def pack(self, grouped_grads_and_vars):
-    """Aggregate small tensors."""
-    if (self.agg_small_grads_max_bytes > 0 and
-        self.agg_small_grads_max_group > 0):
-      device_grads, self.packing = cross_device_utils.pack_small_tensors(
-          grouped_grads_and_vars,
-          max_bytes=self.agg_small_grads_max_bytes,
-          max_group=self.agg_small_grads_max_group)
-    return device_grads
-
-  def unpack(self, summed_device_grad_packs):
-    """Reverse the aggregation process."""
-    return cross_device_utils.unpack_small_tensors(summed_device_grad_packs,
-                                                   self.packing)
-
-
-def _pack_tensors(device_grads,
-                  num_packs=0,
-                  agg_small_grads_max_bytes=0,
-                  agg_small_grads_max_group=0):
+def _pack_tensors(device_grads, num_packs=0):
   """Pack tensors if specified."""
   if num_packs > 0:
     tensor_packer = _ConcatAndSplitPacker(num_packs)
-    device_grad_packs = tensor_packer.pack(device_grads)
-  elif agg_small_grads_max_bytes > 0 and agg_small_grads_max_group > 0:
-    tensor_packer = _AggregateSmallTensorPacker(agg_small_grads_max_bytes,
-                                                agg_small_grads_max_group)
     device_grad_packs = tensor_packer.pack(device_grads)
   else:
     tensor_packer = None
@@ -660,34 +610,19 @@ def _unpack_tensors(reduced, tensor_packer=None):
 class AllReduceCrossDeviceOps(CrossDeviceOps):
   """Reduction using all-reduce."""
 
-  def __init__(self,
-               all_reduce_alg="nccl",
-               num_packs=1,
-               agg_small_grads_max_bytes=0,
-               agg_small_grads_max_group=10):
+  def __init__(self, all_reduce_alg="nccl", num_packs=1):
     """All-reduce implementation of CrossDeviceOps.
 
-    Before performing all-reduce, tensors will be repacked or aggregated for
-    more efficient cross-device transportation:
-      1) If `num_packs` is non-zero, pack values into
-        `num_packs` splits.
-      2) Otherwise, if `agg_small_grads_max_bytes` > 0 and
-        `agg_small_grads_max_group` > 0, aggregate values smaller than
-        `agg_small_grads_max_bytes` into groups with at most
-        `agg_small_grads_max_group` values.
-      3) Otherwise, no repacking or grouping will happen.
+    Before performing all-reduce, tensors will be packed for more efficient
+    cross-device transportation.
 
     Args:
       all_reduce_alg: the all-reduce algorithm to use, currently only "nccl" or
         "hierarchical_copy" are supported.
-      num_packs: see above.
-      agg_small_grads_max_bytes: see above.
-      agg_small_grads_max_group: see above.
+      num_packs: If non-zero, pack values into `num_packs` splits.
     """
     self._all_reduce_alg = all_reduce_alg
     self._num_packs = num_packs
-    self._agg_small_grads_max_bytes = agg_small_grads_max_bytes
-    self._agg_small_grads_max_group = agg_small_grads_max_group
     self._simple_cross_replica_ops = ReductionToOneDevice()
     super(AllReduceCrossDeviceOps, self).__init__()
 
@@ -727,18 +662,14 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
   def _do_batch_all_reduce(self, reduce_op, dense_values):
     """Run batch all-reduces."""
     logging.log_first_n(
-        logging.INFO, "batch_all_reduce: %d all-reduces with algorithm = %s, "
-        "num_packs = %d, agg_small_grads_max_bytes = %d and "
-        "agg_small_grads_max_group = %d" %
-        (len(dense_values), self._all_reduce_alg, self._num_packs,
-         self._agg_small_grads_max_bytes, self._agg_small_grads_max_group), 10)
+        logging.INFO,
+        "batch_all_reduce: %d all-reduces with algorithm = %s, num_packs = %d" %
+        (len(dense_values), self._all_reduce_alg, self._num_packs), 10)
 
-    destinations = dense_values[0].devices
+    destinations = dense_values[0]._devices  # pylint: disable=protected-access
     grouped = _group_value_by_device(dense_values)
 
-    device_grad_packs, tensor_packer = _pack_tensors(
-        grouped, self._num_packs, self._agg_small_grads_max_bytes,
-        self._agg_small_grads_max_group)
+    device_grad_packs, tensor_packer = _pack_tensors(grouped, self._num_packs)
 
     # The actual aggregation of the repacked gradients. Note that they are
     # sharded among different aggregation trees. So it is important to strike
@@ -842,9 +773,7 @@ class MultiWorkerAllReduce(AllReduceCrossDeviceOps):
                worker_devices,
                num_gpus_per_worker,
                all_reduce_spec=("pscpu/pscpu", 2, -1),
-               num_packs=0,
-               agg_small_grads_max_bytes=0,
-               agg_small_grads_max_group=10):
+               num_packs=0):
     """Initialize the all-reduce algorithm.
 
     Args:
@@ -871,15 +800,10 @@ class MultiWorkerAllReduce(AllReduceCrossDeviceOps):
         "pscpu/pscpu" algorithm. The third elements should be in increasing
         order across tuples and end with -1 which indicates infinity.
       num_packs: see AllReduceCrossDeviceOps.
-      agg_small_grads_max_bytes: see AllReduceCrossDeviceOps.
-      agg_small_grads_max_group: see AllReduceCrossDeviceOps.
     """
     self._worker_devices = worker_devices
     self._num_gpus_per_worker = num_gpus_per_worker
-    super(MultiWorkerAllReduce, self).__init__(
-        num_packs=num_packs,
-        agg_small_grads_max_bytes=agg_small_grads_max_bytes,
-        agg_small_grads_max_group=agg_small_grads_max_group)
+    super(MultiWorkerAllReduce, self).__init__(num_packs=num_packs)
 
     def validate_and_complete_spec(spec):
       """Validate and complete the all-reduce spec."""
@@ -910,12 +834,9 @@ class MultiWorkerAllReduce(AllReduceCrossDeviceOps):
   def _batch_all_reduce(self, reduce_op, per_replica_values):
     """All-reduce algorithm in a batch."""
     logging.log_first_n(
-        logging.INFO,
-        "Distributed batch_all_reduce: %d all-reduces with "
-        "allreduce_spec = %r, num_packs = %d, agg_small_grads_max_bytes = %d, "
-        "and agg_small_grads_max_group = %d" %
-        (len(per_replica_values), self._all_reduce_spec, self._num_packs,
-         self._agg_small_grads_max_bytes, self._agg_small_grads_max_group), 10)
+        logging.INFO, "Distributed batch_all_reduce: %d all-reduces with "
+        "allreduce_spec = %r, num_packs = %d" %
+        (len(per_replica_values), self._all_reduce_spec, self._num_packs), 10)
 
     device_grads = _group_value_by_device(per_replica_values)
 
@@ -938,8 +859,7 @@ class MultiWorkerAllReduce(AllReduceCrossDeviceOps):
             spec_tuple.limit, remaining_grads)
       if this_grads:
         device_grad_packs, tensor_packer = _pack_tensors(
-            this_grads, self._num_packs, self._agg_small_grads_max_bytes,
-            self._agg_small_grads_max_group)
+            this_grads, self._num_packs)
         range_agg_grads = cross_device_utils.sum_gradients_all_reduce(
             self._worker_devices, device_grad_packs, len(self._worker_devices),
             spec_tuple.alg, spec_tuple.shards, range(self._num_gpus_per_worker))
@@ -1013,7 +933,7 @@ class CollectiveAllReduce(CrossDeviceOps):
     devices = get_devices_from(destinations)
 
     if (isinstance(all_reduced, value_lib.Mirrored) and
-        (all_reduced.devices == devices)):
+        (all_reduced._devices == devices)):  # pylint: disable=protected-access
       return all_reduced
 
     # Convert `all_reduced` to a `Mirrored` object, as a simple and uniform
@@ -1035,7 +955,7 @@ class CollectiveAllReduce(CrossDeviceOps):
           else:
             # TODO(josh11b): Once we add support for model parallelism, get the
             # copy from the corresponding replica instead of the primary.
-            index.append(array_ops.identity(all_reduced.primary))
+            index.append(array_ops.identity(all_reduced._primary))  # pylint: disable=protected-access
     return value_lib.regroup(index, wrap_class=value_lib.Mirrored)
 
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs):
@@ -1121,15 +1041,14 @@ class CollectiveAllReduce(CrossDeviceOps):
     if batch_size > 1:
       logging.info(
           "Collective batch_all_reduce: %d all-reduces, num_workers = %d, "
-          "communication_hint = %s, num_packs = %d" % (
-              batch_size, self._num_workers, communication_hint,
-              num_actual_packs))
+          "communication_hint = %s, num_packs = %d" %
+          (batch_size, self._num_workers, communication_hint, num_actual_packs))
     else:
       logging.log_first_n(
           logging.INFO, "Collective batch_all_reduce: %d all-reduces, "
-          "num_workers = %d, communication_hint = %s, num_packs = %d" % (
-              batch_size, self._num_workers, communication_hint,
-              num_actual_packs), 10)
+          "num_workers = %d, communication_hint = %s, num_packs = %d" %
+          (batch_size, self._num_workers, communication_hint, num_actual_packs),
+          10)
 
     def batch_fn():
       """Wrapper function around batched all-reduce calls."""
@@ -1142,13 +1061,13 @@ class CollectiveAllReduce(CrossDeviceOps):
       #
       # TODO(b/147393503): explore solutions for optimal gradient grouping.
       for chunk in reversed(chunked_gv):
-        # By placing all collective ops in a chunk under single name scope, we
-        # ensure they will be picked up by the `ScopedAllocator` grappler
-        # optimizer and packed into a single all-reduce.
+        # By placing all CollectiveReduce ops in a chunk under single name
+        # scope, we ensure they will be picked up by the `ScopedAllocator`
+        # grappler optimizer and packed into a single all-reduce.
         with ops.name_scope("allreduce"):
           for grad_and_vars in reversed(chunk):
             # Gradients for the same variable but from different devices.
-            scaled_grads = [g for g, _ in grad_and_vars]
+            grads = [g for g, _ in grad_and_vars]
             # Add control dependencies per device from the last gradients to the
             # current set, in order to serialize NCCL launches.
             if (communication_hint == CollectiveCommunication.NCCL.value and
@@ -1157,8 +1076,8 @@ class CollectiveAllReduce(CrossDeviceOps):
             else:
               control_input_grads = []
             collective_reduced = cross_device_utils.build_collective_reduce(
-                scaled_grads, self._num_workers, self._collective_keys, "Add",
-                "Id", communication_hint, control_input_grads)
+                grads, self._num_workers, self._collective_keys, "Add", "Id",
+                communication_hint, control_input_grads)
             result = []
             for (_, v), g in zip(grad_and_vars, collective_reduced):
               result.append([g, v])
@@ -1185,34 +1104,105 @@ class CollectiveAllReduce(CrossDeviceOps):
         "%d all-reduces, num_workers = %d" %
         (len(per_replica_values), self._num_workers), 10)
 
+    # Pass self._communication to the runtime as a communication hint.
+    communication_hint = self._communication.value
+    # For now, we use NCCL only when batch_size > 1 and num_packs is 1.
+    # TODO(b/132575814): Enable NCCL if num_packs > 1.
+    # TODO(b/132575814): Switch to NCCL for all collectives when communication
+    # is NCCL.
+    if self._communication == CollectiveCommunication.NCCL and (
+        len(per_replica_values) == 1 or self._num_packs != 1):
+      communication_hint = CollectiveCommunication.AUTO.value
+
     chunked_gv = self._make_gradient_chunks(per_replica_values, self._num_packs)
 
     reduced_gv_list = []
     for chunk in chunked_gv:
+      # By placing all CollectiveReduce ops in a chunk under single name scope,
+      # we ensure they will be picked up by the `ScopedAllocator` grappler
+      # optimizer and packed into a single all-reduce.
       with ops.name_scope("allreduce"):
         for grad_and_vars in chunk:
-          # Gradients for the same variable but from different devices.
-          scaled_grads = [g for g, _ in grad_and_vars]
+          # `grad_and_vars` contains gradients for the same variable but from
+          # different devices. Because current CollectiveAllGather
+          # implementations require input IndexedSlices to have consistent
+          # length across the board, we handle the reduction of IndexedSlices
+          # as follows:
+          #   1. Gather the lengths of IndexedSlices from all participants.
+          #   2. If they have consistent length, apply all_gather.
+          #   3. Otherwise convert IndexedSlices to dense tensors and apply
+          #      all_reduce.
 
-          values = [g.values for g in scaled_grads]
-          indices = [g.indices for g in scaled_grads]
-          assert len(values) == len(indices)
+          def all_gather():
+            """Use all_gather to aggregate `IndexedSlices`."""
+            grads = [g for g, _ in grad_and_vars]  # pylint: disable=cell-var-from-loop
+            values = [g.values for g in grads]
+            indices = [g.indices for g in grads]
 
-          # Build two separate allgathers, one for values, the other one for
-          # indices.
-          gathered_values = cross_device_utils.build_collective_gather(
-              values, self._num_workers, self._collective_keys)
-          gathered_indices = cross_device_utils.build_collective_gather(
-              indices, self._num_workers, self._collective_keys)
-          assert len(gathered_values) == len(gathered_indices)
+            # Build two separate allgathers, one for values, the other one for
+            # indices.
+            gathered_values = cross_device_utils.build_collective_gather(
+                values, self._num_workers, self._collective_keys)
+            gathered_indices = cross_device_utils.build_collective_gather(
+                indices, self._num_workers, self._collective_keys)
+            assert len(gathered_values) == len(gathered_indices)
 
-          collective_reduced = []
-          for i in range(len(values)):
-            reduced = ops.IndexedSlices(
-                gathered_values[i],
-                gathered_indices[i],
-                dense_shape=scaled_grads[i].dense_shape)
-            collective_reduced.append(reduced)
+            gathered_grads = []
+            for i in range(len(values)):
+              gathered_grad = ops.IndexedSlices(
+                  values=gathered_values[i],
+                  indices=gathered_indices[i],
+                  dense_shape=grads[i].dense_shape)
+              gathered_grads.append(gathered_grad)
+            return gathered_grads
+
+          def all_reduce():
+            """Use all_reduce to aggregate `IndexedSlices`."""
+            grads = []
+            for g, _ in grad_and_vars:  # pylint: disable=cell-var-from-loop
+              with ops.device(g.device):
+                grads.append(ops.convert_to_tensor(g))
+
+            reduced_dense_grads = cross_device_utils.build_collective_reduce(
+                grads, self._num_workers, self._collective_keys, "Add", "Id",
+                communication_hint)
+            # We have to convert dense grad to IndexedSlice because all_reduce()
+            # and all_gather() must have the same return type as required by
+            # control_flow_ops.cond.
+            reduced_grads = []
+            for grad in reduced_dense_grads:
+              reduced_grads.append(
+                  ops.IndexedSlices(
+                      values=grad,
+                      indices=math_ops.range(array_ops.shape(grad)[0]),
+                      dense_shape=array_ops.shape(grad)))
+            return reduced_grads
+
+          indexed_slice_lengths = []
+          for g, _ in grad_and_vars:
+            with ops.device(g.device):
+              indexed_slice_lengths.append(array_ops.shape(g.indices))
+          gathered_indexed_slice_lengths = (
+              cross_device_utils.build_collective_gather(
+                  indexed_slice_lengths, self._num_workers,
+                  self._collective_keys))
+          # gathered_indexed_slice_lengths takes the following forms:
+          # [[length1_on_gpu_0, length2_on_gpu0, ...],
+          #  [length1_on_gpu_1, length2_on_gpu1, ...]
+          #  ...
+          # ]
+          # Each sublist is value-wise identical but resides on different
+          # devices. Since each sublist has the same value, we can just use the
+          # first sublist to compute the condition.
+          collective_reduced = control_flow_ops.cond(
+              math_ops.equal(
+                  math_ops.reduce_max(gathered_indexed_slice_lengths[0]),
+                  math_ops.reduce_min(gathered_indexed_slice_lengths[0])),
+              all_gather, all_reduce)
+          # tf.cond implicitly unpacks singleton list to single value, hence
+          # we need to re-wrap the single value into a singleton list here.
+          if not isinstance(collective_reduced, list):
+            collective_reduced = [collective_reduced]
 
           result = []
           for (_, v), g in zip(grad_and_vars, collective_reduced):

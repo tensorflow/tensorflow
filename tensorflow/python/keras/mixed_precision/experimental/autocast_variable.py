@@ -120,8 +120,8 @@ class AutoCastVariable(variables.Variable):
       raise ValueError(
           'Incompatible type conversion requested to type {!r} for variable '
           'of type {!r}'.format(dtype.name, self.dtype.name))
-    val = ops.convert_to_tensor(
-        self._variable, self._variable.dtype, name, as_ref=False)
+    val = ops.convert_to_tensor_v2(
+        self._variable, dtype=self._variable.dtype, name=name)
     return math_ops.cast(val, self.dtype)
 
   def _should_act_as_resource_variable(self):
@@ -149,7 +149,7 @@ class AutoCastVariable(variables.Variable):
   # reasons:
   #   * 'count_up_to': This method only applies to int variables, which cannot
   #     be wrapped with an AutoCastVariable.
-  #   * 'experimental_ref': Instead we inherit the definition from Variable.
+  #   * 'ref': Instead we inherit the definition from Variable.
   #     If we defined and delegated to Variable, the ref of an AutoCastVariable
   #     would be the same as the ref of the underlying variable, which would be
   #     strange as they are different Python objects.
@@ -434,13 +434,23 @@ def create_autocast_variable(variable):
   Returns:
     An AutoCastVariable that wraps the variable.
   """
-  if not isinstance(variable, distribute_values.DistributedVariable):
+  if not isinstance(variable, (distribute_values.DistributedVariable,
+                               distribute_values.AggregatingVariable)):
     return AutoCastVariable(variable)
 
   class AutoCastDistributedVariable(AutoCastVariable, variable.__class__):
-    """An AutoCastVariable that also subclasses from DistributedVariable."""
+    """An AutoCastVariable that also subclasses from variable.__class__.
+
+    variable.__class__ is either a DistributedVariable or an
+    AggregatingVariable.
+    """
 
     def __repr__(self):
+      if issubclass(distribute_values.AggregatingVariable, variable.__class__):
+        # AggregatingVariable's __repr__ simply calls super.__repr__. So we do
+        # the same here for consistency, which calls AutoCastVariable.__repr__.
+        return super(AutoCastDistributedVariable, self).__repr__()
+
       # pylint: disable=missing-format-attribute
       return ('<AutoCastDistributedVariable dtype={v.dtype.name} '
               'true_dtype={v.true_dtype.name} inner_variable={v._variable}>'

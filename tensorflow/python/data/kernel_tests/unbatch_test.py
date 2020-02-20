@@ -217,6 +217,12 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
     self.assertDatasetProduces(data, expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoneComponent(self):
+    dataset = dataset_ops.Dataset.from_tensors(
+        (list(range(10)), None)).unbatch().map(lambda x, y: x)
+    self.assertDatasetProduces(dataset, expected_output=range(10))
+
 
 if __name__ == "__main__":
   test.main()

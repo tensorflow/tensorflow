@@ -161,7 +161,7 @@ class BaseLayerTest(test.TestCase):
           trainable=True)
 
   @test_util.run_deprecated_v1
-  def testReusePartitionedVaraiblesAndRegularizers(self):
+  def testReusePartitionedVariablesAndRegularizers(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     partitioner = partitioned_variables.fixed_size_partitioner(3)
     for reuse in [False, True]:

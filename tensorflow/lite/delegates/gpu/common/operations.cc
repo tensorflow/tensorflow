@@ -98,10 +98,14 @@ std::string ToString(enum OperationType op) {
       return "log";
     case OperationType::LSTM:
       return "lstm";
+    case OperationType::MAXIMUM:
+      return "maximum";
     case OperationType::MAX_UNPOOLING_2D:
       return "max_unpooling";
     case OperationType::MEAN:
       return "mean";
+    case OperationType::MINIMUM:
+      return "minimum";
     case OperationType::MUL:
       return "mul";
     case OperationType::PAD:
@@ -165,8 +169,10 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"hard_swish", OperationType::HARD_SWISH},
           {"log", OperationType::LOG},
           {"lstm", OperationType::LSTM},
+          {"maximum", OperationType::MAXIMUM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
           {"mean", OperationType::MEAN},
+          {"minimum", OperationType::MINIMUM},
           {"mul", OperationType::MUL},
           {"pad", OperationType::PAD},
           {"pooling_2d", OperationType::POOLING_2D},

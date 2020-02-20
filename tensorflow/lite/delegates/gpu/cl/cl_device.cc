@@ -128,6 +128,9 @@ Vendor ParseVendor(const std::string& device_name,
   } else if (d_name.find("nvidia") != std::string::npos ||
              v_name.find("nvidia") != std::string::npos) {
     return Vendor::NVIDIA;
+  } else if (d_name.find("advanced micro devices") != std::string::npos ||
+             v_name.find("advanced micro devices") != std::string::npos) {
+    return Vendor::AMD;
   } else {
     return Vendor::UNKNOWN;
   }
@@ -184,6 +187,8 @@ std::string VendorToString(Vendor v) {
       return "PowerVR";
     case Vendor::NVIDIA:
       return "NVIDIA";
+    case Vendor::AMD:
+      return "AMD";
     case Vendor::UNKNOWN:
       return "unknown vendor";
   }
@@ -279,7 +284,8 @@ DeviceInfo::DeviceInfo(cl_device_id id)
   if (supports_fp16) {
     auto status = GetDeviceInfo<cl_device_fp_config>(
         id, CL_DEVICE_HALF_FP_CONFIG, &f16_config);
-    if (status.ok()) {
+    // AMD supports cl_khr_fp16 but CL_DEVICE_HALF_FP_CONFIG is empty.
+    if (status.ok() && vendor != Vendor::AMD) {
       supports_fp16_rtn = f16_config & CL_FP_ROUND_TO_NEAREST;
     } else {  // happens on PowerVR
       f16_config = f32_config;
@@ -436,6 +442,8 @@ bool CLDevice::IsNvidia() const { return info_.vendor == Vendor::NVIDIA; }
 
 bool CLDevice::IsMali() const { return info_.vendor == Vendor::MALI; }
 
+bool CLDevice::IsAMD() const { return info_.vendor == Vendor::AMD; }
+
 bool CLDevice::SupportsOneLayerTextureArray() const {
   return !IsAdreno() || info_.adreno_info.support_one_layer_texture_array;
 }
@@ -453,17 +461,18 @@ Status CreateDefaultGPUDevice(CLDevice* result) {
   std::vector<cl_platform_id> platforms(num_platforms);
   clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
 
+  cl_platform_id platform_id = platforms[0];
   cl_uint num_devices;
-  clGetDeviceIDs(platforms[0], CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
+  clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
   if (num_devices == 0) {
     return UnknownError("No GPU on current platform.");
   }
 
   std::vector<cl_device_id> devices(num_devices);
-  clGetDeviceIDs(platforms[0], CL_DEVICE_TYPE_GPU, num_devices, devices.data(),
+  clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, num_devices, devices.data(),
                  nullptr);
 
-  *result = CLDevice(devices[0], platforms[0]);
+  *result = CLDevice(devices[0], platform_id);
   return OkStatus();
 }
 

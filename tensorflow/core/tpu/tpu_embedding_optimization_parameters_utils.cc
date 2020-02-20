@@ -258,7 +258,7 @@ Status GetOptimizationAlgorithmStateVariables(
     }
     case OptimizationAlgorithm::kOnlineYogi: {
       state_variables->push_back(
-          MakeStandardStateVariableSpecification("vs", 0.0));
+          MakeStandardStateVariableSpecification("vs", 0.1));
       state_variables->push_back(
           MakeStandardStateVariableSpecification("linears", 0.0));
       break;

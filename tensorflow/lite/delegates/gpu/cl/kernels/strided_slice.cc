@@ -77,7 +77,7 @@ std::string GetStridedSliceCode(
       c += "  {\n";
       const std::string channel = "(Z * 4 + " + std::to_string(i) + ")";
       c += "    int s_ch = " + channel + " * stride.z + offset.z;\n";
-      c += "    int s_z = s_ch >> 2;\n";
+      c += "    int s_z = min(s_ch >> 2, src_size.z - 1);\n";
       c += "    int s_z_rem = s_ch & 3;\n";
       c += "    FLT4 t = " +
            src_tensor.ReadWHSB("s_x", "s_y", "s_z", src_batch) + ";\n";

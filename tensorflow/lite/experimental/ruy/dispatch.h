@@ -390,8 +390,9 @@ inline void HandlePrepackedCaching(TrMulParams* params,
     return;
   }
 
-  if (context->cache_policy == CachePolicy::kCacheLHSOnGemV) {
-    if (!cacheable[Side::kLhs] || params->dst.layout.cols != 1) {
+  if (context->cache_policy == CachePolicy::kCacheLHSOnNarrowMul) {
+    // TODO(b/149304278) Cache on dst.cols <= selected kernel width.
+    if (!cacheable[Side::kLhs] || params->dst.layout.cols > 4) {
       return;
     }
     PrepackedCache* prepacked_cache = context->GetPrepackedCache();

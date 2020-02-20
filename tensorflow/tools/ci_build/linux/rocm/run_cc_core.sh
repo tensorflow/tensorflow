@@ -56,7 +56,7 @@ bazel test \
 && bazel test \
       --config=rocm \
       -k \
-      --test_tag_filters=-no_gpu,-no_rocm,-v1only \
+      --test_tag_filters=gpu \
       --jobs=${N_JOBS} \
       --local_test_jobs=1 \
       --test_timeout 600,900,2400,7200 \

@@ -82,7 +82,10 @@ def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs">, BASE_HLO_AbsOp;
 
 def LHLO_CeilOp: LHLO_UnaryElementwiseOp<"ceil">, BASE_HLO_CeilOp;
 
-def LHLO_ConvertOp : LHLO_UnaryElementwiseOp<"convert">, BASE_HLO_ConvertOp;
+def LHLO_ConvertOp :  LHLO_Op<"convert", [SameOperandsShape]>, BASE_HLO_ConvertOp {
+  let arguments = (ins LHLO_Buffer:$input,
+                       LHLO_Buffer:$output);
+}
 
 def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cos">, BASE_HLO_CosOp;
 

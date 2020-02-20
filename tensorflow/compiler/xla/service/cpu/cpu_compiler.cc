@@ -93,6 +93,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
@@ -241,6 +242,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Expand random number generation.
   pipeline.AddPass<RngExpander>();
+  pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
   // Remove zero-sized HLO from the input so that other passes don't have to
   // handle it.
@@ -546,7 +548,7 @@ struct OrcJITPostCompilationHook {
     if (!DumpingEnabledForHloModule(*module)) {
       return;
     }
-    DumpToFileInDir(*module, /*file_suffix=*/"o",
+    DumpToFileInDir(*module, /*file_prefix=*/"", /*file_suffix=*/"o",
                     absl::string_view(obj_file.getData().data(),
                                       obj_file.getData().size()));
   }
@@ -818,7 +820,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
     if (DumpingEnabledForHloModule(*module)) {
-      DumpToFileInDirOrStdout(*module, "buffer_assignment",
+      DumpToFileInDirOrStdout(*module, "", "buffer_assignment",
                               assignment->ToString());
     }
     DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
@@ -887,7 +889,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       if (!DumpingEnabledForHloModule(*module)) {
         return;
       }
-      DumpToFileInDir(*module, /*file_suffix=*/"o",
+      DumpToFileInDir(*module, /*file_prefix=*/"", /*file_suffix=*/"o",
                       absl::string_view(obj_file.getData().data(),
                                         obj_file.getData().size()));
     };

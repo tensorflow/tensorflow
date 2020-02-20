@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 
@@ -151,6 +152,16 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   return Status::OK();
 }
 
+// TODO(cheshire): Duplication with gpu_conv_algorithm picker, figure out a
+// right way to share this.
+static bool RequireDeterminism() {
+  bool deterministic_ops = false;
+  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                             /*default_val=*/false,
+                                             &deterministic_ops));
+  return deterministic_ops;
+}
+
 Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
@@ -172,7 +183,8 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   options.set_is_layout_sensitive(true);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
-  if (hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
+  if (RequireDeterminism() ||
+      hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
     pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>();
   }
 
@@ -284,7 +296,7 @@ void WarnIfBadDriverJITVersion() {
 bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
   // If the xla_gpu_ptx_file options is set, be explicit when a file is used
   // and warn when a file is not used to ease catching typo in filename.
-  std::string prefix = xla::FilenameFor(*module, *ptx);
+  std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
   for (const string filename :
        module->config().debug_options().xla_gpu_ptx_file()) {
@@ -374,7 +386,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
   }
   // Write PTX to IR dump directory, if IR dumping was requested.
   if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "ptx", ptx);
+    DumpToFileInDirOrStdout(*module, "", "ptx", ptx);
   }
 
   std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(

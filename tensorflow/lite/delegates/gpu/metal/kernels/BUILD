@@ -775,6 +775,43 @@ objc_library(
     ],
 )
 
+objc_library(
+    name = "kernel_tests_lib",
+    testonly = 1,
+    srcs = [
+        "add_test.mm",
+        "concat_test.mm",
+        "conv_test.mm",
+        "depthwise_conv_test.mm",
+        "elementwise_test.mm",
+        "fully_connected_test.mm",
+        "max_unpooling_test.mm",
+        "mul_test.mm",
+        "padding_test.mm",
+        "pooling_test.mm",
+        "prelu_test.mm",
+        "relu_test.mm",
+        "reshape_test.mm",
+        "resize_test.mm",
+        "slice_test.mm",
+        "softmax_test.mm",
+        "transpose_conv_test.mm",
+    ],
+    hdrs = [
+    ],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/metal:common",
+        "//tensorflow/lite/delegates/gpu/metal:environment",
+        "//tensorflow/lite/delegates/gpu/metal:inference_context",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
+    ],
+)
+
 tflite_portable_test_suite()
 
 tflite_ios_per_kernel_test()

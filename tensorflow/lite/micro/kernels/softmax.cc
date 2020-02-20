@@ -218,7 +218,7 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         Softmax4DFloat(input, output, params);
         return kTfLiteOk;
       }
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Only 1D, 2D and 4D tensors supported currently, got %dD.",
           NumDimensions(input));
       return kTfLiteError;
@@ -237,13 +237,13 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         Softmax4DQuantized(input, output, params, data);
         return kTfLiteOk;
       }
-      context->ReportError(
-          context, "Only 2D and 4D tensors supported currently, got %dD.",
-          NumDimensions(input));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only 2D and 4D tensors supported currently, got %dD.",
+                         NumDimensions(input));
       return kTfLiteError;
     }
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Only float32, uint8_t and int8_t supported currently, got %d.",
           input->type);

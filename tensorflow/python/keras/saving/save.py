@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import sys
 
 import six
@@ -29,7 +28,14 @@ from tensorflow.python.keras.saving.saved_model import load as saved_model_load
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.saved_model import loader_impl
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import keras_export
+
+# pylint: disable=g-inconsistent-quotes
+network = LazyLoader(
+    "network", globals(),
+    "tensorflow.python.keras.engine.network")
+# pylint: enable=g-inconsistent-quotes
 
 # pylint: disable=g-import-not-at-top
 if sys.version_info >= (3, 4):
@@ -39,9 +45,6 @@ try:
 except ImportError:
   h5py = None
 # pylint: enable=g-import-not-at-top
-
-_HDF5_EXTENSIONS = ['.h5', '.hdf5', '.keras']
-
 
 # TODO(kathywu): Remove this when Keras SavedModel is not experimental.
 _KERAS_SAVED_MODEL_STILL_EXPERIMENTAL = True
@@ -112,15 +115,14 @@ def save_model(model,
   """
   from tensorflow.python.keras.engine import sequential  # pylint: disable=g-import-not-at-top
 
-  default_format = 'tf' if tf2.enabled() else 'h5'
-  save_format = save_format or default_format
-
   if sys.version_info >= (3, 4) and isinstance(filepath, pathlib.Path):
     filepath = str(filepath)
 
-  if (save_format == 'h5' or
-      (h5py is not None and isinstance(filepath, h5py.File)) or
-      os.path.splitext(filepath)[1] in _HDF5_EXTENSIONS):
+  default_format = 'tf' if tf2.enabled() else 'h5'
+  save_format = network.validate_save_format(filepath, save_format,
+                                             default_format)
+
+  if save_format == 'h5':
     # TODO(b/130258301): add utility method for detecting model type.
     if (not model._is_graph_network and  # pylint:disable=protected-access
         not isinstance(model, sequential.Sequential)):

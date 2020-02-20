@@ -43,6 +43,8 @@ int32_t previous_time = 0;
 // determined by experimentation.
 constexpr int kTensorArenaSize = 10 * 1024;
 uint8_t tensor_arena[kTensorArenaSize];
+uint8_t feature_buffer[kFeatureElementCount];
+uint8_t* model_input_buffer = nullptr;
 }  // namespace
 
 // The name of this function is important for Arduino compatibility.
@@ -57,10 +59,10 @@ void setup() {
   // copying or parsing, it's a very lightweight operation.
   model = tflite::GetModel(g_tiny_conv_micro_features_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    error_reporter->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.",
-        model->version(), TFLITE_SCHEMA_VERSION);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Model provided is schema version %d not equal "
+                         "to supported version %d.",
+                         model->version(), TFLITE_SCHEMA_VERSION);
     return;
   }
 
@@ -89,7 +91,7 @@ void setup() {
   // Allocate memory from the tensor_arena for the model's tensors.
   TfLiteStatus allocate_status = interpreter->AllocateTensors();
   if (allocate_status != kTfLiteOk) {
-    error_reporter->Report("AllocateTensors() failed");
+    TF_LITE_REPORT_ERROR(error_reporter, "AllocateTensors() failed");
     return;
   }
 
@@ -99,15 +101,17 @@ void setup() {
       (model_input->dims->data[1] != kFeatureSliceCount) ||
       (model_input->dims->data[2] != kFeatureSliceSize) ||
       (model_input->type != kTfLiteUInt8)) {
-    error_reporter->Report("Bad input tensor parameters in model");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Bad input tensor parameters in model");
     return;
   }
+  model_input_buffer = model_input->data.uint8;
 
   // Prepare to access the audio spectrograms from a microphone or other source
   // that will provide the inputs to the neural network.
   // NOLINTNEXTLINE(runtime-global-variables)
   static FeatureProvider static_feature_provider(kFeatureElementCount,
-                                                 model_input->data.uint8);
+                                                 feature_buffer);
   feature_provider = &static_feature_provider;
 
   static RecognizeCommands static_recognizer(error_reporter);
@@ -124,7 +128,7 @@ void loop() {
   TfLiteStatus feature_status = feature_provider->PopulateFeatureData(
       error_reporter, previous_time, current_time, &how_many_new_slices);
   if (feature_status != kTfLiteOk) {
-    error_reporter->Report("Feature generation failed");
+    TF_LITE_REPORT_ERROR(error_reporter, "Feature generation failed");
     return;
   }
   previous_time = current_time;
@@ -134,10 +138,15 @@ void loop() {
     return;
   }
 
+  // Copy feature buffer to input tensor
+  for (int i = 0; i < kFeatureElementCount; i++) {
+    model_input_buffer[i] = feature_buffer[i];
+  }
+
   // Run the model on the spectrogram input and make sure it succeeds.
   TfLiteStatus invoke_status = interpreter->Invoke();
   if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed");
+    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed");
     return;
   }
 
@@ -150,7 +159,8 @@ void loop() {
   TfLiteStatus process_status = recognizer->ProcessLatestResults(
       output, current_time, &found_command, &score, &is_new_command);
   if (process_status != kTfLiteOk) {
-    error_reporter->Report("RecognizeCommands::ProcessLatestResults() failed");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "RecognizeCommands::ProcessLatestResults() failed");
     return;
   }
   // Do something based on the recognized command. The default implementation

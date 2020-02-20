@@ -150,7 +150,8 @@ struct QuantizationPattern : public RewritePattern {
 
   explicit QuantizationPattern(MLIRContext* context, bool enable_verify,
                                float error_tolerance, bool single_layer_verify)
-      : RewritePattern(DQ::getOperationName(), 1, context),
+      // Set the score to a large number so it is always preferred.
+      : RewritePattern(DQ::getOperationName(), 300, context),
         enable_verify(enable_verify),
         error_tolerance(error_tolerance),
         single_layer_verify(single_layer_verify) {}
@@ -167,9 +168,12 @@ struct QuantizationPattern : public RewritePattern {
         return matchFailure();
       }
 
-      // If it is terminator or not quantizable, we shouldn't rewrite.
+      // If it is terminator or not quantizable or any ops form the mlir quant
+      // ops dialect, we shouldn't rewrite.
       if (quantized_op->isKnownTerminator() ||
-          quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
+          quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
+          llvm::isa<quant::QuantizeCastOp>(quantized_op) ||
+          llvm::isa<quant::DequantizeCastOp>(quantized_op)) {
         return matchFailure();
       }
 

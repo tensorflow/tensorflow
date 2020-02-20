@@ -43,6 +43,8 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
 
   int max_num_threads() const { return max_num_threads_; }
 
+  void ClearCaches() override { ruy_context_->ClearPrepackedCache(); }
+
  private:
   // To enable a smooth transition from the current direct usage
   // of the underlying gemmlowp context to going through abstractions

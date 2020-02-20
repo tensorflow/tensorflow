@@ -42,7 +42,8 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
         max_cached_batches_(1),
         max_workspace_size_bytes_(256LL << 20),
         use_calibration_(true),
-        use_implicit_batch_(true) {
+        use_implicit_batch_(true),
+        allow_build_at_runtime_(true) {
     VLOG(1) << "Constructing " << name_;
   }
 
@@ -75,6 +76,7 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
   int64_t max_workspace_size_bytes_;
   bool use_calibration_;
   bool use_implicit_batch_;
+  bool allow_build_at_runtime_;
 };
 
 }  // namespace convert

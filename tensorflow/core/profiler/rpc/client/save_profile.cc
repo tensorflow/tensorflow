@@ -22,14 +22,12 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 // Windows.h #defines ERROR, but it is also used in
 // tensorflow/core/util/event.proto
 #undef ERROR
-#include "tensorflow/core/profiler/op_profile.pb.h"
 #include "tensorflow/core/protobuf/trace_events.pb.h"
 #include "tensorflow/core/util/events_writer.h"
 
@@ -39,14 +37,10 @@ namespace profiler {
 namespace {
 
 using ::tensorflow::io::JoinPath;
-using ::tensorflow::protobuf::util::JsonOptions;
-using ::tensorflow::protobuf::util::MessageToJsonString;
 
-constexpr char kJsonOpProfileFileName[] = "op_profile.json";
 constexpr char kProfilePluginDirectory[] = "plugins/profile/";
 constexpr char kProtoTraceFileName[] = "trace";
 
-constexpr char kFlatProfilerFileName[] = "flat_profiler.pb";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
 
 Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
@@ -59,36 +53,12 @@ Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
   return Status::OK();
 }
 
-Status DumpOpProfileToLogDirectory(StringPiece run_dir,
-                                   const string& host_prefix,
-                                   const op_profile::Profile& profile,
-                                   std::ostream* os) {
-  string path =
-      JoinPath(run_dir, absl::StrCat(host_prefix, kJsonOpProfileFileName));
-  string json;
-  JsonOptions options;
-  options.always_print_primitive_fields = true;
-  auto status = MessageToJsonString(profile, &json, options);
-  if (!status.ok()) {
-    return errors::Internal(
-        "Failed to convert op profile to json. Skipping... ",
-        string(status.error_message()));
-  }
-  TF_RETURN_IF_ERROR(WriteStringToFile(Env::Default(), path, json));
-  if (os) {
-    *os << "Dumped json op profile data to " << path << std::endl;
-  }
-  return Status::OK();
-}
-
 Status DumpToolDataToLogDirectory(StringPiece run_dir,
                                   const string& host_prefix,
                                   const ProfileToolData& tool,
                                   std::ostream* os) {
   // Don't save the intermediate results for combining the per host tool data.
-  if (absl::EndsWith(tool.name(), kFlatProfilerFileName) ||
-      absl::EndsWith(tool.name(), kTfStatsHelperSuffix))
-    return Status::OK();
+  if (absl::EndsWith(tool.name(), kTfStatsHelperSuffix)) return Status::OK();
   string path = JoinPath(run_dir, absl::StrCat(host_prefix, tool.name()));
   TF_RETURN_IF_ERROR(WriteStringToFile(Env::Default(), path, tool.data()));
   if (os) {
@@ -96,6 +66,23 @@ Status DumpToolDataToLogDirectory(StringPiece run_dir,
         << std::endl;
   }
   return Status::OK();
+}
+
+// Creates an empty event file if not already exists, which indicates that we
+// have a plugins/profile/ directory in the current logdir.
+Status MaybeCreateEmptyEventFile(const string& logdir) {
+  // Suffix for an empty event file.  it should be kept in sync with
+  // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
+  constexpr char kProfileEmptySuffix[] = ".profile-empty";
+  std::vector<string> children;
+  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));
+  for (const string& child : children) {
+    if (absl::EndsWith(child, kProfileEmptySuffix)) {
+      return Status::OK();
+    }
+  }
+  EventsWriter event_writer(io::JoinPath(logdir, "events"));
+  return event_writer.InitWithSuffix(kProfileEmptySuffix);
 }
 
 }  // namespace
@@ -110,15 +97,13 @@ Status SaveTensorboardProfile(const string& logdir, const string& run,
   *os << "Creating directory: " << profile_run_dir;
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(profile_run_dir));
 
+  // Creates an empty event file so that TensorBoard plugin logic can find
+  // the logdir.
+  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
   // Ignore computation_graph for now.
   if (!response.encoded_trace().empty()) {
     TF_RETURN_IF_ERROR(DumpTraceToLogDirectory(profile_run_dir, host_prefix,
                                                response.encoded_trace(), os));
-  }
-  if (response.has_op_profile() && (response.op_profile().has_by_program() ||
-                                    response.op_profile().has_by_category())) {
-    TF_RETURN_IF_ERROR(DumpOpProfileToLogDirectory(profile_run_dir, host_prefix,
-                                                   response.op_profile(), os));
   }
   for (const auto& tool_data : response.tool_data()) {
     TF_RETURN_IF_ERROR(DumpToolDataToLogDirectory(profile_run_dir, host_prefix,

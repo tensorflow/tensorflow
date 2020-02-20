@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -527,7 +528,8 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
   }
 
   // Eliminate the size one dimensions.
-  TF_ASSIGN_OR_RETURN(XlaOp reshaped_operand, Reshape(reshaped_shape, operand));
+  TF_ASSIGN_OR_RETURN(XlaOp reshaped_operand,
+                      ReshapeInternal(reshaped_shape, operand));
   // Broadcast 'reshape' up to the larger size.
   return InDimBroadcast(broadcast_shape, reshaped_operand,
                         broadcast_dimensions);
@@ -827,8 +829,8 @@ XlaOp XlaBuilder::BroadcastInDim(
   });
 }
 
-StatusOr<XlaOp> XlaBuilder::Reshape(const Shape& shape, XlaOp operand,
-                                    int64 inferred_dimension) {
+StatusOr<XlaOp> XlaBuilder::ReshapeInternal(const Shape& shape, XlaOp operand,
+                                            int64 inferred_dimension) {
   TF_RETURN_IF_ERROR(first_error_);
 
   HloInstructionProto instr;
@@ -1019,7 +1021,7 @@ XlaOp XlaBuilder::Reshape(XlaOp operand, absl::Span<const int64> dimensions,
     XlaOp transposed = IsIdentityPermutation(dimensions)
                            ? operand
                            : Transpose(operand, dimensions);
-    return Reshape(shape, transposed, inferred_dimension);
+    return ReshapeInternal(shape, transposed, inferred_dimension);
   });
 }
 
@@ -1030,6 +1032,13 @@ XlaOp XlaBuilder::Reshape(XlaOp operand, absl::Span<const int64> new_sizes,
     std::vector<int64> dimensions(shape->dimensions_size());
     std::iota(dimensions.begin(), dimensions.end(), 0);
     return Reshape(operand, dimensions, new_sizes, inferred_dimension);
+  });
+}
+
+XlaOp XlaBuilder::Reshape(const Shape& shape, XlaOp operand,
+                          int64 inferred_dimension) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    return ReshapeInternal(shape, operand, inferred_dimension);
   });
 }
 
@@ -1750,6 +1759,36 @@ XlaOp XlaBuilder::RngNormal(XlaOp mu, XlaOp sigma, const Shape& shape) {
 
 XlaOp XlaBuilder::RngUniform(XlaOp a, XlaOp b, const Shape& shape) {
   return RngOp(RandomDistribution::RNG_UNIFORM, {a, b}, shape);
+}
+
+XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
+                                  XlaOp initial_state, const Shape& shape) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+    TF_ASSIGN_OR_RETURN(Shape state_shape, GetShape(initial_state));
+    Shape output_shape = shape;
+    switch (output_shape.element_type()) {
+      case PrimitiveType::F32:
+      case PrimitiveType::S32:
+      case PrimitiveType::U32:
+        output_shape.set_element_type(PrimitiveType::U32);
+        break;
+      case PrimitiveType::F64:
+      case PrimitiveType::S64:
+      case PrimitiveType::U64:
+        output_shape.set_element_type(PrimitiveType::U64);
+        break;
+      default:
+        return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
+                               PrimitiveType_Name(output_shape.element_type()));
+    }
+    *instr.mutable_shape() =
+        ShapeUtil::MakeTupleShape({state_shape, output_shape}).ToProto();
+    instr.set_rng_algorithm(algorithm);
+    return AddInstruction(std::move(instr), HloOpcode::kRngBitGenerator,
+                          {initial_state});
+  });
 }
 
 XlaOp XlaBuilder::While(const XlaComputation& condition,
@@ -2920,6 +2959,10 @@ XlaOp Reshape(const XlaOp operand, absl::Span<const int64> new_sizes) {
   return operand.builder()->Reshape(operand, new_sizes);
 }
 
+XlaOp Reshape(const Shape& shape, XlaOp operand) {
+  return operand.builder()->Reshape(shape, operand);
+}
+
 XlaOp ReshapeWithInferredDimension(XlaOp operand,
                                    absl::Span<const int64> new_sizes,
                                    int64 inferred_dimension) {
@@ -3458,6 +3501,12 @@ XlaOp RngNormal(const XlaOp mu, const XlaOp sigma, const Shape& shape) {
 
 XlaOp RngUniform(const XlaOp a, const XlaOp b, const Shape& shape) {
   return a.builder()->RngUniform(a, b, shape);
+}
+
+XlaOp RngBitGenerator(RandomAlgorithm algorithm, const XlaOp initial_state,
+                      const Shape& shape) {
+  return initial_state.builder()->RngBitGenerator(algorithm, initial_state,
+                                                  shape);
 }
 
 XlaOp While(const XlaComputation& condition, const XlaComputation& body,
