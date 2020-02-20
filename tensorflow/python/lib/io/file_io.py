@@ -603,7 +603,11 @@ def has_atomic_move(path):
            we need to be careful about using moves. In some cases it is safer
            not to use temporary locations in this case.
   """
-  return _pywrap_file_io.HasAtomicMove(compat.as_bytes(path))
+  try:
+    return _pywrap_file_io.HasAtomicMove(compat.as_bytes(path))
+  except errors.OpError:
+    # defaults to True
+    return True
 
 
 @tf_export(v1=["gfile.ListDirectory"])
