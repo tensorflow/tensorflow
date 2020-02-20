@@ -105,6 +105,41 @@ class CompareFConvert : public OpRewritePattern<xla_hlo::CompareOp> {
   }
 };
 
+class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(xla_hlo::IotaOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto output_type = op.getType().cast<ShapedType>();
+    // TODO(prakalps): Handle FP and ComplexType iota ops.
+    if (!output_type.getElementType().isa<IntegerType>()) return matchFailure();
+    auto output_size = output_type.getNumElements();
+    auto dimension = op.iota_dimension().getSExtValue();
+    auto max_dim_size = output_type.getDimSize(dimension);
+    int bitwidth = output_type.getElementType().getIntOrFloatBitWidth();
+
+    llvm::SmallVector<APInt, 10> values;
+    values.reserve(output_size);
+
+    int64_t increase_stride = output_size;
+    for (int i = 0; i <= dimension; i++) {
+      increase_stride /= output_type.getDimSize(i);
+    }
+
+    int64_t current_value = 0;
+    for (int i = 0; i < output_size; i++) {
+      int64_t value = (current_value / increase_stride) % max_dim_size;
+      values.push_back(APInt(bitwidth, value));
+      ++current_value;
+    }
+
+    rewriter.replaceOpWithNewOp<mlir::ConstantOp>(
+        op, DenseIntElementsAttr::get(output_type, values));
+    return matchSuccess();
+  }
+};
+
 }  // end anonymous namespace
 
 namespace {
@@ -121,9 +156,7 @@ std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>> createLegalizeToStdPass() {
 void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
                               mlir::MLIRContext *ctx) {
   mlir::populateWithGenerated(ctx, patterns);
-  patterns
-      ->insert<mlir::xla_hlo::CompareFConvert, mlir::xla_hlo::CompareIConvert>(
-          ctx);
+  patterns->insert<CompareFConvert, CompareIConvert, ConvertIotaOp>(ctx);
 }
 
 /// Perform the lowering to standard dialect.

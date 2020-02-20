@@ -122,8 +122,6 @@ def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]>, BASE_HLO_IotaOp {
 
   let results = (outs HLO_IntFpOrComplexTensor:$output);
 
-  let hasFolder = 1;
-
   // TODO(b/130357376): Iota has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
