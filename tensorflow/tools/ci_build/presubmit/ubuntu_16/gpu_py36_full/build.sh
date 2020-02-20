@@ -50,13 +50,6 @@ function run_build () {
   # Get the default test targets for bazel.
   source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
-  RBE_CONFIG="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.0-cudnn7-tensorrt5.1"
-  TF_CUDA_CONFIG_REPO="${RBE_CONFIG}_config_cuda"
-  TF_TENSORRT_CONFIG_REPO="${RBE_CONFIG}_config_tensorrt"
-  TF_PYTHON_CONFIG_REPO="${RBE_CONFIG}_config_python"
-  TF_NCCL_CONFIG_REPO="${RBE_CONFIG}_config_nccl"
-  TF_RBE_PLATFORM="${RBE_CONFIG}_config_platform//:platform"
-
   # Run bazel test command. Double test timeouts to avoid flakes.
   # //tensorflow/core/platform:setround_test is not supported. See b/64264700
   # TODO(klimek): Re-enable tensorrt tests (with different runtime image) once
@@ -72,14 +65,12 @@ function run_build () {
     --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
     --action_env=REMOTE_GPU_TESTING=1 \
     --action_env=TF_CUDA_COMPUTE_CAPABILITIES="${TF_CUDA_COMPUTE_CAPABILITIES}" \
-    --action_env=TF_CUDA_CONFIG_REPO="${TF_CUDA_CONFIG_REPO}" \
+    --action_env=TF_CUDA_CONFIG_REPO=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/cuda10.0-cudnn7 \
     --action_env=TF_CUDA_VERSION=10 \
     --action_env=TF_CUDNN_VERSION=7 \
     --action_env=TF_NEED_TENSORRT=0 \
-    --action_env=TF_TENSORRT_CONFIG_REPO="${TF_TENSORRT_CONFIG_REPO}" \
     --action_env=TF_NEED_CUDA=1 \
-    --action_env=TF_PYTHON_CONFIG_REPO="${TF_PYTHON_CONFIG_REPO}" \
-    --action_env=TF_NCCL_CONFIG_REPO="${TF_NCCL_CONFIG_REPO}" \
+    --action_env=TF_PYTHON_CONFIG_REPO=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/py3 \
     --test_env=LD_LIBRARY_PATH \
     --test_tag_filters="${tag_filters}" \
     --build_tag_filters="${tag_filters}" \
@@ -98,17 +89,17 @@ function run_build () {
     --linkopt=-lm \
     --distinct_host_configuration=false \
     --remote_default_exec_properties=build=${CACHE_SILO_VAL} \
-    --crosstool_top="${TF_CUDA_CONFIG_REPO}//crosstool:toolchain" \
+    --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
     --host_javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.1:jdk8 \
     --javabase=@bazel_toolchains//configs/ubuntu16_04_clang/1.0:jdk8 \
     --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8 \
     --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8 \
-    --extra_toolchains="${TF_CUDA_CONFIG_REPO}//crosstool:toolchain-linux-x86_64" \
-    --extra_execution_platforms="${TF_RBE_PLATFORM}" \
-    --host_platform="${TF_RBE_PLATFORM}" \
+    --extra_toolchains=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain-linux-x86_64 \
+    --extra_execution_platforms=@org_tensorflow//third_party/toolchains:rbe_cuda10.0-cudnn7-ubuntu16.04-manylinux2010 \
+    --host_platform=@org_tensorflow//third_party/toolchains:rbe_cuda10.0-cudnn7-ubuntu16.04-manylinux2010 \
     --local_test_jobs=4 \
     --remote_timeout=3600 \
-    --platforms="${TF_RBE_PLATFORM}" \
+    --platforms=@org_tensorflow//third_party/toolchains:rbe_cuda10.0-cudnn7-ubuntu16.04-manylinux2010 \
     -- \
     ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
 
@@ -122,4 +113,3 @@ install_bazelisk
 which bazel
 
 run_build
-

@@ -811,21 +811,6 @@ def _create_remote_rocm_repository(repository_ctx, remote_config_repo):
         config_repo_label(remote_config_repo, "rocm:rocm/rocm_config.h"),
         {},
     )
-    repository_ctx.template(
-        "crosstool/BUILD",
-        config_repo_label(remote_config_repo, "crosstool:BUILD"),
-        {},
-    )
-    repository_ctx.template(
-        "crosstool/cc_toolchain_config.bzl",
-        config_repo_label(remote_config_repo, "crosstool:cc_toolchain_config.bzl"),
-        {},
-    )
-    repository_ctx.template(
-        "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
-        config_repo_label(remote_config_repo, "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc"),
-        {},
-    )
 
 def _rocm_autoconf_impl(repository_ctx):
     """Implementation of the rocm_autoconf repository rule."""
@@ -839,29 +824,20 @@ def _rocm_autoconf_impl(repository_ctx):
     else:
         _create_local_rocm_repository(repository_ctx)
 
-_ENVIRONS = [
-    _GCC_HOST_COMPILER_PATH,
-    _GCC_HOST_COMPILER_PREFIX,
-    "TF_NEED_ROCM",
-    _ROCM_TOOLKIT_PATH,
-    _TF_ROCM_VERSION,
-    _TF_MIOPEN_VERSION,
-    _TF_ROCM_AMDGPU_TARGETS,
-]
-
-remote_rocm_configure = repository_rule(
-    implementation = _create_local_rocm_repository,
-    environ = _ENVIRONS,
-    remotable = True,
-    attrs = {
-        "environ": attr.string_dict(),
-    },
-)
-
 rocm_configure = repository_rule(
     implementation = _rocm_autoconf_impl,
-    environ = _ENVIRONS + [_TF_ROCM_CONFIG_REPO],
+    environ = [
+        _GCC_HOST_COMPILER_PATH,
+        _GCC_HOST_COMPILER_PREFIX,
+        "TF_NEED_ROCM",
+        _ROCM_TOOLKIT_PATH,
+        _TF_ROCM_VERSION,
+        _TF_MIOPEN_VERSION,
+        _TF_ROCM_AMDGPU_TARGETS,
+        _TF_ROCM_CONFIG_REPO,
+    ],
 )
+
 """Detects and configures the local ROCm toolchain.
 
 Add the following to your WORKSPACE FILE:

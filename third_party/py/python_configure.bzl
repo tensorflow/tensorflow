@@ -262,24 +262,14 @@ def _python_autoconf_impl(repository_ctx):
     else:
         _create_local_python_repository(repository_ctx)
 
-_ENVIRONS = [
-    BAZEL_SH,
-    PYTHON_BIN_PATH,
-    PYTHON_LIB_PATH,
-]
-
-remote_python_configure = repository_rule(
-    implementation = _create_local_python_repository,
-    environ = _ENVIRONS,
-    remotable = True,
-    attrs = {
-        "environ": attr.string_dict(),
-    },
-)
-
 python_configure = repository_rule(
     implementation = _python_autoconf_impl,
-    environ = _ENVIRONS + [TF_PYTHON_CONFIG_REPO],
+    environ = [
+        BAZEL_SH,
+        PYTHON_BIN_PATH,
+        PYTHON_LIB_PATH,
+        TF_PYTHON_CONFIG_REPO,
+    ],
 )
 """Detects and configures the local Python.
 

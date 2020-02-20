@@ -178,25 +178,15 @@ def _tensorrt_configure_impl(repository_ctx):
 
     _create_local_tensorrt_repository(repository_ctx)
 
-_ENVIRONS = [
-    _TENSORRT_INSTALL_PATH,
-    _TF_TENSORRT_VERSION,
-    _TF_NEED_TENSORRT,
-    "TF_CUDA_PATHS",
-]
-
-remote_tensorrt_configure = repository_rule(
-    implementation = _create_local_tensorrt_repository,
-    environ = _ENVIRONS,
-    remotable = True,
-    attrs = {
-        "environ": attr.string_dict(),
-    },
-)
-
 tensorrt_configure = repository_rule(
     implementation = _tensorrt_configure_impl,
-    environ = _ENVIRONS + [_TF_TENSORRT_CONFIG_REPO],
+    environ = [
+        _TENSORRT_INSTALL_PATH,
+        _TF_TENSORRT_VERSION,
+        _TF_TENSORRT_CONFIG_REPO,
+        _TF_NEED_TENSORRT,
+        "TF_CUDA_PATHS",
+    ],
 )
 """Detects and configures the local CUDA toolchain.
 

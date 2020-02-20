@@ -149,9 +149,7 @@ tensorflow/third_party/py/python_configure.bzl
 tensorflow/third_party/pybind11.BUILD
 tensorflow/third_party/python_runtime/BUILD
 tensorflow/third_party/remote_config/BUILD
-tensorflow/third_party/remote_config/BUILD.tpl
 tensorflow/third_party/remote_config/common.bzl
-tensorflow/third_party/remote_config/remote_platform_configure.bzl
 tensorflow/third_party/repo.bzl
 tensorflow/third_party/six.BUILD
 tensorflow/third_party/snappy.BUILD
@@ -275,10 +273,6 @@ tensorflow/third_party/toolchains/remote/BUILD
 tensorflow/third_party/toolchains/remote/BUILD.tpl
 tensorflow/third_party/toolchains/remote/configure.bzl
 tensorflow/third_party/toolchains/remote/execution.bzl.tpl
-tensorflow/third_party/toolchains/remote_config/BUILD
-tensorflow/third_party/toolchains/remote_config/configs.bzl
-tensorflow/third_party/toolchains/remote_config/containers.bzl
-tensorflow/third_party/toolchains/remote_config/rbe_config.bzl
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD
 tensorflow/tools/ci_build/release/common.sh

@@ -319,10 +319,6 @@ build:xla --define=with_xla_support=true
 # BEGIN TF REMOTE BUILD EXECUTION OPTIONS
 # Options when using remote execution
 # WARNING: THESE OPTIONS WONT WORK IF YOU DO NOT HAVE PROPER AUTHENTICATION AND PERMISSIONS
-
-# Flag to enable remote config
-common --experimental_repo_remote_exec
-
 build:rbe --action_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 build:rbe --google_default_credentials
 build:rbe --bes_backend=buildeventservice.googleapis.com

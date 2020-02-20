@@ -139,28 +139,17 @@ def _nccl_autoconf_impl(repository_ctx):
     else:
         _create_local_nccl_repository(repository_ctx)
 
-_ENVIRONS = [
-    _CUDA_TOOLKIT_PATH,
-    _NCCL_HDR_PATH,
-    _NCCL_INSTALL_PATH,
-    _TF_NCCL_VERSION,
-    _TF_CUDA_COMPUTE_CAPABILITIES,
-    _TF_NEED_CUDA,
-    "TF_CUDA_PATHS",
-]
-
-remote_nccl_configure = repository_rule(
-    implementation = _create_local_nccl_repository,
-    environ = _ENVIRONS,
-    remotable = True,
-    attrs = {
-        "environ": attr.string_dict(),
-    },
-)
-
 nccl_configure = repository_rule(
     implementation = _nccl_autoconf_impl,
-    environ = _ENVIRONS,
+    environ = [
+        _CUDA_TOOLKIT_PATH,
+        _NCCL_HDR_PATH,
+        _NCCL_INSTALL_PATH,
+        _TF_NCCL_VERSION,
+        _TF_CUDA_COMPUTE_CAPABILITIES,
+        _TF_NEED_CUDA,
+        "TF_CUDA_PATHS",
+    ],
 )
 """Detects and configures the NCCL configuration.
 

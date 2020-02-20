@@ -1174,24 +1174,6 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
         {},
     )
 
-    repository_ctx.template(
-        "crosstool/BUILD",
-        config_repo_label(remote_config_repo, "crosstool:BUILD"),
-        {},
-    )
-
-    repository_ctx.template(
-        "crosstool/cc_toolchain_config.bzl",
-        config_repo_label(remote_config_repo, "crosstool:cc_toolchain_config.bzl"),
-        {},
-    )
-
-    repository_ctx.template(
-        "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
-        config_repo_label(remote_config_repo, "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc"),
-        {},
-    )
-
 def _cuda_autoconf_impl(repository_ctx):
     """Implementation of the cuda_autoconf repository rule."""
     if not enable_cuda(repository_ctx):
@@ -1209,38 +1191,29 @@ def _cuda_autoconf_impl(repository_ctx):
     else:
         _create_local_cuda_repository(repository_ctx)
 
-_ENVIRONS = [
-    _GCC_HOST_COMPILER_PATH,
-    _GCC_HOST_COMPILER_PREFIX,
-    _CLANG_CUDA_COMPILER_PATH,
-    "TF_NEED_CUDA",
-    "TF_CUDA_CLANG",
-    _TF_DOWNLOAD_CLANG,
-    _CUDA_TOOLKIT_PATH,
-    _CUDNN_INSTALL_PATH,
-    _TF_CUDA_VERSION,
-    _TF_CUDNN_VERSION,
-    _TF_CUDA_COMPUTE_CAPABILITIES,
-    "NVVMIR_LIBRARY_DIR",
-    _PYTHON_BIN_PATH,
-    "TMP",
-    "TMPDIR",
-    "TF_CUDA_PATHS",
-]
-
-remote_cuda_configure = repository_rule(
-    implementation = _create_local_cuda_repository,
-    environ = _ENVIRONS,
-    remotable = True,
-    attrs = {
-        "environ": attr.string_dict(),
-    },
-)
-
 cuda_configure = repository_rule(
     implementation = _cuda_autoconf_impl,
-    environ = _ENVIRONS + [_TF_CUDA_CONFIG_REPO],
+    environ = [
+        _GCC_HOST_COMPILER_PATH,
+        _GCC_HOST_COMPILER_PREFIX,
+        _CLANG_CUDA_COMPILER_PATH,
+        "TF_NEED_CUDA",
+        "TF_CUDA_CLANG",
+        _TF_DOWNLOAD_CLANG,
+        _CUDA_TOOLKIT_PATH,
+        _CUDNN_INSTALL_PATH,
+        _TF_CUDA_VERSION,
+        _TF_CUDNN_VERSION,
+        _TF_CUDA_COMPUTE_CAPABILITIES,
+        _TF_CUDA_CONFIG_REPO,
+        "NVVMIR_LIBRARY_DIR",
+        _PYTHON_BIN_PATH,
+        "TMP",
+        "TMPDIR",
+        "TF_CUDA_PATHS",
+    ],
 )
+
 """Detects and configures the local CUDA toolchain.
 
 Add the following to your WORKSPACE FILE:
