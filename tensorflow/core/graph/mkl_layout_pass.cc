@@ -1478,9 +1478,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                  "Eigen op for Dequantize op.";
       return false;
     }
-    // TODO(sriniva2/mabuzain) Enable the op after verifying support for
-    // object detection models
-    return false;
+    return true;
   }
 
   // Rewrite rule for _FusedMatMul.

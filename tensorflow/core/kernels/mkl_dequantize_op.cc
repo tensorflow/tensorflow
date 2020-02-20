@@ -89,10 +89,12 @@ class MklDequantizeOp : public OpKernel {
       Tensor* output_tensor = nullptr;
       MklDnnShape output_mkl_shape;
       TensorShape output_tf_shape;
-      memory::desc dst_md = src_mkl_shape.IsMklTensor()
-                                ? src_md
-                                : memory::desc(src_dims, MklDnnType<float>(),
-                                               MEMORY_FORMAT::nhwc);
+      memory::desc dst_md =
+          src_mkl_shape.IsMklTensor()
+              ? memory::desc(src_dims, MklDnnType<float>(),
+                             static_cast<memory::format>(src_md.data.format))
+              : memory::desc(src_dims, MklDnnType<float>(),
+                             MEMORY_FORMAT::nhwc);
       // If input is MKL shape, output is also MKL shape.
       // If input is TF shape, output is also TF shape.
       if (src_mkl_shape.IsMklTensor()) {

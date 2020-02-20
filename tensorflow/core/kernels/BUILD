@@ -7991,6 +7991,7 @@ tf_cc_test_mkl(
     srcs = ["mkl_dequantize_op_test.cc"],
     deps = [
         ":mkl_dequantize_op",
+        ":mkl_tfconv_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:array_ops_op_lib",
@@ -7999,6 +8000,7 @@ tf_cc_test_mkl(
         "//tensorflow/core:mkl_array_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
