@@ -677,7 +677,7 @@ inline void ExecutePrimitive(const std::vector<primitive>& net,
   }
   cpu_stream.wait();
 #else
-  stream(stream::kind::eager).submit(net).wait();
+  stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
 }
 
@@ -732,9 +732,9 @@ inline Status ConvertMklToTF(OpKernelContext* context,
     }
     return Status::OK();
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + string(e.message) + ", in file " +
-                       string(__FILE__) + ":" + std::to_string(__LINE__);
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       string(e.message) + ", in file " + string(__FILE__) +
+                       ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
 }
@@ -1254,8 +1254,8 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
   } catch (mkldnn::error& e) {
     return Status(error::Code::INTERNAL,
                   tensorflow::strings::StrCat(
-                      "Failed to create blocked memory descriptor.",
-                      "Status: ", e.status, ", message: ", e.message));
+                      "Failed to create blocked memory descriptor.", "Status: ",
+                      e.status, ", message: ", e.message));
   }
 #else
   // We have to construct memory descriptor in a C style. This is not at all
@@ -1624,7 +1624,7 @@ class MklDnnData {
       reorder_memory_ = new memory(op_pd);
       std::vector<primitive> net;
       net.push_back(FindOrCreateReorder<T>(user_memory_, reorder_memory_));
-      stream(stream::kind::eager).submit(net).wait();
+      stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
       return true;
     }
@@ -1702,7 +1702,7 @@ class MklDnnData {
       std::vector<primitive> net;
       reorder_memory_ = new memory(op_pd, reorder_data_handle);
       net.push_back(FindOrCreateReorder<T>(user_memory_, reorder_memory_));
-      stream(stream::kind::eager).submit(net).wait();
+      stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
       return true;
     }

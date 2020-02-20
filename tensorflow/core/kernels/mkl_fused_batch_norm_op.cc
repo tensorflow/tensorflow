@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::batch_normalization_backward;
 using mkldnn::batch_normalization_forward;
@@ -53,7 +53,10 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
  public:
   explicit MklFusedBatchNormFwdPrimitive(const MklBatchNormFwdParams& fwdParams)
       : cpu_engine_(engine::cpu, 0) {
-    context_.fwd_stream.reset(new mkldnn::stream(mkldnn::stream::kind::eager));
+#ifndef ENABLE_MKLDNN_V1
+    context_.fwd_stream.reset(
+        new mkldnn::stream(mkldnn::stream::kind::eager_nostore));
+#endif
     if (context_.bn_fwd == nullptr) Setup(fwdParams);
   }
 
@@ -299,7 +302,10 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
  public:
   explicit MklFusedBatchNormBwdPrimitive(const MklBatchNormBwdParams& bwdParams)
       : cpu_engine_(engine::cpu, 0) {
-    context_.bwd_stream.reset(new mkldnn::stream(mkldnn::stream::kind::eager));
+#ifndef ENABLE_MKLDNN_V1
+    context_.bwd_stream.reset(
+        new mkldnn::stream(mkldnn::stream::kind::eager_nostore));
+#endif
     if (context_.bn_bwd == nullptr) Setup(bwdParams);
   }
 
@@ -718,9 +724,9 @@ class MklFusedBatchNormOp : public OpKernel {
         std::memcpy(batch_variance_data, variance_data, depth_ * sizeof(U));
       }
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -1064,9 +1070,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
                   reinterpret_cast<char*>(diff_weights_data + depth_),
                   depth_ * sizeof(U));
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));

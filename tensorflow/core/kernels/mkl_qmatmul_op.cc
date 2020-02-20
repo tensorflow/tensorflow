@@ -444,7 +444,9 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
             scaled_bias_->get_primitive_desc(), bias_attr);
         net.push_back(
             mkldnn::reorder(reorder_desc, *input_bias_, *scaled_bias_));
-        stream(stream::kind::eager).submit(net).wait();
+#ifndef ENABLE_MKLDNN_V1
+        stream(stream::kind::eager_nostore).submit(net).wait();
+#endif
         return reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
       } else {
         context->CtxFailure(

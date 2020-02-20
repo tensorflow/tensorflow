@@ -71,7 +71,9 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
   explicit MklDnnMatMulFwdPrimitive(
       const MklDnnMatMulFwdParams& matmulFwdParams)
       : cpu_engine_(engine::cpu, 0) {
-    context_.fwd_stream.reset(new stream(stream::kind::eager));
+#ifndef ENABLE_MKLDNN_V1
+    context_.fwd_stream.reset(new stream(stream::kind::eager_nostore));
+#endif
     // Create matmul primitive
     if (context_.matmul_fwd == nullptr) {
       Setup(matmulFwdParams);
