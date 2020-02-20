@@ -3551,6 +3551,23 @@ def _FakeQuantWithMinMaxVarsPerChannelGradient(op, grad):
       narrow_range=op.get_attr("narrow_range"))
 
 
+@ops.RegisterGradient("QuantizeAndDequantizeV2")
+def _QuantizeAndDequantizeV2Grad(op, grad):
+  """Gradient for QuantizeAndDequantizeV2 op."""
+  return quantize_and_dequantize_v2_grad(
+      grad,
+      op.inputs[0],
+      op.inputs[1],
+      op.inputs[2],
+      axis=op.get_attr("axis"))
+
+
+@ops.RegisterGradient("QuantizeAndDequantizeV2Grad")
+def _QuantizeAndDequantizeV2GradGrad(op, grad):
+  """Gradient for QuantizeAndDequantizeV2Grad op."""
+  return _QuantizeAndDequantizeV2Grad(op, grad)
+
+
 @tf_export("required_space_to_batch_paddings")
 def required_space_to_batch_paddings(input_shape,
                                      block_shape,
