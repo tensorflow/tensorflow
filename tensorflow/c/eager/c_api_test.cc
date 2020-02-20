@@ -1449,4 +1449,38 @@ TEST(CAPI, TestTFE_OpGetInputAndOutputLengthsFailForUnknownArguments) {
   TFE_DeleteContext(ctx);
 }
 
+TEST(CAPI, TestTFE_OpGetAttrs) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_Op* varop = TFE_NewOp(ctx, "VarHandleOp", status);
+  TFE_OpSetAttrType(varop, "dtype", TF_INT64);
+  TFE_OpSetAttrShape(varop, "shape", {}, 0, status);
+  TFE_OpAttrs attributes;
+  TFE_OpGetAttrs(varop, &attributes);
+
+  TFE_Op* varop_copy = TFE_NewOp(ctx, "VarHandleOp", status);
+  TFE_OpSetAttrType(varop_copy, "dtype", TF_FLOAT);
+  TFE_OpAddAttrs(varop_copy, &attributes);
+  unsigned char is_list = 0;
+  ASSERT_EQ(TF_ATTR_TYPE,
+            TFE_OpGetAttrType(varop_copy, "dtype", &is_list, status));
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  ASSERT_EQ(TF_ATTR_SHAPE,
+            TFE_OpGetAttrType(varop_copy, "shape", &is_list, status));
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  tensorflow::AttrValueMap attr_values;
+  varop_copy->operation.Attrs().FillAttrValueMap(&attr_values);
+  EXPECT_EQ(tensorflow::DT_FLOAT, attr_values.find("dtype")->second.type());
+
+  TF_DeleteStatus(status);
+  TFE_DeleteOp(varop);
+  TFE_DeleteOp(varop_copy);
+  TFE_DeleteContext(ctx);
+}
+
 }  // namespace

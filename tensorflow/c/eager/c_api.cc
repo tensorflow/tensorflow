@@ -1199,14 +1199,6 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
     dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
   }
 
-  if (dtype == TF_STRING || dtype == TF_RESOURCE ||
-      !tensorflow::DataTypeCanUseMemcpy(
-          static_cast<tensorflow::DataType>(dtype))) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Trying to create a tensor with a pointer to non-pod memory.");
-    deallocator(data, len, deallocator_arg);
-    return nullptr;
-  }
   // TODO(apassos) do we need to wrap the deallocator here to make sure to sync
   // the device?
   TF_ManagedBuffer* buf =
@@ -1680,6 +1672,19 @@ void TFE_ContextStartStep(TFE_Context* ctx) { ctx->context->StartStep(); }
 
 void TFE_ContextEndStep(TFE_Context* ctx) { ctx->context->EndStep(); }
 
+void TFE_OpGetAttrs(TFE_Op* op, TFE_OpAttrs* attrs) {
+  *attrs = TFE_OpAttrs(&op->operation.Attrs());
+}
+
+void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
+  tensorflow::AttrValueMap m;
+  attrs->attributes->FillAttrValueMap(&m);
+  tensorflow::AttrBuilder* destination = op->operation.MutableAttrs();
+  for (auto attribute : m) {
+    destination->Set(attribute.first, attribute.second);
+  }
+}
+
 namespace tensorflow {
 void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
                           const tensorflow::AttrValue& default_value,
@@ -1799,10 +1804,10 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
               op->Inputs()[i])});
     }
     std::vector<TFE_TensorHandle*> outputs(*num_retvals);
-    // TODO(allenl): figure out how to get attrs from EagerOperation
     TF_Status status;
+    TFE_OpAttrs attributes(&op->Attrs());
     device_.execute(inputs.size(), inputs.data(), op->Name().c_str(),
-                    num_retvals, outputs.data(), &status, info_);
+                    &attributes, num_retvals, outputs.data(), &status, info_);
     if (status.status.ok()) {
       for (int i = 0; i < *num_retvals; ++i) {
         retvals[i] = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(

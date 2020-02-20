@@ -424,7 +424,27 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
 TF_CAPI_EXPORT extern void TFE_HostAddressSpace(TFE_Context* ctx,
                                                 TF_Buffer* buf);
 
-#define TFE_CUSTOM_DEVICE_VERSION 0
+// APIs for generically dealing with op attributes (e.g. when forwarding them
+// through custom device implementations).
+//
+// TODO(allenl): Currently these are black boxes, but we should have some way to
+// inspect values. This would let people e.g. copy over most attributes and then
+// modify some based on their values.
+
+// A reference to an op's name -> attribute mapping
+typedef struct TFE_OpAttrs TFE_OpAttrs;
+
+// Fetch a struct with a reference to information about attributes of `op`.
+//
+// The `attrs` struct does not own any memory, and `op` must outlive it.
+TF_CAPI_EXPORT extern void TFE_OpGetAttrs(TFE_Op* op, TFE_OpAttrs* attrs);
+
+// Add attributes in `attrs` to `op`.
+//
+// Does not overwrite or update existing attributes, but adds new ones.
+TF_CAPI_EXPORT extern void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs);
+
+#define TFE_CUSTOM_DEVICE_VERSION 1
 
 // Struct to be filled in
 typedef struct TFE_CustomDevice {
@@ -441,10 +461,10 @@ typedef struct TFE_CustomDevice {
                                                void* device_info);
 
   // Method to execute an operation.
-  // TODO(allenl) figure out a generic way of passing attrs here
   void (*execute)(int num_inputs, TFE_TensorHandle** inputs,
-                  const char* operation_name, int* num_outputs,
-                  TFE_TensorHandle** outputs, TF_Status* s, void* device_info);
+                  const char* operation_name, const TFE_OpAttrs* attributes,
+                  int* num_outputs, TFE_TensorHandle** outputs, TF_Status* s,
+                  void* device_info);
 
   // Method to delete a device.
   void (*delete_device)(void* device_info);

@@ -236,4 +236,13 @@ struct TFE_Executor {
   tensorflow::EagerExecutor* unowned_executor;
 };
 
+struct TFE_OpAttrs {
+  explicit TFE_OpAttrs() : attributes(nullptr) {}
+
+  explicit TFE_OpAttrs(const tensorflow::AttrBuilder* value)
+      : attributes(value) {}
+
+  const tensorflow::AttrBuilder* attributes;
+};
+
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

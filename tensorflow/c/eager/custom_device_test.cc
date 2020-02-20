@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace {
@@ -83,12 +84,14 @@ TFE_TensorHandle* CopyTensorFromLoggingDevice(TFE_TensorHandle* tensor,
 }
 
 void LoggingDeviceExecute(int num_inputs, TFE_TensorHandle** inputs,
-                          const char* operation_name, int* num_outputs,
+                          const char* operation_name,
+                          const TFE_OpAttrs* attributes, int* num_outputs,
                           TFE_TensorHandle** outputs, TF_Status* s,
                           void* device_info) {
   LoggingDevice* dev = reinterpret_cast<LoggingDevice*>(device_info);
   TFE_Op* op(TFE_NewOp(dev->ctx, operation_name, s));
   if (TF_GetCode(s) != TF_OK) return;
+  TFE_OpAddAttrs(op, attributes);
   TFE_OpSetDevice(op, dev->underlying_device.c_str(), s);
   for (int j = 0; j < num_inputs; ++j) {
     TFE_TensorHandle* input = inputs[j];
@@ -200,6 +203,91 @@ TEST(CUSTOM_DEVICE, ResetOperation) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   ASSERT_EQ(tensorflow::string(TFE_OpGetDevice(reused_op.get(), status.get())),
             tensorflow::string("/job:localhost/replica:0/task:0/device:CPU:0"));
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+}
+
+TEST(CUSTOM_DEVICE, MakeVariable) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  std::unique_ptr<TFE_ContextOptions, decltype(&TFE_DeleteContextOptions)> opts(
+      TFE_NewContextOptions(), TFE_DeleteContextOptions);
+  std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> context(
+      TFE_NewContext(opts.get(), status.get()), TFE_DeleteContext);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  bool arrived = false;
+  bool executed = false;
+  const char* name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
+  RegisterLoggingDevice(context.get(), name, &arrived, &executed);
+
+  // Create a variable handle placed on the custom device.
+  std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> op(
+      TFE_NewOp(context.get(), "VarHandleOp", status.get()), TFE_DeleteOp);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  TFE_OpSetAttrType(op.get(), "dtype", TF_FLOAT);
+  TFE_OpSetAttrShape(op.get(), "shape", {}, 0, status.get());
+  TFE_OpSetAttrString(op.get(), "container", "", 0);
+  TFE_OpSetAttrString(op.get(), "shared_name", "", 0);
+  TFE_OpSetDevice(op.get(), name, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  TFE_TensorHandle* var_handle = nullptr;
+  int num_retvals = 1;
+  executed = false;
+  TFE_Execute(op.get(), &var_handle, &num_retvals, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_TRUE(executed);
+  auto handle_cleaner = tensorflow::gtl::MakeCleanup(
+      [var_handle]() { TFE_DeleteTensorHandle(var_handle); });
+
+  // Assign to the variable, copying to the custom device.
+  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)> one(
+      TestScalarTensorHandle(111.f), TFE_DeleteTensorHandle);
+  op.reset(TFE_NewOp(context.get(), "AssignVariableOp", status.get()));
+  TFE_OpSetAttrType(op.get(), "dtype", TF_FLOAT);
+  TFE_OpAddInput(op.get(), var_handle, status.get());
+  TFE_OpAddInput(op.get(), one.get(), status.get());
+  TFE_OpSetDevice(op.get(), name, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  executed = false;
+  num_retvals = 0;
+  TFE_Execute(op.get(), nullptr, &num_retvals, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_TRUE(executed);
+
+  // Read the variable's value.
+  op.reset(TFE_NewOp(context.get(), "ReadVariableOp", status.get()));
+  TFE_OpAddInput(op.get(), var_handle, status.get());
+  TFE_OpSetDevice(op.get(), name, status.get());
+  TFE_OpSetAttrType(op.get(), "dtype", TF_FLOAT);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  executed = false;
+  num_retvals = 1;
+  TFE_TensorHandle* var_value = nullptr;
+  TFE_Execute(op.get(), &var_value, &num_retvals, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_TRUE(executed);
+  auto value_cleaner = tensorflow::gtl::MakeCleanup(
+      [var_value]() { TFE_DeleteTensorHandle(var_value); });
+  ASSERT_EQ(tensorflow::string(name),
+            tensorflow::string(
+                TFE_TensorHandleBackingDeviceName(var_value, status.get())));
+  TFE_TensorHandle* var_value_unpacked =
+      reinterpret_cast<LoggedTensor*>(
+          TFE_TensorHandleDevicePointer(var_value, status.get()))
+          ->tensor;
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> resolved_value(
+      TFE_TensorHandleResolve(var_value_unpacked, status.get()),
+      TF_DeleteTensor);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_EQ(111., *static_cast<float*>(TF_TensorData(resolved_value.get())));
+
+  // Free the backing buffer for the variable.
+  op.reset(TFE_NewOp(context.get(), "DestroyResourceOp", status.get()));
+  TFE_OpAddInput(op.get(), var_handle, status.get());
+  TFE_OpSetDevice(op.get(), name, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  num_retvals = 0;
+  TFE_Execute(op.get(), nullptr, &num_retvals, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 }
 
