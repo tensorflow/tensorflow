@@ -33,8 +33,12 @@ class KerasSaveLoadTest(test_base.TestSavedModelBase):
   def _save_model(self, model, saved_dir):
     model.save(saved_dir, save_format='tf')
 
-  def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
-                          output_name, experimental_run_tf_function):
+  def _load_and_run_model(self,
+                          distribution,
+                          saved_dir,
+                          predict_dataset,
+                          experimental_run_tf_function,
+                          output_name='output_1'):
     restored_keras_model = save.load_model(saved_dir)
     restored_keras_model._experimental_run_tf_function = (
         experimental_run_tf_function)

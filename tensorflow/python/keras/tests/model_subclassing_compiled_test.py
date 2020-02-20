@@ -134,8 +134,6 @@ class ModelSubclassCompiledTest(keras_parameterized.TestCase):
     self.assertEqual(len(model.weights), 10)
     self.assertEqual(len(model.trainable_weights), 8)
     self.assertEqual(len(model.non_trainable_weights), 2)
-    self.assertEqual(len(model.inputs), 2)
-    self.assertEqual(len(model.outputs), 2)
 
   def test_updates(self):
     # test that updates get run during training
