@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
 
 namespace tensorflow {
 
@@ -97,18 +98,18 @@ struct WritableFileRawStream : public llvm::raw_ostream {
 Status CreateFileForDumping(llvm::StringRef name,
                             std::unique_ptr<llvm::raw_ostream>* os,
                             std::string* filepath, llvm::StringRef dirname) {
-  const char* dir = nullptr;
+  std::string dir;
   if (!dirname.empty())
-    dir = dirname.data();
+    dir = std::string(dirname);
   else
     dir = GetDumpDirFromEnvVar();
 
-  if (!dir) {
+  if (dir.empty()) {
     return Status(error::Code::INVALID_ARGUMENT,
                   "(TF_DUMP_GRAPH_PREFIX not specified)");
   }
 
-  if (std::strncmp(dir, "-", 2) == 0) {
+  if (dir == "-") {
     *os = std::make_unique<LogInfoRawStream>();
     *filepath = "LOG(INFO)";
     return Status();
@@ -151,25 +152,24 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   return filepath;
 }
 
-const char* GetDumpDirFromEnvVar() {
+std::string GetDumpDirFromEnvVar() {
   const char* prefix_env = getenv("TF_DUMP_GRAPH_PREFIX");
   if (!prefix_env) {
     LOG(WARNING)
         << "Failed to dump MLIR module because dump location is not "
         << " specified through TF_DUMP_GRAPH_PREFIX environment variable.";
-    return nullptr;
+    return "";
   }
 
-  if (absl::EqualsIgnoreCase(prefix_env, "sponge")) {
-    const char* tmp_dir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
-    if (!tmp_dir) {
-      LOG(WARNING) << "TF_DUMP_GRAPH_PREFIX=sponge but "
-                      "TEST_UNDECLARED_OUTPUT_DIRS is not set";
-      return nullptr;
-    }
-    return tmp_dir;
+  std::string result = prefix_env;
+
+  if (absl::EqualsIgnoreCase(result, "sponge") &&
+      !io::GetTestUndeclaredOutputsDir(&result)) {
+    LOG(WARNING) << "TF_DUMP_GRAPH_PREFIX=sponge but "
+                    "TEST_UNDECLARED_OUTPUT_DIRS is not set";
+    return "";
   }
-  return prefix_env;
+  return result;
 }
 
 }  // namespace tensorflow
