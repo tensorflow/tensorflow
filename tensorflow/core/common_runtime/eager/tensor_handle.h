@@ -323,8 +323,16 @@ class TensorHandle : public core::RefCounted {
 // Checks whether a VariantDevice contains a custom device.
 bool VariantDeviceIsCustom(absl::variant<Device*, CustomDevice*> device);
 
+// Wraps device->name() or CustomDevice->name().
+string VariantDeviceName(absl::variant<Device*, CustomDevice*> device);
+
 // Wraps device->DebugString() or CustomDevice->name().
 string VariantDeviceDebugString(absl::variant<Device*, CustomDevice*> device);
+
+// Indicates either HostCPU or an unset physical device. We never set a null
+// CustomDevice*.
+const absl::variant<Device*, CustomDevice*> kVariantDeviceNull =
+    static_cast<Device*>(nullptr);
 
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);

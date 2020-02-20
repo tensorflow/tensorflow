@@ -842,7 +842,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
-      return val.values
+      return val._values  # pylint: disable=protected-access
     return (val,)
 
   def value_container(self, val):

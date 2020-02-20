@@ -196,7 +196,8 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       // Describe how the inputs and outputs of inner-product look like. Also
       // specify buffers containing actual input and output data.
       Tensor* dst_tensor = nullptr;
-      auto input_output_fmt = memory::format::nc;
+      auto input_output_fmt = MEMORY_FORMAT::nc;
+      auto input_output_fmt_mkldnn = MKL_TENSOR_FORMAT_NC;
 
       // If input is in MKL layout, then simply take input layout; otherwise,
       // construct input TF layout. For TF layout, although input shape
@@ -213,7 +214,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       auto weight_md = weight_mkl_shape.IsMklTensor()
                            ? weight_mkl_shape.GetMklLayout()
                            : memory::desc(weight_dims, MklDnnType<Tweight>(),
-                                          memory::format::io);
+                                          MEMORY_FORMAT::io);
       weight.SetUsrMem(weight_md, &weight_tensor);
 
       MklDnnMatMulFwdPrimitive<float, Tinput, Tweight, Tbias, Toutput>*
@@ -235,16 +236,17 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>
           matmul_fwd_pd = matmul_fwd->GetPrimitiveDesc();
       this->AllocateOutputTensor(context, *matmul_fwd_pd, dst_dims_mkl_order,
-                                 input_output_fmt, &dst_tensor);
+                                 input_output_fmt_mkldnn, &dst_tensor);
 
       Toutput* dst_data =
           reinterpret_cast<Toutput*>(dst_tensor->flat<Toutput>().data());
 
       // Check if src and weight data need to be reordered.
       Tinput* src_data = nullptr;
-      if (src_md.data.format != matmul_fwd->GetSrcMemoryFormat()) {
+      if (IS_SRC_REORDER_NEEDED(src_md, matmul_fwd_pd, matmul_fwd)) {
         src.SetUsrMem(src_md, &src_tensor);
-        src.CheckReorderToOpMem(matmul_fwd_pd.get()->src_primitive_desc());
+        src.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
+            matmul_fwd_pd.get()->PRIMITIVE_DESC_SRC, this->cpu_engine_));
         src_data = static_cast<Tinput*>(src.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<Tinput*>(
@@ -252,7 +254,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       }
 
       Tweight* weight_data = nullptr;
-      if (weight_md.data.format != matmul_fwd->GetweightMemoryFormat()) {
+      if (IS_WEIGHTS_REORDER_NEEDED(weight_md, matmul_fwd_pd, matmul_fwd)) {
         bool is_weight_cached = false;
         // For batch size 1, MKL-DNN expects that weight format is OI whereas
         // TF default format is IO. So in that case convert weight from IO
@@ -265,15 +267,20 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
             this->CacheWeight(context, matmul_fwd_pd, weight_data,
                               weight_tensor, weight, weight_md);
           }
+#ifdef ENABLE_MKLDNN_V1
           weight_data = this->GetCachedWeight(
-              context, matmul_fwd->GetweightMemoryFormat());
+              context, static_cast<int32>(weight_mkl_shape.GetTfDataFormat()));
+#else
+          weight_data = this->GetCachedWeight(
+              context, matmul_fwd->GetWeightMemoryFormat());
+#endif  // ENABLE_MKLDNN_V1
           is_weight_cached = (weight_data != nullptr);
         }
 
         if (!is_weight_cached) {
           weight.SetUsrMem(weight_md, &weight_tensor);
-          weight.CheckReorderToOpMem(
-              matmul_fwd_pd.get()->weights_primitive_desc());
+          weight.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
+              matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS, this->cpu_engine_));
           weight_data =
               static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
         }
@@ -432,19 +439,35 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
         std::vector<float> scales;
         scales.push_back(out_scale);
         mkldnn::primitive_attr bias_attr;
+        stream reorder_stream = CPU_STREAM(this->cpu_engine_);
         bias_attr.set_output_scales(0, scales);
 
         void* bias_buf = static_cast<void*>(
             const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
         input_bias_ =
-            new memory(mkldnn_matmul_fwd_pd->bias_primitive_desc(), bias_buf);
-        scaled_bias_ = new memory(mkldnn_matmul_fwd_pd->bias_primitive_desc());
+            new MEMORY_CONSTRUCTOR(mkldnn_matmul_fwd_pd->PRIMITIVE_DESC_BIAS,
+                                   this->cpu_engine_, bias_buf);
+        scaled_bias_ = new MEMORY_CONSTRUCTOR_WITHOUT_DATA(
+            mkldnn_matmul_fwd_pd->PRIMITIVE_DESC_BIAS, this->cpu_engine_);
+
+#ifdef ENABLE_MKLDNN_V1
+        auto reorder_desc = mkldnn::reorder::primitive_desc(
+            *input_bias_, *scaled_bias_, bias_attr);
+        net.push_back(mkldnn::reorder(reorder_desc));
+        std::unordered_map<int, memory> reorder_net_args = {
+            {MKLDNN_ARG_FROM, *input_bias_},
+            { MKLDNN_ARG_TO,
+              *scaled_bias_ }};
+        net.at(0).execute(reorder_stream, reorder_net_args);
+#else
         auto reorder_desc = mkldnn::reorder::primitive_desc(
             input_bias_->get_primitive_desc(),
             scaled_bias_->get_primitive_desc(), bias_attr);
         net.push_back(
             mkldnn::reorder(reorder_desc, *input_bias_, *scaled_bias_));
-        stream(stream::kind::eager).submit(net).wait();
+        reorder_stream.submit(net).wait();
+#endif  // ENABLE_MKLDNN_V1
+
         return reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
       } else {
         context->CtxFailure(

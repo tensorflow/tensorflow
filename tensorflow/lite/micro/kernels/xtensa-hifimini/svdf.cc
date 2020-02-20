@@ -75,6 +75,25 @@ void EvalIntegerSVDF(
   int32_t scratch_tensor[kScratchTensorMaxSize];
   int32_t scratch_output_tensor[kScratchTensorMaxSize];
 
+  // Shift states. No need to set last state, the matmul is not accumulative.
+  {
+    for (int b = 0; b < n_batch; ++b) {
+      int16_t* state_ptr_batch =
+          GetTensorData<int16_t>(activation_state_tensor) +
+          b * n_memory * n_filter;
+      for (int f = 0; f < n_filter; ++f) {
+        // Shift the vector left:
+        int16_t* batch_ptr = state_ptr_batch;
+        int16_t* batch_start = state_ptr_batch + 1;
+        int16_t* batch_end = state_ptr_batch + n_memory;
+        while (batch_start != batch_end) {
+          *batch_ptr++ = *batch_start++;
+        }
+        state_ptr_batch += n_memory;
+      }
+    }
+  }
+
   // Feature matmul.
   {
     int16_t* state = GetTensorData<int16_t>(activation_state_tensor);
@@ -229,26 +248,6 @@ void EvalIntegerSVDF(
       int32_t x_32 = AE_TRUNCA32Q48(x_56);
       GetTensorData<int8_t>(output_tensor)[i] =
           static_cast<int8_t>(AE_TRUNCA32Q48(x_56));
-    }
-  }
-
-  // Shift state.
-  {
-    for (int b = 0; b < n_batch; ++b) {
-      int16_t* state_ptr_batch =
-          GetTensorData<int16_t>(activation_state_tensor) +
-          b * n_memory * n_filter;
-      for (int f = 0; f < n_filter; ++f) {
-        // Shift the vector left:
-        int16_t* batch_ptr = state_ptr_batch;
-        int16_t* batch_start = state_ptr_batch + 1;
-        int16_t* batch_end = state_ptr_batch + n_memory;
-        while (batch_start != batch_end) {
-          *batch_ptr++ = *batch_start++;
-        }
-        state_ptr_batch[n_memory - 1] = 0;
-        state_ptr_batch += n_memory;
-      }
     }
   }
 }

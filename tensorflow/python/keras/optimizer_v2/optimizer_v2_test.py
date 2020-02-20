@@ -242,7 +242,7 @@ class OptimizerTest(test.TestCase):
 
       sgd = gradient_descent.SGD(3.0)
       grads_and_vars = sgd._compute_gradients(f, [x])
-      self.assertEqual(1, len(grads_and_vars))
+      self.assertLen(grads_and_vars, 1)
       grad, x_as_var = grads_and_vars[0]
       self.assertIs(x, x_as_var)
       self.assertEqual(2.0, self.evaluate(grad))
@@ -620,6 +620,36 @@ class OptimizerTest(test.TestCase):
     opt = gradient_descent.SGD(1.)
     opt.minimize(lambda: constant_op.constant(1.), [])
     opt.apply_gradients([])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAggregationTrue(self):
+    # Test that all_reduce_sum_gradients=True works without distributed
+    # strategy.
+    var = resource_variable_ops.ResourceVariable([1., 2.])
+    opt = gradient_descent.SGD(3.0)
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose([1., 2.], self.evaluate(var))
+    opt_op = opt.apply_gradients([([0.1, 0.1], var)],
+                                 all_reduce_sum_gradients=True)
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(opt_op)
+    self.assertAllClose([0.7, 1.7], self.evaluate(var))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAggregationFalse(self):
+    # Test that all_reduce_sum_gradients=False works without distributed
+    # strategy.
+    var = resource_variable_ops.ResourceVariable([1., 2.])
+    opt = gradient_descent.SGD(3.0)
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose([1., 2.], self.evaluate(var))
+    opt_op = opt.apply_gradients([([0.1, 0.1], var)],
+                                 all_reduce_sum_gradients=False)
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(opt_op)
+    self.assertAllClose([0.7, 1.7], self.evaluate(var))
 
 
 @keras_parameterized.run_all_keras_modes

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/fully_connected_texture.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/fully_connected.h"
 
 #include <string>
 #include <utility>
@@ -90,18 +90,17 @@ std::string GetFullyConnectedKernelCode(
 }
 }  // namespace
 
-FullyConnectedTexture::FullyConnectedTexture(const OperationDef& definition)
+FullyConnected::FullyConnected(const OperationDef& definition)
     : GPUOperation(definition) {}
 
-FullyConnectedTexture::FullyConnectedTexture(FullyConnectedTexture&& kernel)
+FullyConnected::FullyConnected(FullyConnected&& kernel)
     : GPUOperation(std::move(kernel)),
       weights_(std::move(kernel.weights_)),
       biases_(std::move(kernel.biases_)),
       kernel_(std::move(kernel.kernel_)),
       work_group_size_(kernel.work_group_size_) {}
 
-FullyConnectedTexture& FullyConnectedTexture::operator=(
-    FullyConnectedTexture&& kernel) {
+FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
   if (this != &kernel) {
     weights_ = std::move(kernel.weights_);
     biases_ = std::move(kernel.biases_);
@@ -112,7 +111,7 @@ FullyConnectedTexture& FullyConnectedTexture::operator=(
   return *this;
 }
 
-Status FullyConnectedTexture::Compile(const CreationContext& creation_context) {
+Status FullyConnected::Compile(const CreationContext& creation_context) {
   int wg_width = 32;
   int wg_height = 4;
   int work_items;
@@ -136,7 +135,7 @@ Status FullyConnectedTexture::Compile(const CreationContext& creation_context) {
   return OkStatus();
 }
 
-Status FullyConnectedTexture::AddToQueue(CLCommandQueue* queue) {
+Status FullyConnected::AddToQueue(CLCommandQueue* queue) {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
@@ -150,11 +149,11 @@ Status FullyConnectedTexture::AddToQueue(CLCommandQueue* queue) {
                                  work_group_size_);
 }
 
-Status CreateFullyConnectedTexture(const CreationContext& creation_context,
-                                   const OperationDef& definition,
-                                   const FullyConnectedAttributes& attr,
-                                   FullyConnectedTexture* result) {
-  *result = FullyConnectedTexture(definition);
+Status CreateFullyConnected(const CreationContext& creation_context,
+                            const OperationDef& definition,
+                            const FullyConnectedAttributes& attr,
+                            FullyConnected* result) {
+  *result = FullyConnected(definition);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
   LinearStorageCreateInfo create_info;

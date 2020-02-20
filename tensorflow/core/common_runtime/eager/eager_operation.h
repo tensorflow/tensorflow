@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OPERATION_H_
 
 #include "absl/types/optional.h"
+#include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
@@ -54,6 +55,7 @@ class EagerOperation {
   bool is_function() const { return is_function_; }
 
   tensorflow::EagerContext& EagerContext() { return ctx_; }
+  const tensorflow::EagerContext& EagerContext() const { return ctx_; }
 
   AttrBuilder* MutableAttrs() { return &attrs_; }
   const AttrBuilder& Attrs() const { return attrs_; }
@@ -69,12 +71,24 @@ class EagerOperation {
   const string& Name() const { return attrs_.op_name(); }
   const AttrTypeMap* AttrTypes() const { return attr_types_; }
 
-  tensorflow::Device* Device() const { return device_; }
+  // Like TensorHandles, EagerOperations may be placed either on a virtual
+  // CustomDevice or on a physical Device.
+  absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> Device() const {
+    return device_;
+  }
+
   void SetDevice(tensorflow::Device* device) {
     device_ = device;
     raw_device_name_.clear();
     device_name_ = device->name();
     device_parsed_name_ = device->parsed_name();
+  }
+
+  void SetDevice(tensorflow::CustomDevice* device) {
+    device_ = device;
+    raw_device_name_.clear();
+    device_name_ = device->name();
+    DeviceNameUtils::ParseFullName(device_name_, &device_parsed_name_);
   }
 
   const string& GetDeviceName() const { return device_name_; }
@@ -127,7 +141,7 @@ class EagerOperation {
   AttrBuilder attrs_;
   const AttrTypeMap* attr_types_;
   gtl::InlinedVector<TensorHandle*, 4> inputs_;
-  tensorflow::Device* device_;
+  absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> device_;
   string raw_device_name_;
   string device_name_;
   DeviceNameUtils::ParsedName device_parsed_name_;

@@ -1349,7 +1349,7 @@ def TFL_GreaterOp : TFL_Op<"greater", [
 }
 
 def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
-                                          SameOperandsAndResultType]> {
+                                          SameOperandsAndResultShape]> {
   let summary = "Hardswish activation function.";
   let description = [{
     Computes hard-swish activation function

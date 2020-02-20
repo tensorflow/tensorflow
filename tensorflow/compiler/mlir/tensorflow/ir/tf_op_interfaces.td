@@ -44,16 +44,54 @@ def TF_LayoutSensitiveInterface : OpInterface<"LayoutSensitiveInterface"> {
     >,
     InterfaceMethod<
       [{Returns indices of layout dependent arguments.}],
-      "SmallVector<int64_t, 4>", "GetLayoutDependentArgs", (ins)
+      "SmallVector<unsigned, 4>", "GetLayoutDependentArgs", (ins)
     >,
     InterfaceMethod<
       [{Returns indices of layout dependent results.}],
-      "SmallVector<int64_t, 4>", "GetLayoutDependentResults", (ins)
+      "SmallVector<unsigned, 4>", "GetLayoutDependentResults", (ins)
     >,
   ];
 
   let verify = [{
     return VerifyLayoutSensitiveInterface($_op);
+  }];
+}
+
+def TF_FoldOperandsTransposeInterface : OpInterface<"FoldOperandsTransposeInterface"> {
+  let description = [{
+    Operation supports folding operand(s) transposes into the operation itself.
+
+    (1) Operation might have layout dependent operands and results...
+
+      Example:  MaxPool(Transpose($arg, $perm))
+                  -> Transpose(MaxPool($arg, $perm))
+
+    (2) ... or it might have only layout dependent operands:
+
+      Example: Mean(Transpose($arg, $reduction_dims))
+                 -> Mean($arg, Transpose($reduction_dims))
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns indices of layout dependent arguments.}],
+      "SmallVector<unsigned, 4>", "GetLayoutDependentArgs", (ins)
+    >,
+    InterfaceMethod<
+      [{Returns indices of layout dependent results.}],
+      "SmallVector<unsigned, 4>", "GetLayoutDependentResults", (ins)
+    >,
+    InterfaceMethod<
+      [{Updates operation attributes and operands to account for the folded
+        permutation. If folding of permutation is not possible, must return
+        failure.}],
+      "LogicalResult", "FoldOperandsPermutation",
+      (ins "ArrayRef<int64_t>":$permutation)
+    >,
+  ];
+
+  let verify = [{
+    return VerifyFoldOperandsTransposeInterface($_op);
   }];
 }
 

@@ -1210,10 +1210,7 @@ Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
   return Status::OK();
 }
 
-namespace {
-
-
-}  // namespace
+namespace {}  // namespace
 
 Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
   VLOG(2) << "AllReduce; replica count: " << hlo_module_config_.replica_count()
@@ -1226,13 +1223,37 @@ Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
                                NcclAllReduceThunk::CanImplement(crs);
 
   if (should_use_nccl_thunk) {
-    CHECK(crs->operand(0)->shape().IsArray())
-        << "Operands to all-reduce must be arrays: " << crs->ToString();
-    AddThunkToThunkSequence(absl::make_unique<NcclAllReduceThunk>(
+    std::vector<NcclAllReduceThunk::Buffer> buffers;
+    std::vector<BufferAllocation::Slice> tuple_element_buffers;
+    buffers.resize(crs->operand_count());
+    tuple_element_buffers.reserve(crs->operand_count());
+    CHECK(crs->shape().IsArray() && crs->operand_count() == 1 ||
+          crs->shape().IsTuple() &&
+              crs->shape().tuple_shapes_size() == crs->operand_count());
+    for (int i = 0; i < crs->operand_count(); ++i) {
+      CHECK(crs->operand(i)->shape().IsArray())
+          << "Operands to all-reduce must be arrays: " << crs->ToString();
+      buffers[i].element_count =
+          ShapeUtil::ElementsIn(crs->operand(i)->shape());
+      buffers[i].source_buffer = GetAllocationSlice(*crs->operand(i));
+      buffers[i].destination_buffer = GetAllocationSlice(
+          *crs, crs->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({}));
+      tuple_element_buffers.push_back(buffers[i].destination_buffer);
+    }
+    auto all_reduce_thunk = absl::make_unique<NcclAllReduceThunk>(
         /*replica_count=*/hlo_module_config_.replica_count(),
-        /*elements=*/ShapeUtil::ElementsIn(crs->operand(0)->shape()),
-        /*source_address=*/GetAllocationSlice(*crs->operand(0)),
-        /*destination_buffer=*/GetAllocationSlice(*crs), crs));
+        /*buffers=*/std::move(buffers), crs);
+    if (crs->shape().IsTuple()) {
+      std::vector<std::unique_ptr<Thunk>> thunks;
+      thunks.push_back(std::move(all_reduce_thunk));
+      thunks.push_back(absl::make_unique<TupleThunk>(
+          tuple_element_buffers, GetAllocationSlice(*crs), nullptr));
+      AddThunkToThunkSequence(
+          absl::make_unique<SequentialThunk>(std::move(thunks), crs));
+    } else {
+      AddThunkToThunkSequence(std::move(all_reduce_thunk));
+    }
+
     return Status::OK();
   }
 
@@ -1957,32 +1978,32 @@ void IrEmitterUnnested::EmitTile(
   //
   // TODO(cheshire): Once ptxas is fixed and TF switches to it, remove the
   // workaround.
-  ksl->For(
-      loop_name + "_y_in_tile",
-      /*start=*/constant(0),
-      /*end=*/
-      ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
-                    num_threads_y),
-      /*step=*/constant(1), [&](llvm::Value* y_indvar) {
-        llvm::Value* y_loc = b_.CreateAdd(
-            thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
-        for (int64 j = 0; j < x_num_steps; j++) {
-          llvm::Value* x_loc =
-              b_.CreateAdd(constant(j * step_x), start_offset_x, "x_loc");
-          IrArray::Index source_idx_x =
-              source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
-                  .AddOffsetToDim(constant(j * step_x), kDimX, &b_);
-          auto emit_element = [&] {
-            return emit_elem_function(source_idx_x, y_loc, x_loc, j);
-          };
-          if (!x_tile_fits) {
-            ksl->If(loop_name + "_x_in_tile",
-                    b_.CreateICmpULT(x_loc, tile_width), emit_element);
-          } else {
-            emit_element();
-          }
-        }
-      });
+  ksl->For(loop_name + "_y_in_tile",
+           /*start=*/constant(0),
+           /*end=*/
+           ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
+                         num_threads_y),
+           /*step=*/constant(1), [&](llvm::Value* y_indvar) {
+             llvm::Value* y_loc =
+                 b_.CreateAdd(thread_id_info.thread_id_y,
+                              b_.CreateMul(y_indvar, num_threads_y));
+             for (int64 j = 0; j < x_num_steps; j++) {
+               llvm::Value* x_loc =
+                   b_.CreateAdd(constant(j * step_x), start_offset_x, "x_loc");
+               IrArray::Index source_idx_x =
+                   source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
+                       .AddOffsetToDim(constant(j * step_x), kDimX, &b_);
+               auto emit_element = [&] {
+                 return emit_elem_function(source_idx_x, y_loc, x_loc, j);
+               };
+               if (!x_tile_fits) {
+                 ksl->If(loop_name + "_x_in_tile",
+                         b_.CreateICmpULT(x_loc, tile_width), emit_element);
+               } else {
+                 emit_element();
+               }
+             }
+           });
 }
 
 // Emits code to process a tensor element in a tile for the given kCopy HLO that

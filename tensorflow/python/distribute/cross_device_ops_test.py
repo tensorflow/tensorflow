@@ -284,19 +284,15 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
       cross_device_ops=[
           combinations.NamedObject(
               "AllReduce",
-              cross_device_ops_lib.AllReduceCrossDeviceOps("nccl", 1, 0, 0)),
+              cross_device_ops_lib.AllReduceCrossDeviceOps("nccl", 1)),
           combinations.NamedObject(
               "AllReduceNoGradientRepacking",
-              cross_device_ops_lib.AllReduceCrossDeviceOps("nccl", 0, 0, 0)),
+              cross_device_ops_lib.AllReduceCrossDeviceOps("nccl", 0)),
           combinations.NamedObject("NcclAllReduce",
                                    cross_device_ops_lib.NcclAllReduce()),
           combinations.NamedObject(
               "HierarchicalCopy",
               cross_device_ops_lib.HierarchicalCopyAllReduce(8)),
-          combinations.NamedObject(
-              "HierarchicalCopyAggregateSmallTensors",
-              cross_device_ops_lib.AllReduceCrossDeviceOps(
-                  "hierarchical_copy", 0, 100, 10))
       ],
       devices=[
           ["/gpu:0", "/gpu:1"],
@@ -397,22 +393,17 @@ class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
               "MultiWorkerAllReduce",
               cross_device_ops_lib.MultiWorkerAllReduce(worker_devices, 2,
                                                         ("pscpu/pscpu", 2, -1),
-                                                        0, 0, 0)),
+                                                        0)),
           combinations.NamedObject(
               "MultiWorkerAllReducePack",
               cross_device_ops_lib.MultiWorkerAllReduce(worker_devices, 2,
                                                         ("pscpu/pscpu", 2, -1),
-                                                        1, 0, 0)),
-          combinations.NamedObject(
-              "MultiWorkerAllReduceAggregation",
-              cross_device_ops_lib.MultiWorkerAllReduce(worker_devices, 2,
-                                                        ("pscpu/pscpu", 2, -1),
-                                                        0, 100, 10)),
+                                                        1)),
           combinations.NamedObject(
               "MultiWorkerAllReduceMultipleSpecs",
               cross_device_ops_lib.MultiWorkerAllReduce(
                   worker_devices, 2, [("pscpu/pscpu", 2, 100),
-                                      ("xring", 2, -1)], 0, 0, 0)),
+                                      ("xring", 2, -1)], 0)),
       ],
       devices=[
           [

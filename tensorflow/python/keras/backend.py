@@ -4347,6 +4347,10 @@ def in_train_phase(x, alt, training=None):
       Either `x` or `alt` based on the `training` flag.
       the `training` flag defaults to `K.learning_phase()`.
   """
+  from tensorflow.python.keras.engine import base_layer_utils  # pylint: disable=g-import-not-at-top
+  if training is None:
+    training = base_layer_utils.call_context().training
+
   if training is None:
     training = learning_phase()
 

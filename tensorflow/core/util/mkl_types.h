@@ -152,7 +152,7 @@ namespace tensorflow {
 #define IS_SRC_REORDER_NEEDED(src_md, op_pd, op) \
   src_md.data.format != op->GetSrcMemoryFormat()
 #define IS_WEIGHTS_REORDER_NEEDED(weights_md, op_pd, op) \
-  weights_md.data.format != op->GetWeightsMemoryFormat()
+  weights_md.data.format != op->GetWeightMemoryFormat()
 #define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) \
   mem_ptr->get_primitive_desc().desc()
 #define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \

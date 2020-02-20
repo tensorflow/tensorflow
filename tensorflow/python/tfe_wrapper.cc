@@ -382,6 +382,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                                     status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
+  m.def("TFE_ContextGetFunctionDef",
+        [](py::handle& ctx, const char* function_name, TF_Buffer& buf) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          TFE_ContextGetFunctionDef(tensorflow::InputTFE_Context(ctx),
+                                    function_name, &buf, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        });
   m.def("TFE_ContextRemoveFunction", [](py::handle& ctx, const char* name) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());

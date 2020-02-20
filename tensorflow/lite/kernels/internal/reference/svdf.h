@@ -73,18 +73,6 @@ static inline void ApplyTimeWeightsBiasAndActivation(
     tensor_utils::ApplyActivationToVector(output_ptr_batch, num_units,
                                           activation, output_ptr_batch);
   }
-
-  // Left shift the activation_state to make room for next cycle's activation.
-  // TODO(alanchiao): explore collapsing this into a single loop.
-  for (int b = 0; b < batch_size; ++b) {
-    float* state_ptr_batch =
-        GetTensorData<float>(activation_state) + b * memory_size * num_filters;
-    for (int f = 0; f < num_filters; ++f) {
-      tensor_utils::VectorShiftLeft(state_ptr_batch, memory_size,
-                                    /*shift_value=*/0.0f);
-      state_ptr_batch += memory_size;
-    }
-  }
 }
 
 inline void EvalIntegerSVDF(
@@ -101,6 +89,19 @@ inline void EvalIntegerSVDF(
   const int n_filter = weights_feature_tensor->dims->data[0];
   const int n_unit = n_filter / n_rank;
   const int n_memory = weights_time_tensor->dims->data[1];
+
+  // Shift state.
+  {
+    int16_t zero = 0;
+    for (int b = 0; b < n_batch; ++b) {
+      int16_t* state_ptr_batch =
+          GetTensorData<int16_t>(state_tensor) + b * n_memory * n_filter;
+      for (int f = 0; f < n_filter; ++f) {
+        tensor_utils::VectorShiftLeft(state_ptr_batch, n_memory, zero);
+        state_ptr_batch += n_memory;
+      }
+    }
+  }
 
   // Feature matmul.
   {
@@ -176,19 +177,6 @@ inline void EvalIntegerSVDF(
       GetTensorData<int8_t>(output_tensor)[i] = static_cast<int8_t>(x4);
     }
   }
-
-  // Shift state.
-  {
-    int16_t zero = 0;
-    for (int b = 0; b < n_batch; ++b) {
-      int16_t* state_ptr_batch =
-          GetTensorData<int16_t>(state_tensor) + b * n_memory * n_filter;
-      for (int f = 0; f < n_filter; ++f) {
-        tensor_utils::VectorShiftLeft(state_ptr_batch, n_memory, zero);
-        state_ptr_batch += n_memory;
-      }
-    }
-  }
 }
 
 inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
@@ -205,15 +193,15 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];
 
-  // Clear the activation (state's leftmost column).
-  // TODO(ghodrat): Add a test which initialize activation_state with invalid
-  // values in leftmost column and make sure it passes.
+  // Left shift the activation_state, and clear the latest activation (the
+  // rightmost column).
   for (int b = 0; b < batch_size; ++b) {
     float* state_ptr_batch =
         GetTensorData<float>(state) + b * memory_size * num_filters;
-    for (int c = 0; c < num_filters; ++c) {
-      float* state_ptr = state_ptr_batch + c * memory_size;
-      state_ptr[memory_size - 1] = 0.0f;
+    for (int f = 0; f < num_filters; ++f) {
+      tensor_utils::VectorShiftLeft(state_ptr_batch, memory_size,
+                                    /*shift_value=*/0.0f);
+      state_ptr_batch += memory_size;
     }
   }
 
@@ -258,15 +246,15 @@ inline void EvalHybridSVDF(
   // Initialize the weights scale.
   const float weights_feature_scale = weights_feature->params.scale;
 
-  // Clear the activation (state's leftmost column).
-  // TODO(ghodrat): Add a test which initialize state with invalid values in
-  // the leftmost column and make sure it passes.
+  // Left shift the activation_state, and clear the latest activation (the
+  // rightmost column).
   for (int b = 0; b < batch_size; ++b) {
     float* state_ptr_batch =
         GetTensorData<float>(state) + b * memory_size * num_filters;
-    for (int c = 0; c < num_filters; ++c) {
-      float* state_ptr = state_ptr_batch + c * memory_size;
-      state_ptr[memory_size - 1] = 0.0;
+    for (int f = 0; f < num_filters; ++f) {
+      tensor_utils::VectorShiftLeft(state_ptr_batch, memory_size,
+                                    /*shift_value=*/0.0f);
+      state_ptr_batch += memory_size;
     }
   }
 

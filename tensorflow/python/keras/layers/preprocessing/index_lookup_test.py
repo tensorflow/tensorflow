@@ -35,6 +35,7 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import index_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
+from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
@@ -452,6 +453,19 @@ class IndexLookupSaveableTest(keras_parameterized.TestCase,
     keras.backend.get_session().graph.finalize()
     weights = model.get_weights()
     model.set_weights(weights)
+
+  def test_layer_saving_with_h5(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(max_tokens=10)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    path = os.path.join(self.get_temp_dir(), "model")
+    with self.assertRaisesRegex(NotImplementedError,
+                                "Save or restore weights that is not.*"):
+      save.save_model(model, path, save_format="h5")
 
 
 @keras_parameterized.run_all_keras_modes

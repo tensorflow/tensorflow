@@ -41,8 +41,12 @@ class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
   def _save_model(self, model, saved_dir):
     keras_saved_model.export_saved_model(model, saved_dir, serving_only=True)
 
-  def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
-                          output_name, experimental_run_tf_function):
+  def _load_and_run_model(self,
+                          distribution,
+                          saved_dir,
+                          predict_dataset,
+                          experimental_run_tf_function,
+                          output_name='output_1'):
     return test_base.load_and_run_with_saved_model_api(distribution, saved_dir,
                                                        predict_dataset,
                                                        output_name)

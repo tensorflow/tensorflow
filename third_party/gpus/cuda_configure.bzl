@@ -39,6 +39,7 @@ load(
 )
 load(
     "//third_party/remote_config:common.bzl",
+    "config_repo_label",
     "err_out",
     "execute",
     "get_bash_bin",
@@ -471,11 +472,14 @@ def _check_cuda_libs(repository_ctx, script_path, libs):
         cmd += "f.write('%s' + linesep);" % line
     cmd += "f.close();"
     cmd += "from os import system;"
-    args = " ".join([path + " " + str(check) for path, check in libs])
+    args = " ".join(["\"" + path + "\" " + str(check) for path, check in libs])
     cmd += "system('%s script.py %s');" % (python_bin, args)
 
     all_paths = [path for path, _ in libs]
     checked_paths = execute(repository_ctx, [python_bin, "-c", cmd]).stdout.splitlines()
+
+    # Filter out empty lines from splitting on '\r\n' on Windows
+    checked_paths = [path for path in checked_paths if len(path) > 0]
     if all_paths != checked_paths:
         auto_configure_fail("Error with installed CUDA libs. Expected '%s'. Actual '%s'." % (all_paths, checked_paths))
 
@@ -1156,17 +1160,35 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
     )
     repository_ctx.template(
         "cuda/BUILD",
-        Label(remote_config_repo + "/cuda:BUILD"),
+        config_repo_label(remote_config_repo, "cuda:BUILD"),
         {},
     )
     repository_ctx.template(
         "cuda/build_defs.bzl",
-        Label(remote_config_repo + "/cuda:build_defs.bzl"),
+        config_repo_label(remote_config_repo, "cuda:build_defs.bzl"),
         {},
     )
     repository_ctx.template(
         "cuda/cuda/cuda_config.h",
-        Label(remote_config_repo + "/cuda:cuda/cuda_config.h"),
+        config_repo_label(remote_config_repo, "cuda:cuda/cuda_config.h"),
+        {},
+    )
+
+    repository_ctx.template(
+        "crosstool/BUILD",
+        config_repo_label(remote_config_repo, "crosstool:BUILD"),
+        {},
+    )
+
+    repository_ctx.template(
+        "crosstool/cc_toolchain_config.bzl",
+        config_repo_label(remote_config_repo, "crosstool:cc_toolchain_config.bzl"),
+        {},
+    )
+
+    repository_ctx.template(
+        "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
+        config_repo_label(remote_config_repo, "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc"),
         {},
     )
 
@@ -1187,29 +1209,38 @@ def _cuda_autoconf_impl(repository_ctx):
     else:
         _create_local_cuda_repository(repository_ctx)
 
-cuda_configure = repository_rule(
-    implementation = _cuda_autoconf_impl,
-    environ = [
-        _GCC_HOST_COMPILER_PATH,
-        _GCC_HOST_COMPILER_PREFIX,
-        _CLANG_CUDA_COMPILER_PATH,
-        "TF_NEED_CUDA",
-        "TF_CUDA_CLANG",
-        _TF_DOWNLOAD_CLANG,
-        _CUDA_TOOLKIT_PATH,
-        _CUDNN_INSTALL_PATH,
-        _TF_CUDA_VERSION,
-        _TF_CUDNN_VERSION,
-        _TF_CUDA_COMPUTE_CAPABILITIES,
-        _TF_CUDA_CONFIG_REPO,
-        "NVVMIR_LIBRARY_DIR",
-        _PYTHON_BIN_PATH,
-        "TMP",
-        "TMPDIR",
-        "TF_CUDA_PATHS",
-    ],
+_ENVIRONS = [
+    _GCC_HOST_COMPILER_PATH,
+    _GCC_HOST_COMPILER_PREFIX,
+    _CLANG_CUDA_COMPILER_PATH,
+    "TF_NEED_CUDA",
+    "TF_CUDA_CLANG",
+    _TF_DOWNLOAD_CLANG,
+    _CUDA_TOOLKIT_PATH,
+    _CUDNN_INSTALL_PATH,
+    _TF_CUDA_VERSION,
+    _TF_CUDNN_VERSION,
+    _TF_CUDA_COMPUTE_CAPABILITIES,
+    "NVVMIR_LIBRARY_DIR",
+    _PYTHON_BIN_PATH,
+    "TMP",
+    "TMPDIR",
+    "TF_CUDA_PATHS",
+]
+
+remote_cuda_configure = repository_rule(
+    implementation = _create_local_cuda_repository,
+    environ = _ENVIRONS,
+    remotable = True,
+    attrs = {
+        "environ": attr.string_dict(),
+    },
 )
 
+cuda_configure = repository_rule(
+    implementation = _cuda_autoconf_impl,
+    environ = _ENVIRONS + [_TF_CUDA_CONFIG_REPO],
+)
 """Detects and configures the local CUDA toolchain.
 
 Add the following to your WORKSPACE FILE:

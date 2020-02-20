@@ -989,7 +989,6 @@ Status MemoryUsageTracker::AddRematerializedInstruction(Item* original_item,
     ItemList unplaced_users;
     for (Item* user : old_buffer.users) {
       if (user->placed) {
-        CHECK(IsFinished(user)) << user->instruction->name();
         placed_users.push_back(user);
       } else {
         unplaced_users.push_back(user);
