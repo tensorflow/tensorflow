@@ -271,9 +271,12 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::MINIMUM:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
-    case OperationType::SUB:
-      *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type);
-      break;
+    case OperationType::SUB: {
+      const ElementwiseAttributes* attr =
+          absl::any_cast<ElementwiseAttributes>(&node->operation.attributes);
+      *tasks =
+          ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type, attr);
+    } break;
     case OperationType::BATCH_NORMALIZATION:
     case OperationType::BATCH_TO_SPACE:
     case OperationType::CONST:
