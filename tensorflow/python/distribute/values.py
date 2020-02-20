@@ -38,6 +38,7 @@ from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.tpu import tpu
 from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -938,14 +939,14 @@ ops.register_tensor_conversion_function(Mirrored,
 
 
 def _enclosing_tpu_context():
-  """Returns the XLAControlFlowContext, which exists inside a tpu.rewrite()."""
+  """Returns the TPUReplicateContext, which exists inside a tpu.rewrite()."""
   graph = ops.get_default_graph()
   while graph is not None:
     # pylint: disable=protected-access
     context_ = graph._get_control_flow_context()
     # pylint: enable=protected-access
     while context_ is not None:
-      if isinstance(context_, control_flow_ops.XLAControlFlowContext):
+      if isinstance(context_, tpu.TPUReplicateContext):
         return context_
       context_ = context_.outer_context
     # This may be a FuncGraph due to defuns or v2 control flow. We need to
