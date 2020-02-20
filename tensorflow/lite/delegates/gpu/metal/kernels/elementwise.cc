@@ -57,8 +57,7 @@ std::string GetElementwiseWithTwoInputsCode(int src_count,
   if (scalar == nullptr) {
     code += "     FLT4 src_1 = src_buffer1[linear_index];";
   } else {
-    code +=
-        absl::StrCat("     FLT4 src_1 = FLT4(", std::to_string(*scalar), ");");
+    code += "     FLT4 src_1 = FLT4(" + std::to_string(*scalar) + ");";
   }
   switch (op_type) {
     case OperationType::DIV: {
