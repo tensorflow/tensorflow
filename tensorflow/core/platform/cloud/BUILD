@@ -19,7 +19,6 @@ package_group(
     name = "dependency_whitelist",
     packages = [
         "//learning/brain/tfrc/...",
-        "//learning/brain/tfrc/tpu_gcs_file_system/...",
         "//tensorflow/...",
     ],
 )
