@@ -722,6 +722,7 @@ tf_cc_test(
         ":text_literal_writer",
         ":types",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
