@@ -1880,5 +1880,43 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
       self.assertEqual(network.compute_output_shape((1, i, 32)), (1, i, 2))
 
 
+class SaveFormatValidationTest(keras_parameterized.TestCase):
+
+  def test_save_format_validation(self):
+    filepath = 'file/path'
+    h5_filepath = 'h5_filepath.h5'
+    h5_filepath_2 = 'h5_filepath.hdf5'
+    h5_filepath_3 = 'h5_filepath.keras'
+
+    self.assertEqual(
+        network_lib.validate_save_format(filepath, None, 'h5'), 'h5')
+    self.assertEqual(
+        network_lib.validate_save_format(filepath, None, 'tf'), 'tf')
+
+    self.assertEqual(network_lib.validate_save_format(filepath, 'h5'), 'h5')
+    self.assertEqual(network_lib.validate_save_format(h5_filepath, None), 'h5')
+    self.assertEqual(
+        network_lib.validate_save_format(h5_filepath_2, None), 'h5')
+    self.assertEqual(
+        network_lib.validate_save_format(h5_filepath_3, None), 'h5')
+    self.assertEqual(
+        network_lib.validate_save_format(h5_filepath, 'hdf5'), 'h5')
+    self.assertEqual(
+        network_lib.validate_save_format(h5_filepath, 'keras'), 'h5')
+
+    self.assertEqual(network_lib.validate_save_format(filepath, 'tf'), 'tf')
+    self.assertEqual(
+        network_lib.validate_save_format(filepath, 'tensorflow'), 'tf')
+
+    with self.assertRaises(ValueError):
+      network_lib.validate_save_format(42, 'h5')
+
+    with self.assertRaises(ValueError):
+      network_lib.validate_save_format(filepath, 'unknown_format')
+
+    with self.assertRaises(ValueError):
+      network_lib.validate_save_format(h5_filepath, 'tf')
+
+
 if __name__ == '__main__':
   test.main()
