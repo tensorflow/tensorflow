@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/kernels/mkl_matmul_ops_common.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 // This header file is part of MKL ML, need equivalent file in MKL DNN
@@ -183,6 +184,15 @@ class MklMatMulOp : public OpKernel {
     const int index_transa = transa ? 1 : 0;
     const int index_transb = transb ? 1 : 0;
 
+#ifdef ENABLE_MKLDNN_V1
+#ifdef ENABLE_MKLDNN_V1_2
+    dnnl_gemm<bfloat16>(transa ? CblasTrans : CblasNoTrans,
+                        transb ? CblasTrans : CblasNoTrans, m, n, k, alpha, a,
+                        lda, b, ldb, beta, c, ldc);
+#else
+// There is no MatMul support for bfloat16 type in MKLDNN1.0.
+#endif  // ENABLE_MKLDNN_V1_2
+#else
     Tensor c_float;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, {m, n}, &c_float));
 
@@ -195,6 +205,7 @@ class MklMatMulOp : public OpKernel {
                             &beta, c_float.flat<float>().data(), &ldc);
 
     FloatToBFloat16(c_float.flat<float>().data(), c, c_float.NumElements());
+#endif  // ENABLE_MKLDNN_V1
   }
 
 // MKL-DNN only supports SGEMM and bfloat16-GEMM.
@@ -257,7 +268,10 @@ class MklMatMulOp : public OpKernel {
 // TODO(inteltf) Consider template specialization when adding/removing
 // additional types
 TF_CALL_float(REGISTER_CPU);
+#if !defined(ENABLE_MKLDNN_V1) || defined(ENABLE_MKLDNN_V1_2)
+// MKLDNNv1 does not have support for bfloat16 GEMM. Only V1.2 has that support.
 TF_CALL_bfloat16(REGISTER_CPU);
+#endif  // !defined(ENABLE_MKLDNN_V1) || defined(ENABLE_MKLDNN_V1_2)
 
 #ifndef INTEL_MKL_DNN_ONLY
 TF_CALL_double(REGISTER_CPU);
