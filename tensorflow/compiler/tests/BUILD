@@ -61,7 +61,10 @@ py_library(
 py_library(
     name = "test_utils",
     testonly = 1,
-    srcs = ["test_utils.py"],
+    srcs = [
+        "__init__.py",
+        "test_utils.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//third_party/py/numpy",
