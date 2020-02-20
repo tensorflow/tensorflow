@@ -437,7 +437,7 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePool16) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({2.75, 5.75})));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({(44 - 128) << 8, (92 - 128) << 8}));
+              ElementsAreArray({(44 - 128) * 256, (92 - 128) * 256}));
 }
 
 // Test quantized AveragePool with int8 input and output. The input is the same
