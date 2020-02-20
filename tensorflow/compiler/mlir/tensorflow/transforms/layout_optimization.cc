@@ -96,22 +96,6 @@ Permutation GetDataFormatPermutation(StringRef from_data_format,
   }
 }
 
-Type PermuteRankedTensorType(Type type, Permutation permutation) {
-  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
-    ArrayRef<int64_t> shape = ranked_type.getShape();
-    assert(permutation.size() == shape.size());
-
-    SmallVector<int64_t, 4> new_shape(permutation.size());
-    for (size_t i = 0; i < permutation.size(); ++i) {
-      new_shape[i] = shape[permutation[i]];
-    }
-
-    return RankedTensorType::get(new_shape, ranked_type.getElementType());
-  }
-
-  return type;
-}
-
 void LayoutAssignmentPass::runOnFunction() {
   FuncOp func = getFunction();
 
@@ -144,8 +128,8 @@ void LayoutAssignmentPass::runOnFunction() {
     };
 
     // Change operation data format.
-    op->setAttr("data_format",
-                StringAttr::get(force_data_format_, op->getContext()));
+    if (failed(layout_sensitive_interface.UpdateDataFormat(force_data_format_)))
+      return;
 
     // Permute arguments into the target data format.
     builder.setInsertionPoint(op);
@@ -162,8 +146,6 @@ void LayoutAssignmentPass::runOnFunction() {
 
     for (int64_t res : layout_sensitive_interface.GetLayoutDependentResults()) {
       OpResult result = op->getResult(res);
-      result.setType(
-          PermuteRankedTensorType(result.getType(), args_permutation));
 
       auto transposed_res = builder.create<TransposeOp>(loc, result, res_perm);
       result.replaceAllUsesWith(transposed_res);

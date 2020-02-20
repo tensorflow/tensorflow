@@ -151,26 +151,6 @@ static bool AreCastCompatible(Type a, Type b) {
          b_kind == TensorFlowTypes::VARIANT;
 }
 
-static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
-                                       DenseIntElementsAttr perm1) {
-  if (perm0.getNumElements() == 0 || perm1.getNumElements() == 0) return false;
-  if (perm0.getNumElements() != perm1.getNumElements()) return false;
-
-  SmallVector<int64_t, 8> perm0_values;
-  for (auto value : perm0.getIntValues())
-    perm0_values.push_back(value.getSExtValue());
-
-  SmallVector<int64_t, 8> perm1_values;
-  for (auto value : perm1.getIntValues())
-    perm1_values.push_back(value.getSExtValue());
-
-  for (int i = 0; i < perm0_values.size(); ++i) {
-    if (perm0_values[perm1_values[i]] != i) return false;
-  }
-
-  return true;
-}
-
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
   return dim_or_rank == -1;
 }
@@ -309,6 +289,99 @@ static LogicalResult VerifyTypesCompatibility(
       }
     }
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TF op helper functions to work with layout transformation.
+//===----------------------------------------------------------------------===//
+
+SmallVector<int64_t, 4> GetDataFormatPermutation(StringRef from, StringRef to) {
+  if (from == "NHWC" && to == "NCHW") {
+    return {0, 3, 1, 2};
+  } else if (from == "NCHW" && to == "NHWC") {
+    return {0, 1, 2, 3};
+  } else {
+    return {};
+  }
+}
+
+// Shuffle elements in the `attr` according to the permutation. Optional
+// `inner_size` allows to shuffle array attributes created from rank 2 tensors
+// on outer dimension only.
+ArrayAttr ShuffleArrayAttr(ArrayAttr attr, ArrayRef<int64_t> permutation,
+                           int inner_size = 1) {
+  if (attr.size() == 0) return attr;
+
+  assert(attr.size() % inner_size == 0);
+  assert(attr.size() / inner_size == permutation.size());
+
+  SmallVector<Attribute, 8> values{attr.begin(), attr.end()};
+  SmallVector<Attribute, 8> shuffled(values.size());
+
+  for (size_t i = 0; i < permutation.size(); ++i) {
+    for (size_t j = 0; j < inner_size; ++j) {
+      shuffled[i * inner_size + j] = values[permutation[i] * inner_size + j];
+    }
+  }
+
+  return ArrayAttr::get(shuffled, attr.getContext());
+}
+
+// Shuffle ranked tensor dimensions according to the permutation.
+Type ShuffleRankedTensorType(Type type, ArrayRef<int64_t> permutation) {
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+    ArrayRef<int64_t> shape = ranked_type.getShape();
+    assert(permutation.size() == shape.size());
+
+    SmallVector<int64_t, 4> new_shape(permutation.size());
+    for (size_t i = 0; i < permutation.size(); ++i)
+      new_shape[i] = shape[permutation[i]];
+
+    return RankedTensorType::get(new_shape, ranked_type.getElementType());
+  }
+
+  return type;
+}
+
+static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
+                                       DenseIntElementsAttr perm1) {
+  if (perm0.getNumElements() == 0 || perm1.getNumElements() == 0) return false;
+  if (perm0.getNumElements() != perm1.getNumElements()) return false;
+
+  SmallVector<int64_t, 8> perm0_values;
+  for (auto value : perm0.getIntValues())
+    perm0_values.push_back(value.getSExtValue());
+
+  SmallVector<int64_t, 8> perm1_values;
+  for (auto value : perm1.getIntValues())
+    perm1_values.push_back(value.getSExtValue());
+
+  for (int i = 0; i < perm0_values.size(); ++i) {
+    if (perm0_values[perm1_values[i]] != i) return false;
+  }
+
+  return true;
+}
+
+// Default implementation of `LayoutSensitiveInterface::UpdateDataFormat` for
+// layout sensitive operations that do not have any additional layout dependent
+// attributes besides `data_format` string.
+template <typename Op>
+LogicalResult UpdateDataFormat(StringRef data_format, Op *op) {
+  auto perm = GetDataFormatPermutation(op->data_format(), data_format);
+  if (perm.empty()) return failure();
+
+  // Update data format attribute.
+  op->setAttr("data_format", StringAttr::get(data_format, op->getContext()));
+
+  // Update types for all layout sensitive results.
+  auto layout_sensitive = cast<LayoutSensitiveInterface>(op->getOperation());
+  for (unsigned idx : layout_sensitive.GetLayoutDependentResults()) {
+    OpResult result = op->getOperation()->getResult(idx);
+    result.setType(ShuffleRankedTensorType(result.getType(), perm));
+  }
+
   return success();
 }
 
@@ -477,6 +550,10 @@ static LogicalResult Verify(BiasAddOp op) {
            << feature_dim << " and " << bias_len << ", respectively";
   }
   return success();
+}
+
+LogicalResult BiasAddOp::UpdateDataFormat(StringRef data_format) {
+  return ::mlir::TF::UpdateDataFormat(data_format, this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -833,6 +910,21 @@ static LogicalResult Verify(OpT op) {
            << "requires the number of input channels to be divisible by the "
               "number of filter input channels; found "
            << input_channels << " and " << filter_channels << ", respectively";
+
+  return success();
+}
+
+LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
+  auto perm = GetDataFormatPermutation(this->data_format(), data_format);
+  if (perm.empty()) return failure();
+
+  // Update data_format attribute and result types.
+  if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
+
+  // Update convolution attributes.
+  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
 
   return success();
 }
@@ -1358,53 +1450,33 @@ LogicalResult MaxPoolOp::FoldOperandsPermutation(
     ArrayRef<int64_t> permutation) {
   MLIRContext *context = getParentOfType<ModuleOp>().getContext();
 
+  // Data format after folding permutation.
+  StringRef target_data_format;
+
   // For now we only support folding of NCHW->NHWC and NHWC->NCHW permutations.
   if (data_format() == "NHWC") {
     static constexpr std::array<int64_t, 4> kPerm = {0, 2, 3, 1};  // to NHWC
     if (permutation != ArrayRef<int64_t>(kPerm)) return failure();
-
-    setAttr("data_format", StringAttr::get("NCHW", context));
+    target_data_format = "NCHW";
 
   } else if (data_format() == "NCHW") {
     static constexpr std::array<int64_t, 4> kPerm = {0, 3, 1, 2};  // to NCHW
     if (permutation != ArrayRef<int64_t>(kPerm)) return failure();
-
-    setAttr("data_format", StringAttr::get("NHWC", context));
+    target_data_format = "NHWC";
 
   } else {
     return failure();
   }
 
-  auto shuffle_attr = [&](ArrayAttr attr) -> ArrayAttr {
-    SmallVector<Attribute, 4> values{attr.begin(), attr.end()};
-    SmallVector<Attribute, 4> shuffled(values.size());
+  auto perm = GetDataFormatPermutation(data_format(), target_data_format);
+  if (perm.empty()) return failure();
 
-    for (size_t i = 0; i < permutation.size(); ++i)
-      shuffled[permutation[i]] = values[i];
-
-    return ArrayAttr::get(shuffled, context);
-  };
-
-  setAttr("strides", shuffle_attr(strides()));
-  setAttr("ksize", shuffle_attr(ksize()));
-
-  auto shuffle_type = [&](Type type) -> Type {
-    if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
-      ArrayRef<int64_t> shape = ranked_type.getShape();
-      assert(permutation.size() == shape.size());
-
-      SmallVector<int64_t, 4> new_shape(permutation.size());
-      for (size_t i = 0; i < permutation.size(); ++i)
-        new_shape[permutation[i]] = shape[i];
-
-      return RankedTensorType::get(new_shape, ranked_type.getElementType());
-    }
-
-    return type;
-  };
+  setAttr("data_format", StringAttr::get(target_data_format, context));
+  setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  setAttr("ksize", ShuffleArrayAttr(ksize(), perm));
 
   OpResult result = getOperation()->getResult(0);
-  result.setType(shuffle_type(result.getType()));
+  result.setType(ShuffleRankedTensorType(result.getType(), perm));
 
   return success();
 }
