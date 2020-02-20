@@ -121,6 +121,11 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
       }
       TF_FALLTHROUGH_INTENDED;
     case DEVICE_PLACEMENT_EXPLICIT:
+      // tf.identity is allowed to copy, as indicated in the error message
+      // below.
+      if (op->Name() == "Identity" || op->Name() == "IdentityN") {
+        break;
+      }
       return errors::InvalidArgument(
           "Tensors on conflicting devices:"
           " cannot compute ",
