@@ -204,6 +204,7 @@ cc_library(
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
