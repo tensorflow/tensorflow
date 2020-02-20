@@ -24,6 +24,7 @@ limitations under the License.
 #include "mkldnn.hpp"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::inner_product_forward;
@@ -40,7 +41,7 @@ struct MklDnnMatMulFwdParams {
   memory::dims weight_dims;
   memory::dims bias_dims;
   memory::dims dst_dims;
-  memory::format weight_fmt;
+  MEMORY_FORMAT weight_fmt;
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -50,7 +51,7 @@ struct MklDnnMatMulFwdParams {
 
   MklDnnMatMulFwdParams(memory::dims src_dims, memory::dims weight_dims,
                         memory::dims bias_dims, memory::dims dst_dims,
-                        memory::format weight_fmt = memory::format::any)
+                        MEMORY_FORMAT weight_fmt = MEMORY_FORMAT::any)
       : src_dims(src_dims),
         weight_dims(weight_dims),
         bias_dims(bias_dims),
@@ -70,8 +71,8 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
  public:
   explicit MklDnnMatMulFwdPrimitive(
       const MklDnnMatMulFwdParams& matmulFwdParams)
-      : cpu_engine_(engine::cpu, 0) {
-    context_.fwd_stream.reset(new stream(stream::kind::eager));
+      : cpu_engine_(ENGINE_CPU, 0) {
+    context_.fwd_stream.reset(new CPU_STREAM(cpu_engine_));
     // Create matmul primitive
     if (context_.matmul_fwd == nullptr) {
       Setup(matmulFwdParams);
@@ -94,7 +95,13 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.bias_mem->set_data_handle(
         static_cast<void*>(const_cast<Tbias*>(bias_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
+
+#ifdef ENABLE_MKLDNN_V1
+    execute_primitives(context_.fwd_primitives, context_.fwd_stream,
+                       context_.net_args);
+#else
     context_.fwd_stream->submit(context_.fwd_primitives);
+#endif  // ENABLE_MKLDNN_V1
 
     // After execution, set data handle back
     context_.src_mem->set_data_handle(DummyData);
@@ -103,8 +110,13 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(DummyData);
   }
 
+#ifndef ENABLE_MKLDNN_V1
+  // In MKL-DNN v1.x, memory format tags only provide a partial description
+  // of the memory layout. Hence, these functions are disabled for v1.x.
   memory::format GetSrcMemoryFormat() const { return context_.src_fmt; }
-  memory::format GetweightMemoryFormat() const { return context_.weight_fmt; }
+  memory::format GetWeightMemoryFormat() const { return context_.weight_fmt; }
+#endif  // !ENABLE_MKLDNN_V1
+
   std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>
   GetPrimitiveDesc() const {
     return context_.fwd_pd;
@@ -113,34 +125,43 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
  private:
   // Primitive reuse context for inner-product Fwd op
   struct MklDnnMatMulFwdContext {
+#ifndef ENABLE_MKLDNN_V1
     // Expected memory format for this primitive instance
-    memory::format src_fmt;
-    memory::format weight_fmt;
+    MEMORY_FORMAT src_fmt;
+    MEMORY_FORMAT weight_fmt;
+#endif  // !ENABLE_MKLDNN_V1
 
-    // MKL-DNN memory
+    // MKL-DNN memory.
     std::shared_ptr<mkldnn::memory> src_mem;
     std::shared_ptr<mkldnn::memory> weight_mem;
     std::shared_ptr<mkldnn::memory> bias_mem;
     std::shared_ptr<mkldnn::memory> dst_mem;
 
-    // Descriptor and primitive-descriptor for forward inner-product
+    // Descriptor and primitive-descriptor for forward inner-product.
     std::shared_ptr<mkldnn::inner_product_forward::desc> fwd_desc;
     std::shared_ptr<mkldnn::inner_product_forward::primitive_desc> fwd_pd;
 
-    // Memory descriptors
+    // Memory descriptors.
     std::shared_ptr<mkldnn::memory::desc> src_md;
     std::shared_ptr<mkldnn::memory::desc> weight_md;
     std::shared_ptr<mkldnn::memory::desc> bias_md;
     std::shared_ptr<mkldnn::memory::desc> dst_md;
 
-    // Inner-product primitive
+    // Inner-product primitive.
     std::shared_ptr<mkldnn::primitive> matmul_fwd;
     std::shared_ptr<mkldnn::stream> fwd_stream;
     std::vector<mkldnn::primitive> fwd_primitives;
 
+#ifdef ENABLE_MKLDNN_V1
+    std::vector<std::unordered_map<int, memory>> net_args;
+#endif  // ENABLE_MKLDNN_V1
+
     MklDnnMatMulFwdContext()
-        : src_fmt(memory::format::any),
-          weight_fmt(memory::format::any),
+        :
+#ifndef ENABLE_MKLDNN_V1
+          src_fmt(MEMORY_FORMAT::any),
+          weight_fmt(MEMORY_FORMAT::any),
+#endif  // !ENABLE_MKLDNN_V1
           src_mem(nullptr),
           weight_mem(nullptr),
           bias_mem(nullptr),
@@ -152,32 +173,39 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           bias_md(nullptr),
           dst_md(nullptr),
           matmul_fwd(nullptr),
-          fwd_stream(nullptr) {}
+          fwd_stream(nullptr) {
+    }
   };
 
   void Setup(const MklDnnMatMulFwdParams& matmul_fwd_params) {
-    // Create memory descriptors for inner-product data with no specified format
+    // Create memory descriptors for inner-product data without specified
+    // format.
     context_.src_md.reset(new memory::desc({matmul_fwd_params.src_dims},
                                            MklDnnType<Tinput>(),
-                                           memory::format::any));
+                                           MEMORY_FORMAT::any));
 
     context_.weight_md.reset(new memory::desc({matmul_fwd_params.weight_dims},
                                               MklDnnType<Tweight>(),
+#ifdef ENABLE_MKLDNN_V1
+                                              MEMORY_FORMAT::any));
+#else
                                               matmul_fwd_params.weight_fmt));
+#endif  // ENABLE_MKLDNN_V1
 
     context_.dst_md.reset(new memory::desc({matmul_fwd_params.dst_dims},
                                            MklDnnType<Toutput>(),
-                                           memory::format::any));
+                                           MEMORY_FORMAT::any));
 
     context_.bias_md.reset(new memory::desc({matmul_fwd_params.bias_dims},
                                             MklDnnType<Tbias>(),
-                                            memory::format::any));
-    // Create an inner-product
+                                            MEMORY_FORMAT::any));
+    // Create an inner-product.
     context_.fwd_desc.reset(new inner_product_forward::desc(
         prop_kind::forward_inference, *context_.src_md, *context_.weight_md,
         *context_.bias_md, *context_.dst_md));
     context_.fwd_pd.reset(new inner_product_forward::primitive_desc(
         *context_.fwd_desc, cpu_engine_));
+
     // Check if there is any fusion as post-ops
     auto const& post_op_params = matmul_fwd_params.post_op_params;
     mkldnn::primitive_attr post_ops_attr;
@@ -189,21 +217,21 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          post_ops.append_eltwise(op_scale, mkldnn::eltwise_relu, op_alpha,
+          post_ops.append_eltwise(op_scale, ALGORITHM::eltwise_relu, op_alpha,
                                   op_beta);
         } else if (post_op_param.name == "relu6") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          post_ops.append_eltwise(op_scale, mkldnn::eltwise_bounded_relu,
+          post_ops.append_eltwise(op_scale, ALGORITHM::eltwise_bounded_relu,
                                   op_alpha, op_beta);
         } else if (post_op_param.name == "elu") {
           DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
-          post_ops.append_eltwise(op_scale, mkldnn::eltwise_elu, op_alpha,
+          post_ops.append_eltwise(op_scale, ALGORITHM::eltwise_elu, op_alpha,
                                   op_beta);
         } else if (post_op_param.name == "output_scale") {
           DCHECK_EQ(post_op_param.param.size(), 1);
@@ -225,30 +253,39 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
           *context_.fwd_desc, cpu_engine_));
     }
 
-    // Store the expected memory format
+#ifndef ENABLE_MKLDNN_V1
+    // Store the expected memory format.
     context_.src_fmt = static_cast<mkldnn::memory::format>(
         context_.fwd_pd.get()->src_primitive_desc().desc().data.format);
 
     context_.weight_fmt = static_cast<mkldnn::memory::format>(
         context_.fwd_pd.get()->weights_primitive_desc().desc().data.format);
+#endif  // !ENABLE_MKLDNN_V1
 
     // Create memory primitive based on dummy data
-    context_.src_mem.reset(
-        new memory(context_.fwd_pd.get()->src_primitive_desc(), DummyData));
-    context_.weight_mem.reset(
-        new memory(context_.fwd_pd.get()->weights_primitive_desc(), DummyData));
-    context_.dst_mem.reset(
-        new memory(context_.fwd_pd.get()->dst_primitive_desc(), DummyData));
-    context_.bias_mem.reset(new memory({{{matmul_fwd_params.bias_dims},
-                                         MklDnnType<Tbias>(),
-                                         memory::format::x},
-                                        cpu_engine_},
-                                       DummyData));
+    context_.src_mem.reset(new MEMORY_CONSTRUCTOR(
+        context_.fwd_pd.get()->PRIMITIVE_DESC_SRC, cpu_engine_, DummyData));
+    context_.weight_mem.reset(new MEMORY_CONSTRUCTOR(
+        context_.fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS, cpu_engine_, DummyData));
+    context_.dst_mem.reset(new MEMORY_CONSTRUCTOR(
+        context_.fwd_pd.get()->PRIMITIVE_DESC_DST, cpu_engine_, DummyData));
+    context_.bias_mem.reset(new MEMORY_CONSTRUCTOR_USING_MEM_PD(
+        matmul_fwd_params.bias_dims, Tbias, MEMORY_FORMAT::x, cpu_engine_,
+        DummyData));
 
-    // Create inner-product primitive
+#ifdef ENABLE_MKLDNN_V1
+    // Create inner-product primitive.
+    context_.matmul_fwd.reset(new inner_product_forward(*context_.fwd_pd));
+    context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
+                                 {MKLDNN_ARG_WEIGHTS, *context_.weight_mem},
+                                 {MKLDNN_ARG_BIAS, *context_.bias_mem},
+                                 { MKLDNN_ARG_DST,
+                                   *context_.dst_mem }});
+#else
     context_.matmul_fwd.reset(new inner_product_forward(
         *context_.fwd_pd, *context_.src_mem, *context_.weight_mem,
         *context_.bias_mem, *context_.dst_mem));
+#endif  // ENABLE_MKLDNN_V1
 
     context_.fwd_primitives.push_back(*context_.matmul_fwd);
     return;
@@ -343,7 +380,7 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-template <class Toutput>
+template <class Tweight, class Toutput>
 class MklDnnMatMulOpBase : public OpKernel {
  public:
   explicit MklDnnMatMulOpBase(OpKernelConstruction* context)
@@ -355,9 +392,9 @@ class MklDnnMatMulOpBase : public OpKernel {
       OpKernelContext* context,
       const inner_product_forward::primitive_desc& mkldnn_matmul_prim_desc,
       const memory::dims& output_dims_mkl_order,
-      memory::format output_tf_format, Tensor** output_tensor) {
+      MKL_TENSOR_FORMAT output_tf_format, Tensor** output_tensor) {
     DCHECK(output_tensor);
-    auto dst_pd = mkldnn_matmul_prim_desc.dst_primitive_desc();
+    auto dst_pd = mkldnn_matmul_prim_desc.PRIMITIVE_DESC_DST;
 
     MklDnnShape output_mkl_shape;
     output_mkl_shape.SetMklTensor(true);
@@ -374,14 +411,215 @@ class MklDnnMatMulOpBase : public OpKernel {
                               output_tf_shape, output_mkl_shape);
   }
 
-  engine cpu_engine_ = engine(engine::cpu, 0);
+  // LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
+  // be acquired before entering the function, since it is acquired
+  // inside the function.
+  inline bool IsWeightCacheEmpty(OpKernelContext* context) LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock lock(mu_);
+    return (weight_oi_.NumElements() == 0);
+  }
+
+  // Cache the converted weight in a persistent tensor.
+  // Only one thread can execute this method at any given time.
+  void CacheWeight(
+      OpKernelContext* context,
+      const std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>&
+          matmul_fwd_pd,
+      Tweight* weight_data, const Tensor& weight_tensor,
+      MklDnnData<Tweight>& weight, const memory::desc& weight_md)
+      LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    const Tensor& weight_t = *weight_oi_.AccessTensor(context);
+
+    // If the weights are already cached, there's nothing to do
+    if (weight_t.NumElements() > 0) {
+      return;
+    }
+
+    // reorder and cache the weight
+    weight.SetUsrMem(weight_md, &weight_tensor);
+    weight.CheckReorderToOpMem(matmul_fwd_pd.get()->weights_primitive_desc());
+    weight_data = static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
+
+    Tensor* weight_tensor_ptr = nullptr;
+
+    TensorShape weight_tf_shape;
+    weight_tf_shape.AddDim(
+        (matmul_fwd_pd.get()->weights_primitive_desc().get_size() /
+         sizeof(Tweight)));
+
+    OP_REQUIRES_OK(context, context->allocate_persistent(
+                                DataTypeToEnum<Tweight>::value, weight_tf_shape,
+                                &weight_oi_, &weight_tensor_ptr));
+
+    void* weight_oi_t_data = weight.GetTensorBuffer(weight_tensor_ptr);
+    size_t weight_size = weight.GetOpMem().get_primitive_desc().get_size();
+    memcpy(weight_oi_t_data, weight_data, weight_size);
+
+    // cache the memory descriptor
+    Tensor* weight_md_tensor_ptr = nullptr;
+    TensorShape weight_mkl_format;
+    weight_mkl_format.AddDim(1);
+
+    OP_REQUIRES_OK(context, context->allocate_persistent(
+                                DT_INT32, weight_mkl_format, &weight_oi_md_,
+                                &weight_md_tensor_ptr));
+    weight_md_tensor_ptr->scalar<int32>()() =
+        matmul_fwd_pd.get()->weights_primitive_desc().desc().data.format;
+  }
+
+  Tweight* GetCachedWeight(OpKernelContext* context,
+                           const memory::format& weight_mf)
+      LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock lock(mu_);
+    const Tensor& weight_t = *weight_oi_.AccessTensor(context);
+    const Tensor& weight_md_t = *weight_oi_md_.AccessTensor(context);
+
+    // Check if the  memory descriptor of the cached weight is same as
+    // weight_mf. if so use the cached memory, else return NULL
+    if (weight_md_t.scalar<int32>().size() &&
+        weight_md_t.scalar<int32>()() == weight_mf) {
+      return static_cast<Tweight*>(
+          const_cast<Tweight*>(weight_t.flat<Tweight>().data()));
+    }
+    return nullptr;
+  }
+
+  engine cpu_engine_ = engine(ENGINE_CPU, 0);
 
  protected:
+  // Tensor to save reordered weight
+  mutex mu_;
+  PersistentTensor weight_oi_ GUARDED_BY(mu_);
+  PersistentTensor weight_oi_md_ GUARDED_BY(mu_);
+
+  bool is_weight_const_;
+
   const int kInputIndexSrc = 0;
   const int kInputIndexWeight = 1;
   const int kInputIndexBias = 2;
   const int kOutputIndexDst = 0;
 };
+
+#ifdef ENABLE_MKLDNN_V1_2
+// MatMul support for bfloat16 and int8 types is introduced in DNNLv1.2.
+// We will enable this macro when we port our changes to DNNLv1.2.
+namespace {
+
+void dnnl_gemm_exec(const dnnl::desc& a_md, const dnnl::desc& b_md,
+                    const dnnl::desc& c_md, void* a, void* b, void* c,
+                    const dnnl::primitive_attr& attr) {
+  // Create a MatMul primitive
+  dnnl::engine cpu_engine = mkldnn::engine(ENGINE_CPU, 0);
+  dnnl::matmul::desc matmul_desc(a_md, b_md, c_md);
+  dnnl::matmul::primitive_desc matmul_pd(matmul_desc, attr, cpu_engine);
+  dnnl::matmul matmul_prim(matmul_pd);
+  // Wrap raw pointers into DNNL memory objects
+  dnnl::memory a_memory(a_md, cpu_engine, a);
+  dnnl::memory b_memory(b_md, cpu_engine, b);
+  dnnl::memory c_memory(c_md, cpu_engine, c);
+  // Execute the MatMul primitive.
+  // Since here all shapes and parameters are static, please note that we
+  // don't need to pass alpha (scales) again, as they are already hard-coded
+  // in the primitive descriptor. Also, we are not allowed to change the
+  // shapes of matrices A, B, and C -- they should exactly match
+  // the memory descriptors passed to MatMul operation descriptor.
+  dnnl::stream s(cpu_engine);
+  matmul_prim.execute(s, {{DNNL_ARG_SRC, a_memory},
+                          {DNNL_ARG_WEIGHTS, b_memory},
+                          {DNNL_ARG_DST, c_memory}});
+  s.wait();
+}
+
+template <typename T>
+void dnnl_gemm_batch(const std::vector<bool>& transa,
+                     const std::vector<bool>& transb,
+                     const std::vector<int64_t>& m,
+                     const std::vector<int64_t>& n,
+                     const std::vector<int64_t>& k,
+                     const std::vector<float>& alpha, const T** a,
+                     const std::vector<int64_t> lda, const T** b,
+                     const std::vector<int64_t>& ldb, const float* beta, T** c,
+                     const std::vector<int64_t>& ldc, const int64_t group_count,
+                     const std::vector<int64_t>& group_size) {
+  // Current BatchMatMul support in Tensorflow is narrower than the one offered
+  // by MKL and MKL-DNN. Current BatchMatMul support in Tensorflow uses only 1
+  // group of size equal to batch_size, and all MatMul parameters (m, n, k,
+  // lda, ldb, ldc, alpha, beta) within that group are same.
+  DCHECK(group_size.size() == 1);
+  DCHECK(transa.size() == group_size[0]);
+  DCHECK(transb.size() == group_size[0]);
+  DCHECK(alpha.size() == group_size[0]);
+  DCHECK(beta.size() == group_size[0]);
+  DCHECK(m.size() == group_size[0]);
+  DCHECK(n.size() == group_size[0]);
+  DCHECK(k.size() == group_size[0]);
+  DCHECK(lda.size() == group_size[0]);
+  DCHECK(ldb.size() == group_size[0]);
+  DCHECK(ldc.size() == group_size[0]);
+  for (int64_t idx = 0; idx < group_size[0]; idx++)
+    DCHECK(transa[0] == transa[idx]);
+  for (int64_t idx = 0; idx < group_size[0]; idx++)
+    DCHECK(transb[0] == transb[idx]);
+  for (int64_t idx = 0; idx < group_size[0]; idx++)
+    DCHECK(alpha[0] == alpha[idx]);
+  for (int64_t idx = 0; idx < group_size[0]; idx++)
+    DCHECK(beta[0] == beta[idx]);
+  for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(m[0] == m[idx]);
+  for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(n[0] == n[idx]);
+  for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(k[0] == k[idx]);
+  for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(lda[0] == lda[idx]);
+  for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(ldb[0] == ldb[idx]);
+  for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(ldc[0] == ldc[idx]);
+
+  using dims = dnnl::memory::dims;
+  // Prepare strides based on the transa and transb flags: transposed
+  // matrices have strides swapped BatchMatMul in MKL-DNN supports 3D metrices
+  // so far. That is why strides are 3D also.
+  dims a_strides = transa[0] ? dims{lda[0], 1, 1} : dims{1, 1, lda[0]};
+  dims b_strides = transb[0] ? dims{ldb[0], 1, 1} : dims{1, 1, ldb[0]};
+  dims c_strides = dims{ldc[0], 1, 1};
+  // Prepare memory descriptors
+  dnnl::desc a_md({group_size[0], m[0], k[0]}, MklDnnType<T>(), a_strides);
+  dnnl::desc b_md({group_size[0], k[0], n[0]}, MklDnnType<T>(), b_strides);
+  dnnl::desc c_md({group_size[0], m[0], n[0]}, MklDnnType<T>(), c_strides);
+  // Create attributes (to handle alpha and beta if necessary)
+  dnnl::primitive_attr attr;
+  if (alpha[0] != 1.f) attr.set_output_scales(/* mask */ 0, {alpha[0]});
+  if (beta[0] != 0.f) {
+    mkldnn::post_ops po;
+    po.append_sum(beta[0]);
+    attr.set_post_ops(po);
+  }
+  dnnl_gemm_exec(a_md, b_md, c_md, static_cast<void*>(a), static_cast<void*>(b),
+                 static_cast<void*>(c), attr);
+}
+
+template <typename T>
+void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
+               float alpha, const T* a, int64_t lda, const T* b, int64_t ldb,
+               float beta, T* c, int64_t ldc) {
+  using dims = dnnl::memory::dims;
+  // Prepare strides based on the transa and transb flags: transposed
+  // matrices have strides swapped
+  dims a_strides = tolower(transa) == 'n' ? dims{lda, 1} : dims{1, lda};
+  dims b_strides = tolower(transb) == 'n' ? dims{ldb, 1} : dims{1, ldb};
+  // Prepare memory descriptors
+  dnnl::desc a_md({m, k}, MklDnnType<T>(), a_strides);
+  dnnl::desc b_md({k, n}, MklDnnType<T>(), b_strides);
+  dnnl::desc c_md({m, n}, MklDnnType<T>(), {ldc, 1});
+  // Create attributes (to handle alpha and beta if necessary)
+  dnnl::primitive_attr attr;
+  if (alpha != 1.f) attr.set_output_scales(/* mask */ 0, {alpha});
+  if (beta != 0.f) {
+    mkldnn::post_ops po;
+    po.append_sum(beta);
+    attr.set_post_ops(po);
+  }
+  dnnl_gemm_exec(a_md, b_md, c_md, static_cast<void*>(a), static_cast<void*>(b),
+                 static_cast<void*>(c), attr);
+}
+#endif  // ENABLE_MKLDNN_V1_2
 
 }  // namespace tensorflow
 

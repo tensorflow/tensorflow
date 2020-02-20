@@ -77,12 +77,14 @@ class NnApiMock : public ::tflite::nnapi::NnApiHandler {
 class NnApiDelegateMockTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    nnapi_ = const_cast<NnApi*>(NnApiImplementation());
-    nnapi_mock_ = absl::make_unique<NnApiMock>(nnapi_);
+    nnapi_ = *NnApiImplementation();
+    nnapi_mock_ = absl::make_unique<NnApiMock>(&nnapi_);
   }
 
-  NnApi* nnapi_;
   std::unique_ptr<NnApiMock> nnapi_mock_;
+
+ private:
+  NnApi nnapi_;
 };
 
 }  // namespace nnapi

@@ -42,10 +42,10 @@ def _get_data_for_simple_models():
 
 
 class SimpleFunctionalModel(model_collection_base.ModelAndInput):
-  """A simple functinal model and its inputs."""
+  """A simple functional model and its inputs."""
 
   def get_model(self, **kwargs):
-    output_name = 'output_layer'
+    output_name = 'output_1'
 
     x = keras.layers.Input(shape=(3,), dtype=dtypes.float32)
     y = keras.layers.Dense(5, dtype=dtypes.float32, name=output_name)(x)
@@ -74,7 +74,7 @@ class SimpleSequentialModel(model_collection_base.ModelAndInput):
   """A simple sequential model and its inputs."""
 
   def get_model(self, **kwargs):
-    output_name = 'output_layer'
+    output_name = 'output_1'
 
     model = keras.Sequential()
     y = keras.layers.Dense(
@@ -106,7 +106,7 @@ class _SimpleModel(keras.Model):
     self._dense_layer = keras.layers.Dense(5, dtype=dtypes.float32)
 
   def call(self, inputs):
-    return {'output_layer': self._dense_layer(inputs)}
+    return self._dense_layer(inputs)
 
 
 class SimpleSubclassModel(model_collection_base.ModelAndInput):

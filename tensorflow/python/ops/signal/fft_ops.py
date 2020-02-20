@@ -133,6 +133,10 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
       else:
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
+
+      fft_length_static = _tensor_util.constant_value(fft_length)
+      if fft_length_static is not None:
+        fft_length = fft_length_static
       return fft_fn(input_tensor, fft_length, Tcomplex=complex_dtype, name=name)
   _rfft.__doc__ = fft_fn.__doc__
   return _rfft
@@ -160,6 +164,9 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
         fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
       input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length,
                                          is_reverse=True)
+      fft_length_static = _tensor_util.constant_value(fft_length)
+      if fft_length_static is not None:
+        fft_length = fft_length_static
       return ifft_fn(input_tensor, fft_length, Treal=real_dtype, name=name)
   _irfft.__doc__ = ifft_fn.__doc__
   return _irfft
@@ -327,6 +334,9 @@ def _irfft_grad_helper(rank, rfft_fn):
     # graph we special-case the situation where the FFT length and last
     # dimension of the input are known at graph construction time.
     fft_length = op.inputs[1]
+    fft_length_static = _tensor_util.constant_value(fft_length)
+    if fft_length_static is not None:
+      fft_length = fft_length_static
     real_dtype = grad.dtype
     if real_dtype == _dtypes.float32:
       complex_dtype = _dtypes.complex64

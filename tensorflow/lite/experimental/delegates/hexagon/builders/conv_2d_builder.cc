@@ -276,7 +276,7 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     AddOutput(sizeof(float), 4, {1, 1, 1, 1});
 
     // 2. Depthwise Conv.
-    auto* conv_op = graph_builder_->AddNode();
+    auto* conv_op = graph_builder_->AddNode(GetTFLiteNodeID());
     conv_op->SetOpType(OP_DepthwiseSupernode_8x8p32to8);
     conv_op->AddInput(space_to_batch_op_out);
     conv_op->AddInput(TensorID(const_weights_node->GetID(), 0));
@@ -314,7 +314,7 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     conv_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
 
     // 3. BatchToSpace.
-    auto* batch_to_space_op = graph_builder_->AddNode();
+    auto* batch_to_space_op = graph_builder_->AddNode(GetTFLiteNodeID());
     batch_to_space_op->SetOpType(OP_BatchToSpaceND_8);
     batch_to_space_op->AddInput(conv_output);
     batch_to_space_op->AddInput(TensorID(dilation_factors_const->GetID(), 0));

@@ -197,7 +197,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
         for (size_t i = 0, num_inputs = dataset()->inputs_.size();
              i < num_inputs; ++i) {
           TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
-              ctx, strings::StrCat(prefix(), "_", i), &input_impls_[i]));
+              ctx, this, strings::StrCat(prefix(), "[", i, "]"),
+              &input_impls_[i]));
         }
         return Status::OK();
       }
@@ -266,7 +267,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
             reader->ReadScalar(full_name("fastest_index"), &fastest_index_));
         if (fastest_index_ != -1) {
           TF_RETURN_IF_ERROR(dataset()->inputs_[fastest_index_]->MakeIterator(
-              ctx, strings::StrCat(prefix(), "_", fastest_index_),
+              ctx, this, strings::StrCat(prefix(), "[", fastest_index_, "]"),
               &fastest_input_impl_));
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, fastest_input_impl_));
         } else if (reader->Contains(full_name("input_impls_empty"))) {

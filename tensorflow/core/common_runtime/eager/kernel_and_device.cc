@@ -98,7 +98,10 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
         "A valid FunctionLibraryRuntime must be provided when running ops "
         "based on OpKernel.");
   }
-  TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
+  std::shared_ptr<const NodeProperties> props;
+  TF_RETURN_IF_ERROR(NodeProperties::CreateFromNodeDef(
+      ndef, flr_->GetFunctionLibraryDefinition(), &props));
+  TF_RETURN_IF_ERROR(flr_->CreateKernel(props, &k));
   kernel_.reset(k);
 
   input_alloc_attrs_.resize(kernel_->num_inputs());
@@ -133,7 +136,7 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
   if (function_def != nullptr) {
     op_def = &(function_def->signature());
   } else {
-    TF_RETURN_IF_ERROR(OpDefForOp(ndef.op().c_str(), &op_def));
+    TF_RETURN_IF_ERROR(OpDefForOp(ndef.op(), &op_def));
   }
   TF_RETURN_IF_ERROR(
       InOutTypesForNode(ndef, *op_def, &input_dtypes_, &output_dtypes_));

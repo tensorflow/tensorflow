@@ -54,8 +54,18 @@ class XStatsBuilder {
   }
 
   void AddStat(const XStatMetadata& metadata, const XStat& stat) {
-    DCHECK_EQ(metadata.id(), stat.metadata_id());
-    *stats_owner_->add_stats() = stat;
+    XStat* new_stat = stats_owner_->add_stats();
+    *new_stat = stat;
+    new_stat->set_metadata_id(metadata.id());
+  }
+
+  XStat* FindOrAddMutableStat(int64 metadata_id) {
+    for (auto& stat : *stats_owner_->mutable_stats()) {
+      if (stat.metadata_id() == metadata_id) {
+        return &stat;
+      }
+    }
+    return stats_owner_->add_stats();
   }
 
   void ParseAndAddStatValue(const XStatMetadata& metadata,
@@ -91,6 +101,9 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
  public:
   XEventBuilder(const XLine* line, XEvent* event)
       : XStatsBuilder<XEvent>(event), line_(line), event_(event) {}
+
+  int64 OffsetPs() const { return event_->offset_ps(); }
+  int64 MetadataId() const { return event_->metadata_id(); }
 
   void SetOffsetPs(int64 offset_ps) { event_->set_offset_ps(offset_ps); }
 
@@ -129,20 +142,34 @@ class XLineBuilder {
   int64 Id() { return line_->id(); }
   void SetId(int64 id) { line_->set_id(id); }
 
+  int64 NumEvents() { return line_->events_size(); }
+
   void SetName(absl::string_view name) { line_->set_name(string(name)); }
 
   void SetNameIfEmpty(absl::string_view name) {
     if (line_->name().empty()) SetName(name);
   }
 
+  int64 TimestampNs() { return line_->timestamp_ns(); }
+  // This will set the line start timestamp.
+  // WARNING: The offset_ps of existing events will not be altered.
   void SetTimestampNs(int64 timestamp_ns) {
     line_->set_timestamp_ns(timestamp_ns);
   }
+  // This will set the line start timestamp to specific time, and adjust
+  // the offset_ps of all existing events.
+  void SetTimestampNsAndAdjustEventOffsets(int64 timestamp_ns);
 
   void SetDurationPs(int64 duration_ps) { line_->set_duration_ps(duration_ps); }
 
   void ReserveEvents(size_t num_events) {
     line_->mutable_events()->Reserve(num_events);
+  }
+
+  void SetDisplayNameIfEmpty(absl::string_view display_name) {
+    if (line_->display_name().empty()) {
+      line_->set_display_name(std::string(display_name));
+    }
   }
 
   XEventBuilder AddEvent(const XEventMetadata& metadata);

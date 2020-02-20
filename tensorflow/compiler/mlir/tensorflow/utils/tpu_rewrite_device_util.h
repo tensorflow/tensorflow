@@ -56,6 +56,10 @@ Status GetTPUCompilationAndExecutionDevices(
     int num_cores_per_replica, std::string* compilation_device,
     llvm::SmallVectorImpl<std::string>* execution_devices);
 
+// Virutal device is used for evice assignment for executing ops
+// on a specified logical core.
+std::string GetDeviceAliasForLogicalCore(int core_index);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_REWRITE_DEVICE_UTIL_H_

@@ -49,8 +49,6 @@ from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.engine import training_v2
-from tensorflow.python.keras.engine import training_v2_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
@@ -161,6 +159,8 @@ class Model(training_lib.Model):
     self._run_eagerly = None
     self._experimental_run_tf_function = (
         ops.executing_eagerly_outside_functions())
+
+    self._v1_compile_was_called = False
 
   @trackable.no_automatic_dependency_tracking
   def _set_strategy(self, strategy):
@@ -301,6 +301,7 @@ class Model(training_lib.Model):
     self._run_eagerly = kwargs.pop('run_eagerly', None)
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
+    self._v1_compile_was_called = True
 
     # Prepare Session arguments (legacy).
     kwargs.pop('cloning', None)  # Legacy DistStrat argument, never used.
@@ -560,14 +561,6 @@ class Model(training_lib.Model):
                        'Datasets by users. Please directly pass in the '
                        'original `Dataset` object instead of passing in '
                        '`iter(dataset)`.')
-
-    # Experiment training loop with default DS path.
-    if context.executing_eagerly() and self._experimental_run_tf_function:
-      if self._in_multi_worker_mode():
-        return training_distributed.DistributionMultiWorkerTrainingLoop(
-            training_v2.Loop())
-      else:
-        return training_v2.Loop()
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
@@ -1031,18 +1024,6 @@ class Model(training_lib.Model):
     """
     self._assert_compile_was_called()
     self._check_call_args('train_on_batch')
-    if self._experimental_run_tf_function:
-      outputs = training_v2_utils.train_on_batch(
-          self, x, y=y, sample_weight=sample_weight,
-          class_weight=class_weight, reset_metrics=reset_metrics,
-          standalone=True)
-      outputs = (outputs['total_loss'] + outputs['output_losses'] +
-                 outputs['metrics'])
-      outputs = [
-          training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
-      if len(outputs) == 1:
-        outputs = outputs[0]
-      return outputs
 
     # If at this point we are in the replica context, then it is okay to execute
     # the Eager code path.  The expected way to get here is to call `fit` that
@@ -1069,8 +1050,7 @@ class Model(training_lib.Model):
           output_loss_metrics=self._output_loss_metrics)
       outputs = (output_dict['total_loss'] + output_dict['output_losses']
                  + output_dict['metrics'])
-      outputs = [
-          training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
+      outputs = [_non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
     else:
       x = training_utils.ModelInputs(x).as_list()
       ins = x + list(y or []) + list(sample_weights or [])
@@ -1129,17 +1109,6 @@ class Model(training_lib.Model):
     """
     self._assert_compile_was_called()
     self._check_call_args('test_on_batch')
-    if self._experimental_run_tf_function:
-      outputs = training_v2_utils.test_on_batch(
-          self, x, y=y, sample_weight=sample_weight,
-          reset_metrics=reset_metrics, standalone=True)
-      outputs = (outputs['total_loss'] + outputs['output_losses'] +
-                 outputs['metrics'])
-      outputs = [
-          training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
-      if len(outputs) == 1:
-        outputs = outputs[0]
-      return outputs
 
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
@@ -1160,8 +1129,7 @@ class Model(training_lib.Model):
           output_loss_metrics=self._output_loss_metrics)
       outputs = (output_dict['total_loss'] + output_dict['output_losses']
                  + output_dict['metrics'])
-      outputs = [
-          training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
+      outputs = [_non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
     else:
       x = training_utils.ModelInputs(x).as_list()
       inputs = x + list(y or []) + list(sample_weights or [])
@@ -1196,8 +1164,6 @@ class Model(training_lib.Model):
           expectations of the model.
     """
     self._check_call_args('predict_on_batch')
-    if self._experimental_run_tf_function:
-      return training_v2_utils.predict_on_batch(self, x, standalone=True)
 
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
@@ -1995,7 +1961,7 @@ class Model(training_lib.Model):
                        'optimizer.')
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # train function even if one exists already. This is because
-    # `_feed_sample_weights` list has been updated on re-copmpile.
+    # `_feed_sample_weights` list has been updated on re-compile.
     if getattr(self, 'train_function', None) is None or has_recompiled:
       # Restore the compiled trainable state.
       current_trainable_state = self._get_trainable_state()
@@ -2038,7 +2004,7 @@ class Model(training_lib.Model):
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()
     # If we have re-compiled the loss/weighted metric sub-graphs then create
     # test function even if one exists already. This is because
-    # `_feed_sample_weights` list has been updated on re-copmpile.
+    # `_feed_sample_weights` list has been updated on re-compile.
     if getattr(self, 'test_function', None) is None or has_recompiled:
       inputs = (self._feed_inputs +
                 self._feed_targets +
@@ -2601,6 +2567,7 @@ class Model(training_lib.Model):
       ValueError: If dict inputs are passed to a Sequential Model where the
         first layer isn't FeatureLayer.
     """
+    self._set_save_spec(inputs)
     inputs = self._set_input_attrs(inputs)
 
     if outputs is None:
@@ -2760,7 +2727,7 @@ class Model(training_lib.Model):
       training setting, return the epoch the training is supposed to continue
       at. Otherwise, return the `initial_epoch` the user passes in.
     """
-    if hasattr(self, '_training_state'):
+    if self._training_state is not None:
       return self._training_state.maybe_load_initial_epoch_from_ckpt(
           initial_epoch, mode)
     return initial_epoch
@@ -2781,7 +2748,7 @@ class Model(training_lib.Model):
     # then the optimizer is set. This is different from whether the
     # model is compiled
     # (i.e. whether the model is built and its inputs/outputs are set).
-    if not self.optimizer:
+    if not self._compile_was_called:
       raise RuntimeError('You must compile your model before '
                          'training/testing. '
                          'Use `model.compile(optimizer, loss)`.')
@@ -2821,6 +2788,21 @@ class Model(training_lib.Model):
   def _trackable_saved_model_saver(self):
     return model_serialization.ModelSavedModelSaver(self)
 
+  def _get_compile_args(self):
+    self._assert_compile_was_called()
+    kwargs = {
+        'loss': self.loss,
+        'metrics': self._compile_metrics,
+        'loss_weights': self.loss_weights,
+        'sample_weight_mode': self.sample_weight_mode,
+        'weighted_metrics': self._compile_weighted_metrics,
+    }
+    return kwargs
+
+  @property
+  def _compile_was_called(self):
+    return self._v1_compile_was_called
+
 
 class DistributedCallbackModel(Model):
   """Model that is used for callbacks with tf.distribute.Strategy."""
@@ -2853,7 +2835,7 @@ class DistributedCallbackModel(Model):
         orig_model_weights)
 
   def __getattr__(self, item):
-    # Whitelisted atttributes of the model that can be accessed by the user
+    # Whitelisted attributes of the model that can be accessed by the user
     # during a callback.
     if item not in ('_setattr_tracking', '_layers'):
       logging.warning('You are accessing attribute ' + item + ' of the '
@@ -3189,3 +3171,8 @@ def _get_metrics_from_layers(layers):
     else:
       metrics.extend(layer.metrics)
   return metrics
+
+
+def _non_none_constant_value(v):
+  constant_value = tensor_util.constant_value(v)
+  return constant_value if constant_value is not None else v

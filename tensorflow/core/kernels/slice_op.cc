@@ -73,8 +73,8 @@ static void SharedValidation(OpKernelContext* context,
 
   OP_REQUIRES(
       context,
-      context->op_kernel().IsLegacyVector(begin_tensor.shape()) &&
-          context->op_kernel().IsLegacyVector(size_tensor.shape()) &&
+      TensorShapeUtils::IsVector(begin_tensor.shape()) &&
+          TensorShapeUtils::IsVector(size_tensor.shape()) &&
           begin_tensor.NumElements() == input.dims() &&
           size_tensor.NumElements() == input.dims(),
       errors::InvalidArgument(

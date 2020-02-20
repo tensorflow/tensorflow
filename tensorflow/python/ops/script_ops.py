@@ -93,7 +93,7 @@ class EagerFunc(object):
 
     Returns:
       A tensor of type `dtype`, or a zeros tensor if value is None and
-      this function is in fact a grdient function.
+      this function is in fact a gradient function.
 
     Raises:
       RuntimeError: if `value` is a variable.
@@ -108,7 +108,7 @@ class EagerFunc(object):
           "question: %s" % value)
     if value is None and self._is_grad_func:
       # Gradient functions may legitimately return a list that contains
-      # both Tensors and Python Nones. Unfortuantely this breaks the
+      # both Tensors and Python Nones. Unfortunately this breaks the
       # OpKernel, so for now we replace None objects with zeros, which is
       # mathematically correct but will prevent short-circuiting gradient
       # computations.
@@ -603,6 +603,8 @@ def numpy_function(func, inp, Tout, name=None):
     through a numpy_function. If you require something that is differentiable,
     please consider using tf.py_function.
 
+  * The resulting function is assumed stateful and will never be optimized.
+
   Args:
     func: A Python function, which accepts `numpy.ndarray` objects as arguments
       and returns a list of `numpy.ndarray` objects (or a single
@@ -618,10 +620,6 @@ def numpy_function(func, inp, Tout, name=None):
     inp: A list of `tf.Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.
-    stateful (bool): If True, the function should be considered stateful. If
-      a function is stateless, when given the same input it will return the same
-      output and have no observable side effects. Optimizations such as common
-      subexpression elimination are only performed on stateless operations.
     name: (Optional) A name for the operation.
 
   Returns:

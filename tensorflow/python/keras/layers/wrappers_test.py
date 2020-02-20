@@ -129,7 +129,8 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
     with self.assertRaisesRegexp(
         ValueError,
-        'Please initialize `TimeDistributed` layer with a `Layer` instance.'):
+        'Please initialize `TimeDistributed` layer with a '
+        '`tf.keras.layers.Layer` instance.'):
       keras.layers.TimeDistributed(x)
 
   def test_timedistributed_conv2d(self):
@@ -186,7 +187,6 @@ class TimeDistributedTest(keras_parameterized.TestCase):
       y = model.predict(np.random.random((10, 3, 2)))
       self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
 
-  @tf_test_util.run_v1_only(reason='b/148248386')
   def test_TimeDistributed_batchnorm(self):
     with self.cached_session():
       # test that wrapped BN updates still work.
@@ -206,8 +206,6 @@ class TimeDistributedTest(keras_parameterized.TestCase):
       # Assert that mean and variance changed.
       assert not np.array_equal(td.get_weights()[2], np.array([0, 0]))
       assert not np.array_equal(td.get_weights()[3], np.array([1, 1]))
-      # Verify input_map has one mapping from inputs to reshaped inputs.
-      self.assertEqual(len(td._input_map.keys()), 1)
 
   def test_TimeDistributed_trainable(self):
     # test layers that need learning_phase to be set
@@ -255,29 +253,28 @@ class TimeDistributedTest(keras_parameterized.TestCase):
         self.assertAllEqual(mask_outputs_val[i], ref_mask_val[i])
       self.assertIs(mask_outputs[-1], None)  # final layer
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_TimeDistributed_with_masking_layer(self):
-    with self.cached_session():
-      # test with Masking layer
-      model = keras.models.Sequential()
-      model.add(keras.layers.TimeDistributed(keras.layers.Masking(
-          mask_value=0.,), input_shape=(None, 4)))
-      model.add(keras.layers.TimeDistributed(keras.layers.Dense(5)))
-      model.compile(optimizer='rmsprop', loss='mse')
-      model_input = np.random.randint(low=1, high=5, size=(10, 3, 4))
-      for i in range(4):
-        model_input[i, i:, :] = 0.
-      model.compile(optimizer='rmsprop', loss='mse')
-      model.fit(model_input,
-                np.random.random((10, 3, 5)), epochs=1, batch_size=6)
-      mask_outputs = [model.layers[0].compute_mask(model.input)]
-      mask_outputs += [model.layers[1].compute_mask(model.layers[1].input,
-                                                    mask_outputs[-1])]
-      func = keras.backend.function([model.input], mask_outputs)
-      mask_outputs_val = func([model_input])
-      self.assertEqual((mask_outputs_val[0]).all(),
-                       model_input.all())
-      self.assertEqual((mask_outputs_val[1]).all(),
-                       model_input.all())
+    # test with Masking layer
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.TimeDistributed(
+            keras.layers.Masking(mask_value=0.,), input_shape=(None, 4)))
+    model.add(keras.layers.TimeDistributed(keras.layers.Dense(5)))
+    model.compile(optimizer='rmsprop', loss='mse')
+    model_input = np.random.randint(low=1, high=5, size=(10, 3, 4))
+    for i in range(4):
+      model_input[i, i:, :] = 0.
+    model.compile(optimizer='rmsprop', loss='mse')
+    model.fit(model_input, np.random.random((10, 3, 5)), epochs=1, batch_size=6)
+    mask_outputs = [model.layers[0].compute_mask(model.input)]
+    mask_outputs += [
+        model.layers[1].compute_mask(model.layers[1].input, mask_outputs[-1])
+    ]
+    func = keras.backend.function([model.input], mask_outputs)
+    mask_outputs_val = func([model_input])
+    self.assertEqual((mask_outputs_val[0]).all(), model_input.all())
+    self.assertEqual((mask_outputs_val[1]).all(), model_input.all())
 
   def test_TimeDistributed_with_different_time_shapes(self):
     time_dist = keras.layers.TimeDistributed(keras.layers.Dense(5))
@@ -576,9 +573,9 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       output = bidi_rnn(inputs)
       model = keras.models.Model(inputs, output)
 
-      y_1 = model.predict(x)
+      y_1 = model.predict(x, batch_size=1)
       model.reset_states()
-      y_2 = model.predict(x)
+      y_2 = model.predict(x, batch_size=1)
 
       self.assertAllClose(y_1, y_2)
 
@@ -933,9 +930,8 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       self.assertLen(y, 5)
       self.assertAllClose(y[0], np.concatenate([y[1], y[3]], axis=1))
 
-  @tf_test_util.run_v1_only(reason='b/148247985')
-  def test_Bidirectional_sequence_output_with_masking(self):
-    rnn = keras.layers.LSTM
+  @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
+  def test_Bidirectional_sequence_output_with_masking(self, rnn):
     samples = 2
     dim = 5
     timesteps = 3

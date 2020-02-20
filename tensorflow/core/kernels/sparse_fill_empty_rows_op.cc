@@ -55,8 +55,6 @@ class SparseFillEmptyRowsOp : public OpKernel {
     const Tensor& dense_shape_t = context->input(kDenseShapeInput);
     const Tensor& default_value_t = context->input(kDefaultValueInput);
 
-    const CPUDevice& d = context->eigen_device<CPUDevice>();
-
     OP_REQUIRES(context, TensorShapeUtils::IsVector(dense_shape_t.shape()),
                 errors::InvalidArgument("dense_shape must be a vector, saw: ",
                                         dense_shape_t.shape().DebugString()));
@@ -113,78 +111,80 @@ class SparseFillEmptyRowsOp : public OpKernel {
       return;
     }
 
-    Tensor scratch_t;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DT_INT64, TensorShape({dense_rows}),
-                                          &scratch_t));
-    auto scratch = scratch_t.vec<int64>();
-    scratch.device(d) = scratch.constant(0);
+    std::vector<int64> csr_offset(dense_rows, 0);
     for (int i = 0; i < N; ++i) {
       const int64 row = indices(i, 0);
       OP_REQUIRES(context, row >= 0 && row < dense_rows,
                   errors::InvalidArgument("indices(", i, ", 0) is invalid: ",
                                           row, " >= ", dense_rows));
-      ++scratch(indices(i, 0));
+      ++csr_offset[indices(i, 0)];
     }
+    bool all_rows_full = true;
     for (int row = 0; row < dense_rows; ++row) {
-      // Scratch here describes the number of elements in this dense row
-      empty_row_indicator(row) = (scratch(row) == 0);
+      // csr_offset here describes the number of elements in this dense row
+      empty_row_indicator(row) = (csr_offset[row] == 0);
+      all_rows_full = all_rows_full & !empty_row_indicator(row);
       // In filled version, each row has at least one element.
-      scratch(row) = std::max(scratch(row), int64{1});
-      // Update scratch to represent the number of elements up to and
+      csr_offset[row] = std::max(csr_offset[row], int64{1});
+      // Update csr_offset to represent the number of elements up to and
       // including dense_row + 1:
-      //  scratch(0) == #{elements of row 0}
-      //  scratch(1) == #{elements of row 1} + #{elements of row 0}
+      //  csr_offset(0) == #{elements of row 0}
+      //  csr_offset(1) == #{elements of row 1} + #{elements of row 0}
       //  ..
-      //  scratch(i) == starting index for elements in row i + 1.
+      //  csr_offset(i) == starting index for elements in row i + 1.
       if (row > 0) {
-        scratch(row) += scratch(row - 1);
+        csr_offset[row] += csr_offset[row - 1];
       }
     }
-    Tensor* output_indices_t;
-    const int64 N_full = scratch(dense_rows - 1);
-    TensorShape output_indices_shape({N_full, rank});
-    OP_REQUIRES_OK(context, context->allocate_output(kOutputIndicesOutput,
-                                                     output_indices_shape,
-                                                     &output_indices_t));
-    auto output_indices = output_indices_t->matrix<int64>();
-    output_indices.device(d) = output_indices.constant(0);
 
-    Tensor* output_values_t;
-    OP_REQUIRES_OK(context, context->allocate_output(kOutputValuesOutput,
-                                                     TensorShape({N_full}),
-                                                     &output_values_t));
-    auto output_values = output_values_t->vec<T>();
-    output_values.device(d) = output_values.constant(default_value);
+    if (all_rows_full) {
+      context->set_output(kOutputIndicesOutput, indices_t);
+      context->set_output(kOutputValuesOutput, values_t);
+      for (int64 i = 0; i < N; ++i) {
+        reverse_index_map(i) = i;
+      }
+    } else {
+      Tensor* output_indices_t;
+      const int64 N_full = csr_offset[dense_rows - 1];
+      TensorShape output_indices_shape({N_full, rank});
+      OP_REQUIRES_OK(context, context->allocate_output(kOutputIndicesOutput,
+                                                       output_indices_shape,
+                                                       &output_indices_t));
+      auto output_indices = output_indices_t->matrix<int64>();
 
-    Tensor filled_count_t;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DT_INT64, TensorShape({dense_rows}),
-                                          &filled_count_t));
-    auto filled_count = filled_count_t.vec<int64>();
-    filled_count.device(d) = filled_count.constant(0);
+      Tensor* output_values_t;
+      OP_REQUIRES_OK(context, context->allocate_output(kOutputValuesOutput,
+                                                       TensorShape({N_full}),
+                                                       &output_values_t));
+      auto output_values = output_values_t->vec<T>();
 
-    // Fill in values for rows that are not missing
-    for (int64 i = 0; i < N; ++i) {
-      const int64 row = indices(i, 0);
-      int64& offset = filled_count(row);
-      const int64 output_i = ((row == 0) ? 0 : scratch(row - 1)) + offset;
-      offset++;  // Increment the filled count for this row.
-      std::copy_n(&indices(i, 0), rank, &output_indices(output_i, 0));
-      output_values(output_i) = values(i);
-      // We'll need this reverse index map to backprop correctly.
-      reverse_index_map(i) = output_i;
-    }
+      std::vector<int64> filled_count(dense_rows, 0);
 
-    // Fill in values for rows that are missing
-    for (int64 row = 0; row < dense_rows; ++row) {
-      const int64 row_count = filled_count(row);
-      if (row_count == 0) {  // We haven't filled this row
-        const int64 starting_index = (row == 0) ? 0 : scratch(row - 1);
-        // Remaining index values were set to zero already.
-        // The value at this index was set to default_value already.
-        // Just need to set the row index in the right location.
-        output_indices(starting_index, 0) = row;
+      // Fill in values for rows that are not missing
+      for (int64 i = 0; i < N; ++i) {
+        const int64 row = indices(i, 0);
+        int64& offset = filled_count[row];
+        const int64 output_i = ((row == 0) ? 0 : csr_offset[row - 1]) + offset;
+        offset++;  // Increment the filled count for this row.
+        std::copy_n(&indices(i, 0), rank, &output_indices(output_i, 0));
+        output_values(output_i) = values(i);
+        // We'll need this reverse index map to backprop correctly.
+        reverse_index_map(i) = output_i;
+      }
+
+      // Fill in values for rows that are missing
+      for (int64 row = 0; row < dense_rows; ++row) {
+        const int64 row_count = filled_count[row];
+        if (row_count == 0) {  // We haven't filled this row
+          const int64 starting_index = (row == 0) ? 0 : csr_offset[row - 1];
+          // Remaining index values were set to zero already.
+          // Just need to set the row index in the right location.
+          output_indices(starting_index, 0) = row;
+          for (int64 col = 1; col < rank; ++col) {
+            output_indices(starting_index, col) = 0;
+          }
+          output_values(starting_index) = default_value;
+        }
       }
     }
   }

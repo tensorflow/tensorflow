@@ -74,6 +74,9 @@ string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::DataType trt_dtype);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const nvinfer1::ITensor& tensor);
+string DebugString(const std::vector<nvinfer1::Dims>& dimvec);
+string DebugString(const std::vector<TensorShape>& shapes);
+string DebugString(const std::vector<PartialTensorShape>& shapes);
 
 inline bool HasStaticShape(const nvinfer1::Dims& dims) {
   if (dims.nbDims < 0) return false;
@@ -103,6 +106,11 @@ string GetLinkedTensorRTVersion();
 // TensorRT library version information {Maj, Min, Patch}.
 string GetLoadedTensorRTVersion();
 
+// Returns the number of inputs for the engine, which also correspends to the
+// number of input tensors for the network. This can differ from the number of
+// input bindings, because the number of total input bindings equals the number
+// of profiles times the number of engine inputs.
+int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine);
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 }  // namespace tensorrt

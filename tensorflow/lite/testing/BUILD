@@ -50,7 +50,6 @@ exports_files([
         "no_gpu",  # Executing with TF GPU configurations is redundant.
         "no_oss",
         "tflite_not_portable_intentional",
-        "noasan",  # b/148160116
     ],
     test_name = test_name,
     deps = [
@@ -542,6 +541,7 @@ edgetpu_ops = [
     "conv_relu1",
     "conv_relu6",
     "depthwiseconv",  # high error
+    "expand_dims",
     "fully_connected",
     "l2norm",  # high error
     "maximum",
@@ -550,6 +550,7 @@ edgetpu_ops = [
     "minimum",
     "mul",
     "pad",  # high error
+    "pack",
     "relu",
     "relu1",
     "relu6",

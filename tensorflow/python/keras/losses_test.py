@@ -95,16 +95,16 @@ class KerasLossesTest(test.TestCase):
     p = keras.backend.placeholder()
     o = keras.losses.categorical_crossentropy(t, p)
 
-    t_val = ops.convert_to_tensor([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
-    p_val = ops.convert_to_tensor([[.9, .05, .05], [.05, .89, .06],
-                                   [.05, .01, .94]])
+    t_val = ops.convert_to_tensor_v2([[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]])
+    p_val = ops.convert_to_tensor_v2([[.9, .05, .05], [.05, .89, .06],
+                                      [.05, .01, .94]])
     f = keras.backend.function([t, p], o)
 
     result = f([t_val, p_val])
     self.assertArrayNear(result, [.105, .116, .062], 1e-3)
 
     # from logits
-    p_val = ops.convert_to_tensor([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p_val = ops.convert_to_tensor_v2([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
     o = keras.losses.categorical_crossentropy(t, p, from_logits=True)
     f = keras.backend.function([t, p], o)
 
@@ -130,16 +130,16 @@ class KerasLossesTest(test.TestCase):
     p = keras.backend.placeholder()
     o = keras.losses.sparse_categorical_crossentropy(t, p)
 
-    t_val = ops.convert_to_tensor([0, 1, 2])
-    p_val = ops.convert_to_tensor([[.9, .05, .05], [.05, .89, .06],
-                                   [.05, .01, .94]])
+    t_val = ops.convert_to_tensor_v2([0, 1, 2])
+    p_val = ops.convert_to_tensor_v2([[.9, .05, .05], [.05, .89, .06],
+                                      [.05, .01, .94]])
     f = keras.backend.function([t, p], o)
 
     result = f([t_val, p_val])
     self.assertArrayNear(result, [.105, .116, .062], 1e-3)
 
     # from logits
-    p_val = ops.convert_to_tensor([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
+    p_val = ops.convert_to_tensor_v2([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
     o = keras.losses.sparse_categorical_crossentropy(t, p, from_logits=True)
     f = keras.backend.function([t, p], o)
 
@@ -874,6 +874,15 @@ class CategoricalCrossentropyTest(test.TestCase):
     loss = cce_obj(y_true, logits)
     expected_value = 400.0 * label_smoothing / 3.0
     self.assertAlmostEqual(self.evaluate(loss), expected_value, 3)
+
+  def test_shape_mismatch(self):
+    y_true = constant_op.constant([[0], [1], [2]])
+    y_pred = constant_op.constant([[.9, .05, .05], [.5, .89, .6],
+                                   [.05, .01, .94]])
+
+    cce_obj = keras.losses.CategoricalCrossentropy()
+    with self.assertRaisesRegexp(ValueError, 'Shapes .+ are incompatible'):
+      cce_obj(y_true, y_pred)
 
 
 @test_util.run_all_in_graph_and_eager_modes

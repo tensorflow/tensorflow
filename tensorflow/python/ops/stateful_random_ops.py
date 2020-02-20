@@ -356,7 +356,7 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
         [https://www.thesalmons.org/john/random123/papers/random123sc11.pdf]).
         The string names `"philox"` and `"threefry"` can also be used.
         Note `PHILOX` guarantees the same numbers are produced (given
-        the same random state) across all architextures (CPU, GPU, XLA etc).
+        the same random state) across all architectures (CPU, GPU, XLA etc).
 
     Throws:
       ValueError: if the generator is created inside a synchronous

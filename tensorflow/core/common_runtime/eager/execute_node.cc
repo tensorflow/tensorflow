@@ -18,45 +18,26 @@ limitations under the License.
 
 namespace tensorflow {
 Status ExecuteNodeArgs::Init(
-    EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs) {
+    EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
+    const core::RefCountPtr<KernelAndDevice>& kernel) {
   // If there are multiple references to a TensorHandle in 'op_inputs' we must
   // increment the reference count of the corresponding Tensor or risk it being
   // overwritten during kernel execution. The reference count is incremented
   // below when we insert a copy of the Tensor into protected_tensors, and will
   // be decremented once execution is complete.
   const int n_inputs = op_inputs.size();
-  int num_protected_tensors = 0;
-  int first_index_that_needs_protecting = -1;  // Used to avoid second loop
   if (n_inputs > 0) {
     TensorHandle* const* op_inputs_array = &op_inputs[0];
     TensorValue* tensor_args_array = &tensor_args_[0];
     for (int i = 0; i < n_inputs; ++i) {
       TensorHandle* in = op_inputs_array[i];
       if (!in->IsRemote()) {
-        TF_RETURN_IF_ERROR(in->TensorValue(&tensor_args_array[i]));
-        if (!in->RefCountIsOne()) {
-          if (first_index_that_needs_protecting < 0) {
-            first_index_that_needs_protecting = i;
-          }
-          ++num_protected_tensors;
-        }
+        TF_RETURN_IF_ERROR(
+            in->TensorValue(&tensor_args_array[i],
+                            ctx->CanonicalDevice(kernel->InputDevice(i))));
       } else {
         if (!has_remote_inputs_) {
           has_remote_inputs_ = true;
-        }
-      }
-    }
-
-    protected_tensors_.reserve(num_protected_tensors);
-    if (first_index_that_needs_protecting >= 0) {
-      for (int i = first_index_that_needs_protecting;
-           num_protected_tensors && (i < n_inputs); ++i) {
-        TensorHandle* in = op_inputs_array[i];
-        if (!in->IsRemote() && !in->RefCountIsOne()) {
-          const Tensor* input_tensor = nullptr;
-          TF_RETURN_IF_ERROR(op_inputs_array[i]->Tensor(&input_tensor));
-          protected_tensors_.emplace_back(TensorReference(*input_tensor));
-          --num_protected_tensors;
         }
       }
     }
@@ -71,18 +52,20 @@ Status ExecuteNodeArgs::Init(
     serialize_remote_handle_ =
         [ctx, &op_inputs](const int i,
                           eager::RemoteTensorHandle* handle) -> Status {
+      absl::variant<Device*, CustomDevice*> variant_device =
+          op_inputs[i]->device();
+      if (VariantDeviceIsCustom(variant_device)) {
+        return errors::Internal(
+            "Custom devices and remote execution are currently not supported "
+            "together.");
+      }
+      Device* device = absl::get<Device*>(variant_device);
       return ctx->RemoteMgr()->SerializeRemoteTensorHandle(
-          op_inputs[i], handle, op_inputs[i]->device(),
-          op_inputs[i]->device()->name());
+          op_inputs[i], handle, device, device->name());
     };
 #endif  // !IS_MOBILE_PLATFORM
   }
   return Status::OK();
 }
 
-ExecuteNodeArgs::~ExecuteNodeArgs() {
-  for (const auto& tensor_ref : protected_tensors_) {
-    tensor_ref.Unref();
-  }
-}
 }  // namespace tensorflow

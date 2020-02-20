@@ -21,6 +21,12 @@ include "mlir/IR/OpBase.td"
 def HLO_Int : IntOfWidths<[8, 16, 32, 64]>;
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
+// The broadcasting dimensions correspond to a tuple that describes how a
+// smaller rank shape is broadcast into a larger rank shape. For example,
+// given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
+// matching the matrix to dimensions 1 and 2 of the cuboid.
+def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
+
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -317,12 +323,6 @@ class BASE_HLO_TanhOp {
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
-
-// The broadcasting dimensions correspond to a tuple that describes how a
-// smaller rank shape is broadcast into a larger rank shape. For example,
-// given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
-// matching the matrix to dimensions 1 and 2 of the cuboid.
-def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
 
 class BASE_HLO_AddOp {
   string summary = "Addition operator";
@@ -627,6 +627,33 @@ class BASE_HLO_CompareOp {
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// Quantize op definitions.
+//===----------------------------------------------------------------------===//
+
+// These mirror the XLA ComparisonDirection enum.
+def HLO_MIN_COMBINED : StrEnumAttrCase<"MIN_COMBINED">;
+
+def HLO_DequantizeModeAttr : StrEnumAttr<"DequantizeMode",
+  "Dequantization mode. Only MIN_COMBINED is supported.",
+  [HLO_MIN_COMBINED]>;
+
+class BASE_HLO_DequantizeOp {
+  string summary = "Dequantize operator";
+
+  string description = [{
+    Dequantize the quantized input of packed uint32 to bfloat16. Only uint8 or
+    uint16 is supported for the original unpacked input.
+
+    Returns a tensor of shape [d0,..., dn * unpack_size] if unpacked input shape
+    is [d0, ..., dn], where unpack_size = sizeof(unit32) / sizeof(T), where T is
+    the unpacked input type. If transpose_output is true, will return a tensor
+    of shape [dn * unpack_size, dn-1, ..., d1, d0]. transpose_output is faster
+    when input's rank higher than 1. The input needs to be transposed to use
+    transpose_output feature.
   }];
 }
 

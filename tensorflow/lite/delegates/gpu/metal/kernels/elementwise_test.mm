@@ -118,6 +118,64 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
+- (void)testMaximum {
+  OperationType op_type = OperationType::MAXIMUM;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape), GetTensorRef(1, shape)},
+                      /*outputs=*/{GetTensorRef(2, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {0.0, -6.2, 2.0, -3.0}));
+  XCTAssertTrue(model.PopulateTensor(1, {1.0, 2.0, 3.0, -2.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = CompareVectors({1.0, 2.0, 3.0, -2.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
+- (void)testMaximumWithScalar {
+  OperationType op_type = OperationType::MAXIMUM;
+  const BHWC shape(1, 2, 2, 1);
+  tflite::gpu::ElementwiseAttributes attr;
+  attr.param = -1.0f;
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/attr},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {0.0, -6.2, 2.0, -3.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = CompareVectors({0.0, -1.0, 2.0, -1.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
+- (void)testMinimum {
+  OperationType op_type = OperationType::MINIMUM;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape), GetTensorRef(1, shape)},
+                      /*outputs=*/{GetTensorRef(2, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {0.0, -6.2, 2.0, -3.0}));
+  XCTAssertTrue(model.PopulateTensor(1, {1.0, 2.0, 3.0, -2.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = CompareVectors({0.0, -6.2, 2.0, -3.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
+- (void)testMinimumWithScalar {
+  OperationType op_type = OperationType::MINIMUM;
+  const BHWC shape(1, 2, 2, 1);
+  tflite::gpu::ElementwiseAttributes attr;
+  attr.param = -1.0f;
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/attr},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {0.0, -6.2, 2.0, -3.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = CompareVectors({-1.0, -6.2, -1.0, -3.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
 - (void)testPow {
   OperationType op_type = OperationType::POW;
   const BHWC shape(1, 2, 2, 1);

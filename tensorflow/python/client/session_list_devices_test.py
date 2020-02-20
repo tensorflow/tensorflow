@@ -21,7 +21,7 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import pywrap_tensorflow as tf_session
+from tensorflow.python.client import pywrap_tf_session as tf_session
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops

@@ -71,7 +71,6 @@ class Registry : public NodeShader {
     };
 
     insert_op(Type::ADD, NewAddNodeShader);
-    insert_op(Type::APPLY_MASK, NewApplyMaskNodeShader);
     insert_op(Type::CONCAT, NewAlignedConcatNodeShader);
     insert_op(Type::CONCAT, NewFlatConcatNodeShader);
     insert_op(Type::CONCAT, NewConcatNodeShader);
@@ -82,7 +81,7 @@ class Registry : public NodeShader {
     insert_op(Type::FULLY_CONNECTED, NewFullyConnectedNodeShader);
     insert_op(Type::LSTM, NewLstmNodeShader);
     insert_op(Type::MEAN, NewMeanNodeShader);
-    insert_op(Type::MULTIPLY_SCALAR, NewMultiplyScalarNodeShader);
+    insert_op(Type::MUL, NewMultiplyNodeShader);
     insert_op(Type::PAD, NewPadNodeShader);
     insert_op(Type::POOLING_2D, NewPoolingNodeShader);
     insert_op(Type::PRELU, NewPReLUNodeShader);
@@ -97,6 +96,8 @@ class Registry : public NodeShader {
     insert_elementwise_op(Type::DIV);
     insert_elementwise_op(Type::HARD_SWISH);
     insert_elementwise_op(Type::LOG);
+    insert_elementwise_op(Type::MAXIMUM);
+    insert_elementwise_op(Type::MINIMUM);
     insert_elementwise_op(Type::POW);
     insert_elementwise_op(Type::RSQRT);
     insert_elementwise_op(Type::SIGMOID);

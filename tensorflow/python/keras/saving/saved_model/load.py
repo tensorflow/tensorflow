@@ -20,9 +20,11 @@ from __future__ import print_function
 import json
 import re
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.saving import saving_utils
@@ -117,6 +119,11 @@ def load(path, compile=True):  # pylint: disable=redefined-builtin
       logging.warning('No training configuration found in save file, so the '
                       'model was *not* compiled. Compile it manually.')
   # pylint: enable=protected-access
+
+  # Force variables and resources to initialize.
+  if not context.executing_eagerly():
+    sess = backend.get_session()  # Variables are initialized by this call.
+    sess.run(ops.get_collection(ops.GraphKeys.TABLE_INITIALIZERS))
 
   return model
 
@@ -438,8 +445,11 @@ class KerasObjectLoader(tf_load.Loader):
       model.__init__(layers, name=config['name'])
       if not model.inputs:
         first_layer = self._get_child_layer_node_ids(model_id, model.name)[0]
-        input_shape = self._infer_inputs(first_layer)
-        model._set_inputs(input_shape)  # pylint: disable=protected-access
+        input_specs = self._infer_inputs(first_layer)
+        input_shapes = self._infer_inputs(first_layer, convert_to_shapes=True)
+        model._set_inputs(input_specs)  # pylint: disable=protected-access
+        if not model.built and not isinstance(input_specs, dict):
+          model.build(input_shapes)
     else:
       (inputs, outputs, created_layers) = network_lib.reconstruct_from_config(
           config, created_layers={layer.name: layer for layer in layers})

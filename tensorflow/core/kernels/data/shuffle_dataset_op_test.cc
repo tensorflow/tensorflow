@@ -344,8 +344,8 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
   // Reshuffle the dataset.
   end_of_sequence = false;
   TF_ASSERT_OK(dataset_->MakeIterator(
-      iterator_ctx_.get(), test_case.dataset_params.iterator_prefix(),
-      &iterator_));
+      iterator_ctx_.get(), /*parent=*/nullptr,
+      test_case.dataset_params.iterator_prefix(), &iterator_));
   std::vector<Tensor> reshuffled_out_tensors;
   while (!end_of_sequence) {
     std::vector<Tensor> next;

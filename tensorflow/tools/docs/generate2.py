@@ -30,7 +30,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from os import path
+import pathlib
 import textwrap
 
 from absl import app
@@ -42,18 +42,22 @@ from tensorflow_docs.api_generator import doc_controls
 from tensorflow_docs.api_generator import doc_generator_visitor
 from tensorflow_docs.api_generator import generate_lib
 
-
-import tensorboard
-import tensorflow_estimator
 from tensorflow.python.framework import ops
-
 from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
+
+# Caution: the google and oss versions of this import are different.
+import base_dir
 
 # `tf` has an `__all__` that doesn't list important things like `keras`.
 # The doc generator recognizes `__all__` as the list of public symbols.
 # So patch `tf.__all__` to list everything.
 tf.__all__ = [item_name for item_name, value in tf_inspect.getmembers(tf)]
+
+# tf_export generated two copies of the module objects.
+# This will just list compat.v2 as an alias for tf. Close enough, let's not
+# duplicate all the module skeleton files.
+tf.compat.v2 = tf
 
 FLAGS = flags.FLAGS
 
@@ -103,7 +107,7 @@ def generate_raw_ops_doc():
       | Op Name | Has Gradient |
       |---------|:------------:|""")
 
-  parts = [tf.raw_ops.__doc__, warning, table_header]
+  parts = [warning, table_header]
 
   for op_name in sorted(dir(tf.raw_ops)):
     try:
@@ -111,13 +115,14 @@ def generate_raw_ops_doc():
       has_gradient = "\N{HEAVY CHECK MARK}\N{VARIATION SELECTOR-16}"
     except LookupError:
       has_gradient = "\N{CROSS MARK}"
-
-    parts.append("| {} | {} |".format(op_name, has_gradient))
+    link = (
+        '<a id={op_name} href="{FLAGS.site_path}/api_docs/python/tf/raw_ops">'
+        '{op_name}</a>').format(op_name=op_name, FLAGS=FLAGS)
+    parts.append(
+        "| {link} | {has_gradient} |".format(link=link,
+                                             has_gradient=has_gradient))
 
   return "\n".join(parts)
-
-
-tf.raw_ops.__doc__ = generate_raw_ops_doc()
 
 
 # The doc generator isn't aware of tf_export.
@@ -173,6 +178,9 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
     code_url_prefix: prefix for "Defined in" links.
     search_hints: Bool. Include meta-data search hints at the top of each file.
   """
+  # The custom page will be used for raw_ops.md not the one generated above.
+  doc_controls.set_custom_page_content(tf.raw_ops, generate_raw_ops_doc())
+
   _hide_layer_and_module_methods()
 
   try:
@@ -195,22 +203,8 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   except AttributeError:
     pass
 
-  base_dir = path.normpath(path.join(tf.__file__, "../.."))
-
-  base_dirs = (
-      path.join(base_dir, "tensorflow_core"),
-      # External packages base directories
-      path.dirname(tensorboard.__file__),
-      path.dirname(tensorflow_estimator.__file__),
-  )
-
-  code_url_prefixes = (
-      code_url_prefix,
-      # External packages source repositories,
-      "https://github.com/tensorflow/tensorboard/tree/master/tensorboard",
-      "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
-  )
-
+  base_dirs, code_url_prefixes = base_dir.get_base_dirs_and_prefixes(
+      code_url_prefix)
   doc_generator = generate_lib.DocGenerator(
       root_title="TensorFlow 2",
       py_modules=[("tf", tf)],
@@ -222,6 +216,38 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
       private_map=_PRIVATE_MAP)
 
   doc_generator.build(output_dir)
+
+  out_path = pathlib.Path(output_dir)
+  num_files = len(list(out_path.rglob("*")))
+  if num_files < 2500:
+    raise ValueError("The TensorFlow api should be more than 2500 files"
+                     "(found {}).".format(num_files))
+  expected_path_contents = {
+      "tf/summary/audio.md":
+          "tensorboard/plugins/audio/summary_v2.py",
+      "tf/estimator/DNNClassifier.md":
+          "tensorflow_estimator/python/estimator/canned/dnn.py",
+      "tf/nn/sigmoid_cross_entropy_with_logits.md":
+          "python/ops/nn_impl.py",
+      "tf/keras/Model.md":
+          "tensorflow/python/keras/engine/training.py",
+      "tf/compat/v1/gradients.md":
+          "tensorflow/python/ops/gradients_impl.py",
+  }
+
+  all_passed = True
+  error_msg_parts = [
+      'Some "view source" links seem to be broken, please check:'
+  ]
+
+  for (rel_path, contents) in expected_path_contents.items():
+    path = out_path / rel_path
+    if contents not in path.read_text():
+      all_passed = False
+      error_msg_parts.append("  " + str(path))
+
+  if not all_passed:
+    raise ValueError("\n".join(error_msg_parts))
 
 
 def main(argv):

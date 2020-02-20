@@ -10,7 +10,7 @@ def if_mkl_open_source_only(if_true, if_false = []):
 
     """
     return select({
-        str(Label("//third_party/mkl_dnn:build_with_mkl_dnn_only")): if_true,
+        "@org_tensorflow//third_party/mkl_dnn:build_with_mkl_dnn_only": if_true,
         "//conditions:default": if_false,
     })
 
@@ -26,6 +26,6 @@ def if_mkl_v1_open_source_only(if_true, if_false = []):
 
     """
     return select({
-        str(Label("//third_party/mkl_dnn:build_with_mkl_dnn_v1_only")): if_true,
+        "@org_tensorflow//third_party/mkl_dnn:build_with_mkl_dnn_v1_only": if_true,
         "//conditions:default": if_false,
     })

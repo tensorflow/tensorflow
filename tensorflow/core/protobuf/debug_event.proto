@@ -9,6 +9,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "DebugEventProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.util";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
 
 // Available modes for extracting debugging information from a Tensor.
 // TODO(cais): Document the detailed column names and semantics in a separate

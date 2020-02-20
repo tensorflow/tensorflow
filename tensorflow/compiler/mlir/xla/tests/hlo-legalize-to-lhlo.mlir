@@ -1,4 +1,4 @@
-// RUN: tf-opt -hlo-legalize-to-lhlo %s -o - | FileCheck %s --dump-input=always
+// RUN: tf-opt -hlo-legalize-to-lhlo -lhlo-redundant-copies-removal %s -o - | FileCheck %s --dump-input=always
 
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -10,6 +10,53 @@ func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
+
+// CHECK-LABEL: func @func_op
+func @func_op(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: (%[[NEW_ARG0:.*]]: memref<4xf32>, %[[NEW_ARG1:.*]]: memref<4xf32>, %[[RESULT:.*]]: memref<4xf32>)
+  %0 = xla_hlo.max %arg0, %arg1 {name = "maximum.47"} : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.max"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[RESULT]])
+  return %0 : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
+}
+
+// CHECK-LABEL: func @func_op_long
+func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: (%[[NEW_ARG0:.*]]: memref<4xf32>, %[[NEW_ARG1:.*]]: memref<4xf32>, %[[RESULT:.*]]: memref<4xf32>)
+  // CHECK-NEXT: %[[SUB_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
+  // CHECK-NEXT: %[[MIN_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
+  // CHECK-NEXT: %[[ADD_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
+  // CHECK-NEXT: %[[MAX_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
+  %1 = xla_hlo.max %arg0, %arg1 {name = "maximum.47"} : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.max"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[MAX_RESULT]])
+  %2 = xla_hlo.add %arg0, %1 {name = "maximum.47"} : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.add"(%[[NEW_ARG0]], %[[MAX_RESULT]], %[[ADD_RESULT]])
+  %3 = xla_hlo.min %arg0, %arg1 {name = "maximum.47"} : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.min"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[MIN_RESULT]])
+  %4 = xla_hlo.sub %arg1, %3 {name = "maximum.47"} : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.sub"(%[[NEW_ARG1]], %[[MIN_RESULT]], %[[SUB_RESULT]])
+  %5 = xla_hlo.mul %2, %4 {name = "maximum.47"} : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.mul"(%[[ADD_RESULT]], %[[SUB_RESULT]], %[[RESULT]])
+  // CHECK-NEXT: dealloc %[[MAX_RESULT]] : memref<4xf32>
+  // CHECK-NEXT: dealloc %[[ADD_RESULT]] : memref<4xf32>
+  // CHECK-NEXT: dealloc %[[MIN_RESULT]] : memref<4xf32>
+  // CHECK-NEXT: dealloc %[[SUB_RESULT]] : memref<4xf32>
+  return %5 : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
+}
+
+// CHECK-LABEL: func @remove_lhlo_copy_op_created_from_tensor_store
+func @remove_lhlo_copy_op_created_from_tensor_store(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: memref<f32>) {
+  %0 = "xla_hlo.max"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  tensor_store %0, %arg2 : memref<f32>
+  return
+}
+// CHECK: (%[[NEW_ARG0:.*]]: memref<f32>, %[[NEW_ARG1:.*]]: memref<f32>, %[[RESULT:.*]]: memref<f32>)
+// CHECK-NOT: %[[ALLOC_OPERAND:.*]] = alloc() {temp = true} : memref<f32>
+// CHECK: "xla_lhlo.max"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[RESULT]]) : (memref<f32>, memref<f32>, memref<f32>) -> ()
+// CHECK-NOT: "xla_lhlo.copy"(%[[ALLOC_OPERAND]], %[[RESULT]]) : (memref<f32>, memref<f32>) -> ()
+// CHECK-NOT: dealloc %[[ALLOC_OPERAND]] : memref<f32>
+// CHECK: "xla_lhlo.terminator"() : () -> ()
 
 // CHECK-LABEL: func @fusion
 func @fusion(%multiplier: memref<2x2xf32>, %summand_1: memref<2x2xf32>,
@@ -86,6 +133,30 @@ func @broadcast(%operand: memref<5xf32>, %result: memref<10x5xf32>) {
   return
 }
 
+// CHECK-LABEL: func @dyn_broadcast
+func @dyn_broadcast(%operand: memref<?x?xf32>) {
+  %tensor_operand = tensor_load %operand : memref<?x?xf32>
+  %shape = "compute.shape"() : () -> tensor<3xi64>
+  %tensor_result = "xla_hlo.dynamic_broadcast_in_dim"(%tensor_operand, %shape)
+      {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
+        : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
+  // CHECK: %[[SHAPE:.*]] = "compute.shape"()
+  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK: %[[EL0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<3xi64>
+  // CHECK: %[[IC0:.*]]  = index_cast %[[EL0]] : i64 to index
+  // CHECK: %[[C1:.*]] = constant 1 : index
+  // CHECK: %[[EL1:.*]] = extract_element %[[SHAPE]][%[[C1]]] : tensor<3xi64>
+  // CHECK: %[[IC1:.*]]  = index_cast %[[EL1]] : i64 to index
+  // CHECK: %[[C2:.*]] = constant 2 : index
+  // CHECK: %[[EL2:.*]] = extract_element %[[SHAPE]][%[[C2]]] : tensor<3xi64>
+  // CHECK: %[[IC2:.*]]  = index_cast %[[EL2]] : i64 to index
+  // CHECK: %[[RESULT:.*]] = alloc(%[[IC0]], %[[IC1]], %[[IC2]])
+  // CHECK-NEXT: "xla_lhlo.broadcast_in_dim"(%{{.*}}, %[[RESULT]]) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
+  // Do not store the value back to avoid the tensor-store being rewritten to
+  // a copy into the pre-allocated argument.
+  return
+}
+
 // CHECK-LABEL: func @iota
 func @iota(%result: memref<10xi32>) {
   %tensor_result = "xla_hlo.iota"()
@@ -120,7 +191,7 @@ func @convert(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
   %tensor_result = "xla_hlo.convert"(%tensor_operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK-NEXT: return
+  // CHECK: xla_lhlo.terminator
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }

@@ -63,8 +63,7 @@ TEST(ConvertXPlaneToTraceEvents, Convert) {
   CreateXSpace(&xspace);
 
   Trace trace;
-  ConvertXSpaceToTraceEvents(/*profile_start_time_ns*/ 100000,
-                             /*profile_end_time_ns*/ 200000, xspace, &trace);
+  ConvertXSpaceToTraceEvents(xspace, &trace);
 
   ASSERT_EQ(trace.devices_size(), 2);
   EXPECT_EQ(trace.devices().at(0).resources_size(), 2);
