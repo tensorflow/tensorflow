@@ -428,6 +428,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/platform:scanner",
         "@boringssl//:crypto",
     ],
