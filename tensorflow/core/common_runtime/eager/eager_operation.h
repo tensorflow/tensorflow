@@ -55,6 +55,7 @@ class EagerOperation {
   bool is_function() const { return is_function_; }
 
   tensorflow::EagerContext& EagerContext() { return ctx_; }
+  const tensorflow::EagerContext& EagerContext() const { return ctx_; }
 
   AttrBuilder* MutableAttrs() { return &attrs_; }
   const AttrBuilder& Attrs() const { return attrs_; }
