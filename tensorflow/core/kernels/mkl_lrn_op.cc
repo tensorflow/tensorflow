@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "mkldnn.hpp"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/util/work_sharder.h"
@@ -75,10 +75,11 @@ class MklLRNOp : public OpKernel {
       : OpKernel(context), cpu_engine_(ENGINE_CPU, 0) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                        " larger than int max"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                " larger than int max"));
     depth_radius_ = static_cast<size_t>(depth_radius64);
 
     OP_REQUIRES_OK(context, context->GetAttr("bias", &bias_));
@@ -184,9 +185,9 @@ class MklLRNOp : public OpKernel {
       fwd_stream_->submit(net).wait();
 #endif
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
-                         string(e.message) + ", in file " + string(__FILE__) +
-                         ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) +
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -294,14 +295,16 @@ class MklLRNOp : public OpKernel {
     if (src_dnn_shape.IsMklTensor()) {
       OP_REQUIRES(context, src_dnn_shape.GetDimension() == 4,
                   errors::InvalidArgument("input must be 4-dimensional"));
-      OP_REQUIRES(context, FastBoundsCheck(src_tensor.NumElements(),
-                                           std::numeric_limits<int>::max()),
+      OP_REQUIRES(context,
+                  FastBoundsCheck(src_tensor.NumElements(),
+                                  std::numeric_limits<int>::max()),
                   errors::InvalidArgument("argument to LRN too large"));
     } else {
       OP_REQUIRES(context, src_tensor.dims() == 4,
                   errors::InvalidArgument("input must be 4-dimensional"));
-      OP_REQUIRES(context, FastBoundsCheck(src_tensor.NumElements(),
-                                           std::numeric_limits<int>::max()),
+      OP_REQUIRES(context,
+                  FastBoundsCheck(src_tensor.NumElements(),
+                                  std::numeric_limits<int>::max()),
                   errors::InvalidArgument("argument to LRN too large"));
     }
   }
@@ -324,10 +327,11 @@ class MklLRNGradOp : public OpKernel {
       : OpKernel(context), cpu_engine_(ENGINE_CPU, 0) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                        " larger than int max"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
     OP_REQUIRES_OK(context, context->GetAttr("bias", &bias_));
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
@@ -453,9 +457,9 @@ class MklLRNGradOp : public OpKernel {
       bwd_stream_->submit(net).wait();
 #endif
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
-                         string(e.message) + ", in file " + string(__FILE__) +
-                         ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) +
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
