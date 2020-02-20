@@ -546,10 +546,6 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     auto diff_weights_desc = weights_desc;
 
     // Forward batch-normalization descriptor and primitive descriptor.
-    //auto bn_flags =
-    //    bwdParams.training
-    //        ? BN_FLAGS::use_scale_shift
-    //        : (BN_FLAGS::use_scale_shift | BN_FLAGS::use_global_stats);
     auto fwd_desc = batch_normalization_forward::desc(
         prop_kind::forward_training, src_md, bwdParams.eps, context_.flags);
     auto fwd_pd = BatchNormFwdPd(fwd_desc, cpu_engine_);
