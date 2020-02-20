@@ -720,7 +720,9 @@ class Network(base_layer.Layer):
                        ': model has ' + str(len(self._input_layers)) +
                        ' tensor inputs.')
 
-    cache_key = generic_utils.object_list_uid(input_shape)
+    # Use the tuple of TensorShape as the cache key, since tuple is hashable
+    # and can be used as hash key.
+    cache_key = tuple(tf_utils.convert_shapes(input_shape, to_tuples=True))
     if cache_key in self._output_shape_cache:
       # Cache hit. Return shapes as TensorShapes.
       return self._output_shape_cache[cache_key]
@@ -905,7 +907,7 @@ class Network(base_layer.Layer):
 
     if output_shapes is not None:
       input_shapes = [x.shape for x in inputs]
-      cache_key = generic_utils.object_list_uid(input_shapes)
+      cache_key = tuple(tf_utils.convert_shapes(input_shapes, to_tuples=True))
       self._output_shape_cache[cache_key] = nest.pack_sequence_as(
           self._nested_outputs, output_shapes)
 
