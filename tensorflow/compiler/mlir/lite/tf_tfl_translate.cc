@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Support/FileUtilities.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/model.h"
@@ -182,6 +184,7 @@ int main(int argc, char **argv) {
   pass_config.inline_functions = inline_functions;
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
+  pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
 
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(

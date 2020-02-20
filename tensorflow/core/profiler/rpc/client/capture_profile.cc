@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -69,9 +68,21 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
   return request;
 }
 
-bool ShouldRetryTracing(Status status) {
+inline Status FromGrpcStatus(const ::grpc::Status& s) {
+  return s.ok() ? Status::OK()
+                : Status(static_cast<error::Code>(s.error_code()),
+                         s.error_message());
+}
+
+inline bool ShouldRetryTracing(Status status) {
   return status.code() == error::Code::UNAVAILABLE ||
-         status.code() == error::Code::ALREADY_EXISTS;
+         status.code() == error::Code::ALREADY_EXISTS ||
+         // When auto-reconnecting to a remote TensorFlow worker after it
+         // restarts, gRPC can return an UNKNOWN error code with a "Stream
+         // removed" error message. This should not be treated as an
+         // unrecoverable error.
+         (status.code() == error::Code::UNKNOWN &&
+          status.error_message() == "Stream removed");
 }
 
 // Returns whether the returned trace is empty.

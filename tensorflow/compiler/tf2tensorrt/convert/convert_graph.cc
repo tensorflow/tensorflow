@@ -431,7 +431,8 @@ Status CreateTRTNode(const ConversionParams& params,
         calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
         max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
         alloc, /*calibrator=*/nullptr, &engine, info.use_calibration,
-        params.use_implicit_batch, /*convert_successfully=*/nullptr));
+        params.use_implicit_batch, /*convert_successfully=*/nullptr,
+        /*profile=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());

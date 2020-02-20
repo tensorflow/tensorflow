@@ -368,12 +368,12 @@ bool MultiOutputFusion::Perform() {
   int changed = false;
   // Pick the top candidate from queue and try to merge.
   while (!worklist_.empty()) {
-    ToBeFused candidate = worklist_.top();
-    worklist_.pop();
+    ToBeFused candidate = worklist_.pop();
 
     HloInstruction* instr1 = candidate.instr1;
     HloInstruction* instr2 = candidate.instr2;
 
+    // Candidates are already fused.
     if (is_fused(instr1) || is_fused(instr2)) {
       continue;
     }

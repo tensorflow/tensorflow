@@ -135,7 +135,7 @@ def get_environ(repository_ctx, name, default_value = None):
         return default_value
     return result.stdout
 
-def get_host_environ(repository_ctx, name):
+def get_host_environ(repository_ctx, name, default_value = None):
     """Returns the value of an environment variable on the host platform.
 
     The host platform is the machine that Bazel runs on.
@@ -147,7 +147,13 @@ def get_host_environ(repository_ctx, name):
     Returns:
       The value of the environment variable 'name' on the host platform.
     """
-    return repository_ctx.os.environ.get(name)
+    if name in repository_ctx.os.environ:
+        return repository_ctx.os.environ.get(name).strip()
+
+    if hasattr(repository_ctx.attr, "environ") and name in repository_ctx.attr.environ:
+        return repository_ctx.attr.environ.get(name).strip()
+
+    return default_value
 
 def is_windows(repository_ctx):
     """Returns true if the execution platform is Windows.

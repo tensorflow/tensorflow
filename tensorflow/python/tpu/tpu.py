@@ -20,6 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 from absl import logging
+import enum
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -784,14 +786,57 @@ def outside_compilation(computation, *args, **kwargs):
   return retval
 
 
+@tf_export(v1=["tpu.PaddingSpec"])
+class PaddingSpec(enum.IntEnum):
+  """Represents the type of padding policies for tpu.replicate."""
+  # By default the policy is set to AUTO, the dynamic input shape dimension will
+  # be pad to maximum of all the replicas.
+  AUTO = 0
+  # Bucketize the dynamic input shape dimension into a power of 2.
+  POWER_OF_TWO = 1
+
+
 @tf_export(v1=["tpu.replicate"])
 def replicate(computation,
               inputs=None,
               infeed_queue=None,
               device_assignment=None,
               name=None,
-              maximum_shapes=None):
+              maximum_shapes=None,
+              padding_spec=None):
   """Builds a graph operator that runs a replicated TPU computation.
+
+  Example for the basic usage that `inputs` has static shape:
+
+  ```python
+
+  def computation(x):
+    x = x + 1
+    return tf.math.reduce_mean(x)
+
+  x = tf.convert_to_tensor([1., 2., 3.])
+  y = tf.convert_to_tensor([4., 5., 6.])
+  tf.compat.v1.tpu.replicate(computation, inputs=[[x], [y]])
+  ```
+
+  If the `inputs` has dynamic shapes and you would like to automatically
+  bucketize the inputs to avoid XLA recompilation. See the advanced example
+  below:
+
+  ```python
+
+  def computation(x):
+    x = x + 1
+    return tf.math.reduce_mean(x)
+
+  # Assume input tensors in two replicas `x` and `y` both have dynamic shape
+  # ([None, 2]).
+  tf.compat.v1.tpu.replicate(
+    computation,
+    inputs=[x, y],
+    maximum_shapes=[tf.TensorShape([None, None])],
+    padding_spec=tf.compat.v1.tpu.PaddingSpec.POWER_OF_TWO)
+  ```
 
   Args:
     computation: A Python function that builds the computation to replicate.
@@ -818,6 +863,11 @@ def replicate(computation,
       object) will be padded to the maximum size of that dimension over all
       replicas. The structure of `maximum_shapes` needs to be the same as
       `inputs[0]`.
+    padding_spec: An enum specified by `tpu.PaddingSpec`. This describes the
+      padding policy when the `inputs` to `tpu.replicate` is dynamic.
+      One usage is to enable automatic bucketizing on the inputs by setting the
+      value to `tpu.PaddingSpec.POWER_OF_TWO`, which can help to reduce the
+      recompilation in the XLA side.
   Returns:
     A list of outputs, indexed by `[replica_num]` each output can be a nested
     structure same as what computation() returns with a few exceptions.
@@ -845,10 +895,21 @@ def replicate(computation,
       infeed_queue,
       device_assignment,
       name,
-      maximum_shapes=maximum_shapes)[1]
+      maximum_shapes=maximum_shapes,
+      padding_spec=padding_spec)[1]
 
 
-def _pad_all_input(inputs, padded_shapes):
+def _ceil_to_pow_of_n(x, n):
+  """Ceil input `x` to power of `n`."""
+  x = math_ops.cast(x, dtypes.float32)
+  lognx = math_ops.log(x) / math_ops.log(n * 1.0)
+  lognx = math_ops.ceil(lognx)
+  result = math_ops.pow(n * 1.0, lognx)
+  result = math_ops.cast(result, dtypes.int32)
+  return result
+
+
+def _pad_all_input(inputs, padded_shapes, padding_spec):
   """Pad all input tensors given padded_shapes.
 
   The real shape tensors will be concatenated with the padded original inputs.
@@ -856,6 +917,11 @@ def _pad_all_input(inputs, padded_shapes):
   Args:
     inputs: The original inputs.
     padded_shapes: A list of padded shapes for each input.
+    padding_spec: An enum specified by `tpu.PaddingSpec`. This describes the
+      padding policy when the `inputs` to `tf.tpu.replicate` is dynamic.
+      One usage is to enable automatic bucketizing on the inputs by setting the
+      value to `tpu.PaddingSpec.POWER_OF_TWO`, which can help to reduce the
+      recompilation in the XLA side.
 
   Returns:
     The padded inputs and a PaddingMap list which maps the padded input
@@ -933,6 +999,8 @@ def _pad_all_input(inputs, padded_shapes):
               # among all the cores.
               max_dim_size = math_ops.maximum(maximum_shapes[idx][i],
                                               minimum_dynamic_dim_size)
+              if padding_spec == PaddingSpec.POWER_OF_TWO:
+                max_dim_size = _ceil_to_pow_of_n(max_dim_size, 2)
             # Pad to the given maximum value.
             padding = [0, max_dim_size - input_shape_tensor[i]]
           else:
@@ -972,7 +1040,8 @@ def split_compile_and_replicate(computation,
                                 device_assignment=None,
                                 name=None,
                                 use_tpu=True,
-                                maximum_shapes=None):
+                                maximum_shapes=None,
+                                padding_spec=None):
   """Builds graph operators that runs compilation and replicated computation.
 
   This is a lower level interface than replicate that returns a separate compile
@@ -1009,6 +1078,11 @@ def split_compile_and_replicate(computation,
       object) will be padded to the maximum size of that dimension over all
       replicas. The structure of `maximum_shapes` needs to be the same as
       `inputs[0]`.
+    padding_spec: An enum specified by `tf.tpu.PaddingSpec`. This describes the
+      padding policy when the `inputs` to `tf.tpu.replicate` is dynamic.
+      One usage is to enable automatic bucketizing on the inputs by setting the
+      value to `tpu.PaddingSpec.POWER_OF_TWO`, which can help to reduce the
+      recompilation in the XLA side.
 
   Returns:
     A list of lists with the first list corresponding to the compile op and the
@@ -1108,7 +1182,8 @@ def split_compile_and_replicate(computation,
         tensor_shape.TensorShape(s) for s in flat_maximum_shapes
     ]
 
-    flat_inputs, padding_maps = _pad_all_input(flat_inputs, flat_maximum_shapes)
+    flat_inputs, padding_maps = _pad_all_input(flat_inputs, flat_maximum_shapes,
+                                               padding_spec)
 
     serialized_padding_maps = []
     for padding_map in padding_maps:

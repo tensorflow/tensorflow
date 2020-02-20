@@ -23,6 +23,7 @@ from absl.testing import parameterized
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import def_function
@@ -328,6 +329,31 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       inputs = next(iterator)
       outputs = distribution.experimental_local_results(
           distribution.experimental_run_v2(computation, args=(inputs,)))
+      return outputs
+
+    # This assumes that there are exactly 2 replicas
+    self.assertAllEqual([5.5, 7.], run(input_iterator))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]))
+  def testDynamicShapesWithRunOptions(self, distribution):
+    dataset = get_dataset_from_tensor_slices([5., 6., 7.]).batch(4)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+    options = distribute_lib.RunOptions
+    options.experimental_bucketizing_dynamic_shape = True
+
+    @def_function.function
+    def run(iterator):
+
+      def computation(x):
+        return math_ops.reduce_mean(x)
+
+      inputs = next(iterator)
+      outputs = distribution.experimental_local_results(
+          distribution.experimental_run_v2(
+              computation, args=(inputs,), options=options))
       return outputs
 
     # This assumes that there are exactly 2 replicas

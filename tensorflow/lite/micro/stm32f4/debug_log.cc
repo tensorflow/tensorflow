@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_PLATFORM_THREAD_ANNOTATIONS_H_
-#define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_THREAD_ANNOTATIONS_H_
+#include "tensorflow/lite/micro/debug_log.h"
 
-#include "tensorflow/core/platform/thread_annotations.h"
-
-#endif  // TENSORFLOW_STREAM_EXECUTOR_PLATFORM_THREAD_ANNOTATIONS_H_
+extern "C" void DebugLog(const char* s) {
+  asm("mov r0, #0x04\n"  // SYS_WRITE0
+      "mov r1, %[str]\n"
+      "bkpt #0xAB\n"
+      :
+      : [ str ] "r"(s)
+      : "r0", "r1");
+}

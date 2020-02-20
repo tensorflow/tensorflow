@@ -106,7 +106,8 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass();
 
 // Creates a pass to merge IslandOps for operation marked for execution on TPU.
 // This is a V1 backward compatibility.
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorTPUV1IslandCoarseningPass();
+std::unique_ptr<OpPassBase<ModuleOp>>
+CreateTFExecutorTPUV1IslandCoarseningPass();
 
 // Creates a pass to outlining TPU clusters from single IslandOp into a nested
 // module suitable for being processed as-if it was a V2 module.

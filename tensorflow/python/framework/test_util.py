@@ -1136,7 +1136,7 @@ def run_in_graph_and_eager_modes(func=None,
         run_eagerly(self, **kwargs)
       ops.dismantle_graph(graph_for_eager_test)
 
-    return decorated
+    return tf_decorator.make_decorator(f, decorated)
 
   if func is not None:
     return decorator(func)

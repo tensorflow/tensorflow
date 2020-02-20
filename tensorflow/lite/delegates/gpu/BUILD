@@ -8,7 +8,7 @@ package(
 )
 
 exports_files([
-    "gpu_delegate.h",
+    "delegate.h",
     "metal_delegate.h",
 ])
 

@@ -3932,6 +3932,18 @@ tf_kernel_library(
     deps = MATH_DEPS,
 )
 
+cc_library(
+    name = "aggregate_ops_headers",
+    hdrs = [
+        "aggregate_ops.h",
+        "aggregate_ops_cpu.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_kernel_library(
     name = "argmax_op",
     prefix = "argmax_op",

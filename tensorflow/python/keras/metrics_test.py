@@ -115,7 +115,7 @@ class KerasSumTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(m.total), 63.75, 2)
 
   def test_sum_graph_with_placeholder(self):
-    with context.graph_mode(), self.cached_session() as sess:
+    with ops.get_default_graph().as_default(), self.cached_session() as sess:
       m = metrics.Sum()
       v = array_ops.placeholder(dtypes.float32)
       w = array_ops.placeholder(dtypes.float32)
@@ -265,7 +265,7 @@ class MeanTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_mean_graph_with_placeholder(self):
-    with context.graph_mode(), self.cached_session() as sess:
+    with ops.get_default_graph().as_default(), self.cached_session() as sess:
       m = metrics.Mean()
       v = array_ops.placeholder(dtypes.float32)
       w = array_ops.placeholder(dtypes.float32)
@@ -575,7 +575,7 @@ class KerasAccuracyTest(test.TestCase):
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
   def test_sparse_categorical_accuracy_mismatched_dims_dynamic(self):
-    with context.graph_mode(), self.cached_session() as sess:
+    with ops.get_default_graph().as_default(), self.cached_session() as sess:
       acc_obj = metrics.SparseCategoricalAccuracy(name='my_acc')
       self.evaluate(variables.variables_initializer(acc_obj.variables))
 

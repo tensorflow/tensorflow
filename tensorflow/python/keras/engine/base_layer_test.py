@@ -101,7 +101,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   def test_dynamic_layer_error_running_in_graph_mode(self):
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       model = testing_utils.get_model_from_layers([DynamicLayer(dynamic=True)],
                                                   input_shape=(3,))
       self.assertEqual(model.dynamic, True)
@@ -535,7 +535,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
     # `__init__` includes kwargs but `get_config` is not overridden, so
     # an error should be thrown:
-    with self.assertRaises(NotImplementedError):
+    with self.assertRaisesRegexp(NotImplementedError, 'Layer MyLayer has'):
       MyLayer('custom').get_config()
 
     class MyLayerNew(keras.layers.Layer):
