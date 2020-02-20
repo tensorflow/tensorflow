@@ -27,9 +27,7 @@ package_group(
     includes = [
         "//tensorflow/compiler/xla:friends",
     ],
-    packages = [
-        "//learning/brain/experimental/tf_runtime/...",
-    ],
+    packages = ["//learning/brain/experimental/tf_runtime/..."],
 )
 
 tf_proto_library_cc(
