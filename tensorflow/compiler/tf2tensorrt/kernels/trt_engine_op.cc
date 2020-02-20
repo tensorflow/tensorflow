@@ -159,6 +159,9 @@ class TRTEngineOp : public AsyncOpKernel {
   // Whether to use implicit batch dimension for TensorRT
   bool use_implicit_batch_;
 
+  // Whether to build TensorRT engines at runtime
+  bool allow_build_at_runtime_;
+
   // Maximum number of cached engines
   int max_cached_engines_;
 
@@ -283,6 +286,14 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  context->GetAttr("use_calibration", &use_calibration_));
   OP_REQUIRES_OK(context,
                  context->GetAttr("input_shapes", &input_partial_shapes_));
+  auto status =
+      context->GetAttr("_allow_build_at_runtime", &allow_build_at_runtime_);
+  if (status.code() == tensorflow::error::NOT_FOUND) {
+    VLOG(2) << "Not found _allow_build_at_runtime in "
+            << context->device()->name()
+            << ", thus setting _allow_build_at_runtime=true";
+    allow_build_at_runtime_ = true;
+  }
   func_handle_ = kInvalidHandle;
   if (!static_engine_) {
     FunctionLibraryRuntime* lib = context->function_library();
@@ -304,7 +315,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   OP_REQUIRES_OK(context, context->GetAttr("max_cached_engines_count",
                                            &max_cached_engines_));
 
-  auto status = context->GetAttr("_use_implicit_batch", &use_implicit_batch_);
+  status = context->GetAttr("_use_implicit_batch", &use_implicit_batch_);
   if (status.code() == tensorflow::error::NOT_FOUND) {
     VLOG(2) << "Not found _use_implicit_batch in " << context->device()->name()
             << ", thus setting _use_implicit_batch=true";
@@ -979,6 +990,16 @@ StatusOr<EngineContext*> TRTEngineOp::GetEngine(
   // If matched, use that engine. Otherwise, we will look in cache for that
   // exact shape and possibly create a new engine if it is not in cache.
   if (!cache.count(engine_input_shapes)) {
+    if (!allow_build_at_runtime_) {
+      LOG(WARNING) << "Found no engine in cache matching input shapes. "
+                   << "Not building a new engine because "
+                   << "allow_build_at_runtime=False. "
+                   << "The native segment will be used instead.";
+      // Store an empty engine in the cache for these input shapes so we don't
+      // try to build the same failing engine again.
+      cache.emplace(engine_input_shapes, absl::make_unique<EngineContext>());
+      return &empty_context;
+    }
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
     LOG(INFO) << "Building a new TensorRT engine for " << name()
