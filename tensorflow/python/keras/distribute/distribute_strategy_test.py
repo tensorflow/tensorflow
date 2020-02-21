@@ -544,7 +544,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertIsNotNone(grad_v2)
 
   @combinations.generate(combinations.combine(
-      distribution=strategies_minus_default_minus_tpu + tpu_strategies,
+      distribution=[strategy_combinations.one_device_strategy] + tpu_strategies,
       mode=['graph', 'eager']))
   def test_optimizer_in_cross_replica_context_raises_error(self, distribution):
 
