@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
 #include "tensorflow/core/platform/fingerprint.h"
@@ -146,6 +145,8 @@ class TensorHandle : public core::RefCounted {
   Status NumDims(int* num_dims) const;
   Status Dim(int dim_index, int64* dim) const;
   Status NumElements(int64* num_elements) const;
+
+  Status Unprotect(const Device* d);
 
   // Checks if a mirror tensor exists for the specified device. Mirrors are only
   // maintained for local devices, like CPUs & GPUs. Note a mirror may be empty,
@@ -323,8 +324,16 @@ class TensorHandle : public core::RefCounted {
 // Checks whether a VariantDevice contains a custom device.
 bool VariantDeviceIsCustom(absl::variant<Device*, CustomDevice*> device);
 
+// Wraps device->name() or CustomDevice->name().
+string VariantDeviceName(absl::variant<Device*, CustomDevice*> device);
+
 // Wraps device->DebugString() or CustomDevice->name().
 string VariantDeviceDebugString(absl::variant<Device*, CustomDevice*> device);
+
+// Indicates either HostCPU or an unset physical device. We never set a null
+// CustomDevice*.
+const absl::variant<Device*, CustomDevice*> kVariantDeviceNull =
+    static_cast<Device*>(nullptr);
 
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);

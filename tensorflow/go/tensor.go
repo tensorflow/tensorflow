@@ -94,9 +94,22 @@ func NewTensor(value interface{}) (*Tensor, error) {
 	raw := tensorData(t.c)
 	buf := bytes.NewBuffer(raw[:0:len(raw)])
 	if dataType != String {
-		if err := encodeTensor(buf, val, shape); err != nil {
-			return nil, err
+		if isAllArray(val.Type()) {
+			// We have arrays all the way down, or just primitive types. We can
+			// just copy the memory in as it is all contiguous.
+			if err := copyPtr(buf, unpackEFace(value).data, int(val.Type().Size())); err != nil {
+				return nil, err
+			}
+		} else {
+			// When there are slices involved the memory for each leaf slice may
+			// not be contiguous with the others or in the order we might
+			// expect, so we need to work our way down to each slice of
+			// primitives and copy them individually
+			if err := encodeTensorWithSlices(buf, val, shape); err != nil {
+				return nil, err
+			}
 		}
+
 		if uintptr(buf.Len()) != nbytes {
 			return nil, bug("NewTensor incorrectly calculated the size of a tensor with type %v and shape %v as %v bytes instead of %v", dataType, shape, nbytes, buf.Len())
 		}
@@ -110,6 +123,43 @@ func NewTensor(value interface{}) (*Tensor, error) {
 		}
 	}
 	return t, nil
+}
+
+// isAllArray returns true if type is a primitive type or an array of primitive
+// types or an array of ... etc.. When this is true the data we want is
+// contiguous in RAM.
+func isAllArray(typ reflect.Type) bool {
+	switch typ.Kind() {
+	case reflect.Slice:
+		return false
+	case reflect.Array:
+		return isAllArray(typ.Elem())
+	default:
+		// We know the type is slices/arrays of slices/arrays of primitive types.
+		return true
+	}
+}
+
+// eface defines what an interface type actually is: a pointer to type
+// information about the encapsulated type and a pointer to the encapsulated
+// value.
+type eface struct {
+	rtype unsafe.Pointer
+	data  unsafe.Pointer
+}
+
+// unpackEFace gives us an effient way to get us a pointer to the value carried
+// in an interface. If you wrap a pointer type in an interface then the pointer
+// is directly stored in the interface struct. If you wrap a value type in an
+// interface then the compiler copies the value into a newly allocated piece of
+// memory and stores a pointer to that memory in the interface. So we're
+// guaranteed to get a pointer. Go reflection doesn't expose the pointer to
+// value types straightforwardly as it doesn't want you to think you have a
+// reference to the original value. But we just want a pointer to make it
+// efficient to read the value, so cheating like this should be safe and
+// reasonable.
+func unpackEFace(obj interface{}) *eface {
+	return (*eface)(unsafe.Pointer(&obj))
 }
 
 // ReadTensor constructs a Tensor with the provided type and shape from the
@@ -168,21 +218,88 @@ func (t *Tensor) Shape() []int64 { return t.shape }
 // Tensor(int64, 0): int64
 // Tensor(float64, 3): [][][]float64
 func (t *Tensor) Value() interface{} {
-	typ := typeOf(t.DataType(), t.Shape())
-	val := reflect.New(typ)
 	raw := tensorData(t.c)
-	if t.DataType() != String {
-		if err := decodeTensor(bytes.NewReader(raw), t.Shape(), typ, val); err != nil {
-			panic(bug("unable to decode Tensor of type %v and shape %v - %v", t.DataType(), t.Shape(), err))
-		}
-	} else {
-		nflattened := numElements(t.Shape())
-		d := stringDecoder{offsets: bytes.NewReader(raw[0 : 8*nflattened]), data: raw[8*nflattened:], status: newStatus()}
-		if err := d.decode(val, t.Shape()); err != nil {
-			panic(bug("unable to decode String tensor with shape %v - %v", t.Shape(), err))
-		}
+	shape := t.Shape()
+	dt := t.DataType()
+	if dt != String {
+		return decodeTensor(raw, shape, dt).Interface()
+	}
+
+	typ := typeOf(dt, shape)
+	val := reflect.New(typ)
+	nflattened := numElements(shape)
+	d := stringDecoder{offsets: bytes.NewReader(raw[0 : 8*nflattened]), data: raw[8*nflattened:], status: newStatus()}
+	if err := d.decode(val, shape); err != nil {
+		panic(bug("unable to decode String tensor with shape %v - %v", shape, err))
 	}
 	return reflect.Indirect(val).Interface()
+}
+
+func decodeTensor(raw []byte, shape []int64, dt DataType) reflect.Value {
+	typ := typeForDataType(dt)
+	// Create a 1-dimensional slice of the base large enough for the data and
+	// copy the data in.
+	n := int(numElements(shape))
+	l := n * int(typ.Size())
+	typ = reflect.SliceOf(typ)
+	slice := reflect.MakeSlice(typ, n, n)
+	h := sliceHeader{
+		Data: unsafe.Pointer(slice.Pointer()),
+		Len:  l,
+		Cap:  l,
+	}
+	baseBytes := *(*[]byte)(unsafe.Pointer(&h))
+	copy(baseBytes, raw)
+	// Now we have the data in place in the base slice we can add the
+	// dimensions. We want to walk backwards through the shape. If the shape is
+	// length 1 or 0 then we're already done.
+	if len(shape) == 0 {
+		return slice.Index(0)
+	}
+	if len(shape) == 1 {
+		return slice
+	}
+	// We have a special case if the tensor has no data. Our backing slice is
+	// empty, but we still want to create slices following the shape. In this
+	// case only the final part of the shape will be 0 and we want to recalculate
+	// n at this point ignoring that 0.
+	// For example if our shape is 3 * 2 * 0 then n will be zero, but we still
+	// want 6 zero length slices to group as follows.
+	// {{} {}} {{} {}} {{} {}}
+	if n == 0 {
+		n = int(numElements(shape[:len(shape)-1]))
+	}
+	for i := len(shape) - 2; i >= 0; i-- {
+		underlyingSize := typ.Elem().Size()
+		typ = reflect.SliceOf(typ)
+		subsliceLen := int(shape[i+1])
+		if subsliceLen != 0 {
+			n = n / subsliceLen
+		}
+		// Just using reflection it is difficult to avoid unnecessary
+		// allocations while setting up the sub-slices as the Slice function on
+		// a slice Value allocates. So we end up doing pointer arithmetic!
+		// Pointer() on a slice gives us access to the data backing the slice.
+		// We insert slice headers directly into this data.
+		data := slice.Pointer()
+		nextSlice := reflect.MakeSlice(typ, n, n)
+		nextData := nextSlice.Pointer()
+		const sliceSize = unsafe.Sizeof(sliceHeader{})
+		for j := 0; j < n; j++ {
+			// This is equivalent to h := slice[j*subsliceLen: (j+1)*subsliceLen]
+			h := sliceHeader{
+				Data: unsafe.Pointer(data + (uintptr(j*subsliceLen) * underlyingSize)),
+				Len:  subsliceLen,
+				Cap:  subsliceLen,
+			}
+
+			// This is equivalent to nSlice[j] = h
+			*(*sliceHeader)(unsafe.Pointer(nextData + (uintptr(j) * sliceSize))) = h
+		}
+
+		slice = nextSlice
+	}
+	return slice
 }
 
 // WriteContentsTo writes the serialized contents of t to w.
@@ -261,18 +378,18 @@ func shapeAndDataTypeOf(val reflect.Value) (shape []int64, dt DataType, err erro
 	return shape, dt, fmt.Errorf("unsupported type %v", typ)
 }
 
-// typeOf converts from a DataType and Shape to the equivalent Go type.
-func typeOf(dt DataType, shape []int64) reflect.Type {
-	var ret reflect.Type
+func typeForDataType(dt DataType) reflect.Type {
 	for _, t := range types {
 		if dt == DataType(t.dataType) {
-			ret = t.typ
-			break
+			return t.typ
 		}
 	}
-	if ret == nil {
-		panic(bug("DataType %v is not supported (see https://www.tensorflow.org/code/tensorflow/core/framework/types.proto)", dt))
-	}
+	panic(bug("DataType %v is not supported (see https://www.tensorflow.org/code/tensorflow/core/framework/types.proto)", dt))
+}
+
+// typeOf converts from a DataType and Shape to the equivalent Go type.
+func typeOf(dt DataType, shape []int64) reflect.Type {
+	ret := typeForDataType(dt)
 	for range shape {
 		ret = reflect.SliceOf(ret)
 	}
@@ -302,92 +419,63 @@ func byteSizeOfEncodedStrings(val interface{}) uintptr {
 	return size
 }
 
-// encodeTensor writes v to the specified buffer using the format specified in
+// encodeTensorWithSlices writes v to the specified buffer using the format specified in
 // c_api.h. Use stringEncoder for String tensors.
-func encodeTensor(w *bytes.Buffer, v reflect.Value, shape []int64) error {
-	switch v.Kind() {
-	case reflect.Bool:
-		b := byte(0)
-		if v.Bool() {
-			b = 1
+func encodeTensorWithSlices(w *bytes.Buffer, v reflect.Value, shape []int64) error {
+	// If current dimension is a slice, verify that it has the expected size
+	// Go's type system makes that guarantee for arrays.
+	if v.Kind() == reflect.Slice {
+		expected := int(shape[0])
+		if v.Len() != expected {
+			return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
 		}
-		if err := w.WriteByte(b); err != nil {
-			return err
-		}
-	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-		if err := binary.Write(w, nativeEndian, v.Interface()); err != nil {
-			return err
-		}
-
-	case reflect.Array, reflect.Slice:
-		// If current dimension is a slice, verify that it has the expected size
-		// Go's type system makes that guarantee for arrays.
-		if v.Kind() == reflect.Slice {
-			expected := int(shape[0])
-			if v.Len() != expected {
-				return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
-			}
-		}
-
-		// Optimisation: if only one dimension is left we can use binary.Write() directly for this slice
-		if len(shape) == 1 && v.Len() > 0 {
-			switch v.Index(0).Kind() {
-			case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-				return binary.Write(w, nativeEndian, v.Interface())
-			}
-		}
-
-		subShape := shape[1:]
-		for i := 0; i < v.Len(); i++ {
-			err := encodeTensor(w, v.Index(i), subShape)
-			if err != nil {
-				return err
-			}
-		}
-
-	default:
+	} else if v.Kind() != reflect.Array {
 		return fmt.Errorf("unsupported type %v", v.Type())
 	}
-	return nil
-}
 
-// decodeTensor decodes the Tensor from the buffer to ptr using the format
-// specified in c_api.h. Use stringDecoder for String tensors.
-func decodeTensor(r *bytes.Reader, shape []int64, typ reflect.Type, ptr reflect.Value) error {
-	switch typ.Kind() {
-	case reflect.Bool:
-		b, err := r.ReadByte()
+	// Once we have just a single dimension we can just copy the data
+	if len(shape) == 1 && v.Len() > 0 {
+		elt := v.Index(0)
+		if !elt.CanAddr() {
+			panic("cannot take address")
+		}
+		ptr := unsafe.Pointer(elt.Addr().Pointer())
+		return copyPtr(w, ptr, v.Len()*int(elt.Type().Size()))
+	}
+
+	subShape := shape[1:]
+	for i := 0; i < v.Len(); i++ {
+		err := encodeTensorWithSlices(w, v.Index(i), subShape)
 		if err != nil {
 			return err
 		}
-		ptr.Elem().SetBool(b == 1)
-	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-		if err := binary.Read(r, nativeEndian, ptr.Interface()); err != nil {
-			return err
-		}
-
-	case reflect.Slice:
-		val := reflect.Indirect(ptr)
-		val.Set(reflect.MakeSlice(typ, int(shape[0]), int(shape[0])))
-
-		// Optimization: if only one dimension is left we can use binary.Read() directly for this slice
-		if len(shape) == 1 && val.Len() > 0 {
-			switch val.Index(0).Kind() {
-			case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-				return binary.Read(r, nativeEndian, val.Interface())
-			}
-		}
-
-		for i := 0; i < val.Len(); i++ {
-			if err := decodeTensor(r, shape[1:], typ.Elem(), val.Index(i).Addr()); err != nil {
-				return err
-			}
-		}
-
-	default:
-		return fmt.Errorf("unsupported type %v", typ)
 	}
+
 	return nil
+}
+
+// sliceHeader is a safer version of reflect.SliceHeader. Using unsafe.Pointer
+// for Data reduces potential issues with the GC. The reflect package uses a
+// similar struct internally.
+type sliceHeader struct {
+	Data unsafe.Pointer
+	Len  int
+	Cap  int
+}
+
+// copyPtr copies the backing data for a slice or array directly into w. Note
+// we don't need to worry about byte ordering because we want the natural byte
+// order for the machine we're running on.
+func copyPtr(w *bytes.Buffer, ptr unsafe.Pointer, l int) error {
+	h := sliceHeader{
+		Data: ptr,
+		Len:  l,
+		Cap:  l,
+	}
+	// Convert our slice header into a []byte so we can call w.Write
+	b := *(*[]byte)(unsafe.Pointer(&h))
+	_, err := w.Write(b)
+	return err
 }
 
 type stringEncoder struct {

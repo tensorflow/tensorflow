@@ -292,6 +292,22 @@ func @infeed_non_token_second_result(%token: !xla_hlo.token) -> tuple<tuple<tens
 
 // -----
 
+func @iota_scalar() -> tensor<i32> {
+  // expected-error@+1 {{does not support scalars}}
+  %0 = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @iota_invalid_iota_dimension() -> tensor<4xi32> {
+  // expected-error@+1 {{iota dimension cannot go beyond the output rank or be negative}}
+  %0 = "xla_hlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
+// -----
+
 func @map_mismatched_args(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // expected-error@+1 {{expects number of operands to match the arity of map computation, but got: 2 and 1}}
   %0 = "xla_hlo.map"(%arg0, %arg1) ( {

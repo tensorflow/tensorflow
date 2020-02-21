@@ -149,7 +149,6 @@ struct AllReduceParticipantData {
   explicit AllReduceParticipantData(RendezvousKey rendezvous_key)
       : rendezvous_key(rendezvous_key) {}
 
-  int64 element_count;
   int64 device_ordinal;
   RendezvousKey rendezvous_key;
 
@@ -157,20 +156,30 @@ struct AllReduceParticipantData {
   // source_buffer == destination_buffer if that avoids a NCCL copy (will depend
   // on how well the NCCL in-place implementation performs vs the out-of-place
   // implementation).
-  se::DeviceMemoryBase source_data;
-  se::DeviceMemoryBase destination_data;
+  struct Buffer {
+    int64 element_count;
+    se::DeviceMemoryBase source_data;
+    se::DeviceMemoryBase destination_data;
+    PrimitiveType primitive_type;
+  };
+  std::vector<Buffer> buffers;
   se::Stream* stream;
 
   ReductionKind reduction_kind;
-  PrimitiveType primitive_type;
 
   int num_participants() const { return rendezvous_key.num_participants(); }
 
   string ToString() const {
+    std::vector<std::string> buffer_strs;
+    for (const Buffer& buffer : buffers) {
+      buffer_strs.push_back(
+          absl::StrFormat("{element_count=%d}", buffer.element_count));
+    }
     return absl::StrFormat(
-        "AllReduceParticipantData{element_count=%d, rendezvous_key=%s, "
+        "AllReduceParticipantData{buffers=[%s], rendezvous_key=%s, "
         "device_ordinal=%d, stream=%p}",
-        element_count, rendezvous_key.ToString(), device_ordinal, stream);
+        absl::StrJoin(buffer_strs, ","), rendezvous_key.ToString(),
+        device_ordinal, stream);
   }
 };
 
@@ -245,7 +254,7 @@ class Rendezvous {
 
       // Spot check for consistent replica counts among submitting threads.
       if (!participants_.empty() &&
-          (participants_.back().element_count != participant.element_count ||
+          (participants_.back().buffers.size() != participant.buffers.size() ||
            participants_.back().rendezvous_key != participant.rendezvous_key)) {
         return InvalidArgument(
             "Mismatch among all-reduce participants.  Expected same "

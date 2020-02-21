@@ -1349,7 +1349,7 @@ def TFL_GreaterOp : TFL_Op<"greater", [
 }
 
 def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
-                                          SameOperandsAndResultType]> {
+                                          SameOperandsAndResultShape]> {
   let summary = "Hardswish activation function.";
   let description = [{
     Computes hard-swish activation function
@@ -2482,11 +2482,11 @@ def TFL_TileOp: TFL_Op<"tile", [NoSideEffect, SameOperandsAndResultsScale,
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I32, I64, TFL_Uint8, QUI8]>:$input,
+    TFL_TensorOf<[F32, I1, I32, I64, TFL_Uint8, QUI8, TFL_Str]>:$input,
     TFL_I32OrI64Tensor:$multiples);
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I32, I64, TFL_Uint8, QUI8]>:$output);
+    TFL_TensorOf<[F32, I1, I32, I64, TFL_Uint8, QUI8, TFL_Str]>:$output);
 
   let hasOptions = 0;
 }

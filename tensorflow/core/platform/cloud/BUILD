@@ -19,7 +19,6 @@ package_group(
     name = "dependency_whitelist",
     packages = [
         "//learning/brain/tfrc/...",
-        "//learning/brain/tfrc/tpu_gcs_file_system/...",
         "//tensorflow/...",
     ],
 )
@@ -428,6 +427,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/platform:scanner",
         "@boringssl//:crypto",
     ],
@@ -450,6 +450,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 

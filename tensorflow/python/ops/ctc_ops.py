@@ -601,9 +601,18 @@ def _state_to_olabel_unique(labels, num_labels, states, unique):
       updates=batch_state_major,
       shape=[batch_size * num_labels, num_frames])
   scatter = array_ops.reshape(scatter, [batch_size, num_labels, num_frames])
+
+  mask = array_ops.ones_like(batch_state_major, dtype=dtypes.bool)
+  mask = array_ops.scatter_nd(
+      indices=indices,
+      updates=mask,
+      shape=[batch_size * num_labels, num_frames])
+  mask = array_ops.reshape(mask, [batch_size, num_labels, num_frames])
+
   scatter = array_ops.where(
-      math_ops.equal(scatter, 0.0),
-      array_ops.fill(array_ops.shape(scatter), math_ops.log(0.0)), scatter)
+      mask, scatter,
+      array_ops.fill(array_ops.shape(scatter), math_ops.log(0.0)))
+
   label_olabels = array_ops.transpose(scatter, [2, 0, 1])
   label_olabels = label_olabels[:, :, 1:]
 
@@ -1010,6 +1019,14 @@ def ctc_loss_dense(labels,
 
     if unique:
       unique_y, unique_idx = unique
+      if blank_index != 0:
+        unique_y = array_ops.where(unique_y < blank_index, unique_y + 1,
+                                   unique_y)
+        label_mask_len = math_ops.reduce_max(unique_idx, axis=1) + 1
+        max_label_length = _get_dim(unique_y, 1)
+        label_mask = array_ops.sequence_mask(label_mask_len, max_label_length)
+        unique_y = array_ops.where(label_mask, unique_y,
+                                   array_ops.zeros_like(unique_y))
       args.extend([unique_y, unique_idx])
 
     @custom_gradient.custom_gradient

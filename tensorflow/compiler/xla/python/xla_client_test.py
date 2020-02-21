@@ -969,6 +969,12 @@ class SingleOpTest(ComputationTest):
     c.Not(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=~arr)
 
+  def testPopulationCount(self):
+    c = self._NewComputation()
+    arr = NumpyArrayS32([3, 0, 1])
+    c.PopulationCount(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=np.array([2, 0, 1]))
+
   def testCountLeadingZeros(self):
     c = self._NewComputation()
     arr = NumpyArrayS32([0x7FFF, 0x12345678])

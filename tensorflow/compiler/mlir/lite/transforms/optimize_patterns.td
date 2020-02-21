@@ -199,6 +199,22 @@ def : Pat<
   (TFL_HardSwishOp $x),
   [(EqualOperands $x, $y)]>;
 
+// Matching HardSwish with extra FakeQuant. These FakeQuant ops were due to
+// incorrect placement in the quantization aware training.
+// TODO(b/149735743): We should make the placement automatically.
+def : Pat<
+  (TFL_MulOp (TFL_DequantizeOp (TFL_QuantizeOp
+    (TFL_MulOp
+     $x, (TFL_DequantizeOp (TFL_QuantizeOp (TFL_AddOp
+          $y,
+          (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+          TFL_AF_Relu6), $qattr2)),
+     TFL_AF_None), $qattr1)),
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+     TFL_AF_None),
+  (TFL_HardSwishOp $x),
+  [(EqualOperands $x, $y)]>;
+
 // Constraint that the attribute value is less than 'n'
 class ConstDoubleValueLessThan<string n> : Constraint<
   CPred<"$0.isa<DenseElementsAttr>() && "

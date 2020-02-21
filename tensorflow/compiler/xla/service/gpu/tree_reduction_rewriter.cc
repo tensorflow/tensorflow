@@ -46,6 +46,11 @@ static constexpr int64 kColumnAtomicFreeBound = kWarpSize * 128;
 // decreased column/row tiling.
 static constexpr int64 kBatchedAtomicFreeBound = 8;
 
+// Returns the square root of the input rounded up to the nearest square.
+static int64 SqrtOfRoundUpToNearestSquare(int64 input) {
+  return static_cast<int64>(std::ceil(std::sqrt(input)));
+}
+
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
   explicit ReductionRewriterVisitor() {}
@@ -105,39 +110,29 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     int64 reduced_dim_size = input_shape.dimensions(reduced_input_dimension);
     VLOG(3) << "reduced_dim_size = " << reduced_dim_size;
-    // TODO(cheshire): if atomic_free_bound is large, num_fit is likely to be
-    // small. Generating a reduction with very small reduced dimension is not
-    // efficient, it would be better to split the dimension sizes more evenly.
-    //
-    // One possible idea is to pad to a nearest square (ceil(sqrt(x)))^2.
-    // Given that:
+
+    // We pad to a nearest square (ceil(sqrt(x)))^2.  Given that:
     //
     // (n + 1)^2 = n^2 + (2n+1)
     //
     // it can be seen that the distance to the nearest square is at most twice
     // the square root of the input number.
-    int64 num_fit = CeilOfRatio(reduced_dim_size, atomic_free_bound);
+    int64 num_fit = SqrtOfRoundUpToNearestSquare(reduced_dim_size);
 
     // Pad reduced dimension to the required number of elements.
     HloInstruction *padded = [&] {
-      // TODO(cheshire): if atomic_free_bound is very large, padding all the way
-      // up to to atomic_free_bound is wasteful, we could pad to a much smaller
-      // value.
-      if (reduced_dim_size % atomic_free_bound != 0) {
-        int64 padded_num_elements = num_fit * atomic_free_bound;
-        PaddingConfig padding_config = MakeNoPaddingConfig(input_shape.rank());
-        padding_config.mutable_dimensions(reduced_input_dimension)
-            ->set_edge_padding_high(padded_num_elements - reduced_dim_size);
-        std::vector<int64> padded_dimensions(input_shape.dimensions().begin(),
-                                             input_shape.dimensions().end());
-        padded_dimensions[reduced_input_dimension] = padded_num_elements;
-        Shape padded_shape =
-            ShapeUtil::MakeShape(input_shape.element_type(), padded_dimensions);
-        VLOG(3) << "Generated padded shape: " << padded_shape.ToString();
-        return hlo->parent()->AddInstruction(HloInstruction::CreatePad(
-            padded_shape, input, initial_value, padding_config));
-      }
-      return input;
+      int64 padded_num_elements = num_fit * num_fit;
+      PaddingConfig padding_config = MakeNoPaddingConfig(input_shape.rank());
+      padding_config.mutable_dimensions(reduced_input_dimension)
+          ->set_edge_padding_high(padded_num_elements - reduced_dim_size);
+      std::vector<int64> padded_dimensions(input_shape.dimensions().begin(),
+                                           input_shape.dimensions().end());
+      padded_dimensions[reduced_input_dimension] = padded_num_elements;
+      Shape padded_shape =
+          ShapeUtil::MakeShape(input_shape.element_type(), padded_dimensions);
+      VLOG(3) << "Generated padded shape: " << padded_shape.ToString();
+      return hlo->parent()->AddInstruction(HloInstruction::CreatePad(
+          padded_shape, input, initial_value, padding_config));
     }();
 
     VLOG(1) << "Generated padding: " << padded->ToString();
@@ -146,7 +141,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
          dim_idx++) {
       if (dim_idx == reduced_input_dimension) {
         reshaped_dimensions.push_back(num_fit);
-        reshaped_dimensions.push_back(atomic_free_bound);
+        reshaped_dimensions.push_back(num_fit);
       } else {
         reshaped_dimensions.push_back(padded->shape().dimensions(dim_idx));
       }

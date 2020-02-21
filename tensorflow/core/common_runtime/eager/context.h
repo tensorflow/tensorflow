@@ -232,6 +232,8 @@ class EagerContext : public core::RefCounted {
                         const FunctionDefLibrary& library,
                         const bool add_to_local_only = false);
 
+  const FunctionDef* GetFunctionDef(const string& function_name);
+
   Status RemoveFunction(const string& func);
 
   // Clear remote executors on all worker targets in `remote_contexts_`.

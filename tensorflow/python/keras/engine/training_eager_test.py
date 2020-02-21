@@ -194,12 +194,10 @@ class TrainingTest(keras_parameterized.TestCase):
     model.fit(dataset, epochs=1, verbose=0)
 
     # Step argument is required for infinite datasets.
-    with self.assertRaisesRegexp(ValueError,
-                                 'specify the `validation_steps` argument.'):
+    with self.assertRaises(ValueError):
       model.fit(dataset, steps_per_epoch=2, epochs=1, verbose=0,
                 validation_data=validation_dataset)
-    with self.assertRaisesRegexp(ValueError,
-                                 'specify the `validation_steps` argument.'):
+    with self.assertRaises(ValueError):
       model.fit(dataset, steps_per_epoch=2, epochs=1, verbose=0,
                 validation_data=validation_dataset)
 
@@ -355,7 +353,8 @@ class CorrectnessTest(keras_parameterized.TestCase):
     x = np.ones((20, 4)).astype(np.float32)
     y = np.random.randint(0, 3, size=(20,)).astype(np.int64)
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(2)
-    evaluation_results = dict(zip(model.metrics_names, model.evaluate(dataset)))
+    results = model.evaluate(dataset)
+    evaluation_results = dict(zip(model.metrics_names, results))
     # Rate of dropout depends on the learning phase.
     self.assertEqual(evaluation_results['regularization_loss'],
                      expected_validation_loss)

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
@@ -110,10 +111,7 @@ struct CanonicalDebugOptions {
     string dump_to_lower = absl::AsciiStrToLower(opts.xla_dump_to());
     if (dump_to_lower == "sponge" ||
         dump_to_lower == "test_undeclared_outputs_dir") {
-      const char* dir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
-      if (dir != nullptr) {
-        dump_to = dir;
-      } else {
+      if (!tensorflow::io::GetTestUndeclaredOutputsDir(&dump_to)) {
         LOG(ERROR) << "--xla_dump_to=" << opts.xla_dump_to()
                    << ", but environment variable TEST_UNDECLARED_OUTPUTS_DIR "
                       "is not set, so cannot dump anywhere.";

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -132,12 +133,24 @@ int main(int argc, char **argv) {
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
 
-  StatusOr<mlir::OwningModuleRef> module =
-      tensorflow::LoadFromGraphdefOrMlirSource(
-          input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
-          debug_info_file, input_arrays, input_dtypes, input_shapes,
-          output_arrays,
-          /*prune_unused_nodes=*/true, &source_mgr, &context);
+  StatusOr<mlir::OwningModuleRef> module;
+
+  // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
+  // inside mlir is done.
+  if (import_saved_model || import_saved_model_v1) {
+    if (input_mlir)
+      module = tensorflow::errors::InvalidArgument(
+          "Importing saved model should not have input_mlir set");
+    module = tensorflow::ImportSavedModel(
+        import_saved_model, import_saved_model_v1, input_file_name,
+        saved_model_tags, saved_model_exported_names, &context);
+  } else {
+    module = tensorflow::LoadFromGraphdefOrMlirSource(
+        input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
+        debug_info_file, input_arrays, input_dtypes, input_shapes,
+        output_arrays,
+        /*prune_unused_nodes=*/true, &source_mgr, &context);
+  }
 
   // If errors occur, the library call in the above already logged the error
   // message. So we can just return here.
