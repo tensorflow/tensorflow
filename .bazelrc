@@ -238,6 +238,7 @@ build:c++1z --config=c++17
 
 # Enable using platform specific build settings
 build --enable_platform_specific_config
+build --config=xla
 
 # Suppress C++ compiler warnings, otherwise build logs become 10s of MBs.
 build:linux --copt=-w
