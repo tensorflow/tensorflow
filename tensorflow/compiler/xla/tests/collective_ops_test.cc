@@ -159,7 +159,7 @@ DeviceAssignment MakeDeviceAssn(std::vector<int64> devices) {
 }
 
 // Shorter alias for this function.
-absl::flat_hash_set<int> OpenNcclChannels() {
+absl::flat_hash_set<GlobalDeviceId> OpenNcclChannels() {
   return gpu::NcclAllReduceThunk::DevicesWithOpenNcclChannels();
 }
 
