@@ -189,6 +189,16 @@ bool PrepareQuantizePass::RemoveRedundantStats(FuncOp func) {
   return RemoveRedundantStatsOps(func, GetOpQuantSpec);
 }
 
+static Value Quantized(Operation* user) {
+  if (auto q = llvm::dyn_cast_or_null<quant::QuantizeCastOp>(user)) {
+    if (auto dq = llvm::dyn_cast_or_null<quant::DequantizeCastOp>(
+            *q.getResult().user_begin())) {
+      return dq.getResult();
+    }
+  }
+  return {};
+}
+
 void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
   // If an op output has two users: one of them is a quantize op and another
   // one is returned directly, we decide to return the quantized result instead,
@@ -199,11 +209,8 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
     for (Value returned : ret.operands()) {
       llvm::SmallVector<Value, 4> quantized;
       for (auto user : returned.getUsers()) {
-        if (auto q = llvm::dyn_cast_or_null<quant::QuantizeCastOp>(user)) {
-          if (auto dq = llvm::dyn_cast_or_null<quant::DequantizeCastOp>(
-                  *q.getResult().user_begin())) {
-            quantized.push_back(dq.getResult());
-          }
+        if (auto q = Quantized(user)) {
+          quantized.push_back(q);
         }
       }
       if (quantized.size() == 1) {
@@ -211,6 +218,18 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
       }
       i++;
     }
+  });
+
+  // We prefer to placing quantization emulation ops on the results of the
+  // concat ops.
+  func.walk([&](ConcatenationOp concat) {
+    if (concat.output().hasOneUse() &&
+        Quantized(*concat.output().user_begin())) {
+      return;
+    }
+    concat.emitWarning(
+        "Missing quantization parameter on the output might introduce "
+        "quantization error!");
   });
 }
 
