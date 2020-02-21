@@ -125,6 +125,15 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
       }
     }
 
+    const char* ca_file = getenv("S3_CA_FILE");
+    if (ca_file) {
+      cfg.caFile = Aws::String(ca_file);
+    }
+    const char* ca_path = getenv("S3_CA_PATH");
+    if (ca_path) {
+      cfg.caPath = Aws::String(ca_path);
+    }
+    
     init = true;
   }
 
