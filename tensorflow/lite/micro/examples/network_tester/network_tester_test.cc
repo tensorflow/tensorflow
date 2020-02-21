@@ -73,7 +73,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
 
   TfLiteStatus allocate_status = interpreter.AllocateTensors();
   if (allocate_status != kTfLiteOk) {
-    error_reporter->Report("alloc failed\n");
+    TF_LITE_REPORT_ERROR(error_reporter, "Tensor allocation failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocate_status);
 
