@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
@@ -115,6 +116,10 @@ class PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
     }
   }
 
+  // Apply some sanity check and report some warnings for those don't follow
+  // the best quantization practise. This also fixes some simple violations.
+  void SanityCheckAndAdjustment(FuncOp func);
+
   QuantizationSpecs quant_specs_;
 };
 
@@ -184,13 +189,37 @@ bool PrepareQuantizePass::RemoveRedundantStats(FuncOp func) {
   return RemoveRedundantStatsOps(func, GetOpQuantSpec);
 }
 
+void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
+  // If an op output has two users: one of them is a quantize op and another
+  // one is returned directly, we decide to return the quantized result instead,
+  // so this op can be quantized. This is only applied on the returned result
+  // because the error will not be accumulated.
+  func.walk([&](ReturnOp ret) {
+    int i = 0;
+    for (Value returned : ret.operands()) {
+      llvm::SmallVector<Value, 4> quantized;
+      for (auto user : returned.getUsers()) {
+        if (auto q = llvm::dyn_cast_or_null<quant::QuantizeCastOp>(user)) {
+          if (auto dq = llvm::dyn_cast_or_null<quant::DequantizeCastOp>(
+                  *q.getResult().user_begin())) {
+            quantized.push_back(dq.getResult());
+          }
+        }
+      }
+      if (quantized.size() == 1) {
+        ret.setOperand(i, quantized.front());
+      }
+      i++;
+    }
+  });
+}
+
 using PrepareQuantStats =
     quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
 
 void PrepareQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = func.getContext();
-
   ConvertTFLQuantOpsToMlirQuantOps(func);
 
   if (quant_specs_.post_training_quantization) {
@@ -219,6 +248,8 @@ void PrepareQuantizePass::runOnFunction() {
     patterns.insert<PrepareQuantStats>(8, false, false, ctx);
   }
   applyPatternsGreedily(func, patterns);
+
+  SanityCheckAndAdjustment(func);
 
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).
