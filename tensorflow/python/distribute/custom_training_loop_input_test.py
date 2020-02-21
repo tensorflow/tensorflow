@@ -616,6 +616,42 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       results.append(output)
     self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testMultiDeviceDataCapturedFunction(self, distribution):
+    inputs = constant_op.constant([2., 3.])
+    dataset = lambda _: dataset_ops.Dataset.from_tensor_slices(inputs).repeat(5)
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(dataset))
+    with distribution.scope():
+      var = variables.Variable(1.0)
+
+    @def_function.function
+    def train_step(input_iterator):
+
+      def func(inputs):
+        return math_ops.square(inputs) + var
+
+      per_replica_outputs = distribution.experimental_run_v2(
+          func, (next(input_iterator),))
+      mean = distribution.reduce(
+          reduce_util.ReduceOp.MEAN, per_replica_outputs, axis=None)
+      for _ in dataset_ops.Dataset.range(1):
+        per_replica_outputs = distribution.experimental_run_v2(
+            func, (next(input_iterator),))
+        mean = distribution.reduce(
+            reduce_util.ReduceOp.MEAN, per_replica_outputs, axis=None)
+      return mean
+
+    with distribution.scope():
+      if distribution.num_replicas_in_sync == 1:
+        self.assertAlmostEqual(10.0, self.evaluate(train_step(input_iterator)))
+      else:
+        self.assertAlmostEqual(7.5, self.evaluate(train_step(input_iterator)))
+
 
 if __name__ == "__main__":
   test.main()
