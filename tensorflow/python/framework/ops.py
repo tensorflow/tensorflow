@@ -291,22 +291,23 @@ def disable_tensor_equality():
 
 @tf_export("Tensor")
 class Tensor(_TensorLike):
-  """A tensor represents a rectangular array of data.
+  """A tensor is a multidimensional array of elements represented by a
+  `tf.Tensor` object.  All elements are of a single known data type.
 
-  When writing a TensorFlow program, the main object you manipulate and pass
-  around is the `tf.Tensor`. A `tf.Tensor` object represents a rectangular array
-  of arbitrary dimension, filled with data of a specific data type.
+  When writing a TensorFlow program, the main object that is
+  manipulated and passed around is the `tf.Tensor`.
 
   A `tf.Tensor` has the following properties:
 
-  * a data type (float32, int32, or string, for example)
+  * a single data type (float32, int32, or string, for example)
   * a shape
 
-  Each element in the Tensor has the same data type, and the data type is always
-  known.
+  TensorFlow supports two execution modes: eager and graph.  In eager
+  mode, operations are evaluated immediately.  In graph mode, a
+  computational graph is constructed for later evaluation.
 
-  In eager execution, which is the default mode in TensorFlow, results are
-  calculated immediately.
+  Eager mode is the default mode in TensorFlow.  In the example below,
+  the matrix multiplication results are calculated immediately.
 
   >>> # Compute some values using a Tensor
   >>> c = tf.constant([[1.0, 2.0], [3.0, 4.0]])
@@ -316,7 +317,6 @@ class Tensor(_TensorLike):
   tf.Tensor(
   [[1. 3.]
    [3. 7.]], shape=(2, 2), dtype=float32)
-
 
   Note that during eager execution, you may discover your `Tensors` are actually
   of type `EagerTensor`.  This is an internal detail, but it does give you
@@ -328,19 +328,22 @@ class Tensor(_TensorLike):
     [[1. 3.]
      [3. 7.]]
 
-  TensorFlow can define computations without immediately executing them, most
-  commonly inside `tf.function`s, as well as in (legacy) Graph mode. In those
-  cases, the shape (that is, the rank of the Tensor and the size of
-  each dimension) might be only partially known.
+  In TensorFlow, `tf.function`s are a common way to define graph execution.
+
+  A Tensor's shape (that is, the rank of the Tensor and the size of
+  each dimension) may not always be fully known.  In `tf.function`
+  definitions, the shape may only be partially known.
 
   Most operations produce tensors of fully-known shapes if the shapes of their
   inputs are also fully known, but in some cases it's only possible to find the
   shape of a tensor at execution time.
 
-  There are specialized tensors; for these, see `tf.Variable`, `tf.constant`,
-  `tf.placeholder`, `tf.SparseTensor`, and `tf.RaggedTensor`.
+  A number of specialized tensors are available: see `tf.Variable`,
+  `tf.constant`, `tf.placeholder`, `tf.SparseTensor`, and
+  `tf.RaggedTensor`.
 
-  For more on Tensors, see the [guide](https://tensorflow.org/guide/tensor`).
+  For more on Tensors, see the [guide](https://tensorflow.org/guide/tensor).
+
   """
 
   # List of Python operators that we allow to override.
