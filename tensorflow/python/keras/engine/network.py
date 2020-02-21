@@ -1063,7 +1063,28 @@ class Network(base_layer.Layer):
         ValueError: For invalid/unknown format arguments.
     """
     self._assert_weights_created()
-    save_format = validate_save_format(filepath, save_format)
+    filepath_is_h5 = _is_hdf5_filepath(filepath)
+    if save_format is None:
+      if filepath_is_h5:
+        save_format = 'h5'
+      else:
+        save_format = 'tf'
+    else:
+      user_format = save_format.lower().strip()
+      if user_format in ('tensorflow', 'tf'):
+        save_format = 'tf'
+      elif user_format in ('hdf5', 'h5', 'keras'):
+        save_format = 'h5'
+      else:
+        raise ValueError(
+            'Unknown format "%s". Was expecting one of {"tf", "h5"}.' % (
+                save_format,))
+    if save_format == 'tf' and filepath_is_h5:
+      raise ValueError(
+          ('save_weights got save_format="tf"/"tensorflow", but the '
+           'filepath ("%s") looks like an HDF5 file. Omit the ".h5"/".keras" '
+           'when saving in TensorFlow format.')
+          % filepath)
 
     if save_format == 'h5' and h5py is None:
       raise ImportError(
@@ -2086,67 +2107,3 @@ def get_network_config(network, serialize_layer_fn=None):
   model_outputs = tf_utils.convert_inner_node_data(model_outputs)
   config['output_layers'] = model_outputs
   return config
-
-
-def validate_save_format(filepath, save_format, default='tf'):
-  """Validates `save_format` argument passed to methods used for saving.
-
-  Returns either 'tf' or 'h5', indicating whether to save the model
-  to Tensorflow SavedModel or HDF5. Output will default to 'tf' in TF2.X and
-  'h5' in TF1.X.
-
-  Defaults to 'h5' if `filepath` is a path to a hdf5 file (having suffix '.h5'
-  or '.hdf5' or '.keras') or is an h5py.File object.
-
-  Args:
-    filepath: Value of the `filepath` argument passed to the method.
-      Can be: - String - h5py.File object
-    save_format: String, value of the 'save_format' argument as passed.
-    default: Default format if save_format isn't specified and the filepath
-      doesn't indicate that the format is 'h5'.
-
-  Returns:
-    save_format: String, 'h5' or 'tf'. The processed
-    value of the `save_format` argument.
-
-  Raises:
-    ValueError: If
-      - `filepath` is not a String or an h5py.File object.
-      - `save_format` is not valid. Valid values are "tensorflow", "tf" for
-        saving in SavedModel format, and "hdf5", "keras" or "h5" for saving in
-        h5 format.
-      - `save_format` is "tf" but `filepath` is a path to a h5 file.
-      - `save_format` is "tf" but `filepath` is an h5py.File object.
-  """
-  if not isinstance(filepath, (str, h5py.File)):
-    raise ValueError(
-        'Expected `filepath` to be a String or h5py.File object. Got '
-        'unsupported value %s of type %s' % (filepath, type(filepath)))
-
-  filepath_is_h5py_file = h5py is not None and isinstance(filepath, h5py.File)
-  filepath_is_h5 = isinstance(filepath, str) and _is_hdf5_filepath(filepath)
-  if save_format is None:
-    if filepath_is_h5 or filepath_is_h5py_file:
-      save_format = 'h5'
-    else:
-      save_format = default
-  else:
-    user_format = save_format.lower().strip()
-    if user_format in ('tensorflow', 'tf'):
-      save_format = 'tf'
-    elif user_format in ('hdf5', 'h5', 'keras'):
-      save_format = 'h5'
-    else:
-      raise ValueError(
-          'Unknown format "%s". Was expecting one of {"tf", "h5"}.' %
-          (save_format))
-  if save_format == 'tf' and filepath_is_h5:
-    raise ValueError(
-        ('Got save_format="tf"/"tensorflow", but the filepath ("%s") looks '
-         'like an HDF5 file. Omit the ".h5"/".keras" when saving in '
-         'TensorFlow format.') % filepath)
-  if save_format == 'tf' and filepath_is_h5py_file:
-    raise ValueError(
-        'Got save_format="tf"/"tensorflow", but the given `filepath`'
-        'is an h5py.File object.')
-  return save_format
