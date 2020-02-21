@@ -319,22 +319,26 @@ build:xla --define=with_xla_support=true
 # BEGIN TF REMOTE BUILD EXECUTION OPTIONS
 # Options when using remote execution
 # WARNING: THESE OPTIONS WONT WORK IF YOU DO NOT HAVE PROPER AUTHENTICATION AND PERMISSIONS
+
+# Flag to enable remote config
+common --experimental_repo_remote_exec
+
 build:rbe --action_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
-build:rbe --auth_enabled=true
-build:rbe --auth_scope=https://www.googleapis.com/auth/cloud-source-tools
+build:rbe --google_default_credentials
 build:rbe --bes_backend=buildeventservice.googleapis.com
-build:rbe --bes_best_effort=false
 build:rbe --bes_results_url="https://source.cloud.google.com/results/invocations"
 build:rbe --bes_timeout=600s
 build:rbe --define=EXECUTOR=remote
+build:rbe --distinct_host_configuration=false
 build:rbe --flaky_test_attempts=3
 build:rbe --jobs=200
 build:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com
 build:rbe --remote_timeout=3600
 build:rbe --spawn_strategy=remote,worker,standalone,local
 test:rbe --test_env=USER=anon
-
-build:rbe --distinct_host_configuration=false
+# Attempt to minimize the amount of data transfer between bazel and the remote
+# workers:
+build:rbe --remote_download_toplevel
 
 build:rbe_linux --config=rbe
 build:rbe_linux --action_env=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin"
@@ -361,7 +365,7 @@ build:rbe_cpu_linux --platforms="@org_tensorflow//third_party/toolchains:rbe_ubu
 build:rbe_linux_cuda_nvcc --config=rbe_linux
 build:rbe_linux_cuda_nvcc --crosstool_top="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain"
 build:rbe_linux_cuda_nvcc --extra_toolchains="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain-linux-x86_64"
-build:rbe_linux_cuda_nvcc --extra_execution_platforms="@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010,@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010-gpu"
+build:rbe_linux_cuda_nvcc --extra_execution_platforms="@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010,@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010"
 build:rbe_linux_cuda_nvcc --host_platform="@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010"
 build:rbe_linux_cuda_nvcc --platforms="@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010"
 build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/cuda10.1-cudnn7"

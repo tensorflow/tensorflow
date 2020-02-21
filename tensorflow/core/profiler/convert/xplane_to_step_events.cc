@@ -52,11 +52,14 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
   line.ForEachEvent([&](const XEventVisitor& event) {
     int64 correlation_id = -1;
     int64 group_id = -1;
+    absl::string_view step_name;
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kCorrelationId) {
         correlation_id = stat.IntValue();
       } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
+      } else if (stat.Type() == StatType::kStepName) {
+        step_name = stat.StrValue();
       }
     });
     if (group_id < 0) return;
@@ -68,7 +71,9 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
         device_step_events.find(group_id) == device_step_events.end())
       return;
     Timespan timespan = Timespan(event.TimestampPs(), event.DurationPs());
-    if (IsStepMarker(event.Name())) {
+    // If an explicit step marker is not available, look for an implicit one
+    // which has a step_name stat.
+    if (IsStepMarker(event.Name()) || !step_name.empty()) {
       result[group_id].AddMarker(
           StepMarker(/*device=*/false, event.Name(), timespan));
     } else if (IsRealCpuCompute(event.Name())) {

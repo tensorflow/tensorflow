@@ -313,6 +313,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 3;
       }
       return 1;
+      
+    case BuiltinOperator_TILE:
+      if (op_sig.input_types.at(0) == TensorType_STRING) {
+        return 2;
+      }
+
+      return 1;
 
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:

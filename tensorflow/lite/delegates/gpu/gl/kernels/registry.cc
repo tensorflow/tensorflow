@@ -96,6 +96,8 @@ class Registry : public NodeShader {
     insert_elementwise_op(Type::DIV);
     insert_elementwise_op(Type::HARD_SWISH);
     insert_elementwise_op(Type::LOG);
+    insert_elementwise_op(Type::MAXIMUM);
+    insert_elementwise_op(Type::MINIMUM);
     insert_elementwise_op(Type::POW);
     insert_elementwise_op(Type::RSQRT);
     insert_elementwise_op(Type::SIGMOID);

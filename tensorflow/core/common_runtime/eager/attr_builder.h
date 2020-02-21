@@ -42,7 +42,7 @@ namespace tensorflow {
 typedef std::unordered_map<string, uint32> AttrTypeMap;
 
 // Look up OpDef for `op_name`.
-Status OpDefForOp(const char* op_name, const OpDef** op_def);
+Status OpDefForOp(const string& op_name, const OpDef** op_def);
 
 // Returns the AttrTypeMap for the TensorFlow operation named op_name.
 // If op_name is not registered in global op registry, AttrTypeMapForOp assumes

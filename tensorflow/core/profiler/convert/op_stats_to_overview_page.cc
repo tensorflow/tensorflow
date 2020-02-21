@@ -77,16 +77,21 @@ void ComputeDeviceTips(HardwareType hardware_type,
   const string& device_name = HardwareType_Name(hardware_type);
   string timeline_name =
       (hardware_type == tensorflow::profiler::TPU) ? "TPU core" : device_name;
-  *re->add_device_tips() = MakeOverviewPageTip(absl::StrCat(
-      "op_profile (identify the time-consuming operations executed on the ",
-      device_name, ")"));
+  string op_stats_toolname = (hardware_type == tensorflow::profiler::TPU)
+                                 ? "op_profile"
+                                 : "tensorflow_stats";
+  *re->add_device_tips() = MakeOverviewPageTip(
+      absl::StrCat(op_stats_toolname,
+                   " (identify the time-consuming operations "
+                   "executed on the ",
+                   device_name, ")"));
   *re->add_device_tips() = MakeOverviewPageTip(absl::StrCat(
       "trace_viewer (look at the activities on the timeline of each ",
       timeline_name, " in the trace view)"));
 }
 
 void ComputeFaqTips(OverviewPageRecommendation* re) {
-  *re->add_faq_tips() = MakeOverviewPageTip("Refer to the Cloud tools FAQ");
+  *re->add_faq_tips() = MakeOverviewPageTip("Refer to the TF2 Profiler FAQ");
 }
 
 void ComputeDocumentationTips(OverviewPageRecommendation* re) {
@@ -144,8 +149,8 @@ OverviewPageRecommendation ComputeGenericRecommendation(
 
 OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   OverviewPageAnalysis analysis;
-  OpMetricsDb metrics_db =
-      CreateTfMetricsDbFromHloMetricsDb(op_stats.device_op_metrics_db());
+  OpMetricsDb metrics_db = CreateTfMetricsDbFromHloMetricsDb(
+      op_stats.device_op_metrics_db(), /*with_idle=*/false);
   uint64 total_device_time_ps = metrics_db.total_time_ps();
   constexpr int kNumTopOpsShown = 10;
   double device_cumulative_fraction = 0.0;

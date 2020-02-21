@@ -528,7 +528,8 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
   }
 
   // Eliminate the size one dimensions.
-  TF_ASSIGN_OR_RETURN(XlaOp reshaped_operand, Reshape(reshaped_shape, operand));
+  TF_ASSIGN_OR_RETURN(XlaOp reshaped_operand,
+                      ReshapeInternal(reshaped_shape, operand));
   // Broadcast 'reshape' up to the larger size.
   return InDimBroadcast(broadcast_shape, reshaped_operand,
                         broadcast_dimensions);
@@ -828,8 +829,8 @@ XlaOp XlaBuilder::BroadcastInDim(
   });
 }
 
-StatusOr<XlaOp> XlaBuilder::Reshape(const Shape& shape, XlaOp operand,
-                                    int64 inferred_dimension) {
+StatusOr<XlaOp> XlaBuilder::ReshapeInternal(const Shape& shape, XlaOp operand,
+                                            int64 inferred_dimension) {
   TF_RETURN_IF_ERROR(first_error_);
 
   HloInstructionProto instr;
@@ -1020,7 +1021,7 @@ XlaOp XlaBuilder::Reshape(XlaOp operand, absl::Span<const int64> dimensions,
     XlaOp transposed = IsIdentityPermutation(dimensions)
                            ? operand
                            : Transpose(operand, dimensions);
-    return Reshape(shape, transposed, inferred_dimension);
+    return ReshapeInternal(shape, transposed, inferred_dimension);
   });
 }
 
@@ -1031,6 +1032,13 @@ XlaOp XlaBuilder::Reshape(XlaOp operand, absl::Span<const int64> new_sizes,
     std::vector<int64> dimensions(shape->dimensions_size());
     std::iota(dimensions.begin(), dimensions.end(), 0);
     return Reshape(operand, dimensions, new_sizes, inferred_dimension);
+  });
+}
+
+XlaOp XlaBuilder::Reshape(const Shape& shape, XlaOp operand,
+                          int64 inferred_dimension) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    return ReshapeInternal(shape, operand, inferred_dimension);
   });
 }
 
@@ -2949,6 +2957,10 @@ XlaOp Reshape(const XlaOp operand, absl::Span<const int64> dimensions,
 
 XlaOp Reshape(const XlaOp operand, absl::Span<const int64> new_sizes) {
   return operand.builder()->Reshape(operand, new_sizes);
+}
+
+XlaOp Reshape(const Shape& shape, XlaOp operand) {
+  return operand.builder()->Reshape(shape, operand);
 }
 
 XlaOp ReshapeWithInferredDimension(XlaOp operand,

@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
@@ -33,15 +34,9 @@ limitations under the License.
 #include <sys/wait.h>
 #endif
 
-const char kEchoProgram[] = "tensorflow/core/platform/testdata/test_echo";
-const char kEchoArgv1Program[] =
-    "tensorflow/core/platform/testdata/test_echo_argv_1";
-const char kNoopProgram[] = "tensorflow/core/platform/testdata/test_noop";
-const char kStdErrProgram[] = "tensorflow/core/platform/testdata/test_stderr";
-
 namespace tensorflow {
-
 namespace {
+
 static string GetDataFilePath(const string& relative_path) {
 #ifdef PLATFORM_WINDOWS
   // While CreateProcess on windows is resilient to not having ".exe" suffix,
@@ -51,20 +46,39 @@ static string GetDataFilePath(const string& relative_path) {
   return GetDataDependencyFilepath(relative_path);
 #endif
 }
-}  // namespace
+
+string EchoProgram() {
+  return io::JoinPath("tensorflow", "core", "platform", "testdata",
+                      "test_echo");
+}
+
+string EchoArgv1Program() {
+  return io::JoinPath("tensorflow", "core", "platform", "testdata",
+                      "test_echo_argv_1");
+}
+
+string NoopProgram() {
+  return io::JoinPath("tensorflow", "core", "platform", "testdata",
+                      "test_noop");
+}
+
+string StdErrProgram() {
+  return io::JoinPath("tensorflow", "core", "platform", "testdata",
+                      "test_stderr");
+}
 
 class SubProcessTest : public ::testing::Test {};
 
 TEST_F(SubProcessTest, NoOutputNoComm) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(kNoopProgram).c_str(), {kNoopProgram});
+  proc.SetProgram(GetDataFilePath(NoopProgram()).c_str(), {NoopProgram()});
   EXPECT_TRUE(proc.Start());
   EXPECT_TRUE(proc.Wait());
 }
 
 TEST_F(SubProcessTest, NoOutput) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(kNoopProgram).c_str(), {kNoopProgram});
+  proc.SetProgram(GetDataFilePath(NoopProgram()).c_str(), {NoopProgram()});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -80,8 +94,8 @@ TEST_F(SubProcessTest, NoOutput) {
 TEST_F(SubProcessTest, Stdout) {
   tensorflow::SubProcess proc;
   const char test_string[] = "hello_world";
-  proc.SetProgram(GetDataFilePath(kEchoArgv1Program).c_str(),
-                  {kEchoArgv1Program, test_string});
+  proc.SetProgram(GetDataFilePath(EchoArgv1Program()).c_str(),
+                  {EchoArgv1Program(), test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -97,8 +111,8 @@ TEST_F(SubProcessTest, Stdout) {
 TEST_F(SubProcessTest, StdoutIgnored) {
   tensorflow::SubProcess proc;
   const char test_string[] = "hello_world";
-  proc.SetProgram(GetDataFilePath(kEchoArgv1Program).c_str(),
-                  {kEchoArgv1Program, test_string});
+  proc.SetProgram(GetDataFilePath(EchoArgv1Program()).c_str(),
+                  {EchoArgv1Program(), test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -111,8 +125,8 @@ TEST_F(SubProcessTest, StdoutIgnored) {
 TEST_F(SubProcessTest, Stderr) {
   tensorflow::SubProcess proc;
   const char test_string[] = "muh_failure!";
-  proc.SetProgram(GetDataFilePath(kStdErrProgram).c_str(),
-                  {kStdErrProgram, test_string});
+  proc.SetProgram(GetDataFilePath(StdErrProgram()).c_str(),
+                  {StdErrProgram(), test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -128,8 +142,8 @@ TEST_F(SubProcessTest, Stderr) {
 TEST_F(SubProcessTest, StderrIgnored) {
   tensorflow::SubProcess proc;
   const char test_string[] = "muh_failure!";
-  proc.SetProgram(GetDataFilePath(kStdErrProgram).c_str(),
-                  {kStdErrProgram, test_string});
+  proc.SetProgram(GetDataFilePath(StdErrProgram()).c_str(),
+                  {StdErrProgram(), test_string});
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -141,7 +155,7 @@ TEST_F(SubProcessTest, StderrIgnored) {
 
 TEST_F(SubProcessTest, Stdin) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(kEchoProgram).c_str(), {kEchoProgram});
+  proc.SetProgram(GetDataFilePath(EchoProgram()).c_str(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
@@ -153,7 +167,7 @@ TEST_F(SubProcessTest, Stdin) {
 
 TEST_F(SubProcessTest, StdinStdout) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(kEchoProgram).c_str(), {kEchoProgram});
+  proc.SetProgram(GetDataFilePath(EchoProgram()).c_str(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -170,7 +184,7 @@ TEST_F(SubProcessTest, StdinStdout) {
 
 TEST_F(SubProcessTest, StdinChildExit) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(kNoopProgram).c_str(), {kNoopProgram});
+  proc.SetProgram(GetDataFilePath(NoopProgram()).c_str(), {NoopProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
 
@@ -189,7 +203,7 @@ TEST_F(SubProcessTest, StdinChildExit) {
 
 TEST_F(SubProcessTest, StdinStdoutOverlap) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(kEchoProgram).c_str(), {kEchoProgram});
+  proc.SetProgram(GetDataFilePath(EchoProgram()).c_str(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -213,7 +227,7 @@ TEST_F(SubProcessTest, StdinStdoutOverlap) {
 
 TEST_F(SubProcessTest, KillProc) {
   tensorflow::SubProcess proc;
-  proc.SetProgram(GetDataFilePath(kEchoProgram).c_str(), {kEchoProgram});
+  proc.SetProgram(GetDataFilePath(EchoProgram()).c_str(), {EchoProgram()});
   proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
   proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
   EXPECT_TRUE(proc.Start());
@@ -224,4 +238,5 @@ TEST_F(SubProcessTest, KillProc) {
   EXPECT_FALSE(proc.Kill(SIGKILL));
 }
 
+}  // namespace
 }  // namespace tensorflow

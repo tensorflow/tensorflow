@@ -23,6 +23,7 @@ import functools
 import time
 
 from absl import flags
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.example import example_pb2
@@ -39,6 +40,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -50,6 +52,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import stateless_random_ops
@@ -58,6 +61,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_control_flow_ops
 from tensorflow.python.ops.parallel_for.test_util import PForTestCase
+from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
@@ -616,6 +620,20 @@ class NNTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_sparse_softmax_cross_entropy_with_logits(self):
+    logits = random_ops.random_uniform([3, 2, 4])
+    labels = random_ops.random_uniform(
+        shape=[3, 2], maxval=4, dtype=dtypes.int32)
+
+    def loop_fn(i):
+      logits_i = array_ops.gather(logits, i)
+      labels_i = array_ops.gather(labels, i)
+      loss = nn.sparse_softmax_cross_entropy_with_logits(
+          labels=labels_i, logits=logits_i)
+      return loss
+
+    self._test_loop_fn(loop_fn, 3)
+
 
 class RandomTest(PForTestCase):
 
@@ -960,7 +978,7 @@ class StackTest(PForTestCase):
 
 # TODO(agarwal): test nested while_loops. This currently requires converting a
 # tf.cond.
-class ControlFlowTest(PForTestCase):
+class WhileV1Test(PForTestCase):
 
   def test_while_outside_loop(self):
 
@@ -1207,6 +1225,78 @@ def create_dynamic_lstm(cell_fn, batch_size, state_size, max_steps):
       sequence_length=sequence_length,
       initial_state=cell.zero_state(batch_size, dtypes.float32))
   return pfor_output, tf_output
+
+
+@test_util.run_all_in_graph_and_eager_modes
+@test_util.with_control_flow_v2
+class StatelessIfTest(PForTestCase):
+
+  def test_loop_variant_cond(self):
+    x = [1, 2, 3, 4, 5.]
+    y = 2.5
+
+    @def_function.function
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      # Note that the output has a combination of then and else branches being
+      # loop variant / invariant.
+      return cond_v2.cond_v2(
+          x_i < y,
+          lambda: (y - x_i, y, 1., 2.),
+          lambda: (x_i - y, 0., y, 3.))
+
+    self._test_loop_fn(loop_fn, iters=5)
+
+  def test_loop_invariant_cond(self):
+    x = [1, 2, 3, 4, 5.]
+    y = 0.5
+    z = random_ops.random_uniform([])
+
+    @def_function.function
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      # Note that the output has a combination of then and else branches being
+      # loop variant / invariant.
+      return cond_v2.cond_v2(
+          z < y,
+          lambda: (y - x_i, y, 1., 2.),
+          lambda: (x_i - y, 0., y, 3.))
+
+    self._test_loop_fn(loop_fn, iters=5)
+
+  def test_empty_branch(self):
+    x = [1, 2, 3, 4, 5.]
+    y = 6.
+
+    @def_function.function
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      return cond_v2.cond_v2(
+          x_i < y,  # Note that else branch is empty.
+          lambda: (y - x_i, y, 1., 2.),
+          lambda: (x_i - y, 0., y, 3.))
+
+    self._test_loop_fn(loop_fn, iters=5)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+@test_util.with_control_flow_v2
+class IfTest(PForTestCase):
+
+  def test_read_var(self):
+    x = [1, 2, 3, 4, 5.]
+    y = 2.5
+    z = resource_variable_ops.ResourceVariable(5.)
+
+    @def_function.function
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      return cond_v2.cond_v2(
+          x_i < y,
+          lambda: z - x_i,
+          lambda: z + x_i)
+
+    self._test_loop_fn(loop_fn, iters=5)
 
 
 class RNNTest(PForTestCase):
@@ -1600,6 +1690,65 @@ class PartitionedCallTest(PForTestCase):
       return out, g.gradient(out, z_i)
 
     self._test_loop_fn(loop_fn, 4)
+
+
+class SpectralTest(PForTestCase, parameterized.TestCase):
+
+  @parameterized.parameters(
+      (fft_ops.fft,),
+      (fft_ops.fft2d,),
+      (fft_ops.fft3d,),
+      (fft_ops.ifft,),
+      (fft_ops.ifft2d,),
+      (fft_ops.ifft3d,),
+  )
+  def test_fft(self, op_func):
+    shape = [2, 3, 4, 3, 4]
+    x = np.random.uniform(size=shape) + 1j * np.random.uniform(size=shape)
+
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      return op_func(x_i)
+
+    self._test_loop_fn(loop_fn, 2)
+
+  @parameterized.parameters(
+      (fft_ops.rfft,),
+      (fft_ops.rfft2d,),
+      (fft_ops.rfft3d,),
+  )
+  def test_rfft(self, op_func):
+    for dtype in (dtypes.float32, dtypes.float64):
+      x = random_ops.random_uniform([2, 3, 4, 3, 4], dtype=dtype)
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        x_i = array_ops.gather(x, i)
+        return op_func(x_i)
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 2)
+
+  @parameterized.parameters(
+      (fft_ops.irfft,),
+      (fft_ops.irfft2d,),
+      (fft_ops.irfft3d,),
+  )
+  def test_irfft(self, op_func):
+    for dtype in (dtypes.complex64, dtypes.complex128):
+      shape = [2, 3, 4, 3, 4]
+      x = np.random.uniform(size=shape) + 1j * np.random.uniform(size=shape)
+      x = math_ops.cast(x, dtype=dtype)
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        x_i = array_ops.gather(x, i)
+        return op_func(x_i)
+
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 2)
 
 
 class VariableTest(PForTestCase):

@@ -78,7 +78,7 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
 # The default value of `experimental_new_converter`.
-_USE_EXPERIMENTAL_NEW_CONVERTER = False
+_USE_EXPERIMENTAL_NEW_CONVERTER = True
 
 
 @_tf_export("lite.Optimize")

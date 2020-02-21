@@ -101,7 +101,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   def test_dynamic_layer_error_running_in_graph_mode(self):
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       model = testing_utils.get_model_from_layers([DynamicLayer(dynamic=True)],
                                                   input_shape=(3,))
       self.assertEqual(model.dynamic, True)
@@ -187,7 +187,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model.compile(rmsprop.RMSprop(0.001), loss='mse')
     self.assertEqual(model.run_eagerly, True)
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
-    self.assertEqual(model.outputs, [None])
+    self.assertEqual(model.outputs, None)
 
   def test_dynamic_subclassed_model_with_shape_inference(self):
 
@@ -210,8 +210,10 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model = MyModel()
     self.assertEqual(model.dynamic, True)
     model.compile(rmsprop.RMSprop(0.001), loss='mse')
-    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
-    self.assertEqual(model.outputs[0].shape.as_list(), [None, 3])
+    x, y = np.random.random((2, 3)), np.random.random((2, 3))
+    model.train_on_batch(x, y)
+    outputs = model(x)
+    self.assertEqual(outputs.shape.as_list(), [2, 3])
 
   def test_deepcopy(self):
     with context.eager_mode():
@@ -328,42 +330,6 @@ class BaseLayerTest(keras_parameterized.TestCase):
     # Test setting.
     keras.backend.set_learning_phase(1)
     self.assertEqual(get_learning_phase_value(), 1)
-    keras.backend.set_learning_phase(0)
-    self.assertEqual(get_learning_phase_value(), 0)
-
-  @keras_parameterized.run_all_keras_modes
-  def test_learning_phase_freezing_for_layers_in_predict(self):
-    if not (testing_utils.should_run_eagerly() or
-            testing_utils.should_run_tf_function()):
-      self.skipTest('Predict fails to override the outer learning phase in'
-                    'the FuncGraph path.')
-
-    class LearningPhaseLayer(keras.layers.Layer):
-
-      def call(self, inputs):
-        return keras.backend.in_train_phase(
-            lambda: array_ops.ones_like(inputs),
-            lambda: array_ops.zeros_like(inputs))
-
-    def get_learning_phase_value():
-      model = keras.models.Sequential([LearningPhaseLayer(input_shape=(1,))])
-      model._run_eagerly = testing_utils.should_run_eagerly()
-      model._experimental_run_tf_function = (
-          testing_utils.should_run_tf_function())
-      return np.sum(model.predict(np.ones((1, 1))))
-
-    self.assertEqual(get_learning_phase_value(), 0)
-
-    # Test scope.
-    with keras.backend.learning_phase_scope(1):
-      self.assertEqual(get_learning_phase_value(), 0)
-
-    # The effects of the scope end after exiting it.
-    self.assertEqual(get_learning_phase_value(), 0)
-
-    # Test setting.
-    keras.backend.set_learning_phase(1)
-    self.assertEqual(get_learning_phase_value(), 0)
     keras.backend.set_learning_phase(0)
     self.assertEqual(get_learning_phase_value(), 0)
 
@@ -535,7 +501,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
     # `__init__` includes kwargs but `get_config` is not overridden, so
     # an error should be thrown:
-    with self.assertRaises(NotImplementedError):
+    with self.assertRaisesRegexp(NotImplementedError, 'Layer MyLayer has'):
       MyLayer('custom').get_config()
 
     class MyLayerNew(keras.layers.Layer):
@@ -962,7 +928,7 @@ class NameScopingTest(keras_parameterized.TestCase):
     self.assertEqual(sublayer.active_name_scope, 'MyName2/Sublayer')
 
   def test_name_scope_tf_tensor(self):
-    x = ops.convert_to_tensor(np.ones((10, 10)))
+    x = ops.convert_to_tensor_v2(np.ones((10, 10)))
     layer = keras.layers.Dense(
         10, activation=keras.layers.ReLU(name='MyAct'), name='MyName3')
     layer(x)

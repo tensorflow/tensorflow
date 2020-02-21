@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
+#include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -222,7 +223,7 @@ TensorHandle::TensorHandle(std::unique_ptr<EmptyLocalTensorHandleData> t,
       implicit_mirroring_(false),
       is_ready_(!async),
       tensor_handle_data_(std::move(t)) {
-  DVLOG(3) << "Creating Async Local TensorHandle: " << this
+  DVLOG(3) << "Creating empty Local TensorHandle: " << this
            << " device: " << VariantDeviceDebugString(device_);
 }
 
@@ -494,6 +495,26 @@ Status TensorHandle::NumElements(int64* num_elements) const {
   }
 }
 
+Status TensorHandle::Unprotect(const Device* d) {
+  if (d == absl::get<Device*>(device_)) {
+    return tensor_handle_data_->Unprotect();
+  }
+
+  tf_shared_lock l(mu_);
+  auto mirror = local_mirrors_.find(d);
+  if (mirror != local_mirrors_.end()) {
+    return mirror->second->Unprotect();
+  }
+
+  auto empty_mirror = empty_local_mirrors_.find(d);
+  if (empty_mirror != empty_local_mirrors_.end()) {
+    return errors::Internal("Attempted to unprotect an empty mirror");
+  }
+
+  return errors::Internal("Invalid device: ", d,
+                          " in Unprotect call to handle: ", this);
+}
+
 bool TensorHandle::HasLocalMirror(Device* d) {
   mutex_lock l(mu_);
   auto mirror = local_mirrors_.find(d);
@@ -653,7 +674,7 @@ Status TensorHandle::SetRemoteShape(const TensorShape& shape,
     return Status::OK();
   }
 
-  DCHECK(is_remote_) << "SeRemoteShape is only called on remote handles.";
+  DCHECK(is_remote_) << "SetRemoteShape is only called on remote handles.";
   DCHECK(!IsReady()) << "SetRemoteShape is only called on non-ready handles.";
 
   UnshapedRemoteTensorHandleData* p =
@@ -788,12 +809,17 @@ bool VariantDeviceIsCustom(
   return variant_device.index() != 0;
 }
 
-string VariantDeviceDebugString(
-    absl::variant<Device*, CustomDevice*> variant_device) {
-  if (VariantDeviceIsCustom(variant_device)) {
-    return absl::get<CustomDevice*>(variant_device)->name();
+string VariantDeviceName(absl::variant<Device*, CustomDevice*> device) {
+  return absl::visit([](auto* device) { return device->name(); }, device);
+}
+
+string VariantDeviceDebugString(absl::variant<Device*, CustomDevice*> device) {
+  if (device == kVariantDeviceNull) {
+    return "[]";
+  } else if (VariantDeviceIsCustom(device)) {
+    return absl::get<CustomDevice*>(device)->name();
   } else {
-    return absl::get<Device*>(variant_device)->DebugString();
+    return absl::get<Device*>(device)->DebugString();
   }
 }
 
@@ -816,7 +842,7 @@ string TensorHandle::DebugString() const {
   string device_debug = VariantDeviceDebugString(device_);
   strings::StrAppend(&out, "Device: ", device_debug);
   bool is_cpu =
-      !VariantDeviceIsCustom(device_) && absl::get<Device*>(device_) != nullptr;
+      !VariantDeviceIsCustom(device_) && device_ != kVariantDeviceNull;
   // Consider supporting non-CPU tensors and CPU tensors with a device_ set to
   // non-NULL if needed.
   strings::StrAppend(&out, ", Tensor: ",

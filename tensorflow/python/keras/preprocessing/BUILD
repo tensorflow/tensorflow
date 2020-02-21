@@ -26,10 +26,12 @@ py_library(
     name = "image",
     srcs = [
         "image.py",
+        "image_pipeline.py",
     ],
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras/layers/preprocessing:image_preprocessing",
         "//tensorflow/python/keras/utils:data_utils",
     ],
 )
@@ -61,6 +63,20 @@ tf_py_test(
     deps = [
         ":image",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "image_pipeline_test",
+    size = "small",
+    srcs = ["image_pipeline_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":image",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )

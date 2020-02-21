@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <initializer_list>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <string>
@@ -1444,12 +1445,14 @@ bool NNAPIDelegateKernel::Validate(
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       auto builtin = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
       // TODO(b/138756912): Large filter window would overflow on the
-      // reference CPU path.
-      Expect(is_accelerator_specified ||
-                 (builtin->filter_width * builtin->filter_height <= 256),
-             NNAPIValidationFailureType::kUnsupportedOperandSize,
-             "Large filter window would overflow on the reference CPU path",
-             &val_ctx);
+      // quantized reference CPU path.
+      if (IsQuantized(context->tensors[node->inputs->data[0]].type)) {
+        Expect(is_accelerator_specified ||
+                   (builtin->filter_width * builtin->filter_height <= 256),
+               NNAPIValidationFailureType::kUnsupportedOperandSize,
+               "Large filter window would overflow on the reference CPU path",
+               &val_ctx);
+      }
     } break;
     case kTfLiteBuiltinMaxPool2d: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
@@ -2195,7 +2198,7 @@ bool NNAPIDelegateKernel::Validate(
              "NNAPI only supports constant int32 axis tensor.", &val_ctx);
     } break;
     case kTfLiteBuiltinSplit: {
-      ExpectOpVersion(version, 1, &val_ctx);
+      ExpectOpVersion(version, 3, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       // Tensor indices: split_dim: 0, value: 1
@@ -3848,6 +3851,8 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
     delegate_data_.model_token = options.model_token;
   }
   delegate_data_.disallow_nnapi_cpu = options.disallow_nnapi_cpu;
+  delegate_data_.max_number_delegated_partitions =
+      options.max_number_delegated_partitions;
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
   Prepare = DoPrepare;
@@ -3875,6 +3880,8 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
                             ? nullptr
                             : delegate_data->model_token.c_str();
   options.disallow_nnapi_cpu = delegate_data->disallow_nnapi_cpu;
+  options.max_number_delegated_partitions =
+      delegate_data->max_number_delegated_partitions;
   return options;
 }
 
@@ -3941,6 +3948,110 @@ int StatefulNnApiDelegate::GetNnApiErrno() const {
 using ::tflite::delegate::nnapi::kMinSdkVersionForNNAPI;
 using ::tflite::delegate::nnapi::kMinSdkVersionForNNAPI12;
 
+namespace {
+
+std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
+    const std::vector<int>& data) {
+  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> result(
+      TfLiteIntArrayCreate(data.size()));
+  std::copy(data.begin(), data.end(), result->data);
+  return result;
+}
+}  // namespace
+
+// static
+TfLiteStatus StatefulNnApiDelegate::GetNodesSupportedByAccelerator(
+    TfLiteContext* context, TfLiteDelegate* delegate, const NnApi* nnapi,
+    const std::vector<int>& supported_nodes,
+    std::vector<int>* device_supported_nodes, int* num_partitions,
+    TfLiteDelegateParams** params_array, int* nnapi_errno) {
+  auto* delegate_data = static_cast<Data*>(delegate->data_);
+  // The first entry in the array is the element count
+
+  auto supported_nodes_int_array = BuildTfLiteIntArray(supported_nodes);
+  TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
+      context, supported_nodes_int_array.get(), params_array, num_partitions));
+  // For each partition check if which nodes are actually supported by the
+  // target accelerators.
+  delegate_data->delegate_state_cache.clear();
+  for (int idx = 0; idx < *num_partitions; idx++) {
+    const auto& partition_params = (*params_array)[idx];
+    auto kernel_state = absl::make_unique<NNAPIDelegateKernel>(nnapi);
+    TfLiteDelegateParams params_with_delegate = partition_params;
+    params_with_delegate.delegate = delegate;
+    TF_LITE_ENSURE_STATUS(
+        kernel_state->Init(context, &params_with_delegate, nnapi_errno));
+    std::vector<int> supported_partition_nodes;
+    TF_LITE_ENSURE_STATUS(
+        kernel_state->GetOperationsSupportedByTargetNnApiDevices(
+            context, &supported_partition_nodes, nnapi_errno));
+    device_supported_nodes->insert(device_supported_nodes->end(),
+                                   supported_partition_nodes.begin(),
+                                   supported_partition_nodes.end());
+
+    bool model_fully_supported = (supported_partition_nodes.size() ==
+                                  partition_params.nodes_to_replace->size);
+    if (model_fully_supported) {
+      delegate_data->CacheDelegateKernel(&partition_params,
+                                         kernel_state.release());
+    }
+  }
+
+  if (device_supported_nodes->size() != supported_nodes.size()) {
+    // We changed the set of nodes to delegate this will create a different
+    // partitioning layout.
+    auto device_sup_nodes_int_array =
+        BuildTfLiteIntArray(*device_supported_nodes);
+    TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
+        context, device_sup_nodes_int_array.get(), params_array,
+        num_partitions));
+  }
+
+  return kTfLiteOk;
+}
+
+// static
+TfLiteStatus StatefulNnApiDelegate::LimitDelegatedPartitions(
+    int max_partitions,
+    std::vector<TfLiteDelegateParams> partition_params_array,
+    std::vector<int>* nodes_to_delegate) {
+  int num_partitions = partition_params_array.size();
+  if (max_partitions <= 0 || num_partitions <= max_partitions) {
+    return kTfLiteOk;
+  }
+
+  int number_delegated_partitions = std::count_if(
+      partition_params_array.begin(), partition_params_array.end(),
+      [nodes_to_delegate](const TfLiteDelegateParams& partition_params) {
+        return std::find(nodes_to_delegate->begin(), nodes_to_delegate->end(),
+                         partition_params.nodes_to_replace->data[0]) !=
+               nodes_to_delegate->end();
+      });
+
+  if (number_delegated_partitions > max_partitions) {
+    std::sort(partition_params_array.begin(), partition_params_array.end(),
+              [](const TfLiteDelegateParams& left,
+                 const TfLiteDelegateParams& right) -> bool {
+                // Reverse sort
+                return left.nodes_to_replace->size >
+                       right.nodes_to_replace->size;
+              });
+
+    nodes_to_delegate->clear();
+
+    for (int i = 0; i < max_partitions; i++) {
+      const TfLiteDelegateParams& partition_params = partition_params_array[i];
+
+      nodes_to_delegate->insert(nodes_to_delegate->end(),
+                                partition_params.nodes_to_replace->data,
+                                partition_params.nodes_to_replace->data +
+                                    partition_params.nodes_to_replace->size);
+    }
+  }
+
+  return kTfLiteOk;
+}
+
 TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
                                               TfLiteDelegate* delegate) {
   auto* delegate_data = static_cast<Data*>(delegate->data_);
@@ -3996,10 +4107,8 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
       }
     }
   }
-  // Allocate one element in vector already since TensorFlow Lite uses
-  // the first value as the number of nodes. The actual value will be set
-  // later, after the vector has been filled.
-  std::vector<int> supported_nodes(1);
+
+  std::vector<int> supported_nodes;
   // We don't care about all nodes_, we only care about ones in the
   // current plan.
   TfLiteIntArray* plan;
@@ -4019,11 +4128,9 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
       supported_nodes.push_back(node_index);
     }
   }
-  // First element in vector must be the number of actual nodes.
-  supported_nodes[0] = supported_nodes.size() - 1;
 
   // If there are no delegated nodes, short-circuit node replacement.
-  if (!supported_nodes[0]) {
+  if (supported_nodes.empty()) {
     return kTfLiteOk;
   }
 
@@ -4080,40 +4187,20 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
 
   std::vector<int>& nodes_to_delegate = supported_nodes;
   if (is_accelerator_specified) {
+    std::vector<int> device_supported_nodes;
+    int num_partitions;
     TfLiteDelegateParams* params_array;
-    int num_partitions = 0;
-    // The first entry in the array is the element count
-    std::vector<int> device_supported_nodes(1);
-    TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
-        context, reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()),
-        &params_array, &num_partitions));
-    // For each partition check if which nodes are actually supported by the
-    // target accelerators.
-    delegate_data->delegate_state_cache.clear();
-    for (int idx = 0; idx < num_partitions; idx++) {
-      const auto& partition_params = params_array[idx];
-      auto kernel_state = absl::make_unique<NNAPIDelegateKernel>(nnapi);
-      TfLiteDelegateParams params_with_delegate = partition_params;
-      params_with_delegate.delegate = delegate;
-      TF_LITE_ENSURE_STATUS(
-          kernel_state->Init(context, &params_with_delegate, nnapi_errno));
-      std::vector<int> supported_partition_nodes;
-      TF_LITE_ENSURE_STATUS(
-          kernel_state->GetOperationsSupportedByTargetNnApiDevices(
-              context, &supported_partition_nodes, nnapi_errno));
-      device_supported_nodes.insert(device_supported_nodes.end(),
-                                    supported_partition_nodes.begin(),
-                                    supported_partition_nodes.end());
 
-      bool model_fully_supported = (supported_partition_nodes.size() ==
-                                    partition_params.nodes_to_replace->size);
-      if (model_fully_supported) {
-        delegate_data->CacheDelegateKernel(&partition_params,
-                                           kernel_state.release());
-      }
-    }
+    TF_LITE_ENSURE_STATUS(GetNodesSupportedByAccelerator(
+        context, delegate, nnapi, supported_nodes, &device_supported_nodes,
+        &num_partitions, &params_array, nnapi_errno));
 
-    device_supported_nodes[0] = device_supported_nodes.size() - 1;
+    TF_LITE_ENSURE_STATUS(LimitDelegatedPartitions(
+        delegate_options.max_number_delegated_partitions,
+        std::vector<TfLiteDelegateParams>(params_array,
+                                          params_array + num_partitions),
+        &device_supported_nodes));
+
     nodes_to_delegate = device_supported_nodes;
   }
 
@@ -4122,9 +4209,10 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
   } else {
     // Request TFLite to partition the graph and make kernels
     // for each independent node sub set a new nnapi_delegate_kernel.
+    auto nodes_to_delegate_int_array = BuildTfLiteIntArray(nodes_to_delegate);
     return context->ReplaceNodeSubsetsWithDelegateKernels(
-        context, nnapi_delegate_kernel,
-        reinterpret_cast<TfLiteIntArray*>(nodes_to_delegate.data()), delegate);
+        context, nnapi_delegate_kernel, nodes_to_delegate_int_array.get(),
+        delegate);
   }
 }
 

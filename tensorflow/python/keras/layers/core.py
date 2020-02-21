@@ -165,7 +165,7 @@ class Dropout(Layer):
     noise_shape = []
     for i, value in enumerate(self.noise_shape):
       noise_shape.append(concrete_inputs_shape[i] if value is None else value)
-    return ops.convert_to_tensor(noise_shape)
+    return ops.convert_to_tensor_v2(noise_shape)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -1126,8 +1126,7 @@ class Dense(Layer):
       raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
     last_dim = tensor_shape.dimension_value(input_shape[-1])
-    self.input_spec = InputSpec(min_ndim=2,
-                                axes={-1: last_dim})
+    self.input_spec = InputSpec(min_ndim=2, axes={-1: last_dim})
     self.kernel = self.add_weight(
         'kernel',
         shape=[last_dim, self.units],

@@ -34,18 +34,6 @@ TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Op* op_to_reset,
                                        const char* raw_device_name,
                                        TF_Status* status);
 
-TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
-                                              TF_Status* status);
-
-// Start a profiler grpc server which listens to specified port. It will start
-// the server on its own thread. It can be shutdown by terminating tensorflow.
-// It can be used in both Eager mode and graph mode. Creating multiple profiler
-// server is allowed. The service defined in
-// tensorflow/contrib/tpu/profiler/tpu_profiler.proto. Please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile to capture trace file
-// following https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern void TFE_StartProfilerServer(int port);
-
 // Enables only graph collection in RunMetadata on the functions executed from
 // this context.
 TF_CAPI_EXPORT extern void TFE_ContextEnableGraphCollection(TFE_Context* ctx);
@@ -53,29 +41,6 @@ TF_CAPI_EXPORT extern void TFE_ContextEnableGraphCollection(TFE_Context* ctx);
 // Disables only graph collection in RunMetadata on the functions executed from
 // this context.
 TF_CAPI_EXPORT extern void TFE_ContextDisableGraphCollection(TFE_Context* ctx);
-
-// Send a grpc request to profiler server (service_addr) to perform on-demand
-// profiling and save the result into logdir which can be visualized by
-// TensorBoard. worker_list is the list of worker TPUs separated by ','. Set
-// include_dataset_opts to false to profile longer traces. It will block the
-// caller thread until receives tracing result.
-// This API is designed for TensorBoard, for end user, please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile instead following
-// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern bool TFE_ProfilerClientStartTracing(
-    const char* service_addr, const char* logdir, const char* worker_list,
-    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
-    TF_Status* status);
-
-// Send a grpc request to profiler server (service_addr) to perform on-demand
-// monitoring and return the result in a string. It will block the
-// caller thread until receiving the monitoring result.
-// This API is designed for TensorBoard, for end user, please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile instead following
-// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern void TFE_ProfilerClientMonitor(
-    const char* service_addr, int duration_ms, int monitoring_level,
-    bool display_timestamp, TF_Buffer* result, TF_Status* status);
 
 // TODO(fishx): Move these monitoring APIs into a separate file.
 // -----------------------------------------------------------------------------
@@ -456,7 +421,27 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
 TF_CAPI_EXPORT extern void TFE_HostAddressSpace(TFE_Context* ctx,
                                                 TF_Buffer* buf);
 
-#define TFE_CUSTOM_DEVICE_VERSION 0
+// APIs for generically dealing with op attributes (e.g. when forwarding them
+// through custom device implementations).
+//
+// TODO(allenl): Currently these are black boxes, but we should have some way to
+// inspect values. This would let people e.g. copy over most attributes and then
+// modify some based on their values.
+
+// A reference to an op's name -> attribute mapping
+typedef struct TFE_OpAttrs TFE_OpAttrs;
+
+// Fetch a struct with a reference to information about attributes of `op`.
+//
+// The `attrs` struct does not own any memory, and `op` must outlive it.
+TF_CAPI_EXPORT extern void TFE_OpGetAttrs(TFE_Op* op, TFE_OpAttrs* attrs);
+
+// Add attributes in `attrs` to `op`.
+//
+// Does not overwrite or update existing attributes, but adds new ones.
+TF_CAPI_EXPORT extern void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs);
+
+#define TFE_CUSTOM_DEVICE_VERSION 1
 
 // Struct to be filled in
 typedef struct TFE_CustomDevice {
@@ -473,10 +458,10 @@ typedef struct TFE_CustomDevice {
                                                void* device_info);
 
   // Method to execute an operation.
-  // TODO(allenl) figure out a generic way of passing attrs here
   void (*execute)(int num_inputs, TFE_TensorHandle** inputs,
-                  const char* operation_name, int* num_outputs,
-                  TFE_TensorHandle** outputs, TF_Status* s, void* device_info);
+                  const char* operation_name, const TFE_OpAttrs* attributes,
+                  int* num_outputs, TFE_TensorHandle** outputs, TF_Status* s,
+                  void* device_info);
 
   // Method to delete a device.
   void (*delete_device)(void* device_info);
@@ -506,6 +491,11 @@ typedef struct TFE_CustomDevice {
 // is added.
 void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
                               const char* device_name, void* device_info);
+
+TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
+                                                     const char* function_name,
+                                                     TF_Buffer* buf,
+                                                     TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

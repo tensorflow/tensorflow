@@ -552,7 +552,7 @@ class Layer(base_layer.Layer):
     return outputs
 
   def __deepcopy__(self, memo):
-    no_copy = set(['_graph', '_thread_local'])
+    no_copy = set(['_graph', '_thread_local', '_metrics_lock'])
     shallow_copy = set(['_scope', '_always_reuse_variable_scope'])
     cls = self.__class__
     result = cls.__new__(cls)

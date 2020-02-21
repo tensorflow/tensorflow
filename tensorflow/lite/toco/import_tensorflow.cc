@@ -2410,9 +2410,6 @@ tensorflow::Status ConvertUnidirectionalSequenceLstm(
   DCHECK_EQ(node.op(), "UnidirectionalSequenceLstm");
 
   const auto& indices = GetListAttr(node, "_tflite_input_indices");
-  if (indices.i_size() != node.input().size()) {
-    return tensorflow::errors::InvalidArgument("Input size does not match.");
-  }
 
   auto* op = new UnidirectionalSequenceLstmOperator();
 
@@ -2421,20 +2418,38 @@ tensorflow::Status ConvertUnidirectionalSequenceLstm(
   const int kInputsSize = 20;
 
   op->inputs.resize(kInputsSize);
-  std::vector<bool> done(kInputsSize);
-  int idx = 0;
-  for (const string& input : node.input()) {
-    int real_index = indices.i(idx);
-    op->inputs[real_index] = (input);
-    done[real_index] = true;
-    idx++;
-  }
 
-  for (int idx = 0; idx < done.size(); idx++) {
-    if (!done[idx]) {
-      string optional_name = node.name() + "_" + std::to_string(idx);
-      model->CreateOptionalArray(optional_name);
-      op->inputs[idx] = optional_name;
+  if (indices.i_size() != node.input().size()) {
+    // New version, the optional inputs are filled with constant nodes.
+    int count = 0;
+    for (int idx = 0; idx < kInputsSize; ++idx) {
+      if (count < indices.i_size() && indices.i(count) == idx) {
+        // Specified input.
+        op->inputs[idx] = node.input(idx);
+        count++;
+      } else {
+        // Optional input.
+        string optional_name = node.name() + "_" + std::to_string(idx);
+        model->CreateOptionalArray(optional_name);
+        op->inputs[idx] = optional_name;
+      }
+    }
+  } else {  // Legacy version.
+    std::vector<bool> done(kInputsSize);
+    int idx = 0;
+    for (const string& input : node.input()) {
+      int real_index = indices.i(idx);
+      op->inputs[real_index] = (input);
+      done[real_index] = true;
+      idx++;
+    }
+
+    for (int idx = 0; idx < done.size(); idx++) {
+      if (!done[idx]) {
+        string optional_name = node.name() + "_" + std::to_string(idx);
+        model->CreateOptionalArray(optional_name);
+        op->inputs[idx] = optional_name;
+      }
     }
   }
 

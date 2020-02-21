@@ -38,6 +38,7 @@ enum class CompilerOptions {
   //   This define is actually -qcom-accelerate-16-bit, but it controls SIMD
   //   size.
   ADRENO_FULL_SIMD_LINE,
+  ADRENO_MORE_WAVES,
   POWERVR_FP16,
   CL_OPT_DISABLE
 };

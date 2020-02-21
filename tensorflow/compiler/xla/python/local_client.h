@@ -287,6 +287,10 @@ class PyLocalExecutable {
     return size;
   }
 
+  const std::vector<std::shared_ptr<LocalExecutable>>& executables() const {
+    return executables_;
+  }
+
   const DeviceAssignment& device_assignment() const {
     return *device_assignment_;
   }

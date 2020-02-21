@@ -1210,10 +1210,7 @@ Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
   return Status::OK();
 }
 
-namespace {
-
-
-}  // namespace
+namespace {}  // namespace
 
 Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
   VLOG(2) << "AllReduce; replica count: " << hlo_module_config_.replica_count()
@@ -1226,13 +1223,37 @@ Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
                                NcclAllReduceThunk::CanImplement(crs);
 
   if (should_use_nccl_thunk) {
-    CHECK(crs->operand(0)->shape().IsArray())
-        << "Operands to all-reduce must be arrays: " << crs->ToString();
-    AddThunkToThunkSequence(absl::make_unique<NcclAllReduceThunk>(
+    std::vector<NcclAllReduceThunk::Buffer> buffers;
+    std::vector<BufferAllocation::Slice> tuple_element_buffers;
+    buffers.resize(crs->operand_count());
+    tuple_element_buffers.reserve(crs->operand_count());
+    CHECK(crs->shape().IsArray() && crs->operand_count() == 1 ||
+          crs->shape().IsTuple() &&
+              crs->shape().tuple_shapes_size() == crs->operand_count());
+    for (int i = 0; i < crs->operand_count(); ++i) {
+      CHECK(crs->operand(i)->shape().IsArray())
+          << "Operands to all-reduce must be arrays: " << crs->ToString();
+      buffers[i].element_count =
+          ShapeUtil::ElementsIn(crs->operand(i)->shape());
+      buffers[i].source_buffer = GetAllocationSlice(*crs->operand(i));
+      buffers[i].destination_buffer = GetAllocationSlice(
+          *crs, crs->shape().IsTuple() ? ShapeIndex({i}) : ShapeIndex({}));
+      tuple_element_buffers.push_back(buffers[i].destination_buffer);
+    }
+    auto all_reduce_thunk = absl::make_unique<NcclAllReduceThunk>(
         /*replica_count=*/hlo_module_config_.replica_count(),
-        /*elements=*/ShapeUtil::ElementsIn(crs->operand(0)->shape()),
-        /*source_address=*/GetAllocationSlice(*crs->operand(0)),
-        /*destination_buffer=*/GetAllocationSlice(*crs), crs));
+        /*buffers=*/std::move(buffers), crs);
+    if (crs->shape().IsTuple()) {
+      std::vector<std::unique_ptr<Thunk>> thunks;
+      thunks.push_back(std::move(all_reduce_thunk));
+      thunks.push_back(absl::make_unique<TupleThunk>(
+          tuple_element_buffers, GetAllocationSlice(*crs), nullptr));
+      AddThunkToThunkSequence(
+          absl::make_unique<SequentialThunk>(std::move(thunks), crs));
+    } else {
+      AddThunkToThunkSequence(std::move(all_reduce_thunk));
+    }
+
     return Status::OK();
   }
 
@@ -1957,32 +1978,32 @@ void IrEmitterUnnested::EmitTile(
   //
   // TODO(cheshire): Once ptxas is fixed and TF switches to it, remove the
   // workaround.
-  ksl->For(
-      loop_name + "_y_in_tile",
-      /*start=*/constant(0),
-      /*end=*/
-      ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
-                    num_threads_y),
-      /*step=*/constant(1), [&](llvm::Value* y_indvar) {
-        llvm::Value* y_loc = b_.CreateAdd(
-            thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
-        for (int64 j = 0; j < x_num_steps; j++) {
-          llvm::Value* x_loc =
-              b_.CreateAdd(constant(j * step_x), start_offset_x, "x_loc");
-          IrArray::Index source_idx_x =
-              source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
-                  .AddOffsetToDim(constant(j * step_x), kDimX, &b_);
-          auto emit_element = [&] {
-            return emit_elem_function(source_idx_x, y_loc, x_loc, j);
-          };
-          if (!x_tile_fits) {
-            ksl->If(loop_name + "_x_in_tile",
-                    b_.CreateICmpULT(x_loc, tile_width), emit_element);
-          } else {
-            emit_element();
-          }
-        }
-      });
+  ksl->For(loop_name + "_y_in_tile",
+           /*start=*/constant(0),
+           /*end=*/
+           ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
+                         num_threads_y),
+           /*step=*/constant(1), [&](llvm::Value* y_indvar) {
+             llvm::Value* y_loc =
+                 b_.CreateAdd(thread_id_info.thread_id_y,
+                              b_.CreateMul(y_indvar, num_threads_y));
+             for (int64 j = 0; j < x_num_steps; j++) {
+               llvm::Value* x_loc =
+                   b_.CreateAdd(constant(j * step_x), start_offset_x, "x_loc");
+               IrArray::Index source_idx_x =
+                   source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
+                       .AddOffsetToDim(constant(j * step_x), kDimX, &b_);
+               auto emit_element = [&] {
+                 return emit_elem_function(source_idx_x, y_loc, x_loc, j);
+               };
+               if (!x_tile_fits) {
+                 ksl->If(loop_name + "_x_in_tile",
+                         b_.CreateICmpULT(x_loc, tile_width), emit_element);
+               } else {
+                 emit_element();
+               }
+             }
+           });
 }
 
 // Emits code to process a tensor element in a tile for the given kCopy HLO that
@@ -2127,29 +2148,36 @@ void IrEmitterUnnested::EmitPrologueForReduction(
       Store(init_ir_value,
             InBoundsGEP(partial_result_address, {b_.getInt32(i)}));
     }
+    reduction_info->GetMutableInitialValues()->push_back(init_ir_value);
 
-    // Allocate __shared__ cache[num_partial_results][num_threads][num_threads +
-    // 1], where num_threads == num_threads_x == num_threads_y.  The "+1" is
-    // used to avoid bank conflicts.
-    if (!reduction_info->IsRowReduction()) {
-      auto& mapping_scheme = reduction_info->GetKernelMappingScheme();
-      int64 num_threads = mapping_scheme.GetNumThreadsX();
-      CHECK_EQ(num_threads, mapping_scheme.GetNumThreadsY());
-      llvm::Type* primitive_type = llvm_ir::PrimitiveTypeToIrType(
-          reduce_inst->shape().element_type(), module_);
-      llvm::Type* buffer_type = llvm::ArrayType::get(
-          llvm::ArrayType::get(
-              llvm::ArrayType::get(primitive_type, num_threads + 1),
-              num_threads),
-          num_partial_results);
-
-      llvm::GlobalVariable* shared_cache_per_reduce =
-          llvm_ir::AllocateSharedMemoryTile(b_.GetInsertBlock()->getModule(),
-                                            buffer_type,
-                                            absl::StrCat("shared_cache_", i));
-      reduction_info->GetMutableSharedCache()->push_back(
-          shared_cache_per_reduce);
-    }
+    auto& mapping_scheme = reduction_info->GetKernelMappingScheme();
+    int64 num_threads_x = mapping_scheme.GetNumThreadsX();
+    llvm::Type* primitive_type = llvm_ir::PrimitiveTypeToIrType(
+        reduce_inst->shape().element_type(), module_);
+    llvm::Type* buffer_type = [&] {
+      if (reduction_info->IsRowReduction()) {
+        // Allocate __shared__ cache[num_partial_results][num_threads].
+        return llvm::ArrayType::get(
+            llvm::ArrayType::get(primitive_type, num_threads_x),
+            num_partial_results);
+      } else {
+        // Allocate __shared__
+        // cache[num_partial_results][num_threads][num_threads + 1], where
+        // num_threads == num_threads_x == num_threads_y.  The "+1" is used to
+        // avoid bank conflicts.
+        CHECK_EQ(num_threads_x, mapping_scheme.GetNumThreadsY());
+        return llvm::ArrayType::get(
+            llvm::ArrayType::get(
+                llvm::ArrayType::get(primitive_type, num_threads_x + 1),
+                num_threads_x),
+            num_partial_results);
+      }
+    }();
+    llvm::GlobalVariable* shared_cache_per_reduce =
+        llvm_ir::AllocateSharedMemoryTile(b_.GetInsertBlock()->getModule(),
+                                          buffer_type,
+                                          absl::StrCat("shared_cache_", i));
+    reduction_info->GetMutableSharedCache()->push_back(shared_cache_per_reduce);
   }
 }
 
@@ -2241,13 +2269,6 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
   int num_reduces = reducers.size();
   absl::Span<llvm::AllocaInst* const> partial_result_addresses =
       reduction_info.GetPartialResultAddresses();
-  if (reduction_info.IsRowReduction()) {
-    EmitFullWarpShuffleDownLoopForAllReduces(reducers,
-                                             partial_result_addresses);
-    llvm_ir::LlvmIfData if_lane_id_is_zero_data = llvm_ir::EmitIfThenElse(
-        ICmpEQ(thread_id_info.lane_id, constant(0)), "lane_id_is_zero", &b_);
-    llvm_ir::SetToFirstInsertPoint(if_lane_id_is_zero_data.true_block, &b_);
-  }
 
   int num_partial_results = GetNumberOfPartialResults(reduction_info);
 
@@ -2285,25 +2306,67 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
                                   element_index.GetType());
       llvm::Value* output_address = output_array.EmitArrayElementAddress(
           output_index, &b_, "output_element_address");
-
       llvm::Value* current_output = b_.CreateInBoundsGEP(
           partial_result_addresses[i], {constant(j)}, "current_output");
 
+      llvm::GlobalVariable* shared_cache = reduction_info.GetSharedCache()[i];
+
+      // __shared__ memory uses a different address space, so we cast it to
+      // global address space before writing or reading.
+      auto shared_to_global = [&](llvm::Value* input, llvm::Twine name = "") {
+        return b_.CreateAddrSpaceCast(
+            input,
+            llvm::PointerType::get(input->getType()->getPointerElementType(),
+                                   /*AddressSpace=*/0),
+            name);
+      };
+
+      auto is_zero = [&](llvm::Value* value) {
+        return b_.CreateICmpEQ(value, constant(0));
+      };
+
+      KernelSupportLibrary ksl(&b_);
+      llvm::Type* element_type =
+          partial_result_addresses[i]->getType()->getElementType();
       if (reduction_info.IsRowReduction()) {
-        TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-            *reducers[i], output_address, current_output));
+        EmitFullWarpShuffleDownLoopForReduce(reducers[i], element_type,
+                                             current_output);
+        llvm::Value* warp_id =
+            b_.CreateUDiv(thread_id_info.thread_id_x, constant(kWarpSize));
+        ksl.If(is_zero(thread_id_info.lane_id), [&] {
+          llvm::Value* shmem_output_addr =
+              shared_to_global(b_.CreateInBoundsGEP(
+                  shared_cache, {b_.getInt32(0), constant(j), warp_id}));
+          b_.CreateStore(b_.CreateLoad(current_output), shmem_output_addr);
+        });
+
+        EmitSyncThreads();
+        ksl.If(is_zero(warp_id), [&] {
+          llvm::Value* block_accum_addr = shared_to_global(b_.CreateInBoundsGEP(
+              shared_cache,
+              {b_.getInt32(0), constant(j), thread_id_info.lane_id}));
+          llvm::Value* initial_value = reduction_info.GetInitialValues()[i];
+          llvm::Value* initial_value_addr = b_.CreateAlloca(element_type);
+          b_.CreateStore(initial_value, initial_value_addr);
+
+          llvm::Value* warp_exists = b_.CreateICmpULT(
+              thread_id_info.thread_id_x,
+              constant(mapping_scheme.GetNumThreadsX() / kWarpSize));
+
+          llvm::Value* selected_value = b_.CreateSelect(
+              warp_exists, block_accum_addr, initial_value_addr);
+
+          EmitFullWarpShuffleDownLoopForReduce(
+              reducers[i], element_type,
+              /*block_accum_addr*/ selected_value);
+          ksl.If(is_zero(thread_id_info.thread_id_x), [&] {
+            TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+                *reducers[i], output_address, block_accum_addr));
+          });
+        });
+
       } else {
-        llvm::GlobalVariable* shared_cache = reduction_info.GetSharedCache()[i];
-        auto addr_cast = [&](llvm::Value* input, llvm::Twine name = "") {
-          // __shared__ memory uses a different address space, so we cast it to
-          // global address space before writing or reading.
-          return b_.CreateAddrSpaceCast(
-              input,
-              llvm::PointerType::get(input->getType()->getPointerElementType(),
-                                     /*AddressSpace=*/0),
-              name);
-        };
-        llvm::Value* shmem_output_addr = addr_cast(
+        llvm::Value* shmem_output_addr = shared_to_global(
             b_.CreateInBoundsGEP(shared_cache, {b_.getInt32(0), constant(j),
                                                 thread_id_info.thread_id_x,
                                                 thread_id_info.thread_id_y}),
@@ -2311,19 +2374,18 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
         llvm::Value* current_output_value = b_.CreateLoad(current_output);
         b_.CreateStore(current_output_value, shmem_output_addr);
 
-        EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
+        EmitSyncThreads();
 
         // Get transposed element from shared memory.
-        llvm::Value* shmem_transposed_addr = addr_cast(b_.CreateInBoundsGEP(
-            shared_cache,
-            {b_.getInt32(0), constant(j), thread_id_info.thread_id_y,
-             thread_id_info.thread_id_x},
-            "shmem_transposed_addr"));
+        llvm::Value* shmem_transposed_addr =
+            shared_to_global(b_.CreateInBoundsGEP(
+                shared_cache,
+                {b_.getInt32(0), constant(j), thread_id_info.thread_id_y,
+                 thread_id_info.thread_id_x},
+                "shmem_transposed_addr"));
 
-        EmitFullWarpShuffleDownLoopForReduce(
-            reducers[i],
-            partial_result_addresses[i]->getType()->getElementType(),
-            shmem_transposed_addr);
+        EmitFullWarpShuffleDownLoopForReduce(reducers[i], element_type,
+                                             shmem_transposed_addr);
 
         // Some threads in the block are completely outside of the bound of the
         // tensor, so they should not write any output at all.
@@ -2335,13 +2397,10 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
             b_.CreateICmpULT(thread_id_info.thread_id_x,
                              tiling_kernel_info.output_tile_bounds[kDimY]));
 
-        KernelSupportLibrary ksl(&b_);
-        ksl.If(b_.CreateAnd(has_output, b_.CreateICmpEQ(thread_id_info.lane_id,
-                                                        constant(0))),
-               [&] {
-                 TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-                     *reducers[i], output_address, shmem_transposed_addr));
-               });
+        ksl.If(b_.CreateAnd(has_output, is_zero(thread_id_info.lane_id)), [&] {
+          TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+              *reducers[i], output_address, shmem_transposed_addr));
+        });
       }
     }
   }
@@ -3050,7 +3109,16 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   }
 
   int64 num_threads_y = reduction_dimensions.is_row_reduction ? 1 : kWarpSize;
-  int64 num_threads_x = kWarpSize;
+  int64 num_threads_x = [&] {
+    if (reduction_dimensions.is_row_reduction) {
+      return std::min(
+          kWarpSize * kWarpSize,
+          RoundUpToNearest(CeilOfRatio(reduction_dimensions.dimensions[2],
+                                       reduction_tiling[2]),
+                           kWarpSize));
+    }
+    return kWarpSize;
+  }();
 
   KernelMappingScheme mapping_scheme(
       reduction_dimensions.dimensions,

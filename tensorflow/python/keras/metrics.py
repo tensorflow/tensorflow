@@ -63,6 +63,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -917,7 +918,7 @@ class _ConfusionMatrixConditionCount(Metric):
       result = self.accumulator[0]
     else:
       result = self.accumulator
-    return ops.convert_to_tensor(result)
+    return ops.convert_to_tensor_v2(result)
 
   def reset_states(self):
     num_thresholds = len(to_list(self.thresholds))
@@ -3124,8 +3125,8 @@ def sparse_categorical_accuracy(y_true, y_pred):
   Returns:
     Sparse categorical accuracy values.
   """
-  y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
-  y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
+  y_pred_rank = ops.convert_to_tensor_v2(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor_v2(y_true).shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
       K.int_shape(y_true)) == len(K.int_shape(y_pred))):
@@ -3170,8 +3171,8 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   Returns:
     Sparse top K categorical accuracy value.
   """
-  y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
-  y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
+  y_pred_rank = ops.convert_to_tensor_v2(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor_v2(y_true).shape.ndims
   # Flatten y_pred to (batch_size, num_samples) and y_true to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None):
     if y_pred_rank > 2:
@@ -3220,11 +3221,7 @@ def clone_metric(metric):
 
 def clone_metrics(metrics):
   """Clones the given metric list/dict."""
-  if metrics is None:
-    return None
-  if isinstance(metrics, dict):
-    return {key: clone_metric(value) for key, value in metrics.items()}
-  return [clone_metric(metric) for metric in metrics]
+  return nest.map_structure(clone_metric, metrics)
 
 
 @keras_export('keras.metrics.serialize')
@@ -3243,6 +3240,7 @@ def deserialize(config, custom_objects=None):
 
 @keras_export('keras.metrics.get')
 def get(identifier):
+  """Return a metric given its identifer."""
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
@@ -3250,5 +3248,6 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret '
-                     'metric function identifier: %s' % identifier)
+    error_msg = 'Could not interpret metric function identifier: {}'.format(
+        identifier)
+    raise ValueError(error_msg)

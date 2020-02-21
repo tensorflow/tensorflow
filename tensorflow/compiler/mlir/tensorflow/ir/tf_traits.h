@@ -68,6 +68,11 @@ class OperandsSameAsResultsTypeOrRef
   }
 };
 
+// Layout agnostic operations do not depend on the operands data layout (data
+// format), as and example all element wise operations are layout agnostic.
+template <typename ConcreteType>
+class LayoutAgnostic : public TraitBase<ConcreteType, LayoutAgnostic> {};
+
 }  // namespace TF
 }  // namespace OpTrait
 }  // namespace mlir

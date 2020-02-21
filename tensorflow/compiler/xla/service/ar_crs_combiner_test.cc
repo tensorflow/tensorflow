@@ -1711,9 +1711,9 @@ HloModule foobar
 
 ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
   %p = bf16[] parameter(0)
-  %all-reduce.0 = f32[] all-reduce(%p), channel_id=1, replica_groups={{0,1}},
+  %all-reduce.0 = f32[] all-reduce(%p), channel_id=1, replica_groups={{0},{1}},
     to_apply=%sum.f32
-  %all-reduce.2 = f32[] all-reduce(%all-reduce.0), replica_groups={{0,1}},
+  %all-reduce.2 = f32[] all-reduce(%all-reduce.0), replica_groups={{0},{1}},
     to_apply=%sum.f32
   ROOT %tuple = (f32[]) tuple(%all-reduce.2)
 }
@@ -1725,6 +1725,40 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
                          /*spmd_partition=*/true);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_FALSE(changed);
+}
+
+TEST_F(ArCrsCombinerTest, ReplaceReplicatedAllReduceSPMD) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: f32[2,4]) -> f32[2,4] {
+  %p = f32[2,4] parameter(0), sharding={replicated}
+  ROOT %all-reduce = f32[2,4] all-reduce(%p), replica_groups={{0,1}},
+    to_apply=%sum.f32
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/4, /*num_replicas=*/64,
+                         /*spmd_partition=*/true);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_TRUE(changed);
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Divide(op::AllReduce(op::Parameter()),
+                               op::Broadcast(op::Constant())));
+
+  auto ar = root->operand(0);
+  auto divisor = root->operand(1)->operand(0);
+  EXPECT_TRUE(ar->channel_id());
+  EXPECT_TRUE(divisor->literal().IsAllFloat(4));
 }
 
 }  // namespace

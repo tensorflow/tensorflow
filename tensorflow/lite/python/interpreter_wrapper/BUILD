@@ -29,6 +29,7 @@ cc_library(
         ":python_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/tflite_api_dispatcher",

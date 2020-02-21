@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
-#include "tensorflow/core/profiler/rpc/profiler_server.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -111,8 +110,6 @@ EagerContext::EagerContext(
 
 #if !defined(IS_MOBILE_PLATFORM)
   context_id_ = kInvalidContextId;
-  profiler_server_ = absl::make_unique<ProfilerServer>();
-  profiler_server_->MaybeStartProfilerServer();
 #endif  // IS_MOBILE_PLATFORM
 
   std::unique_ptr<DeviceResolverInterface> drl(
@@ -234,12 +231,14 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
   if (DeviceNameUtils::HasSomeDetails(preferred)) {
     return errors::InvalidArgument(
         "Could not satisfy device specification '", preferred,
-        "'. All available devices [",
+        "'. enable_soft_placement=", AllowSoftPlacement(),
+        ". All available devices [",
         absl::StrJoin(DevicesToString(existing), ", "), "].");
   }
   return errors::InvalidArgument(
       "No supported device found in available devices [",
-      absl::StrJoin(DevicesToString(existing), ", "), "].");
+      absl::StrJoin(DevicesToString(existing), ", "),
+      "]. enable_soft_placement=", AllowSoftPlacement(), ".");
 }
 
 void EagerContext::ResetClusterFLR(
@@ -573,6 +572,9 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
       eager::RegisterFunctionOp* register_function =
           request->add_queue()->mutable_register_function();
       *register_function->mutable_function_def() = *function_defs[j];
+      StripDefaultAttributes(
+          *OpRegistry::Global(),
+          register_function->mutable_function_def()->mutable_node_def());
       auto* response = new eager::EnqueueResponse;
       eager_client->StreamingEnqueueAsync(
           request, response, [request, response](const Status& s) {
@@ -623,6 +625,10 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
     }
   }
   return Status::OK();
+}
+
+const FunctionDef* EagerContext::GetFunctionDef(const string& function_name) {
+  return func_lib_def_.Find(function_name);
 }
 
 Status EagerContext::RemoveFunction(const string& func) {
@@ -747,7 +753,7 @@ Status EagerContext::FindCustomDeviceFromName(const string& device_name,
 
 void EagerContext::RegisterCustomDevice(const string& device_name,
                                         std::unique_ptr<CustomDevice> device) {
-  custom_devices_[device_name] = std::move(device);
+  custom_devices_.emplace(device_name, std::move(device));
 }
 
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {

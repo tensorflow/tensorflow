@@ -13,6 +13,7 @@ load(
     "PYTHON_LIB_PATH",
     "TF_PYTHON_CONFIG_REPO",
     "auto_config_fail",
+    "config_repo_label",
     "execute",
     "get_bash_bin",
     "get_host_environ",
@@ -21,109 +22,6 @@ load(
     "raw_exec",
     "read_dir",
 )
-
-def _which(repository_ctx, program_name):
-    """Returns the full path to a program on the execution platform."""
-    if _is_windows(repository_ctx):
-        if not program_name.endswith(".exe"):
-            program_name = program_name + ".exe"
-        result = _execute(repository_ctx, ["where.exe", program_name])
-    else:
-        result = _execute(repository_ctx, ["which", program_name])
-    return result.stdout.rstrip()
-
-def _get_environ(repository_ctx, name, default_value = None):
-    """Returns the value of an environment variable on the execution platform."""
-    if _is_windows(repository_ctx):
-        result = _execute(
-            repository_ctx,
-            ["cmd.exe", "/c", "echo", "%" + name + "%"],
-            empty_stdout_fine = True,
-        )
-    else:
-        cmd = "echo -n \"$%s\"" % name
-        result = _execute(
-            repository_ctx,
-            [get_bash_bin(repository_ctx), "-c", cmd],
-            empty_stdout_fine = True,
-        )
-    if len(result.stdout) == 0:
-        return default_value
-    return result.stdout
-
-def _get_host_environ(repository_ctx, name):
-    return repository_ctx.os.environ.get(name)
-
-def _fail(msg):
-    """Output failure message when auto configuration fails."""
-    red = "\033[0;31m"
-    no_color = "\033[0m"
-    fail("%sPython Configuration Error:%s %s\n" % (red, no_color, msg))
-
-def _is_windows(repository_ctx):
-    """Returns true if the execution platform is windows."""
-
-    os_name = ""
-    if hasattr(repository_ctx.attr, "exec_properties") and "OSFamily" in repository_ctx.attr.exec_properties:
-        os_name = repository_ctx.attr.exec_properties["OSFamily"]
-    else:
-        os_name = repository_ctx.os.name
-
-    return os_name.lower().find("windows") != -1
-
-def _execute(
-        repository_ctx,
-        cmdline,
-        error_msg = None,
-        error_details = None,
-        empty_stdout_fine = False):
-    """Executes an arbitrary shell command.
-
-    Args:
-      repository_ctx: the repository_ctx object
-      cmdline: list of strings, the command to execute
-      error_msg: string, a summary of the error if the command fails
-      error_details: string, details about the error or steps to fix it
-      empty_stdout_fine: bool, if True, an empty stdout result is fine, otherwise
-        it's an error
-    Return:
-      the result of repository_ctx.execute(cmdline)
-    """
-    result = repository_ctx.execute(cmdline)
-    if result.stderr or not (empty_stdout_fine or result.stdout):
-        _fail("\n".join([
-            error_msg.strip() if error_msg else "Repository command failed",
-            result.stderr.strip(),
-            error_details if error_details else "",
-        ]))
-    return result
-
-def _read_dir(repository_ctx, src_dir):
-    """Returns a string with all files in a directory.
-
-    Finds all files inside a directory, traversing subfolders and following
-    symlinks. The returned string contains the full path of all files
-    separated by line breaks.
-    """
-    if _is_windows(repository_ctx):
-        src_dir = src_dir.replace("/", "\\")
-        find_result = _execute(
-            repository_ctx,
-            ["cmd.exe", "/c", "dir", src_dir, "/b", "/s", "/a-d"],
-            empty_stdout_fine = True,
-        )
-
-        # src_files will be used in genrule.outs where the paths must
-        # use forward slashes.
-        result = find_result.stdout.replace("\\", "/")
-    else:
-        find_result = _execute(
-            repository_ctx,
-            ["find", src_dir, "-follow", "-type", "f"],
-            empty_stdout_fine = True,
-        )
-        result = find_result.stdout
-    return result
 
 def _genrule(src_dir, genrule_name, command, outs):
     """Returns a string with a genrule.
@@ -352,7 +250,7 @@ def _create_local_python_repository(repository_ctx):
 def _create_remote_python_repository(repository_ctx, remote_config_repo):
     """Creates pointers to a remotely configured repo set up to build with Python.
     """
-    repository_ctx.template("BUILD", Label(remote_config_repo + ":BUILD"), {})
+    repository_ctx.template("BUILD", config_repo_label(remote_config_repo, ":BUILD"), {})
 
 def _python_autoconf_impl(repository_ctx):
     """Implementation of the python_autoconf repository rule."""
@@ -364,14 +262,24 @@ def _python_autoconf_impl(repository_ctx):
     else:
         _create_local_python_repository(repository_ctx)
 
+_ENVIRONS = [
+    BAZEL_SH,
+    PYTHON_BIN_PATH,
+    PYTHON_LIB_PATH,
+]
+
+remote_python_configure = repository_rule(
+    implementation = _create_local_python_repository,
+    environ = _ENVIRONS,
+    remotable = True,
+    attrs = {
+        "environ": attr.string_dict(),
+    },
+)
+
 python_configure = repository_rule(
     implementation = _python_autoconf_impl,
-    environ = [
-        BAZEL_SH,
-        PYTHON_BIN_PATH,
-        PYTHON_LIB_PATH,
-        TF_PYTHON_CONFIG_REPO,
-    ],
+    environ = _ENVIRONS + [TF_PYTHON_CONFIG_REPO],
 )
 """Detects and configures the local Python.
 

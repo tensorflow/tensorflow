@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <numeric>
 
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
@@ -72,10 +73,9 @@ bool CreateBroadcastsForBinaryOp(SrcOp op, PatternRewriter *rewriter,
     return false;
   }
 
-  if (!op_ranked_type.hasStaticShape()) {
-    // Dynamic result shape, can't use BroadcastInDimOp.
-    return false;
-  }
+  // Dynamic result shape, can't use BroadcastInDimOp.
+  assert(op_ranked_type.hasStaticShape() &&
+         "dynamic shape requires DynamicBroadcastInDim");
 
   auto lhs_rank = lhs_ranked_type.getRank();
   auto rhs_rank = rhs_ranked_type.getRank();
@@ -118,6 +118,144 @@ bool CreateBroadcastsForBinaryOp(SrcOp op, PatternRewriter *rewriter,
   return true;
 }
 
+// Helper template to generate code for computing the result shape of a
+// broadcasted operation. This ultimately should be subsumed by functions
+// from the shape dialect.
+// Assumes that large and small are the operand values of `op` and that they
+// have a ranked tensory type with rank(large) >= rank(small).
+template <typename SrcOp>
+std::vector<Value> ComputeBroadcastedShape(SrcOp op, Value small, Value large,
+                                           PatternRewriter *rewriter) {
+  auto loc = op.getLoc();
+  auto larger_ranked_type = large.getType().cast<RankedTensorType>();
+  auto output_rank = larger_ranked_type.getRank();
+
+  constexpr int kExpandShape = -1;
+
+  std::vector<Value> shape_values;
+  shape_values.reserve(output_rank);
+  std::vector<int> indexes(output_rank, kExpandShape);
+  DenseIntElementsAttr broadcast_dimensions =
+      op.broadcast_dimensions().getValue();
+  // Compute a mapping from output dimensions to their corresponding input
+  // dimensions in the smaller ranked operand.
+  for (auto pair : llvm::enumerate(broadcast_dimensions.getIntValues())) {
+    indexes.at(pair.value().getLimitedValue()) = pair.index();
+  }
+
+  // Compute the broadcasted shape of the result using numpy style broadcasting
+  // semantics. The result shape at a position is the shape of the larger
+  // operand at that position if the no dimension of the smaller operand is
+  // mapped to it.
+  // If both operands contribute to an output dimension, their shape has to
+  // either be the same in that dimension or it can be 1, in which case the
+  // shape of the other operand is used.
+  for (int i = 0; i < output_rank; ++i) {
+    Value index_value;
+    if (indexes[i] == kExpandShape) {
+      // The smaller shape gets expanded to the larger one in this case.
+      index_value = rewriter->create<mlir::DimOp>(loc, large, i);
+    } else {
+      // Compute the result shape depending on whether the rank of smaller is 1.
+      // This does not check that the broadcast operation actualy is correct.
+      // In particular, we do not check that both shapes are the same if the
+      // smaller ranked shape is not 1.
+      ConstantOp one = rewriter->create<mlir::ConstantOp>(
+          loc, rewriter->getIntegerAttr(rewriter->getIndexType(), 1));
+      DimOp lrg_dim = rewriter->create<mlir::DimOp>(loc, large, i);
+      DimOp sml_dim = rewriter->create<mlir::DimOp>(loc, small, indexes[i]);
+      sml_dim.dump();
+      CmpIOp compare =
+          rewriter->create<mlir::CmpIOp>(loc, CmpIPredicate::eq, lrg_dim, one);
+      index_value =
+          rewriter->create<mlir::SelectOp>(loc, compare, lrg_dim, sml_dim);
+    }
+    // Ideally, we would like to keep this on index but MLIR does not allow
+    // this.
+    shape_values.push_back(rewriter->create<mlir::IndexCastOp>(
+        loc, index_value, rewriter->getIntegerType(32)));
+  }
+
+  return shape_values;
+}
+
+// Helper function for OpRewritePattern classes to materialize dynamic
+// broadcasts on LHS and RHS arguments to a binary op.
+//
+// Returns true and set out_lhs and out_rhs for materialized dynamic broadcasts
+// for LHS and RHS arguments, else returns false.
+template <typename SrcOp>
+bool CreateDynamicBroadcastsForBinaryOp(SrcOp op, PatternRewriter *rewriter,
+                                        Value *out_lhs, Value *out_rhs) {
+  if (!op.broadcast_dimensions().hasValue()) {
+    // Note: the op may still have an implicit broadcast on it, such as
+    // for (tensor<1xf32>, tensor<4xf32>).
+    return false;
+  }
+
+  // Insert BroadcastInDimOps for the left-hand-side and right-hand-side args,
+  // replacing the original LHS and RHS args in the source op with the results
+  // of the broadcasts.
+  Value lhs = op.lhs();
+  Value rhs = op.rhs();
+
+  auto lhs_ranked_type = lhs.getType().dyn_cast<RankedTensorType>();
+  auto rhs_ranked_type = rhs.getType().dyn_cast<RankedTensorType>();
+  if (!lhs_ranked_type || !rhs_ranked_type) {
+    // Unranked, can't determine at this point how to perform the broadcast.
+    return false;
+  }
+
+  auto lhs_rank = lhs_ranked_type.getRank();
+  auto rhs_rank = rhs_ranked_type.getRank();
+
+  // Set broadcast_dimensions to [0, ..., rank] for the higher rank arg.
+  // Use the original op.broadcast_dimensions for the lower rank arg.
+  auto higher_rank_broadcast_dims =
+      GetI64ElementsAttrForSeq(0, std::max(lhs_rank, rhs_rank), rewriter);
+  DenseIntElementsAttr lhs_broadcast_dims;
+  DenseIntElementsAttr rhs_broadcast_dims;
+  std::vector<Value> shape_elements;
+  if (lhs_rank > rhs_rank) {
+    lhs_broadcast_dims = higher_rank_broadcast_dims;
+    rhs_broadcast_dims = op.broadcast_dimensions().getValue();
+    shape_elements = ComputeBroadcastedShape<SrcOp>(op, rhs, lhs, rewriter);
+  } else if (lhs_rank < rhs_rank) {
+    lhs_broadcast_dims = op.broadcast_dimensions().getValue();
+    rhs_broadcast_dims = higher_rank_broadcast_dims;
+    shape_elements = ComputeBroadcastedShape<SrcOp>(op, lhs, rhs, rewriter);
+  } else {
+    // This shouldn't happen for legal ops. If the broadcast_dimensions
+    // attribute is set, the ranks should be different.
+    // TODO(scotttodd): Add a custom verification for ops and assert here.
+    return false;
+  }
+
+  // DynamicBroadcastInDimOp preserves the element type but produces a tensor
+  // with unranked shape. The rank of the output is the length of the
+  // output shape argument.
+  SmallVector<int64_t, 4> op_shape(shape_elements.size(),
+                                   RankedTensorType::kDynamicSize);
+  auto lhs_type =
+      RankedTensorType::get(op_shape, lhs_ranked_type.getElementType());
+  auto rhs_type =
+      RankedTensorType::get(op_shape, rhs_ranked_type.getElementType());
+
+  // We need a way to turn a list of scalars into a vector. While Standard
+  // dialect does not have one, use the XLA_HLO variant.
+  int shape_size = shape_elements.size();
+  Type shape_element_type = shape_elements.front().getType();
+  Value shape_value = rewriter->create<ScalarsToDimensionTensorOp>(
+      op.getLoc(), RankedTensorType::get({shape_size}, shape_element_type),
+      shape_elements);
+
+  *out_lhs = rewriter->createOrFold<DynamicBroadcastInDimOp>(
+      op.getLoc(), lhs_type, lhs, shape_value, lhs_broadcast_dims);
+  *out_rhs = rewriter->createOrFold<DynamicBroadcastInDimOp>(
+      op.getLoc(), rhs_type, rhs, shape_value, rhs_broadcast_dims);
+  return true;
+}
+
 template <typename SrcOp>
 struct BinaryOpWithBroadcastConvert : public OpRewritePattern<SrcOp> {
   explicit BinaryOpWithBroadcastConvert(MLIRContext *context)
@@ -127,8 +265,19 @@ struct BinaryOpWithBroadcastConvert : public OpRewritePattern<SrcOp> {
                                      PatternRewriter &rewriter) const override {
     Value new_lhs;
     Value new_rhs;
-    if (!CreateBroadcastsForBinaryOp(op, &rewriter, &new_lhs, &new_rhs)) {
-      return this->matchFailure();
+
+    auto op_ranked_type = op.getType().template dyn_cast<RankedTensorType>();
+    if (!op_ranked_type) return this->matchFailure();
+
+    if (op_ranked_type.hasStaticShape()) {
+      if (!CreateBroadcastsForBinaryOp(op, &rewriter, &new_lhs, &new_rhs)) {
+        return this->matchFailure();
+      }
+    } else {
+      if (!CreateDynamicBroadcastsForBinaryOp(op, &rewriter, &new_lhs,
+                                              &new_rhs)) {
+        return this->matchFailure();
+      }
     }
 
     // Replace the original op with a new one that uses the new args.

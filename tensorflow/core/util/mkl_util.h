@@ -240,6 +240,7 @@ class MklDnnShape {
 
   typedef std::remove_extent<mkldnn_dims_t>::type mkldnn_dim_t;
 
+#ifndef ENABLE_MKLDNN_V1
   // Helper function to compare mkldnn_blocking_desc_t.
   inline bool blocking_desc_is_equal(const mkldnn_blocking_desc_t& lhs,
                                      const mkldnn_blocking_desc_t& rhs,
@@ -273,6 +274,7 @@ class MklDnnShape {
            array_cmp(lhs.parts, rhs.parts, lhs.n_parts) &&
            array_cmp(lhs.part_pack_size, rhs.part_pack_size, lhs.n_parts);
   }
+#endif  // !ENABLE_MKLDNN_V1
 #define INVALID_DIM_SIZE -1
 
  public:
@@ -289,6 +291,7 @@ class MklDnnShape {
   ~MklDnnShape() {}
   TF_DISALLOW_COPY_AND_ASSIGN(MklDnnShape);  // Cannot copy
 
+#ifndef ENABLE_MKLDNN_V1
   /// Helper function to compare memory::desc objects for MklDnn.
   /// May be this should go into MklDnn directly.
   inline bool CompareMklDnnLayouts(const memory::desc& md1,
@@ -316,6 +319,7 @@ class MklDnnShape {
 
     return true;
   }
+#endif  // !ENABLE_MKLDNN_V1
 
   /// Equality function for MklDnnShape objects
   /// @return true if both are equal; false otherwise.
@@ -1008,6 +1012,11 @@ memory::data_type MklDnnType<float>() {
 
 template <>
 memory::data_type MklDnnType<quint8>() {
+  return memory::data_type::u8;
+}
+
+template <>
+memory::data_type MklDnnType<uint8>() {
   return memory::data_type::u8;
 }
 
@@ -2074,35 +2083,23 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     return instance_;
   }
 
- private:
-  MklReorderPrimitiveFactory() {}
-  ~MklReorderPrimitiveFactory() {}
-
   static string CreateKey(const memory* from, const memory* to) {
     string prefix = "reorder";
     FactoryKeyCreator key_creator;
     auto const& from_desc = GET_MEMORY_DESC_FROM_MEM_PTR(from).data;
     auto const& to_desc = GET_MEMORY_DESC_FROM_MEM_PTR(to).data;
-    const int KIdxFirstStride = 0;
+    const int kIdxFirstStride = 0;
     memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
     memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
-    memory::dims from_strides(
-#ifdef ENABLE_MKLDNN_V1
-        from_desc.format_desc.blocking.strides,
-        &from_desc.format_desc.blocking.strides[from_desc.ndims]);
-#else
-        from_desc.layout_desc.blocking.strides[KIdxFirstStride],
-        &from_desc.layout_desc.blocking
-             .strides[KIdxFirstStride][from_desc.ndims]);
-#endif  // ENABLE_MKLDNN_V1
-    memory::dims to_strides(
-#ifdef ENABLE_MKLDNN_V1
-        to_desc.format_desc.blocking.strides,
-        &to_desc.format_desc.blocking.strides[to_desc.ndims]);
-#else
-        to_desc.layout_desc.blocking.strides[KIdxFirstStride],
-        &to_desc.layout_desc.blocking.strides[KIdxFirstStride][to_desc.ndims]);
-#endif  // ENABLE_MKLDNN_V1
+    auto from_strides = from_desc.MEMORY_FORMAT_DESC.blocking.strides;
+    auto to_strides = to_desc.MEMORY_FORMAT_DESC.blocking.strides;
+    memory::dims from_strides_outer_blocks(
+        GET_BLOCK_STRIDES(from_strides, kIdxFirstStride),
+        &GET_BLOCK_STRIDES(from_strides, kIdxFirstStride)[from_desc.ndims]);
+    memory::dims to_strides_outer_blocks(
+        GET_BLOCK_STRIDES(to_strides, kIdxFirstStride),
+        &GET_BLOCK_STRIDES(to_strides, kIdxFirstStride)[to_desc.ndims]);
+
     key_creator.AddAsKey(prefix);
 #ifndef ENABLE_MKLDNN_V1
     // `format_kind` is not added in v1.x since it will always set to
@@ -2111,15 +2108,19 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
 #endif  // !ENABLE_MKLDNN_V1
     key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
     key_creator.AddAsKey(from_dims);
-    key_creator.AddAsKey(from_strides);
+    key_creator.AddAsKey(from_strides_outer_blocks);
 #ifndef ENABLE_MKLDNN_V1
     key_creator.AddAsKey(static_cast<int>(to_desc.format));
 #endif  // !ENABLE_MKLDNN_V1
     key_creator.AddAsKey(static_cast<int>(to_desc.data_type));
     key_creator.AddAsKey(to_dims);
-    key_creator.AddAsKey(to_strides);
+    key_creator.AddAsKey(to_strides_outer_blocks);
     return key_creator.GetKey();
   }
+
+ private:
+  MklReorderPrimitiveFactory() {}
+  ~MklReorderPrimitiveFactory() {}
 
   MklPrimitive* GetReorder(const memory* from, const memory* to) {
     string key = CreateKey(from, to);
@@ -2154,6 +2155,17 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
   return ((filter_dims[2] == 1) && (filter_dims[3] == 1) &&
           ((strides[0] != 1) || (strides[1] != 1)));
 }
+
+#ifdef ENABLE_MKLDNN_V1
+void execute_primitives(
+    std::vector<mkldnn::primitive>& primitives, std::shared_ptr<stream> stream,
+    std::vector<std::unordered_map<int, memory>>& net_args) {
+  DCHECK_EQ(primitives.size(), net_args.size());
+  for (size_t i = 0; i < primitives.size(); ++i) {
+    primitives.at(i).execute(*stream, net_args.at(i));
+  }
+}
+#endif  // ENABLE_MKLDNN_V1
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

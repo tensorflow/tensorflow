@@ -959,11 +959,6 @@ def _QuantizeAndDequantizeGrad(_, grad):
   return grad
 
 
-@ops.RegisterGradient("QuantizeAndDequantizeV2")
-def _QuantizeAndDequantizeV2Grad(_, grad):
-  return [grad, None, None]
-
-
 @ops.RegisterGradient("QuantizeAndDequantizeV3")
 def _QuantizeAndDequantizeV3Grad(_, grad):
   # Only propagate the gradient for the unquantized input.
@@ -1135,7 +1130,7 @@ def _BroadcastToGrad(op, grad):
   input_value = op.inputs[0]
   broadcast_shape = op.inputs[1]
   input_value_shape = array_ops.shape(input_value)
-  if not context.executing_eagerly():
+  if not isinstance(broadcast_shape, ops.EagerTensor):
     broadcast_shape_static = tensor_shape.TensorShape(
         pywrap_tf_session.TF_TryEvaluateConstant_wrapper(
             broadcast_shape.graph._c_graph, broadcast_shape._as_tf_output()))  # pylint: disable=protected-access

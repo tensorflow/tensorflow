@@ -359,9 +359,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mul = "Mul";
     csinfo_.squared_difference = "SquaredDifference";
     csinfo_.sub = "Sub";
-// End - element-wise ops. See note above.
+    // End - element-wise ops. See note above.
 
-// NOTE: names are alphabetically sorted.
+    // NOTE: names are alphabetically sorted.
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
                       CopyAttrsAll, AlwaysRewrite,
                       kRewriteForLayoutPropagation});
@@ -483,7 +483,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsFusedConv2D, FusedConv2DRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.fused_matmul, csinfo_.mkl_fused_matmul,
-                      CopyAttrsAll, FusedMatMulRewrite});
+                      CopyAttrsAllCheckConstFilter, FusedMatMulRewrite});
 
 #ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.identity,
@@ -671,18 +671,19 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.requantize, mkl_op_registry::GetMklOpName(csinfo_.requantize),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
-// Disable these two MKL operators for now due to some test failures caused
-// by these two ops
-/*
-rinfo_.push_back({csinfo_.tanh,
-                  mkl_op_registry::GetMklOpName(csinfo_.tanh),
-                  CopyAttrsAll, AlwaysRewrite,
-                  kRewriteForLayoutPropagation});
-rinfo_.push_back({csinfo_.tanh_grad,
-                  mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
-                  CopyAttrsAll, AlwaysRewrite,
-                  kRewriteForLayoutPropagation});
-*/
+#endif  // !ENABLE_MKLDNN_V1
+    // Disable these two MKL operators for now due to some test failures caused
+    // by these two ops
+    /*
+    rinfo_.push_back({csinfo_.tanh,
+                      mkl_op_registry::GetMklOpName(csinfo_.tanh),
+                      CopyAttrsAll, AlwaysRewrite,
+                      kRewriteForLayoutPropagation});
+    rinfo_.push_back({csinfo_.tanh_grad,
+                      mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
+                      CopyAttrsAll, AlwaysRewrite,
+                      kRewriteForLayoutPropagation});
+    */
     rinfo_.push_back(
         {csinfo_.reshape, mkl_op_registry::GetMklOpName(csinfo_.reshape),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
@@ -690,6 +691,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.slice),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
+#ifndef ENABLE_MKLDNN_V1
     rinfo_.push_back(
         {csinfo_.softmax, mkl_op_registry::GetMklOpName(csinfo_.softmax),
          CopyAttrsAll, AlwaysRewrite, kRewriteForLayoutPropagation});
@@ -701,12 +703,10 @@ rinfo_.push_back({csinfo_.tanh_grad,
     rinfo_.push_back({csinfo_.sub, mkl_op_registry::GetMklOpName(csinfo_.sub),
                       CopyAttrsAll, RewriteIfAtleastOneMklInput,
                       kRewriteForLayoutPropagation});
-#endif  // !ENABLE_MKLDNN_V1
     rinfo_.push_back({csinfo_.transpose,
                       mkl_op_registry::GetMklOpName(csinfo_.transpose),
                       CopyAttrsAll, AlwaysRewrite, kRewriteForOpNameChange});
 
-#ifndef ENABLE_MKLDNN_V1
     // Add info about which ops to add workspace edge to and the slots.
     wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});
     wsinfo_.push_back({csinfo_.max_pool, csinfo_.max_pool_grad, 0, 1, 1, 3});
@@ -1478,9 +1478,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
                  "Eigen op for Dequantize op.";
       return false;
     }
-    // TODO(sriniva2/mabuzain) Enable the op after verifying support for
-    // object detection models
-    return false;
+    return true;
   }
 
   // Rewrite rule for _FusedMatMul.
@@ -1879,6 +1877,9 @@ rinfo_.push_back({csinfo_.tanh_grad,
   // NOTE: names are alphabetically sorted.
   static void CopyAttrsAll(const Node* orig_node, NodeBuilder* nb,
                            bool change_format = false);
+  static void CopyAttrsAllCheckConstFilter(const Node* orig_node,
+                                           NodeBuilder* nb,
+                                           bool change_format = false);
 
   static void CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                             bool change_format = false);
@@ -2468,6 +2469,18 @@ void MklLayoutRewritePass::CopyAttrsAll(const Node* orig_node, NodeBuilder* nb,
     nb->Attr(name, attr);
     ++iter;
   }
+}
+
+// Generic function to copy all attributes and check if filter is const.
+void MklLayoutRewritePass::CopyAttrsAllCheckConstFilter(const Node* orig_node,
+                                                        NodeBuilder* nb,
+                                                        bool change_format) {
+  CopyAttrsAll(orig_node, nb, change_format);
+
+  // Check and set filter attribute.
+  Node* filter_node = nullptr;
+  TF_CHECK_OK(orig_node->input_node(1, &filter_node));
+  nb->Attr("is_filter_const", filter_node->IsConstant());
 }
 
 void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,

@@ -29,6 +29,7 @@ load(
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
     "tf_protobuf_deps",
+    "tf_resource_deps",
     "tf_windows_aware_platform_deps",
 )
 load(
@@ -87,6 +88,7 @@ exports_files(
         "net.h",
         "numa.h",
         "resource_loader.h",
+        "resource.h",
         "snappy.h",
         "stacktrace_handler.h",
         "subprocess.h",
@@ -514,6 +516,12 @@ cc_library(
 )
 
 cc_library(
+    name = "resource",
+    textual_hdrs = ["resource.h"],
+    deps = tf_resource_deps(),
+)
+
+cc_library(
     name = "resource_loader",
     testonly = 1,
     textual_hdrs = ["resource_loader.h"],
@@ -891,7 +899,7 @@ tf_cc_tests(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
 )
 
@@ -906,6 +914,7 @@ tf_cc_test(
         "//tensorflow/core/platform/testdata:test_stderr",
     ],
     deps = [
+        ":path",
         ":resource_loader",
         ":strcat",
         ":subprocess",
@@ -1182,6 +1191,7 @@ filegroup(
         "profile_utils/cpu_utils.h",
         "profile_utils/i_cpu_utils_helper.h",
         "protobuf.h",
+        "resource.h",
         "stacktrace.h",
         "stacktrace_handler.h",
         "status.h",
@@ -1397,6 +1407,7 @@ filegroup(
         "protobuf_util.cc",
         "raw_coding.h",
         "refcount.h",
+        "resource.h",
         "scanner.cc",
         "scanner.h",
         "setround.cc",

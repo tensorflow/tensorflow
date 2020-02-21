@@ -1758,7 +1758,7 @@ def transitive_hdrs(name, deps = [], **kwargs):
 #
 # For:
 #   * Eigen: it's a header-only library.  Add it directly to your deps.
-#   * GRPC: add a direct dep on @grpc//:grpc++_public_hdrs.
+#   * GRPC: add a direct dep on @com_github_grpc_grpc//:grpc++_public_hdrs.
 #
 def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
@@ -2057,9 +2057,23 @@ def tf_py_wrap_cc(
         ],
     })
 
+    # Due to b/149224972 we have to add libtensorflow_framework.so
+    # as a dependency so the linker doesn't try and optimize and
+    # remove it from pywrap_tensorflow_internal.so
+    # Issue: https://github.com/tensorflow/tensorflow/issues/34117
+    # Fix: https://github.com/tensorflow/tensorflow/commit/5caa9e83798cb510c9b49acee8a64efdb746207c
+    extra_deps += if_static(
+        extra_deps = [],
+        otherwise = [
+            clean_dep("//tensorflow:libtensorflow_framework_import_lib"),
+        ],
+    )
+
     tf_cc_shared_object(
         name = cc_library_name,
         srcs = [module_name + ".cc"],
+        # framework_so is no longer needed as libtf.so is included via the extra_deps.
+        framework_so = [],
         copts = copts + if_not_windows([
             "-Wno-self-assign",
             "-Wno-sign-compare",

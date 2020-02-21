@@ -58,6 +58,12 @@ Status LocalTensorHandleData::NumElements(int64* num_elements) const {
   return Status::OK();
 }
 
+Status LocalTensorHandleData::Unprotect() {
+  forwarding_protection_tensor_ = tensorflow::Tensor();
+
+  return Status::OK();
+}
+
 Status EmptyLocalTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
   return errors::Unavailable(
       "Unable to get a tensor for an empty handle. "
@@ -92,6 +98,10 @@ Status EmptyLocalTensorHandleData::NumElements(int64* num_elements) const {
   return errors::Unavailable(
       "Unable to get shape information for an empty handle. "
       "Please wait until it is ready");
+}
+
+Status EmptyLocalTensorHandleData::Unprotect() {
+  return errors::Unavailable("Unable to unprotect an empty handle.");
 }
 
 string EmptyLocalTensorHandleData::DebugString() const {
