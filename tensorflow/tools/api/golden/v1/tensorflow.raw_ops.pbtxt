@@ -1590,7 +1590,7 @@ tf_module {
   }
   member_method {
     name: "FusedBatchNorm"
-    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'NHWC\', \'True\', \'None\'], "
+    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'exponential_avg_factor\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'1\', \'NHWC\', \'True\', \'None\'], "
   }
   member_method {
     name: "FusedBatchNormGrad"
@@ -1606,11 +1606,11 @@ tf_module {
   }
   member_method {
     name: "FusedBatchNormV2"
-    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'NHWC\', \'True\', \'None\'], "
+    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'exponential_avg_factor\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'1\', \'NHWC\', \'True\', \'None\'], "
   }
   member_method {
     name: "FusedBatchNormV3"
-    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'NHWC\', \'True\', \'None\'], "
+    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'exponential_avg_factor\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'1\', \'NHWC\', \'True\', \'None\'], "
   }
   member_method {
     name: "FusedPadConv2D"
@@ -2783,6 +2783,10 @@ tf_module {
   member_method {
     name: "QuantizeAndDequantizeV2"
     argspec: "args=[\'input\', \'input_min\', \'input_max\', \'signed_input\', \'num_bits\', \'range_given\', \'round_mode\', \'narrow_range\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'8\', \'False\', \'HALF_TO_EVEN\', \'False\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "QuantizeAndDequantizeV2Grad"
+    argspec: "args=[\'gradients\', \'input\', \'input_min\', \'input_max\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "QuantizeAndDequantizeV3"

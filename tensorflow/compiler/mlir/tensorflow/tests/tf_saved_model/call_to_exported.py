@@ -46,7 +46,7 @@ class TestModule(tf.Module):
   #
   # CHECK:      func {{@[a-zA-Z_0-9]+}}(
   # CHECK-SAME:   %arg0: tensor<f32> {tf_saved_model.index_path = [0]},
-  # CHECK-SAME:   %arg1: tensor<*x!tf.resource> {tf_saved_model.bound_input = {{@[a-zA-Z_0-9]+}}}
+  # CHECK-SAME:   %arg1: tensor<!tf.resource<{{.*}}>> {tf_saved_model.bound_input = {{@[a-zA-Z_0-9]+}}}
   # CHECK-SAME: ) -> (
   # CHECK-SAME:   tensor<f32> {tf_saved_model.index_path = [0]},
   # CHECK-SAME:   tensor<f32> {tf_saved_model.index_path = [1]})
@@ -55,7 +55,7 @@ class TestModule(tf.Module):
   #
   # CHECK:      func {{@[a-zA-Z_0-9]+}}(
   # CHECK-SAME:   %arg0: tensor<f32> {tf_saved_model.index_path = [0]},
-  # CHECK-SAME:   %arg1: tensor<*x!tf.resource> {tf_saved_model.bound_input = {{@[a-zA-Z_0-9]+}}}
+  # CHECK-SAME:   %arg1: tensor<!tf.resource<{{.*}}>> {tf_saved_model.bound_input = {{@[a-zA-Z_0-9]+}}}
   # CHECK-SAME: ) -> (
   # CHECK-SAME:   tensor<f32> {tf_saved_model.index_path = [0]},
   # CHECK-SAME:   tensor<*xf32> {tf_saved_model.index_path = [1]})

@@ -234,6 +234,12 @@ tensorflow::FunctionDef MatMulFunction() {
       "          type: DT_FLOAT"
       "        }"
       "      }"
+      "      attr {"
+      "        key: 'transpose_a'"
+      "        value {"
+      "          b: false"
+      "        }"
+      "      }"
       "    }"
       "    ret {"
       "      key: 'm'"
@@ -470,6 +476,15 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         serialize_remote_handle_;
   };
 
+  bool MatMulHasAttrWithDefaultValue(const tensorflow::FunctionDef& fdef) {
+    for (const auto& node : fdef.node_def()) {
+      if (node.op() == "MatMul") {
+        return node.attr().find("transpose_a") != node.attr().end();
+      }
+    }
+    return false;
+  }
+
   void Init() {
     CreateContextRequest request;
     request.mutable_server_def()->set_job_name("localhost");
@@ -559,8 +574,18 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
   options.is_multi_device_function = true;
   options.input_devices.push_back(local_device_);
   FunctionLibraryRuntime::Handle handle;
+  EXPECT_TRUE(MatMulHasAttrWithDefaultValue(fdef_));
   TF_ASSERT_OK(eager_pflr_->Instantiate(
       fdef_.signature().name(), AttrSlice(&fdef_.attr()), options, &handle));
+  EagerContext* ctx = nullptr;
+  TF_ASSERT_OK(eager_service_impl_.GetEagerContext(context_id_, &ctx));
+  for (const string& func_name : ctx->FuncLibDef()->ListFunctionNames()) {
+    const FunctionDef* fdef = ctx->FuncLibDef()->Find(func_name);
+    EXPECT_TRUE(fdef != nullptr);
+    if (absl::StartsWith(func_name, "MatMulFunction")) {
+      EXPECT_FALSE(MatMulHasAttrWithDefaultValue(*fdef));
+    }
+  }
   bool is_cross_process = false;
   TF_CHECK_OK(eager_pflr_->IsCrossProcess(handle, &is_cross_process));
   EXPECT_TRUE(is_cross_process);

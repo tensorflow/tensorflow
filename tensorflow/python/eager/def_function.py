@@ -31,6 +31,7 @@ from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -563,9 +564,12 @@ class Function(object):
       return self._python_function(*args, **kwds)
 
     tracing_count = self._get_tracing_count()
-    if self._experimental_compile:
+    if self._experimental_compile and (
+        not control_flow_util.GraphOrParentsInXlaContext(
+            ops.get_default_graph())):
       # V2 control flow relies on XLAControlFlowContext to generate a
-      # XLA-compatible function graph.
+      # XLA-compatible function graph. If the function is already called inside
+      # an XLA context, we don't create nested XLA context.
       xla_context = control_flow_ops.XLAControlFlowContext()
       try:
         xla_context.Enter()

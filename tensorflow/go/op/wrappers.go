@@ -11611,7 +11611,7 @@ func DepthwiseConv2dNativeBackpropFilterDataFormat(value string) DepthwiseConv2d
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func DepthwiseConv2dNativeBackpropFilterDilations(value []int64) DepthwiseConv2dNativeBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -11868,7 +11868,7 @@ func SampleDistortedBoundingBoxV2Seed2(value int64) SampleDistortedBoundingBoxV2
 //
 // value: The cropped area of the image must have an aspect ratio =
 // width / height within this range.
-// If not specified, defaults to {f:0.75 f:1.33}
+// If not specified, defaults to {f:0.75  f:1.33}
 func SampleDistortedBoundingBoxV2AspectRatioRange(value []float32) SampleDistortedBoundingBoxV2Attr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -11879,7 +11879,7 @@ func SampleDistortedBoundingBoxV2AspectRatioRange(value []float32) SampleDistort
 //
 // value: The cropped area of the image must contain a fraction of the
 // supplied image within this range.
-// If not specified, defaults to {f:0.05 f:1}
+// If not specified, defaults to {f:0.05  f:1}
 func SampleDistortedBoundingBoxV2AreaRange(value []float32) SampleDistortedBoundingBoxV2Attr {
 	return func(m optionalAttr) {
 		m["area_range"] = value
@@ -12085,7 +12085,7 @@ func SampleDistortedBoundingBoxMinObjectCovered(value float32) SampleDistortedBo
 //
 // value: The cropped area of the image must have an aspect ratio =
 // width / height within this range.
-// If not specified, defaults to {f:0.75 f:1.33}
+// If not specified, defaults to {f:0.75  f:1.33}
 func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -12096,7 +12096,7 @@ func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistorted
 //
 // value: The cropped area of the image must contain a fraction of the
 // supplied image within this range.
-// If not specified, defaults to {f:0.05 f:1}
+// If not specified, defaults to {f:0.05  f:1}
 func SampleDistortedBoundingBoxAreaRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["area_range"] = value
@@ -18937,7 +18937,7 @@ func ImageSummaryMaxImages(value int64) ImageSummaryAttr {
 // ImageSummaryBadColor sets the optional bad_color attribute to value.
 //
 // value: Color to use for pixels with non-finite values.
-// If not specified, defaults to {dtype:DT_UINT8 tensor_shape:{dim:{size:4}} int_val:255 int_val:0 int_val:0 int_val:255}
+// If not specified, defaults to {dtype:DT_UINT8  tensor_shape:{dim:{size:4}}  int_val:255  int_val:0  int_val:0  int_val:255}
 func ImageSummaryBadColor(value tf.Tensor) ImageSummaryAttr {
 	return func(m optionalAttr) {
 		m["bad_color"] = value
@@ -20077,7 +20077,7 @@ func Conv3DBackpropFilterV2DataFormat(value string) Conv3DBackpropFilterV2Attr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropFilterV2Dilations(value []int64) Conv3DBackpropFilterV2Attr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -20516,6 +20516,14 @@ func FusedBatchNormV2Epsilon(value float32) FusedBatchNormV2Attr {
 	}
 }
 
+// FusedBatchNormV2ExponentialAvgFactor sets the optional exponential_avg_factor attribute to value.
+// If not specified, defaults to 1
+func FusedBatchNormV2ExponentialAvgFactor(value float32) FusedBatchNormV2Attr {
+	return func(m optionalAttr) {
+		m["exponential_avg_factor"] = value
+	}
+}
+
 // FusedBatchNormV2DataFormat sets the optional data_format attribute to value.
 //
 // value: The data format for x and y. Either "NHWC" (default) or "NCHW".
@@ -20780,6 +20788,14 @@ type FusedBatchNormAttr func(optionalAttr)
 func FusedBatchNormEpsilon(value float32) FusedBatchNormAttr {
 	return func(m optionalAttr) {
 		m["epsilon"] = value
+	}
+}
+
+// FusedBatchNormExponentialAvgFactor sets the optional exponential_avg_factor attribute to value.
+// If not specified, defaults to 1
+func FusedBatchNormExponentialAvgFactor(value float32) FusedBatchNormAttr {
+	return func(m optionalAttr) {
+		m["exponential_avg_factor"] = value
 	}
 }
 
@@ -21329,7 +21345,7 @@ func Conv2DBackpropInputDataFormat(value string) Conv2DBackpropInputAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func Conv2DBackpropInputDilations(value []int64) Conv2DBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22037,7 +22053,7 @@ func Conv2DDataFormat(value string) Conv2DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func Conv2DDilations(value []int64) Conv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22233,7 +22249,7 @@ func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeOutType(value tf.DataTy
 // QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22302,7 +22318,7 @@ func QuantizedDepthwiseConv2DWithBiasAndReluOutType(value tf.DataType) Quantized
 // QuantizedDepthwiseConv2DWithBiasAndReluDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DWithBiasAndReluDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAndReluAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22417,7 +22433,7 @@ func QuantizedDepthwiseConv2DWithBiasOutType(value tf.DataType) QuantizedDepthwi
 // QuantizedDepthwiseConv2DWithBiasDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DWithBiasDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22476,7 +22492,7 @@ func QuantizedDepthwiseConv2DOutType(value tf.DataType) QuantizedDepthwiseConv2D
 // QuantizedDepthwiseConv2DDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DDilations(value []int64) QuantizedDepthwiseConv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22650,7 +22666,7 @@ func QuantizedConv2DPerChannelOutType(value tf.DataType) QuantizedConv2DPerChann
 // QuantizedConv2DPerChannelDilations sets the optional dilations attribute to value.
 //
 // value: list of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedConv2DPerChannelDilations(value []int64) QuantizedConv2DPerChannelAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22841,7 +22857,7 @@ func Conv3DBackpropInputV2DataFormat(value string) Conv3DBackpropInputV2Attr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropInputV2Dilations(value []int64) Conv3DBackpropInputV2Attr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25281,7 +25297,7 @@ func AvgPool3DGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksi
 type Conv3DBackpropFilterAttr func(optionalAttr)
 
 // Conv3DBackpropFilterDilations sets the optional dilations attribute to value.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropFilterDilations(value []int64) Conv3DBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25613,7 +25629,7 @@ func DepthwiseConv2dNativeBackpropInputDataFormat(value string) DepthwiseConv2dN
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func DepthwiseConv2dNativeBackpropInputDilations(value []int64) DepthwiseConv2dNativeBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25663,7 +25679,7 @@ func DepthwiseConv2dNativeBackpropInput(scope *Scope, input_sizes tf.Output, fil
 type Conv3DBackpropInputAttr func(optionalAttr)
 
 // Conv3DBackpropInputDilations sets the optional dilations attribute to value.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropInputDilations(value []int64) Conv3DBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25913,7 +25929,7 @@ func DepthwiseConv2dNativeDataFormat(value string) DepthwiseConv2dNativeAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func DepthwiseConv2dNativeDilations(value []int64) DepthwiseConv2dNativeAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -26543,7 +26559,7 @@ func QuantizedConv2DOutType(value tf.DataType) QuantizedConv2DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedConv2DDilations(value []int64) QuantizedConv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -27608,7 +27624,7 @@ func Conv3DDataFormat(value string) Conv3DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DDilations(value []int64) Conv3DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -34194,6 +34210,14 @@ func FusedBatchNormV3Epsilon(value float32) FusedBatchNormV3Attr {
 	}
 }
 
+// FusedBatchNormV3ExponentialAvgFactor sets the optional exponential_avg_factor attribute to value.
+// If not specified, defaults to 1
+func FusedBatchNormV3ExponentialAvgFactor(value float32) FusedBatchNormV3Attr {
+	return func(m optionalAttr) {
+		m["exponential_avg_factor"] = value
+	}
+}
+
 // FusedBatchNormV3DataFormat sets the optional data_format attribute to value.
 //
 // value: The data format for x and y. Either "NHWC" (default) or "NCHW".
@@ -37577,6 +37601,40 @@ func RecvTPUEmbeddingActivations(scope *Scope, num_outputs int64, config string)
 		return
 	}
 	return outputs
+}
+
+// QuantizeAndDequantizeV2GradAttr is an optional argument to QuantizeAndDequantizeV2Grad.
+type QuantizeAndDequantizeV2GradAttr func(optionalAttr)
+
+// QuantizeAndDequantizeV2GradAxis sets the optional axis attribute to value.
+// If not specified, defaults to -1
+func QuantizeAndDequantizeV2GradAxis(value int64) QuantizeAndDequantizeV2GradAttr {
+	return func(m optionalAttr) {
+		m["axis"] = value
+	}
+}
+
+// Returns the gradient of `QuantizeAndDequantizeV2`.
+//
+// Returns a gradient of 1 for inputs that are within the quantization range,
+// or 0 otherwise.
+func QuantizeAndDequantizeV2Grad(scope *Scope, gradients tf.Output, input tf.Output, input_min tf.Output, input_max tf.Output, optional ...QuantizeAndDequantizeV2GradAttr) (input_backprop tf.Output, input_min_backprop tf.Output, input_max_backprop tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizeAndDequantizeV2Grad",
+		Input: []tf.Input{
+			gradients, input, input_min, input_max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // Computes the sparse Cholesky decomposition of `input`.
@@ -44924,17 +44982,62 @@ func InfeedEnqueue(scope *Scope, input tf.Output, optional ...InfeedEnqueueAttr)
 	return scope.AddOperation(opspec)
 }
 
-// A dataset that creates window datasets from the input dataset.
+//   Combines (nests of) input elements into a dataset of (nests of) windows.
+//
+//   A "window" is a finite dataset of flat elements of size `size` (or possibly
+//   fewer if there are not enough input elements to fill the window and
+//   `drop_remainder` evaluates to false).
+//
+//   The `shift` argument determines the number of input elements by which
+//   the window moves on each iteration.  The first element in the `k`th window
+//   will be element
+//
+//   ```
+//   1 + (k-1) * shift
+//   ```
+//
+//   of the input dataset. In particular, the first element of the first window
+//   will always be the first element of the input dataset.
+//
+//   If the `stride` parameter is greater than 1, then each window will skip
+//   `(stride - 1)` input elements between each element that appears in the
+//   window. Output windows will still contain `size` elements regardless of
+//   the value of `stride`.
+//
+//   The `stride` argument determines the stride of the input elements, and the
+//   `shift` argument determines the shift of the window.
+//
+//   For example, letting `{...}` to represent a Dataset:
+//
+//   - `tf.data.Dataset.range(7).window(2)` produces
+//     `{{0, 1}, {2, 3}, {4, 5}, {6}}`
+//   - `tf.data.Dataset.range(7).window(3, 2, 1, True)` produces
+//     `{{0, 1, 2}, {2, 3, 4}, {4, 5, 6}}`
+//   - `tf.data.Dataset.range(7).window(3, 1, 2, True)` produces
+//     `{{0, 2, 4}, {1, 3, 5}, {2, 4, 6}}`
+//
+//   Note that when the `window` transformation is applied to a dataset of
+//   nested elements, it produces a dataset of nested windows.
+//
+//   For example:
+//
+//   - `tf.data.Dataset.from_tensor_slices((range(4), range(4))).window(2)`
+//     produces `{({0, 1}, {0, 1}), ({2, 3}, {2, 3})}`
+//   - `tf.data.Dataset.from_tensor_slices({"a": range(4)}).window(2)`
+//     produces `{{"a": {0, 1}}, {"a": {2, 3}}}`
 //
 // Arguments:
 //
-//	size: A scalar representing the number of elements to accumulate in a window.
-//	shift: A scalar representing the steps moving the sliding window forward in one
-// iteration. It must be positive.
-//	stride: A scalar representing the stride of the input elements of the sliding window.
-// It must be positive.
-//	drop_remainder: A scalar representing whether a window should be dropped in case its size is
-// smaller than desired.
+//	size: An integer scalar, representing the number of elements
+// of the input dataset to combine into a window. Must be positive.
+//	shift: An integer scalar, representing the number of input elements
+// by which the window moves in each iteration.  Defaults to `size`.
+// Must be positive.
+//	stride: An integer scalar, representing the stride of the input elements
+// in the sliding window. Must be positive. The default value of 1 means
+// "retain every input element".
+//	drop_remainder: A Boolean scalar, representing whether the last window should be
+// dropped if its size is smaller than `window_size`.
 //
 //
 func WindowDataset(scope *Scope, input_dataset tf.Output, size tf.Output, shift tf.Output, stride tf.Output, drop_remainder tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
@@ -45467,7 +45570,7 @@ func Conv2DBackpropFilterDataFormat(value string) Conv2DBackpropFilterAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func Conv2DBackpropFilterDilations(value []int64) Conv2DBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value

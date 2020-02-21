@@ -24,11 +24,24 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 
 namespace tensorflow {
 namespace eager {
+namespace {
+void StripDefaultAttributesInRegisterFunctionOp(
+    RegisterFunctionOp* register_function) {
+  StripDefaultAttributes(
+      *OpRegistry::Global(),
+      register_function->mutable_function_def()->mutable_node_def());
+  for (auto& function :
+       *register_function->mutable_library()->mutable_function()) {
+    StripDefaultAttributes(*OpRegistry::Global(), function.mutable_node_def());
+  }
+}
+}  // namespace
 
 void EagerClusterFunctionLibraryRuntime::Instantiate(
     const string& function_name, const FunctionLibraryDefinition& lib_def,
@@ -85,6 +98,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   *register_function->mutable_library() =
       func_lib_def.ReachableDefinitions(register_function->function_def())
           .ToProto();
+  StripDefaultAttributesInRegisterFunctionOp(register_function);
 
   eager_client->EnqueueAsync(
       request, response,

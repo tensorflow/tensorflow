@@ -133,6 +133,25 @@ string DebugString(const std::vector<TensorShape>& shapes) {
 string DebugString(const std::vector<PartialTensorShape>& shapes) {
   return PartialTensorShapeUtils::PartialShapeListString(shapes);
 }
+
+int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
+  int n_bindings = engine->getNbBindings();
+  int n_input = 0;
+  for (int i = 0; i < n_bindings; i++) {
+    if (engine->bindingIsInput(i)) n_input++;
+  }
+  // According to TensorRT 7 doc: "If the engine has been built for K profiles,
+  // the first getNbBindings() / K bindings are used by profile number 0, the
+  // following getNbBindings() / K bindings are used by profile number 1 etc."
+  // Therefore, to get the number of input tensors, we need to divide by the
+  // the number of profiles.
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  int n_profiles = engine->getNbOptimizationProfiles();
+#else
+  int n_profiles = 1;
+#endif
+  return n_input / n_profiles;
+}
 #endif
 
 string GetLinkedTensorRTVersion() {

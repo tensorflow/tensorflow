@@ -29,6 +29,10 @@ limitations under the License.
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
+#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
+#include "tensorflow/lite/profiling/platform_profiler.h"
+#endif
+
 namespace tflite {
 
 namespace {
@@ -686,6 +690,10 @@ TfLiteStatus InterpreterBuilder::operator()(
   if (subgraphs->Length() > 1) {
     (*interpreter)->AddSubgraphs(subgraphs->Length() - 1);
   }
+
+#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
+  (*interpreter)->SetProfiler(tflite::profiling::CreatePlatformProfiler());
+#endif
 
   for (int subgraph_index = 0; subgraph_index < subgraphs->Length();
        ++subgraph_index) {

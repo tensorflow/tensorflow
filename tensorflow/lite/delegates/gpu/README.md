@@ -34,6 +34,8 @@ TFLite on GPU supports the following ops in 16-bit and 32-bit float precision:
 * `LOGISTIC v1`
 * `LSTM v2 (Basic LSTM only)`
 * `MAX_POOL_2D v1`
+* `MAXIMUM v1`
+* `MINIMUM v1`
 * `MUL v1`
 * `PAD v1`
 * `PRELU v1`

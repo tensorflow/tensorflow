@@ -234,29 +234,37 @@ class MetricsContainerTest(keras_parameterized.TestCase):
 
   def test_list_of_metrics_list_of_outputs(self):
     metric_container = compile_utils.MetricsContainer(
-        metrics=['mse', 'mae'],
+        metrics=['mse', 'mae'],  # Should broadcast to both outputs.
         weighted_metrics=['accuracy'])  # Should broadcast to both outputs.
 
     y_t = [array_ops.ones((10, 1)), array_ops.zeros((10, 1))]
     y_p = [array_ops.ones((10, 1)), 2 * array_ops.ones((10, 1))]
     sw = ops.convert_to_tensor_v2([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
     metric_container.update_state(y_t, y_p, sample_weight=sw)
-    self.assertLen(metric_container.metrics, 4)
+    self.assertLen(metric_container.metrics, 6)
 
     mse_metric = metric_container.metrics[0]
     self.assertEqual(mse_metric.name, 'output_1_mse')
     self.assertEqual(mse_metric.result().numpy(), 0.)
 
-    mae_metric = metric_container.metrics[1]
-    self.assertEqual(mae_metric.name, 'output_2_mae')
-    self.assertEqual(mae_metric.result().numpy(), 2.)
+    mse_metric = metric_container.metrics[1]
+    self.assertEqual(mse_metric.name, 'output_1_mae')
+    self.assertEqual(mse_metric.result().numpy(), 0.)
 
     acc_metric_1 = metric_container.metrics[2]
     self.assertEqual(acc_metric_1.name, 'output_1_accuracy')
     self.assertEqual(acc_metric_1.result().numpy(), 1.)
     self.assertEqual(acc_metric_1._fn, metrics_mod.binary_accuracy)
 
-    acc_metric_2 = metric_container.metrics[3]
+    mae_metric = metric_container.metrics[3]
+    self.assertEqual(mae_metric.name, 'output_2_mse')
+    self.assertEqual(mae_metric.result().numpy(), 4.)
+
+    mae_metric = metric_container.metrics[4]
+    self.assertEqual(mae_metric.name, 'output_2_mae')
+    self.assertEqual(mae_metric.result().numpy(), 2.)
+
+    acc_metric_2 = metric_container.metrics[5]
     self.assertEqual(acc_metric_2.name, 'output_2_accuracy')
     self.assertEqual(acc_metric_2.result().numpy(), 0.)
     self.assertEqual(acc_metric_2._fn, metrics_mod.binary_accuracy)
@@ -281,16 +289,16 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     self.assertEqual(mse_metric.name, 'out1_mse')
     self.assertEqual(mse_metric.result().numpy(), 0.)
 
-    mae_metric = metric_container.metrics[1]
+    weighted_mse_metric = metric_container.metrics[1]
+    self.assertEqual(weighted_mse_metric.name, 'out1_weighted_mse')
+    self.assertEqual(weighted_mse_metric.result().numpy(), 0.)
+
+    mae_metric = metric_container.metrics[2]
     self.assertEqual(mae_metric.name, 'out2_mae')
     self.assertEqual(mae_metric.result().numpy(), 2.)
 
-    weighted_mse_metric = metric_container.metrics[2]
-    self.assertEqual(weighted_mse_metric.name, 'weighted_out1_mse')
-    self.assertEqual(weighted_mse_metric.result().numpy(), 0.)
-
     weighted_mae_metric = metric_container.metrics[3]
-    self.assertEqual(weighted_mae_metric.name, 'weighted_out2_mae')
+    self.assertEqual(weighted_mae_metric.name, 'out2_weighted_mae')
     self.assertEqual(weighted_mae_metric.result().numpy(), 2.)
 
   def test_metric_partial_dict_with_output_names(self):
@@ -355,13 +363,13 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     self.assertEqual(a_mae_metric.name, 'a_mae')
     self.assertEqual(a_mae_metric.result().numpy(), 1.)
 
-    b_1_mse_metric = metric_container.metrics[1]
-    self.assertEqual(b_1_mse_metric.name, 'b_1_mse')
-    self.assertEqual(b_1_mse_metric.result().numpy(), 4.)
-
-    weighted_a_mae_metric = metric_container.metrics[2]
+    weighted_a_mae_metric = metric_container.metrics[1]
     self.assertEqual(weighted_a_mae_metric.name, 'a_mse')
     self.assertEqual(weighted_a_mae_metric.result().numpy(), 1.)
+
+    b_1_mse_metric = metric_container.metrics[2]
+    self.assertEqual(b_1_mse_metric.name, 'b_1_mse')
+    self.assertEqual(b_1_mse_metric.result().numpy(), 4.)
 
   def test_crossentropy(self):
     metric_container = compile_utils.MetricsContainer('crossentropy')
@@ -421,6 +429,29 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     weighted_mae_metric = metric_container.metrics[1]
     self.assertEqual(weighted_mae_metric.name, 'weighted_mae')
     self.assertEqual(weighted_mae_metric.result().numpy(), 0.)
+
+  def test_broadcast_metrics_to_dict(self):
+    metric_container = compile_utils.MetricsContainer(metrics=['mae'])
+
+    y_p = {'output': ops.convert_to_tensor([[0], [1], [2]])}
+    y_t = {'output': ops.convert_to_tensor([[1], [2], [3]])}
+    metric_container.update_state(y_t, y_p)
+
+    mae_metric = metric_container.metrics[0]
+    self.assertEqual(mae_metric.name, 'mae')
+    self.assertEqual(mae_metric.result().numpy(), 1.)
+
+  def test_broadcast_metrics_to_dict_with_output_names(self):
+    metric_container = compile_utils.MetricsContainer(
+        metrics=['mae'], output_names=['output'])
+
+    y_p = ops.convert_to_tensor([[0], [1], [2]])
+    y_t = {'output': ops.convert_to_tensor([[1], [2], [3]])}
+    metric_container.update_state(y_t, y_p)
+
+    mae_metric = metric_container.metrics[0]
+    self.assertEqual(mae_metric.name, 'mae')
+    self.assertEqual(mae_metric.result().numpy(), 1.)
 
 
 if __name__ == '__main__':

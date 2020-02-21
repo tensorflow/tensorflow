@@ -30,8 +30,7 @@ namespace cl {
 
 // You can read https://arxiv.org/pdf/1509.09308.pdf for understanding of basic
 // principles. In this kernels used different matrices for transformations than
-// in original work. Matrices received with method described here
-// https://openreview.net/pdf?id=H1ZaRZVKg
+// in original work.
 class Winograd4x4To36 : public GPUOperation {
  public:
   Winograd4x4To36() = default;

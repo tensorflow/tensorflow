@@ -3308,7 +3308,7 @@ func @random_shuffle_1D_10240(%input: tensor<10240xf32>) -> tensor<10240xf32> {
 // CHECK-LABEL: @random_shuffle_3D
 // CHECK-SAME: [[INPUT:%.*]]: tensor<4x?x16xf32>
 func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
-  // CHECK: [[INDICES:%.*]] = "xla_hlo.iota"() {iota_dimension = 4 : i64} : () -> tensor<4xi32>
+  // CHECK: [[INDICES:%.*]] = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xi32>
 
   // CHECK: [[RNG_SHAPE:%.*]] = xla_hlo.constant dense<4> : tensor<1xi64>
   // CHECK: [[RNG_LOWER:%.*]] = xla_hlo.constant dense<0> : tensor<i32>

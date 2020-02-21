@@ -54,7 +54,7 @@ const AttrTypeMap* GetDefaultFunctionAttrTypeMap() {
 
 }  // namespace
 
-Status OpDefForOp(const char* op_name, const OpDef** op_def) {
+Status OpDefForOp(const string& op_name, const OpDef** op_def) {
   const OpRegistrationData* op_reg_data = nullptr;
   Status s = OpRegistry::Global()->LookUp(op_name, &op_reg_data);
   if (s.ok()) {

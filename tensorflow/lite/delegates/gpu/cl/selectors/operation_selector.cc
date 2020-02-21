@@ -196,6 +196,10 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       SelectReshape(src_channels, attr.new_shape.c, op_def, gpu_op);
       return OkStatus();
     }
+    case OperationType::RESIZE: {
+      auto attr = absl::any_cast<Resize2DAttributes>(node.operation.attributes);
+      return SelectResize(attr, op_def, gpu_op);
+    }
     case OperationType::SLICE: {
       auto attr = absl::any_cast<SliceAttributes>(node.operation.attributes);
       SelectStridedSlice(attr, op_def, gpu_op);
@@ -205,15 +209,17 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       SelectSoftmax(inputs[0]->tensor.shape, op_def, gpu_op);
       return OkStatus();
     }
+    case OperationType::SPACE_TO_DEPTH: {
+      auto attr =
+          absl::any_cast<SpaceToDepthAttributes>(node.operation.attributes);
+      SelectSpaceToDepth(attr, op_def, gpu_op);
+      return OkStatus();
+    }
     case OperationType::TRANSPOSE: {
       auto attr =
           absl::any_cast<TransposeAttributes>(node.operation.attributes);
       SelectTranspose(attr, op_def, gpu_op);
       return OkStatus();
-    }
-    case OperationType::RESIZE: {
-      auto attr = absl::any_cast<Resize2DAttributes>(node.operation.attributes);
-      return SelectResize(attr, op_def, gpu_op);
     }
     case OperationType::ABS:
     case OperationType::COS:
@@ -231,6 +237,8 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       return OkStatus();
     }
     case OperationType::DIV:
+    case OperationType::MAXIMUM:
+    case OperationType::MINIMUM:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
     case OperationType::SUB: {
@@ -238,8 +246,10 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       broadcast.width = IsWidthBroadcastedForSecondInput(inputs);
       broadcast.height = IsHeightBroadcastedForSecondInput(inputs);
       broadcast.channels = IsChannelsBroadcastedForSecondInput(inputs);
-      ElementwiseTwoInput operation =
-          CreateElementwiseTwoInput(op_def, op_type, broadcast);
+      const ElementwiseAttributes* attr =
+          absl::any_cast<ElementwiseAttributes>(&node.operation.attributes);
+      ElementwiseTwoInput operation = CreateElementwiseTwoInput(
+          creation_context, op_def, op_type, broadcast, attr);
       *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
       return OkStatus();
     }

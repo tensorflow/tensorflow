@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
@@ -135,6 +136,12 @@ std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(const GraphFloat32& graph,
   } else {
     return Softmax(id, input_id, output_id, src_shape.c);
   }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectSpaceToDepth(
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
+    const SpaceToDepthAttributes& attr) {
+  return SpaceToDepth(id, input_id, output_id, attr);
 }
 
 Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
@@ -254,6 +261,11 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       *tasks = SelectSoftmax(graph, node_id, inputs[0], outputs[0]);
       break;
     }
+    case OperationType::SPACE_TO_DEPTH:
+      *tasks = SelectSpaceToDepth(
+          graph, node_id, inputs[0], outputs[0],
+          absl::any_cast<SpaceToDepthAttributes>(node->operation.attributes));
+      break;
     case OperationType::ABS:
     case OperationType::COS:
     case OperationType::HARD_SWISH:
@@ -266,12 +278,17 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::TANH:
       *tasks = ElementwiseWithOneInput(node_id, inputs[0], outputs[0], op_type);
       break;
-    case OperationType::SUB:
     case OperationType::DIV:
+    case OperationType::MAXIMUM:
+    case OperationType::MINIMUM:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
-      *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type);
-      break;
+    case OperationType::SUB: {
+      const ElementwiseAttributes* attr =
+          absl::any_cast<ElementwiseAttributes>(&node->operation.attributes);
+      *tasks =
+          ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type, attr);
+    } break;
     case OperationType::BATCH_NORMALIZATION:
     case OperationType::BATCH_TO_SPACE:
     case OperationType::CONST:

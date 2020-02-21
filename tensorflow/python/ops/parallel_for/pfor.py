@@ -74,6 +74,8 @@ flags.DEFINE_bool(
 def _stack(t, length):
   """stacks `t` `length` times."""
   ones = array_ops.ones_like(array_ops.shape(t))
+  ones = array_ops.reshape(ones, [-1])
+  length = array_ops.reshape(length, [-1])
   multiples = array_ops.concat([length, ones], 0)
   t = array_ops.tile(array_ops.expand_dims(t, 0), multiples)
   return wrap(t, True)
@@ -1618,6 +1620,7 @@ def _inputs_with_flattening(pfor_input, input_indices):
 @RegisterPForWithArgs("MaxPoolGradGrad", dims=[0, 1, 2])
 @RegisterPForWithArgs("MaxPoolGradGradV2", dims=[0, 1, 2])
 @RegisterPForWithArgs("SoftmaxCrossEntropyWithLogits", dims=[0, 1])
+@RegisterPForWithArgs("SparseSoftmaxCrossEntropyWithLogits", dims=[0, 1])
 @RegisterPForWithArgs("SpaceToDepth", dims=[0])
 def _convert_flatten_batch(pfor_input, op_type, dims):
   del op_type
@@ -3583,6 +3586,33 @@ def _convert_parse_example_v2(pfor_input):
 # functional_ops
 
 
+def _convert_function_call(func, converter, inputs):
+  assert isinstance(func.graph, func_graph.FuncGraph), func
+  assert isinstance(converter, PFor)
+
+  # TODO(agarwal): consider caching this function definition.
+  @def_function.function
+  def f(*args):
+    assert all(isinstance(arg, WrappedTensor) for arg in args), args
+    assert len(args) == len(func.graph.inputs), (args, func.graph.inputs)
+    #  Map inputs to function arguments.
+    for inp, arg in zip(func.graph.inputs, args):
+      converter._add_conversion(inp, arg)
+    # Convert output tensors.
+    return tuple(
+        [converter._convert_helper(x).t for x in func._func_graph_outputs])
+
+  call_outputs = f(*inputs)
+  assert len(call_outputs) == len(func._func_graph_outputs)
+  outputs = []
+  for call_output, output_tensor in zip(call_outputs, func._func_graph_outputs):
+    func_output = converter._convert_helper(output_tensor)
+    outputs.append(
+        wrap(call_output, func_output.is_stacked,
+             func_output.is_sparse_stacked))
+  return outputs
+
+
 @RegisterPFor("StatefulPartitionedCall")
 @RegisterPFor("PartitionedCall")
 def _convert_partitioned_call(pfor_input):
@@ -3598,28 +3628,94 @@ def _convert_partitioned_call(pfor_input):
       all_indices=pfor.all_indices,
       all_indices_partitioned=pfor.all_indices_partitioned,
       pfor_config=pfor.pfor_config)
+  return _convert_function_call(func, converter, pfor_input.inputs)
 
-  # TODO(agarwal): consider caching this function definition.
-  @def_function.function
-  def f(*args):
-    assert all(isinstance(arg, WrappedTensor) for arg in args), args
-    assert len(args) == len(func.graph.inputs), (args, func.graph.inputs)
-    #  Map inputs to function arguments.
-    for inp, arg in zip(func.graph.inputs, args):
-      converter._add_conversion(inp, arg)
-    # Convert output tensors.
-    return tuple(
-        [converter._convert_helper(x).t for x in func._func_graph_outputs])
 
-  call_outputs = f(*pfor_input.inputs)
-  assert len(call_outputs) == len(func._func_graph_outputs)
-  outputs = []
-  for call_output, output_tensor in zip(call_outputs, func._func_graph_outputs):
-    func_output = converter._convert_helper(output_tensor)
-    outputs.append(
-        wrap(call_output, func_output.is_stacked,
-             func_output.is_sparse_stacked))
-  return outputs
+def _partition_inputs_for_indices(inputs, indices):
+  new_inputs = []
+  for inp in inputs:
+    if inp.is_stacked:
+      new_inputs.append(wrap(array_ops.gather(inp.t, indices), True))
+    else:
+      new_inputs.append(inp)
+  return new_inputs
+
+
+def _outputs_for_branch(func_name, indices, pfor_input, inputs):
+  if indices is None:
+    indices = pfor_input.pfor.all_indices
+    partitioned = pfor_input.pfor.all_indices_partitioned
+  else:
+    partitioned = True
+  func = pfor_input.op.graph._get_function(func_name)
+  converter = PFor(
+      loop_var=pfor_input.pfor.loop_var,
+      loop_len=array_ops.size(indices),
+      pfor_ops=func.graph.get_operations(),
+      all_indices=indices,
+      all_indices_partitioned=partitioned,
+      pfor_config=pfor_input.pfor.pfor_config)
+  outputs = _convert_function_call(func, converter, inputs)
+  stacked_outputs = []
+  for out in outputs:
+    if not out.is_stacked:
+      stacked_outputs.append(_stack(out.t, array_ops.size(indices)).t)
+    else:
+      stacked_outputs.append(out.t)
+  return stacked_outputs
+
+
+@RegisterPFor("StatelessIf")
+@RegisterPFor("If")
+def _convert_stateless_if(pfor_input):
+  cond, cond_stacked, _ = pfor_input.input(0)
+  inputs = pfor_input.inputs[1:]
+  then_branch = pfor_input.get_attr("then_branch")
+  else_branch = pfor_input.get_attr("else_branch")
+
+  if cond_stacked:
+    cond_int = math_ops.cast(cond, dtypes.int32)
+    # Compute loop indices for the different branches
+    false_indices, true_indices = data_flow_ops.dynamic_partition(
+        pfor_input.pfor.all_indices, cond_int, 2)
+    # Compute indices for cond being True or False.
+    if pfor_input.pfor.all_indices_partitioned:
+      else_indices, then_indices = data_flow_ops.dynamic_partition(
+          array_ops.range(len(pfor_input.pfor.all_indices)), cond_int, 2)
+    else:
+      else_indices, then_indices = false_indices, true_indices
+    # Partition inputs
+    then_inputs = _partition_inputs_for_indices(inputs, then_indices)
+    else_inputs = _partition_inputs_for_indices(inputs, else_indices)
+
+    # Convert "then" branch.
+    then_outputs = _outputs_for_branch(then_branch.name, true_indices,
+                                       pfor_input, then_inputs)
+
+    # Convert "else" branch.
+    else_outputs = _outputs_for_branch(else_branch.name, false_indices,
+                                       pfor_input, else_inputs)
+
+    assert len(then_outputs) == len(else_outputs)
+    # Note that if the "then" and "else" branches are updating the same state,
+    # and possibly reading them as well, it could lead to undefined behavior
+    # since the ordering of those operations is not well defined.
+    # One possibility is to order all the "then" branches to execute before all
+    # the "else" branches so that the side-effects in the former are visible to
+    # the latter. For now, we leave that as undefined behavior.
+    outputs = []
+    # Merge outputs
+    for then_output, else_output in zip(then_outputs, else_outputs):
+      out = data_flow_ops.dynamic_stitch([then_indices, else_indices],
+                                         [then_output, else_output])
+      outputs.append(wrap(out, True))
+    return outputs
+  else:
+    outputs = control_flow_ops.cond(
+        cond,
+        lambda: _outputs_for_branch(then_branch.name, None, pfor_input, inputs),
+        lambda: _outputs_for_branch(else_branch.name, None, pfor_input, inputs))
+    return [wrap(t, True) for t in outputs]
 
 
 # spectral_ops

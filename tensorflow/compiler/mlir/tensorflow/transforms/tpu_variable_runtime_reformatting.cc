@@ -263,6 +263,7 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
   llvm::SmallVector<std::pair<llvm::ArrayRef<Value>, Type>, 8>
       new_replicated_inputs;
   llvm::SmallVector<llvm::SmallVector<Value, 8>, 8> replicated_inputs;
+  replicated_inputs.reserve(replicate.GetBody().getNumArguments());
   for (auto arg : llvm::enumerate(replicate.GetBody().getArguments())) {
     int64_t i = arg.index();
     replicated_inputs.emplace_back();

@@ -34,6 +34,8 @@ namespace tensorflow {
 namespace testing {
 
 // Return a temporary directory suitable for temporary testing files.
+//
+// Where possible, consider using Env::LocalTempFilename over this function.
 string TmpDir();
 
 // Returns the path to TensorFlow in the directory containing data

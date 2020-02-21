@@ -27,12 +27,16 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 
 
 class SoftDevicePlacementTest(test.TestCase):
 
   def setUp(self):
-    context.context().soft_device_placement = True
+    super(SoftDevicePlacementTest, self).setUp()
+    context._context = None
+    ops.enable_eager_execution_internal()
+    config.set_soft_device_placement(enabled=True)
     context.context().log_device_placement = True
 
   @test_util.run_gpu_only
@@ -87,10 +91,37 @@ class SoftDevicePlacementTest(test.TestCase):
     self.assertIn('GPU:0', c.device)
 
 
+class HardDevicePlacementTest(test.TestCase):
+
+  def setUp(self):
+    super(HardDevicePlacementTest, self).setUp()
+    context._context = None
+    ops.enable_eager_execution_internal()
+    config.set_soft_device_placement(enabled=False)
+    context.context().log_device_placement = True
+    self.assertEqual(config.get_soft_device_placement(), False)
+    self.assertEqual(context.context().soft_device_placement, False)
+
+  @test_util.run_gpu_only
+  def testIdentityCanCopy(self):
+    config.set_device_policy('explicit')
+    with ops.device('CPU:0'):
+      x = constant_op.constant(1.0)
+      self.assertIn('CPU:0', x.device)
+      self.assertIn('CPU:0', x.backing_device)
+    with ops.device('GPU:0'):
+      y = array_ops.identity(x)
+      self.assertIn('GPU:0', y.device)
+      self.assertIn('GPU:0', y.backing_device)
+
+
 class ClusterPlacementTest(test.TestCase):
 
   def setUp(self):
-    context.context().soft_device_placement = True
+    super(ClusterPlacementTest, self).setUp()
+    context._context = None
+    ops.enable_eager_execution_internal()
+    config.set_soft_device_placement(enabled=True)
     context.context().log_device_placement = True
     workers, _ = test_util.create_local_cluster(2, 0)
     remote.connect_to_remote_host([workers[0].target, workers[1].target])

@@ -16170,6 +16170,13 @@ op {
     }
   }
   attr {
+    name: "exponential_avg_factor"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
     name: "data_format"
     type: "string"
     default_value {
@@ -16523,6 +16530,13 @@ op {
     }
   }
   attr {
+    name: "exponential_avg_factor"
+    type: "float"
+    default_value {
+      f: 1
+    }
+  }
+  attr {
     name: "data_format"
     type: "string"
     default_value {
@@ -16614,6 +16628,13 @@ op {
     type: "float"
     default_value {
       f: 0.0001
+    }
+  }
+  attr {
+    name: "exponential_avg_factor"
+    type: "float"
+    default_value {
+      f: 1
     }
   }
   attr {
@@ -28347,6 +28368,56 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+}
+op {
+  name: "QuantizeAndDequantizeV2Grad"
+  input_arg {
+    name: "gradients"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_min"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_max"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "input_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "input_min_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "input_max_backprop"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
     }
   }
   attr {

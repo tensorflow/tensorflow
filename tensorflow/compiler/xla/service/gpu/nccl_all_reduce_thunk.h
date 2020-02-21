@@ -50,9 +50,12 @@ class NcclAllReduceThunk : public Thunk {
 
   // TODO(b/125951860): Support all-reduces with replica groups, i.e.
   // all-reduces that compute multiple sums across subsets of all replicas.
-  NcclAllReduceThunk(int64 replica_count, int64 element_count,
-                     const BufferAllocation::Slice& source_buffer,
-                     const BufferAllocation::Slice& destination_buffer,
+  struct Buffer {
+    int64 element_count;
+    BufferAllocation::Slice source_buffer;
+    BufferAllocation::Slice destination_buffer;
+  };
+  NcclAllReduceThunk(int64 replica_count, std::vector<Buffer> buffers,
                      const HloInstruction* all_reduce);
   ~NcclAllReduceThunk() override;
 
@@ -70,9 +73,7 @@ class NcclAllReduceThunk : public Thunk {
   struct AuxData;
 
   const int64 replica_count_;
-  const int64 element_count_;
-  const BufferAllocation::Slice source_buffer_;
-  const BufferAllocation::Slice destination_buffer_;
+  const std::vector<Buffer> buffers_;
   std::unique_ptr<AuxData> aux_data_;
 };
 

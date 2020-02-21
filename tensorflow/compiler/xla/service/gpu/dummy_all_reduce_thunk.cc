@@ -42,15 +42,11 @@ NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
 struct NcclAllReduceThunk::AuxData {};
 
 NcclAllReduceThunk::NcclAllReduceThunk(
-    int64 replica_count, int64 element_count,
-    const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer,
+    int64 replica_count, std::vector<NcclAllReduceThunk::Buffer> buffers,
     const HloInstruction* all_reduce)
     : Thunk(Thunk::kNcclAllReduce, all_reduce),
       replica_count_(replica_count),
-      element_count_(element_count),
-      source_buffer_(source_buffer),
-      destination_buffer_(destination_buffer) {}
+      buffers_(std::move(buffers)) {}
 
 }  // namespace gpu
 }  // namespace xla

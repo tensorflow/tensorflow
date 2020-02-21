@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/hlo_replication_analysis.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -32,6 +33,60 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
+namespace {
+
+// In SPMD mode, if there's a cross-replica all-reduce that produces the same
+// value for all partitions, replaces it with a global all-reduce and then
+// divide by the number of partitions. Depending on the topology and the
+// implementation of the all-reduce for the backend, this may give a better
+// performance.
+StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
+                                          int64 replica_count,
+                                          int64 partition_count) {
+  TF_ASSIGN_OR_RETURN(
+      auto replication_analysis,
+      HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
+
+  bool changed = false;
+  int64 next_channel = hlo_query::NextChannelId(*module);
+  for (auto computation : module->computations()) {
+    for (auto instruction : computation->instructions()) {
+      if (auto ar = DynCast<HloAllReduceInstruction>(instruction)) {
+        const Shape& shape = ar->shape();
+        if (ar->channel_id()) {
+          continue;
+        }
+        if (ar->replica_groups().size() > 1) {
+          continue;
+        }
+        if (shape.IsTuple() || shape.element_type() != F32) {
+          continue;
+        }
+        // We would need a cost model for the target, but in general we want to
+        // rewrite only if the replica count in the original op was large.
+        if (replica_count < 8 * partition_count) {
+          continue;
+        }
+        if (replication_analysis->HloInstructionIsReplicatedAt(ar, {})) {
+          VLOG(2) << "Replaced replicated all-reduce:" << ar->ToString();
+          ar->set_channel_id(next_channel++);
+          auto divisor =
+              computation->AddInstruction(HloInstruction::CreateConstant(
+                  LiteralUtil::CreateR0<float>(partition_count)));
+          auto bcast = computation->AddInstruction(
+              HloInstruction::CreateBroadcast(shape, divisor, {}));
+          auto div = computation->AddInstruction(HloInstruction::CreateBinary(
+              ar->shape(), HloOpcode::kDivide, ar, bcast));
+          TF_RETURN_IF_ERROR(ar->ReplaceAllUsesWith(div));
+          changed = true;
+        }
+      }
+    }
+  }
+  return changed;
+}
+
+}  // namespace
 
 namespace m = match;
 
@@ -508,7 +563,16 @@ StatusOr<bool> ArCrsCombiner::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(KeepProvablyEqualInstructionGroupsMPMD());
   }
 
-  return RewriteGraph();
+  TF_ASSIGN_OR_RETURN(auto changed, RewriteGraph());
+
+  if (num_replicas_ > 1 && spmd_partition_) {
+    TF_ASSIGN_OR_RETURN(auto replaced,
+                        ReplaceReplicatedAllReduce(module, num_replicas_,
+                                                   num_spatial_partitions_));
+    changed |= replaced;
+  }
+
+  return changed;
 }
 
 }  // namespace xla

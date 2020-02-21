@@ -51,6 +51,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/Module.h"  // TF:llvm-project
 #include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/Types.h"  // TF:llvm-project
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
@@ -2515,6 +2516,43 @@ void StructuredValueLinearizer::RecursivelyFindLeaves(
   }
 }
 
+// For exported functions with mutable bound inputs, rewrite the function
+// signature to annotate resource subtypes on the types.
+//
+// The raw imported functions have `tensor<*x!tf.resource>` as the type for
+// mutable bound inputs. Here we turn that into
+// `tensor<!tf.resource<tensor<...>>>`.
+void SetResourceSubtypes(mlir::ModuleOp module) {
+  mlir::SymbolTable symbol_table(module);
+  for (auto func : module.getOps<mlir::FuncOp>()) {
+    if (!mlir::tf_saved_model::IsExported(func)) continue;
+    mlir::OpBuilder builder(func.getBody());
+    llvm::SmallVector<mlir::Type, 4> new_input_types;
+    for (int i = 0, e = func.getNumArguments(); i < e; i++) {
+      auto arg = func.front().getArgument(i);
+      auto global_tensor =
+          mlir::tf_saved_model::LookupBoundInput(func, i, symbol_table);
+      if (global_tensor && global_tensor.is_mutable()) {
+        auto old_type = arg.getType();
+        auto new_type = mlir::RankedTensorType::get(
+            {}, mlir::TF::ResourceType::get(
+                    {global_tensor.type().cast<mlir::TensorType>()},
+                    module.getContext()));
+        arg.setType(new_type);
+        auto arg_with_original_type = builder.create<mlir::TF::CastOp>(
+            global_tensor.getLoc(), old_type, arg,
+            /*Truncate=*/builder.getBoolAttr(false));
+        arg.replaceAllUsesWith(arg_with_original_type);
+        // The RAUW replaces the arg with itself, so we need to set it back.
+        arg_with_original_type.setOperand(arg);
+      }
+      new_input_types.push_back(arg.getType());
+    }
+    func.setType(mlir::FunctionType::get(
+        new_input_types, func.getType().getResults(), module.getContext()));
+  }
+}
+
 // Reorder the ops in the module to make testing easier and less dependent
 // on implementation details such as the order of functions in the
 // FunctionDefLibrary.
@@ -2755,6 +2793,7 @@ Status CreateSavedModelIR(
           builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
     }
   }
+  SetResourceSubtypes(module);
   module.setAttr("tf_saved_model.semantics", builder.getUnitAttr());
   SortSavedModelModule(module);
   return Status::OK();

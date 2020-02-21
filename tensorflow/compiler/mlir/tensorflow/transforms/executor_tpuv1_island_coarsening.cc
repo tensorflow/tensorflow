@@ -29,10 +29,12 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Block.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Location.h"  // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
 #include "mlir/IR/UseDefLists.h"  // TF:llvm-project
 #include "mlir/IR/Visitors.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
@@ -57,8 +59,8 @@ constexpr llvm::StringRef kTpuStatusAttr = "_tpu_compilation_status";
 // TPU-annotated operations and intended to preserve backward compatibility with
 // TFv1.
 struct TpuV1BridgeExecutorIslandCoarsening
-    : public FunctionPass<TpuV1BridgeExecutorIslandCoarsening> {
-  void runOnFunction() override;
+    : public ModulePass<TpuV1BridgeExecutorIslandCoarsening> {
+  void runOnModule() override;
 };
 
 // Sort the Operations in the provided range to enforce dominance.
@@ -88,9 +90,10 @@ LogicalResult SortTopologically(Block::iterator first_op,
           Operation* producer_in_block =
               block->findAncestorOpInBlock(*defining_op);
           if (producer_in_block && producer_in_block != &op &&
-              unscheduled_ops.count(producer_in_block))
+              unscheduled_ops.count(producer_in_block)) {
             // Found an operand that isn't scheduled yet, interrupt the walk.
             return WalkResult::interrupt();
+          }
         }
         return WalkResult::advance();
       });
@@ -113,7 +116,9 @@ LogicalResult SortTopologically(Block::iterator first_op,
 // A failure is returned if a cycle preventing the merge from happening
 // correctly without breaking dominance. The IR is left in invalid state in case
 // of failure.
-LogicalResult MergeIsland(Operation* op, bool* changed) {
+LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
+                              is_op_calling_func_for_cluster,
+                          Operation* op, bool* changed) {
   // Find the first island wrapping a single operation with the `_tpu_replicate`
   // attribute, it'll be used as the root of the algorithm to find the other
   // operations that are part of the same cluster.
@@ -146,7 +151,9 @@ LogicalResult MergeIsland(Operation* op, bool* changed) {
     if (!candidate_cluster_name)
       candidate_cluster_name =
           candidate_wrapped_op.getAttrOfType<StringAttr>(kTpuStatusAttr);
-    if (candidate_cluster_name != cluster_name) continue;
+    if (candidate_cluster_name != cluster_name &&
+        !is_op_calling_func_for_cluster(cluster_name, &candidate_wrapped_op))
+      continue;
 
     // Look at captured operands to bring-in ReplicatedInputOp in the
     // island as well. TODO: also pull in tf.Const, some optimizations can
@@ -250,34 +257,71 @@ LogicalResult MergeIsland(Operation* op, bool* changed) {
                            first_op_after);
 }
 
-void TpuV1BridgeExecutorIslandCoarsening::runOnFunction() {
-  getFunction().walk([&](GraphOp graph) {
-    Block& graph_body = graph.GetBody();
+void TpuV1BridgeExecutorIslandCoarsening::runOnModule() {
+  SymbolTable symbol_table(getModule());
 
-    // Iterate until fixed point on the block, as it may contain multiple
-    // clusters.
-    bool changed = true;
-    while (changed) {
-      changed = false;
-      for (Operation& op : graph_body) {
-        if (failed(MergeIsland(&op, &changed))) {
-          graph.emitError() << "Merging island failed: the TPU cluster likely "
-                            << "contains a cycle with non-TPU operations\n";
-          signalPassFailure();
-          return WalkResult::interrupt();
-        }
-        // If islands were merged, restart scanning the block from the beginning
-        // as we lost track of where to continue.
-        if (changed) break;
-      }
+  // Map tpu cluster names to the functions that contain operations for this
+  // cluster.
+  DenseMap<StringRef, DenseSet<FuncOp>> tpu_funcs;
+  for (FuncOp func_op : getModule().getOps<FuncOp>()) {
+    func_op.walk([&](Operation* op) {
+      StringAttr cluster_name =
+          op->getAttrOfType<StringAttr>(kTpuReplicateAttr);
+      if (!cluster_name)
+        cluster_name = op->getAttrOfType<StringAttr>(kTpuStatusAttr);
+      if (!cluster_name) return;
+      tpu_funcs[cluster_name.getValue()].insert(func_op);
+    });
+  }
+
+  // Return true if the operation is containing a reference to a function
+  // containing operations for this cluster.
+  auto is_op_calling_func_for_cluster = [&](StringAttr cluster, Operation* op) {
+    auto funcs_for_cluster = tpu_funcs.find(cluster.getValue());
+    assert(funcs_for_cluster != tpu_funcs.end());
+    assert(!funcs_for_cluster->second.empty());
+    if (funcs_for_cluster->second.size() == 1) return false;
+    for (NamedAttribute attr : op->getAttrs()) {
+      auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>();
+      if (!symbol_ref) continue;
+      FuncOp callee = symbol_table.lookup<FuncOp>(symbol_ref.getValue());
+      if (!callee) continue;
+      if (funcs_for_cluster->second.count(callee)) return true;
     }
-    return WalkResult::advance();
-  });
+    return false;
+  };
+
+  for (FuncOp func_op : getModule().getOps<FuncOp>()) {
+    func_op.walk([&](GraphOp graph) {
+      Block& graph_body = graph.GetBody();
+
+      // Iterate until fixed point on the block, as it may contain multiple
+      // clusters.
+      bool changed = true;
+      while (changed) {
+        changed = false;
+        for (Operation& op : graph_body) {
+          if (failed(
+                  MergeIsland(is_op_calling_func_for_cluster, &op, &changed))) {
+            graph.emitError()
+                << "Merging island failed: the TPU cluster likely "
+                << "contains a cycle with non-TPU operations\n";
+            signalPassFailure();
+            return WalkResult::interrupt();
+          }
+          // If islands were merged, restart scanning the block from the
+          // beginning as we lost track of where to continue.
+          if (changed) break;
+        }
+      }
+      return WalkResult::advance();
+    });
+  }
 }
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OpPassBase<ModuleOp>>
 CreateTFExecutorTPUV1IslandCoarseningPass() {
   return std::make_unique<TpuV1BridgeExecutorIslandCoarsening>();
 }

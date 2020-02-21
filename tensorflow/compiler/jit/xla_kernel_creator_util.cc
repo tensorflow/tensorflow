@@ -218,12 +218,13 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
   TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
   Device* dev = flr->device();
   Status s;
-  OpKernelConstruction construction(
-      DeviceType(dev->device_type()), dev,
-      dev->GetAllocator(AllocatorAttributes()), &node_def,
-      &fbody->fdef.signature(), flr, dev->resource_manager(), fbody->arg_types,
-      input_memory_types, fbody->ret_types, output_memory_types,
-      flr->graph_def_version(), &s);
+  auto props = std::make_shared<NodeProperties>(
+      &fbody->fdef.signature(), node_def, fbody->arg_types, fbody->ret_types);
+  OpKernelConstruction construction(DeviceType(dev->device_type()), dev,
+                                    dev->GetAllocator(AllocatorAttributes()),
+                                    flr, dev->resource_manager(), props,
+                                    input_memory_types, output_memory_types,
+                                    flr->graph_def_version(), &s);
 
   *kernel = absl::make_unique<XlaLocalLaunchBase>(
       &construction, constant_arg_indices, resource_arg_indices, function,

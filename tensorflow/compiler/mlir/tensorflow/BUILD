@@ -287,6 +287,7 @@ cc_library(
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
         "transforms/optimize_global_tensors.cc",
+        "transforms/parallel_execute_to_islands.cc",
         "transforms/promote_resources_to_args.cc",
         "transforms/raise_control_flow.cc",
         "transforms/replicate_invariant_op_hoisting.cc",
@@ -708,7 +709,6 @@ cc_library(
     deps = [
         ":tensorflow_dialect_registration",
         ":tf_dialect_passes",
-        "@llvm-project//mlir:AllPassesAndDialects",
     ],
 )
 
@@ -913,7 +913,6 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
