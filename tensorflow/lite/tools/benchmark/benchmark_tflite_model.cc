@@ -185,6 +185,13 @@ std::vector<int> TfLiteIntArrayToVector(const TfLiteIntArray* int_array) {
   return values;
 }
 
+std::shared_ptr<profiling::ProfileSummaryFormatter>
+CreateProfileSummaryFormatter(bool format_as_csv) {
+  return format_as_csv
+             ? std::make_shared<profiling::ProfileSummaryCSVFormatter>()
+             : std::make_shared<profiling::ProfileSummaryDefaultFormatter>();
+}
+
 }  // namespace
 
 BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
@@ -566,7 +573,9 @@ BenchmarkTfLiteModel::MayCreateProfilingListener() const {
   if (!params_.Get<bool>("enable_op_profiling")) return nullptr;
   return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
       interpreter_.get(), params_.Get<int32_t>("max_profiling_buffer_entries"),
-      params_.Get<std::string>("profiling_output_csv_file")));
+      params_.Get<std::string>("profiling_output_csv_file"),
+      CreateProfileSummaryFormatter(
+          !params_.Get<std::string>("profiling_output_csv_file").empty())));
 }
 
 TfLiteStatus BenchmarkTfLiteModel::RunImpl() { return interpreter_->Invoke(); }
