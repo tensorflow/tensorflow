@@ -76,7 +76,7 @@ Status TrtShapeOptimizationProfile::AddProfiles(
                  << ". This usually happens when profile is invalid.";
     }
   }
-  if (config->getNbOptimizationProfiles() == 0) {
+  if (!profiles_.empty() && config->getNbOptimizationProfiles() == 0) {
     return errors::Internal("Failure in adding an optimization profile.");
   }
   // if TRT_VERSION < 6, then we do not need to add
