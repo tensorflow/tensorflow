@@ -257,9 +257,29 @@ def reset_uids():
 
 @keras_export('keras.backend.clear_session')
 def clear_session():
-  """Destroys the current TF graph and creates a new one.
+  """Destroys the current TF graph and session, and creates a new one.
 
-  Useful to avoid clutter from old models / layers.
+  Calling clear_session() releases the global graph state that Keras is
+  holding on to; resets the counters used for naming layers and
+  variables in Keras; and resets the learning phase. This helps avoid clutter
+  from old models and layers, especially when memory is limited, and a
+  common use-case for clear_session is releasing memory when building models
+  and layers in a loop.
+
+  >>> import tensorflow as tf
+  >>> layers = [tf.keras.layers.Dense(10) for _ in range(10)]
+  >>> new_layer = tf.keras.layers.Dense(10)
+  >>> print(new_layer.name)
+  dense_10
+  >>> tf.keras.backend.set_learning_phase(1)
+  >>> print(tf.keras.backend.learning_phase())
+  1
+  >>> tf.keras.backend.clear_session()
+  >>> new_layer = tf.keras.layers.Dense(10)
+  >>> print(new_layer.name)
+  dense
+  >>> print(tf.keras.backend.learning_phase())
+  0
   """
   global _SESSION
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
