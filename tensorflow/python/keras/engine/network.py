@@ -158,7 +158,8 @@ class Network(base_layer.Layer):
   # The key of _layer_call_argspecs is a layer. tf.Module._flatten will fail to
   # flatten the key since it is trying to convert Trackable/Layer to a string.
   _TF_MODULE_IGNORED_PROPERTIES = frozenset(itertools.chain(
-      ('_layer_call_argspecs', '_compiled_trainable_state'),
+      ('_layer_call_argspecs', '_compiled_trainable_state',
+       '_output_mask_cache', '_output_tensor_cache', '_output_shape_cache'),
       base_layer.Layer._TF_MODULE_IGNORED_PROPERTIES
   ))
 
