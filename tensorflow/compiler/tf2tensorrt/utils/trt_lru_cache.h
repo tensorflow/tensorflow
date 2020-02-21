@@ -142,8 +142,8 @@ struct EngineContext {
                               ", but only ", execution_context.size(),
                               "contexts are present.");
     }
-    *exec_ctx = execution_context[idx];
-    return Status::OK;
+    *exec_ctx = execution_context[idx].get();
+    return Status::OK();
   }
 
   // In explicit batch mode, we maintain a vector of contexts for each engine,
