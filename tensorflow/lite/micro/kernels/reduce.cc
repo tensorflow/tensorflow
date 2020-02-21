@@ -77,20 +77,20 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
   int temp_index[kMaxNumberOfAxis];
   int resolved_axis[kMaxNumberOfReducedAxis];
 
+  tflite::MeanParams op_params;
+  ResolveAxis(GetTensorData<int>(axis), num_axis, &op_params);
+  // TODO(b/146571391): Support only 4D Input and 2D Axis for Mean until
+  // scratch tensor allocation has been implemented in (b/132070898)
+  bool is_valid_inputs =
+      (NumDimensions(input) == 4 && op_params.axis_count == 2 &&
+       ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+        (op_params.axis[0] == 2 && op_params.axis[1] == 1)));
+  TF_LITE_ENSURE_MSG(
+      context, is_valid_inputs == true,
+      "Number of Input "
+      "dimensions != 4 OR the Axis is not either [1, 2] or [2, 1]");
   switch (input->type) {
     case kTfLiteFloat32: {
-      tflite::MeanParams op_params;
-      ResolveAxis(GetTensorData<int>(axis), num_axis, &op_params);
-      // TODO(b/146571391): Support only 4D Input and 2D Axis for Mean until
-      // scratch tensor allocation has been implemented in (b/132070898)
-      bool is_valid_inputs =
-          (NumDimensions(input) == 4 && op_params.axis_count == 2 &&
-           ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
-            (op_params.axis[0] == 2 && op_params.axis[1] == 1)));
-      TF_LITE_ENSURE_MSG(
-          context, is_valid_inputs == true,
-          "Number of Input "
-          "dimensions != 4 OR the Axis is not either [1, 2] or [2, 1]");
       // TODO(b/139102329): Handle the below special case in the combined
       // reference method.
       // Defer to specialized implementation for 4D Mean across axes 1 & 2.
@@ -109,10 +109,30 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
                                 GetTensorData<float>(output)));
       }
     } break;
+    case kTfLiteInt8: {
+      TF_LITE_ENSURE(
+          context,
+          reference_ops::QuantizedMeanOrSum(
+              GetTensorData<int8_t>(input), input->params.zero_point,
+              input->params.scale, input->dims->data, input->dims->size,
+              GetTensorData<int8_t>(output), output->params.zero_point,
+              output->params.scale, output->dims->data, output->dims->size,
+              GetTensorData<int>(axis), num_axis, params->keep_dims, temp_index,
+              resolved_axis, GetTensorData<int>(output), false));
+    } break;
+    case kTfLiteUInt8: {
+      reference_ops::QuantizedMeanOrSum(
+          GetTensorData<uint8_t>(input), input->params.zero_point,
+          input->params.scale, input->dims->data, input->dims->size,
+          GetTensorData<uint8_t>(output), output->params.zero_point,
+          output->params.scale, output->dims->data, output->dims->size,
+          GetTensorData<int>(axis), num_axis, params->keep_dims, temp_index,
+          resolved_axis, GetTensorData<int32_t>(output), false);
+    } break;
     default:
       // TODO(b/144955155): Support uint8(b/144955155) and int8(b/144955018)
       TF_LITE_ENSURE_MSG(context, false,
-                         "Currently, only float32 input type "
+                         "Currently, only float32, int8 or uint8 input type "
                          "is supported.");
   }
   return kTfLiteOk;
