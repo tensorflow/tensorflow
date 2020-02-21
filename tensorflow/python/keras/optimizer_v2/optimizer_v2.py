@@ -437,6 +437,13 @@ class OptimizerV2(trackable.Trackable):
         # Distribution strategy does not support reducing an empty list of
         # gradients
         return control_flow_ops.no_op()
+
+      if distribute_ctx.in_cross_replica_context():
+        raise RuntimeError(
+            "`apply_gradients() cannot be called in cross-replica context. "
+            "Use `_distributed_apply()` instead or enter replica context "
+            "by using `tf.distribute.Strategy.experimental_run_v2`.")
+
       apply_state = self._prepare(var_list)
       return distribute_ctx.get_replica_context().merge_call(
           functools.partial(self._distributed_apply, apply_state=apply_state),
