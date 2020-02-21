@@ -300,7 +300,7 @@ SmallVector<int64_t, 4> GetDataFormatPermutation(StringRef from, StringRef to) {
   if (from == "NHWC" && to == "NCHW") {
     return {0, 3, 1, 2};
   } else if (from == "NCHW" && to == "NHWC") {
-    return {0, 1, 2, 3};
+    return {0, 2, 3, 1};
   } else {
     return {};
   }
@@ -380,6 +380,63 @@ LogicalResult UpdateDataFormat(StringRef data_format, Op *op) {
   for (unsigned idx : layout_sensitive.GetLayoutDependentResults()) {
     OpResult result = op->getOperation()->getResult(idx);
     result.setType(ShuffleRankedTensorType(result.getType(), perm));
+  }
+
+  return success();
+}
+
+// Default implementation for folding operand transpose into the operation.
+// See `FoldOperandsTransposeInterface::FoldOperandsPermutation`.
+template <typename Op>
+LogicalResult FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation, Op *op,
+    ArrayRef<std::pair<StringRef, ArrayAttr>> shuffle_attrs = {}) {
+  MLIRContext *context = op->template getParentOfType<ModuleOp>().getContext();
+
+  // We only support NHWC <-> NCHW permutations.
+  static constexpr std::array<int64_t, 4> kNchwToNhwc = {0, 2, 3, 1};
+  static constexpr std::array<int64_t, 4> kNhwcToNchw = {0, 3, 1, 2};
+
+  // Operation data format after folding `permutation`.
+  StringRef target_data_format = [&]() -> StringRef {
+    if (op->data_format() == "NHWC" && permutation.equals(kNchwToNhwc)) {
+      return "NCHW";  // cancel NCHW->NHWC operand permutation
+    } else if (op->data_format() == "NCHW" && permutation.equals(kNhwcToNchw)) {
+      return "NHWC";  // cancel NHWC->NCHW operand permutation
+    } else {
+      return "";
+    }
+  }();
+  if (target_data_format.empty()) return failure();
+
+  // To fold operand `permutation` into the `op` we need shuffle all layout
+  // dependent attributes and types with a reverse permutation, and change
+  // operation data format to `target_data_format`.
+  //
+  // Example:
+  //   %1 = SomeOp(...)   {data_format = NHWC}
+  //   %2 = Transpose(%1) {permutation = NHWC->NCHW}
+  //   %3 = Op(%2)        {data_format = NCHW}
+  //
+  // To bypass %2 we have to change data format to shuffle data format from NCHW
+  // to NHWC, which is the reverse of operand permutation (function argument).
+  auto reverse_permutation =
+      GetDataFormatPermutation(op->data_format(), target_data_format);
+  if (reverse_permutation.empty()) return failure();
+
+  op->setAttr("data_format", StringAttr::get(target_data_format, context));
+
+  for (auto pair : shuffle_attrs) {
+    StringRef attr_name = pair.first;
+    ArrayAttr attr_value = pair.second;
+    op->setAttr(attr_name, ShuffleArrayAttr(attr_value, reverse_permutation));
+  }
+
+  auto fold = cast<FoldOperandsTransposeInterface>(op->getOperation());
+  for (unsigned idx : fold.GetLayoutDependentResults()) {
+    OpResult result = op->getOperation()->getResult(idx);
+    result.setType(
+        ShuffleRankedTensorType(result.getType(), reverse_permutation));
   }
 
   return success();
@@ -1255,6 +1312,11 @@ static LogicalResult Verify(FusedBatchNormOp op) {
   return success();
 }
 
+LogicalResult FusedBatchNormV3Op::FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation) {
+  return ::mlir::TF::FoldOperandsPermutation(permutation, this);
+}
+
 //===----------------------------------------------------------------------===//
 // GatherV2Op
 //===----------------------------------------------------------------------===//
@@ -1453,37 +1515,8 @@ void MaxOp::build(Builder *builder, OperationState &result, Value input,
 
 LogicalResult MaxPoolOp::FoldOperandsPermutation(
     ArrayRef<int64_t> permutation) {
-  MLIRContext *context = getParentOfType<ModuleOp>().getContext();
-
-  // Data format after folding permutation.
-  StringRef target_data_format;
-
-  // For now we only support folding of NCHW->NHWC and NHWC->NCHW permutations.
-  if (data_format() == "NHWC") {
-    static constexpr std::array<int64_t, 4> kPerm = {0, 2, 3, 1};  // to NHWC
-    if (permutation != ArrayRef<int64_t>(kPerm)) return failure();
-    target_data_format = "NCHW";
-
-  } else if (data_format() == "NCHW") {
-    static constexpr std::array<int64_t, 4> kPerm = {0, 3, 1, 2};  // to NCHW
-    if (permutation != ArrayRef<int64_t>(kPerm)) return failure();
-    target_data_format = "NHWC";
-
-  } else {
-    return failure();
-  }
-
-  auto perm = GetDataFormatPermutation(data_format(), target_data_format);
-  if (perm.empty()) return failure();
-
-  setAttr("data_format", StringAttr::get(target_data_format, context));
-  setAttr("strides", ShuffleArrayAttr(strides(), perm));
-  setAttr("ksize", ShuffleArrayAttr(ksize(), perm));
-
-  OpResult result = getOperation()->getResult(0);
-  result.setType(ShuffleRankedTensorType(result.getType(), perm));
-
-  return success();
+  return ::mlir::TF::FoldOperandsPermutation(
+      permutation, this, {{"strides", strides()}, {"ksize", ksize()}});
 }
 
 //===----------------------------------------------------------------------===//

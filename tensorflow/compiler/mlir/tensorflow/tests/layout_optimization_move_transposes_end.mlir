@@ -56,7 +56,7 @@ func @fold_into_max_pool(%arg0: tensor<1x64x112x112xf32>) -> tensor<1x56x56x64xf
 
   // CHECK: %[[RES_PERM:[0-9]*]] = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi64>}
   // CHECK: %[[MAX_POOL:[0-9]*]] = "tf.MaxPool"(%arg0) {data_format = "NCHW", ksize = [1, 1, 3, 3], padding = "SAME", strides = [1, 1, 2, 2]} : (tensor<1x64x112x112xf32>) -> tensor<1x64x56x56xf32>
-  // CHECK: %[[RES_TRANSPOSE:[0-9]*]] = "tf.Transpose"(%[[ADD]], %[[RES_PERM]])
+  // CHECK: %[[RES_TRANSPOSE:[0-9]*]] = "tf.Transpose"(%[[MAX_POOL]], %[[RES_PERM]])
   // CHECK: return %[[RES_TRANSPOSE]]
 
   // Transpose NCHW -> NHWC
@@ -71,4 +71,31 @@ func @fold_into_max_pool(%arg0: tensor<1x64x112x112xf32>) -> tensor<1x56x56x64xf
        } : (tensor<1x112x112x64xf32>) -> tensor<1x56x56x64xf32>
 
   return %2 : tensor<1x56x56x64xf32>
+}
+
+// CHECK-LABEL: func @fold_into_fused_batch_norm
+func @fold_into_fused_batch_norm(%arg0: tensor<1x64x112x112xf32>, %arg1: tensor<64xf32>) -> tensor<1x112x112x64xf32> {
+
+  // CHECK: %[[RES_PERM:[0-9]*]] = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi64>}
+  // CHECK: "tf.FusedBatchNormV3"(%arg0, {{.*}} {data_format = "NCHW"
+  // CHECK: %[[RES_TRANSPOSE:[0-9]*]] = "tf.Transpose"(%y, %[[RES_PERM]])
+  // CHECK: return %[[RES_TRANSPOSE]]
+
+  // Transpose NCHW -> NHWC
+  %0 = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi64>} : () -> tensor<4xi64>
+  %1 = "tf.Transpose"(%arg0, %0) : (tensor<1x64x112x112xf32>, tensor<4xi64>) -> tensor<1x112x112x64xf32>
+
+  // Compute FusedBatchNormV3 in NHWC format
+  %2, %batch_mean, %batch_var, %reserve_1, %reserve_2, %reserve_3
+    = "tf.FusedBatchNormV3"(%1, %arg1, %arg1, %arg1, %arg1)
+       {
+         data_format = "NHWC",
+         epsilon = 1.001 : f32,
+         exponential_avg_factor = 1.0 : f32,
+         is_training = false
+       }
+        : (tensor<1x112x112x64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
+       -> (tensor<1x112x112x64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
+
+  return %2#0 : tensor<1x112x112x64xf32>
 }
