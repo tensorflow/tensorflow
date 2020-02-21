@@ -1537,6 +1537,38 @@ static LogicalResult Verify(MaxPoolGradOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// MeanOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
+  // Reduction indices must be defined by a constant operation.
+  auto reduction_op =
+      dyn_cast_or_null<TF::ConstOp>(reduction_indices().getDefiningOp());
+  if (!reduction_op) return failure();
+
+  auto reductions_value = reduction_op.value().dyn_cast<DenseElementsAttr>();
+  if (!reductions_value) return failure();
+
+  // Prepare new reduction indices according to operand permutation.
+  SmallVector<int64_t, 4> shuffled_reduction;
+  llvm::transform(reductions_value.getIntValues(),
+                  std::back_inserter(shuffled_reduction),
+                  [&](APInt idx) { return permutation[idx.getSExtValue()]; });
+
+  // Add constant operation with a new reduction indices.
+  OpBuilder builder(getOperation());
+  auto type = mlir::RankedTensorType::get(shuffled_reduction.size(),
+                                          builder.getIntegerType(64));
+  auto values = mlir::DenseIntElementsAttr::get(type, shuffled_reduction);
+  auto shuffled_reduction_op = builder.create<TF::ConstOp>(getLoc(), values);
+
+  // Use new reduction indices.
+  setOperand(1, shuffled_reduction_op);
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // NegOp
 //===----------------------------------------------------------------------===//
 
