@@ -371,6 +371,10 @@ tensorflow/tools/ci_build/release/windows/gpu_py37_full/nightly_release.bat
 tensorflow/tools/ci_build/release/windows/gpu_py37_full/release.bat
 tensorflow/tools/ci_build/release/windows/gpu_py37_full/release_pip_rename.sh
 tensorflow/tools/ci_build/release/windows/gpu_py37_full/release_v1.bat
+tensorflow/tools/ci_build/release/windows/gpu_py38_full/nightly.bat
+tensorflow/tools/ci_build/release/windows/gpu_py38_full/nightly_release.bat
+tensorflow/tools/ci_build/release/windows/gpu_py38_full/release.bat
+tensorflow/tools/ci_build/release/windows/gpu_py38_full/release_pip_rename.sh
 tensorflow/tools/ci_build/release/windows/upload_nightly_pip/upload.sh
 tensorflow/tools/ci_build/remote/BUILD
 tensorflow/tools/def_file_filter/BUILD
