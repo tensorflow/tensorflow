@@ -552,7 +552,12 @@ static LogicalResult Verify(BiasAddOp op) {
   return success();
 }
 
+// TODO(ezhulenev): BiasAddOp is not really layout sensitive, it must only
+// support folding operand transposes.
 LogicalResult BiasAddOp::UpdateDataFormat(StringRef data_format) {
+  auto ranked = value().getType().dyn_cast<RankedTensorType>();
+  if (!ranked || ranked.getRank() != 4) return failure();
+
   return ::mlir::TF::UpdateDataFormat(data_format, this);
 }
 

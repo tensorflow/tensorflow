@@ -41,22 +41,22 @@ bool IsZeroVector(const int8_t* vector, int v_size) {
 void SymmetricQuantizeFloats(const float* values, const int size,
                              int8_t* quantized_values, float* min, float* max,
                              float* scaling_factor) {
-  return PortableSymmetricQuantizeFloats(values, size, quantized_values, min,
-                                         max, scaling_factor);
+  PortableSymmetricQuantizeFloats(values, size, quantized_values, min, max,
+                                  scaling_factor);
 }
 
 void SymmetricQuantizeFloats(const float* values, const int size,
                              int8_t* quantized_values, float min_value,
                              float max_value, float* scaling_factor) {
-  return PortableSymmetricQuantizeFloats(values, size, quantized_values,
-                                         min_value, max_value, scaling_factor);
+  PortableSymmetricQuantizeFloats(values, size, quantized_values, min_value,
+                                  max_value, scaling_factor);
 }
 
 void AsymmetricQuantizeFloats(const float* values, const int size,
                               int8_t* quantized_values, float* scaling_factor,
                               int32_t* offset) {
-  return PortableAsymmetricQuantizeFloats(values, size, quantized_values,
-                                          scaling_factor, offset);
+  PortableAsymmetricQuantizeFloats(values, size, quantized_values,
+                                   scaling_factor, offset);
 }
 
 void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
@@ -104,7 +104,7 @@ void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride,
     const float* per_channel_scale, const int32_t* input_offset) {
-  return PortableMatrixBatchVectorMultiplyAccumulate(
+  PortableMatrixBatchVectorMultiplyAccumulate(
       matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
       result_stride, per_channel_scale, input_offset);
 }
@@ -259,8 +259,8 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
 void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       const int16_t* vector2, int v_size,
                                       int n_batch, int32_t* result) {
-  return PortableBatchVectorBatchVectorDotProduct(vector1, vector2, v_size,
-                                                  n_batch, result);
+  PortableBatchVectorBatchVectorDotProduct(vector1, vector2, v_size, n_batch,
+                                           result);
 }
 
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,

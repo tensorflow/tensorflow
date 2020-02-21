@@ -1872,50 +1872,6 @@ class Resize2DOperationParser : public TFLiteOperationParser {
   SamplingType sampling_type_ = SamplingType::UNKNOWN;
 };
 
-class SoftmaxOperationParser : public TFLiteOperationParser {
- public:
-  Status IsSupported(const TfLiteContext* context,
-                     const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
-    TfLiteSoftmaxParams* tf_options = nullptr;
-    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-    if (tf_options->beta != 1) {
-      // TODO(eignasheva): figure out, what's wrong with softmax.
-      return UnimplementedError("Softmax.beta != 1 is not supported.");
-    }
-    return OkStatus();
-  }
-
-  Status Parse(const TfLiteNode* tflite_node,
-               const TfLiteRegistration* registration, GraphFloat32* graph,
-               ObjectReader* reader) final {
-    Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::SOFTMAX);
-    RETURN_IF_ERROR(reader->AddInput(node, 0));
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-
-    const auto* tf_options =
-        reinterpret_cast<const TfLiteSoftmaxParams*>(tflite_node->builtin_data);
-    if (!tf_options) {
-      return InternalError("Missing tflite params");
-    }
-    if (tf_options->beta != 1) {
-      // there is multiply by scalar operation fused in softmax. Make a layer
-      // out of it before softmax.
-      return UnimplementedError("Softmax.beta != 1 is not supported.");
-      // auto mul_node = reader->NewPassthroughNode(node);
-      // mul_node->operation.type = ToString(OperationType::MUL);
-    }
-    SoftmaxAttributes attr;
-    attr.axis = Axis::CHANNELS;  // always by channels
-    node->operation.attributes = attr;
-    return OkStatus();
-  }
-};
-
 class SliceOperationParser : public TFLiteOperationParser {
  public:
   Status IsSupported(const TfLiteContext* context,
@@ -1991,6 +1947,86 @@ class SliceOperationParser : public TFLiteOperationParser {
     if (attr->ends.b < 0) {
       attr->ends.b = input_shape.b + attr->ends.b;
     }
+    return OkStatus();
+  }
+};
+
+class SoftmaxOperationParser : public TFLiteOperationParser {
+ public:
+  Status IsSupported(const TfLiteContext* context,
+                     const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(
+        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    TfLiteSoftmaxParams* tf_options = nullptr;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+    if (tf_options->beta != 1) {
+      // TODO(eignasheva): figure out, what's wrong with softmax.
+      return UnimplementedError("Softmax.beta != 1 is not supported.");
+    }
+    return OkStatus();
+  }
+
+  Status Parse(const TfLiteNode* tflite_node,
+               const TfLiteRegistration* registration, GraphFloat32* graph,
+               ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::SOFTMAX);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    const auto* tf_options =
+        reinterpret_cast<const TfLiteSoftmaxParams*>(tflite_node->builtin_data);
+    if (!tf_options) {
+      return InternalError("Missing tflite params");
+    }
+    if (tf_options->beta != 1) {
+      // there is multiply by scalar operation fused in softmax. Make a layer
+      // out of it before softmax.
+      return UnimplementedError("Softmax.beta != 1 is not supported.");
+      // auto mul_node = reader->NewPassthroughNode(node);
+      // mul_node->operation.type = ToString(OperationType::MUL);
+    }
+    SoftmaxAttributes attr;
+    attr.axis = Axis::CHANNELS;  // always by channels
+    node->operation.attributes = attr;
+    return OkStatus();
+  }
+};
+
+class SpaceToDepthOperationParser : public TFLiteOperationParser {
+ public:
+  Status IsSupported(const TfLiteContext* context,
+                     const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(
+        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    // TODO(impjdi): Dims check.
+    TfLiteSpaceToDepthParams* s2d_params = nullptr;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &s2d_params));
+    if (s2d_params->block_size == 1) {
+      return InvalidArgumentError("SPACE_TO_DEPTH block_size = 1 is a no-op.");
+    }
+    if (s2d_params->block_size < 1) {
+      return InvalidArgumentError("SPACE_TO_DEPTH block_size must be > 1.");
+    }
+    return OkStatus();
+  }
+
+  Status Parse(const TfLiteNode* tflite_node,
+               const TfLiteRegistration* registration, GraphFloat32* graph,
+               ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::SPACE_TO_DEPTH);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    const auto* tf_options = reinterpret_cast<const TfLiteSpaceToDepthParams*>(
+        tflite_node->builtin_data);
+    SpaceToDepthAttributes attr;
+    attr.block_size = tf_options->block_size;
+    node->operation.attributes = attr;
     return OkStatus();
   }
 };
@@ -2651,12 +2687,12 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
           OperationType::RSQRT);
     case kTfLiteBuiltinSin:
       return absl::make_unique<ElementwiseOperationParser>(OperationType::SIN);
-    case kTfLiteBuiltinSoftmax:
-      return absl::make_unique<SoftmaxOperationParser>();
     case kTfLiteBuiltinSlice:
       return absl::make_unique<SliceOperationParser>();
-    case kTfLiteBuiltinStridedSlice:
-      return absl::make_unique<StridedSliceOperationParser>();
+    case kTfLiteBuiltinSoftmax:
+      return absl::make_unique<SoftmaxOperationParser>();
+    case kTfLiteBuiltinSpaceToDepth:
+      return absl::make_unique<SpaceToDepthOperationParser>();
     case kTfLiteBuiltinSqrt:
       return absl::make_unique<ElementwiseOperationParser>(OperationType::SQRT);
     case kTfLiteBuiltinSquare:
@@ -2665,6 +2701,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     case kTfLiteBuiltinSquaredDifference:
       return absl::make_unique<ElementwiseOperationParser>(
           OperationType::SQUARED_DIFF);
+    case kTfLiteBuiltinStridedSlice:
+      return absl::make_unique<StridedSliceOperationParser>();
     case kTfLiteBuiltinSub:
       return absl::make_unique<ElementwiseOperationParser>(OperationType::SUB);
     case kTfLiteBuiltinTanh:

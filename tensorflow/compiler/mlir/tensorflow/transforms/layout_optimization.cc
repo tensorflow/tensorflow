@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
 #include "mlir/Transforms/Passes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 #define DEBUG_TYPE "tf-layout-optimization"
 
@@ -29,16 +30,6 @@ namespace mlir {
 namespace TF {
 
 namespace {
-
-// Layout optimization pipeline composes layout assignment and move transposes
-// passes to pick the optimal layout for all layout sensitive operations, and
-// cancel all redundant transposes.
-struct LayoutOptimizationPipelineOptions
-    : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
-  Option<std::string> force_data_format{
-      *this, "force-data-format",
-      llvm::cl::desc("Force data format for all layout sensitive ops")};
-};
 
 // LayoutAssignmentPass assigns optimal data layout (data format) for all
 // layout sensitive operations.
@@ -408,6 +399,8 @@ void MoveTransposesPass::runOnFunction() {
   });
 }
 
+}  // namespace
+
 void CreateLayoutOptimizationPipeline(
     OpPassManager& pm,  // NOLINT - MLIR contract is pass by mutable reference.
     const LayoutOptimizationPipelineOptions& options) {
@@ -422,8 +415,6 @@ void CreateLayoutOptimizationPipeline(
   // Move transposes to the end of the block and try to fold them.
   pm.addPass(std::make_unique<MoveTransposesPass>(Direction::kEnd));
 }
-
-}  // namespace
 
 static PassRegistration<LayoutAssignmentPass> layout_assignment(
     "tf-layout-assignment", "Layout assignment pass");

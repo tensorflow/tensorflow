@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
@@ -442,8 +443,24 @@ int3 Winograd4x4To36::GetGridSize() const {
 }
 
 Status Winograd4x4To36::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
+  switch (params.tuning_type) {
+    case TuningType::FAST:
+      work_group_size_ = {8, 6, 4};
+      if (params.info->vendor == Vendor::QUALCOMM) {
+        auto adreno_info = params.info->adreno_info;
+        if (adreno_info.gpu_version < 400) {
+          work_group_size_ = {4, 6, 2};
+        }
+      }
+      return OkStatus();
+    case TuningType::EXHAUSTIVE:
+      RETURN_IF_ERROR(BindArguments());
+      return GetBestWorkGroup(params, kernel_, GetGridSize(),
+                              &work_group_size_);
+    default:
+      work_group_size_ = {4, 6, 2};
+      return OkStatus();
+  }
 }
 
 Status Winograd4x4To36::AddToQueue(CLCommandQueue* queue) {
@@ -530,8 +547,24 @@ int3 Winograd36To4x4::GetGridSize() const {
 }
 
 Status Winograd36To4x4::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
+  switch (params.tuning_type) {
+    case TuningType::FAST:
+      work_group_size_ = {32, 4, 2};
+      if (params.info->vendor == Vendor::QUALCOMM) {
+        auto adreno_info = params.info->adreno_info;
+        if (adreno_info.gpu_version < 400) {
+          work_group_size_ = {16, 4, 1};
+        }
+      }
+      return OkStatus();
+    case TuningType::EXHAUSTIVE:
+      RETURN_IF_ERROR(BindArguments());
+      return GetBestWorkGroup(params, kernel_, GetGridSize(),
+                              &work_group_size_);
+    default:
+      work_group_size_ = {16, 4, 1};
+      return OkStatus();
+  }
 }
 
 Status Winograd36To4x4::AddToQueue(CLCommandQueue* queue) {

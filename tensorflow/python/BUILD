@@ -2558,6 +2558,8 @@ tf_py_test(
         "no_oss",
         "no_pip",
         "no_windows",
+        "nomsan",  # TODO(b/149948895): Re-enable.
+        "notsan",  # TODO(b/149948895): Re-enable.
     ],
     deps = [
         ":framework_test_lib",
