@@ -38,6 +38,7 @@ from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.tpu import tpu
 from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -92,11 +93,6 @@ class DistributedValues(object):
     """Returns a representative component."""
     return self._values[0]
 
-  # TODO(josh11b): Replace experimental_local_results with this?
-  @property
-  def values(self):
-    return self._values
-
   @property
   def _devices(self):
     return tuple(v.device for v in self._values)
@@ -138,6 +134,11 @@ class DistributedDelegate(DistributedValues):
     # TODO(priyag): This needs to be made robust against pitfalls from mix use
     # __getattr__ and @property. See b/120402273.
     return getattr(self._get(), name)
+
+  @property
+  def values(self):
+    """Returns the per replica values."""
+    return self._values
 
   def _get_as_operand(self):
     """Returns the value for operations for the current device.
@@ -271,6 +272,11 @@ class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
   def _type_spec(self):
     return PerReplicaSpec(
         *(type_spec.type_spec_from_value(v) for v in self._values))
+
+  @property
+  def values(self):
+    """Returns the per replica values."""
+    return self._values
 
 
 class PerReplicaSpec(type_spec.TypeSpec):
@@ -824,7 +830,7 @@ class MirroredVariable(DistributedVariable, Mirrored):
         if update_replica_id is not None:
           # We are calling an assign function on the mirrored variable in an
           # update context.
-          return f(self.values[update_replica_id], *args, **kwargs)
+          return f(self._values[update_replica_id], *args, **kwargs)
 
         # We are calling assign on the mirrored variable in cross replica
         # context, use `strategy.extended.update()` to update the variable.
@@ -933,14 +939,14 @@ ops.register_tensor_conversion_function(Mirrored,
 
 
 def _enclosing_tpu_context():
-  """Returns the XLAControlFlowContext, which exists inside a tpu.rewrite()."""
+  """Returns the TPUReplicateContext, which exists inside a tpu.rewrite()."""
   graph = ops.get_default_graph()
   while graph is not None:
     # pylint: disable=protected-access
     context_ = graph._get_control_flow_context()
     # pylint: enable=protected-access
     while context_ is not None:
-      if isinstance(context_, control_flow_ops.XLAControlFlowContext):
+      if isinstance(context_, tpu.TPUReplicateContext):
         return context_
       context_ = context_.outer_context
     # This may be a FuncGraph due to defuns or v2 control flow. We need to

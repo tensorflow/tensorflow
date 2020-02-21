@@ -266,6 +266,10 @@ class Sequential(training.Model):
     self.built = True
 
   def call(self, inputs, training=None, mask=None):  # pylint: disable=redefined-outer-name
+    if self._build_input_shape is None:
+      input_shapes = nest.map_structure(_get_shape_tuple, inputs)
+      self._build_input_shape = input_shapes
+
     if self._is_graph_network:
       if not self.built:
         self._init_graph_network(self.inputs, self.outputs, name=self.name)
@@ -364,7 +368,7 @@ class Sequential(training.Model):
         'name': self.name,
         'layers': copy.deepcopy(layer_configs)
     }
-    if self._build_input_shape:
+    if self._build_input_shape is not None:
       config['build_input_shape'] = self._build_input_shape
     return config
 
@@ -383,7 +387,8 @@ class Sequential(training.Model):
       layer = layer_module.deserialize(layer_config,
                                        custom_objects=custom_objects)
       model.add(layer)
-    if not model.inputs and build_input_shape:
+    if (not model.inputs and build_input_shape and
+        isinstance(build_input_shape, (tuple, list))):
       model.build(build_input_shape)
     return model
 
@@ -396,3 +401,12 @@ class Sequential(training.Model):
   @property
   def _trackable_saved_model_saver(self):
     return model_serialization.SequentialSavedModelSaver(self)
+
+
+def _get_shape_tuple(t):
+  if hasattr(t, 'shape'):
+    shape = t.shape
+    if shape.rank is not None:
+      return tuple(shape.as_list())
+    return None
+  return None

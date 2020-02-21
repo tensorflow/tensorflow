@@ -135,8 +135,22 @@ struct EngineContext {
   mutex mu;
   TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
 
+  Status GetExecutionContext(int idx, nvinfer1::IExecutionContext** exec_ctx)
+      EXCLUSIVE_LOCKS_REQUIRED(mu) {
+    if (idx >= execution_context.size()) {
+      return errors::Internal("Requested engine context with index ", idx,
+                              ", but only ", execution_context.size(),
+                              "contexts are present.");
+    }
+    *exec_ctx = execution_context[idx].get();
+    return Status::OK();
+  }
+
   // In explicit batch mode, we maintain a vector of contexts for each engine,
-  // where each context is created for a different profile.
+  // where each context is created for a different profile. The
+  // IExecutionContext object is not thread safe: only one thread should use it
+  // for inference at a time therefore we need a mutex. More details at
+  // https://docs.nvidia.com/deeplearning/sdk/tensorrt-best-practices/index.html#thread-safety
   std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> execution_context
       GUARDED_BY(mu);
 };

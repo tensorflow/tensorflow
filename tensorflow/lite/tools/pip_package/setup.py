@@ -201,7 +201,7 @@ setup(
     packages=find_packages(exclude=[]),
     ext_modules=[ext],
     install_requires=[
-        'numpy >= 1.12.1',
+        'numpy >= 1.16.0',
     ],
     cmdclass={
         'build_ext': CustomBuildExt,

@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_BENCHMARK_PROFILING_LISTENER_H_
 #define TENSORFLOW_LITE_TOOLS_BENCHMARK_PROFILING_LISTENER_H_
 
+#include <memory>
+
 #include "tensorflow/lite/profiling/buffered_profiler.h"
 #include "tensorflow/lite/profiling/profile_summarizer.h"
+#include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
 namespace tflite {
@@ -26,8 +29,11 @@ namespace benchmark {
 // Dumps profiling events if profiling is enabled.
 class ProfilingListener : public BenchmarkListener {
  public:
-  explicit ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries,
-                             const std::string& csv_file_path = "");
+  ProfilingListener(
+      Interpreter* interpreter, uint32_t max_num_entries,
+      const std::string& csv_file_path = "",
+      std::shared_ptr<profiling::ProfileSummaryFormatter> summarizer_formatter =
+          std::make_shared<profiling::ProfileSummaryDefaultFormatter>());
 
   void OnBenchmarkStart(const BenchmarkParams& params) override;
 
@@ -38,18 +44,15 @@ class ProfilingListener : public BenchmarkListener {
   void OnBenchmarkEnd(const BenchmarkResults& results) override;
 
  protected:
-  // Allow subclasses to create a customized summary writer during init.
-  virtual std::unique_ptr<profiling::ProfileSummaryFormatter>
-  CreateProfileSummaryFormatter(bool format_as_csv) const;
+  profiling::ProfileSummarizer run_summarizer_;
+  profiling::ProfileSummarizer init_summarizer_;
+  std::string csv_file_path_;
 
  private:
   void WriteOutput(const std::string& header, const string& data,
                    std::ostream* stream);
   Interpreter* interpreter_;
   profiling::BufferedProfiler profiler_;
-  profiling::ProfileSummarizer run_summarizer_;
-  profiling::ProfileSummarizer init_summarizer_;
-  std::string csv_file_path_;
 };
 
 }  // namespace benchmark

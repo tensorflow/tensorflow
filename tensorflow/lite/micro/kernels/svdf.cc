@@ -120,24 +120,6 @@ static inline void ApplyTimeWeightsBiasAndActivation(
       ++output_ptr_batch;
     }
   }
-
-  // Left shift the activation_state to make room for next cycle's activation.
-  // TODO(alanchiao): explore collapsing this into a single loop.
-  for (int b = 0; b < batch_size; ++b) {
-    float* state_ptr_batch =
-        GetTensorData<float>(activation_state) + b * memory_size * num_filters;
-    for (int f = 0; f < num_filters; ++f) {
-      // Shift the vector left:
-      float* batch_ptr = state_ptr_batch;
-      float* batch_start = state_ptr_batch + 1;
-      float* batch_end = state_ptr_batch + memory_size;
-      while (batch_start != batch_end) {
-        *batch_ptr++ = *batch_start++;
-      }
-      state_ptr_batch[memory_size - 1] = 0.0f;
-      state_ptr_batch += memory_size;
-    }
-  }
 }
 
 inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
@@ -155,15 +137,21 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];
 
-  // Clear the activation (activation_state's leftmost column).
-  // TODO(ghodrat): Add a test which initialize activation_state with invalid
-  // values in leftmost column and make sure it passes.
+  // Left shift the activation_state, and clear the latest activation (the
+  // rightmost column).
   for (int b = 0; b < batch_size; ++b) {
     float* state_ptr_batch =
         GetTensorData<float>(activation_state) + b * memory_size * num_filters;
-    for (int c = 0; c < num_filters; ++c) {
-      float* state_ptr = state_ptr_batch + c * memory_size;
-      state_ptr[memory_size - 1] = 0.0f;
+    for (int f = 0; f < num_filters; ++f) {
+      // Shift the vector left:
+      float* batch_ptr = state_ptr_batch;
+      float* batch_start = state_ptr_batch + 1;
+      float* batch_end = state_ptr_batch + memory_size;
+      while (batch_start != batch_end) {
+        *batch_ptr++ = *batch_start++;
+      }
+      state_ptr_batch[memory_size - 1] = 0.0f;
+      state_ptr_batch += memory_size;
     }
   }
 
@@ -214,6 +202,25 @@ void EvalIntegerSVDF(
   // when ready.
   int32_t scratch_tensor[kScratchTensorMaxSize];
   int32_t scratch_output_tensor[kScratchTensorMaxSize];
+
+  // Shift states. No need to set last state, the matmul is not accumulative.
+  {
+    for (int b = 0; b < n_batch; ++b) {
+      int16_t* state_ptr_batch =
+          GetTensorData<int16_t>(activation_state_tensor) +
+          b * n_memory * n_filter;
+      for (int f = 0; f < n_filter; ++f) {
+        // Shift the vector left:
+        int16_t* batch_ptr = state_ptr_batch;
+        int16_t* batch_start = state_ptr_batch + 1;
+        int16_t* batch_end = state_ptr_batch + n_memory;
+        while (batch_start != batch_end) {
+          *batch_ptr++ = *batch_start++;
+        }
+        state_ptr_batch += n_memory;
+      }
+    }
+  }
 
   // Feature matmul.
   {
@@ -310,26 +317,6 @@ void EvalIntegerSVDF(
       int32_t x3 = x2 + output_zp;
       int32_t x4 = std::min(std::max(output_min, x3), output_max);
       GetTensorData<int8_t>(output_tensor)[i] = static_cast<int8_t>(x4);
-    }
-  }
-
-  // Shift state.
-  {
-    for (int b = 0; b < n_batch; ++b) {
-      int16_t* state_ptr_batch =
-          GetTensorData<int16_t>(activation_state_tensor) +
-          b * n_memory * n_filter;
-      for (int f = 0; f < n_filter; ++f) {
-        // Shift the vector left:
-        int16_t* batch_ptr = state_ptr_batch;
-        int16_t* batch_start = state_ptr_batch + 1;
-        int16_t* batch_end = state_ptr_batch + n_memory;
-        while (batch_start != batch_end) {
-          *batch_ptr++ = *batch_start++;
-        }
-        state_ptr_batch[n_memory - 1] = 0;
-        state_ptr_batch += n_memory;
-      }
     }
   }
 }

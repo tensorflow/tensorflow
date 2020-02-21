@@ -142,6 +142,10 @@ Status RemoteTensorHandleData::NumElements(int64* num_elements) const {
   return Status::OK();
 }
 
+Status RemoteTensorHandleData::Unprotect() {
+  return errors::Unavailable("Unable to unprotect a remote handle.");
+}
+
 string RemoteTensorHandleData::DebugString() const {
   return strings::StrCat("RemoteTensorHandleData:", " op_id: ", op_id_,
                          " output_num: ", output_num_);
@@ -205,6 +209,10 @@ Status UnshapedRemoteTensorHandleData::NumElements(int64* num_elements) const {
   return errors::Unavailable(
       "Unable to get shape information for an async remote handle. Please wait "
       "until it is ready");
+}
+
+Status UnshapedRemoteTensorHandleData::Unprotect() {
+  return errors::Unavailable("Unable to unprotect a remote handle.");
 }
 
 string UnshapedRemoteTensorHandleData::DebugString() const {

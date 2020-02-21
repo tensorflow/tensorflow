@@ -134,13 +134,20 @@ string DebugString(const std::vector<PartialTensorShape>& shapes) {
   return PartialTensorShapeUtils::PartialShapeListString(shapes);
 }
 
+// Checks whether actual_shapes are compatible with cached_shapes. This should
+// only be used in implicit batch mode (in explicit batch mode one needs to
+// check the profile ranges). Therefore implicit batch mode is assumed.
+// It is also assumed that both actual_shapes and cached_shapes have been
+// verified by TRTEngineOp::VerifyInputShapes, which ensures that the batch size
+// for all tensors are the same.
 bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
                          const std::vector<TensorShape>& cached_shapes) {
   auto match_shape = [](const TensorShape& actual_shape,
                         const TensorShape& cached_shape) {
     // Match the rank.
     if (actual_shape.dims() != cached_shape.dims()) return false;
-    // Match the batch size.
+    // Match the batch size. In implicit batch mode cached_shape.dim_size(0) is
+    // the max batch size, which can be larger than the actual batch size.
     if (actual_shape.dim_size(0) > cached_shape.dim_size(0)) return false;
     // Match remaining dimensions.
     for (int i = 1; i < actual_shape.dims(); ++i) {

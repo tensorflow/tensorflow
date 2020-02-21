@@ -3963,7 +3963,10 @@ tf_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_batch_matmul_op",
     srcs = ["mkl_batch_matmul_op.cc"],
-    hdrs = ["batch_matmul_op_impl.h"],
+    hdrs = [
+        "batch_matmul_op_impl.h",
+        "mkl_matmul_ops_common.h",
+    ],
     deps = MATH_DEPS + mkl_deps(),
 )
 
@@ -5172,6 +5175,7 @@ cc_library(
 REQUIRED_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
+    "//tensorflow/core:protos_all_cc",
 ]
 
 tf_kernel_library(
@@ -7986,8 +7990,14 @@ tf_cc_test_mkl(
     name = "mkl_dequantize_op_test",
     size = "small",
     srcs = ["mkl_dequantize_op_test.cc"],
+    # TODO(b/149940073): Re-enable.
+    tags = [
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":mkl_dequantize_op",
+        ":mkl_tfconv_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:array_ops_op_lib",
@@ -7996,6 +8006,7 @@ tf_cc_test_mkl(
         "//tensorflow/core:mkl_array_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

@@ -224,7 +224,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"PreventGradient"},
       {"Qr"},
       {"QuantizeAndDequantize"},
-      {"QuantizeAndDequantizeV2"},
+      {"QuantizeAndDequantizeV2Grad", 1, {3}},
       {"QuantizeAndDequantizeV3"},
       {"QueueClose"},
       {"QueueDequeue"},
@@ -410,7 +410,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 469> a = {{
+  static std::array<OpIndexInfo, 470> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -652,6 +652,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"Prod"},
       {"QuantizeAndDequantize"},
       {"QuantizeAndDequantizeV2"},
+      {"QuantizeAndDequantizeV2Grad"},
       {"QuantizeAndDequantizeV3"},
       {"QueueClose"},
       {"QueueEnqueue"},

@@ -950,10 +950,16 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
             optimizer='adam',
             experimental_run_tf_function=experimental_run_tf_function)
 
-      def map_fn(img, lbl, weight):
-        inputs = {'img': img, 'lbl': lbl, 'weight': weight}
-        targets = {}
-        return inputs, targets
+      if context.executing_eagerly():
+
+        def map_fn(img, lbl, weight):
+          inputs = {'img': img, 'lbl': lbl, 'weight': weight}
+          return (inputs,)
+      else:
+
+        def map_fn(img, lbl, weight):
+          inputs = {'img': img, 'lbl': lbl, 'weight': weight}
+          return inputs, {}
 
       fake_imgs = np.ones([50, 64, 64, 3], dtype=np.float32)
       fake_lbls = np.ones([50, 64, 64, 1], dtype=np.float32)
@@ -1178,7 +1184,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
 
-      with self.assertRaisesRegexp(ValueError, 'expected input to have shape'):
+      with self.assertRaisesRegexp(ValueError, 'incompatible with the layer'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
   @combinations.generate(
@@ -1776,7 +1782,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
           experimental_run_tf_function=experimental_run_tf_function)
       ds_history = ds_model.fit(
           x, y, validation_data=(x, y), validation_steps=2, epochs=2)
-      self.assertLen(ds_model.metrics, 1)
+      # includes stateful loss metric in eager.
+      metrics_len = 2 if context.executing_eagerly() else 1
+      self.assertLen(ds_model.metrics, metrics_len)
 
     self.assertAllClose(history.history, ds_history.history)
 
@@ -1830,7 +1838,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
           experimental_run_tf_function=experimental_run_tf_function)
       ds_history = ds_model.fit(
           x, y, validation_data=(x, y), validation_steps=2, epochs=2)
-      self.assertLen(ds_model.metrics, 1)
+      # includes stateful loss metric in eager.
+      metrics_len = 2 if context.executing_eagerly() else 1
+      self.assertLen(ds_model.metrics, metrics_len)
 
     self.assertAllClose(history.history, ds_history.history)
 
@@ -1870,7 +1880,9 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
           experimental_run_tf_function=experimental_run_tf_function)
       ds_history = ds_model.fit(
           x, y, validation_data=(x, y), validation_steps=2, epochs=2)
-      self.assertLen(ds_model.metrics, 1)
+      # includes stateful loss metric in eager.
+      metrics_len = 2 if context.executing_eagerly() else 1
+      self.assertLen(ds_model.metrics, metrics_len)
 
     self.assertAllClose(history.history, ds_history.history)
 

@@ -39,11 +39,13 @@ import threading
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler.internal import _pywrap_profiler
+from tensorflow.python.util.tf_export import tf_export
 
 _profiler = None
 _profiler_lock = threading.Lock()
 
 
+@tf_export('profiler.experimental.start', v1=[])
 def start(logdir):
   """Starts profiling.
 
@@ -55,9 +57,9 @@ def start(logdir):
 
   Example usage:
   ```python
-  tf.profiler.start('logdir_path')
+  tf.profiler.experimental.start('logdir_path')
   # do your training here.
-  tf.profiler.stop()
+  tf.profiler.experimental.stop()
   ```
 
   Launch TensorBoard and point it to the same logdir you provided to this API.
@@ -81,10 +83,11 @@ def start(logdir):
                                       'Another profiler is running.')
 
 
+@tf_export('profiler.experimental.stop', v1=[])
 def stop(save=True):
   """Stops the current profiling session.
 
-  The profiler session will be stopped and profile results will be saved.
+  The profiler session will be stopped and profile results can be saved.
 
   Args:
     save: An optional variable to save the results to TensorBoard. Default True.
@@ -103,6 +106,7 @@ def stop(save=True):
     _profiler = None
 
 
+@tf_export('profiler.experimental.server.start', v1=[])
 def start_server(port):
   """Start a profiler grpc server that listens to given port.
 
@@ -111,16 +115,26 @@ def start_server(port):
 
   Args:
     port: port profiler server listens to.
+
+  Example usage:
+  ```python
+  tf.profiler.experimental.server.start('6009')
+  # do your training here.
+
   """
   _pywrap_profiler.start_server(port)
 
 
-class Profiler(object):
-  """Context-manager profiler API.
+@tf_export('profiler.experimental.Profile', v1=[])
+class Profile(object):
+  """Context-manager profile API.
+
+  Profiling will start when entering the scope, and stop and save the results to
+  the logdir when exits the scope. Open TensorBoard profile tab to view results.
 
   Example usage:
   ```python
-  with Profiler("/path/to/logdir"):
+  with tf.profiler.experimental.Profile("/path/to/logdir"):
     # do some work
   ```
   """

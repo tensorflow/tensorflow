@@ -1,7 +1,7 @@
 # Description:
 #  Tools for building the TensorFlow pip package.
 
-load("//tensorflow:tensorflow.bzl", "if_windows", "if_xla_available", "transitive_hdrs")
+load("//tensorflow:tensorflow.bzl", "if_windows", "transitive_hdrs")
 load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
@@ -198,6 +198,9 @@ filegroup(
         "//tensorflow:no_aws_support": [],
         "//conditions:default": [
             "@aws//:LICENSE",
+            "@aws-c-common//:LICENSE",
+            "@aws-c-event-stream//:LICENSE",
+            "@aws-checksums//:LICENSE",
         ],
     }) + select({
         "//tensorflow:android": [],
