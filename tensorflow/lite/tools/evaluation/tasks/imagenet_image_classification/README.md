@@ -151,7 +151,7 @@ bazel build -c opt \
 directory if required):
 
 ```
-adb push bazel-bin/third_party/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/run_eval /data/local/tmp
+adb push bazel-bin/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/run_eval /data/local/tmp
 ```
 
 (3) Make the binary executable.
@@ -204,7 +204,6 @@ adb shell /data/local/tmp/run_eval \
 
 ```
 bazel run -c opt \
-  --cxxopt='--std=c++11' \
   -- \
   //tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification:run_eval \
   --model_file=mobilenet_quant_v1_224.tflite \

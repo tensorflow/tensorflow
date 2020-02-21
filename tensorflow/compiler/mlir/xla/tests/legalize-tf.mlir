@@ -1427,26 +1427,36 @@ func @stateful_pcall_multi_in_out(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (te
 
 // CHECK-LABEL: func @relu
 func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
-  // CHECK-NEXT: %[[ZERO:.*]] = xla_hlo.constant dense<0> : tensor<1xi32>
-  // CHECK-NEXT: xla_hlo.max %[[ZERO]], %arg0 : tensor<1xi32>
+  // CHECK: %[[ZERO:.*]] = xla_hlo.constant dense<0> : tensor<i32>
+  // CHECK: "xla_hlo.max"(%[[ZERO]], %arg0) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<i32>, tensor<1xi32>) -> tensor<1xi32>
   %0 = "tf.Relu"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
 }
 
-// CHECK-LABEL: func @relu_non_static_input
-func @relu_non_static_input(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-  // CHECK: tf.Relu
+// CHECK-LABEL: func @relu_unranked
+func @relu_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  // CHECK: %[[ZERO:.*]] = xla_hlo.constant dense<0> : tensor<i32>
+  // CHECK: "xla_hlo.max"(%[[ZERO]], %arg0) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<i32>, tensor<?xi32>) -> tensor<?xi32>
   %0 = "tf.Relu"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
   return %0: tensor<?xi32>
 }
 
 // CHECK-LABEL: func @relu6
 func @relu6(%arg0: tensor<1xi32>) -> tensor<1xi32> {
-  // CHECK-NEXT: %[[ZERO:.*]] = xla_hlo.constant dense<0> : tensor<1xi32>
-  // CHECK-NEXT: %[[SIX:.*]] = xla_hlo.constant dense<6> : tensor<1xi32>
-  // CHECK-NEXT: "xla_hlo.clamp"(%[[ZERO]], %arg0, %[[SIX]]) : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
+  // CHECK: %[[ZERO:.*]] = xla_hlo.constant dense<0> : tensor<i32>
+  // CHECK: %[[SIX:.*]] = xla_hlo.constant dense<6> : tensor<i32>
+  // CHECK: "xla_hlo.clamp"(%[[ZERO]], %arg0, %[[SIX]]) : (tensor<i32>, tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
   %0 = "tf.Relu6"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
   return %0: tensor<1xi32>
+}
+
+// CHECK-LABEL: func @relu6_unranked
+func @relu6_unranked(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  // CHECK: %[[ZERO:.*]] = xla_hlo.constant dense<0> : tensor<i32>
+  // CHECK: %[[SIX:.*]] = xla_hlo.constant dense<6> : tensor<i32>
+  // CHECK: "xla_hlo.clamp"(%[[ZERO]], %arg0, %[[SIX]]) : (tensor<i32>, tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
+  %0 = "tf.Relu6"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
+  return %0: tensor<?xi32>
 }
 
 // CHECK-LABEL: func @relu_grad
@@ -3298,7 +3308,7 @@ func @random_shuffle_1D_10240(%input: tensor<10240xf32>) -> tensor<10240xf32> {
 // CHECK-LABEL: @random_shuffle_3D
 // CHECK-SAME: [[INPUT:%.*]]: tensor<4x?x16xf32>
 func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
-  // CHECK: [[INDICES:%.*]] = "xla_hlo.iota"() {iota_dimension = 4 : i64} : () -> tensor<4xi32>
+  // CHECK: [[INDICES:%.*]] = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xi32>
 
   // CHECK: [[RNG_SHAPE:%.*]] = xla_hlo.constant dense<4> : tensor<1xi64>
   // CHECK: [[RNG_LOWER:%.*]] = xla_hlo.constant dense<0> : tensor<i32>

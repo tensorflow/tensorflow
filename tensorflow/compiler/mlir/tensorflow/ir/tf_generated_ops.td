@@ -49,7 +49,7 @@ an output element, this operation computes \\(y = |x|\\).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape]>,
+def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
 
@@ -98,7 +98,7 @@ Inputs must be of same size and shape.
   let hasFolder = 1;
 }
 
-def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
+def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
 
@@ -508,8 +508,8 @@ Broadcasting is supported, so `value` may have any number of dimensions.
 
   let extraClassDeclaration = [{
     // TF_LayoutSensitiveInterface:
-    SmallVector<int64_t, 4> GetLayoutDependentArgs() { return {0}; }
-    SmallVector<int64_t, 4> GetLayoutDependentResults() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
   }];
 }
 
@@ -3392,6 +3392,130 @@ tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding_value = 9)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_MatrixSetDiagOp : TF_Op<"MatrixSetDiag", [NoSideEffect]> {
+  let summary = [{
+Returns a batched matrix tensor with new batched diagonal values.
+  }];
+
+  let description = [{
+Given `input` and `diagonal`, this operation returns a tensor with the
+same shape and values as `input`, except for the main diagonal of the
+innermost matrices.  These will be overwritten by the values in `diagonal`.
+
+The output is computed as follows:
+
+Assume `input` has `k+1` dimensions `[I, J, K, ..., M, N]` and `diagonal` has
+`k` dimensions `[I, J, K, ..., min(M, N)]`.  Then the output is a
+tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
+
+  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
+  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_Tensor:$diagonal
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MatrixSetDiagV2Op : TF_Op<"MatrixSetDiagV2", [NoSideEffect]> {
+  let summary = [{
+Returns a batched matrix tensor with new batched diagonal values.
+  }];
+
+  let description = [{
+Given `input` and `diagonal`, this operation returns a tensor with the
+same shape and values as `input`, except for the specified diagonals of the
+innermost matrices. These will be overwritten by the values in `diagonal`.
+
+`input` has `r+1` dimensions `[I, J, ..., L, M, N]`. When `k` is scalar or
+`k[0] == k[1]`, `diagonal` has `r` dimensions `[I, J, ..., L, max_diag_len]`.
+Otherwise, it has `r+1` dimensions `[I, J, ..., L, num_diags, max_diag_len]`.
+`num_diags` is the number of diagonals, `num_diags = k[1] - k[0] + 1`.
+`max_diag_len` is the longest diagonal in the range `[k[0], k[1]]`,
+`max_diag_len = min(M + min(k[1], 0), N + min(-k[0], 0))`
+
+The output is a tensor of rank `k+1` with dimensions `[I, J, ..., L, M, N]`.
+If `k` is scalar or `k[0] == k[1]`:
+
+```
+output[i, j, ..., l, m, n]
+  = diagonal[i, j, ..., l, n-max(k[1], 0)] ; if n - m == k[1]
+    input[i, j, ..., l, m, n]              ; otherwise
+```
+
+Otherwise,
+
+```
+output[i, j, ..., l, m, n]
+  = diagonal[i, j, ..., l, diag_index, index_in_diag] ; if k[0] <= d <= k[1]
+    input[i, j, ..., l, m, n]                         ; otherwise
+```
+where `d = n - m`, `diag_index = k[1] - d`, and `index_in_diag = n - max(d, 0)`.
+
+For example:
+
+```
+# The main diagonal.
+input = np.array([[[7, 7, 7, 7],              # Input shape: (2, 3, 4)
+                   [7, 7, 7, 7],
+                   [7, 7, 7, 7]],
+                  [[7, 7, 7, 7],
+                   [7, 7, 7, 7],
+                   [7, 7, 7, 7]]])
+diagonal = np.array([[1, 2, 3],               # Diagonal shape: (2, 3)
+                     [4, 5, 6]])
+tf.matrix_set_diag(diagonal) ==> [[[1, 7, 7, 7],  # Output shape: (2, 3, 4)
+                                   [7, 2, 7, 7],
+                                   [7, 7, 3, 7]],
+                                  [[4, 7, 7, 7],
+                                   [7, 5, 7, 7],
+                                   [7, 7, 6, 7]]]
+
+# A superdiagonal (per batch).
+tf.matrix_set_diag(diagonal, k = 1)
+  ==> [[[7, 1, 7, 7],  # Output shape: (2, 3, 4)
+        [7, 7, 2, 7],
+        [7, 7, 7, 3]],
+       [[7, 4, 7, 7],
+        [7, 7, 5, 7],
+        [7, 7, 7, 6]]]
+
+# A band of diagonals.
+diagonals = np.array([[[1, 2, 3],  # Diagonal shape: (2, 2, 3)
+                       [4, 5, 0]],
+                      [[6, 1, 2],
+                       [3, 4, 0]]])
+tf.matrix_set_diag(diagonals, k = (-1, 0))
+  ==> [[[1, 7, 7, 7],  # Output shape: (2, 3, 4)
+        [4, 2, 7, 7],
+        [0, 5, 3, 7]],
+       [[6, 7, 7, 7],
+        [3, 1, 7, 7],
+        [7, 4, 2, 7]]]
+
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_Tensor:$diagonal,
+    I32Tensor:$k
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_MatrixSetDiagV3Op : TF_Op<"MatrixSetDiagV3", [NoSideEffect]> {
   let summary = [{
 Returns a batched matrix tensor with new batched diagonal values.
@@ -3551,7 +3675,7 @@ retained with length 1.
   >];
 }
 
-def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
+def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
   let summary = "Performs max pooling on the input.";
 
   let description = [{
@@ -3571,6 +3695,13 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    // TF_FoldOperandsTransposeInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
+  }];
 }
 
 def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
@@ -6657,7 +6788,7 @@ variables.
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType, TF_LayoutAgnostic]> {
   let summary = "Computes hyperbolic tangent of `x` element-wise.";
 
   let description = [{

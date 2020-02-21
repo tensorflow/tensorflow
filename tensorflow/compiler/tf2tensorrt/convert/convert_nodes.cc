@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -249,6 +250,16 @@ void GetInputProperties(const grappler::GraphProperties& graph_properties,
   }
 }
 
+// This function checks if a tensor is compatible with TRT.
+//
+// We check that the shape and datatype are compatible with TensorRT. We also
+// return the corresponding trt_dtype, the trt_dims and the batch_size (latter
+// is only needed in implicit batch mode).
+//
+// The return status indicates wether the tensor is compatible.
+//
+// For implicit batch mode, when validation_only == false, we also check that
+// all input dimensions (besides the batch dimension) are known dimensions.
 Status ValidateTensorProperties(const string& producer_node_type,
                                 const DataType dtype,
                                 const PartialTensorShape& shape,
@@ -293,11 +304,7 @@ Status ValidateTensorProperties(const string& producer_node_type,
 
   if (validation_only) return Status::OK();
 
-  // Following checks are only used during TRT engine creation time. In implicit
-  // batch mode we check that all inputs for the network has static shape (as
-  // required by the TensorRT). The only exception is the batch size, which
-  // could be unknown. In contrast, using explicit batch mode this test is not
-  // necessary, since any dimension could be unknown in explicit batch mode.
+  // Following checks are only used during TRT engine creation time.
   if (use_implicit_batch) {
     for (int d = first_trt_dim; d < shape.dims(); ++d) {
       if (shape.dim_size(d) < 0) {
@@ -653,6 +660,9 @@ size_t TRT_ShapedWeights::size_bytes() const {
       data_type_size = 2;
       break;
     case nvinfer1::DataType::kINT8:
+#if IS_TRT_VERSION_GE(7, 0, 0, 0)
+    case nvinfer1::DataType::kBOOL:
+#endif
       data_type_size = 1;
       break;
   }
@@ -1336,7 +1346,7 @@ Status Converter::RenameAndMarkOutputTensors(
 Status Converter::BuildCudaEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, int max_batch_size,
     size_t max_workspace_size_bytes, nvinfer1::IGpuAllocator* allocator,
-    TRTInt8Calibrator* calibrator) {
+    TRTInt8Calibrator* calibrator, TrtShapeOptimizationProfile* profiles) {
   VLOG(1) << "Configuring TensorRT builder";
   trt_builder_->setMaxBatchSize(max_batch_size);
   trt_builder_->setGpuAllocator(allocator);
@@ -1356,7 +1366,10 @@ Status Converter::BuildCudaEngine(
       builder_config->setInt8Calibrator(nullptr);
     }
   }
-
+  if (!use_implicit_batch_ && profiles) {
+    TF_RETURN_IF_ERROR(profiles->ConfigureBuilder(
+        trt_builder_.get(), builder_config.get(), network()));
+  }
   VLOG(1) << "Building TensorRT engine";
   engine->reset(
       trt_builder_->buildEngineWithConfig(*network(), *builder_config));
@@ -4093,6 +4106,7 @@ Status ConvertBinary(OpConverterParams* params) {
   nvinfer1::ILayer* layer = params->converter->network()->addElementWise(
       *tensor_l, *tensor_r, op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
 
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
@@ -5742,7 +5756,8 @@ Status ConvertGraphDefToEngine(
     nvinfer1::ILogger* trt_logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
-    const bool use_implicit_batch, bool* convert_successfully) {
+    const bool use_implicit_batch, bool* convert_successfully,
+    TrtShapeOptimizationProfile* profiles) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
@@ -5841,7 +5856,8 @@ Status ConvertGraphDefToEngine(
 
   // Build the engine.
   TF_RETURN_IF_ERROR(converter->BuildCudaEngine(
-      engine, max_batch_size, max_workspace_size_bytes, allocator, calibrator));
+      engine, max_batch_size, max_workspace_size_bytes, allocator, calibrator,
+      profiles));
 
   VLOG(1) << "Finished conversion";
   return Status::OK();

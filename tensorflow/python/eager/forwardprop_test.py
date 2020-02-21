@@ -1067,7 +1067,7 @@ class HessianTests(test.TestCase, parameterized.TestCase):
        ("MapFn", False)])
   def testHessianOfVariables(self, use_pfor):
     model = core.Dense(1)
-    model.build([2])
+    model.build([None, 2])
 
     def _loss(*unused_args):
       input_value = constant_op.constant([[-0.5, 1.], [0.5, -1.]])

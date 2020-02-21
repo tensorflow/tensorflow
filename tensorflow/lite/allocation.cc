@@ -34,15 +34,12 @@ namespace tflite {
 FileCopyAllocation::FileCopyAllocation(const char* filename,
                                        ErrorReporter* error_reporter)
     : Allocation(error_reporter, Allocation::Type::kFileCopy) {
-  // Obtain the file size, using an alternative method that is does not
-  // require fstat for more compatibility.
+  // Obtain the file size using fstat, or report an error if that fails.
   std::unique_ptr<FILE, decltype(&fclose)> file(fopen(filename, "rb"), fclose);
   if (!file) {
     error_reporter_->Report("Could not open '%s'.", filename);
     return;
   }
-  // TODO(ahentz): Why did you think using fseek here was better for finding
-  // the size?
   struct stat sb;
 
 // support usage of msvc's posix-like fileno symbol

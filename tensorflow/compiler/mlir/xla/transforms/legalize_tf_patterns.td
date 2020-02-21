@@ -368,16 +368,22 @@ def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
 // Relu op patterns.
 //===----------------------------------------------------------------------===//
 
-// TODO(hinsu): Support dynamic but ranked input by using scalar constants
-// along with broadcast_dimensions attribute. Similarly, Relu6 op with
-// non-static shape inputs can be lowered.
-def : Pat<(TF_ReluOp AnyStaticShapeTensor:$input),
-          (HLO_MaxOp (HLO_ConstOp (ConstantSplat<"0"> $input)), $input,
-                     (NullDenseIntElementsAttr))>;
+// TODO(hinsu): Make these patterns to TF to TF lowering. Relu6 lowering will
+// require HLO canonicalization of min and max on a tensor to ClampOp.
 
-def : Pat<(TF_Relu6Op AnyStaticShapeTensor:$input),
-          (HLO_ClampOp (HLO_ConstOp (ConstantSplat<"0"> $input)), $input,
-                       (HLO_ConstOp (ConstantSplat<"6"> $input)))>;
+// TODO(hinsu): Lower unsinged and quantized types after supporting
+// them in GetScalarOfType.
+def : Pat<(TF_ReluOp AnyRankedTensor:$input),
+          (HLO_MaxOp (HLO_ConstOp:$zero (GetScalarOfType<0> $input)), $input,
+                     (BinBroadcastDimensions $zero, $input)),
+          [(TF_SintOrFpTensor $input)]>;
+
+// TODO(hinsu): Lower unsinged and quantized types after supporting
+// them in GetScalarOfType.
+def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
+          (HLO_ClampOp (HLO_ConstOp (GetScalarOfType<0> $input)), $input,
+                       (HLO_ConstOp (GetScalarOfType<6> $input))),
+          [(TF_SintOrFpTensor $input)]>;
 
 // ReluGrad(gradients, features) = gradients * (features > 0)
 //

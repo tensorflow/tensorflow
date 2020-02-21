@@ -181,9 +181,36 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Generates code for reduction to contiguous dimensions.
   //
-  // TODO(cheshire): Pseudocode for row reduction.
-  // Column reduction uses the following algorithm described in CUDA-like
+  // Row reduction uses the following algorithm described in CUDA-like
   // pseudocode:
+  //
+  // ```
+  //  __global__ void reduce(int num_rows, float *in, float out) {
+  //    __shared__ float[32] cache;
+  //    int offset = blockDim.x * blockIdx.x + threadIdx.x;
+  //    if (offset >= num_rows) return;
+  //    int tile_bound = std::min(offset + kTileSizeX, num_rows);
+  //    float accum = 0;
+  //    for (int i=offset; i<num_rows; i+= blockDim.x) {
+  //      accum += in[i];
+  //    }
+  //    accum = warp_reduce(accum);
+  //    if (threadIdx.x % kWarpSize == 0) {
+  //      cache[threadIdx.x / kWarpSize] = accum;
+  //    }
+  //    __syncthreads();
+  //    if (threadIdx.x / kWarpSize == 0) {
+  //      bool warp_exists = threadIdx.x < (blockDim.x / kWarpSize);
+  //      float block_accum = warp_exists ? cache[threadIdx.x % kWarpSize] : 0;
+  //      block_accum = warp_reduce(accum);
+  //      if (threadIdx.x == 0) {
+  //        out += block_accum;
+  //      }
+  //    }
+  //  }
+  // ```
+  //
+  // Column reduction uses the following algorithm:
   //
   // ```
   // void reduce(float** in, float* out) {

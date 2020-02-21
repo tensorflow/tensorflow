@@ -24,7 +24,6 @@ import numpy as np
 import six
 
 from tensorflow.python import keras
-from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.engine import base_layer
@@ -152,7 +151,7 @@ class SplitUtilsTest(keras_parameterized.TestCase):
     model = keras.Sequential([keras.layers.Dense(1)])
     model.compile('sgd', 'mse')
     x, y = np.ones((10, 10)), np.ones((10, 1))
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       with self.assertRaisesRegexp(
           ValueError, 'instance was constructed with eager mode enabled'):
         model.fit(x, y, batch_size=2)

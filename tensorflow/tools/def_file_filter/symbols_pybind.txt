@@ -5,6 +5,7 @@ tensorflow::swig::IsCompositeTensor
 tensorflow::swig::IsTypeSpec
 tensorflow::swig::IsNamedtuple
 tensorflow::swig::IsMapping
+tensorflow::swig::IsMutableMapping
 tensorflow::swig::IsMappingView
 tensorflow::swig::IsAttrs
 tensorflow::swig::IsTensor
@@ -304,6 +305,7 @@ tensorflow::profiler::AnnotationStack::ThreadAnnotationStack
 
 [profiler_session_impl] # profiler
 tensorflow::ProfilerSession::Create
+tensorflow::ProfilerSession::CollectData
 tensorflow::ProfilerSession::SerializeToString
 tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession

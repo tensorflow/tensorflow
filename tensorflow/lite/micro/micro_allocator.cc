@@ -325,7 +325,8 @@ TfLiteStatus InitializeRuntimeTensor(
 TfLiteStatus MicroAllocator::Init() {
   auto* subgraphs = model_->subgraphs();
   if (subgraphs->size() != 1) {
-    error_reporter_->Report("Only 1 subgraph is currently supported.\n");
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Only 1 subgraph is currently supported.\n");
     return kTfLiteError;
   }
   subgraph_ = (*subgraphs)[0];
@@ -338,9 +339,11 @@ TfLiteStatus MicroAllocator::Init() {
           sizeof(TfLiteTensor) * context_->tensors_size,
           alignof(TfLiteTensor)));
   if (context_->tensors == nullptr) {
-    error_reporter_->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
         "Failed to allocate memory for context->tensors, %d bytes required",
         sizeof(TfLiteTensor) * context_->tensors_size);
+    return kTfLiteError;
   }
 
   // Initialize runtime tensors in context_ using the flatbuffer.
@@ -349,7 +352,8 @@ TfLiteStatus MicroAllocator::Init() {
         memory_allocator_, *tensors_->Get(i), model_->buffers(),
         error_reporter_, &context_->tensors[i]);
     if (status == kTfLiteError) {
-      error_reporter_->Report("Failed to initialize tensor %d", i);
+      TF_LITE_REPORT_ERROR(error_reporter_, "Failed to initialize tensor %d",
+                           i);
       return kTfLiteError;
     }
   }
@@ -374,7 +378,8 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
   // failures in the constructor is to have a static function that returns a
   // pointer to the class. If allocation failed, a nullptr will be returned.
   if (status != kTfLiteOk) {
-    error_reporter_->Report("MicroAllocator: Failed to initialize.");
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "MicroAllocator: Failed to initialize.");
     active_ = false;
   } else {
     active_ = true;
@@ -393,7 +398,8 @@ TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
           sizeof(NodeAndRegistration) * operators_->size(),
           alignof(NodeAndRegistration)));
   if (output == nullptr) {
-    error_reporter_->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
         "Failed to allocate memory for node_and_registrations.");
     return kTfLiteError;
   }
@@ -404,28 +410,31 @@ TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
     const auto* op = operators_->Get(i);
     size_t index = op->opcode_index();
     if (index >= opcodes->size()) {
-      error_reporter_->Report("Missing registration for opcode_index %d\n",
-                              index);
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Missing registration for opcode_index %d\n", index);
       return kTfLiteError;
     }
     auto* opcode = (*opcodes)[index];
     status = GetRegistrationFromOpCode(opcode, op_resolver, error_reporter_,
                                        &(output[i].registration));
     if (status != kTfLiteOk) {
-      error_reporter_->Report("Failed to get registration from op code % d\n ",
-                              opcode);
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Failed to get registration from op code % d\n ",
+                           opcode);
       return status;
     }
     const auto* registration = output[i].registration;
     if (registration == nullptr) {
-      error_reporter_->Report("Skipping op for opcode_index %d\n", index);
+      TF_LITE_REPORT_ERROR(error_reporter_, "Skipping op for opcode_index %d\n",
+                           index);
       return kTfLiteError;
     }
     BuiltinOperator op_type =
         static_cast<BuiltinOperator>(registration->builtin_code);
 
     if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
-      error_reporter_->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
           "Unsupported behavior: found builtin operator %s with custom "
           "options.\n",
           EnumNameBuiltinOperator(op_type));
@@ -501,7 +510,8 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
         arena_size - memory_allocator_->GetDataSize();
     // Make sure we have enough arena size.
     if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
-      error_reporter_->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
           "Arena size is too small for activation buffers. Needed %d but only "
           "%d was available.",
           planner.GetMaximumMemorySize(), remaining_arena_size);
@@ -516,7 +526,8 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
   // them from the tail (persistent area).
   if (AllocateVariables(tensors_, context_->tensors, memory_allocator_) !=
       kTfLiteOk) {
-    error_reporter_->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
         "Failed to allocate variables. Please increase arena size.");
     return kTfLiteError;
   }

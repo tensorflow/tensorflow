@@ -15,6 +15,17 @@ package(
 exports_files(["LICENSE"])
 
 tf_kernel_library(
+    name = "assert_cardinality_dataset_op",
+    srcs = ["assert_cardinality_dataset_op.cc"],
+    hdrs = ["assert_cardinality_dataset_op.h"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/kernels/data:name_utils",
+    ],
+)
+
+tf_kernel_library(
     name = "assert_next_dataset_op",
     srcs = ["assert_next_dataset_op.cc"],
     hdrs = ["assert_next_dataset_op.h"],
@@ -22,7 +33,6 @@ tf_kernel_library(
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels/data:name_utils",
-        "//third_party/eigen3",
     ],
 )
 
@@ -557,6 +567,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "dataset_kernels",
     deps = [
+        ":assert_cardinality_dataset_op",
         ":assert_next_dataset_op",
         ":auto_shard_dataset_op",
         ":choose_fastest_branch_dataset_op",

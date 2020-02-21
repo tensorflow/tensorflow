@@ -205,9 +205,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
-        "//tensorflow/python/profiler/internal:_pywrap_profiler_session",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
 
@@ -232,9 +231,7 @@ py_library(
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
-        "//tensorflow/python:c_api_util",
-        "//tensorflow/python:pywrap_tf_session",
-        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
 
@@ -692,6 +689,7 @@ py_library(
         ":lift_to_graph",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",

@@ -480,7 +480,11 @@ class HloInstruction {
     kCustom,
   };
 
-  virtual ~HloInstruction();
+  virtual ~HloInstruction() { DetachFromOperandsAndUsers(); }
+
+  // Detaches an instruction from its operands and users. That is, remove the
+  // instruction from each operand's user set and user's operand set.
+  void DetachFromOperandsAndUsers();
 
   // Creates an instruction from the given proto. Arguments:
   //
@@ -2024,6 +2028,10 @@ class HloInstruction {
   // This field is assigned to true when backend_config_ is assigned to
   // a default configuration.
   bool is_default_config_ = false;
+
+  // True if this instruction has already been detached from its user and
+  // operands.
+  bool cleaned_up_ = false;
 
   // String identifier for instruction.
   string name_;

@@ -45,7 +45,7 @@ tf_class {
   }
   member_method {
     name: "experimental_run_v2"
-    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\'], varargs=None, keywords=None, defaults=[\'()\', \'None\'], "
+    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\', \'options\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'None\'], "
   }
   member_method {
     name: "group"

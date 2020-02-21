@@ -44,16 +44,3 @@ bazel test --test_output=errors --config=opt --test_lang_filters=py \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" -- \
   ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
-
-# Run XLA tests.
-#
-# TODO(tpopp): Remove this as soon as build issues are fixed and add
-# tensorflow/compiler/... back to DEFAULT_BAZEL_TARGETS.
-bazel test --test_output=errors --config=opt --test_lang_filters=py \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
-  --linkopt=-lrt \
-  --build_tests_only \
-  --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
-  --build_tag_filters="${tag_filters}" \
-  --test_tag_filters="${tag_filters}" -- \
-  //tensorflow/compiler/... -//tensorflow/compiler/tests/...

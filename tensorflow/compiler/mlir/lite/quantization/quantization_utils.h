@@ -150,7 +150,8 @@ struct QuantizationPattern : public RewritePattern {
 
   explicit QuantizationPattern(MLIRContext* context, bool enable_verify,
                                float error_tolerance, bool single_layer_verify)
-      : RewritePattern(DQ::getOperationName(), 1, context),
+      // Set the score to a large number so it is always preferred.
+      : RewritePattern(DQ::getOperationName(), 300, context),
         enable_verify(enable_verify),
         error_tolerance(error_tolerance),
         single_layer_verify(single_layer_verify) {}

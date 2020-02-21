@@ -47,31 +47,30 @@ namespace tensorflow {
 
 namespace {
 
-std::unique_ptr<const NodeDef> StripTensorDataFromNodeDef(
-    OpKernelConstruction* ctx) {
+NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
 #ifndef __ANDROID__
   DCHECK_EQ(NodeDef::descriptor()->field_count(), 6)
       << "The NodeDef format has changed, and the attr-stripping code may need "
       << "to be updated.";
 #endif
   const NodeDef& original = ctx->def();
-  NodeDef* ret = new NodeDef;
-  ret->set_name(original.name());
-  ret->set_op(original.op());
-  ret->set_device(original.device());
+  NodeDef ret;
+  ret.set_name(original.name());
+  ret.set_op(original.op());
+  ret.set_device(original.device());
   // Strip the "value" attr from the returned NodeDef.
   // NOTE(mrry): The present implementation of `OpKernel::OpKernel()` only uses
   // attrs that affect the cardinality of list-typed inputs and outputs, so it
   // is safe to drop other attrs from the NodeDef.
-  AddNodeAttr("dtype", ctx->output_type(0), ret);
-  MergeDebugInfo(original, ret);
-  return std::unique_ptr<const NodeDef>(ret);
+  AddNodeAttr("dtype", ctx->output_type(0), &ret);
+  MergeDebugInfo(original, &ret);
+  return ret;
 }
 
 }  // namespace
 
 ConstantOp::ConstantOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx, StripTensorDataFromNodeDef(ctx)),
+    : OpKernel(ctx, StripTensorDataFromNodeDef(ctx), false),
       tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
   MEMDEBUG_CACHE_OP(ctx->def().name().c_str());

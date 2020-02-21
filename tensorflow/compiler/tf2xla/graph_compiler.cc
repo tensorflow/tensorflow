@@ -133,7 +133,7 @@ Status GraphCompiler::Compile() {
     OpKernel* op_kernel_raw = nullptr;
     // The kernel is not actually run for functional ops, we just need it
     // for metadata.
-    Status s = flib_->CreateKernel(n->def(), &op_kernel_raw);
+    Status s = flib_->CreateKernel(n->properties(), &op_kernel_raw);
     // Transfer ownership of the kernel to a local smart pointer.
     std::unique_ptr<OpKernel> op_kernel(op_kernel_raw);
 

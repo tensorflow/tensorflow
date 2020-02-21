@@ -75,7 +75,7 @@ class LossScaleGradientTapeTest(test.TestCase, parameterized.TestCase):
 
     def convert_tensor_to_list(tensor):
       if isinstance(tensor, values.DistributedValues):
-        return tensor.values
+        return strategy.experimental_local_results(tensor)
       else:
         return [tensor]
     return nest.map_structure(convert_tensor_to_list, results)

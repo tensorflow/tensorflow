@@ -1016,6 +1016,11 @@ memory::data_type MklDnnType<quint8>() {
 }
 
 template <>
+memory::data_type MklDnnType<uint8>() {
+  return memory::data_type::u8;
+}
+
+template <>
 memory::data_type MklDnnType<qint8>() {
   return memory::data_type::s8;
 }
@@ -2078,10 +2083,6 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     return instance_;
   }
 
- private:
-  MklReorderPrimitiveFactory() {}
-  ~MklReorderPrimitiveFactory() {}
-
   static string CreateKey(const memory* from, const memory* to) {
     string prefix = "reorder";
     FactoryKeyCreator key_creator;
@@ -2116,6 +2117,10 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(to_strides_outer_blocks);
     return key_creator.GetKey();
   }
+
+ private:
+  MklReorderPrimitiveFactory() {}
+  ~MklReorderPrimitiveFactory() {}
 
   MklPrimitive* GetReorder(const memory* from, const memory* to) {
     string key = CreateKey(from, to);

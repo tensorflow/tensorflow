@@ -245,15 +245,14 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly(),
         experimental_run_tf_function=testing_utils.should_run_tf_function())
 
-    err_msg = 'Output of generator should be a tuple of 1 or 2 or 3 elements'
-    with self.assertRaisesRegex(ValueError, err_msg):
+    with self.assertRaises(ValueError):
       model.fit_generator(invalid_generator(),
                           steps_per_epoch=5,
                           epochs=1,
                           verbose=1,
                           max_queue_size=10,
                           use_multiprocessing=False)
-    with self.assertRaisesRegex(ValueError, err_msg):
+    with self.assertRaises(ValueError):
       model.fit_generator(custom_generator(),
                           steps_per_epoch=5,
                           epochs=1,
@@ -262,12 +261,12 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
                           use_multiprocessing=False,
                           validation_data=invalid_generator(),
                           validation_steps=10)
-    with self.assertRaisesRegex(ValueError, err_msg):
+    with self.assertRaises(ValueError):
       model.predict_generator(invalid_generator(),
                               steps=5,
                               max_queue_size=10,
                               use_multiprocessing=False)
-    with self.assertRaisesRegex(ValueError, err_msg):
+    with self.assertRaises(ValueError):
       model.evaluate_generator(invalid_generator(),
                                steps=5,
                                max_queue_size=10,
@@ -332,36 +331,9 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
-  def test_invalid_batch_size_argument(self):
-
-    def ones_generator():
-      while True:
-        yield np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
-
-    model = testing_utils.get_small_mlp(
-        num_hidden=10, num_classes=1, input_dim=10)
-
-    model.compile(
-        'adam',
-        'binary_crossentropy',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
-
-    with self.assertRaisesRegexp(
-        ValueError, 'The `batch_size` argument must not be specified'):
-      model.fit(ones_generator(), batch_size=2, epochs=2)
-    with self.assertRaisesRegexp(
-        ValueError, 'The `batch_size` argument must not be specified'):
-      model.evaluate(ones_generator(), batch_size=2)
-
-    with self.assertRaisesRegexp(
-        ValueError, 'The `batch_size` argument must not be specified'):
-      model.predict(ones_generator(), batch_size=2)
-
-  @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes
   @data_utils.dont_use_multiprocessing_pool
   def test_generator_dynamic_shapes(self):
+
     x = [
         'I think juice is great',
         'unknown is the best language since slicedbread',

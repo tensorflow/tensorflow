@@ -35,11 +35,10 @@ namespace tensorflow {
 // This require the TF_DUMP_GRAPH_PREFIX to be set to a path that exist (or can
 // be created).
 static void DumpModule(mlir::ModuleOp module, llvm::StringRef file_prefix) {
-  const char* prefix_env = GetDumpDirFromEnvVar();
-  if (!prefix_env) {
+  std::string prefix = GetDumpDirFromEnvVar();
+  if (prefix.empty()) {
     return;
   }
-  std::string prefix = prefix_env;
 
   auto* env = tensorflow::Env::Default();
   auto status = env->RecursivelyCreateDir(prefix);

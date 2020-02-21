@@ -108,6 +108,14 @@ func @broadcast_in_dim_zero_rank(%arg0: tensor<i32>) -> tensor<1x2x3xi32> {
 
 // -----
 
+// CHECK-LABEL: func @dynamic_broadcast_in_dim
+func @dynamic_broadcast_in_dim(%arg0: tensor<?x?xi32>, %shape: tensor<3xi64>) -> tensor<?x?x?xi32> {
+  %0 = "xla_hlo.dynamic_broadcast_in_dim"(%arg0, %shape) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<?x?xi32>, tensor<3xi64>) -> tensor<?x?x?xi32>
+  return %0 : tensor<?x?x?xi32>
+}
+
+// -----
+
 func @broadcast_in_dim_bad_dimension_rank(%arg0: tensor<1x2xi32>) -> tensor<1x2x3xi32> {
   // expected-error@+1 {{broadcast_dimensions has rank 2 instead of rank 1}}
   %0 = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[[1,1],[1,1]]> : tensor<2x2xi64>} : (tensor<1x2xi32>) -> tensor<1x2x3xi32>
@@ -280,6 +288,22 @@ func @infeed_non_token_second_result(%token: !xla_hlo.token) -> tuple<tuple<tens
   // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
   %0 = "xla_hlo.infeed"(%token) {infeed_config = "foobar"} : (!xla_hlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>>
   return %0 : tuple<tuple<tensor<i32>>, tensor<i32>>
+}
+
+// -----
+
+func @iota_scalar() -> tensor<i32> {
+  // expected-error@+1 {{does not support scalars}}
+  %0 = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @iota_invalid_iota_dimension() -> tensor<4xi32> {
+  // expected-error@+1 {{iota dimension cannot go beyond the output rank or be negative}}
+  %0 = "xla_hlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<4xi32>
+  return %0 : tensor<4xi32>
 }
 
 // -----

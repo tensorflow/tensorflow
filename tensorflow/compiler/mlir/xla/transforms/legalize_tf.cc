@@ -3362,7 +3362,7 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
     auto indices_type =
         RankedTensorType::get({first_dim_size}, rewriter.getIntegerType(32));
     Value indices = rewriter.create<xla_hlo::IotaOp>(
-        op.getLoc(), indices_type, rewriter.getI64IntegerAttr(first_dim_size));
+        op.getLoc(), indices_type, rewriter.getI64IntegerAttr(0));
 
     // Generate random numbers to be used as swaps for the indices.
     Value swaps = CreateRngUniform32(op.getLoc(), first_dim_size, 0,

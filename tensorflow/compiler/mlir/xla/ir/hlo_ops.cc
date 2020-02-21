@@ -202,6 +202,20 @@ OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
   return DenseIntElementsAttr::get(output_type, values);
 }
 
+static LogicalResult Verify(IotaOp op) {
+  auto shape = op.getType().cast<ShapedType>();
+  if (!shape.hasRank()) return success();
+
+  if (shape.getRank() == 0)
+    return op.emitOpError() << "does not support scalars.";
+
+  auto iota_dimension = op.iota_dimension().getSExtValue();
+  if (iota_dimension >= shape.getRank() || iota_dimension < 0)
+    return op.emitOpError() << "iota dimension cannot go beyond the output "
+                               "rank or be negative.";
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // AbsOp
 //===----------------------------------------------------------------------===//

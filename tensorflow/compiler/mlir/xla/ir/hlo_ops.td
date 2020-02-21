@@ -60,8 +60,11 @@ def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
+// Dynamic representation of a shape vector as a tensor. Ideally this would be
+// an index type (as it stores indices) but that is currently disallowed in
+// MLIR.
 def HLO_DimensionTensor : ShapedContainerType<
-    [Index], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
+    [AnyInteger], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
     "a 1D tensor of dimensions">;
 
 // In general, static shaped tensor constraints should be avoided unless
@@ -117,7 +120,7 @@ def HLO_ConstOp : HLO_Op<"constant", [NoSideEffect]>, BASE_HLO_ConstOp {
 def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]>, BASE_HLO_IotaOp {
   let arguments = (ins I64Attr:$iota_dimension);
 
-  let results = (outs HLO_Tensor:$output);
+  let results = (outs HLO_IntFpOrComplexTensor:$output);
 
   let hasFolder = 1;
 
@@ -775,7 +778,19 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
 }
 
 def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
-      [NoSideEffect]>, BASE_HLO_DynamicBroadcastInDimOp {
+      [NoSideEffect]> {
+  string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
+  string description = [{
+    This is a generalization of the BroadcastInDimOp which accepts its output
+    dimensions as an argument. It should eventually supercede the statically
+    shaped original, but is being phased as a separate op in order to support
+    compatibility with lowerings and translations that precede dynamic
+    shapes.
+
+    Note that the `broadcast_dimensions` attribute is optional and if omitted,
+    it is assumed to be an ordered, right-aligned mapping from input to
+    output dimensions.
+  }];
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_DimensionTensor:$output_dimensions,

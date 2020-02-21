@@ -69,6 +69,14 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset,
+    int32_t* scratch, int32_t* row_sums, bool* compute_row_sums,
+    CpuBackendContext* context);
+
+void PortableMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vector, const float* scaling_factors,
     int n_batch, int32_t* scratch, float* __restrict__ result,
     int result_stride, CpuBackendContext* context);
@@ -82,13 +90,12 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
-    float* __restrict__ result, int result_stride);
+    float* __restrict__ result);
 
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result,
-    int result_stride);
+    const float* scaling_factors, int n_batch, float* __restrict__ result);
 
 // Dot product of two vectors.
 float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
@@ -97,8 +104,7 @@ float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
 void PortableBatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                               const int16_t* vector2,
                                               int v_size, int n_batch,
-                                              int32_t* result,
-                                              int result_stride);
+                                              int32_t* result);
 
 void PortableVectorBatchVectorCwiseProductAccumulate(
     const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
@@ -179,6 +185,10 @@ void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size);
 
 void PortableReductionSumVector(const int32_t* input_vector,
+                                int32_t* output_vector, int output_size,
+                                int reduction_size);
+
+void PortableReductionSumVector(const int8_t* input_vector,
                                 int32_t* output_vector, int output_size,
                                 int reduction_size);
 

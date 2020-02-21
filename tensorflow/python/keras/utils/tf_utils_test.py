@@ -79,6 +79,8 @@ class TestIsSymbolicTensor(test.TestCase):
       self.assertTrue(tf_utils.is_symbolic_tensor(CustomClass()))
 
   def test_enables_nontensor_plumbing(self):
+    if context.executing_eagerly():
+      self.skipTest('`compile` functionality changed.')
     # Setup.
 
     class Foo(object):

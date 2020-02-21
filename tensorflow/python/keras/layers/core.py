@@ -1122,12 +1122,17 @@ class Dense(Layer):
       raise TypeError('Unable to build `Dense` layer with non-floating point '
                       'dtype %s' % (dtype,))
     input_shape = tensor_shape.TensorShape(input_shape)
-    if tensor_shape.dimension_value(input_shape[-1]) is None:
-      raise ValueError('The last dimension of the inputs to `Dense` '
-                       'should be defined. Found `None`.')
-    last_dim = tensor_shape.dimension_value(input_shape[-1])
-    self.input_spec = InputSpec(min_ndim=2,
-                                axes={-1: last_dim})
+    # Handle 1-d inputs by reshaping to (-1, 1).
+    if input_shape.rank == 1:
+      input_shape = tensor_shape.TensorShape(input_shape.as_list() + [1])
+      last_dim = tensor_shape.dimension_value(1)
+      self.input_spec = InputSpec(min_ndim=1, max_ndim=2)
+    else:
+      if tensor_shape.dimension_value(input_shape[-1]) is None:
+        raise ValueError('The last dimension of the inputs to `Dense` '
+                         'should be defined. Found `None`.')
+      last_dim = tensor_shape.dimension_value(input_shape[-1])
+      self.input_spec = InputSpec(min_ndim=2, axes={-1: last_dim})
     self.kernel = self.add_weight(
         'kernel',
         shape=[last_dim, self.units],
@@ -1160,6 +1165,8 @@ class Dense(Layer):
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
+      if rank == 1:
+        inputs = array_ops.expand_dims_v2(inputs, axis=-1)
       inputs = math_ops.cast(inputs, self._compute_dtype)
       if K.is_sparse(inputs):
         outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, self.kernel)

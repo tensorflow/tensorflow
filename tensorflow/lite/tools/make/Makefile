@@ -59,7 +59,6 @@ LIBS := \
 CXXFLAGS := -O3 -DNDEBUG -fPIC
 CXXFLAGS += $(EXTRA_CXXFLAGS)
 CFLAGS := ${CXXFLAGS}
-CXXFLAGS += --std=c++11
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
@@ -67,6 +66,25 @@ CC_PREFIX :=
 
 ifeq ($(HOST_OS),windows)
 CXXFLAGS += -fext-numeric-literals -D__LITTLE_ENDIAN__
+endif
+
+ifeq ($(TARGET),ios)
+CXXFLAGS += --std=c++11
+endif
+
+# Auto-detect optimization opportunity if building natively.
+ifeq ($(HOST_OS),$(TARGET))
+ifeq ($(HOST_ARCH),$(TARGET_ARCH))
+ifeq ($(TARGET_ARCH),armv7l)
+ifneq ($(shell cat /proc/cpuinfo | grep Features | grep neon),)
+  ifneq ($(shell cat /proc/cpuinfo | grep Features | grep vfpv4),)
+    CXXFLAGS += -mfpu=neon-vfpv4
+  else
+    CXXFLAGS += -mfpu=neon
+  endif
+endif # ifeq ($(TARGET_ARCH),armv7l)
+endif # ifeq ($(HOST_ARCH),$(TARGET_ARCH))
+endif # ifeq ($(HOST_OS),$(TARGET))
 endif
 
 # This library is the main target for this makefile. It will contain a minimal
@@ -91,6 +109,7 @@ PROFILER_SRCS := \
 
 PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/lite/profiling/profile_summarizer.cc \
+	tensorflow/lite/profiling/profile_summary_formatter.cc \
 	tensorflow/core/util/stats_calculator.cc
 
 CMD_LINE_TOOLS_SRCS := \

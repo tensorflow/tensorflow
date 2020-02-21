@@ -535,7 +535,7 @@ class Layer(base_layer.Layer):
       # with the shape the Layer will be called on (these users will have to
       # implement `compute_output_shape` themselves).
       self._maybe_build(input_shape)
-      with context.graph_mode():
+      with ops.get_default_graph().as_default():
         graph = func_graph.FuncGraph('graph')
         with graph.as_default():
           input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)

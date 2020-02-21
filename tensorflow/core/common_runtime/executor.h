@@ -145,7 +145,9 @@ struct LocalExecutorParams {
   // create_kernel returns an instance of op kernel based on NodeDef.
   // delete_kernel is called for every kernel used by the executor
   // when the executor is deleted.
-  std::function<Status(const NodeDef&, OpKernel**)> create_kernel;
+  std::function<Status(const std::shared_ptr<const NodeProperties>&,
+                       OpKernel**)>
+      create_kernel;
   std::function<void(OpKernel*)> delete_kernel;
 
   Executor::RendezvousFactory rendezvous_factory;
@@ -240,12 +242,12 @@ class ExecutorBarrier {
 
 // A few helpers to facilitate create/delete kernels.
 
-// Creates a kernel based on "ndef" on device "device". The kernel can
+// Creates a kernel based on "props" on device "device". The kernel can
 // access the functions in the "flib". The caller takes ownership of
 // returned "*kernel".
 Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
-                             const NodeDef& ndef, int graph_def_version,
-                             OpKernel** kernel);
+                             const std::shared_ptr<const NodeProperties>& props,
+                             int graph_def_version, OpKernel** kernel);
 
 // Deletes "kernel" returned by CreateKernel.
 void DeleteNonCachedKernel(OpKernel* kernel);
