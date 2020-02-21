@@ -948,8 +948,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
                    << "The native segment will be used instead.";
       // Store an empty engine in the cache for these input shapes so we don't
       // try to build the same failing engine again.
-      cache.emplace(engine_input_shapes, absl::make_unique<EngineContext>());
-      return &empty_context;
+      cache.emplace(input_concrete_shapes, absl::make_unique<EngineContext>());
+      return std::pair<EngineContext*, int>(&empty_context, 0);
     }
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
