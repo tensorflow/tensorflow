@@ -213,14 +213,16 @@ Status ElementwiseTwoInput::BindArguments(CLKernel* kernel) {
 ElementwiseTwoInput CreateElementwiseTwoInput(
     const CreationContext& creation_context, const OperationDef& definition,
     const OperationType& op_type, const BroadcastSettings& broadcast,
-    const ElementwiseAttributes& attr) {
+    const ElementwiseAttributes* attr) {
   ElementwiseTwoInput operation(definition, op_type, broadcast);
-  auto scalar = absl::get_if<float>(&attr.param);
-  if (scalar) {
-    const auto scalar_precision = creation_context.device->IsPowerVR()
-                                      ? CalculationsPrecision::F32
-                                      : definition.precision;
-    operation.SetScalarPara(FLT(scalar_precision, *scalar));
+  if (attr) {
+    const float* scalar = absl::get_if<float>(&attr->param);
+    if (scalar) {
+      const auto scalar_precision = creation_context.device->IsPowerVR()
+                                        ? CalculationsPrecision::F32
+                                        : definition.precision;
+      operation.SetScalarPara(FLT(scalar_precision, *scalar));
+    }
   }
   operation.SetLinkIndex(0);
   return operation;
