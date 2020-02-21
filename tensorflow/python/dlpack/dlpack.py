@@ -22,6 +22,7 @@ from tensorflow.python import pywrap_tfe
 from tensorflow.python.util.tf_export import tf_export
 
 
+# tf.dlpack.to_dlpack/from_dlpack doesn't work. How to fix?
 @tf_export("dlpack.to_dlpack")
 def to_dlpack(tf_tensor):
   return pywrap_tfe.TFE_ToDlpackCapsule(tf_tensor)
