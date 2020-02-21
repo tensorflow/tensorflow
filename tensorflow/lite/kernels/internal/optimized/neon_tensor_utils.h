@@ -57,9 +57,9 @@ void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride,
     const float* per_channel_scale, const int32_t* input_offset) {
-  return NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows,
-                          m_cols, vectors, scaling_factors, n_batch, result,
-                          result_stride, per_channel_scale, input_offset);
+  NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
+                   vectors, scaling_factors, n_batch, result, result_stride,
+                   per_channel_scale, input_offset);
 }
 
 void MatrixBatchVectorMultiplyAccumulate(
@@ -69,10 +69,10 @@ void MatrixBatchVectorMultiplyAccumulate(
     const float* per_channel_scale, const int32_t* input_offset,
     int32_t* scratch, int32_t* row_sums, bool* compute_row_sums,
     CpuBackendContext* context) {
-  return NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows,
-                          m_cols, vectors, scaling_factors, n_batch, result,
-                          result_stride, per_channel_scale, input_offset,
-                          scratch, row_sums, compute_row_sums, context);
+  NEON_OR_PORTABLE(MatrixBatchVectorMultiplyAccumulate, matrix, m_rows, m_cols,
+                   vectors, scaling_factors, n_batch, result, result_stride,
+                   per_channel_scale, input_offset, scratch, row_sums,
+                   compute_row_sums, context);
 }
 
 void SparseMatrixBatchVectorMultiplyAccumulate(
@@ -212,8 +212,8 @@ void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
 void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       const int16_t* vector2, int v_size,
                                       int n_batch, int32_t* result) {
-  return PortableBatchVectorBatchVectorDotProduct(vector1, vector2, v_size,
-                                                  n_batch, result);
+  PortableBatchVectorBatchVectorDotProduct(vector1, vector2, v_size, n_batch,
+                                           result);
 }
 
 void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
