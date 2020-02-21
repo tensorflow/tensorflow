@@ -92,8 +92,8 @@ filegroup(
     srcs = [
         "c_api_experimental.h",
         "c_api_internal.h",
-        "tensor_handle_interface.h",
         "dlpack.h",
+        "tensor_handle_interface.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -327,7 +327,6 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-
 cc_library(
     name = "dlpack",
     srcs = ["dlpack.cc"],
@@ -345,7 +344,6 @@ cc_library(
         "@dlpack",
     ],
 )
-
 
 # TODO(karllessard): only used by //tensorflow/core:mobile_srcs_only_runtime
 # right now, remove this public rule when no longer needed (it should be

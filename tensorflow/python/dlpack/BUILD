@@ -4,9 +4,11 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 py_library(
     name = "dlpack",
     srcs = ["dlpack.py"],
-    deps = [
-    ], 
     srcs_version = "PY3",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+    ],
 )
 
 cuda_py_test(
@@ -14,9 +16,9 @@ cuda_py_test(
     srcs = ["dlpack_test.py"],
     python_version = "PY3",
     deps = [
-        ":dlpack",      
+        ":dlpack",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
-    ]
+    ],
 )

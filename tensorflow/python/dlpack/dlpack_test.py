@@ -1,3 +1,23 @@
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+"""Tests for DLPack functions."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
@@ -29,55 +49,55 @@ testcase_shapes = [
 
 
 def FormatShapeAndDtype(shape, dtype):
-    return "_{}[{}]".format(str(dtype), ",".join(map(str, shape)))
+  return "_{}[{}]".format(str(dtype), ",".join(map(str, shape)))
 
 
 class DLPackTest(parameterized.TestCase, test.TestCase):
 
-    @parameterized.named_parameters({
-        "testcase_name": FormatShapeAndDtype(shape, dtype),
-        "dtype": dtype,
-        "shape": shape} for dtype in dlpack_dtypes for shape in testcase_shapes)
-    def testRoundTrip(self, dtype, shape):
-        np.random.seed(42)
-        np_array = np.random.randint(0, 10, shape)
-        tf_tensor = constant_op.constant(np_array, dtype=dtype)
-        dlcapsule = to_dlpack(tf_tensor)
-        del tf_tensor  # should still work
-        tf_tensor2 = from_dlpack(dlcapsule)
-        self.assertAllClose(np_array, tf_tensor2)
+  @parameterized.named_parameters({
+      "testcase_name": FormatShapeAndDtype(shape, dtype),
+      "dtype": dtype,
+      "shape": shape} for dtype in dlpack_dtypes for shape in testcase_shapes)
+  def testRoundTrip(self, dtype, shape):
+    np.random.seed(42)
+    np_array = np.random.randint(0, 10, shape)
+    tf_tensor = constant_op.constant(np_array, dtype=dtype)
+    dlcapsule = to_dlpack(tf_tensor)
+    del tf_tensor  # should still work
+    tf_tensor2 = from_dlpack(dlcapsule)
+    self.assertAllClose(np_array, tf_tensor2)
 
-    def testTensorsCanBeConsumedOnceOnly(self):
-        np.random.seed(42)
-        np_array = np.random.randint(0, 10, (2, 3, 4))
-        tf_tensor = constant_op.constant(np_array, dtype=np.float32)
-        dlcapsule = to_dlpack(tf_tensor)
-        del tf_tensor  # should still work
-        tf_tensor2 = from_dlpack(dlcapsule)
+  def testTensorsCanBeConsumedOnceOnly(self):
+    np.random.seed(42)
+    np_array = np.random.randint(0, 10, (2, 3, 4))
+    tf_tensor = constant_op.constant(np_array, dtype=np.float32)
+    dlcapsule = to_dlpack(tf_tensor)
+    del tf_tensor  # should still work
+    tf_tensor2 = from_dlpack(dlcapsule)
 
-        def ConsumeDLPackTensor():
-            from_dlpack(dlcapsule)  # Should can be consumed only once
-        self.assertRaisesRegex(Exception,
-                               ".*a DLPack tensor may be consumed at most once.*",
-                               ConsumeDLPackTensor)
+    def ConsumeDLPackTensor():
+      from_dlpack(dlcapsule)  # Should can be consumed only once
+    self.assertRaisesRegex(Exception,
+                           ".*a DLPack tensor may be consumed at most once.*",
+                           ConsumeDLPackTensor)
 
-    def testUnsupportedType(self):
-        def case1():
-            tf_tensor = constant_op.constant(
-                [[1, 4], [5, 2]], dtype=dtypes.qint16)
-            dlcapsule = to_dlpack(tf_tensor)
+  def testUnsupportedType(self):
+    def case1():
+      tf_tensor = constant_op.constant(
+          [[1, 4], [5, 2]], dtype=dtypes.qint16)
+      dlcapsule = to_dlpack(tf_tensor)
 
-        def case2():
-            tf_tensor = constant_op.constant(
-                [[1, 4], [5, 2]], dtype=dtypes.complex64)
-            dlcapsule = to_dlpack(tf_tensor)
+    def case2():
+      tf_tensor = constant_op.constant(
+          [[1, 4], [5, 2]], dtype=dtypes.complex64)
+      dlcapsule = to_dlpack(tf_tensor)
 
-        self.assertRaisesRegex(
-            Exception, ".* is not supported by dlpack", case1)
-        self.assertRaisesRegex(
-            Exception, ".* is not supported by dlpack", case2)
+    self.assertRaisesRegex(
+        Exception, ".* is not supported by dlpack", case1)
+    self.assertRaisesRegex(
+        Exception, ".* is not supported by dlpack", case2)
 
 
 if __name__ == '__main__':
-    ops.enable_eager_execution()
-    test.main()
+  ops.enable_eager_execution()
+  test.main()
