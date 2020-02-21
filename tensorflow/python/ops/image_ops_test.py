@@ -4598,7 +4598,7 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
       "non_max_suppression with dynamic output shape unsupported.")
   def testSelectFromContinuousOverLap(self):
     boxes_np = [[0, 0, 1, 1], [0, 0.2, 1, 1.2], [0, 0.4, 1, 1.4],
-                [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]]
+                [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 3]]
     scores_np = [0.9, 0.75, 0.6, 0.5, 0.4, 0.3]
     max_output_size_np = 3
     iou_threshold_np = 0.5
