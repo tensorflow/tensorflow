@@ -25,14 +25,14 @@ header: |
 # of functionality ("slices") by listing all of the "slice sets" to use when
 # building.
 #
-# For example, a release that uses {nightly}{py} would create 4 Dockerfiles
+# For example, a release that uses {nightly}{jupyter} would create 4 Dockerfiles
 # (which could become images or concrete Dockerfiles), because the "nightly"
 # and "py" slice sets both have two entries:
 #
-#   - nightly (no -py2 because the Python 2 slice set has add_to_name: ""
-#   - nightly-py3
-#   - nightly-gpu (similar)
-#   - nightly-gpu-py3
+#   - nightly
+#   - nightly-juypter
+#   - nightly-gpu
+#   - nightly-gpu-jupyter
 #
 # Releases are all treated differently by TensorFlow's CI systems.
 releases:
@@ -64,19 +64,11 @@ slice_sets:
 
     py:
         - add_to_name: ""
-          args:
-              - USE_PYTHON_3_NOT_2=1
         - add_to_name: "-py3"
-          args:
-              - USE_PYTHON_3_NOT_2=1
 
     py-devel:
         - add_to_name: ""
-          args:
-              - USE_PYTHON_3_NOT_2=1
         - add_to_name: "-py3"
-          args:
-              - USE_PYTHON_3_NOT_2=1
 
     jupyter:
         - add_to_name: ""

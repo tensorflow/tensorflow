@@ -18,7 +18,7 @@
 set -ex
 git clone --branch=master --depth=1 https://github.com/tensorflow/tensorflow.git /tensorflow || true
 cd /tensorflow
-ln -snf $(which ${PYTHON}) /usr/local/bin/python
+ln -snf $(which python3) /usr/local/bin/python
 # Run configure.
 export TF_NEED_GCP=1
 export TF_NEED_HDFS=1

@@ -22,10 +22,10 @@ set -euxo pipefail
 git clone --branch=master --depth=1 https://github.com/tensorflow/tensorflow.git /tensorflow
 cd /tensorflow
 
-ln -s $(which ${PYTHON}) /usr/local/bin/python
+ln -s $(which python3) /usr/local/bin/python
 
 # Build TensorFlow with support for Intel(R) MKL-DNN
-yes "" | ${PYTHON} configure.py && \
+yes "" | python3 configure.py && \
  bazel build -c opt --config=mkl --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" \
     tensorflow/tools/pip_package:build_pip_package && \
  bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip && \
