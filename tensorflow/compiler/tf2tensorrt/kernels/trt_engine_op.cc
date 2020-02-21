@@ -119,7 +119,7 @@ class TRTEngineOp : public AsyncOpKernel {
   Status GetEngineCacheResource(OpKernelContext* ctx,
                                 TRTEngineCacheResource** cache_res);
 
-  // Return a pair of 1) An EngineContext object that is compatible with the
+  // Returns a pair of 1) An EngineContext object that is compatible with the
   // input and 2) The index of the IExecutionContext compatible with the input.
   StatusOr<std::pair<EngineContext*, int>> GetEngine(
       const std::vector<TensorShape>& input_concrete_shapes,
@@ -629,18 +629,20 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     VLOG(2) << binding_types;
   }
 
-  const bool kRetry = true;
-  if (trt_context_idx >= engine_context->execution_context.size()) {
-    LOG(ERROR) << "Requested engine context with index " << trt_context_idx
-               << ", but only " << engine_context->execution_context.size()
-               << "contexts are present.";
-    return kRetry;
-  }
   const int num_binding = cuda_engine->getNbBindings();
   std::vector<void*> buffers(num_binding);
 
   mutex_lock lock(engine_context->mu);
-  auto& execution_context = engine_context->execution_context[trt_context_idx];
+  nvinfer1::IExecutionContext* execution_context;
+  Status status =
+      engine_context->GetExecutionContext(trt_context_idx, &execution_context);
+  const bool kRetry = true;
+  if (!status.ok()) {
+    // TODO(Tamas) let ExecuteTrtEngine return a status, and do the logging at
+    // the call site
+    LOG(ERROR) << status;
+    return kRetry;
+  }
 
   // Setup engine inputs.
   for (int i = 0; i < ctx->num_inputs(); i++) {
@@ -912,9 +914,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
   int profile_id = -1;
   if (!use_implicit_batch_) {
     profile_id = cache_res->profiles_.GetProfileNumber(input_concrete_shapes);
-    // Since all profiles are already created at this point,
-    // finding no compatible profiles results in falling back
-    // to native TF.
+    // Since all profiles are already created at this point, finding no
+    // compatible profiles results in falling back to native TF.
     if (profile_id == -1) {
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
@@ -927,8 +928,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     engine_contexts = cache_res->GetEngineContext(profile_id);
   }
 
-  // If cache does not have a compatible engine
-  // then create a new engine.
+  // If cache does not have a compatible engine then create a new engine.
   if (engine_contexts == nullptr) {
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
