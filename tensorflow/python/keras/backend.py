@@ -5664,16 +5664,21 @@ def bias_add(x, bias, data_format=None):
 def random_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
   """Returns a tensor with normal distribution of values.
 
+  It is an alias to `tf.random.normal`.
+
   Arguments:
       shape: A tuple of integers, the shape of tensor to create.
-      mean: A float, mean of the normal distribution to draw samples.
-      stddev: A float, standard deviation of the normal distribution
-          to draw samples.
-      dtype: String, dtype of returned tensor.
-      seed: Integer, random seed.
+      mean: A float, the mean value of the normal distribution to draw samples.
+        Default to 0.0.
+      stddev: A float, the standard deviation of the normal distribution
+        to draw samples. Default to 1.0.
+      dtype: `tf.dtypes.DType`, dtype of returned tensor. Default to use Keras
+        backend dtype which is float32.
+      seed: Integer, random seed. Will use a random numpy integer when not
+        specified.
 
   Returns:
-      A tensor.
+      A tensor with normal distribution of values.
   """
   if dtype is None:
     dtype = floatx()
