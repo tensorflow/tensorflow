@@ -981,7 +981,7 @@ class _TapeGradientFunctions(object):
         self._func_graph.outputs,
         forward_function_attr)
 
-    if not self._func_graph.outputs or not input_tangents:
+    if not input_tangents:
       # There is no need to special-case forwardprop, so we can return the
       # forward+backward pair we've created without further wrapping.
       return (forward_function, self._func_graph, backward_function,
@@ -1085,6 +1085,11 @@ class _TapeGradientFunctions(object):
              "StatefulPartitionedCall": gradient_function}):
           forward_outputs = forward_function.call(context.context(),
                                                   forward_inputs)
+          if isinstance(forward_outputs, ops.Operation):
+            # _wrapped_backward_function expects a list, but if the function has
+            # no outputs its call() returns an Operation. We need to undo that
+            # so we don't cause problems later.
+            forward_outputs = []
         py_backward, _ = self._wrap_backward_function(
             self._func_graph, backward_function, forward_outputs)
       # We will never request backward tape gradients for this operation
