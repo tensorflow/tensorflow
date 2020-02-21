@@ -4,6 +4,13 @@ load("//third_party/toolchains/remote_config:rbe_config.bzl", "tensorflow_rbe_co
 
 def initialize_rbe_configs():
     tensorflow_rbe_config(
+        name = "ubuntu16.04-manylinux2010-py3",
+        os = "ubuntu16.04-manylinux2010",
+        python_version = "3",
+        compiler = "",
+    )
+
+    tensorflow_rbe_config(
         name = "ubuntu16.04-py3-gcc7_manylinux2010-cuda10.0-cudnn7-tensorrt5.1",
         compiler = "/dt7/usr/bin/gcc",
         compiler_prefix = "/usr/bin",

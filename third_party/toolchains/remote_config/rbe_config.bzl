@@ -13,9 +13,6 @@ def _container_image_uri(container_name):
     return "docker://%s/%s@%s" % (container["registry"], container["repository"], container["digest"])
 
 def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = None, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, cudnn_install_path = None, compiler_prefix = None, sysroot = None):
-    if cuda_version == None and rocm_version == None:
-        fail("Neither cuda_version nor rocm_version specified. You need to specify exactly one.")
-
     if cuda_version != None and rocm_version != None:
         fail("Specifying both cuda_version and rocm_version is not supported.")
 
@@ -121,5 +118,19 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
             environ = env,
             exec_properties = exec_properties,
         )
+    elif python_version != None:
+        container_image = _container_image_uri(os)
+        exec_properties = {
+            "container-image": container_image,
+            "Pool": "default",
+        }
+
+        remote_python_configure(
+            name = "%s_config_python" % name,
+            environ = env,
+            exec_properties = exec_properties,
+        )
+    else:
+        fail("Neither cuda_version, rocm_version nor python_version specified.")
 
 tensorflow_rbe_config = _tensorflow_rbe_config

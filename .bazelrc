@@ -386,9 +386,8 @@ build:rbe_linux_py2 --python_path="/usr/bin/python2"
 build:rbe_linux_py2 --repo_env=TF_PYTHON_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/py"
 
 build:rbe_linux_py3 --config=rbe_linux
-build:rbe_linux_py3 --repo_env=PYTHON_BIN_PATH="/usr/bin/python3"
 build:rbe_linux_py3 --python_path="/usr/bin/python3"
-build:rbe_linux_py3 --repo_env=TF_PYTHON_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/py3"
+build:rbe_linux_py3 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-manylinux2010-py3_config_python"
 
 build:rbe_win --config=rbe
 build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win_1803/bazel_121:toolchain"
