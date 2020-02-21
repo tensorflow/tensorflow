@@ -59,6 +59,8 @@ void DLManagedTensorDeleter(DLManagedTensor* arg) {
   TFDLManagedTensorCtx* owner =
       static_cast<TFDLManagedTensorCtx*>(arg->manager_ctx);
   owner->handle->Unref();
+  delete owner->handle;
+  delete owner->tensor.dl_tensor.shape;
   delete owner;
 }
 

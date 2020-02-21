@@ -360,6 +360,7 @@ filegroup(
         exclude = [
             "c_api_experimental.cc",
             "*test*",
+            "*dlpack*",
         ],
     ),
     visibility = ["//visibility:public"],

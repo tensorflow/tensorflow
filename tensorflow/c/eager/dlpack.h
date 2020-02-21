@@ -24,11 +24,11 @@ namespace tensorflow {
 
 const char* const kDlTensorCapsuleName = "dltensor";
 
-void* TFE_HandleToDLPack(TFE_TensorHandle* h, TF_Status* status);
+TF_CAPI_EXPORT extern void* TFE_HandleToDLPack(TFE_TensorHandle* h, TF_Status* status);
 
-TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status);
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status);
 
-void TFE_CallDLManagedTensorDeleter(void* dlm_ptr);
+TF_CAPI_EXPORT extern void TFE_CallDLManagedTensorDeleter(void* dlm_ptr);
 }  // namespace tensorflow
 
 
