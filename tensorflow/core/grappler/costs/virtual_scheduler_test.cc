@@ -264,7 +264,7 @@ TEST_F(ReadyNodeManagerTest, GetCurrNodeFirstReadyManager) {
   // should return it.
   EXPECT_EQ("Node6", manager.GetCurrNode()->name());
 
-  // Now insrets a few other nodes, but their time_ready's are even smaller than
+  // Now inserts a few other nodes, but their time_ready's are even smaller than
   // that of Node6. Before calling RemoveCurrNode(), GetCurrNode() should return
   // the same node, Node6, in this case.
   NodeDef node7;
