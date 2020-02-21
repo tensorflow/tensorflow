@@ -87,7 +87,6 @@ class GreedyMemoryPlanner : public MemoryPlanner {
   };
 
  private:
-  TF_LITE_REMOVE_VIRTUAL_DELETE
   // Whether a buffer is active in a given time range.
   bool DoesEntryOverlapInTime(const ListEntry* entry, const int first_time_used,
                               const int last_time_used) const;
