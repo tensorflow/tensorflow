@@ -172,14 +172,19 @@ class LossesContainer(object):
       loss_metric_values.append(loss_metric_value)
 
     if regularization_losses:
+      regularization_losses = losses_utils.cast_losses_to_common_dtype(
+          regularization_losses)
       reg_loss = math_ops.add_n(regularization_losses)
       loss_metric_values.append(reg_loss)
       loss_values.append(losses_utils.scale_loss_for_distribution(reg_loss))
 
     if loss_values:
+      loss_metric_values = losses_utils.cast_losses_to_common_dtype(
+          loss_metric_values)
       total_loss_metric_value = math_ops.add_n(loss_metric_values)
       self._loss_metric.update_state(total_loss_metric_value)
 
+      loss_values = losses_utils.cast_losses_to_common_dtype(loss_values)
       total_loss = math_ops.add_n(loss_values)
       return total_loss
     else:
