@@ -46,6 +46,19 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
+struct LayoutOptimizationPipelineOptions
+    : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
+  Option<std::string> force_data_format{
+      *this, "force-data-format",
+      llvm::cl::desc("Force data format for all layout sensitive ops")};
+};
+
+// Layout optimization assigns optimal data layout for layout sensitive
+// operations, and cancels all redundant transposes.
+void CreateLayoutOptimizationPipeline(
+    OpPassManager& pm,  // NOLINT - MLIR contract is pass by mutable reference.
+    const LayoutOptimizationPipelineOptions& options);
+
 struct StandardPipelineOptions
     : public PassPipelineOptions<StandardPipelineOptions> {
   Option<bool> enable_inliner{*this, "enable-inliner",
