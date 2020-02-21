@@ -228,10 +228,6 @@ namespace tf_saved_model {
 // Creates a pass that optimizes tf_saved_model.global_tensor ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass();
 
-// Creates a pass that inlines global tensors as tf.Const ops in the function
-// body.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateInlineGlobalTensorsPass();
-
 // Creates a pass that uses tf_saved_model dialect linkage information
 // to mark function visibility. That is, exported functions are marked with
 // public visibility while the other functions are marked with private
