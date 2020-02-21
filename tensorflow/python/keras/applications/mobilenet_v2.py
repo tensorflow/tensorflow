@@ -504,7 +504,7 @@ def preprocess_input(x, data_format=None):
 
 @keras_export('keras.applications.mobilenet_v2.decode_predictions')
 def decode_predictions(preds, top=5):
-  """Decodes the prediction of an ImageNet model.
+  """Decodes the prediction result from the model.
 
   Arguments
     preds: Numpy tensor encoding a batch of predictions.
