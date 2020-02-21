@@ -946,6 +946,7 @@ distribute_py_test(
     name = "custom_training_loop_input_test",
     srcs = ["custom_training_loop_input_test.py"],
     main = "custom_training_loop_input_test.py",
+    shard_count = 5,
     tags = [
         "multi_and_single_gpu",
     ],
