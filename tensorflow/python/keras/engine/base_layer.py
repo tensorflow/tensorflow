@@ -279,6 +279,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # Manage initial weight values if passed.
     self._initial_weights = kwargs.get('weights', None)
 
+    # Whether the layer will track any layers that is set as attribute on itself
+    # as sub-layers, the weights from the sub-layers will be included in the
+    # parent layer's variables() as well.
+    # Default to True, which means auto tracking is turned on. Certain subclass
+    # might want to turn it off, like Sequential model.
+    self._auto_track_sub_layers = True
+
   @trackable.no_automatic_dependency_tracking
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
@@ -2390,10 +2397,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # TODO(scottzhu): Need to track Module object as well for weight tracking.
     # Be careful about metric if it becomes a Module in future.
     # Append value to self._layers if relevant
-
-    # Sequential models use a separate layer tracking mechanism, so skip the
-    # logic defined here for tracking layers.
-    if (self.__class__.__name__ != 'Sequential' and
+    if (getattr(self, '_auto_track_sub_layers', True) and
         (isinstance(value, Layer) or trackable_layer_utils.has_weights(value))):
       self._maybe_create_attribute('_layers', [])
       # We need to check object identity to avoid de-duplicating empty
