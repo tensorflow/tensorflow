@@ -308,20 +308,21 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     _keras_api_gauge.get_cell('compile').set(True)
-    self._validate_compile(optimizer, **kwargs)
-    self._run_eagerly = kwargs.pop('run_eagerly', None)
+    with self.distribute_strategy.scope():
+      self._validate_compile(optimizer, metrics, **kwargs)
+      self._run_eagerly = kwargs.pop('run_eagerly', None)
 
-    self.optimizer = self._get_optimizer(optimizer)
-    self.compiled_loss = compile_utils.LossesContainer(
-        loss, loss_weights, output_names=self.output_names)
-    self.compiled_metrics = compile_utils.MetricsContainer(
-        metrics, weighted_metrics, output_names=self.output_names)
+      self.optimizer = self._get_optimizer(optimizer)
+      self.compiled_loss = compile_utils.LossesContainer(
+          loss, loss_weights, output_names=self.output_names)
+      self.compiled_metrics = compile_utils.MetricsContainer(
+          metrics, weighted_metrics, output_names=self.output_names)
 
-    # Initializes attrs that are reset each time `compile` is called.
-    self._reset_compile_cache()
-    self._is_compiled = True
+      # Initializes attrs that are reset each time `compile` is called.
+      self._reset_compile_cache()
+      self._is_compiled = True
 
-    self.loss = loss or {}  # Backwards compat.
+      self.loss = loss or {}  # Backwards compat.
 
   def _get_optimizer(self, optimizer):
     """Wraps `optimizer` in `LossScaleOptimizer` if necessary."""
@@ -1420,7 +1421,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           'and the first argument in `call` as positional arguments, '
           'found: ' + str(extra_args) + '.')
 
-  def _validate_compile(self, optimizer, **kwargs):
+  def _validate_compile(self, optimizer, metrics, **kwargs):
     """Performs validation checks for the default `compile`."""
     if any(
         isinstance(opt, optimizers.Optimizer)
@@ -1459,6 +1460,22 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               'with strategy.scope():\n'
               '  model=_create_model()\n'
               '  model.compile(...)' % (v, strategy))
+
+    # Model metrics must be created in the same distribution strategy scope
+    # as the model.
+    strategy = self._get_distribution_strategy()
+    for metric in nest.flatten(metrics):
+      for v in getattr(metric, 'variables', []):
+        if not strategy.extended.variable_created_in_scope(v):
+          raise ValueError(
+              'Metric (%s) passed to model.compile was created inside of a '
+              'different distribution strategy scope than the model. All '
+              'metrics must be created in the same distribution strategy '
+              'scope as the model (in this case %s). If you pass in a string '
+              'identifier for a metric to compile the metric will '
+              'automatically be created in the correct distribution '
+              'strategy scope.' % (metric, strategy)
+          )
 
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch):
     """Maybe load initial epoch from ckpt considering possible worker recovery.

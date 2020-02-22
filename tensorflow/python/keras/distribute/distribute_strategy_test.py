@@ -42,11 +42,13 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
+from tensorflow.python.util import nest
 
 _RANDOM_SEED = 1337
 _TRAIN_SIZE = 200
@@ -2152,6 +2154,91 @@ class TestDistributionStrategyWithMultipleAddLossAndMetricCalls(
         results['l1_loss'] * l1 + results['l2_loss'] * l2 +
         results['sparse_categorical_crossentropy'], results['loss'], 1e-6)
 
+
+class DeterministicModel(keras.Model):
+  """Deterministic Model that always outputs the same initial result.
+
+  It verifies the `call` method is run inside the same distribution
+  strategy that the model was initially passed.
+  """
+
+  def __init__(self, strategy):
+    super(DeterministicModel, self).__init__()
+    self.x = None
+    self.strategy = strategy
+
+  def build(self, input_shape):
+    self.x = variables.Variable(array_ops.ones(shape=()))
+
+  def call(self, inputs, training=None, mask=None):
+    active_strategy = distribution_strategy_context.get_strategy()
+    if active_strategy is not self.strategy:
+      raise ValueError('Model must execute call w/ the original strategy')
+    return self.x * inputs
+
+
+class TestModelCapturesStrategy(test.TestCase, parameterized.TestCase):
+  """Tests that model creation captures the strategy."""
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=['eager']))
+  def test_fit_and_evaluate(self, distribution):
+    dataset = dataset_ops.DatasetV2.from_tensor_slices(
+        (array_ops.ones(shape=(64,)), array_ops.ones(shape=(64,))))
+    dataset = dataset.batch(8 * distribution.num_replicas_in_sync)
+    # Make model with distribution strategy
+    with distribution.scope():
+      model = DeterministicModel(distribution)
+
+    # Compile & evaluate the model outside of the distribution strategy scope
+    model.compile(
+        optimizer=keras.optimizers.adam_v2.Adam(1e-4),
+        loss=keras.losses.MeanSquaredError(),
+        metrics=['binary_accuracy'])
+
+    # Non-eager training doesn't support steps_per_epoch=None.
+    for unused_epoch in range(2):
+      model.fit(dataset)
+
+    results = model.evaluate(dataset)
+    results = dict(zip(model.metrics_names, results))
+
+    # Check that the metrics have a result we expect
+    self.assertEqual(results['binary_accuracy'], 1.0)
+    self.assertAllClose(results['loss'], 0.0)
+
+    # Assert that all metric/optimizer/model variables were made in the
+    # distribution strategy (Test that compile uses the captured
+    # distribution strategy)
+    metric_vars = nest.flatten(
+        [metric.variables for metric in model.metrics])
+    for var in metric_vars:
+      self.assertTrue(distribution.extended.variable_created_in_scope(var))
+    for var in model.optimizer._weights:
+      self.assertTrue(distribution.extended.variable_created_in_scope(var))
+    for var in model.variables:
+      self.assertTrue(distribution.extended.variable_created_in_scope(var))
+
+    # Make sure the metric must be created in the same scope as the model:
+    # This shouldn't raise any validation errors
+    with distribution.scope():
+      metric = keras.metrics.BinaryAccuracy()
+    model.compile(
+        optimizer=keras.optimizers.adam_v2.Adam(1e-4),
+        loss=keras.losses.MeanSquaredError(),
+        metrics=[metric])
+
+    # This should raise an error because the metric is constructed
+    # outside of the scope, and not by compile
+    if distribution_strategy_context.has_strategy():
+      with self.assertRaisesRegexp(
+          ValueError, 'All metrics must be created in'):
+        model.compile(
+            optimizer=keras.optimizers.adam_v2.Adam(1e-4),
+            loss=keras.losses.MeanSquaredError(),
+            metrics=[keras.metrics.BinaryAccuracy()])
 
 if __name__ == '__main__':
   base_layer_utils.enable_v2_dtype_behavior()
