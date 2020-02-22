@@ -29,6 +29,7 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -651,6 +652,34 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
         self.assertAlmostEqual(10.0, self.evaluate(train_step(input_iterator)))
       else:
         self.assertAlmostEqual(7.5, self.evaluate(train_step(input_iterator)))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testDatasetOutOfRange(self, distribution):
+    with distribution.scope():
+      a = variables.Variable(
+          0.0, aggregation=variables.VariableAggregation.SUM)
+
+    def train_step(val):
+      a.assign_add(math_ops.reduce_sum(val))
+
+    @def_function.function
+    def f_train_step(iterator):
+      distribution.experimental_run_v2(train_step, args=(next(iterator),))
+      return a
+
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+
+    iterator = iter(dist_dataset)
+    with self.assertRaises(errors.OutOfRangeError):
+      for _ in range(100):
+        f_train_step(iterator)
+
+    self.assertAlmostEqual(26.0, a.numpy())
 
 
 if __name__ == "__main__":
