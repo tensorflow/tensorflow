@@ -50,22 +50,24 @@ def array_to_img(x, data_format=None, scale=True, dtype=None):
 
   Usage:
 
-  >>> img = np.random.random(size=(100, 100, 3))
-  >>> try:
-  ...   from PIL import Image
-  ...   pil_img = tf.keras.preprocessing.image.array_to_img(img)
-  ... except ImportError:
-  ...   pass
+  ```python
+  from PIL import Image
+  img = np.random.random(size=(100, 100, 3))
+  pil_img = tf.keras.preprocessing.image.array_to_img(img)
+  ```
+
 
   Arguments:
       x: Input Numpy array.
       data_format: Image data format, can be either "channels_first" or
-        "channels_last". Defaults to `None`, which gets data format from Keras
-        backend.
+        "channels_last". Defaults to `None`, in which case the global setting
+        `tf.keras.backend.image_data_format()` is used (unless you changed it,
+        it defaults to "channels_last").
       scale: Whether to rescale image values to be within `[0, 255]`. Defaults
         to `True`.
-      dtype: Dtype to use. Default to `None`, which gets float type from Keras
-        backend.
+      dtype: Dtype to use. Default to `None`, in which case the global setting
+      `tf.keras.backend.floatx()` is used (unless you changed it, it defaults
+      to "float32")
 
   Returns:
       A PIL Image instance.
@@ -89,11 +91,25 @@ def array_to_img(x, data_format=None, scale=True, dtype=None):
 def img_to_array(img, data_format=None, dtype=None):
   """Converts a PIL Image instance to a Numpy array.
 
+  Usage:
+
+  ```python
+  from PIL import Image
+  img_data = np.random.random(size=(100, 100, 3))
+  img = tf.keras.preprocessing.image.array_to_img(img_data)
+  array = tf.keras.preprocessing.image.img_to_array(img)
+  ```
+
+
   Arguments:
-      img: PIL Image instance.
-      data_format: Image data format,
-          either "channels_first" or "channels_last".
-      dtype: Dtype to use for the returned array.
+      img: Input PIL Image instance.
+      data_format: Image data format, can be either "channels_first" or
+        "channels_last". Defaults to `None`, in which case the global setting
+        `tf.keras.backend.image_data_format()` is used (unless you changed it,
+        it defaults to "channels_last").
+      dtype: Dtype to use. Default to `None`, in which case the global setting
+      `tf.keras.backend.floatx()` is used (unless you changed it, it defaults
+      to "float32")
 
   Returns:
       A 3D Numpy array.
