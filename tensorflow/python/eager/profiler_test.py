@@ -43,11 +43,14 @@ class ProfilerTest(test_util.TensorFlowTestCase):
       profiler.start()
 
     profile_result = profiler.stop()
+    print(profile_result)
     profile_pb = trace_events_pb2.Trace()
     profile_pb.ParseFromString(profile_result)
+    print(profile_pb.devices.values())
     devices = frozenset(device.name for device in profile_pb.devices.values())
     self.assertIn('/host:CPU', devices)
-    if config.list_physical_devices('GPU'):
+    # no tracing support with ROCm (the only backend is CUDA CUPTI)
+    if config.list_physical_devices('GPU') and not test.is_built_with_rocm():
       self.assertIn('/device:GPU:0', devices)
     events = frozenset(event.name for event in profile_pb.trace_events)
     self.assertIn('three_times_five', events)

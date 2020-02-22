@@ -1664,6 +1664,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(TypeError, 'Cannot interpret feed_dict'):
         sess.run(a, feed_dict={'a': [2.0]})
 
+  @test_util.run_deprecated_v1
   def testPerStepTrace(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.SOFTWARE_TRACE)
@@ -1683,8 +1684,10 @@ class SessionTest(test_util.TensorFlowTestCase):
             run_metadata=run_metadata)
 
         self.assertTrue(run_metadata.HasField('step_stats'))
+        # in v2 mode, this len is 2
         self.assertEqual(len(run_metadata.step_stats.dev_stats), 1)
 
+  @test_util.run_deprecated_v1
   def testRunOptionsRunMetadata(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.SOFTWARE_TRACE)
@@ -1708,6 +1711,7 @@ class SessionTest(test_util.TensorFlowTestCase):
             run_metadata=run_metadata)
 
         self.assertTrue(run_metadata.HasField('step_stats'))
+        # in v2 mode, this len is 2
         self.assertEqual(len(run_metadata.step_stats.dev_stats), 1)
 
   def testFeedShapeCompatibility(self):

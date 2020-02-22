@@ -437,6 +437,9 @@ REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_CPU), TestOp);
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_SYCL), TestOp);
 #endif  // TENSORFLOW_USE_SYCL
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER_KERNEL_BUILDER(Name("TestOpWithNoGrad").Device(DEVICE_GPU), TestOp);
+#endif  
 
 TEST_F(MathGradTest, Error_Reporting) {
   auto x = test::AsTensor<float>({-3.f});
@@ -893,8 +896,8 @@ TEST_F(MathGradTest, Pow) {
   }
 }
 
-// TODO{lukeiwanski}: Implement Complex Pow for SYCL
-#ifndef TENSORFLOW_USE_SYCL
+// TODO{lukeiwanski}: Implement Complex  Pow for SYCL
+#if !(TENSORFLOW_USE_SYCL || TENSORFLOW_USE_ROCM || GOOGLE_CUDA)
 TEST_F(MathGradTest, ComplexPow) {
   auto x = test::AsTensor<complex64>({0.f, 2.f, -2.f}, TensorShape({3}));
   auto y = test::AsTensor<complex64>({2.f, 2.f, 2.f}, TensorShape({3}));
@@ -962,6 +965,7 @@ TEST_F(MathGradTest, Xlogy) {
                                 TensorShape({2, 1})));
 }
 
+#if !(TENSORFLOW_USE_ROCM || GOOGLE_CUDA)
 TEST_F(MathGradTest, Xlog1py) {
   auto x = test::AsTensor<float>({0.f, 0.f, 2.f, 3.f, 4.f, 5.f},
                                  TensorShape({2, 3}));
@@ -984,6 +988,7 @@ TEST_F(MathGradTest, Xlog1py) {
                                  h(3.f, 2.f) + h(4.f, 2.f) + h(5.f, 2.f)},
                                 TensorShape({2, 1})));
 }
+#endif
 
 TEST_F(MathGradTest, Xdivy) {
   auto x = test::AsTensor<float>({0.f, 0.f, 2.f, 3.f, 4.f, 5.f},

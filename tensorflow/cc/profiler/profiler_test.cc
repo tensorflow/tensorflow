@@ -127,12 +127,15 @@ TEST_F(ProfilerTest, Basics) {
   std::vector<DeviceAttributes> resp;
   TF_CHECK_OK(session->ListDevices(&resp));
   bool has_gpu = false;
+#if !TENSORFLOW_USE_ROCM  
+  // ROCm does not report accelerator_exec_micros()
+  // (no stream level tracing)
   for (const auto& dev : resp) {
     if (dev.device_type() == "GPU") {
       has_gpu = true;
     }
   }
-
+#endif
   GraphNodeProto ret = profiler.ProfileNameScope(Default());
   const GraphNodeProto* matmul = ExtractNode(ret, "y");
   EXPECT_TRUE(matmul);
@@ -174,4 +177,4 @@ TEST_F(ProfilerTest, Basics) {
 }
 
 }  // namespace tfprof
-}  // namespace tensorflow
+  }  // namespace tensorflow

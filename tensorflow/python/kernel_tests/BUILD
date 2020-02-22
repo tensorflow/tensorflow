@@ -75,9 +75,6 @@ tf_py_test(
 tf_py_test(
     name = "batch_gather_op_test",
     srcs = ["batch_gather_op_test.py"],
-    tags = [
-        "no_gpu",  # b/127001953
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -241,7 +238,6 @@ tf_py_test(
     size = "small",
     srcs = ["clip_ops_test.py"],
     tags = [
-        "no_gpu",  # b/127001953
         "no_windows",
     ],
     deps = [

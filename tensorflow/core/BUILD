@@ -4241,7 +4241,6 @@ tf_cc_test(
     size = "small",
     srcs = ["ops/math_grad_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_gpu"],
     deps = [
         ":core",
         ":core_cpu",

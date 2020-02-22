@@ -138,6 +138,7 @@ class ClipTest(test.TestCase):
       with self.assertRaises(ValueError):
         _ = clip_ops.clip_by_value(x, 1.0, clip)
 
+  @test_util.run_deprecated_v1
   def testClipByValueNonFinite(self):
     # TODO(b/78016351): Enable test on GPU once the bug is fixed.
     with self.cached_session():

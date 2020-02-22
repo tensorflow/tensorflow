@@ -9,8 +9,7 @@ tf_cuda_cc_test(
     name = "profiler_test",
     srcs = ["profiler_test.cc"],
     tags = [
-        "no_gpu",  # b/77649654
-        "no_rocm",  # stream level tracing not supported on ROCm
+        "no_cuda",  # b/77649654
     ],
     deps = [
         ":profiler",

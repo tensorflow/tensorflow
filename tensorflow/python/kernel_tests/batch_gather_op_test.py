@@ -103,6 +103,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     gather_t = array_ops.batch_gather(params, indices)
     self.assertEqual([1, None], gather_t.get_shape().as_list())
 
+  @test_util.run_deprecated_v1
   def testBadIndicesCPU(self):
     with self.session(use_gpu=False):
       params = [[0, 1, 2], [3, 4, 5]]

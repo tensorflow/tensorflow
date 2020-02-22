@@ -460,6 +460,7 @@ class PrintModelAnalysisTest(test.TestCase):
       self.assertTrue(has_rnn)
       self.assertTrue(has_loop)
 
+  @test_util.run_v1_only('b/120545219')
   def testPprof(self):
     for attr in ['micros', 'bytes', 'accelerator_micros', 'cpu_micros',
                  'params', 'float_ops']:

@@ -231,7 +231,10 @@ class RunMetadataTest(test.TestCase):
       # The while-loop caused a node to appear 4 times in scheduling.
       ret = _extract_node(run_meta,
                           'rnn/while/basic_rnn_cell/MatMul')
-      self.assertEqual(len(ret['gpu:0']), 4, '%s' % run_meta)
+      ret2 = _extract_node(run_meta,
+                          'rnn/while/body/_1/basic_rnn_cell/MatMul')
+      self.assertEqual(len(ret['gpu:0']) + len(ret2['gpu:0']), 4, 
+        '%s' % run_meta)
 
       total_cpu_execs = 0
       for node in ret['gpu:0']:

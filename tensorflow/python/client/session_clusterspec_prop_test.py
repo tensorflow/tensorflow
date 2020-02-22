@@ -292,7 +292,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(expected_ones + expected_ones, sess1.run(update_op1))
     self.assertAllEqual(expected_ones, sess2.run(var2))
     self.assertAllEqual(expected_ones + expected_ones, sess1.run(var1))
-
+  @test_util.run_deprecated_v1
   def testClusterSpecPropagationThreeServers(self):
     """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
 
@@ -347,6 +347,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(expected_ones, sess2.run(var))
     self.assertAllEqual(expected_ones + expected_ones, sess1.run(var))
 
+  @test_util.run_deprecated_v1
   def testClusterSpecPropagationThreeServersOneCluster(self):
     """Boots 3 servers, ensures appropriate communication across workers.
 
@@ -410,6 +411,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
               node_stats.node_name.startswith('Const')
           ]), run_metadata)
 
+  @test_util.run_deprecated_v1
   def testClusterSpecPropagationIsolation(self):
     """Test that two sessions using ClusterSpec propagation are isolated."""
     server = server_lib.Server.create_local_server()
@@ -452,6 +454,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     with self.assertRaises(errors.FailedPreconditionError):
       sess3.run(v)
 
+  @test_util.run_deprecated_v1
   def testClusterSpecPropagationNonIsolation(self):
     """Test that two sessions using ClusterSpec propagation shares state.
 
@@ -492,6 +495,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     self.assertEqual(37, sess1.run(v))
     self.assertEqual(37, sess3.run(v))
 
+  @test_util.run_deprecated_v1
   def testClusterSpecPropagationNonIsolation2Graphs(self):
     """Creates 2 sessions with each own graph, ensures appropriate operations.
 
@@ -533,6 +537,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(expected_ones + expected_ones, sess2.run(var2))
     self.assertAllEqual(expected_ones + expected_ones, sess1.run(var1))
 
+  @test_util.run_deprecated_v1
   def testClusterSpecPropagationPartialRun(self):
     """Test successful partial run with ClusterSpec propagation."""
     server1 = server_lib.Server.create_local_server()
