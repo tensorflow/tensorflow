@@ -859,8 +859,8 @@ class VirtualSchedulerTest : public ::testing::Test {
         ops::RandomUniform(s.WithOpName("scale"), {depth_in_}, DT_FLOAT);
     auto offset =
         ops::RandomUniform(s.WithOpName("offset"), {depth_in_}, DT_FLOAT);
-    auto mean = ops::RandomUniform(s.WithOpName("mean"), {depth_in_}, DT_FLOAT);
-    auto var = ops::RandomUniform(s.WithOpName("var"), {depth_in_}, DT_FLOAT);
+    auto mean = ops::RandomUniform(s.WithOpName("mean"), {0}, DT_FLOAT);
+    auto var = ops::RandomUniform(s.WithOpName("var"), {0}, DT_FLOAT);
 
     auto batch_norm = ops::FusedBatchNorm(
         s.WithOpName("bn"), x, scale, offset, mean, var,
@@ -2146,8 +2146,8 @@ versions {
         ops::RandomUniform(s.WithOpName("scale"), {depth_in_}, DT_FLOAT);
     auto offset =
         ops::RandomUniform(s.WithOpName("offset"), {depth_in_}, DT_FLOAT);
-    auto mean = ops::RandomUniform(s.WithOpName("mean"), {depth_in_}, DT_FLOAT);
-    auto var = ops::RandomUniform(s.WithOpName("var"), {depth_in_}, DT_FLOAT);
+    auto mean = ops::RandomUniform(s.WithOpName("mean"), {0}, DT_FLOAT);
+    auto var = ops::RandomUniform(s.WithOpName("var"), {0}, DT_FLOAT);
 
     auto batch_norm = ops::FusedBatchNorm(
         s.WithOpName("bn"), x, scale, offset, mean, var,

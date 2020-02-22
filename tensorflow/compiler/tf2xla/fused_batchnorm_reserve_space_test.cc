@@ -100,10 +100,10 @@ TEST(FusedBatchnormReserveSpaceTest, Test) {
   Output offset =
       Const(root.WithOpName("offset"), Input::Initializer(offset_data));
 
-  Tensor mean_data(DT_FLOAT, TensorShape({10}));
-  Output mean = Const(root.WithOpName("mean"), Input::Initializer(mean_data));
+  Tensor mean_data(DT_FLOAT, TensorShape({0}));
+  Output mean = Const(root.WithOpName("offset"), Input::Initializer(mean_data));
 
-  Tensor variance_data(DT_FLOAT, TensorShape({10}));
+  Tensor variance_data(DT_FLOAT, TensorShape({0}));
   Output variance =
       Const(root.WithOpName("variance"), Input::Initializer(variance_data));
 

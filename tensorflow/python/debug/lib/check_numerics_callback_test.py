@@ -568,13 +568,11 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
     x = constant_op.constant(1, dtype=dtypes.float32, shape=[0, 1, 1, 1])
     scale = constant_op.constant([1], dtype=dtypes.float32)
     offset = constant_op.constant([1], dtype=dtypes.float32)
-    mean = constant_op.constant([1], dtype=dtypes.float32)
-    variance = constant_op.constant([1], dtype=dtypes.float32)
 
     # Calling fused_batch_norm with an empty input should output a NaN in the
     # latter four outputs without triggering the check_numerics callback
     batch_norm_res = gen_nn_ops._fused_batch_norm(
-        x=x, scale=scale, offset=offset, mean=mean, variance=variance)
+        x=x, scale=scale, offset=offset, mean=[], variance=[])
 
     _, batch_mean, batch_variance, _, _ = self.evaluate(batch_norm_res)
 
