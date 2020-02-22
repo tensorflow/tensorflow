@@ -424,7 +424,7 @@ class RunOptions(
 
   Attributes:
     experimental_enable_dynamic_batch_size: Boolean. Only applies to
-      TPUStrategy. Default to False. If True, TPUStrategy will enable dynamic
+      TPUStrategy. Default to True. If True, TPUStrategy will enable dynamic
       padder to support dynamic batch size for the inputs. Otherwise only static
       shape inputs are allowed.
     experimental_bucketizing_dynamic_shape: Boolean. Only applies to
