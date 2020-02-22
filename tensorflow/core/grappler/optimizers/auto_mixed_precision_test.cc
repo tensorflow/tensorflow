@@ -497,8 +497,8 @@ TEST_F(AutoMixedPrecisionTest, FusedBatchNorm) {
   Output weight = ops::Const(s.WithOpName("weight"), 2.f, {3, 3, 16, 16});
   Output scale = ops::Const(s.WithOpName("scale"), 3.f, {16});
   Output offset = ops::Const(s.WithOpName("offset"), 4.f, {16});
-  Output mean = ops::Const(s.WithOpName("mean"), 5.f, {0});
-  Output variance = ops::Const(s.WithOpName("variance"), 6.f, {0});
+  Output mean = ops::Const(s.WithOpName("mean"), 5.f, {16});
+  Output variance = ops::Const(s.WithOpName("variance"), 6.f, {16});
   Output wht1 = ops::Conv2D(s.WithOpName("wht1"), input, weight, {1, 1, 1, 1},
                             "SAME", ops::Conv2D::DataFormat("NHWC"));
   auto fbn1_op =

@@ -4999,7 +4999,7 @@ cuda_py_test(
     size = "large",
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     python_version = "PY3",
-    shard_count = 16,
+    shard_count = 24,
     deps = [
         ":array_ops",
         ":client_testlib",
