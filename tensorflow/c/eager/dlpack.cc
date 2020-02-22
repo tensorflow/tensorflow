@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,10 +27,12 @@ namespace tensorflow {
 
 namespace {
 
-struct TFDLManagedTensorCtx {
-  TensorReference* handle;
+struct TfDlManagedTensorCtx {
+  TensorReference* reference;
   std::vector<int64_t> shape;
   DLManagedTensor tensor;
+
+  TfDlManagedTensorCtx()
 };
 
 const Tensor* GetTensorFromHandle(TFE_TensorHandle* h, TF_Status* status) {
@@ -57,10 +59,10 @@ const Tensor* GetTensorFromHandle(TFE_TensorHandle* h, TF_Status* status) {
 };
 
 void DLManagedTensorDeleter(DLManagedTensor* arg) {
-  TFDLManagedTensorCtx* owner =
-      static_cast<TFDLManagedTensorCtx*>(arg->manager_ctx);
-  owner->handle->Unref();
-  delete owner->handle;
+  TfDlManagedTensorCtx* owner =
+      static_cast<TfDlManagedTensorCtx*>(arg->manager_ctx);
+  owner->reference->Unref();
+  delete owner->reference;
   delete owner;
 }
 
@@ -123,15 +125,15 @@ DLContext GetDLContext(TFE_TensorHandle* h, TF_Status* status) {
   return ctx;
 }
 
-DLManagedTensor* TFEHandleToTFDLManagedTensorCtx(TFE_TensorHandle* h,
+DLManagedTensor* TFEHandleToTfDlManagedTensorCtx(TFE_TensorHandle* h,
                                                  TF_Status* status) {
   const Tensor* tensor = GetTensorFromHandle(h, status);
   TF_DataType data_type = static_cast<TF_DataType>(tensor->dtype());
-  auto* tf_dlm_tensor_ctx = new TFDLManagedTensorCtx;
+  auto* tf_dlm_tensor_ctx = new TfDlManagedTensorCtx;
 
   TensorReference* tensor_ref =
       new TensorReference(*tensor);  // This will call buf_->Ref()
-  tf_dlm_tensor_ctx->handle = tensor_ref;
+  tf_dlm_tensor_ctx->reference = tensor_ref;
   tf_dlm_tensor_ctx->tensor.manager_ctx = tf_dlm_tensor_ctx;
   tf_dlm_tensor_ctx->tensor.deleter = &DLManagedTensorDeleter;
   tf_dlm_tensor_ctx->tensor.dl_tensor.ctx = GetDLContext(h, status);
@@ -142,7 +144,6 @@ DLManagedTensor* TFEHandleToTFDLManagedTensorCtx(TFE_TensorHandle* h,
   tf_dlm_tensor_ctx->tensor.dl_tensor.dtype = GetDLDataType(data_type, status);
 
   std::vector<int64_t>* shape_arr = &tf_dlm_tensor_ctx->shape;
-  std::vector<int64_t>* stride_arr = &tf_dlm_tensor_ctx->strides;
   shape_arr->resize(ndim);
   for (int i = 0; i < ndim; i++) {
     (*shape_arr)[i] = tensor->dim_size(i);
@@ -151,7 +152,7 @@ DLManagedTensor* TFEHandleToTFDLManagedTensorCtx(TFE_TensorHandle* h,
   tf_dlm_tensor_ctx->tensor.dl_tensor.shape =
       reinterpret_cast<std::int64_t*>(shape_arr->data());
   tf_dlm_tensor_ctx->tensor.dl_tensor.strides =
-      nullptr;  // NULL indicates tensor is compact and row-majored.
+      nullptr;  // nullptr indicates tensor is compact and row-majored.
   tf_dlm_tensor_ctx->tensor.dl_tensor.byte_offset =
       0;  // TF doesn't handle the strides and byte_offsets here
   return &tf_dlm_tensor_ctx->tensor;
@@ -259,7 +260,7 @@ void TFE_CallDLManagedTensorDeleter(void* dlm_ptr) {
 }
 
 void* TFE_HandleToDLPack(TFE_TensorHandle* h, TF_Status* status) {
-  DLManagedTensor* tfdlmtensor = TFEHandleToTFDLManagedTensorCtx(h, status);
+  DLManagedTensor* tfdlmtensor = TFEHandleToTfDlManagedTensorCtx(h, status);
   return static_cast<void*>(tfdlmtensor);
 }
 
