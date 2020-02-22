@@ -296,6 +296,14 @@ static LogicalResult VerifyTypesCompatibility(
 // TF op helper functions to work with layout transformation.
 //===----------------------------------------------------------------------===//
 
+SmallVector<int64_t, 4> ReversePermutation(ArrayRef<int64_t> permutation) {
+  SmallVector<int64_t, 4> reverse(permutation.size());
+  for (size_t i = 0; i < permutation.size(); ++i) {
+    reverse[permutation[i]] = i;
+  }
+  return reverse;
+}
+
 SmallVector<int64_t, 4> GetDataFormatPermutation(StringRef from, StringRef to) {
   if (from == "NHWC" && to == "NCHW") {
     return {0, 3, 1, 2};
@@ -1706,6 +1714,46 @@ static LogicalResult Verify(PackOp op) {
                           << range_begin << ", " << range_end
                           << "); actual value: " << axis;
   }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PadOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
+  // Paddings must be defined by a constant operation.
+  auto paddings_op = dyn_cast_or_null<TF::ConstOp>(paddings().getDefiningOp());
+  if (!paddings_op) return failure();
+
+  auto paddings_value = paddings_op.value().dyn_cast<DenseElementsAttr>();
+  if (!paddings_value ||
+      paddings_value.getNumElements() != permutation.size() * 2)
+    return failure();
+
+  SmallVector<int64_t, 8> shuffled_paddings(paddings_value.getNumElements());
+  for (auto index_pair : llvm::enumerate(paddings_value.getIntValues())) {
+    size_t outer_idx = index_pair.index() / 2;
+    size_t inner_idx = index_pair.index() % 2;
+
+    shuffled_paddings[permutation[outer_idx] * 2 + inner_idx] =
+        index_pair.value().getSExtValue();
+  }
+
+  // Add constant operation with a new paddings.
+  OpBuilder builder(getOperation());
+  auto type = mlir::RankedTensorType::get(shuffled_paddings.size(),
+                                          builder.getIntegerType(64));
+  auto values = mlir::DenseIntElementsAttr::get(type, shuffled_paddings);
+  auto shuffled_paddings_op = builder.create<TF::ConstOp>(getLoc(), values);
+
+  // Use new paddings.
+  setOperand(1, shuffled_paddings_op);
+
+  // Change the result type.
+  getResult().setType(ShuffleRankedTensorType(getResult().getType(),
+                                              ReversePermutation(permutation)));
 
   return success();
 }
