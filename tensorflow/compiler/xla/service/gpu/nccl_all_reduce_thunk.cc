@@ -577,12 +577,20 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   RendezvousKey rendezvous_key = RendezvousKey::FromInstruction(
       params.run_id, global_devices, local_devices.size(), hlo_instruction());
 
-  VLOG(2) << "Rendezvous key: " << rendezvous_key.ToString()
-          << ", global participating replicas: "
-          << absl::StrJoin(global_participating_replicas, ", ")
-          << ", global participating devices: "
-          << GlobalDeviceIdsToString(global_devices);
-
+  if (VLOG_IS_ON(2)) {
+    std::vector<std::string> local_participants;
+    for (const auto& entry : local_devices) {
+      local_participants.push_back(absl::StrFormat(
+          "global=%d/local=%d", entry.first.value(), entry.second));
+    }
+    VLOG(2) << "Rendezvous key: " << rendezvous_key.ToString()
+            << ", global participating replicas: "
+            << absl::StrJoin(global_participating_replicas, ", ")
+            << ", global participating devices: "
+            << GlobalDeviceIdsToString(global_devices)
+            << ", local participants: "
+            << absl::StrJoin(local_participants, ",");
+  }
   AllReduceParticipantData participant(rendezvous_key);
   participant.device_ordinal = local_device_ordinal;
   for (size_t i = 0; i < buffers_.size(); ++i) {
