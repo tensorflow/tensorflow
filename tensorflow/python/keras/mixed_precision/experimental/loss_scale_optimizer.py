@@ -221,17 +221,14 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     grads = self._optimizer.get_gradients(loss, params)
     return self.get_unscaled_gradients(grads)
 
-  def apply_gradients(self, grads_and_vars, name=None,
-                      all_reduce_sum_gradients=True):
+  def apply_gradients(self, grads_and_vars, name=None):
     if distribution_strategy_context.in_cross_replica_context():
       raise ValueError('apply_gradients() must be called in a replica context.')
     grads_and_vars = tuple(grads_and_vars)
     return distribution_strategy_context.get_replica_context().merge_call(
-        self._apply_gradients_cross_replica,
-        args=(grads_and_vars, name, all_reduce_sum_gradients))
+        self._apply_gradients_cross_replica, args=(grads_and_vars, name))
 
-  def _apply_gradients_cross_replica(self, distribution, grads_and_vars, name,
-                                     all_reduce_sum_gradients):
+  def _apply_gradients_cross_replica(self, distribution, grads_and_vars, name):
     grads = [g for g, _ in grads_and_vars]
     loss_scale_update_op, should_apply_grads = self._loss_scale.update(grads)
 
@@ -243,8 +240,7 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
       # MirroredVariables.
       wrapped_vars = _UnwrapPreventer([v for _, v in grads_and_vars])
       return distribution.extended.call_for_each_replica(
-          self._apply_gradients, args=(grads, wrapped_vars, name,
-                                       all_reduce_sum_gradients))
+          self._apply_gradients, args=(grads, wrapped_vars, name))
 
     # Note: We must call this cond() in a cross-replica context.
     # DistributionStrategy does not support having a cond in a replica context
@@ -255,10 +251,9 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
                                            control_flow_ops.no_op)
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 
-  def _apply_gradients(self, grads, wrapped_vars, name,
-                       all_reduce_sum_gradients):
+  def _apply_gradients(self, grads, wrapped_vars, name):
     return self._optimizer.apply_gradients(list(zip(grads, wrapped_vars.value)),
-                                           name, all_reduce_sum_gradients)
+                                           name)
 
   def get_config(self):
     serialized_optimizer = optimizers.serialize(self._optimizer)
