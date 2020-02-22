@@ -1951,6 +1951,7 @@ cc_library(
     hdrs = ["all_reduce_combiner.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_domain_map",
         ":hlo_pass",
         ":hlo_query",
