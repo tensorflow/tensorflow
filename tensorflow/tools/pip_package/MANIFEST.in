@@ -2,6 +2,7 @@ include LICENSE
 include README
 recursive-include * *.py
 recursive-include * *.pyd
+recursive-include * *.pyi
 recursive-include * *.pd
 recursive-include * *.so
 recursive-include * *.so.[0-9]
