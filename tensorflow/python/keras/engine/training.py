@@ -988,10 +988,11 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             callbacks.on_test_batch_end(step, logs)
       callbacks.on_test_end()
 
+      logs = to_numpy(logs)
       if return_dict:
-        return {m.name: m.result().numpy() for m in self.metrics}
+        return logs
       else:
-        results = [m.result().numpy() for m in self.metrics]
+        results = [logs.get(name, None) for name in self.metrics_names]
         if len(results) == 1:
           return results[0]
         return results
@@ -1187,7 +1188,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                      y=None,
                      sample_weight=None,
                      class_weight=None,
-                     reset_metrics=True):
+                     reset_metrics=True,
+                     return_dict=False):
     """Runs a single gradient update on a single batch of data.
 
     Arguments:
@@ -1214,6 +1216,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         reset_metrics: If `True`, the metrics returned will be only for this
           batch. If `False`, the metrics will be statefully accumulated across
           batches.
+        return_dict: If `True`, loss and metric results are returned as a dict,
+          with each key being the name of the metric. If `False`, they are
+          returned as a list.
 
     Returns:
         Scalar training loss
@@ -1233,15 +1238,25 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                                                     y, sample_weight,
                                                     class_weight)
       train_function = self._make_train_function()
-      train_function(iterator)
-    metrics = [m.result().numpy() for m in self.metrics]
+      logs = train_function(iterator)
+
     if reset_metrics:
       self.reset_metrics()
-    if len(metrics) == 1:
-      return metrics[0]
-    return metrics
+    logs = to_numpy(logs)
+    if return_dict:
+      return logs
+    else:
+      results = [logs.get(name, None) for name in self.metrics_names]
+      if len(results) == 1:
+        return results[0]
+      return results
 
-  def test_on_batch(self, x, y=None, sample_weight=None, reset_metrics=True):
+  def test_on_batch(self,
+                    x,
+                    y=None,
+                    sample_weight=None,
+                    reset_metrics=True,
+                    return_dict=False):
     """Test the model on a single batch of samples.
 
     Arguments:
@@ -1262,6 +1277,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         reset_metrics: If `True`, the metrics returned will be only for this
           batch. If `False`, the metrics will be statefully accumulated across
           batches.
+        return_dict: If `True`, loss and metric results are returned as a dict,
+          with each key being the name of the metric. If `False`, they are
+          returned as a list.
 
     Returns:
         Scalar test loss (if the model has a single output and no metrics)
@@ -1278,13 +1296,18 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
                                                     y, sample_weight)
       test_function = self._make_test_function()
-      test_function(iterator)
-    metrics = [m.result().numpy() for m in self.metrics]
+      logs = test_function(iterator)
+
     if reset_metrics:
       self.reset_metrics()
-    if len(metrics) == 1:
-      return metrics[0]
-    return metrics
+    logs = to_numpy(logs)
+    if return_dict:
+      return logs
+    else:
+      results = [logs.get(name, None) for name in self.metrics_names]
+      if len(results) == 1:
+        return results[0]
+      return results
 
   def predict_on_batch(self, x):
     """Returns predictions for a single batch of samples.
