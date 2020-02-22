@@ -15,7 +15,6 @@ limitations under the License.
 #include <random>
 
 #include "absl/time/clock.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -33,9 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/core/platform/snappy.h"
 #if !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
 #include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
@@ -66,6 +63,9 @@ enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 // Defaults to 10 GiB per shard.
 const int64 kDefaultShardSizeBytes = 10LL * 1024 * 1024 * 1024;
 
+const int64 kSnappyWriterInputBufferSizeBytes = 16 << 20;   // 16 MiB
+const int64 kSnappyWriterOutputBufferSizeBytes = 16 << 20;  // 16 MiB
+
 // The reader input buffer size is deliberately large because the input reader
 // will throw an error if the compressed block length cannot fit in the input
 // buffer.
@@ -74,8 +74,6 @@ const int64 kSnappyReaderInputBufferSizeBytes = 1 << 30;    // 1 GiB
 const int64 kSnappyReaderOutputBufferSizeBytes = 32 << 20;  // 32 MiB
 
 const size_t kHeaderSize = sizeof(uint64);
-
-const int64 kCurrentVersion = 1;
 
 constexpr char kModeAuto[] = "auto";
 constexpr char kModeWrite[] = "write";
@@ -97,7 +95,6 @@ constexpr char kState[] = "state";
 constexpr char kHashDir[] = "hash_dir";
 constexpr char kRunId[] = "run_id";
 constexpr char kRunDir[] = "run_dir";
-constexpr char kVersionStr[] = "version";
 constexpr char kFilenames[] = "filenames";
 constexpr char kCurrentFilenames[] = "current_filenames";
 constexpr char kElementsProduced[] = "elements_produced";
@@ -118,9 +115,9 @@ class SnapshotWriter {
   static constexpr const char* const kWriteStringPiece = "WriteStringPiece";
   static constexpr const char* const kWriteCord = "WriteCord";
 
-  explicit SnapshotWriter(WritableFile* dest, const string& compression_type,
-                          int version, const DataTypeVector& dtypes)
-      : dest_(dest), compression_type_(compression_type), version_(version) {
+  explicit SnapshotWriter(WritableFile* dest, const string& compression_type =
+                                                  io::compression::kNone)
+      : dest_(dest), compression_type_(compression_type) {
 #if defined(IS_SLIM_BUILD)
     if (compression_type != io::compression::kNone) {
       LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
@@ -137,100 +134,41 @@ class SnapshotWriter {
       TF_CHECK_OK(zlib_output_buffer->Init());
       dest_ = zlib_output_buffer;
       dest_is_owned_ = true;
+    } else if (compression_type == io::compression::kSnappy) {
+      io::SnappyOutputBuffer* snappy_output_buffer = new io::SnappyOutputBuffer(
+          dest, /*input_buffer_bytes=*/kSnappyWriterInputBufferSizeBytes,
+          /*output_buffer_bytes=*/kSnappyWriterOutputBufferSizeBytes);
+      dest_ = snappy_output_buffer;
+      dest_is_owned_ = true;
     }
 #endif  // IS_SLIM_BUILD
-    simple_tensor_mask_.reserve(dtypes.size());
-    for (const auto& dtype : dtypes) {
-      if (DataTypeCanUseMemcpy(dtype)) {
-        simple_tensor_mask_.push_back(true);
-        num_simple_++;
-      } else {
-        simple_tensor_mask_.push_back(false);
-        num_complex_++;
-      }
-    }
   }
 
-  Status WriteTensors(const std::vector<Tensor>& tensors) {
-    if (compression_type_ != io::compression::kSnappy) {
-      experimental::SnapshotRecord record;
-      for (const auto& tensor : tensors) {
-        TensorProto* t = record.add_tensor();
-        tensor.AsProtoTensorContent(t);
-      }
-#if defined(PLATFORM_GOOGLE)
-      return WriteRecord(record.SerializeAsCord());
-#else   // PLATFORM_GOOGLE
-      return WriteRecord(record.SerializeAsString());
-#endif  // PLATFORM_GOOGLE
-    }
-
-    if (version_ != 1) {
-      return errors::InvalidArgument("Version: ", version_,
-                                     " is not supported.");
-    }
-    if (compression_type_ != io::compression::kSnappy) {
-      return errors::InvalidArgument(
-          "Version 1 is only compatible with snappy compression");
-    }
-
-    std::vector<const TensorBuffer*> tensor_buffers;
-    tensor_buffers.reserve(num_simple_);
-    std::vector<TensorProto> tensor_protos;
-    tensor_protos.reserve(num_complex_);
-    SnapshotTensorMetadata metadata;
-    int64 total_size = 0;
-    for (int i = 0; i < tensors.size(); ++i) {
-      const Tensor& tensor = tensors[i];
-      TensorMetadata* tensor_metadata = metadata.add_tensor_metadata();
-      tensor.shape().AsProto(tensor_metadata->mutable_tensor_shape());
-      int64 size = 0;
-      if (simple_tensor_mask_[i]) {
-        auto tensor_buffer = DMAHelper::buffer(&tensor);
-        tensor_buffers.push_back(tensor_buffer);
-        size = tensor_buffer->size();
-      } else {
-        TensorProto proto;
-        tensor.AsProtoTensorContent(&proto);
-        size = proto.ByteSizeLong();
-        tensor_protos.push_back(std::move(proto));
-      }
-      tensor_metadata->set_tensor_size_bytes(size);
-      total_size += size;
-    }
-
-    std::vector<char> uncompressed(total_size);
-    char* position = uncompressed.data();
-    int buffer_index = 0;
-    int proto_index = 0;
-    for (int i = 0; i < tensors.size(); ++i) {
-      const auto& tensor_metadata = metadata.tensor_metadata(i);
-      if (simple_tensor_mask_[i]) {
-        memcpy(position, tensor_buffers[buffer_index]->data(),
-               tensor_metadata.tensor_size_bytes());
-        buffer_index++;
-      } else {
-        tensor_protos[proto_index].SerializeToArray(
-            position, tensor_metadata.tensor_size_bytes());
-        proto_index++;
-      }
-      position += tensor_metadata.tensor_size_bytes();
-    }
-    DCHECK_EQ(position, uncompressed.data() + total_size);
-
-    string output;
-    if (!port::Snappy_Compress(uncompressed.data(), total_size, &output)) {
-      return errors::Internal("Failed to compress using snappy.");
-    }
-#if defined(PLATFORM_GOOGLE)
-    absl::Cord metadata_serialized = metadata.SerializeAsCord();
-#else   // PLATFORM_GOOGLE
-    std::string metadata_serialized = metadata.SerializeAsString();
-#endif  // PLATFORM_GOOGLE
-    TF_RETURN_IF_ERROR(WriteRecord(metadata_serialized));
-    TF_RETURN_IF_ERROR(WriteRecord(output));
-    return Status::OK();
+  Status WriteRecord(const StringPiece& data) {
+    profiler::TraceMe activity(
+        [&]() {
+          return absl::StrCat(kClassName, kSeparator, kWriteStringPiece);
+        },
+        profiler::TraceMeLevel::kInfo);
+    char header[kHeaderSize];
+    core::EncodeFixed64(header, data.size());
+    TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+    return dest_->Append(data);
   }
+
+#if defined(PLATFORM_GOOGLE)
+  Status WriteRecord(const absl::Cord& data) {
+    profiler::TraceMe activity(
+        [&]() { return absl::StrCat(kClassName, kSeparator, kWriteCord); },
+        profiler::TraceMeLevel::kInfo);
+    char header[kHeaderSize];
+    core::EncodeFixed64(header, data.size());
+
+    TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+
+    return dest_->Append(data);
+  }
+#endif  // PLATFORM_GOOGLE
 
   Status Sync() { return dest_->Sync(); }
 
@@ -254,29 +192,9 @@ class SnapshotWriter {
   }
 
  private:
-  Status WriteRecord(const StringPiece& data) {
-    char header[kHeaderSize];
-    core::EncodeFixed64(header, data.size());
-    TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
-    return dest_->Append(data);
-  }
-
-#if defined(PLATFORM_GOOGLE)
-  Status WriteRecord(const absl::Cord& data) {
-    char header[kHeaderSize];
-    core::EncodeFixed64(header, data.size());
-    TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
-    return dest_->Append(data);
-  }
-#endif  // PLATFORM_GOOGLE
-
   WritableFile* dest_;
   bool dest_is_owned_ = false;
   const string compression_type_;
-  const int version_;
-  std::vector<bool> simple_tensor_mask_;  // true for simple, false for complex.
-  int num_simple_ = 0;
-  int num_complex_ = 0;
 };
 
 class SnapshotReader {
@@ -285,14 +203,12 @@ class SnapshotReader {
   static constexpr const char* const kReadString = "ReadString";
   static constexpr const char* const kReadCord = "ReadCord";
 
-  explicit SnapshotReader(RandomAccessFile* file,
-                          const string& compression_type, int version,
-                          const DataTypeVector& dtypes)
+  explicit SnapshotReader(
+      RandomAccessFile* file,
+      const string& compression_type = io::compression::kNone)
       : file_(file),
         input_stream_(new io::RandomAccessInputStream(file)),
-        compression_type_(compression_type),
-        version_(version),
-        dtypes_(dtypes) {
+        compression_type_(compression_type) {
 #if defined(IS_SLIM_BUILD)
     if (compression_type_ != io::compression::kNone) {
       LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
@@ -307,167 +223,17 @@ class SnapshotReader {
           input_stream_.release(), zlib_options.input_buffer_size,
           zlib_options.output_buffer_size, zlib_options, true);
     } else if (compression_type_ == io::compression::kSnappy) {
-      if (version_ == 0) {
-        input_stream_ = absl::make_unique<io::SnappyInputBuffer>(
-            file_, /*input_buffer_bytes=*/kSnappyReaderInputBufferSizeBytes,
-            /*output_buffer_bytes=*/kSnappyReaderOutputBufferSizeBytes);
-      } else {
-        input_stream_ =
-            absl::make_unique<io::BufferedInputStream>(file_, 64 << 20);
-      }
+      input_stream_ = absl::make_unique<io::SnappyInputBuffer>(
+          file_, /*input_buffer_bytes=*/kSnappyReaderInputBufferSizeBytes,
+          /*output_buffer_bytes=*/kSnappyReaderOutputBufferSizeBytes);
     }
 #endif  // IS_SLIM_BUILD
-    simple_tensor_mask_.reserve(dtypes.size());
-    for (const auto& dtype : dtypes) {
-      if (DataTypeCanUseMemcpy(dtype)) {
-        simple_tensor_mask_.push_back(true);
-        num_simple_++;
-      } else {
-        simple_tensor_mask_.push_back(false);
-        num_complex_++;
-      }
-    }
-  }
-
-  Status ReadTensors(std::vector<Tensor>* read_tensors) {
-    profiler::TraceMe activity(
-        [&]() { return absl::StrCat(kClassName, kSeparator, "ReadTensors"); },
-        profiler::TraceMeLevel::kInfo);
-    if (version_ == 0 || compression_type_ != io::compression::kSnappy) {
-      return ReadTensorsV0(read_tensors);
-    }
-    if (version_ != 1) {
-      return errors::InvalidArgument("Version: ", version_,
-                                     " is not supported.");
-    }
-    if (compression_type_ != io::compression::kSnappy) {
-      return errors::InvalidArgument("Version 1 only supports snappy.");
-    }
-
-    SnapshotTensorMetadata metadata;
-    tstring metadata_str;
-    TF_RETURN_IF_ERROR(ReadRecord(&metadata_str));
-    if (!metadata.ParseFromArray(metadata_str.data(), metadata_str.size())) {
-      return errors::DataLoss("Could not parse SnapshotTensorMetadata");
-    }
-    read_tensors->reserve(metadata.tensor_metadata_size());
-
-    std::vector<Tensor> simple_tensors;
-    simple_tensors.reserve(num_simple_);
-    std::vector<std::pair<std::unique_ptr<char[]>, size_t>> tensor_proto_strs;
-    tensor_proto_strs.reserve(num_complex_);
-    TF_RETURN_IF_ERROR(
-        SnappyUncompress(metadata, &simple_tensors, &tensor_proto_strs));
-
-    int simple_index = 0;
-    int complex_index = 0;
-    for (int i = 0; i < simple_tensor_mask_.size(); ++i) {
-      if (simple_tensor_mask_[i]) {
-        read_tensors->push_back(std::move(simple_tensors[simple_index]));
-        simple_index++;
-      } else {
-        auto tensor_proto_str =
-            std::move(tensor_proto_strs[complex_index].first);
-        size_t tensor_proto_size = tensor_proto_strs[complex_index].second;
-        TensorProto tp;
-#if defined(PLATFORM_GOOGLE)
-        auto tensor_proto_ptr = tensor_proto_str.release();
-        absl::Cord c;
-        c.AppendExternalMemory(
-            absl::string_view(tensor_proto_ptr, tensor_proto_size),
-            tensor_proto_ptr,
-            [](void* arg) { delete[] static_cast<char*>(arg); });
-        if (!tp.ParseFromCord(c)) {
-          return errors::Internal("Could not parse TensorProto");
-        }
-#else   // PLATFORM_GOOGLE
-        if (!tp.ParseFromArray(tensor_proto_str.get(), tensor_proto_size)) {
-          return errors::Internal("Could not parse TensorProto");
-        }
-#endif  // PLATFORM_GOOGLE
-        Tensor t;
-        if (!t.FromProto(tp)) {
-          return errors::Internal("Could not parse Tensor");
-        }
-        read_tensors->push_back(std::move(t));
-        complex_index++;
-      }
-    }
-    return Status::OK();
-  }
-
- private:
-  Status ReadTensorsV0(std::vector<Tensor>* read_tensors) {
-    experimental::SnapshotRecord record;
-#if defined(PLATFORM_GOOGLE)
-    absl::Cord c;
-    TF_RETURN_IF_ERROR(ReadRecord(&c));
-    record.ParseFromCord(c);
-#else   // PLATFORM_GOOGLE
-    tstring record_bytes;
-    TF_RETURN_IF_ERROR(ReadRecord(&record_bytes));
-    record.ParseFromArray(record_bytes.data(), record_bytes.size());
-#endif  // PLATFORM_GOOGLE
-    read_tensors->reserve(record.tensor_size());
-    for (int i = 0; i < record.tensor_size(); ++i) {
-      read_tensors->emplace_back();
-      if (!read_tensors->back().FromProto(record.tensor(i))) {
-        return errors::DataLoss("Unable to parse tensor from proto.");
-      }
-    }
-    return Status::OK();
-  }
-
-  Status SnappyUncompress(
-      const SnapshotTensorMetadata& metadata,
-      std::vector<Tensor>* simple_tensors,
-      std::vector<std::pair<std::unique_ptr<char[]>, size_t>>*
-          tensor_proto_strs) {
-    tstring compressed;
-    TF_RETURN_IF_ERROR(ReadRecord(&compressed));
-    size_t size;
-    if (!port::Snappy_GetUncompressedLength(compressed.data(),
-                                            compressed.size(), &size)) {
-      return errors::Internal("Could not get snappy uncompressed length");
-    }
-
-    int num_tensors = metadata.tensor_metadata_size();
-    std::vector<struct iovec> iov(num_tensors);
-    int index = 0;
-    int64 total_size = 0;
-    for (int i = 0; i < simple_tensor_mask_.size(); ++i) {
-      const auto& tensor_metadata = metadata.tensor_metadata(i);
-      if (simple_tensor_mask_[i]) {
-        TensorShape shape(tensor_metadata.tensor_shape());
-        Tensor simple_tensor(dtypes_[i], shape);
-        TensorBuffer* buffer = DMAHelper::buffer(&simple_tensor);
-        iov[index].iov_base = buffer->data();
-        iov[index].iov_len = buffer->size();
-        simple_tensors->push_back(std::move(simple_tensor));
-      } else {
-        auto tensor_proto_str =
-            absl::make_unique<char[]>(tensor_metadata.tensor_size_bytes());
-        iov[index].iov_base = tensor_proto_str.get();
-        iov[index].iov_len = tensor_metadata.tensor_size_bytes();
-        tensor_proto_strs->push_back(std::make_pair(
-            std::move(tensor_proto_str), tensor_metadata.tensor_size_bytes()));
-      }
-      total_size += iov[index].iov_len;
-      index++;
-    }
-    if (size != total_size) {
-      return errors::Internal("Uncompressed size mismatch. Snappy expects ",
-                              size, " whereas the tensor metadata suggests ",
-                              total_size);
-    }
-    if (!port::Snappy_UncompressToIOVec(compressed.data(), compressed.size(),
-                                        iov.data(), num_tensors)) {
-      return errors::Internal("Failed to perform snappy decompression.");
-    }
-    return Status::OK();
   }
 
   Status ReadRecord(tstring* record) {
+    profiler::TraceMe activity(
+        [&]() { return absl::StrCat(kClassName, kSeparator, kReadString); },
+        profiler::TraceMeLevel::kInfo);
     tstring header;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
     uint64 length = core::DecodeFixed64(header.data());
@@ -479,6 +245,13 @@ class SnapshotReader {
     tstring header;
     TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
     uint64 length = core::DecodeFixed64(header.data());
+    profiler::TraceMe activity(
+        [&]() {
+          return absl::StrCat(kClassName, kSeparator, kReadCord,
+                              "#length=", length, "#");
+        },
+        profiler::TraceMeLevel::kInfo);
+
     if (compression_type_ == io::compression::kNone) {
       return input_stream_->ReadNBytes(length, record);
     } else {
@@ -495,31 +268,50 @@ class SnapshotReader {
   }
 #endif
 
+ private:
   RandomAccessFile* file_;
   std::unique_ptr<io::InputStreamInterface> input_stream_;
   const string compression_type_;
-  const int version_;
-  const DataTypeVector dtypes_;
-  int num_simple_ = 0;
-  int num_complex_ = 0;
-  std::vector<bool> simple_tensor_mask_;  // true for simple, false for complex.
 };
 
 Status WriteMetadataFile(const string& hash_dir,
                          const experimental::SnapshotMetadataRecord& metadata) {
   string metadata_filename = io::JoinPath(hash_dir, kSnapshotFilename);
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(hash_dir));
+
   std::string tmp_filename =
       absl::StrCat(metadata_filename, "-tmp-", random::New64());
-  TF_RETURN_IF_ERROR(WriteBinaryProto(Env::Default(), tmp_filename, metadata));
-  return Env::Default()->RenameFile(tmp_filename, metadata_filename);
+
+  std::unique_ptr<WritableFile> file;
+  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(tmp_filename, &file));
+
+  auto writer = absl::make_unique<SnapshotWriter>(file.get());
+  TF_RETURN_IF_ERROR(writer->WriteRecord(metadata.SerializeAsString()));
+  TF_RETURN_IF_ERROR(writer->Close());
+  TF_RETURN_IF_ERROR(file->Sync());
+  TF_RETURN_IF_ERROR(file->Close());
+
+  TF_RETURN_IF_ERROR(
+      Env::Default()->RenameFile(tmp_filename, metadata_filename));
+
+  return Status::OK();
 }
 
 Status ReadMetadataFile(const string& hash_dir,
                         experimental::SnapshotMetadataRecord* metadata) {
   string metadata_filename = io::JoinPath(hash_dir, kSnapshotFilename);
   TF_RETURN_IF_ERROR(Env::Default()->FileExists(metadata_filename));
-  return ReadBinaryProto(Env::Default(), metadata_filename, metadata);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_RETURN_IF_ERROR(
+      Env::Default()->NewRandomAccessFile(metadata_filename, &file));
+
+  tstring record_bytes;
+  SnapshotReader reader(file.get());
+  TF_RETURN_IF_ERROR(reader.ReadRecord(&record_bytes));
+
+  metadata->ParseFromArray(record_bytes.data(), record_bytes.size());
+  return Status::OK();
 }
 
 Status DumpDatasetGraph(const std::string& path, uint64 hash,
@@ -540,10 +332,6 @@ Status DetermineOpState(const std::string& mode_string,
                         const uint64 pending_snapshot_expiry_seconds,
                         SnapshotMode* mode) {
   if (mode_string == kModeRead) {
-    // In read mode, we should expect a metadata file is written.
-    if (errors::IsNotFound(file_status)) {
-      return file_status;
-    }
     LOG(INFO) << "Overriding mode to reader.";
     *mode = READER;
     return Status::OK();
@@ -939,25 +727,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             if (run_id.empty()) {
               run_id = metadata.run_id();
             }
-            // dtypes in metadata should be the same as dataset()->output_dtypes
-            if (metadata.dtype_size() != dataset()->output_dtypes().size()) {
-              return errors::Internal(
-                  "Expected number of dtypes: ",
-                  dataset()->output_dtypes().size(),
-                  " but number in snapshot: ", metadata.dtype_size());
-            }
-            for (int i = 0; i < metadata.dtype_size(); ++i) {
-              if (metadata.dtype(i) != dataset()->output_dtypes()[i]) {
-                return errors::Internal(
-                    "Type: ", i,
-                    " doesn't match. Snapshot: ", metadata.dtype(i),
-                    "; dataset: ", dataset()->output_dtypes()[i]);
-              }
-            }
             iterator_ = absl::make_unique<SnapshotReaderIterator>(
                 SnapshotReaderIterator::Params{
                     dataset(), absl::StrCat(prefix(), "ReaderImpl")},
-                hash_dir_, run_id, metadata.version());
+                hash_dir_, run_id);
             break;
           case PASSTHROUGH:
             iterator_ = absl::make_unique<SnapshotPassthroughIterator>(
@@ -975,11 +748,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         explicit SnapshotReaderIterator(const Params& params,
                                         const string& hash_dir,
-                                        const string& run_id, int64 version)
+                                        const string& run_id)
             : DatasetIterator<Dataset>(params),
               hash_dir_(hash_dir),
-              run_id_(run_id),
-              version_(version) {}
+              run_id_(run_id) {}
 
         ~SnapshotReaderIterator() override {
           mutex_lock l(mu_);
@@ -1117,8 +889,6 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               writer->WriteScalar(full_name(kHashDir), hash_dir_));
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kRunId), run_id_));
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kRunDir), run_dir_));
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name(kVersionStr), version_));
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               full_name(strings::StrCat(kFilenames, kSizeSuffix)),
               filenames_.size()));
@@ -1162,8 +932,6 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           }
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kRunId), &run_id_));
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kRunDir), &run_dir_));
-          TF_RETURN_IF_ERROR(
-              reader->ReadScalar(full_name(kVersionStr), &version_));
           curr_filenames_.clear();
           curr_filenames_.reserve(dataset()->num_reader_threads_);
           for (auto i = 0; i < dataset()->num_reader_threads_; ++i) {
@@ -1218,8 +986,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           std::unique_ptr<RandomAccessFile> file;
           TF_RETURN_IF_ERROR(
               Env::Default()->NewRandomAccessFile(filename, &file));
-          SnapshotReader reader(file.get(), dataset()->compression_, version_,
-                                dataset()->output_dtypes());
+          SnapshotReader reader(file.get(), dataset()->compression_);
 
           while (true) {
             // Wait for a slot in the buffer.
@@ -1236,14 +1003,30 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                     "ReadFile");
               }
             }
-            std::vector<Tensor> read_tensors;
-            Status s = reader.ReadTensors(&read_tensors);
+#if !defined(PLATFORM_GOOGLE)
+            tstring record_bytes;
+            Status s = reader.ReadRecord(&record_bytes);
+#else
+            absl::Cord record_cord;
+            Status s = reader.ReadRecord(&record_cord);
+#endif
             if (s.ok()) {
               profiler::TraceMe activity(
                   [&]() { return absl::StrCat(prefix(), kSeparator, kParse); },
                   profiler::TraceMeLevel::kInfo);
+              experimental::SnapshotRecord record;
+#if !defined(PLATFORM_GOOGLE)
+              record.ParseFromArray(record_bytes.data(), record_bytes.size());
+#else
+              record.ParseFromCord(record_cord);
+#endif
               BufferElement elem;
-              elem.value = std::move(read_tensors);
+              for (int i = 0; i < record.tensor_size(); ++i) {
+                elem.value.emplace_back();
+                if (!elem.value.back().FromProto(record.tensor(i))) {
+                  return errors::DataLoss("Unable to parse tensor from proto.");
+                }
+              }
               elem.status = Status::OK();
               mutex_lock l(mu_);
               buffer_.push_back(std::move(elem));
@@ -1359,9 +1142,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         condition_variable cond_var_;
 
         const string hash_dir_;
+        const experimental::SnapshotMetadataRecord metadata_;
         tstring run_id_ GUARDED_BY(mu_);
         tstring run_dir_ GUARDED_BY(mu_);
-        int64 version_;
         std::vector<tstring> filenames_;
 
         uint64 elements_produced_ GUARDED_BY(mu_) = 0;
@@ -1437,10 +1220,6 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 metadata.set_creation_timestamp(EnvTime::NowMicros());
                 metadata.set_graph_hash(dataset()->graph_hash_);
                 metadata.set_run_id(run_id_.data(), run_id_.size());
-                metadata.set_version(kCurrentVersion);
-                for (const auto& output_dtype : dataset()->output_dtypes()) {
-                  metadata.add_dtype(output_dtype);
-                }
                 metadata.set_finalized(false);
                 TF_RETURN_IF_ERROR(WriteMetadataFile(hash_dir_, metadata));
               }
@@ -1785,8 +1564,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           }
 
           if (produced_elem) {
+            experimental::SnapshotRecord record;
             for (const auto& out_tensor : elem.value) {
               *bytes_written += out_tensor.TotalBytes();
+              TensorProto* t = record.add_tensor();
+              out_tensor.AsProtoTensorContent(t);
             }
 
             bool should_close;
@@ -1802,11 +1584,16 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               TF_RETURN_IF_ERROR(Env::Default()->NewAppendableFile(
                   *snapshot_data_filename, file));
               *writer = absl::make_unique<SnapshotWriter>(
-                  file->get(), dataset()->compression_, kCurrentVersion,
-                  dataset()->output_dtypes());
+                  file->get(), dataset()->compression_);
               *bytes_written = 0;
             }
-            TF_RETURN_IF_ERROR((*writer)->WriteTensors(elem.value));
+#if defined(PLATFORM_GOOGLE)
+            TF_RETURN_IF_ERROR(
+                (*writer)->WriteRecord(record.SerializeAsCord()));
+#else   // PLATFORM_GOOGLE
+            TF_RETURN_IF_ERROR(
+                (*writer)->WriteRecord(record.SerializeAsString()));
+#endif  // PLATFORM_GOOGLE
             return Status::OK();
           }
 
@@ -1854,8 +1641,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             return;
           }
           std::unique_ptr<SnapshotWriter> writer(
-              new SnapshotWriter(file.get(), dataset()->compression_,
-                                 kCurrentVersion, dataset()->output_dtypes()));
+              new SnapshotWriter(file.get(), dataset()->compression_));
 
           bool end_of_processing = false;
           while (!end_of_processing) {

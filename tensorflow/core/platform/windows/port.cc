@@ -157,17 +157,6 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 #endif
 }
 
-bool Snappy_UncompressToIOVec(const char* compressed, size_t compressed_length,
-                              const struct iovec* iov, size_t iov_cnt) {
-#ifdef TF_USE_SNAPPY
-  const snappy::iovec* snappy_iov = reinterpret_cast<const snappy::iovec*>(iov);
-  return snappy::RawUncompressToIOVec(compressed, compressed_length, snappy_iov,
-                                      iov_cnt);
-#else
-  return false;
-#endif
-}
-
 string Demangle(const char* mangled) { return mangled; }
 
 double NominalCPUFrequency() {

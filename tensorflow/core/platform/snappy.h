@@ -18,17 +18,6 @@ limitations under the License.
 
 #include "tensorflow/core/platform/types.h"
 
-#if !defined(PLATFORM_WINDOWS)
-#include <sys/uio.h>
-#else
-namespace tensorflow {
-struct iovec {
-  void* iov_base;
-  size_t iov_len;
-};
-}  // namespace tensorflow
-#endif
-
 namespace tensorflow {
 namespace port {
 
@@ -38,9 +27,6 @@ bool Snappy_Compress(const char* input, size_t length, string* output);
 bool Snappy_GetUncompressedLength(const char* input, size_t length,
                                   size_t* result);
 bool Snappy_Uncompress(const char* input, size_t length, char* output);
-
-bool Snappy_UncompressToIOVec(const char* compressed, size_t compressed_length,
-                              const struct iovec* iov, size_t iov_cnt);
 
 }  // namespace port
 }  // namespace tensorflow
