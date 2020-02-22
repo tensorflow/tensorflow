@@ -69,7 +69,7 @@ $ python
 >>> tf.add(1, 2).numpy()
 3
 >>> hello = tf.constant('Hello, TensorFlow!')
->>> hello.numpy()
+>>> hello.numpy().decode('utf-8')
 'Hello, TensorFlow!'
 ```
 
