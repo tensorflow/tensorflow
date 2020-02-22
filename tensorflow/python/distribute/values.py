@@ -39,7 +39,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.tpu import tpu
-from tensorflow.python.training import saver
+from tensorflow.python.training.saving import saveable_object
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 
@@ -719,7 +720,7 @@ _aggregation_error_msg = (
     "using `tf.distribute.StrategyExtended.update()`.")
 
 
-class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
+class _MirroredSaveable(saveable_object_util.ResourceVariableSaveable):
   """Class for defining how to restore a MirroredVariable."""
 
   def __init__(self, mirrored_variable, primary_variable, name):
@@ -992,7 +993,7 @@ class TPUMirroredVariable(TPUVariableMixin, MirroredVariable):
     return True
 
 
-class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
+class _SyncOnReadSaveable(saveable_object.SaveableObject):
   """Class for defining how to restore a SyncOnReadVariable."""
 
   def __init__(self, sync_on_read_variable, name):
@@ -1004,7 +1005,7 @@ class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
       strategy = sync_on_read_variable._distribute_strategy  # pylint: disable=protected-access
       return strategy.extended.read_var(sync_on_read_variable)
 
-    spec = saver.BaseSaverBuilder.SaveSpec(
+    spec = saveable_object.SaveSpec(
         tensor=tensor,
         slice_spec="",
         name=name,
