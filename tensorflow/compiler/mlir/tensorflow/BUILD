@@ -376,6 +376,7 @@ cc_library(
         ":tensorflow",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LoopOpsTransforms",
     ],
     alwayslink = 1,
 )
