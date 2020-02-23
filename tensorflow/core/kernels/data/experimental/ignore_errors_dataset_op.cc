@@ -79,27 +79,27 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         {
           tf_shared_lock l(mu_);
-          if (!DatasetBaseIterator::input_impl_) {
+          if (!input_impl_) {
             *end_of_sequence = true;
             return Status::OK();
           }
-          Status s = DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+          Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
           while (!s.ok()) {
             out_tensors->clear();
-            s = DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+            s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
           }
         }
         if (*end_of_sequence) {
           mutex_lock l(mu_);
-          DatasetBaseIterator::input_impl_.reset();
+          input_impl_.reset();
         }
         return Status::OK();
       }
@@ -113,8 +113,8 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        if (DatasetBaseIterator::input_impl_)
-          TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+        if (input_impl_)
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         else
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
@@ -125,15 +125,15 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (reader->Contains(full_name("input_impls_empty")))
-          DatasetBaseIterator::input_impl_.reset();
+          input_impl_.reset();
         else
-          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 
      private:
       mutex mu_;
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;

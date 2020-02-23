@@ -125,7 +125,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       do {
         // We are currently processing a file, so try to read the next record.
@@ -247,7 +247,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       do {
         // We are currently processing a file, so try to read the next record.

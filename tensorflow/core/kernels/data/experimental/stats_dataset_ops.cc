@@ -97,15 +97,15 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         tf_shared_lock l(mu_);
         uint64 start = ctx->env()->NowMicros();
-        Status s = DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+        Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
         uint64 end = ctx->env()->NowMicros();
         auto stats_aggregator = ctx->stats_aggregator();
         if (stats_aggregator && !*end_of_sequence) {
@@ -125,20 +125,20 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 
      private:
       mutex mu_;
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;
@@ -208,14 +208,14 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         tf_shared_lock l(mu_);
-        Status s = DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+        Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
         auto stats_aggregator = ctx->stats_aggregator();
         if (stats_aggregator && s.ok() && !*end_of_sequence) {
           size_t total_bytes = 0;
@@ -238,20 +238,20 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 
      private:
       mutex mu_;
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;

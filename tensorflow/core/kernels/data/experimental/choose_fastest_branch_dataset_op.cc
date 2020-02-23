@@ -92,9 +92,9 @@ class WrapperDataset : public DatasetBase {
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
-      return dataset()->real_iterator_->GetNext(ctx, out_tensors,
-                                                end_of_sequence);
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      return DatasetBaseIterator::GetNextFromInput(dataset()->real_iterator_, ctx, out_tensors,
+                                                end_of_sequence, parent_indices);
     }
 
    protected:
@@ -333,7 +333,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
 
         for (int i = 0; i < dataset()->captured_funcs_.size(); ++i) {
           TF_RETURN_IF_ERROR(dataset()->captured_funcs_[i]->Instantiate(
@@ -348,7 +348,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       // to keep track of which experiment we're on.
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         {  // Locking scope
           mutex_lock l(mu_);
           if (branch_index_ < dataset()->captured_funcs_.size()) {
@@ -358,7 +358,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
                                                      /*is_experiment=*/true));
             }
 
-            Status s = GetNextFromExperiment(ctx, out_tensors, end_of_sequence);
+            Status s = GetNextFromExperiment(ctx, out_tensors, end_of_sequence, parent_indices);
             experiment_counter_++;
 
             if (experiment_counter_ >= dataset()->num_elements_per_branch_) {
@@ -378,7 +378,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        return current_iterator_->GetNext(ctx, out_tensors, end_of_sequence);
+        return DatasetBaseIterator::GetNextFromInput(current_iterator_, ctx, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -395,7 +395,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       // from scratch.
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("experiment_counter"),
                                                experiment_counter_));
         TF_RETURN_IF_ERROR(
@@ -414,7 +414,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("experiment_counter"),
                                               &experiment_counter_));
         TF_RETURN_IF_ERROR(
@@ -439,14 +439,14 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
      private:
       Status GetNextFromExperiment(IteratorContext* ctx,
                                    std::vector<Tensor>* out_tensors,
-                                   bool* end_of_sequence)
+                                   bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         DCHECK_GE(branch_index_, 0);
         DCHECK_LT(branch_index_, histograms_.size());
 
         int64 start = ctx->env()->NowNanos();
         Status s =
-            current_iterator_->GetNext(ctx, out_tensors, end_of_sequence);
+            DatasetBaseIterator::GetNextFromInput(current_iterator_, ctx, out_tensors, end_of_sequence);
 
         if (experiment_counter_ > 0) {
           // Ignore the first experiment when benchmarking. It may be an outlier
@@ -495,7 +495,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
         params.node_name = strings::StrCat(params.type_string, branch_index);
         DatasetBase* temp_dataset =
             new WrapperDataset(std::move(params), &dataset()->output_types_,
-                               &dataset()->output_shapes_, DatasetBaseIterator::input_impl_.get());
+                               &dataset()->output_shapes_, input_impl_.get());
 
         if (is_experiment) {
           // When running experiment iterations, we add a TakeDataset in between
@@ -525,7 +525,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       }
 
       mutex mu_;
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::vector<std::unique_ptr<InstantiatedCapturedFunction>>
           instantiated_captured_funcs_ GUARDED_BY(mu_);
 

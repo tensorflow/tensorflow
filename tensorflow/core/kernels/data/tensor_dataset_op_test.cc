@@ -151,8 +151,8 @@ TEST_P(ParametrizedTensorDatasetOpTest, GetNext) {
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
   while (!end_of_sequence) {
-    TF_EXPECT_OK(iterator->GetNext(iterator_context.get(), &out_tensors,
-                                   &end_of_sequence));
+    TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_context.get(), &out_tensors,
+                                   &end_of_sequence, parent_indices));
   }
   EXPECT_EQ(out_tensors.size(), test_case.expected_outputs.size());
   for (int i = 0; i < out_tensors.size(); ++i) {
@@ -486,8 +486,8 @@ TEST_P(ParametrizedTensorDatasetOpTest, Roundtrip) {
                                  *tensor_dataset, &iterator));
 
     while (cur_iteration <= breakpoint) {
-      TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,
-                                     &end_of_sequence));
+      TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
+                                     &end_of_sequence, parent_indices));
       if (!end_of_sequence) {
         EXPECT_EQ(out_tensors.size(), test_case.expected_outputs.size());
         for (int i = 0; i < out_tensors.size(); ++i) {

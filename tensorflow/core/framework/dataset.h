@@ -20,7 +20,6 @@ limitations under the License.
 #include <unordered_map>
 #include <fstream>
 #include <iostream>
-#include <queue>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -390,6 +389,150 @@ class GraphDefBuilderWrapper {
 class StatsAggregator;
 class FunctionHandleCache;
 
+class IndexManager {
+ public:
+  IndexManager() {
+    string username = "kyunggeun-lee";
+    ckpt_file_path_ = "/tmp/eparallax-" + username + "/checkpoint/index_ckpt";
+    Restore();
+  }
+
+  ~IndexManager() { Save(); }
+
+  EparallaxTensorIndex* IssueNewIndex(
+      string prefix, std::vector<EparallaxTensorIndex*>* parent_indices);
+
+  void NotifyFinished(EparallaxTensorIndex* index);
+
+  bool AlreadyProcessed(EparallaxTensorIndex* index);
+
+  void StartFromScratch() {
+    //LOG(INFO) << "START_FROM_SCRATCH";
+    // TODO
+    processed_indices_.clear();
+    std::ofstream ckpt_file;
+    ckpt_file.open(ckpt_file_path_.data());
+    if (ckpt_file.is_open()) {
+      ckpt_file << "\n";
+      ckpt_file.close();
+    }
+  }
+
+ protected:
+  void Restore() {
+    std::ifstream ckpt_file(ckpt_file_path_.data());
+    if (ckpt_file.is_open()) {
+      string line, key, val;
+      while (getline(ckpt_file, line)) {
+        size_t delimiter_pos = line.find(":");
+        key = line.substr(0, delimiter_pos);
+        val = line.substr(delimiter_pos + 1);
+        if (key == "processed_index") {
+          EparallaxTensorIndex* index = DeserializeIndex(val);
+          processed_indices_.push_back(index);
+        } else if (key == "issued_index") {
+          EparallaxTensorIndex* index = DeserializeIndex(val);
+          issued_indices_.push_back(index);
+        }
+      }
+      ckpt_file.close();
+    }
+  }
+
+  void Save() {
+    std::ofstream ckpt_file;
+    ckpt_file.open(ckpt_file_path_.data(), std::ios_base::app);
+    if(ckpt_file.is_open()){
+      for (auto processed_index : processed_indices_) {
+        //LOG(INFO) << "Saving " << *processed_index;
+        ckpt_file << "processed_index:" << *processed_index << "\n";
+      }
+      for (auto issued_index : issued_indices_) {
+        //LOG(INFO) << "Saving " << *processed_index;
+        ckpt_file << "issued_index:" << *issued_index << "\n";
+      }
+      ckpt_file.close();
+    }
+  }
+
+  std::vector<EparallaxTensorIndex*>* DeserializeIndices(string line) {
+    line = line.substr(1, line.length()-1);
+    size_t pos = 0;
+    int level = 0;
+    bool found = false;
+    std::vector<EparallaxTensorIndex*>* v = new std::vector<EparallaxTensorIndex*> {};
+    while (true) {
+      if (line[pos] == '(') {
+        level++;
+        found = true;
+      } else if (line[pos] == ')') {
+        level--;
+        found = true;
+      } else if (found && level == 0) {
+        v->push_back(DeserializeIndex(line.substr(0, pos)));
+        if (line.length() - pos < 4) {
+          break;
+        } else {
+          line = line.substr(pos+1);
+          pos = 0;
+          found = false;
+          level = 0;
+        }
+      }
+      pos++;
+    }
+    return v;
+  }
+
+  EparallaxTensorIndex* DeserializeIndex(string line) {
+    string val = line;
+    if (line.substr(0, 15) == "processed_index") {
+      val = line.substr(16);
+    } else if (line.substr(0, 12) == "issued_index") {
+      val = line.substr(13);
+    }
+
+    size_t pos = 0;
+    int level = 0;
+    while (true) {
+      if (line[pos] == '[') {
+        level++;
+      } else if (line[pos] == ']') {
+        level--;
+      } else if (level == 0 && line[pos] == '(') {
+        break;
+      }
+      pos++;
+    }
+
+    //size_t pos = val.find("(");
+    size_t comma_pos = val.find_last_of(",");
+    string iterator_id = val.substr(0, pos);
+    string parent_indices = val.substr(pos+1,
+                                     comma_pos-pos-1);
+    string local_index = val.substr(comma_pos+2,
+                                    val.length()-comma_pos-3);
+    EparallaxTensorIndex* index;
+    if (parent_indices == "nullptr") {
+      index = new EparallaxTensorIndex(iterator_id,
+                                       nullptr,
+                                       atoi(local_index.c_str()));
+    } else {
+      index = new EparallaxTensorIndex(iterator_id,
+                                       DeserializeIndices(parent_indices),
+                                       atoi(local_index.c_str()));
+    }
+    return index;
+  }
+
+ private:
+  mutex mu_;
+  std::vector<EparallaxTensorIndex*> processed_indices_ GUARDED_BY(mu_);
+  std::vector<EparallaxTensorIndex*> issued_indices_ GUARDED_BY(mu_);
+  std::map<string, int64> local_index_map_ GUARDED_BY(mu_);
+  string ckpt_file_path_;
+};
+
 // A utility class for running a function and ensuring that there is always a
 // `tensorflow::data` symbol on the stack.
 class Runner {
@@ -429,7 +572,8 @@ class IteratorContext {
           runner_threadpool_size(ctx->runner_threadpool_size()),
           stats_aggregator(ctx->stats_aggregator()),
           thread_factory(ctx->thread_factory()),
-          thread_pool(ctx->thread_pool()) {}
+          thread_pool(ctx->thread_pool()),
+          index_manager(ctx->index_manager()) {}
 
     explicit Params(OpKernelContext* ctx)
         : env(ctx->env()), flr(ctx->function_library()) {
@@ -499,6 +643,9 @@ class IteratorContext {
 
     // A shared thread pool to schedule computation into.
     thread::ThreadPoolInterface* thread_pool = nullptr;
+
+    // Indexing manager.
+    IndexManager* index_manager = nullptr;
   };
 
   explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
@@ -546,6 +693,8 @@ class IteratorContext {
   }
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
+
+  IndexManager* index_manager() { return params_.index_manager; }
 
   Params params() { return params_; }
 
@@ -632,12 +781,29 @@ class IteratorBase {
   // TODO(mrry): Define `GetNextAsync()` or `GetNextManyAsync()`, and
   // potentially remove this method.
   virtual Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence) = 0;
+                         bool* end_of_sequence,
+                         EparallaxTensorIndex*& out_index) = 0;
+
+  Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                 bool* end_of_sequence) {
+    EparallaxTensorIndex* unused_index;
+    Status s = GetNext(ctx, out_tensors, end_of_sequence, unused_index);
+    delete unused_index;
+    return s;
+  }
+
+  Status GetNext(IteratorContext&& ctx, std::vector<Tensor>* out_tensors,
+                 bool* end_of_sequence, EparallaxTensorIndex*& out_index) {
+    return GetNext(&ctx, out_tensors, end_of_sequence, out_index);
+  }
 
   Status GetNext(IteratorContext&& ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
+
+  /*virtual Status GetItem(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                         bool* end_of_sequence, EparallaxTensorIndex* index) = 0;*/
 
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
@@ -670,16 +836,6 @@ class IteratorBase {
   Status Restore(IteratorContext&& ctx, IteratorStateReader* reader) {
     return Restore(&ctx, reader);
   }
-
-  virtual void StartFromScratch() = 0;
-
-  virtual EparallaxTensorIndex* GetGlobalIndex() = 0;
-
-  virtual std::vector<EparallaxTensorIndex*>* GetAccumulatedIndices() = 0;
-
-  virtual int64 local_index() = 0;
-
-  virtual std::vector<EparallaxTensorIndex*> processed_indices() = 0;
 
  protected:
   // Returns a node that models this iterator.
@@ -891,6 +1047,7 @@ class DatasetBase : public core::RefCounted {
   const string node_name_;
 };
 
+typedef std::tuple<EparallaxTensorIndex*, Status, std::vector<Tensor>, bool> BufferItem;
 // Represents an iterator that is associated with a particular dataset.
 class DatasetBaseIterator : public IteratorBase {
  public:
@@ -903,36 +1060,17 @@ class DatasetBaseIterator : public IteratorBase {
   };
 
   explicit DatasetBaseIterator(const BaseParams& params)
-    : params_(params),
-      input_impl_(nullptr),
-      local_index_(-1),
-      gai_called_(false),
-      last_index_(nullptr) {
+    : params_(params)
+      //input_impl_(nullptr)
+      //local_index_(-1),
+      //gai_called_(false),
+      /*last_index_(nullptr)*/ {
     params_.dataset->Ref();
     string username = "kyunggeun-lee";
-    ckpt_file_path_ = "/tmp/eparallax-" + username + "/checkpoint/" + params_.prefix;
-    RestoreProcessedIndicesFromCheckpoint("processed_index", &processed_indices_);
-    //RestoreValueFromCheckpoint(&local_index_, "local_index_");
+    ckpt_file_path_ = "/tmp/eparallax-" + username + "/checkpoint/" + prefix();
   }
 
-  ~DatasetBaseIterator() override {
-    SaveProcessedIndices();
-    // TODO: need worker-local storage
-    //StoreValueToCheckpoint<int64>(local_index_, "local_index_");    params_.dataset->Unref();
-  }
-
-  void SaveProcessedIndices() {
-    std::ofstream ckpt_file;
-    ckpt_file.open(ckpt_file_path_.data(), std::ios_base::app);
-    if(ckpt_file.is_open()){
-      for (auto it=processed_indices_.begin(); it!=processed_indices_.end(); it++) {
-        EparallaxTensorIndex* processed_index = *it;
-        LOG(INFO) << "Saving " << *processed_index;
-        ckpt_file << "processed_index:" << *processed_index << "\n";
-      }
-      ckpt_file.close();
-    }
-  }
+  ~DatasetBaseIterator() override { params_.dataset->Unref(); }
 
   const DataTypeVector& output_dtypes() const override {
     return params_.dataset->output_dtypes();
@@ -952,7 +1090,44 @@ class DatasetBaseIterator : public IteratorBase {
   virtual string BuildTraceMeName() { return params_.prefix; }
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                 bool* end_of_sequence) final;
+                 bool* end_of_sequence, EparallaxTensorIndex*& out_index) final;
+
+  Status GetNextFromInput(
+      IteratorBase* const input_impl, IteratorContext* ctx,
+      std::vector<Tensor>* out_tensors, bool* end_of_sequence,
+      std::vector<EparallaxTensorIndex*>* parent_indices);
+
+  Status GetNextFromInput(
+      std::unique_ptr<IteratorBase> const &input_impl, IteratorContext* ctx,
+      std::vector<Tensor>* out_tensors, bool* end_of_sequence,
+      std::vector<EparallaxTensorIndex*>* parent_indices) {
+    return GetNextFromInput(input_impl.get(), ctx, out_tensors, end_of_sequence,
+                            parent_indices);
+  }
+
+  Status GetNextFromInput(
+      std::unique_ptr<IteratorBase> const &input_impl, IteratorContext* ctx,
+      std::vector<Tensor>* out_tensors, bool* end_of_sequence) {
+    return GetNextFromInput(input_impl.get(), ctx, out_tensors, end_of_sequence,
+                            nullptr);
+  }
+
+  Status GetNextFromInput(
+      IteratorBase* const &input_impl, IteratorContext* ctx,
+      std::vector<Tensor>* out_tensors, bool* end_of_sequence) {
+    return GetNextFromInput(input_impl, ctx, out_tensors, end_of_sequence,
+                            nullptr);
+  }
+
+  Status GetNextFromInput(
+      std::unique_ptr<IteratorBase> const &input_impl, IteratorContext&& ctx,
+      std::vector<Tensor>* out_tensors, bool* end_of_sequence,
+      std::vector<EparallaxTensorIndex*>* parent_indices) {
+    return GetNextFromInput(input_impl, &ctx, out_tensors, end_of_sequence,
+                            parent_indices);
+  }
+  /*Status GetItem(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                 bool* end_of_sequence, EparallaxTensorIndex* index) final;*/
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
     if (params_.dataset->IsStateful()) {
@@ -962,36 +1137,12 @@ class DatasetBaseIterator : public IteratorBase {
     return IteratorBase::Save(ctx, writer);
   }
 
-  void StartFromScratch() final {
-    LOG(INFO) << "START_FROM_SCRATCH";
-    processed_indices_.clear();
-    std::ofstream ckpt_file;
-    ckpt_file.open(ckpt_file_path_.data());
-    if (ckpt_file.is_open()) {
-      ckpt_file << "\n";
-      ckpt_file.close();
-    }
-    if (input_impl_ != nullptr) {
-      input_impl_->StartFromScratch();
-    }
-  }
-
-  EparallaxTensorIndex* GetGlobalIndex() override;
-
-  EparallaxTensorIndex* GetParentIndex();
-
-  std::vector<EparallaxTensorIndex*>* GetAccumulatedIndices() final;
-
-  int64 local_index() final { return local_index_; }
-  std::vector<EparallaxTensorIndex*> processed_indices() {
-    return processed_indices_;
-  }
-
  protected:
   // Internal implementation of GetNext that is wrapped in tracing logic.
   virtual Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
-                                 bool* end_of_sequence) = 0;
+                                 bool* end_of_sequence,
+                                 std::vector<EparallaxTensorIndex*>* parent_indices) = 0;
 
   string full_name(const string& name) const {
     return strings::StrCat(params_.prefix, ":", name);
@@ -1093,25 +1244,6 @@ class DatasetBaseIterator : public IteratorBase {
     }
   }
 
-  void RestoreProcessedIndicesFromCheckpoint(
-      string identifier, std::vector<EparallaxTensorIndex*>* index_buffer) {
-    std::ifstream ckpt_file(ckpt_file_path_.data());
-    if (ckpt_file.is_open()) {
-      string line, key, val;
-      while (getline(ckpt_file, line)) {
-        size_t delimiter_pos = line.find(":");
-        key = line.substr(0, delimiter_pos);
-        if (key == identifier) {
-          val = line.substr(delimiter_pos + 1);
-          EparallaxTensorIndex* index = DeserializeIndex(val);
-          index_buffer->push_back(index);
-          LOG(INFO) << "Restoring from checkpoint " << *index;
-        }
-      }
-      ckpt_file.close();
-    }
-  }
-
   template <typename T>
   void StoreValueToCheckpoint(T value, string identifier) {
     std::ofstream ckpt_file;
@@ -1122,82 +1254,11 @@ class DatasetBaseIterator : public IteratorBase {
     }
   }
 
-  std::vector<EparallaxTensorIndex*>* DeserializeIndices(string line) {
-    line = line.substr(1, line.length()-1);
-    size_t pos = 0;
-    int level = 0;
-    bool found = false;
-    std::vector<EparallaxTensorIndex*>* v = new std::vector<EparallaxTensorIndex*> {};
-    while (true) {
-      if (line[pos] == '(') {
-        level++;
-        found = true;
-      } else if (line[pos] == ')') {
-        level--;
-        found = true;
-      } else if (found && level == 0) {
-        v->push_back(DeserializeIndex(line.substr(0, pos)));
-        if (line.length() - pos < 4) {
-          break;
-        } else {
-          line = line.substr(pos+1);
-          pos = 0;
-          found = false;
-          level = 0;
-        }
-      }
-      pos++;
-    }
-    return v;
-  }
+  //virtual void UpdateLocalIndex();
 
-  EparallaxTensorIndex* DeserializeIndex(string line) {
-    string val = line;
-    if (line.substr(0, 15) == "processed_index") {
-      val = line.substr(16);
-    }
+  //void InitializeOrIncrementLocalIndex();
 
-    size_t pos = 0;
-    int level = 0;
-    while (true) {
-      if (line[pos] == '[') {
-        level++;
-      } else if (line[pos] == ']') {
-        level--;
-      } else if (level == 0 && line[pos] == '(') {
-        break;
-      }
-      pos++;
-    }
-
-    //size_t pos = val.find("(");
-    size_t comma_pos = val.find_last_of(",");
-    string iterator_id = val.substr(0, pos);
-    string parent_indices = val.substr(pos+1,
-                                     comma_pos-pos-1);
-    string local_index = val.substr(comma_pos+2,
-                                    val.length()-comma_pos-3);
-    EparallaxTensorIndex* index;
-    if (parent_indices == "nullptr") {
-      index = new EparallaxTensorIndex(iterator_id,
-                                       nullptr,
-                                       atoi(local_index.c_str()));
-    } else {
-
-      index = new EparallaxTensorIndex(iterator_id,
-                                       DeserializeIndices(parent_indices),
-                                       atoi(local_index.c_str()));
-    }
-    return index;
-  }
-
-  virtual void UpdateLocalIndex();
-
-  void InitializeOrIncrementLocalIndex();
-
-  virtual bool AlreadyProcessed(EparallaxTensorIndex* index);
-
-  std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+  //std::unique_ptr<IteratorBase> input_impl_;
 
  private:
   inline bool collect_resource_usage(IteratorContext* ctx) {
@@ -1206,12 +1267,11 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   BaseParams params_;
-  int64 local_index_;
-  std::vector<EparallaxTensorIndex*> processed_indices_;
-  std::vector<EparallaxTensorIndex*> accumulated_indices_;
-  bool gai_called_;
+  //int64 local_index_;
+  //std::vector<EparallaxTensorIndex*> accumulated_indices_;
+  //bool gai_called_;
   string ckpt_file_path_;
-  EparallaxTensorIndex* last_index_;
+  //EparallaxTensorIndex* last_index_;
 };
 
 // Represents an iterator that is associated with a particular dataset
@@ -1237,7 +1297,8 @@ class DatasetIterator : public DatasetBaseIterator {
  protected:
   virtual Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
-                                 bool* end_of_sequence) = 0;
+                                 bool* end_of_sequence,
+                                 std::vector<EparallaxTensorIndex*>* parent_indices) = 0;
 
  private:
   const DatasetType* const typed_dataset_;  // Not owned.

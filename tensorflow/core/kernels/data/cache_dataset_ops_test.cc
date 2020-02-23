@@ -189,7 +189,7 @@ TEST_P(ParameterizedCacheDatasetOpTest, GetNext) {
   while (!end_of_sequence) {
     std::vector<Tensor> next;
     TF_EXPECT_OK(
-        iterator->GetNext(iterator_ctx.get(), &next, &end_of_sequence));
+        DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
@@ -203,7 +203,7 @@ TEST_P(ParameterizedCacheDatasetOpTest, GetNext) {
   while (!end_of_sequence) {
     std::vector<Tensor> next;
     TF_EXPECT_OK(
-        iterator->GetNext(iterator_ctx.get(), &next, &end_of_sequence));
+        DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
   TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
@@ -500,8 +500,8 @@ TEST_P(ParameterizedCacheDatasetOpTest, Roundtrip) {
   // it has been read.
   if (test_case.file_name.empty()) {
     while (!end_of_sequence) {
-      TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,
-                                     &end_of_sequence));
+      TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
+                                     &end_of_sequence, parent_indices));
     }
     end_of_sequence = false;
     out_tensors.clear();
@@ -524,8 +524,8 @@ TEST_P(ParameterizedCacheDatasetOpTest, Roundtrip) {
 
     while (cur_iteration <= breakpoint) {
       out_tensors.clear();
-      TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,
-                                     &end_of_sequence));
+      TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
+                                     &end_of_sequence, parent_indices));
       if (!end_of_sequence) {
         EXPECT_LT(expected_outputs_it, test_case.expected_outputs.end());
         TF_EXPECT_OK(ExpectEqual(out_tensors.back(), *expected_outputs_it));

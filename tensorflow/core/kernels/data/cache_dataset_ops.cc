@@ -149,9 +149,9 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
-      return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
+      return DatasetBaseIterator::GetNextFromInput(iterator_, ctx, out_tensors, end_of_sequence);
     }
 
    protected:
@@ -242,15 +242,15 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
       }
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         *end_of_sequence = false;
-        TF_RETURN_IF_ERROR(EnsureLockFileExists(end_of_sequence));
+        TF_RETURN_IF_ERROR(EnsureLockFileExists(end_of_sequence, parent_indices));
         if (*end_of_sequence) {
           return Status::OK();
         }
@@ -267,7 +267,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
         }
 
         TF_RETURN_IF_ERROR(
-            DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+            DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
         if (*end_of_sequence && out_tensors->empty()) {
           TF_RETURN_IF_ERROR(Finish());
           cur_index_++;
@@ -329,7 +329,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
           lockfile_ = strings::StrCat(filename_, kLockFileSuffix);
           lockfile_created_ = false;
         }
-        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kShardId), shard_id_));
         return Status::OK();
       }
@@ -353,7 +353,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
           return Status::OK();
         }
 
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
 
         // TODO(b/78048575): Update this when saving size_t tensors directly
         // is supported.
@@ -371,7 +371,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
       }
 
      private:
-      Status EnsureLockFileExists(bool* end_of_sequence)
+      Status EnsureLockFileExists(bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (iteration_completed_) {
           *end_of_sequence = true;
@@ -467,7 +467,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
       // Index of the current shard. This gets incremented whenever a new
       // cache shard is saved.
       size_t shard_id_ GUARDED_BY(mu_);
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       // The current prefix for the cache file. This is equal to
       // `StrCat(dataset()->filename_, "_", shard_id_)`.
       string filename_;
@@ -487,7 +487,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         *end_of_sequence = false;
         TF_RETURN_IF_ERROR(reader_.status());
@@ -721,9 +721,9 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
-      return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
+      return DatasetBaseIterator::GetNextFromInput(iterator_, ctx, out_tensors, end_of_sequence);
     }
 
    protected:
@@ -829,15 +829,15 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
       }
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
-            DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+            DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
         if (*end_of_sequence) {
           cache_->Complete();
           return Status::OK();
@@ -856,18 +856,18 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        return SaveInput(writer, DatasetBaseIterator::input_impl_);
+        return SaveInput(writer, input_impl_);
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        return RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_);
+        return RestoreInput(ctx, reader, input_impl_);
       }
 
      private:
       mutex mu_;
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       MemoryCache* const cache_ GUARDED_BY(mu_);  // not owned.
     };                                            // MemoryWriterIterator
 
@@ -893,7 +893,7 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         if (index_ < cache_->size()) {
           const std::vector<Tensor>& cache_tensors = cache_->at(index_);

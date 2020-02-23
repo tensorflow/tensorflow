@@ -244,18 +244,18 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         num_parallel_calls_->value = dataset()->cycle_length_;
       }
       TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
+          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       std::shared_ptr<Result> result;
       {
         mutex_lock l(*mu_);
-        EnsureThreadsStarted(ctx);
+        EnsureThreadsStarted(ctx, parent_indices);
         while (!Consume(&result)) {
           RecordStop(ctx);
           cond_var_->wait(l);
@@ -291,7 +291,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
       DCHECK_EQ(current_num_calls_, 0);
       DCHECK_EQ(future_num_calls_, 0);
-      TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kBlockIndex), block_index_));
       TF_RETURN_IF_ERROR(
@@ -310,7 +310,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kBlockIndex), &block_index_));
       TF_RETURN_IF_ERROR(
@@ -441,7 +441,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // asynchronously fetching results from existing iterators.
     //
     // This method runs in the `current_elements_manager_` background thread.
-    void CurrentElementsManager(const std::shared_ptr<IteratorContext>& ctx) {
+    void CurrentElementsManager(const std::shared_ptr<IteratorContext>& ctx, std::vector<EparallaxTensorIndex*>* parent_indices) {
       RecordStart(ctx.get());
       auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
       auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
@@ -494,7 +494,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                current_elements_[idx]->iterator.get());
               }
             } else {
-              current_elements_[idx] = MakeElement(ctx);
+              current_elements_[idx] = MakeElement(ctx, parent_indices);
               if (!current_elements_[idx]) {
                 continue;
               }
@@ -540,19 +540,19 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void EnsureThreadsStarted(IteratorContext* ctx)
+    void EnsureThreadsStarted(IteratorContext* ctx, std::vector<EparallaxTensorIndex*>* parent_indices)
         EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!current_elements_manager_) {
         auto new_ctx = std::make_shared<IteratorContext>(*ctx);
         current_elements_manager_ = ctx->StartThread(
             kTFDataParallelInterleaveCurrent,
-            [this, new_ctx]() { CurrentElementsManager(new_ctx); });
+            [this, new_ctx, parent_indices]() { CurrentElementsManager(new_ctx, parent_indices); });
       }
       if (!future_elements_manager_) {
         auto new_ctx = std::make_shared<IteratorContext>(*ctx);
         future_elements_manager_ = ctx->StartThread(
             kTFDataParallelInterleaveFuture,
-            [this, new_ctx]() { FutureElementsManager(new_ctx); });
+            [this, new_ctx, parent_indices]() { FutureElementsManager(new_ctx, parent_indices); });
       }
     }
 
@@ -565,7 +565,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       bool end_of_input = false;
       for (int64 i = 0; i < num_results; ++i) {
         auto result = std::make_shared<Result>();
-        result->status = element->iterator->GetNext(
+        result->status = DatasetBaseIterator::GetNextFromInput(element->iterator, 
             ctx.get(), &result->return_values, &end_of_input);
         if (end_of_input) {
           break;
@@ -596,7 +596,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // asynchronously fetching results from existing iterators.
     //
     // This method runs in the `future_elements_manager_` background thread.
-    void FutureElementsManager(const std::shared_ptr<IteratorContext>& ctx) {
+    void FutureElementsManager(const std::shared_ptr<IteratorContext>& ctx, std::vector<EparallaxTensorIndex*>* parent_indices) {
       RecordStart(ctx.get());
       auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
       auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
@@ -621,7 +621,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         }
 
         while (!end_of_input_ && !busy()) {
-          std::shared_ptr<Element> element = MakeElement(ctx);
+          std::shared_ptr<Element> element = MakeElement(ctx, parent_indices);
           if (!element) {
             break;
           }
@@ -644,12 +644,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // Creates a new element.
     std::shared_ptr<Element> MakeElement(
-        const std::shared_ptr<IteratorContext>& ctx)
+        const std::shared_ptr<IteratorContext>& ctx, std::vector<EparallaxTensorIndex*>* parent_indices)
         EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       auto element = std::make_shared<Element>();
       element->id = element_id_counter_++;
       Status status =
-          DatasetBaseIterator::input_impl_->GetNext(ctx.get(), &element->inputs, &end_of_input_);
+          DatasetBaseIterator::GetNextFromInput(input_impl_, ctx.get(), &element->inputs, &end_of_input_, parent_indices);
       if (!status.ok()) {
         auto result = std::make_shared<Result>();
         result->is_ready = true;
@@ -908,7 +908,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     const bool sloppy_;
 
     // Iterator for input elements.
-    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(*mu_);
+    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(*mu_);
 
     // Identifies position in the interleave cycle.
     int64 block_index_ GUARDED_BY(*mu_) = 0;

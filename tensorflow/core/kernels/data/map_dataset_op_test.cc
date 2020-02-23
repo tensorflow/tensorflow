@@ -167,8 +167,8 @@ TEST_P(ParameterizedMapDatasetOpTest, GetNext) {
   auto expected_outputs_it = test_case.expected_outputs.begin();
   std::vector<Tensor> out_tensors;
   while (!end_of_sequence) {
-    TF_EXPECT_OK(iterator->GetNext(iterator_context.get(), &out_tensors,
-                                   &end_of_sequence));
+    TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_context.get(), &out_tensors,
+                                   &end_of_sequence, parent_indices));
     if (!end_of_sequence) {
       EXPECT_NE(expected_outputs_it, test_case.expected_outputs.end());
       TF_EXPECT_OK(ExpectEqual(out_tensors.back(), *expected_outputs_it));
@@ -551,8 +551,8 @@ TEST_P(ParameterizedMapDatasetOpTest, Roundtrip) {
                                  *map_dataset, &iterator));
 
     while (cur_iteration <= breakpoint) {
-      TF_EXPECT_OK(iterator->GetNext(iterator_context.get(), &out_tensors,
-                                     &end_of_sequence));
+      TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_context.get(), &out_tensors,
+                                     &end_of_sequence, parent_indices));
       if (!end_of_sequence) {
         EXPECT_NE(expected_outputs_it, test_case.expected_outputs.end());
         TF_EXPECT_OK(ExpectEqual(out_tensors.back(), *expected_outputs_it));

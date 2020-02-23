@@ -110,7 +110,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       *end_of_sequence = true;
       return Status::OK();
     }
@@ -139,28 +139,28 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     }
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
-      if (!DatasetBaseIterator::input_impl_) {
+      if (!input_impl_) {
         *end_of_sequence = true;
         return Status::OK();
       }
       bool resume_from_ckpt = true;
       while (i_ < dataset()->count_) {
         StoreValueToCheckpoint<int64>(i_, "i_");
-        Status s = DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+        Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
 
         if (!s.ok()) {
           if (errors::IsOutOfRange(s) && resume_from_ckpt) {
             ++i_;
-            /*DatasetBaseIterator::input_impl_->*/StartFromScratch();
+            ctx->index_manager()->StartFromScratch();
             TF_RETURN_IF_ERROR(
-                dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
+                dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
             resume_from_ckpt = false;
           } else {
             return s;
@@ -170,13 +170,13 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
         ++i_;
-        /*DatasetBaseIterator::input_impl_->*/StartFromScratch();
+        ctx->index_manager()->StartFromScratch();
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         resume_from_ckpt = false;
       }
       *end_of_sequence = true;
-      DatasetBaseIterator::input_impl_.reset();
+      input_impl_.reset();
       return Status::OK();
     }
 
@@ -190,10 +190,10 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIteration), i_));
-      if (!DatasetBaseIterator::input_impl_) {
+      if (!input_impl_) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       } else {
-        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       }
       return Status::OK();
     }
@@ -203,47 +203,47 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIteration), &i_));
       if (!reader->Contains(full_name(kInputImplEmpty))) {
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       } else {
-        DatasetBaseIterator::input_impl_.reset();
+        input_impl_.reset();
       }
       return Status::OK();
     }
     
-    bool AlreadyProcessed(EparallaxTensorIndex* index) override {
-      return i_ == dataset()->count_ &&
-             DatasetIterator<Dataset>::AlreadyProcessed(index);
-    };
+    //bool AlreadyProcessed(EparallaxTensorIndex* index) override {
+    //  return i_ == dataset()->count_ &&
+    //         DatasetIterator<Dataset>::AlreadyProcessed(index);
+    //};
 
    private:
     mutex mu_;
     int64 i_ GUARDED_BY(mu_);
-//std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY
+std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY
   };
 
   class ForeverIterator : public DatasetIterator<Dataset> {
    public:
     explicit ForeverIterator(const Params& params)
         : DatasetIterator<Dataset>(params),
-          //DatasetBaseIterator::input_impl_(nullptr),
+          //input_impl_(nullptr),
           first_call_(true) {}
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
-      return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       bool resume_from_ckpt = true;
       do {
-        if (!DatasetBaseIterator::input_impl_) {
+        if (!input_impl_) {
           TF_RETURN_IF_ERROR(
-              dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
+              dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         }
-        Status s = DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+        Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
         DCHECK(!*end_of_sequence || out_tensors->empty());
         if (first_call_ && *end_of_sequence) {
           // If the first call to GetNext() fails because the end
@@ -251,13 +251,13 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           // iteration immediately. (Otherwise, this iterator
           // would loop infinitely and never produce a value.)
           if (resume_from_ckpt) {
-            StartFromScratch();
-            DatasetBaseIterator::input_impl_.reset();
+            ctx->index_manager()->StartFromScratch();
+            input_impl_.reset();
             TF_RETURN_IF_ERROR(
-                dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
+                dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
             resume_from_ckpt = false;
           } else {
-            DatasetBaseIterator::input_impl_.reset();
+            input_impl_.reset();
             return Status::OK();
           }
         }
@@ -265,8 +265,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         if (!*end_of_sequence) {
           return s;
         } else {
-          StartFromScratch();
-          DatasetBaseIterator::input_impl_.reset();
+          ctx->index_manager()->StartFromScratch();
+          input_impl_.reset();
           first_call_ = true;
           resume_from_ckpt = false;
         }
@@ -283,7 +283,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (!first_call_)
-        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       else
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kUninitialized), ""));
       return Status::OK();
@@ -293,24 +293,24 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       if (reader->Contains(full_name(kUninitialized))) {
-        DatasetBaseIterator::input_impl_.reset();
+        input_impl_.reset();
         first_call_ = true;
       } else {
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         first_call_ = false;
       }
       return Status::OK();
     }
     
-    bool AlreadyProcessed(EparallaxTensorIndex* index) override {
-      return false;
-    };
+    //bool AlreadyProcessed(EparallaxTensorIndex* index) override {
+    //  return false;
+    //};
 
    private:
     mutex mu_;
-    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY
+    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY
     bool first_call_ GUARDED_BY(mu_);
   };
 

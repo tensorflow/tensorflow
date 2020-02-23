@@ -170,8 +170,8 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, GetNext) {
   int cur_slice = 0;
 
   while (!end_of_sequence) {
-    TF_EXPECT_OK(iterator->GetNext(iterator_context.get(), &out_tensors,
-                                   &end_of_sequence));
+    TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_context.get(), &out_tensors,
+                                   &end_of_sequence, parent_indices));
     for (int i = 0; i < out_tensors.size(); ++i) {
       EXPECT_LT(i + num_tensors_per_slice * cur_slice, expected_outputs.size());
       if (out_tensors[i].dtype() == DT_VARIANT) {
@@ -617,8 +617,8 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, Roundtrip) {
   const std::vector<int> &breakpoints = test_case.breakpoints;
   for (int breakpoint : breakpoints) {
     while (cur_iteration < breakpoint) {
-      TF_EXPECT_OK(iterator->GetNext(iterator_context.get(), &out_tensors,
-                                     &end_of_sequence));
+      TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_context.get(), &out_tensors,
+                                     &end_of_sequence, parent_indices));
       cur_iteration++;
     }
 

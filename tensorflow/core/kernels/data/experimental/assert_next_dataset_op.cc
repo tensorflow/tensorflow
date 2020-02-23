@@ -101,13 +101,13 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
               tokens[n - 2 - i], " transformation instead.");
         }
       }
-      return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
-      return DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      return DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
     }
 
    protected:
@@ -118,18 +118,18 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
     }
 
     Status SaveInternal(IteratorStateWriter* writer) override {
-      TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       return Status::OK();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       return Status::OK();
     }
 
    private:
-    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_;
+    std::unique_ptr<IteratorBase> input_impl_;
   };
 
   const DatasetBase* input_;

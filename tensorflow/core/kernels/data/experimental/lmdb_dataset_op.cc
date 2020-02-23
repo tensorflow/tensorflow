@@ -88,7 +88,7 @@ class LMDBDatasetOp : public DatasetOpKernel {
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         do {
           if (mdb_cursor_) {

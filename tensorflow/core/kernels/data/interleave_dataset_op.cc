@@ -121,7 +121,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
+          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -140,15 +140,15 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       while (!end_of_input_ || num_open_ > 0) {
         if (current_elements_[cycle_index_]) {
           // We are currently processing a mapped element, so try to get the
           // next subelement.
           bool end_of_element;
-          TF_RETURN_IF_ERROR(current_elements_[cycle_index_]->GetNext(
-              ctx, out_tensors, &end_of_element));
+          TF_RETURN_IF_ERROR(GetNextFromInput(
+              current_elements_[cycle_index_], ctx, out_tensors, &end_of_element));
           if (!end_of_element) {
             // Produce the subelement as output.
             AdvancePosition();
@@ -164,8 +164,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         } else if (!end_of_input_) {
           // Get the next element from the input dataset, and create
           // an iterator from it.
-          TF_RETURN_IF_ERROR(DatasetBaseIterator::input_impl_->GetNext(
-              ctx, &args_list_[cycle_index_], &end_of_input_));
+          TF_RETURN_IF_ERROR(DatasetBaseIterator::GetNextFromInput(input_impl_, 
+              ctx, &args_list_[cycle_index_], &end_of_input_, parent_indices));
           if (!end_of_input_) {
             TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
                 ctx, args_list_[cycle_index_], cycle_index_,
@@ -190,7 +190,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kCycleIndex), cycle_index_));
       TF_RETURN_IF_ERROR(
@@ -206,7 +206,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       int64 cycle_index;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kCycleIndex), &cycle_index));
@@ -268,7 +268,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     mutex mu_;
-    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     std::vector<std::unique_ptr<IteratorBase>> current_elements_
         GUARDED_BY(mu_);
     std::vector<std::vector<Tensor>> args_list_ GUARDED_BY(mu_);

@@ -165,12 +165,12 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         StatsAggregatorResource* resource =
             dataset()->stats_aggregator_resource_;
@@ -180,7 +180,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
                                                 dataset()->tag_,
                                                 dataset()->prefix_));
         IteratorContext iter_ctx(std::move(params));
-        return DatasetBaseIterator::input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
+        return DatasetBaseIterator::GetNextFromInput(input_impl_, &iter_ctx, out_tensors, end_of_sequence, parent_indices);
       }
 
      protected:
@@ -203,7 +203,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;

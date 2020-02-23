@@ -130,7 +130,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       if (input_impls_.empty()) {
         *end_of_sequence = true;
@@ -141,7 +141,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       for (const auto& input_impl : input_impls_) {
         std::vector<Tensor> input_tensors;
         TF_RETURN_IF_ERROR(
-            input_impl->GetNext(ctx, &input_tensors, end_of_sequence));
+            DatasetBaseIterator::GetNextFromInput(input_impl, ctx, &input_tensors, end_of_sequence, parent_indices));
         if (*end_of_sequence) {
           break;
         }
@@ -188,19 +188,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       }
       return Status::OK();
     }
-    
-    void UpdateLocalIndex() final {
-      DatasetBaseIterator::InitializeOrIncrementLocalIndex();
-    }
 
-    EparallaxTensorIndex* GetGlobalIndex() final {
-      std::vector<EparallaxTensorIndex*>* v = new std::vector<EparallaxTensorIndex*> {};
-      for (const auto& input_impl : input_impls_) {
-        v->push_back(input_impl->GetGlobalIndex());
-      }
-      return new EparallaxTensorIndex(prefix(), v, local_index());
-    }
-   
    private:
     mutex mu_;
     std::vector<std::unique_ptr<IteratorBase>> input_impls_ GUARDED_BY(mu_);

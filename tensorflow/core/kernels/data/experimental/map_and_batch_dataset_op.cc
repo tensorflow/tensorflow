@@ -226,14 +226,14 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           num_parallel_calls_->value = ctx->runner_threadpool_size();
         }
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         return dataset()->captured_func_->Instantiate(
             ctx, &instantiated_captured_func_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         std::shared_ptr<BatchResult> result;
         {
           mutex_lock l(*mu_);
@@ -250,7 +250,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           batch_results_.pop_front();
           cond_var_->notify_all();
         }
-        return ProcessResult(ctx, result, out_tensors, end_of_sequence);
+        return ProcessResult(ctx, result, out_tensors, end_of_sequence, parent_indices);
       }
 
      protected:
@@ -269,7 +269,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           cond_var_->wait(l);
         }
         DCHECK_EQ(num_calls_, 0);
-        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("call_counter"), call_counter_));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("batch_results_size"),
@@ -283,7 +283,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(*mu_);
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name("call_counter"), &call_counter_));
         int64 batch_results_size;
@@ -359,7 +359,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         std::vector<Tensor> input_element;
         bool end_of_input;
         Status status =
-            DatasetBaseIterator::input_impl_->GetNext(ctx.get(), &input_element, &end_of_input);
+            DatasetBaseIterator::GetNextFromInput(input_impl_, ctx.get(), &input_element, &end_of_input);
         bool return_early;
         {
           mutex_lock l(result->mu);
@@ -493,7 +493,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       Status ProcessResult(IteratorContext* ctx,
                            const std::shared_ptr<BatchResult>& result,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) {
         mutex_lock l(result->mu);
         if (result->num_elements == 0) {
           if (result->status.ok() || errors::IsOutOfRange(result->status)) {
@@ -737,7 +737,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       int64 num_calls_ GUARDED_BY(*mu_) = 0;
       // Counts the total number of calls.
       int64 call_counter_ GUARDED_BY(*mu_) = 0;
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_;
+      std::unique_ptr<IteratorBase> input_impl_;
       // Buffer for storing the (intermediate) batch results.
       std::deque<std::shared_ptr<BatchResult>> batch_results_ GUARDED_BY(*mu_);
       // Background thread used for coordinating input processing.

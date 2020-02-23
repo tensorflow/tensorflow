@@ -356,7 +356,7 @@ TEST_P(ParameterizedShuffleDatasetOpTest, GetNext) {
   while (!end_of_sequence) {
     std::vector<Tensor> next;
     TF_EXPECT_OK(
-        iterator->GetNext(iterator_ctx.get(), &next, &end_of_sequence));
+        DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
     shuffled_out_tensors.insert(shuffled_out_tensors.end(), next.begin(),
                                 next.end());
     // For the forever-repeat case, we test only a finite number of steps of
@@ -375,7 +375,7 @@ TEST_P(ParameterizedShuffleDatasetOpTest, GetNext) {
   while (!end_of_sequence) {
     std::vector<Tensor> next;
     TF_EXPECT_OK(
-        iterator->GetNext(iterator_ctx.get(), &next, &end_of_sequence));
+        DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
     reshuffled_out_tensors.insert(reshuffled_out_tensors.end(), next.begin(),
                                   next.end());
     // For the forever-repeat case, we test only a finite number of steps of
@@ -861,7 +861,7 @@ TEST_P(ParameterizedShuffleDatasetOpTest, Roundtrip) {
     while (cur_iteration <= breakpoint) {
       std::vector<Tensor> next;
       TF_EXPECT_OK(
-          iterator->GetNext(iterator_ctx.get(), &next, &end_of_sequence));
+          DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
       out_tensors.insert(out_tensors.end(), next.begin(), next.end());
       cur_iteration++;
     }

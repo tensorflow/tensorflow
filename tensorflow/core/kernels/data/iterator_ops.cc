@@ -70,7 +70,8 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   }
   if (captured_state->iterator) {
     Status s;
-again:
+    EparallaxTensorIndex* out_index;
+//again:
     do {
       IteratorContext::Params params(ctx);
       params.flr = captured_state->flr;
@@ -79,23 +80,28 @@ again:
       params.thread_factory = unbounded_thread_pool_.get_thread_factory();
       params.thread_pool = &unbounded_thread_pool_;
       params.cancellation_manager = &captured_state->cancellation_manager;
+      params.index_manager = &index_manager_;
+      LOG(INFO) << "index_manager: " << params.index_manager;
       std::function<void()> deregister_fn;
       TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
                                                      params.cancellation_manager,
                                                      &deregister_fn));
       auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
       s = captured_state->iterator->GetNext(IteratorContext(std::move(params)),
-                                            out_tensors, end_of_sequence);
-    } while (s.ok() && !*end_of_sequence && out_tensors->empty());
+                                            out_tensors, end_of_sequence,
+                                            out_index);
+      LOG(INFO) << "1";
+      if (!s.ok() || *end_of_sequence || !out_tensors->empty()) {
+        break;
+      }
+      delete out_index;
+    } while (true);
     
-    if (first_run_ && !captured_state->iterator->processed_indices().empty()) {
-      LOG(INFO) << "Discard first result-----------------------------------";
-      out_tensors->clear();
-      first_run_ = false;
-      goto again;
+    LOG(INFO) << "2";
+    if (s.ok() && !*end_of_sequence) {
+      index_manager_.NotifyFinished(out_index);
     }
-    first_run_ = false;
-    //captured_state->iterator->NotifyFinished();
+    LOG(INFO) << "3";
     return s;
   }
   return errors::FailedPrecondition(
@@ -450,7 +456,7 @@ class ToSingleElementOp : public AsyncOpKernel {
         background_worker_(ctx->env(), "tf_data_to_single_element") {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    // The call to `iterator->GetNext()` may block and depend on an
+    // The call to `DatasetBaseIterator::GetNextFromInput(iterator, )` may block and depend on an
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
     background_worker_.Schedule(std::bind(
@@ -560,7 +566,7 @@ class ReduceDatasetOp : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    // The call to `iterator->GetNext()` may block and depend on an
+    // The call to `DatasetBaseIterator::GetNextFromInput(iterator, )` may block and depend on an
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
     background_worker_.Schedule(std::bind(
@@ -905,7 +911,7 @@ void IteratorGetNextOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   IteratorResource* iterator;
   OP_REQUIRES_OK_ASYNC(
       ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
-  // The call to `iterator->GetNext()` may block and depend on an
+  // The call to `DatasetBaseIterator::GetNextFromInput(iterator, )` may block and depend on an
   // inter-op thread pool thread, so we issue the call from the
   // owned thread pool.
   background_worker_.Schedule(std::bind(
@@ -954,7 +960,7 @@ void IteratorGetNextAsOptionalOp::ComputeAsync(OpKernelContext* ctx,
   IteratorResource* iterator;
   OP_REQUIRES_OK_ASYNC(
       ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
-  // The call to `iterator->GetNext()` may block and depend on an
+  // The call to `DatasetBaseIterator::GetNextFromInput(iterator, )` may block and depend on an
   // inter-op thread pool thread, so we issue the call from the
   // owned thread pool.
   background_worker_.Schedule(std::bind(

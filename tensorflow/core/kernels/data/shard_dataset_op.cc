@@ -108,24 +108,24 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params), next_index_(0) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
 
-      if (!DatasetBaseIterator::input_impl_) {
+      if (!input_impl_) {
         *end_of_sequence = true;
         return Status::OK();
       }
 
       std::vector<Tensor> result;
       result.clear();
-      TF_RETURN_IF_ERROR(DatasetBaseIterator::input_impl_->GetNext(ctx, &result, end_of_sequence));
+      TF_RETURN_IF_ERROR(DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &result, end_of_sequence, parent_indices));
       if (*end_of_sequence) {
-        DatasetBaseIterator::input_impl_.reset();
+        input_impl_.reset();
         return Status::OK();
       }
       if ((next_index_++ % dataset()->num_shards_) != dataset()->index_) {
@@ -136,7 +136,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
              next_index_ < dataset()->num_shards_) {
         std::vector<Tensor> unused_result;
 
-        Status s = DatasetBaseIterator::input_impl_->GetNext(ctx, &unused_result, end_of_sequence);
+        Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &unused_result, end_of_sequence, parent_indices);
         if (*end_of_sequence || errors::IsOutOfRange(s)) {
           return errors::InvalidArgument(
               "There aren't enough elements in this dataset for each shard "
@@ -164,10 +164,10 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      if (!DatasetBaseIterator::input_impl_) {
+      if (!input_impl_) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       } else {
-        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kNextIndex), next_index_));
       }
@@ -178,18 +178,18 @@ class ShardDatasetOp::Dataset : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       if (!reader->Contains(full_name(kInputImplEmpty))) {
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name(kNextIndex), &next_index_));
       } else {
-        DatasetBaseIterator::input_impl_.reset();
+        input_impl_.reset();
       }
       return Status::OK();
     }
 
    private:
     mutex mu_;
-    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     int64 next_index_ GUARDED_BY(mu_);
   };
 

@@ -71,6 +71,7 @@ constexpr char kShuffleDataset[] = "ShuffleDataset";
 ShuffleDatasetOpBase::ShuffleDatasetOpBase(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {}
 
+typedef std::pair<std::vector<Tensor>, EparallaxTensorIndex*> ShuffleBufferItem;
 // Abstract base dataset that implements a shuffling iterator.
 class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
  public:
@@ -114,52 +115,44 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         : DatasetIterator<T>(params),
           seed_(seed),
           seed2_(seed2),
-          //DatasetBaseIterator::input_impl_(nullptr),
+          //input_impl_(nullptr),
           epoch_(0),
           num_elements_(0),
           parent_generator_(seed, seed2),
           generator_(&parent_generator_) {
-      buffer_ = absl::make_unique<std::vector<Tensor>[]>(
+      buffer_ = absl::make_unique<ShuffleBufferItem[]>(
           params.dataset->buffer_size_);
       slices_.push_back(absl::make_unique<Slice>(0, 0));
-      /*
-      std::vector<EparallaxTensorIndex*> buffered_indices;
-      DatasetBaseIterator::RestoreProcessedIndicesFromCheckpoint("buffered_index",
-                                                                 &buffered_indices);
-      for (auto it=DatasetBaseIterator::processed_indices_.begin();
-           it<DatasetBaseIterator::processed_indices_.end(); it++) {
-        for (auto it2=buffered_indices.begin(); it2<buffered_indices.end(); it2++) {
-          if (*it == *it2) {
-            DatasetBaseIterator::processed_indices_.erase(it);
-          }
-        }
-      }*/
     }
 
-    ~Iterator() {/*
-      for(int64 i=0; i<num_elements_; i++) {
-        LOG(INFO) << "addr" << &buffer_[i];
-        LOG(INFO) << "tensor" << &buffer_[i][0];
-        EparallaxTensorIndex* buffered_index = buffer_[i][0].GetGlobalIndex();
-        LOG(INFO) << "XX" << *buffered_index;
-        DatasetBaseIterator::StoreValueToCheckpoint<EparallaxTensorIndex>(
-            *buffered_index, "buffered_index");
-      }*/
+    ~Iterator() {
+      //CheckpointBufferIndices();
     }
+
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       int64 start_micros = ctx->env()->NowMicros();
       int64 num_log_entries = 0;
       bool first_call = false;
-      if (!DatasetBaseIterator::input_impl_ && epoch_ == 0) {
+      if (!input_impl_ && epoch_ == 0) {
         first_call = true;
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-            ctx, this->prefix(), &(DatasetBaseIterator::input_impl_)));
+            ctx, this->prefix(), &input_impl_));
+        /*std::vector<EparallaxTensorIndex*> buffered_indices;
+        DatasetBaseIterator::RestoreProcessedIndicesFromCheckpoint("buffered_index", &buffered_indices);
+        for (size_t i=0; i<buffered_indices.size(); i++) {
+          Status s = input_impl_->GetItem(
+              ctx, out_tensors, end_of_sequence, buffered_indices[i]);
+          if (!s.ok() || *end_of_sequence) return s;
+          buffer_[i] =
+              std::make_pair(std::move(*out_tensors), buffered_indices[i]);
+          out_tensors->clear();
+        }*/
       }
-      while (DatasetBaseIterator::input_impl_ && num_elements_ < this->dataset()->buffer_size_) {
+      while (input_impl_ && num_elements_ < this->dataset()->buffer_size_) {
         if (ctx->env()->NowMicros() >
             ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
           num_log_entries++;
@@ -168,10 +161,12 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         }
         std::vector<Tensor> input_element;
         bool end_of_input_sequence = false;
+        std::vector<EparallaxTensorIndex*> input_parent_indices;
         while (this->dataset()->count_ == -1 ||
                epoch_ < this->dataset()->count_) {
-          TF_RETURN_IF_ERROR(DatasetBaseIterator::input_impl_->GetNext(ctx, &input_element,
-                                                  &end_of_input_sequence));
+          input_parent_indices.clear();
+          TF_RETURN_IF_ERROR(DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &input_element,
+                                                  &end_of_input_sequence, &input_parent_indices));
           if (!end_of_input_sequence) {
             first_call = false;
             break;
@@ -188,7 +183,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           int64 n = slices_.back()->end;
           slices_.push_back(absl::make_unique<Slice>(n, n));
           TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-              ctx, this->prefix(), &(DatasetBaseIterator::input_impl_)));
+              ctx, this->prefix(), &input_impl_));
         }
         if (!end_of_input_sequence) {
           if (num_elements_ == 0) {
@@ -197,11 +192,11 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           }
           this->RecordBufferEnqueue(ctx, input_element);
           buffer_[slices_.back()->end % this->dataset()->buffer_size_] =
-              std::move(input_element);
+              std::make_pair(std::move(input_element), input_parent_indices[0]);
           num_elements_++;
           slices_.back()->end++;
         } else {
-          DatasetBaseIterator::input_impl_.reset();
+          input_impl_.reset();
         }
         if (slices_.size() > kMaxEpochsInBuffer) {
           // When the elements stored in `buffer_` span more than
@@ -230,7 +225,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             Random() % (slices_.front()->end - slices_.front()->start);
         int64 index =
             (slices_.front()->start + offset) % this->dataset()->buffer_size_;
-        *out_tensors = std::move(buffer_[index]);
+        *out_tensors = std::move(std::get<0>(buffer_[index]));
+        EparallaxTensorIndex* parent_index = std::get<1>(buffer_[index]);
+        LOG(INFO) << *parent_index;
+        parent_indices->push_back(parent_index);
         this->RecordBufferDequeue(ctx, *out_tensors);
         std::swap(
             buffer_[index],
@@ -238,7 +236,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         slices_.front()->start++;
         num_elements_--;
       } else {
-        DCHECK(DatasetBaseIterator::input_impl_ == nullptr);
+        DCHECK(input_impl_ == nullptr);
         *end_of_sequence = true;
       }
       return Status::OK();
@@ -269,11 +267,11 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
       // Save input iterator if it hasn't been exhausted else write
       // "end_of_input_sequence".
-      if (!DatasetBaseIterator::input_impl_) {
+      if (!input_impl_) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(this->full_name(kEndOfInputSequence), ""));
       } else {
-        TF_RETURN_IF_ERROR(this->SaveInput(writer, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(this->SaveInput(writer, input_impl_));
       }
 
       // Save the epoch counter, buffer, and buffer slices.
@@ -295,12 +293,12 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               this->full_name(
                   absl::StrJoin(std::make_tuple(kBuffer, index, kSize), "_")),
-              buffer_[index].size()));
-          for (size_t k = 0; k < buffer_[index].size(); ++k) {
+              std::get<0>(buffer_[index]).size()));
+          for (size_t k = 0; k < std::get<0>(buffer_[index]).size(); ++k) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
                 this->full_name(
                     absl::StrJoin(std::make_tuple(kBuffer, index, k), "_")),
-                buffer_[index][k]));
+                std::get<0>(buffer_[index])[k]));
           }
         }
       }
@@ -321,10 +319,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       // Restore the input iterator if it wasn't already exhausted.
       if (!reader->Contains(this->full_name(kEndOfInputSequence))) {
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-            ctx, this->prefix(), &(DatasetBaseIterator::input_impl_)));
-        TF_RETURN_IF_ERROR(this->RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+            ctx, this->prefix(), &input_impl_));
+        TF_RETURN_IF_ERROR(this->RestoreInput(ctx, reader, input_impl_));
       } else {
-        DatasetBaseIterator::input_impl_.reset();
+        input_impl_.reset();
       }
 
       // Restore the epoch counter, buffer, and buffer slices.
@@ -338,7 +336,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             reader->ReadScalar(this->full_name(kSlicesSize), &temp));
         slices_size = static_cast<size_t>(temp);
       }
-      buffer_ = absl::make_unique<std::vector<Tensor>[]>(
+      buffer_ = absl::make_unique<ShuffleBufferItem[]>(
           this->dataset()->buffer_size_);
       for (size_t i = 0; i < slices_size; ++i) {
         int64 start;
@@ -358,18 +356,32 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
               this->full_name(
                   absl::StrJoin(std::make_tuple(kBuffer, index, kSize), "_")),
               &list_size));
-          buffer_[index] = std::vector<Tensor>(list_size);
+          buffer_[index] = std::make_pair(std::vector<Tensor>(list_size), nullptr);
           for (int k = 0; k < list_size; ++k) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
                 this->full_name(
                     absl::StrJoin(std::make_tuple(kBuffer, index, k), "_")),
-                &buffer_[index][k]));
+                &(std::get<0>(buffer_[index])[k])));
           }
         }
       }
 
       return Status::OK();
     }
+
+    /*
+    void CheckpointBufferIndices() {
+      std::ofstream ckpt_file;
+      ckpt_file.open(DatasetBaseIterator::ckpt_file_path().data(), std::ios_base::app);
+      if(ckpt_file.is_open()){
+        for (int i=0; i<num_elements_; i++) {
+          EparallaxTensorIndex* index = std::get<1>(buffer_[i]);
+          LOG(INFO) << "Saving " << *index;
+          ckpt_file << "buffered_index:" << *index << "\n";
+        }
+        ckpt_file.close();
+      }
+    }*/
 
     mutex mu_;
     int64 seed_ GUARDED_BY(mu_);
@@ -394,9 +406,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       auto out = generator_();
       return out;
     }
-
-    std::unique_ptr<std::vector<Tensor>[]> buffer_ GUARDED_BY(mu_);
-//std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY
+    
+    std::unique_ptr<ShuffleBufferItem[]> buffer_ GUARDED_BY(mu_);
+    //std::unique_ptr<std::vector<Tensor>[]> buffer_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY
     int64 epoch_ GUARDED_BY(mu_);
     int64 num_elements_ GUARDED_BY(mu_);
     std::deque<std::unique_ptr<Slice>> slices_ GUARDED_BY(mu_);

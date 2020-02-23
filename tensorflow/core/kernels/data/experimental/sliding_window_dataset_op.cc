@@ -135,19 +135,19 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         const int64 window_size = dataset()->window_size_;
         const int64 window_shift = dataset()->window_shift_;
         const int64 window_stride = dataset()->window_stride_;
         std::vector<std::vector<Tensor>> batch_elements;
         {
           mutex_lock l(mu_);
-          if (!DatasetBaseIterator::input_impl_) {
+          if (!input_impl_) {
             *end_of_sequence = true;
             return Status::OK();
           }
@@ -160,11 +160,11 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                ++i) {
             std::vector<Tensor> element;
             TF_RETURN_IF_ERROR(
-                DatasetBaseIterator::input_impl_->GetNext(ctx, &element, end_of_sequence));
+                DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &element, end_of_sequence, parent_indices));
             if (!*end_of_sequence) {
               buffer_.push_back(std::move(element));
             } else {
-              DatasetBaseIterator::input_impl_.reset();
+              input_impl_.reset();
             }
           }
 
@@ -184,9 +184,9 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
               bool end_of_input;
               std::vector<Tensor> element;
               TF_RETURN_IF_ERROR(
-                  DatasetBaseIterator::input_impl_->GetNext(ctx, &element, &end_of_input));
+                  DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &element, &end_of_input));
               if (end_of_input) {
-                DatasetBaseIterator::input_impl_.reset();
+                input_impl_.reset();
                 break;
               }
             }
@@ -238,11 +238,11 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        if (!DatasetBaseIterator::input_impl_) {
+        if (!input_impl_) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
         } else {
-          TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         }
         // Save buffer.
         TF_RETURN_IF_ERROR(writer->WriteScalar(strings::StrCat("buffer_size"),
@@ -262,9 +262,9 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (!reader->Contains(full_name("input_impl_empty"))) {
-          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
-          DatasetBaseIterator::input_impl_.reset();
+          input_impl_.reset();
         }
         // Restore buffer.
         int64 buffer_size = 0;
@@ -291,7 +291,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
 
       mutex mu_;
       std::deque<std::vector<Tensor>> buffer_ GUARDED_BY(mu_);
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 
     const int64 window_size_;

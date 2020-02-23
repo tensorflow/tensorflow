@@ -206,7 +206,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
 
         // The first num_experiments_ iterations, we fire up a thread for
@@ -227,7 +227,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
           }
           return threads[0].result->status;
         }
-        return fastest_input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+        return GetNextFromInput(fastest_input_impl_, ctx, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -320,8 +320,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
 
       void RunnerThread(IteratorContext* ctx, InvocationResult* result, int i) {
         int64 start = Env::Default()->NowNanos();
-        Status s = input_impls_[i]->GetNext(ctx, &result->out_tensors,
-                                            &result->end_of_sequence);
+        Status s = GetNextFromInput(input_impls_[i], ctx, &result->out_tensors,
+                                    &result->end_of_sequence);
         histograms_[i].Add(
             static_cast<double>(Env::Default()->NowNanos() - start));
 

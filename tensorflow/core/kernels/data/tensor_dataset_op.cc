@@ -94,7 +94,7 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       if (!produced_) {
         *out_tensors = dataset()->tensors_;

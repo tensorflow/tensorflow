@@ -127,21 +127,21 @@ class MapDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
+          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       // NOTE(mrry): This method is thread-safe as long as
-      // `DatasetBaseIterator::input_impl_` and `f` are thread-safe. However, if multiple
+      // `input_impl_` and `f` are thread-safe. However, if multiple
       // threads enter this method, outputs may be observed in a
       // non-deterministic order.
 
       std::vector<Tensor> args;
-      TF_RETURN_IF_ERROR(DatasetBaseIterator::input_impl_->GetNext(ctx, &args, end_of_sequence));
+      TF_RETURN_IF_ERROR(DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &args, end_of_sequence, parent_indices));
       if (*end_of_sequence) {
         return Status::OK();
       }
@@ -174,18 +174,18 @@ class MapDatasetOp::Dataset : public DatasetBase {
     }
 
     Status SaveInternal(IteratorStateWriter* writer) override {
-      TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       return Status::OK();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       return Status::OK();
     }
 
    private:
-    //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_;
+    std::unique_ptr<IteratorBase> input_impl_;
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
   };
 

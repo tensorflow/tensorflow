@@ -181,7 +181,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_)));
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Instantiate(
             ctx, &instantiated_key_func_));
         TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Instantiate(
@@ -193,15 +193,15 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         do {
           if (current_group_iterator_) {
             // We are currently processing a group, so try to get the
             // next element.
             bool end_of_group;
-            TF_RETURN_IF_ERROR(current_group_iterator_->GetNext(
-                ctx, out_tensors, &end_of_group));
+            TF_RETURN_IF_ERROR(GetNextFromInput(
+                current_group_iterator_, ctx, out_tensors, &end_of_group));
             if (!end_of_group) {
               // Produce the subelement as output.
               *end_of_sequence = false;
@@ -218,7 +218,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           while (!end_of_input_) {
             std::vector<Tensor> next_input_element;
             TF_RETURN_IF_ERROR(
-                DatasetBaseIterator::input_impl_->GetNext(ctx, &next_input_element, &end_of_input_));
+                DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &next_input_element, &end_of_input_, parent_indices));
 
             if (!end_of_input_) {
               // Run the key function on the input element to identify its
@@ -296,7 +296,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
 
         if (end_of_input_) {
           TF_RETURN_IF_ERROR(
@@ -353,7 +353,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
 
         if (reader->Contains(full_name("end_of_input"))) end_of_input_ = true;
 
@@ -484,7 +484,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
       mutex mu_;
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       // TODO(mrry): Optimize for dense key space if appropriate.
       bool end_of_input_ GUARDED_BY(mu_) = false;
       int64 current_key_ GUARDED_BY(mu_);

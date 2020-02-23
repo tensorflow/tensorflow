@@ -91,19 +91,19 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         bool saw_new_value;
         do {
           saw_new_value = false;
           out_tensors->clear();
           TF_RETURN_IF_ERROR(
-              DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
+              DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
           if (*end_of_sequence) {
             break;
           }
@@ -121,8 +121,8 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        if (DatasetBaseIterator::input_impl_) {
-          TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+        if (input_impl_) {
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
@@ -141,9 +141,9 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (!reader->Contains(full_name("input_impl_empty"))) {
-          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
-          DatasetBaseIterator::input_impl_.reset();
+          input_impl_.reset();
         }
         int64 num_unique_elements;
         unique_elements_.clear();
@@ -212,7 +212,7 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
       };
 
       mutex mu_;
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::unordered_set<Tensor, TensorHash, TensorKeyEqual> unique_elements_
           GUARDED_BY(mu_);
     };

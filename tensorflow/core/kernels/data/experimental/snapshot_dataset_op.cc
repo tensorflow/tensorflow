@@ -451,7 +451,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         if (iterator_ == nullptr) {
           experimental::SnapshotMetadataRecord metadata;
@@ -481,7 +481,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(iterator_->Initialize(ctx));
         }
 
-        return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
+        return DatasetBaseIterator::GetNextFromInput(iterator_, ctx, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -534,7 +534,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         Status GetNextInternal(IteratorContext* ctx,
                                std::vector<Tensor>* out_tensors,
-                               bool* end_of_sequence) override {
+                               bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
           absl::Time start = absl::Now();
           mutex_lock l(mu_);
           if (!background_threads_started_) {
@@ -757,12 +757,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           metadata.set_finalized(false);
           TF_RETURN_IF_ERROR(WriteMetadataFile(hash_dir_, metadata));
 
-          return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+          return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
         }
 
         Status GetNextInternal(IteratorContext* ctx,
                                std::vector<Tensor>* out_tensors,
-                               bool* end_of_sequence) override {
+                               bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
           absl::Time start = absl::Now();
 
           bool first_call;
@@ -786,7 +786,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           // element in the data stream. Therefore the first call ends up
           // pulling two elements.
           if (first_call) {
-            TF_RETURN_IF_ERROR(FillBuffer(ctx));
+            TF_RETURN_IF_ERROR(FillBuffer(ctx, parent_indices));
           }
 
           {
@@ -797,7 +797,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           }
 
           // Update prefetched_elem with the next element.
-          TF_RETURN_IF_ERROR(FillBuffer(ctx));
+          TF_RETURN_IF_ERROR(FillBuffer(ctx, parent_indices));
 
           // Book keeping to report some statistics.
           mutex_lock l(mu_);
@@ -835,10 +835,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           return snapshot_data_filename;
         }
 
-        Status FillBuffer(IteratorContext* ctx) LOCKS_EXCLUDED(mu_) {
+        Status FillBuffer(IteratorContext* ctx, std::vector<EparallaxTensorIndex*>* parent_indices) LOCKS_EXCLUDED(mu_) {
           BufferElement elem;
           TF_RETURN_IF_ERROR(
-              DatasetBaseIterator::input_impl_->GetNext(ctx, &elem.value, &elem.end_of_sequence));
+              DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &elem.value, &elem.end_of_sequence, parent_indices));
 
           mutex_lock l(mu_);
           next_elem_ = std::move(elem);
@@ -1018,7 +1018,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         condition_variable cond_var_;
 
         BufferElement next_elem_ GUARDED_BY(mu_);
-        //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_;
+        std::unique_ptr<IteratorBase> input_impl_;
 
         const string hash_dir_;
         string run_id_ GUARDED_BY(mu_);
@@ -1045,17 +1045,17 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             : DatasetIterator<Dataset>(params) {}
 
         Status Initialize(IteratorContext* ctx) override {
-          return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+          return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
         }
 
         Status GetNextInternal(IteratorContext* ctx,
                                std::vector<Tensor>* out_tensors,
-                               bool* end_of_sequence) override {
-          return DatasetBaseIterator::input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+                               bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+          return DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
         }
 
        private:
-        //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_;
+        std::unique_ptr<IteratorBase> input_impl_;
       };
 
       string hash_dir_ GUARDED_BY(mu_);

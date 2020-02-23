@@ -150,12 +150,12 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         return DatasetIterator<Dataset<T>>::dataset()->input_->MakeIterator(
-            ctx, DatasetIterator<Dataset<T>>::prefix(), &(DatasetBaseIterator::input_impl_));
+            ctx, DatasetIterator<Dataset<T>>::prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         // Each row of the output SparseTensor is an individual tensor
         // from the input iterator.
         std::vector<Tensor> batch_elements;
@@ -186,8 +186,8 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
                !*end_of_sequence;
                ++i) {
             std::vector<Tensor> batch_element_tuple;
-            TF_RETURN_IF_ERROR(DatasetBaseIterator::input_impl_->GetNext(ctx, &batch_element_tuple,
-                                                    end_of_sequence));
+            TF_RETURN_IF_ERROR(DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &batch_element_tuple,
+                                                    end_of_sequence, parent_indices));
             if (!*end_of_sequence) {
               DCHECK_EQ(1, batch_element_tuple.size());
               batch_elements.push_back(std::move(batch_element_tuple[0]));
@@ -289,20 +289,20 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(Iterator::SaveInput(writer, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(Iterator::SaveInput(writer, input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(Iterator::RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+        TF_RETURN_IF_ERROR(Iterator::RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 
      private:
       mutex mu_;
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 
     const int64 batch_size_;

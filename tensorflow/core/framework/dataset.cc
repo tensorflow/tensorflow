@@ -412,22 +412,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
   return status;
 }
 
-bool DatasetBaseIterator::AlreadyProcessed(EparallaxTensorIndex* index) {
-  for (auto it=processed_indices_.begin(); it!=processed_indices_.end(); it++) {
-    EparallaxTensorIndex* processed_index = *it;
-    //LOG(INFO) << "Found processed index: " << *processed_index;
-    if (*index == *processed_index) {
-      LOG(INFO) << "Index is already processed; Skipping.";
-      LOG(INFO) << *index << " == " << *processed_index;
-      //processed_indices_.erase(it);
-      return true;
-    } else {
-      //LOG(INFO) << *index << " != " << *processed_index;
-    }
-  }
-  return false;
-}
-
+/*
 void DatasetBaseIterator::InitializeOrIncrementLocalIndex() {
   std::vector<EparallaxTensorIndex*>* parent_indices = GetGlobalIndex()->parent_indices();
   int64 last_local_index = -1;
@@ -448,7 +433,8 @@ void DatasetBaseIterator::UpdateLocalIndex() {
     InitializeOrIncrementLocalIndex();
   }
 }
-
+*/
+/*
 EparallaxTensorIndex* DatasetBaseIterator::GetGlobalIndex() {
   if (input_impl_ == nullptr) {
     return new EparallaxTensorIndex(prefix(), nullptr, local_index_);
@@ -458,7 +444,8 @@ EparallaxTensorIndex* DatasetBaseIterator::GetGlobalIndex() {
                                     local_index_);
   }
 }
-
+*/
+/*
 std::vector<EparallaxTensorIndex*>* DatasetBaseIterator::GetAccumulatedIndices() {
   std::vector<EparallaxTensorIndex*>* v = new std::vector<EparallaxTensorIndex*> {};
   for (auto it=accumulated_indices_.begin(); it!=accumulated_indices_.end(); it++) {
@@ -467,38 +454,144 @@ std::vector<EparallaxTensorIndex*>* DatasetBaseIterator::GetAccumulatedIndices()
   gai_called_ = true;
   return v;
 }
+*/
+/*
+Status DatasetBaseIterator::GetItem(IteratorContext* ctx,
+                                    std::vector<Tensor>* out_tensors,
+                                    bool* end_of_sequence,
+                                    EparallaxTensorIndex* index) {
+  for (auto it=buffer_.begin(); it!=buffer_.end(); it++) {
+    EparallaxTensorIndex* current_index = std::get<0>(*it);
+    if (*current_index == *index) {
+      Status s = std::get<1>(*it);
+      *out_tensors = std::move(std::get<2>(*it));
+      *end_of_sequence = std::get<3>(*it);
+      buffer_.erase(it);
+      return s;
+    }
+  }
+  do {
+    out_tensors->clear();
+    Status s = GetNext(ctx, out_tensors, end_of_sequence);
+    UpdateLocalIndex();
+    EparallaxTensorIndex* current_index = GetGlobalIndex();
+    if (*current_index == *index) {
+      return s;
+    }
+    buffer_.push_back(std::make_tuple(current_index, s, *out_tensors,
+                                      *end_of_sequence));
+  } while (true);
+}*/
+
+/*void DatasetBaseIterator::NotifyFinished(EparallaxTensorIndex* index) {
+  processed_indices_.push_back(index);
+  if (input_impl_ && *input_impl_->GetGlobalIndex() != *index->parent_indices()) {
+    for (auto i=index->parent_indices()->begin(); i<index->parent_indices->end(); i++) {
+      input_impl_->NotifyFinished(*i);
+    }
+  }
+}*/
+void IndexManager::NotifyFinished(EparallaxTensorIndex* index) {
+  bool last = true;
+  {
+    mutex_lock l(mu_);
+    LOG(INFO) << "Processed " << *index;
+    processed_indices_.push_back(index);
+    for (auto issued_index : issued_indices_) {
+      if (issued_index->parent_indices() != nullptr &&
+          index->parent_indices() != nullptr &&
+          *issued_index->parent_indices() == *index->parent_indices() &&
+          issued_index->local_index() != index->local_index()) {
+        last = false;
+        break;
+      }
+    }
+  }
+  if (last && index->parent_indices() != nullptr) {
+    for (auto parent_index : *index->parent_indices()) {
+      NotifyFinished(parent_index);
+    }
+  }
+}
+
+EparallaxTensorIndex* IndexManager::IssueNewIndex(
+    string prefix, std::vector<EparallaxTensorIndex*>* parent_indices) {
+  mutex_lock l(mu_);
+  EparallaxTensorIndex* out_index;
+
+  if (parent_indices->empty()) {
+    if (local_index_map_.find(prefix) == local_index_map_.end()) {
+      local_index_map_.insert(std::make_pair(prefix, 0));
+    }
+    auto it = local_index_map_.find(prefix);
+    out_index = new EparallaxTensorIndex(prefix, nullptr, it->second++);
+  } else {
+    int64 last_local_index = -1;
+    for (auto issued_index : issued_indices_) {
+      if (issued_index->parent_indices() != nullptr &&
+          *issued_index->parent_indices() == *parent_indices &&
+          issued_index->local_index() > last_local_index) {
+        last_local_index = issued_index->local_index();
+      }
+    }
+    out_index = new EparallaxTensorIndex(prefix, parent_indices,
+                                         last_local_index + 1);
+  }
+  issued_indices_.push_back(out_index);
+  return out_index;
+}
+
+bool IndexManager::AlreadyProcessed(EparallaxTensorIndex* index) {
+  mutex_lock l(mu_);
+  for (auto processed_index : processed_indices_) {
+    if (*index == *processed_index) {
+      LOG(INFO) << "Index is already processed; Skipping.";
+      LOG(INFO) << *index << " == " << *processed_index;
+      return true;
+    }
+  }
+  return false;
+}
+
+Status DatasetBaseIterator::GetNextFromInput(
+    IteratorBase* const input_impl, IteratorContext* ctx,
+    std::vector<Tensor>* out_tensors,
+    bool* end_of_sequence,
+    std::vector<EparallaxTensorIndex*>* parent_indices) {
+  EparallaxTensorIndex* out_index;
+  Status s = input_impl->GetNext(ctx, out_tensors, end_of_sequence, out_index);
+  if (parent_indices != nullptr) {
+    parent_indices->push_back(out_index);
+  }
+  return s;
+}
 
 Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     std::vector<Tensor>* out_tensors,
-                                    bool* end_of_sequence) {
+                                    bool* end_of_sequence,
+                                    EparallaxTensorIndex*& out_index) {
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
   RecordStart(ctx, /*stop_output=*/true);
-  Status s;
-  EparallaxTensorIndex* global_index;
-  s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-  if (!s.ok() || *end_of_sequence || out_tensors->empty()) {
-    return s;
-  }
-  if (last_index_ != nullptr) {
-    LOG(INFO) << "Processing done:      " << *last_index_;
-    processed_indices_.push_back(last_index_);
-  }
-  UpdateLocalIndex();
-  global_index = GetGlobalIndex();
-  if (AlreadyProcessed(global_index)) {
-    out_tensors->clear();
-    delete global_index;
-    return s;
-  }
-  last_index_ = global_index;
-  if (gai_called_) {
-    accumulated_indices_.clear();
-    gai_called_ = false;
-  }
-  accumulated_indices_.push_back(global_index);
+  std::vector<EparallaxTensorIndex*>* parent_indices =
+      new std::vector<EparallaxTensorIndex*> {};
+  Status s = GetNextInternal(ctx, out_tensors, end_of_sequence, parent_indices);
+  LOG(INFO) << "parent indices: " << *parent_indices;
+  out_index = ctx->index_manager()->IssueNewIndex(prefix(), parent_indices);
+  LOG(INFO) << "out index: " << *out_index;
 
-  LOG(INFO) << "Fetched tensor index: " << *global_index;
+  if (!s.ok() || *end_of_sequence || out_tensors->empty()) {
+    if (out_tensors->empty()) {
+      LOG(INFO) << prefix() << ": Got empty output; Skipping.";
+    }
+    return s;
+  }
+  if (ctx->index_manager()->AlreadyProcessed(out_index)) {
+    out_tensors->clear();
+    return s;
+  }
+
+  //LOG(INFO) << "Fetched tensor index: " << *global_index;
 
   if (s.ok() && !*end_of_sequence) RecordElement(ctx);
   RecordStop(ctx, /*start_output=*/true);

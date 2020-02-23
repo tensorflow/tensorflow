@@ -195,14 +195,14 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         return dataset()->input_->MakeIterator(
-            IteratorContext(CreateParams(ctx)), prefix(), &(DatasetBaseIterator::input_impl_));
+            IteratorContext(CreateParams(ctx)), prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
-        return DatasetBaseIterator::input_impl_->GetNext(IteratorContext(CreateParams(ctx)),
-                                    out_tensors, end_of_sequence);
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+        return DatasetBaseIterator::GetNextFromInput(input_impl_, IteratorContext(CreateParams(ctx)),
+                                    out_tensors, end_of_sequence, parent_indices);
       }
 
      protected:
@@ -223,7 +223,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
         return params;
       }
 
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_;
+      std::unique_ptr<IteratorBase> input_impl_;
     };
 
     const DatasetBase* const input_;
@@ -304,18 +304,18 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         IteratorContext::Params params(ctx);
         auto max_parallelism = dataset()->max_intra_op_parallelism_;
         params.runner =
             RunnerWithMaxParallelism(*ctx->runner(), max_parallelism);
-        return DatasetBaseIterator::input_impl_->GetNext(IteratorContext{std::move(params)},
-                                    out_tensors, end_of_sequence);
+        return DatasetBaseIterator::GetNextFromInput(input_impl_, IteratorContext{std::move(params)},
+                                    out_tensors, end_of_sequence, parent_indices);
       }
 
      protected:
@@ -326,7 +326,7 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_;
+      std::unique_ptr<IteratorBase> input_impl_;
     };
 
     const DatasetBase* const input_;
@@ -405,20 +405,20 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         thread::ThreadPool* pool = dataset()->thread_pool_.get();
         IteratorContext::Params params(ctx);
         params.runner = [pool](std::function<void()> c) {
           pool->Schedule(std::move(c));
         };
         params.runner_threadpool_size = dataset()->num_threads_;
-        return DatasetBaseIterator::input_impl_->GetNext(IteratorContext{std::move(params)},
-                                    out_tensors, end_of_sequence);
+        return DatasetBaseIterator::GetNextFromInput(input_impl_, IteratorContext{std::move(params)},
+                                    out_tensors, end_of_sequence, parent_indices);
       }
 
      protected:
@@ -429,7 +429,7 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_;
+      std::unique_ptr<IteratorBase> input_impl_;
     };
 
     const DatasetBase* const input_;

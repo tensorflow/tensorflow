@@ -91,14 +91,14 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             shapes_(params.dataset->output_shapes().size()) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &(DatasetBaseIterator::input_impl_));
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
-        if (!DatasetBaseIterator::input_impl_) {
+        if (!input_impl_) {
           *end_of_sequence = true;
           return Status::OK();
         }
@@ -121,7 +121,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
           current_batch_size_ = 0;
           tensors_.clear();
           TF_RETURN_IF_ERROR(
-              DatasetBaseIterator::input_impl_->GetNext(ctx, &tensors_, end_of_sequence));
+              DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &tensors_, end_of_sequence, parent_indices));
           if (!*end_of_sequence) {
             for (size_t i = 0; i < tensors_.size(); ++i) {
               if (tensors_[i].dims() == 0) {
@@ -142,7 +142,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             current_batch_size_ = tensors_[0].dim_size(0);
           }
         }
-        DatasetBaseIterator::input_impl_.reset();
+        input_impl_.reset();
         return Status::OK();
       }
 
@@ -163,8 +163,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        if (DatasetBaseIterator::input_impl_) {
-          TF_RETURN_IF_ERROR(SaveInput(writer, DatasetBaseIterator::input_impl_));
+        if (input_impl_) {
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
@@ -186,9 +186,9 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (!reader->Contains(full_name("input_impl_empty"))) {
-          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, DatasetBaseIterator::input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
-          DatasetBaseIterator::input_impl_.reset();
+          input_impl_.reset();
         }
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name("current_index"), &current_index_));
@@ -212,7 +212,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       int64 current_index_ GUARDED_BY(mu_);
       int64 current_batch_size_ GUARDED_BY(mu_);
       std::vector<Tensor> tensors_ GUARDED_BY(mu_);
-      //std::unique_ptr<IteratorBase> DatasetBaseIterator::input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::vector<TensorShape> shapes_ GUARDED_BY(mu_);
     };
 
