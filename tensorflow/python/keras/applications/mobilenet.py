@@ -443,6 +443,9 @@ def preprocess_input(x, data_format=None):
 
   Returns
     Preprocessed array.
+
+  Raises
+    ValueError: In case of unknown `data_format` argument.
   """
   return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
 
