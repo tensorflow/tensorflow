@@ -369,10 +369,13 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
 
     class MyOptimizer(gradient_descent.SGD):
 
-      def apply_gradients(self, grads_and_vars, name=None):
+      def apply_gradients(self, grads_and_vars, name=None,
+                          all_reduce_sum_gradients=True):
         for grad, _ in grads_and_vars:
           outer_self.assertIsInstance(grad, ops.Tensor)
-        return super(MyOptimizer, self).apply_gradients(grads_and_vars, name)
+        return super(MyOptimizer,
+                     self).apply_gradients(grads_and_vars, name,
+                                           all_reduce_sum_gradients)
 
     with create_mirrored_strategy().scope() as strategy:
       var = variables.Variable([5.0])
