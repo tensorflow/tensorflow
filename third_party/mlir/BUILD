@@ -1762,6 +1762,7 @@ cc_library(
         ":LinalgToSPIRV",
         ":LinalgTransforms",
         ":LoopOps",
+        ":LoopOpsTransforms",
         ":LoopsToGPUPass",
         ":NVVMDialect",
         ":OpenMPDialect",
