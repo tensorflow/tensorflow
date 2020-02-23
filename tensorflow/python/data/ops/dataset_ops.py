@@ -534,6 +534,13 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> list(dataset.as_numpy_iterator())
     [(array([1, 2, 3], dtype=int32), b'A')]
 
+    >>> # `from_tensors` creates 3D tensor in below example
+    >>> # unlike `from_tensor_slices` which merges the input tensor.
+    >>> dataset = tf.data.Dataset.from_tensors([tf.random_uniform([2, 3]),
+                                               tf.random_uniform([2, 3])])
+    >>> list(dataset.as_numpy_iterator())[0].shape
+    (2, 2, 3)
+
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
@@ -610,6 +617,13 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     (array([[3, 3],
            [3, 2]], dtype=int32), array([[b'A'],
            [b'B']], dtype=object))
+
+    >>> # `from_tensor_slices` merges the input tensor 
+    >>> # unlike `from_tensors` which will create 3D tensor in below example.
+    >>> dataset = tf.data.Dataset.from_tensor_slices([tf.random.uniform([2, 3]),
+                                                     tf.random.uniform([2, 3])])
+    >>> list(dataset.as_numpy_iterator())[0].shape
+    (2, 3)
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
