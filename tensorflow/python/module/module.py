@@ -106,19 +106,17 @@ class Module(tracking.AutoTrackable):
   def __init__(self, name=None):
     if name is None:
       name = camel_to_snake(type(self).__name__)
-    else:
-      if not valid_identifier(name):
-        raise ValueError(
+    elif not valid_identifier(name):
+      raise ValueError(
             "%r is not a valid module name. Module names must be valid Python "
             "identifiers (e.g. a valid class name)." % name)
-
+      
     self._name = name
     if tf2.enabled():
       with ops.name_scope_v2(name) as scope_name:
         self._name_scope = ops.name_scope_v2(scope_name)
-    else:
-      with ops.name_scope(name, skip_on_eager=False) as scope_name:
-        self._scope_name = scope_name
+    with ops.name_scope(name, skip_on_eager=False) as scope_name:
+      self._scope_name = scope_name
 
   @property
   def name(self):
@@ -134,9 +132,8 @@ class Module(tracking.AutoTrackable):
     """Returns a `tf.name_scope` instance for this class."""
     if tf2.enabled():
       return self._name_scope
-    else:
       # In TF1 name_scope is not re-entrant in eager so we cannot memoize it.
-      return ops.name_scope(self._scope_name, skip_on_eager=False)
+    return ops.name_scope(self._scope_name, skip_on_eager=False)
 
   @property
   def variables(self):
@@ -355,8 +352,7 @@ def _flatten_module(module,
       if predicate(leaf):
         if with_path:
           yield module_path + leaf_path, leaf
-        else:
-          yield leaf
+        yield leaf
 
       if recursive and _is_module(leaf):
         # Walk direct properties first then recurse.
