@@ -1985,7 +1985,7 @@ void IrEmitterUnnested::EmitTile(
   //
   // TODO(cheshire): Once ptxas is fixed and TF switches to it, remove the
   // workaround.
-  int vec_stride = mapping_scheme.GetVectorSize();
+  int vector_size = mapping_scheme.GetVectorSize();
   ksl->For(
       loop_name + "_y_in_tile",
       /*start=*/constant(0),
@@ -1993,10 +1993,11 @@ void IrEmitterUnnested::EmitTile(
       ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
                     num_threads_y),
       /*step=*/constant(1), [&](llvm::Value* y_indvar) {
-        printf("VEC_STRIDE %d\n", vec_stride);
+        printf("VEC_STRIDE %d\n", vector_size);
         llvm::Value* y_loc = b_.CreateAdd(
             thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
-        if (vec_stride == 1) {
+        // TODO: can I get rid of this conditions?
+        if (vector_size == 1) {
           for (int64 j = 0; j < x_num_steps; j++) {
             llvm::Value* x_loc =
                 b_.CreateAdd(constant(j * step_x), start_offset_x, "x_loc");
@@ -2014,17 +2015,17 @@ void IrEmitterUnnested::EmitTile(
             }
           }
         } else {
-          auto unroll = [&](bool add_if, int64 max_element, int64 vec_stride) {
-          for (int64 j = 0; j < x_num_steps/vec_stride; j++) {
+          auto unroll = [&](bool add_if, int64 max_element, int64 vector_size) {
+          for (int64 j = 0; j < x_num_steps/vector_size; j++) {
             //Prep some values. If we do not do this, LLVM doesn't vectorize.
             llvm::Value* x_loc_base =
-                b_.CreateAdd(constant(j * step_x * vec_stride), start_offset_x, "x_loc_base");
+                b_.CreateAdd(constant(j * step_x * vector_size), start_offset_x, "x_loc_base");
             IrArray::Index source_idx_x_base =
                 source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
-                  .AddOffsetToDim(constant(j * step_x * vec_stride), kDimX, &b_);
+                  .AddOffsetToDim(constant(j * step_x * vector_size), kDimX, &b_);
 
-            for (int i = 0; i < vec_stride; i++) {
-              int old_j = j * vec_stride + i;
+            for (int i = 0; i < vector_size; i++) {
+              int old_j = j * vector_size + i;
               llvm::Value* x_loc = b_.CreateAdd(constant(i), x_loc_base, "x_loc");
               IrArray::Index source_idx_x = source_idx_x_base.AddOffsetToDim(
                   constant(i), kDimX, &b_);
@@ -2049,7 +2050,7 @@ void IrEmitterUnnested::EmitTile(
           }
           if (red_if == 1 || x_tile_fits) {
             std::cout << "IF_NB 1: " << std::endl;
-            unroll(!x_tile_fits, x_num_steps, vec_stride);
+            unroll(!x_tile_fits, x_num_steps, vector_size);
           } else {
             std::cout << "IF_NB 2" << std::endl;
             ksl->If(loop_name + "_is_full_tile",
@@ -2057,8 +2058,8 @@ void IrEmitterUnnested::EmitTile(
                     // tile_width is always exact. For the last block,
                     // it will be the exact number of elements left.
                     b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeFor(2)), tile_width),
-                    [&] {unroll(false, x_num_steps, vec_stride);},
-                    [&] {unroll(true, x_num_steps, vec_stride);});
+                    [&] {unroll(false, x_num_steps, vector_size);},
+                    [&] {unroll(true, x_num_steps, vector_size);});
           }
         }});
 }
