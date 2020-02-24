@@ -24,6 +24,7 @@ TfLiteRegistration* Register_MaxPool2D();
 TfLiteRegistration* Register_AvgPool2D();
 TfLiteRegistration* Register_AvgPool2D_Global();
 TfLiteRegistration* Register_Requantize_16_to_8();
+TfLiteRegistration* Register_Lookup_8();
 
 }  // namespace xcore
 }  // namespace micro

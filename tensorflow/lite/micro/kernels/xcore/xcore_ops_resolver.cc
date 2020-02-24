@@ -69,6 +69,7 @@ XcoreOpsResolver::XcoreOpsResolver() {
     AddCustom("XC_conv2d_shallowin_deepout_relu", Register_Conv2D_SIDO());
     AddCustom("XC_conv2d_deepin_deepout_relu", Register_Conv2D_DIDO());
     AddCustom("XC_requantize_16_to_8", Register_Requantize_16_to_8());
+    AddCustom("XC_lookup_8", Register_Lookup_8());
 }
 
 }  // namespace xcore
