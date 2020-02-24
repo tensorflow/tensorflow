@@ -204,6 +204,7 @@ cc_library(
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
@@ -316,6 +317,7 @@ cc_library(
     deps = [
         ":hlo",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -344,6 +346,7 @@ cc_library(
         ":xla_unfuse_batch_norm",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,

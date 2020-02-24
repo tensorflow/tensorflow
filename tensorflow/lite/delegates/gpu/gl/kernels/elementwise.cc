@@ -258,11 +258,13 @@ class ElementwiseTwoArguments : public NodeShader {
     if (IsSupportedBroadcast(ctx)) {
       return ImplementElementwiseBroadcast(ctx, generated_code);
     }
-    auto attr =
-        absl::any_cast<ElementwiseAttributes>(ctx.node->operation.attributes);
-    auto scalar = absl::get_if<float>(&attr.param);
-    if (scalar) {
-      return ImplementElementwiseWithScalar(ctx, *scalar, generated_code);
+    const ElementwiseAttributes* attr =
+        absl::any_cast<ElementwiseAttributes>(&ctx.node->operation.attributes);
+    if (attr) {
+      auto scalar = absl::get_if<float>(&attr->param);
+      if (scalar) {
+        return ImplementElementwiseWithScalar(ctx, *scalar, generated_code);
+      }
     }
     return InvalidArgumentError(
         "This case is not supported by elementwise with two arguments "

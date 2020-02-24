@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 

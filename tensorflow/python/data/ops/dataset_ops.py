@@ -39,7 +39,6 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.data.util import random_seed
-from tensorflow.python.data.util import sparse
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
@@ -131,7 +130,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   To create a dataset of all files matching a pattern, use
   `tf.data.Dataset.list_files`:
 
-  >>> dataset = tf.data.dataset.list_files("/path/*.txt")  # doctest: +SKIP
+  >>> dataset = tf.data.Dataset.list_files("/path/*.txt")  # doctest: +SKIP
 
   See `tf.data.FixedLengthRecordDataset` and `tf.data.Dataset.from_generator`
   for more ways to create datasets.
@@ -3857,10 +3856,13 @@ class PaddedBatchDataset(UnaryDataset):
                drop_remainder):
     """See `Dataset.batch()` for details."""
     self._input_dataset = input_dataset
-    if sparse.any_sparse(get_legacy_output_classes(input_dataset)):
-      # TODO(b/63669786): support batching of sparse tensors
-      raise TypeError(
-          "Batching of padded sparse tensors is not currently supported")
+
+    def check_types(component_spec):
+      if not isinstance(component_spec, tensor_spec.TensorSpec):
+        raise TypeError("Padded batching of components of type ",
+                        type(component_spec), " is not supported.")
+
+    nest.map_structure(check_types, input_dataset.element_spec)
     self._input_dataset = input_dataset
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")

@@ -75,7 +75,7 @@ def _create_dummy_repository(repository_ctx):
     # Copy license file in non-remote build.
     repository_ctx.template(
         "LICENSE",
-        Label("@org_tensorflow//third_party/tensorrt:LICENSE"),
+        Label("//third_party/tensorrt:LICENSE"),
         {},
     )
 
@@ -136,7 +136,7 @@ def _create_local_tensorrt_repository(repository_ctx):
     # Copy license file in non-remote build.
     repository_ctx.template(
         "LICENSE",
-        Label("@org_tensorflow//third_party/tensorrt:LICENSE"),
+        Label("//third_party/tensorrt:LICENSE"),
         {},
     )
 

@@ -37603,6 +37603,40 @@ func RecvTPUEmbeddingActivations(scope *Scope, num_outputs int64, config string)
 	return outputs
 }
 
+// QuantizeAndDequantizeV2GradAttr is an optional argument to QuantizeAndDequantizeV2Grad.
+type QuantizeAndDequantizeV2GradAttr func(optionalAttr)
+
+// QuantizeAndDequantizeV2GradAxis sets the optional axis attribute to value.
+// If not specified, defaults to -1
+func QuantizeAndDequantizeV2GradAxis(value int64) QuantizeAndDequantizeV2GradAttr {
+	return func(m optionalAttr) {
+		m["axis"] = value
+	}
+}
+
+// Returns the gradient of `QuantizeAndDequantizeV2`.
+//
+// Returns a gradient of 1 for inputs that are within the quantization range,
+// or 0 otherwise.
+func QuantizeAndDequantizeV2Grad(scope *Scope, gradients tf.Output, input tf.Output, input_min tf.Output, input_max tf.Output, optional ...QuantizeAndDequantizeV2GradAttr) (input_backprop tf.Output, input_min_backprop tf.Output, input_max_backprop tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizeAndDequantizeV2Grad",
+		Input: []tf.Input{
+			gradients, input, input_min, input_max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // Computes the sparse Cholesky decomposition of `input`.
 //
 // Computes the Sparse Cholesky decomposition of a sparse matrix, with the given

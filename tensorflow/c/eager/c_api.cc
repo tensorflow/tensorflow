@@ -1116,9 +1116,13 @@ TF_Tensor* tensorflow::TensorHandleInterface::Resolve(Status* status) {
     return retval;
   } else {
     tensorflow::Tensor tensor;
-    if (IsCPU(handle_->device())) {
+    if (IsCPU(handle_->device()) || handle_->HasLocalMirror(nullptr)) {
       const tensorflow::Tensor* src = nullptr;
-      *status = handle_->Tensor(&src);
+      if (handle_->HasLocalMirror(nullptr)) {
+        *status = handle_->TensorFromDevice(nullptr, &src);
+      } else {
+        *status = handle_->Tensor(&src);
+      }
       if (!status->ok()) return nullptr;
       tensor = *src;
     } else {
@@ -1126,6 +1130,13 @@ TF_Tensor* tensorflow::TensorHandleInterface::Resolve(Status* status) {
       CHECK_NE(ctx, nullptr);
       *status = handle_->CopyToDevice(*ctx, ctx->HostCPU(), &tensor);
       if (!status->ok()) return nullptr;
+      if (handle_->ImplicitMirroring()) {
+        *status = handle_->AddEmptyLocalMirror(nullptr);
+        if (!status->ok()) return nullptr;
+        Tensor mirror = tensor;
+        *status = handle_->SetTensor(std::move(mirror), nullptr);
+        if (!status->ok()) return nullptr;
+      }
     }
     return tensorflow::TF_TensorFromTensor(tensor, status);
   }
@@ -1193,7 +1204,8 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   // TODO(apassos) do we need to wrap the deallocator here to make sure to sync
   // the device?
   TF_ManagedBuffer* buf =
-      new TF_ManagedBuffer(data, len, deallocator, deallocator_arg);
+      new TF_ManagedBuffer(data, len, deallocator, deallocator_arg,
+                           /*owns_memory=*/false);
 
   tensorflow::Tensor t(static_cast<tensorflow::DataType>(dtype),
                        tensorflow::TensorShape(dimvec), buf);

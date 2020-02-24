@@ -27,9 +27,7 @@ package_group(
     includes = [
         "//tensorflow/compiler/xla:friends",
     ],
-    packages = [
-        "//learning/brain/experimental/tf_runtime/...",
-    ],
+    packages = ["//learning/brain/experimental/tf_runtime/..."],
 )
 
 tf_proto_library_cc(
@@ -4347,6 +4345,7 @@ cc_library(
         ":call_graph",
         ":hlo",
         ":hlo_pass",
+        ":hlo_query",
         ":pattern_matcher",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",

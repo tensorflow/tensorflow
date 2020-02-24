@@ -58,7 +58,7 @@ TfLiteStatus ReshapeOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   AddInput(graph_builder_->GetHexagonTensorId(inputs->data[0]));
 
   // Output shape.
-  TfLiteTensor* shape_tensor;
+  TfLiteTensor* shape_tensor = nullptr;
   bool output_shape_is_dynamic = false;
   if (inputs->size == 2) {
     shape_tensor = &context->tensors[inputs->data[1]];

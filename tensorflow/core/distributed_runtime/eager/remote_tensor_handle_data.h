@@ -37,6 +37,7 @@ class RemoteTensorHandleData : public TensorHandleData {
   Status NumDims(int* num_dims) const override;
   Status Dim(int dim_index, int64* dim) const override;
   Status NumElements(int64* num_elements) const override;
+  Status Unprotect() override;
 
   string DebugString() const override;
 
@@ -70,6 +71,7 @@ class UnshapedRemoteTensorHandleData : public TensorHandleData {
   Status NumDims(int* num_dims) const override;
   Status Dim(int dim_index, int64* dim) const override;
   Status NumElements(int64* num_elements) const override;
+  Status Unprotect() override;
 
   string DebugString() const override;
 

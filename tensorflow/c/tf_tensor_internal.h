@@ -38,11 +38,12 @@ class TF_ManagedBuffer : public tensorflow::TensorBuffer {
  public:
   TF_ManagedBuffer(void* data, size_t len,
                    void (*deallocator)(void* data, size_t len, void* arg),
-                   void* deallocator_arg)
+                   void* deallocator_arg, bool owns_memory)
       : TensorBuffer(data),
         len_(len),
         deallocator_(deallocator),
-        deallocator_arg_(deallocator_arg) {}
+        deallocator_arg_(deallocator_arg),
+        owns_memory_(owns_memory) {}
 
   ~TF_ManagedBuffer() override {
     (*deallocator_)(data(), len_, deallocator_arg_);
@@ -57,13 +58,13 @@ class TF_ManagedBuffer : public tensorflow::TensorBuffer {
     proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
   }
 
-  // Prevents input forwarding from mutating this buffer.
-  bool OwnsMemory() const override { return false; }
+  bool OwnsMemory() const override { return owns_memory_; }
 
  private:
   const size_t len_;
   void (*const deallocator_)(void* data, size_t len, void* arg);
   void* const deallocator_arg_;
+  bool owns_memory_;
 };
 
 namespace tensorflow {

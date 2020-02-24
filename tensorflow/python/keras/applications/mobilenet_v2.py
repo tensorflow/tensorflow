@@ -85,7 +85,6 @@ from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
-
 BASE_WEIGHT_PATH = ('https://storage.googleapis.com/tensorflow/'
                     'keras-applications/mobilenet_v2/')
 
@@ -99,6 +98,7 @@ def MobileNetV2(input_shape=None,
                 input_tensor=None,
                 pooling=None,
                 classes=1000,
+                classifier_activation='softmax',
                 **kwargs):
   """Instantiates the MobileNetV2 architecture.
 
@@ -152,6 +152,9 @@ def MobileNetV2(input_shape=None,
     classes: Integer, optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
     **kwargs: For backwards compatibility only.
 
   Returns:
@@ -161,6 +164,8 @@ def MobileNetV2(input_shape=None,
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape or invalid alpha, rows when
       weights='imagenet'
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
   if 'layers' in kwargs:
     global layers
@@ -360,9 +365,10 @@ def MobileNetV2(input_shape=None,
 
   if include_top:
     x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(
-        classes, activation='softmax', use_bias=True, name='Logits')(
-            x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
+
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D()(x)

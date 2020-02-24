@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
 #include "mlir/Transforms/Passes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 #define DEBUG_TYPE "tf-layout-optimization"
 
@@ -29,16 +30,6 @@ namespace mlir {
 namespace TF {
 
 namespace {
-
-// Layout optimization pipeline composes layout assignment and move transposes
-// passes to pick the optimal layout for all layout sensitive operations, and
-// cancel all redundant transposes.
-struct LayoutOptimizationPipelineOptions
-    : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
-  Option<std::string> force_data_format{
-      *this, "force-data-format",
-      llvm::cl::desc("Force data format for all layout sensitive ops")};
-};
 
 // LayoutAssignmentPass assigns optimal data layout (data format) for all
 // layout sensitive operations.
@@ -96,22 +87,6 @@ Permutation GetDataFormatPermutation(StringRef from_data_format,
   }
 }
 
-Type PermuteRankedTensorType(Type type, Permutation permutation) {
-  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
-    ArrayRef<int64_t> shape = ranked_type.getShape();
-    assert(permutation.size() == shape.size());
-
-    SmallVector<int64_t, 4> new_shape(permutation.size());
-    for (size_t i = 0; i < permutation.size(); ++i) {
-      new_shape[i] = shape[permutation[i]];
-    }
-
-    return RankedTensorType::get(new_shape, ranked_type.getElementType());
-  }
-
-  return type;
-}
-
 void LayoutAssignmentPass::runOnFunction() {
   FuncOp func = getFunction();
 
@@ -144,8 +119,8 @@ void LayoutAssignmentPass::runOnFunction() {
     };
 
     // Change operation data format.
-    op->setAttr("data_format",
-                StringAttr::get(force_data_format_, op->getContext()));
+    if (failed(layout_sensitive_interface.UpdateDataFormat(force_data_format_)))
+      return;
 
     // Permute arguments into the target data format.
     builder.setInsertionPoint(op);
@@ -162,8 +137,6 @@ void LayoutAssignmentPass::runOnFunction() {
 
     for (int64_t res : layout_sensitive_interface.GetLayoutDependentResults()) {
       OpResult result = op->getResult(res);
-      result.setType(
-          PermuteRankedTensorType(result.getType(), args_permutation));
 
       auto transposed_res = builder.create<TransposeOp>(loc, result, res_perm);
       result.replaceAllUsesWith(transposed_res);
@@ -426,6 +399,8 @@ void MoveTransposesPass::runOnFunction() {
   });
 }
 
+}  // namespace
+
 void CreateLayoutOptimizationPipeline(
     OpPassManager& pm,  // NOLINT - MLIR contract is pass by mutable reference.
     const LayoutOptimizationPipelineOptions& options) {
@@ -440,8 +415,6 @@ void CreateLayoutOptimizationPipeline(
   // Move transposes to the end of the block and try to fold them.
   pm.addPass(std::make_unique<MoveTransposesPass>(Direction::kEnd));
 }
-
-}  // namespace
 
 static PassRegistration<LayoutAssignmentPass> layout_assignment(
     "tf-layout-assignment", "Layout assignment pass");

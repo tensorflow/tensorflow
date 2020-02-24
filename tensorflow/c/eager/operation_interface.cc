@@ -309,11 +309,4 @@ Status OperationInterface::SetUseXla(bool enable) {
   return Status::OK();
 }
 
-Status OperationInterface::ConsumeInput(TFE_TensorHandle* h) {
-  auto handle =
-      tensorflow::down_cast<TensorHandleInterface*>(h->handle.get())->Handle();
-  operation_.ConsumeInput(handle);
-  return Status::OK();
-}
-
 }  // namespace tensorflow

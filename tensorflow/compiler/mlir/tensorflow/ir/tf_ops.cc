@@ -151,26 +151,6 @@ static bool AreCastCompatible(Type a, Type b) {
          b_kind == TensorFlowTypes::VARIANT;
 }
 
-static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
-                                       DenseIntElementsAttr perm1) {
-  if (perm0.getNumElements() == 0 || perm1.getNumElements() == 0) return false;
-  if (perm0.getNumElements() != perm1.getNumElements()) return false;
-
-  SmallVector<int64_t, 8> perm0_values;
-  for (auto value : perm0.getIntValues())
-    perm0_values.push_back(value.getSExtValue());
-
-  SmallVector<int64_t, 8> perm1_values;
-  for (auto value : perm1.getIntValues())
-    perm1_values.push_back(value.getSExtValue());
-
-  for (int i = 0; i < perm0_values.size(); ++i) {
-    if (perm0_values[perm1_values[i]] != i) return false;
-  }
-
-  return true;
-}
-
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
   return dim_or_rank == -1;
 }
@@ -309,6 +289,156 @@ static LogicalResult VerifyTypesCompatibility(
       }
     }
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TF op helper functions to work with layout transformation.
+//===----------------------------------------------------------------------===//
+
+SmallVector<int64_t, 4> GetDataFormatPermutation(StringRef from, StringRef to) {
+  if (from == "NHWC" && to == "NCHW") {
+    return {0, 3, 1, 2};
+  } else if (from == "NCHW" && to == "NHWC") {
+    return {0, 2, 3, 1};
+  } else {
+    return {};
+  }
+}
+
+// Shuffle elements in the `attr` according to the permutation. Optional
+// `inner_size` allows to shuffle array attributes created from rank 2 tensors
+// on outer dimension only.
+ArrayAttr ShuffleArrayAttr(ArrayAttr attr, ArrayRef<int64_t> permutation,
+                           int inner_size = 1) {
+  if (attr.size() == 0) return attr;
+
+  assert(attr.size() % inner_size == 0);
+  assert(attr.size() / inner_size == permutation.size());
+
+  SmallVector<Attribute, 8> values{attr.begin(), attr.end()};
+  SmallVector<Attribute, 8> shuffled(values.size());
+
+  for (size_t i = 0; i < permutation.size(); ++i) {
+    for (size_t j = 0; j < inner_size; ++j) {
+      shuffled[i * inner_size + j] = values[permutation[i] * inner_size + j];
+    }
+  }
+
+  return ArrayAttr::get(shuffled, attr.getContext());
+}
+
+// Shuffle ranked tensor dimensions according to the permutation.
+Type ShuffleRankedTensorType(Type type, ArrayRef<int64_t> permutation) {
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+    ArrayRef<int64_t> shape = ranked_type.getShape();
+    assert(permutation.size() == shape.size());
+
+    SmallVector<int64_t, 4> new_shape(permutation.size());
+    for (size_t i = 0; i < permutation.size(); ++i)
+      new_shape[i] = shape[permutation[i]];
+
+    return RankedTensorType::get(new_shape, ranked_type.getElementType());
+  }
+
+  return type;
+}
+
+static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
+                                       DenseIntElementsAttr perm1) {
+  if (perm0.getNumElements() == 0 || perm1.getNumElements() == 0) return false;
+  if (perm0.getNumElements() != perm1.getNumElements()) return false;
+
+  SmallVector<int64_t, 8> perm0_values;
+  for (auto value : perm0.getIntValues())
+    perm0_values.push_back(value.getSExtValue());
+
+  SmallVector<int64_t, 8> perm1_values;
+  for (auto value : perm1.getIntValues())
+    perm1_values.push_back(value.getSExtValue());
+
+  for (int i = 0; i < perm0_values.size(); ++i) {
+    if (perm0_values[perm1_values[i]] != i) return false;
+  }
+
+  return true;
+}
+
+// Default implementation of `LayoutSensitiveInterface::UpdateDataFormat` for
+// layout sensitive operations that do not have any additional layout dependent
+// attributes besides `data_format` string.
+template <typename Op>
+LogicalResult UpdateDataFormat(StringRef data_format, Op *op) {
+  auto perm = GetDataFormatPermutation(op->data_format(), data_format);
+  if (perm.empty()) return failure();
+
+  // Update data format attribute.
+  op->setAttr("data_format", StringAttr::get(data_format, op->getContext()));
+
+  // Update types for all layout sensitive results.
+  auto layout_sensitive = cast<LayoutSensitiveInterface>(op->getOperation());
+  for (unsigned idx : layout_sensitive.GetLayoutDependentResults()) {
+    OpResult result = op->getOperation()->getResult(idx);
+    result.setType(ShuffleRankedTensorType(result.getType(), perm));
+  }
+
+  return success();
+}
+
+// Default implementation for folding operand transpose into the operation.
+// See `FoldOperandsTransposeInterface::FoldOperandsPermutation`.
+template <typename Op>
+LogicalResult FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation, Op *op,
+    ArrayRef<std::pair<StringRef, ArrayAttr>> shuffle_attrs = {}) {
+  MLIRContext *context = op->template getParentOfType<ModuleOp>().getContext();
+
+  // We only support NHWC <-> NCHW permutations.
+  static constexpr std::array<int64_t, 4> kNchwToNhwc = {0, 2, 3, 1};
+  static constexpr std::array<int64_t, 4> kNhwcToNchw = {0, 3, 1, 2};
+
+  // Operation data format after folding `permutation`.
+  StringRef target_data_format = [&]() -> StringRef {
+    if (op->data_format() == "NHWC" && permutation.equals(kNchwToNhwc)) {
+      return "NCHW";  // cancel NCHW->NHWC operand permutation
+    } else if (op->data_format() == "NCHW" && permutation.equals(kNhwcToNchw)) {
+      return "NHWC";  // cancel NHWC->NCHW operand permutation
+    } else {
+      return "";
+    }
+  }();
+  if (target_data_format.empty()) return failure();
+
+  // To fold operand `permutation` into the `op` we need shuffle all layout
+  // dependent attributes and types with a reverse permutation, and change
+  // operation data format to `target_data_format`.
+  //
+  // Example:
+  //   %1 = SomeOp(...)   {data_format = NHWC}
+  //   %2 = Transpose(%1) {permutation = NHWC->NCHW}
+  //   %3 = Op(%2)        {data_format = NCHW}
+  //
+  // To bypass %2 we have to change data format to shuffle data format from NCHW
+  // to NHWC, which is the reverse of operand permutation (function argument).
+  auto reverse_permutation =
+      GetDataFormatPermutation(op->data_format(), target_data_format);
+  if (reverse_permutation.empty()) return failure();
+
+  op->setAttr("data_format", StringAttr::get(target_data_format, context));
+
+  for (auto pair : shuffle_attrs) {
+    StringRef attr_name = pair.first;
+    ArrayAttr attr_value = pair.second;
+    op->setAttr(attr_name, ShuffleArrayAttr(attr_value, reverse_permutation));
+  }
+
+  auto fold = cast<FoldOperandsTransposeInterface>(op->getOperation());
+  for (unsigned idx : fold.GetLayoutDependentResults()) {
+    OpResult result = op->getOperation()->getResult(idx);
+    result.setType(
+        ShuffleRankedTensorType(result.getType(), reverse_permutation));
+  }
+
   return success();
 }
 
@@ -477,6 +607,15 @@ static LogicalResult Verify(BiasAddOp op) {
            << feature_dim << " and " << bias_len << ", respectively";
   }
   return success();
+}
+
+// TODO(ezhulenev): BiasAddOp is not really layout sensitive, it must only
+// support folding operand transposes.
+LogicalResult BiasAddOp::UpdateDataFormat(StringRef data_format) {
+  auto ranked = value().getType().dyn_cast<RankedTensorType>();
+  if (!ranked || ranked.getRank() != 4) return failure();
+
+  return ::mlir::TF::UpdateDataFormat(data_format, this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -837,6 +976,21 @@ static LogicalResult Verify(OpT op) {
   return success();
 }
 
+LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
+  auto perm = GetDataFormatPermutation(this->data_format(), data_format);
+  if (perm.empty()) return failure();
+
+  // Update data_format attribute and result types.
+  if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
+
+  // Update convolution attributes.
+  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // Conv2dBackpropInputOp
 //===----------------------------------------------------------------------===//
@@ -1158,6 +1312,11 @@ static LogicalResult Verify(FusedBatchNormOp op) {
   return success();
 }
 
+LogicalResult FusedBatchNormV3Op::FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation) {
+  return ::mlir::TF::FoldOperandsPermutation(permutation, this);
+}
+
 //===----------------------------------------------------------------------===//
 // GatherV2Op
 //===----------------------------------------------------------------------===//
@@ -1356,57 +1515,8 @@ void MaxOp::build(Builder *builder, OperationState &result, Value input,
 
 LogicalResult MaxPoolOp::FoldOperandsPermutation(
     ArrayRef<int64_t> permutation) {
-  MLIRContext *context = getParentOfType<ModuleOp>().getContext();
-
-  // For now we only support folding of NCHW->NHWC and NHWC->NCHW permutations.
-  if (data_format() == "NHWC") {
-    static constexpr std::array<int64_t, 4> kPerm = {0, 2, 3, 1};  // to NHWC
-    if (permutation != ArrayRef<int64_t>(kPerm)) return failure();
-
-    setAttr("data_format", StringAttr::get("NCHW", context));
-
-  } else if (data_format() == "NCHW") {
-    static constexpr std::array<int64_t, 4> kPerm = {0, 3, 1, 2};  // to NCHW
-    if (permutation != ArrayRef<int64_t>(kPerm)) return failure();
-
-    setAttr("data_format", StringAttr::get("NHWC", context));
-
-  } else {
-    return failure();
-  }
-
-  auto shuffle_attr = [&](ArrayAttr attr) -> ArrayAttr {
-    SmallVector<Attribute, 4> values{attr.begin(), attr.end()};
-    SmallVector<Attribute, 4> shuffled(values.size());
-
-    for (size_t i = 0; i < permutation.size(); ++i)
-      shuffled[permutation[i]] = values[i];
-
-    return ArrayAttr::get(shuffled, context);
-  };
-
-  setAttr("strides", shuffle_attr(strides()));
-  setAttr("ksize", shuffle_attr(ksize()));
-
-  auto shuffle_type = [&](Type type) -> Type {
-    if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
-      ArrayRef<int64_t> shape = ranked_type.getShape();
-      assert(permutation.size() == shape.size());
-
-      SmallVector<int64_t, 4> new_shape(permutation.size());
-      for (size_t i = 0; i < permutation.size(); ++i)
-        new_shape[permutation[i]] = shape[i];
-
-      return RankedTensorType::get(new_shape, ranked_type.getElementType());
-    }
-
-    return type;
-  };
-
-  OpResult result = getOperation()->getResult(0);
-  result.setType(shuffle_type(result.getType()));
-
-  return success();
+  return ::mlir::TF::FoldOperandsPermutation(
+      permutation, this, {{"strides", strides()}, {"ksize", ksize()}});
 }
 
 //===----------------------------------------------------------------------===//
@@ -1423,6 +1533,38 @@ static LogicalResult Verify(MaxPoolGradOp op) {
   if (!IsOfRankOrUnranked(op.grad(), 4)) {
     return op.emitOpError() << "requires grad to be rank 4";
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MeanOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
+  // Reduction indices must be defined by a constant operation.
+  auto reduction_op =
+      dyn_cast_or_null<TF::ConstOp>(reduction_indices().getDefiningOp());
+  if (!reduction_op) return failure();
+
+  auto reductions_value = reduction_op.value().dyn_cast<DenseElementsAttr>();
+  if (!reductions_value) return failure();
+
+  // Prepare new reduction indices according to operand permutation.
+  SmallVector<int64_t, 4> shuffled_reduction;
+  llvm::transform(reductions_value.getIntValues(),
+                  std::back_inserter(shuffled_reduction),
+                  [&](APInt idx) { return permutation[idx.getSExtValue()]; });
+
+  // Add constant operation with a new reduction indices.
+  OpBuilder builder(getOperation());
+  auto type = mlir::RankedTensorType::get(shuffled_reduction.size(),
+                                          builder.getIntegerType(64));
+  auto values = mlir::DenseIntElementsAttr::get(type, shuffled_reduction);
+  auto shuffled_reduction_op = builder.create<TF::ConstOp>(getLoc(), values);
+
+  // Use new reduction indices.
+  setOperand(1, shuffled_reduction_op);
+
   return success();
 }
 

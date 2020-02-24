@@ -231,12 +231,14 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
   if (DeviceNameUtils::HasSomeDetails(preferred)) {
     return errors::InvalidArgument(
         "Could not satisfy device specification '", preferred,
-        "'. All available devices [",
+        "'. enable_soft_placement=", AllowSoftPlacement(),
+        ". All available devices [",
         absl::StrJoin(DevicesToString(existing), ", "), "].");
   }
   return errors::InvalidArgument(
       "No supported device found in available devices [",
-      absl::StrJoin(DevicesToString(existing), ", "), "].");
+      absl::StrJoin(DevicesToString(existing), ", "),
+      "]. enable_soft_placement=", AllowSoftPlacement(), ".");
 }
 
 void EagerContext::ResetClusterFLR(
