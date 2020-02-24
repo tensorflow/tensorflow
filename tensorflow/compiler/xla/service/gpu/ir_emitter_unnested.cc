@@ -2042,73 +2042,23 @@ void IrEmitterUnnested::EmitTile(
           };
 
           char * env_if = getenv("RED_IF");
-          int red_if = 1;
+          int red_if = 0;
           if (env_if) {
             red_if = atoi(env_if);
             printf("RED_IF2 = %d %s\n", red_if, env_if);
           }
-          if (red_if == 1) {
+          if (red_if == 1 || x_tile_fits) {
             std::cout << "IF_NB 1: " << std::endl;
             unroll(!x_tile_fits, x_num_steps, vec_stride);
-          } else if (red_if == 2) {
+          } else {
             std::cout << "IF_NB 2" << std::endl;
             ksl->If(loop_name + "_is_full_tile",
-                    //b->CreateICmpULT(last_element, tile_width),
-                    // If (the thread fully unrolled) {no condition path} else {condition path}
+                    // if (block fully fit) {fast path} else {slow path}
+                    // tile_width is always exact. For the last block,
+                    // it will be the exact number of elements left.
                     b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeFor(2)), tile_width),
                     [&] {unroll(false, x_num_steps, vec_stride);},
                     [&] {unroll(true, x_num_steps, vec_stride);});
-          } else {
-            std::cout << "IF_NB 3" << std::endl;
-            //b->CreateICmpULT(start_offset_x+j * step_x * vec_stride + i, tile_width)
-            int last_block_left_element = mapping_scheme.GetDimsInElems()[2] % x_num_steps;
-            std::cout << "MAPPING " << mapping_scheme.GetDimsInElems()[0] << " "
-                      << mapping_scheme.GetDimsInElems()[1] << " "
-                      << mapping_scheme.GetDimsInElems()[2] << std::endl;
-            std::cout << "LAST_BLOCK x_num_steps " << x_num_steps
-                      << " last_block" << last_block_left_element << std::endl;
-            // NB block per reduction.
-            int nb_block = CeilOfRatio(mapping_scheme.GetDimsInElems()[2],
-                                       tile_size_x);
-            std::cout << "NB_BLOCK" << nb_block << std::endl;
-            if (x_tile_fits) {
-              // All threads will completly unroll
-              unroll(false, x_num_steps, vec_stride);
-            } else if(nb_block == 1) {
-              // No thread will completly unroll.
-              // TODO: unroll by the right amount
-              unroll(true, x_num_steps, vec_stride);
-            } else {
-              // For some blocks, all threads will will completly unroll.
-              // For other blocks, some of its threads will completly unroll, others will partially and some won't be used.
-              // So do an if(thread fully unroll) {code with no if between elements} else {code with if between each elements}
-              // TODO: in the else part, unroll without if but with the right number of elements left.
-
-              llvm::Value* block_id = gpu::EmitCallToTargetIntrinsic(
-                  gpu::TargetIntrinsicID::kBlockIdx, {}, {}, &b_);
-              llvm::Value* last_element = b_.CreateAdd(constant(x_num_steps * tile_size_x),
-                                                       start_offset_x, "last_element");
-              int x_num_steps_partial = mapping_scheme.GetDimsInElems()[2] % tile_size_x;
-              x_num_steps_partial *= 2;
-              //x_num_steps_partial = x_num_steps;
-              ksl->If(loop_name + "_is_full_tile",
-                      // Test if all the elements of this thread is withing tile.
-                      b_.CreateICmpULT(last_element, tile_width),
-                      // Not the last block, so unroll without ifs.
-                      [&] {unroll(false, x_num_steps, vec_stride);},
-                      // The last block isn't completly unrolled.
-
-                      // TODO: unroll the right size. Take care
-                      // vec_stride must match the above unroll for
-                      // now.
-                      // TODO: after unroll of the right size, remove the IFs.
-                      // ONGOING, try to make it work with less
-                      // then unroll x_num_steps
-
-                       [&] {unroll(true, x_num_steps, vec_stride);}); // works
-              //[&] {unroll(true, x_num_steps, x_num_steps);});
-              //[&] {unroll(true, x_num_steps_partial, vec_stride);});
-            }
           }
         }});
 }
