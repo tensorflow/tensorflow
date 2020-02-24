@@ -449,7 +449,7 @@ def find_cuda_config():
   cuda_version = os.environ.get("TF_CUDA_VERSION", "")
   base_paths = _list_from_env("TF_CUDA_PATHS",
                               _get_default_cuda_paths(cuda_version))
-  base_paths = [path for path in base_paths if os.path.exists(path)]
+  base_paths = [os.path.realpath(path) for path in base_paths if os.path.exists(path)]
 
   result = {}
   if "cuda" in libraries:
