@@ -437,7 +437,7 @@ def _get_legacy_path(env_name, default=[]):
 
 def _normalize_path(path):
   """Returns normalized path, with forward slashes on Windows."""
-  path = os.path.normpath(path)
+  path = os.path.realpath(path)
   if _is_windows():
     path = path.replace("\\", "/")
   return path
@@ -449,7 +449,7 @@ def find_cuda_config():
   cuda_version = os.environ.get("TF_CUDA_VERSION", "")
   base_paths = _list_from_env("TF_CUDA_PATHS",
                               _get_default_cuda_paths(cuda_version))
-  base_paths = [os.path.realpath(path) for path in base_paths if os.path.exists(path)]
+  base_paths = [path for path in base_paths if os.path.exists(path)]
 
   result = {}
   if "cuda" in libraries:

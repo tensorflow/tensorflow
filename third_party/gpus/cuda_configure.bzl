@@ -50,6 +50,7 @@ load(
     "raw_exec",
     "read_dir",
     "which",
+    "realpath",
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
@@ -360,8 +361,8 @@ def _cuda_include_path(repository_ctx, cuda_config):
             )
     inc_entries = []
     if target_dir != "":
-        inc_entries.append(str(repository_ctx.path(target_dir).realpath))
-    inc_entries.append(str(repository_ctx.path(cuda_config.cuda_toolkit_path + "/include").realpath))
+        inc_entries.append(realpath(repository_ctx, target_dir))
+    inc_entries.append(realpath(repository_ctx, cuda_config.cuda_toolkit_path + "/include"))
     return inc_entries
 
 def enable_cuda(repository_ctx):
