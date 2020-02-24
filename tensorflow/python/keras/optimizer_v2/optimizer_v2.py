@@ -445,8 +445,8 @@ class OptimizerV2(trackable.Trackable):
 
     Args:
       grads_and_vars: List of (gradient, variable) pairs.
-      name: Optional name for the returned operation.  Default to the name
-        passed to the `Optimizer` constructor.
+      name: Optional name for the returned operation. Default to the name passed
+        to the `Optimizer` constructor.
       all_reduce_sum_gradients: Whether to sum gradients from different
         replicas in the presense of `tf.distribute.Strategy`. If False, it's
         user responsibility to aggregate the gradients. Default to True.

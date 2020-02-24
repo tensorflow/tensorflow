@@ -38,6 +38,7 @@ namespace xla {
 
 class DeviceAssignment;
 class ExecutionProfile;
+class GpuExecutableRunOptions;
 
 // A unique identifier for a particular "logical execution" of an XLA model.
 //
@@ -137,6 +138,12 @@ class ExecutableRunOptions {
     return then_execute_function_;
   }
 
+  // GPU-backend specific options. These are kept out-of-line to avoid bloating
+  // the size of this dependency for CPU-only AOT builds.
+  ExecutableRunOptions& set_gpu_executable_run_options(
+      const GpuExecutableRunOptions* gpu_executable_run_options);
+  const GpuExecutableRunOptions* gpu_executable_run_options() const;
+
  private:
   stream_executor::DeviceMemoryAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
@@ -148,6 +155,7 @@ class ExecutableRunOptions {
   stream_executor::Stream* host_to_device_stream_ = nullptr;
   ThenExecuteFunction* then_execute_function_ = nullptr;
   RunId run_id_;
+  const GpuExecutableRunOptions* gpu_executable_run_options_ = nullptr;
 };
 
 }  // namespace xla

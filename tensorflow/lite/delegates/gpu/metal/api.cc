@@ -268,6 +268,7 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       break;
     case OperationType::ABS:
     case OperationType::COS:
+    case OperationType::EXP:
     case OperationType::HARD_SWISH:
     case OperationType::LOG:
     case OperationType::RSQRT:

@@ -153,6 +153,7 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInput(
       {OperationType::HARD_SWISH,
        "value * clamp(value / 6.0f + FLT4(0.5f), FLT4(0.0f), FLT4(1.0f))"},
       {OperationType::COS, "cos(value)"},
+      {OperationType::EXP, "exp(value)"},
       {OperationType::LOG, "log(value)"},
       {OperationType::SQRT, "sqrt(value)"},
       {OperationType::RSQRT, "1.0 / sqrt(value)"},

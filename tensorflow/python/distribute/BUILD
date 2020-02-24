@@ -210,7 +210,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
-        "//tensorflow/python:training_lib",
+        "//tensorflow/python:training_server_lib",
     ],
 )
 
@@ -401,7 +401,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:training_lib",
+        "//tensorflow/python:training_server_lib",
     ],
 )
 
@@ -617,10 +617,11 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking:base",
         "@six_archive//:six",
     ],

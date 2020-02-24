@@ -448,7 +448,7 @@ tf_py_test(
     size = "medium",
     srcs = ["convolutional_recurrent_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 6,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

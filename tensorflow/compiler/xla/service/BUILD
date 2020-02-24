@@ -1951,6 +1951,7 @@ cc_library(
     hdrs = ["all_reduce_combiner.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_domain_map",
         ":hlo_pass",
         ":hlo_query",
@@ -4585,6 +4586,7 @@ cc_library(
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",  # fixdeps: keep
         "//tensorflow/stream_executor/lib",

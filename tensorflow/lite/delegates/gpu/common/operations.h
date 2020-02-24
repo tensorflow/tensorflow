@@ -43,6 +43,7 @@ enum class OperationType {
   COS,
   DEPTHWISE_CONVOLUTION,
   DIV,
+  EXP,
   FULLY_CONNECTED,
   HARD_SWISH,
   LOG,

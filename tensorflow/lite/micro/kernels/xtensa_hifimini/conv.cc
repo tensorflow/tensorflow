@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
-#include "tensorflow/lite/micro/kernels/xtensa-hifimini/fixedpoint_utils.h"
-#include "tensorflow/lite/micro/kernels/xtensa-hifimini/utils.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini/utils.h"
 
 namespace tflite {
 namespace ops {

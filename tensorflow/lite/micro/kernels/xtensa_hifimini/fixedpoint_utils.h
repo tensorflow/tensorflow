@@ -19,7 +19,7 @@ limitations under the License.
 #include <stdint.h>
 #include <xtensa/tie/xt_hifi2.h>
 
-#include "tensorflow/lite/micro/kernels/xtensa-hifimini/utils.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini/utils.h"
 
 namespace tflite {
 namespace ops {

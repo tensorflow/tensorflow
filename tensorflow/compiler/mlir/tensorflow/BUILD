@@ -281,7 +281,6 @@ cc_library(
         "transforms/generated_canonicalize.inc",
         "transforms/generated_optimize.inc",
         "transforms/graph_pruning.cc",
-        "transforms/inline_global_tensors.cc",
         "transforms/layout_optimization.cc",
         "transforms/mark_function_visibility.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
@@ -377,6 +376,7 @@ cc_library(
         ":tensorflow",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LoopOpsTransforms",
     ],
     alwayslink = 1,
 )
@@ -1001,8 +1001,13 @@ cc_library(
     srcs = ["utils/tpu_rewrite_device_util.cc"],
     hdrs = ["utils/tpu_rewrite_device_util.h"],
     deps = [
+        "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf/tpu:topology_proto_cc",
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
     ],
@@ -1017,6 +1022,7 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf/tpu:topology_proto_cc",
         "@llvm-project//llvm:support",
     ],
 )

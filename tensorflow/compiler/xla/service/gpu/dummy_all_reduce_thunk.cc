@@ -34,7 +34,7 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 NcclAllReduceThunk::~NcclAllReduceThunk() = default;
 
-/*static*/ absl::flat_hash_set<int>
+/*static*/ absl::flat_hash_set<GlobalDeviceId>
 NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
   return {};
 }
