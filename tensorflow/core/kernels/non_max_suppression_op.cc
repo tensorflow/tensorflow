@@ -291,11 +291,11 @@ struct ResultCandidate {
   float box_coord[4];
 };
 
-void DoNMS(int batch_idx, int class_idx, const float* boxes_data,
-           const float* scores_data, int num_boxes, int q, int num_classes,
-           const int size_per_class, const float score_threshold,
-           const float iou_threshold,
-           std::vector<ResultCandidate>& result_candidate_vec) {
+void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
+                   const float* scores_data, int num_boxes, int q,
+                   int num_classes, const int size_per_class,
+                   const float score_threshold, const float iou_threshold,
+                   std::vector<ResultCandidate>& result_candidate_vec) {
   std::vector<float> class_scores_data;
   class_scores_data.reserve(num_boxes);
   std::vector<float> class_boxes_data;
@@ -341,7 +341,7 @@ void DoNMS(int batch_idx, int class_idx, const float* boxes_data,
 
   std::sort(candidate_vector.begin(), candidate_vector.end(), cmp);
   const Tensor const_boxes = boxes;
-  typename TTypes<float, 2>::ConstTensor boxes_data_1 =
+  typename TTypes<float, 2>::ConstTensor boxes_data_t =
       const_boxes.tensor<float, 2>();
   int candidate_idx = 0;
   float iou;
@@ -354,7 +354,7 @@ void DoNMS(int batch_idx, int class_idx, const float* boxes_data,
     // in order to see if `next_candidate` should be suppressed.
     bool should_select = true;
     for (int j = selected.size() - 1; j >= 0; --j) {
-      iou = IOU<float>(boxes_data_1, next_candidate.box_index, selected[j]);
+      iou = IOU<float>(boxes_data_t, next_candidate.box_index, selected[j]);
       if (iou > iou_threshold) {
         should_select = false;
         break;
@@ -364,16 +364,13 @@ void DoNMS(int batch_idx, int class_idx, const float* boxes_data,
     if (should_select) {
       // Add the selected box to the result candidate. Sorted by score
       int id = next_candidate.box_index;
-      auto& rc =
-          result_candidate_vec[selected.size() + size_per_class * class_idx];
+      result_candidate_vec[selected.size() + size_per_class * class_idx] = {
+          next_candidate.box_index,
+          next_candidate.score,
+          class_idx,
+          {boxes_data_t(id, 0), boxes_data_t(id, 1), boxes_data_t(id, 2),
+           boxes_data_t(id, 3)}};
       selected.push_back(next_candidate.box_index);
-      rc.box_index = next_candidate.box_index;
-      rc.score = next_candidate.score;
-      rc.class_idx = class_idx;
-      rc.box_coord[0] = boxes_data_1(id, 0);
-      rc.box_coord[1] = boxes_data_1(id, 1);
-      rc.box_coord[2] = boxes_data_1(id, 2);
-      rc.box_coord[3] = boxes_data_1(id, 3);
     }
   }
 }
@@ -473,23 +470,24 @@ void BatchedNonMaxSuppressionOp(
     for (int idx = begin; idx < end; ++idx) {
       int batch_idx = idx / num_classes;
       int class_idx = idx % num_classes;
-      DoNMS(batch_idx, class_idx, boxes_data + boxes_per_batch * batch_idx,
-            scores_data + scores_per_batch * batch_idx, num_boxes, q,
-            num_classes, size_per_class, score_threshold, iou_threshold,
-            result_candidate_vec[batch_idx]);
+      DoNMSPerClass(batch_idx, class_idx,
+                    boxes_data + boxes_per_batch * batch_idx,
+                    scores_data + scores_per_batch * batch_idx, num_boxes, q,
+                    num_classes, size_per_class, score_threshold, iou_threshold,
+                    result_candidate_vec[batch_idx]);
     }
   };
 
   int length = num_batches * num_classes;
   // Input data boxes_data, scores_data
-  int input_bytes = length * num_boxes * 5;
-  int output_bytes = length * num_boxes * 5;
-  int compute_cycles = (Eigen::TensorOpCost::AddCost<int>() * 5 +
-                        Eigen::TensorOpCost::MulCost<int>() * 2 +
-                        Eigen::TensorOpCost::AddCost<float>() * 10 +
-                        Eigen::TensorOpCost::MulCost<float>() * 6 +
-                        Eigen::TensorOpCost::DivCost<float>()) *
-                       length;
+  int input_bytes = num_boxes * 10 * sizeof(float);
+  int output_bytes = num_boxes * 10 * sizeof(float);
+  int compute_cycles = Eigen::TensorOpCost::AddCost<int>() * num_boxes * 14 +
+                       Eigen::TensorOpCost::MulCost<int>() * num_boxes * 9 +
+                       Eigen::TensorOpCost::MulCost<float>() * num_boxes * 9 +
+                       Eigen::TensorOpCost::AddCost<float>() * num_boxes * 8;
+  // The cost here is not the actual number of cycles, but rather a set of
+  // hand-tuned numbers that seem to work best.
   const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
   const CPUDevice& d = context->eigen_device<CPUDevice>();
   d.parallelFor(length, cost, shard_nms);
@@ -519,14 +517,14 @@ void BatchedNonMaxSuppressionOp(
   };
   length = num_batches;
   // Input data boxes_data, scores_data
-  input_bytes = length * num_boxes * 5;
-  output_bytes = length * num_boxes * 5;
-  compute_cycles = (Eigen::TensorOpCost::AddCost<int>() * 5 +
-                    Eigen::TensorOpCost::MulCost<int>() * 2 +
-                    Eigen::TensorOpCost::AddCost<float>() * 10 +
-                    Eigen::TensorOpCost::MulCost<float>() * 6 +
-                    Eigen::TensorOpCost::DivCost<float>()) *
-                   length;
+  input_bytes =
+      num_boxes * 10 * sizeof(float) + per_batch_size * 6 * sizeof(float);
+  output_bytes =
+      num_boxes * 5 * sizeof(float) + per_batch_size * 6 * sizeof(float);
+  compute_cycles = Eigen::TensorOpCost::AddCost<int>() * num_boxes * 5 +
+                   Eigen::TensorOpCost::AddCost<float>() * num_boxes * 5;
+  // The cost here is not the actual number of cycles, but rather a set of
+  // hand-tuned numbers that seem to work best.
   const Eigen::TensorOpCost cost_result(input_bytes, output_bytes,
                                         compute_cycles);
   d.parallelFor(length, cost_result, shard_result);
@@ -561,14 +559,11 @@ void BatchedNonMaxSuppressionOp(
   };
   length = num_batches * per_batch_size;
   // Input data boxes_data, scores_data
-  input_bytes = length * per_batch_size * 6;
-  output_bytes = length * per_batch_size * 6;
-  compute_cycles = (Eigen::TensorOpCost::AddCost<int>() * 5 +
-                    Eigen::TensorOpCost::MulCost<int>() * 2 +
-                    Eigen::TensorOpCost::AddCost<float>() * 10 +
-                    Eigen::TensorOpCost::MulCost<float>() * 6 +
-                    Eigen::TensorOpCost::DivCost<float>()) *
-                   length;
+  input_bytes = 6 * sizeof(float);
+  output_bytes = 6 * sizeof(float);
+  compute_cycles = Eigen::TensorOpCost::AddCost<int>() * 2 +
+                   Eigen::TensorOpCost::MulCost<int>() * 2 +
+                   Eigen::TensorOpCost::DivCost<float>() * 2;
   const Eigen::TensorOpCost cost_copy_result(input_bytes, output_bytes,
                                              compute_cycles);
   d.parallelFor(length, cost_copy_result, shard_copy_result);

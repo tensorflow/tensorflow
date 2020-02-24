@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,9 +56,23 @@ static Graph* BM_CombinedNonMaxSuppression(int batches, int box_num,
   }                                                                          \
   BENCHMARK(BM_CombinedNMS_##DEVICE##_##B##_##BN##_##CN##_##Q);
 
-BM_CombinedNonMaxSuppressionDev(cpu, 1, 1917, 90, 1);
-BM_CombinedNonMaxSuppressionDev(cpu, 28, 1917, 90, 1);
-BM_CombinedNonMaxSuppressionDev(cpu, 32, 1917, 90, 1);
-BM_CombinedNonMaxSuppressionDev(cpu, 64, 1917, 90, 1);
+#define BM_Batch(BN, CN, Q)                            \
+  BM_CombinedNonMaxSuppressionDev(cpu, 1, BN, CN, Q);  \
+  BM_CombinedNonMaxSuppressionDev(cpu, 28, BN, CN, Q); \
+  BM_CombinedNonMaxSuppressionDev(cpu, 32, BN, CN, Q); \
+  BM_CombinedNonMaxSuppressionDev(cpu, 64, BN, CN, Q);
+
+#define BN_Boxes_Number(CN, Q) \
+  BM_Batch(500, CN, Q);        \
+  BM_Batch(1000, CN, Q);       \
+  BM_Batch(1917, CN, Q);       \
+  BM_Batch(2500, CN, Q);
+
+BN_Boxes_Number(25, 1);
+BN_Boxes_Number(25, 25);
+BN_Boxes_Number(90, 1);
+BN_Boxes_Number(90, 90);
+BN_Boxes_Number(200, 1);
+BN_Boxes_Number(200, 200);
 
 }  // namespace tensorflow
