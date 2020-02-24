@@ -334,9 +334,12 @@ Status TensorHandle::Tensor(const tensorflow::Tensor** t) const {
 
 Status TensorHandle::TensorFromDevice(const Device* d,
                                       const tensorflow::Tensor** t) const {
-  TF_RETURN_IF_ERROR(WaitReady("TensorHandle::TensorFromDevice"));
-
   if (d == absl::get<Device*>(device_)) {
+    if (is_remote_) {
+      return errors::Internal("Invalid Tensor call on remote handle: ", this);
+    }
+
+    TF_RETURN_IF_ERROR(WaitReady("TensorHandle::TensorFromDevice"));
     return tensor_handle_data_->Tensor(t);
   }
 
@@ -348,6 +351,7 @@ Status TensorHandle::TensorFromDevice(const Device* d,
 
   auto empty_mirror = empty_local_mirrors_.find(d);
   if (empty_mirror != empty_local_mirrors_.end()) {
+    // TODO(gjn): Add support for waiting on local mirrors
     return errors::Internal("Attempted to get Tensor for empty mirror");
   }
 
@@ -356,9 +360,13 @@ Status TensorHandle::TensorFromDevice(const Device* d,
 }
 
 Status TensorHandle::TensorValue(tensorflow::TensorValue* t, const Device* d) {
-  TF_RETURN_IF_ERROR(WaitReady("TensorHandle::TensorValue"));
-
   if (d == absl::get<Device*>(device_)) {
+    if (is_remote_) {
+      return errors::Internal("Invalid TensorValue call on remote handle: ",
+                              this);
+    }
+
+    TF_RETURN_IF_ERROR(WaitReady("TensorHandle::TensorValue"));
     return tensor_handle_data_->TensorValue(t);
   }
 
@@ -370,6 +378,7 @@ Status TensorHandle::TensorValue(tensorflow::TensorValue* t, const Device* d) {
 
   auto empty_mirror = empty_local_mirrors_.find(d);
   if (empty_mirror != empty_local_mirrors_.end()) {
+    // TODO(gjn): Add support for waiting on local mirrors
     return errors::Internal("Attempted to get TensorValue for empty mirror");
   }
 
@@ -532,6 +541,9 @@ bool TensorHandle::HasLocalMirror(const Device* d) const {
 }
 
 Status TensorHandle::AddEmptyLocalMirror(const Device* d) {
+  DVLOG(3) << "AddEmptyLocalMirror on TensorHandle: " << this
+           << " device: " << d;
+
   mutex_lock l(mu_);
   if (local_mirrors_.find(d) != local_mirrors_.end()) {
     return errors::Internal("Attempted to duplicate a local mirror.");
