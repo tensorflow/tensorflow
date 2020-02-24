@@ -71,7 +71,11 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
               input.scale * filter.per_channel_quantization_scales[i];
           bias_zero_points[i] = 0;
         }
-        TensorData bias{TensorType_INT32,
+        tflite::TensorType bias_type = TensorType_INT32;
+        if (input.type == TensorType_INT16) {
+          bias_type = TensorType_INT64;
+        }
+        TensorData bias{bias_type,
                         {bias_size},
                         /*min=*/0,
                         /*max=*/0,
