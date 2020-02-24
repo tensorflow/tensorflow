@@ -93,13 +93,12 @@ _keras_model_gauge = monitoring.BoolGauge(
 
 @keras_export('keras.layers.Layer')
 class Layer(module.Module, version_utils.LayerVersionSelector):
-  """Base layer class.
+  """This is the class from which all layers inherit.
 
-  This is the class from which all layers inherit.
-
-  A layer is a class implementing common neural networks operations, such
-  as convolution, batch norm, etc. These operations require managing weights,
-  losses, updates, and inter-layer connectivity.
+  A layer is a callable object that takes as input one or more tensors and
+  that outputs one or more tensors. It involves *computation*, defined
+  in the `call()` method, and a *state* (weight variables), defined
+  either in the constructor `__init__()` or in the `build()` method.
 
   Users will just instantiate a layer and then treat it as a callable.
 
@@ -124,6 +123,103 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     in `__init__`, then override `from_config(self)` as well.
     This method is used when saving
     the layer or a model that contains this layer.
+
+  Examples:
+
+  Here's a basic example: a layer with two variables, `w` and `b`,
+  that returns `y = w . x + b`.
+  It shows how to implement `build()` and `call()`.
+  Variables set as attributes of a layer are tracked as weights
+  of the layers (in `layer.weights`).
+
+  ```python
+  class SimpleDense(Layer):
+
+    def __init__(self, units=32):
+        super(SimpleDense, self).__init__()
+        self.units = units
+
+    def build(self, input_shape):  # Create the state of the layer (weights)
+      w_init = tf.random_normal_initializer()
+      self.w = tf.Variable(
+          initial_value=w_init(shape=(input_shape[-1], self.units),
+                               dtype='float32'),
+          trainable=True)
+      b_init = tf.zeros_initializer()
+      self.b = tf.Variable(
+          initial_value=b_init(shape=(self.units,), dtype='float32'),
+          trainable=True)
+
+    def call(self, inputs):  # Defines the computation from inputs to outputs
+        return tf.matmul(inputs, self.w) + self.b
+
+  # Instantiates the layer.
+  linear_layer = SimpleDense(4)
+
+  # This will also call `build(input_shape)` and create the weights.
+  y = linear_layer(tf.ones((2, 2)))
+  assert len(linear_layer.weights) == 2
+
+  # These weights are trainable, so they're listed in `trainable_weights`:
+  assert len(linear_layer.trainable_weights) == 2
+  ```
+
+  Note that the method `add_weight()` offers a shortcut to create weights:
+
+  ```python
+  class SimpleDense(Layer):
+
+    def __init__(self, units=32):
+        super(SimpleDense, self).__init__()
+        self.units = units
+
+    def build(self, input_shape):
+        self.w = self.add_weight(shape=(input_shape[-1], self.units),
+                                 initializer='random_normal',
+                                 trainable=True)
+        self.b = self.add_weight(shape=(self.units,),
+                                 initializer='random_normal',
+                                 trainable=True)
+
+    def call(self, inputs):
+        return tf.matmul(inputs, self.w) + self.b
+  ```
+
+  Besides trainable weights, updated via backpropagation during training,
+  layers can also have non-trainable weights. These weights are meant to
+  be updated manually during `call()`. Here's a example layer that computes
+  the running sum of its inputs:
+
+  ```python
+  class ComputeSum(Layer):
+
+    def __init__(self, input_dim):
+        super(ComputeSum, self).__init__()
+        # Create a non-trainable weight.
+        self.total = tf.Variable(initial_value=tf.zeros((input_dim,)),
+                                 trainable=False)
+
+    def call(self, inputs):
+        self.total.assign_add(tf.reduce_sum(inputs, axis=0))
+        return self.total
+
+  my_sum = ComputeSum(2)
+  x = tf.ones((2, 2))
+
+  y = my_sum(x)
+  print(y.numpy())  # [2. 2.]
+
+  y = my_sum(x)
+  print(y.numpy())  # [4. 4.]
+
+  assert my_sum.weights == [my_sum.total]
+  assert my_sum.non_trainable_weights == [my_sum.total]
+  assert my_sum.trainable_weights == []
+  ```
+
+  For more information about creating layers, see the guide
+  [Writing custom layers and models with Keras](
+    https://www.tensorflow.org/guide/keras/custom_layers_and_models)
 
   Arguments:
     trainable: Boolean, whether the layer's variables should be trainable.
