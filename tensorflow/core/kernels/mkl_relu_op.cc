@@ -561,13 +561,9 @@ class MklReluOpBase : public OpKernel {
       MklEltwiseFwdPrimitive<T>* eltwise_fwd =
           MklEltwiseFwdPrimitiveFactory<T>::Get(fwdParams);
 
-<<<<<<< HEAD
       auto eltwise_fwd_pd = eltwise_fwd->GetEltwiseFwdPd();
 
       // Check if src needs to be reordered
-=======
-      // prepare for execution
->>>>>>> minor spelling tweaks
       const T* src_data = src_tensor.flat<T>().data();
       if (IS_SRC_REORDER_NEEDED(src_md, eltwise_fwd_pd, eltwise_fwd)) {
         src.SetUsrMem(src_md, &src_tensor);
