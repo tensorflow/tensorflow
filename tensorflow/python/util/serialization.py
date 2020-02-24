@@ -42,7 +42,7 @@ def get_json_type(obj):
   # e.g. optimizer, layer
   if hasattr(obj, 'get_config'):
     return {
-        'class_name': generic_utils._get_name_or_custom_name(obj.__class__),
+        'class_name': generic_utils.get_registered_name(obj.__class__),
         'config': obj.get_config()
     }
 
