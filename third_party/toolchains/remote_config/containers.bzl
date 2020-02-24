@@ -23,4 +23,9 @@ containers = {
         "repository": "tensorflow-testing/nosla-rocm-ubuntu16.04",
         "digest": container_digests["rocm-ubuntu16.04"],
     },
+    "windows-1803": {
+        "registry": "gcr.io",
+        "repository": "tensorflow-testing/tf-win-rbe",
+        "digest": container_digests["windows-1803"],
+    },
 }
