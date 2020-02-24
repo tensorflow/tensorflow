@@ -3258,7 +3258,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   int vector_size = 1;
   char* env = getenv("VECTOR_SIZE");
   if (indexing_order == KernelMappingScheme::LinearDilatedIndexingX) {
-    if (reduction_dimensions.dimensions[2] % tile_size_x == 0 &&
+    if (reduction_dimensions.dimensions[2] % 2 == 0 &&
         // As XLA unroll and suppose LLVM will vectorize,
         // disable the unroll for case that LLVM doesn't vectorize.
         !MayPreventVectorization(*unnested_hlo, /*tolerate_reduce*/true)) {
