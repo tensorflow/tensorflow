@@ -1823,13 +1823,16 @@ inline void DepthwiseConvWithRounding(
     DotProduct3x3KernelType kernel_type =
         optimized_ops::depthwise_conv::CategorizeDotProductKernel<
             optimized_ops::depthwise_conv::QuantizationType::kPerChannelInt8>(
-            input_shape, filter_shape, output_shape, params);
+            input_shape, filter_shape, output_shape, params, output_shift);
     if (kernel_type != DotProduct3x3KernelType::kNone) {
       ruy::profiler::ScopeLabel specialized_label(
           "DepthwiseConvInt8/8bit/3x3XDotProduct");
+      DepthwiseParams params_copy = params;
+      params_copy.output_shift_per_channel = output_shift;
+      params_copy.output_multiplier_per_channel = output_multiplier;
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3PerChannel<
           DepthwiseConvImplementation::kUseNeon3x3DotProduct>(
-          params, input_shape, input_data, filter_shape, filter_data,
+          params_copy, input_shape, input_data, filter_shape, filter_data,
           bias_shape, bias_data, output_shape, output_data, thread_start,
           thread_end, thread_dim);
       return;
