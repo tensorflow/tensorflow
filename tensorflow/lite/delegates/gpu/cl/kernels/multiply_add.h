@@ -126,36 +126,6 @@ Status MultiplyAdd::UploadAdd(const ::tflite::gpu::Tensor<Linear, T>& add,
   return OkStatus();
 }
 
-class ApplyMask : public ElementwiseOperation {
- public:
-  // Move only
-  ApplyMask(ApplyMask&& operation);
-  ApplyMask& operator=(ApplyMask&& operation);
-  ApplyMask(const ApplyMask&) = delete;
-  ApplyMask& operator=(const ApplyMask&) = delete;
-
-  void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const LinkingContext& context) const override;
-  std::string GetArgsDeclaration() const override;
-  Status BindArguments(CLKernel* kernel) override;
-
- private:
-  friend ApplyMask CreateApplyMask(const OperationDef& definition,
-                                   const BHWC& src_shape,
-                                   const BHWC& mask_shape);
-
-  enum class MaskType { LAYER, CHANNELS, TENSOR };
-
-  explicit ApplyMask(const OperationDef& definition, MaskType mask_type)
-      : ElementwiseOperation(definition), mask_type_(mask_type) {}
-
-  MaskType mask_type_;
-  int link_index_;
-};
-
-ApplyMask CreateApplyMask(const OperationDef& definition, const BHWC& src_shape,
-                          const BHWC& mask_shape);
-
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

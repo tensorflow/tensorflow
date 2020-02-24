@@ -424,6 +424,47 @@ cc_library(
 )
 
 cc_library(
+    name = "convolution_transposed_3x3",
+    srcs = ["convolution_transposed_3x3.cc"],
+    hdrs = ["convolution_transposed_3x3.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
+        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl:util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+cc_test(
+    name = "convolution_transposed_3x3_test",
+    srcs = ["convolution_transposed_3x3_test.cc"],
+    linkstatic = True,
+    tags = [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":convolution_transposed_3x3",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "convolution_transposed_3x3_thin",
     srcs = ["convolution_transposed_3x3_thin.cc"],
     hdrs = ["convolution_transposed_3x3_thin.h"],
@@ -690,15 +731,15 @@ cc_library(
 )
 
 cc_library(
-    name = "fully_connected_texture",
-    srcs = ["fully_connected_texture.cc"],
-    hdrs = ["fully_connected_texture.h"],
+    name = "fully_connected",
+    srcs = ["fully_connected.cc"],
+    hdrs = ["fully_connected.h"],
     deps = [
         ":gpu_operation",
         ":util",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:linear_storage",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
-        "//tensorflow/lite/delegates/gpu/cl:texture2d",
         "//tensorflow/lite/delegates/gpu/cl:util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -710,8 +751,8 @@ cc_library(
 )
 
 cc_test(
-    name = "fully_connected_texture_test",
-    srcs = ["fully_connected_texture_test.cc"],
+    name = "fully_connected_test",
+    srcs = ["fully_connected_test.cc"],
     linkstatic = True,
     tags = tf_gpu_tests_tags() + [
         "linux",
@@ -719,7 +760,7 @@ cc_test(
     ],
     deps = [
         ":cl_test",
-        ":fully_connected_texture",
+        ":fully_connected",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -1153,6 +1194,39 @@ cc_test(
 )
 
 cc_library(
+    name = "space_to_depth",
+    srcs = ["space_to_depth.cc"],
+    hdrs = ["space_to_depth.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+    ],
+)
+
+cc_test(
+    name = "space_to_depth_test",
+    srcs = ["space_to_depth_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":space_to_depth",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "strided_slice",
     srcs = ["strided_slice.cc"],
     hdrs = ["strided_slice.h"],
@@ -1277,6 +1351,46 @@ cc_library(
 )
 
 cc_library(
+    name = "winograd",
+    srcs = ["winograd.cc"],
+    hdrs = ["winograd.h"],
+    deps = [
+        ":gpu_operation",
+        ":util",
+        ":work_group_picking",
+        "//tensorflow/lite/delegates/gpu/cl:cl_device",
+        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
+        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_test(
+    name = "winograd_test",
+    srcs = ["winograd_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":util",
+        ":winograd",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "work_group_picking",
     srcs = ["work_group_picking.cc"],
     hdrs = ["work_group_picking.h"],
@@ -1308,7 +1422,7 @@ test_suite(
         "depth_wise_conv_3x3_test",
         "depth_wise_conv_test",
         "elementwise_test",
-        "fully_connected_texture_test",
+        "fully_connected_test",
         "lstm_test",
         "max_unpooling_test",
         "multiply_add_test",
@@ -1323,5 +1437,6 @@ test_suite(
         "softmax_test",
         "strided_slice_test",
         "transpose_test",
+        "winograd_test",
     ],
 )

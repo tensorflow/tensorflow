@@ -108,6 +108,14 @@ func @broadcast_in_dim_zero_rank(%arg0: tensor<i32>) -> tensor<1x2x3xi32> {
 
 // -----
 
+// CHECK-LABEL: func @dynamic_broadcast_in_dim
+func @dynamic_broadcast_in_dim(%arg0: tensor<?x?xi32>, %shape: tensor<3xi64>) -> tensor<?x?x?xi32> {
+  %0 = "xla_hlo.dynamic_broadcast_in_dim"(%arg0, %shape) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<?x?xi32>, tensor<3xi64>) -> tensor<?x?x?xi32>
+  return %0 : tensor<?x?x?xi32>
+}
+
+// -----
+
 func @broadcast_in_dim_bad_dimension_rank(%arg0: tensor<1x2xi32>) -> tensor<1x2x3xi32> {
   // expected-error@+1 {{broadcast_dimensions has rank 2 instead of rank 1}}
   %0 = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[[1,1],[1,1]]> : tensor<2x2xi64>} : (tensor<1x2xi32>) -> tensor<1x2x3xi32>
@@ -280,6 +288,22 @@ func @infeed_non_token_second_result(%token: !xla_hlo.token) -> tuple<tuple<tens
   // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
   %0 = "xla_hlo.infeed"(%token) {infeed_config = "foobar"} : (!xla_hlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>>
   return %0 : tuple<tuple<tensor<i32>>, tensor<i32>>
+}
+
+// -----
+
+func @iota_scalar() -> tensor<i32> {
+  // expected-error@+1 {{does not support scalars}}
+  %0 = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @iota_invalid_iota_dimension() -> tensor<4xi32> {
+  // expected-error@+1 {{iota dimension cannot go beyond the output rank or be negative}}
+  %0 = "xla_hlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<4xi32>
+  return %0 : tensor<4xi32>
 }
 
 // -----
@@ -836,4 +860,44 @@ func @sort_wrong_block_arg_type(%input0: tensor<16x16xf32>, %input1: tensor<16x1
     "xla_hlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
   return
+}
+
+// -----
+
+// CHECK: func @dequantize
+func @dequantize(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
+  %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "MIN_COMBINED", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
+  return %0 : tensor<16x64xbf16>
+}
+
+// -----
+
+func @dequantize_wrong_shape(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
+  // expected-error @+1 {{mismatched dimensions.}}
+  %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "MIN_COMBINED", transpose_output = true} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
+  return %0 : tensor<16x64xbf16>
+}
+
+// -----
+
+func @dequantize_wrong_size(%arg: tensor<16x16xi32>) -> tensor<16x16xbf16> {
+  // expected-error @+1 {{last dimension of output should be 4x of the input.}}
+  %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "MIN_COMBINED", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x16xbf16>
+  return %0 : tensor<16x16xbf16>
+}
+
+// -----
+
+func @dequantize_wrong_mode(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
+  // expected-error @+1 {{Dequantization mode. Only MIN_COMBINED is supported.}}
+  %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "hello", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
+  return %0 : tensor<16x64xbf16>
+}
+
+// -----
+
+func @reshape_invalid_shapes(%operand: tensor<2x4xf32>) -> tensor<3x3xf32> {
+  // expected-error @+1 {{number of output elements (9) doesn't match expected number of elements (8)}}
+  %0 = "xla_hlo.reshape"(%operand) : (tensor<2x4xf32>) -> tensor<3x3xf32>
+  return %0 : tensor<3x3xf32>
 }

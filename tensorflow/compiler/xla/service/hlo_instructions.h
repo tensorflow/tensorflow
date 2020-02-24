@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -337,7 +338,7 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id);
+      const absl::optional<int64>& channel_id, bool use_global_device_ids);
 
   // Returns true if the AllReduce does no communication, so it's equivalent
   // to a mem copy.
@@ -358,6 +359,18 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
   // unconstrained AllReduce instructions (checked by HloVerifier).
   bool constrain_layout() const { return constrain_layout_; }
 
+  // Returns true if the ids in the ReplicaGroup config represent a global id of
+  // (replica_id * partition_count + partition_id) instead of a replica id.
+  // This enables more flexible grouping of devices if this all-reduce is both
+  // cross-partition and cross-replica.
+  //
+  // For example with 2 replicas and 4 partitions,
+  // replica_groups={{0,1,4,5},{2,3,6,7}}, use_global_device_ids=true means that
+  // group[0] = (0,0), (0,1), (1,0), (1,1)
+  // group[1] = (0,2), (0,3), (1,2), (1,3)
+  // where each pair is (replica_id, partition_id).
+  bool use_global_device_ids() const { return use_global_device_ids_; }
+
  protected:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
@@ -375,6 +388,7 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
       HloCloneContext* context) const override;
 
   bool constrain_layout_;
+  bool use_global_device_ids_;
 };
 
 class HloAllToAllInstruction : public HloCollectiveInstruction {
@@ -382,13 +396,36 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
   explicit HloAllToAllInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       const std::vector<ReplicaGroup>& replica_groups,
-      const absl::optional<int64>& channel_id);
+      const absl::optional<int64>& channel_id,
+      const absl::optional<int64>& split_dimension);
+
+  // AllToAll can optionally take a split dimension, which means that this
+  // AllToAll takes a single (flattened) array operand and produces an array
+  // output (instead of taking a list of operands and producing a tuple).
+  //
+  // split_dimension specifies which dimension in the operand is split across
+  // devices in each replica_group, and also means the concatenated dimension
+  // on the output (i.e., input and the output shapes are the same).
+  absl::optional<int64> split_dimension() const { return split_dimension_; }
+  void set_split_dimension(int64 dim) { split_dimension_ = dim; }
+
+ protected:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  HloInstructionProto ToProto() const override;
 
  private:
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
+
+  absl::optional<int64> split_dimension_;
 };
 
 class HloCollectivePermuteInstruction : public HloChannelInstruction {
@@ -1235,6 +1272,12 @@ class HloCustomCallInstruction : public HloInstruction {
                            absl::string_view custom_call_target, string opaque,
                            absl::Span<const Shape> operand_shapes_with_layout);
 
+  // Constructor for a custom call with a to_apply computation.
+  HloCustomCallInstruction(const Shape& shape,
+                           absl::Span<HloInstruction* const> operands,
+                           HloComputation* to_apply,
+                           absl::string_view custom_call_target, string opaque);
+
   const Window& window() const override {
     CHECK(window_ != nullptr);
     return *window_;
@@ -1696,6 +1739,28 @@ class HloRngGetAndUpdateStateInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   int64 delta_;
+};
+
+class HloRngBitGeneratorInstruction : public HloInstruction {
+ public:
+  HloRngBitGeneratorInstruction(const Shape& shape, HloInstruction* state,
+                                RandomAlgorithm algorithm);
+
+  RandomAlgorithm algorithm() const { return algorithm_; }
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  RandomAlgorithm algorithm_;
 };
 
 }  // namespace xla

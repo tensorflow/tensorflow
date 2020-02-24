@@ -1724,7 +1724,7 @@ TEST_F(PlacerTest, TestNonExistentDevice) {
   EXPECT_TRUE(absl::StrContains(s.error_message(), "but available devices"));
 }
 
-#if !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 // Test that we inform the user if they appear to be explicitly placing nodes
 // on a GPU when CUDA is not available
 TEST_F(PlacerTest, TestUseGpuWithNoCuda) {

@@ -32,6 +32,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed_3x3",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed_3x3_thin",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed_4x4",
         "//tensorflow/lite/delegates/gpu/cl/kernels:convolution_transposed_thin",
@@ -65,7 +66,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_buffer_1x1",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_powervr",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_texture",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:fully_connected_texture",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:fully_connected",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",

@@ -54,12 +54,15 @@ class ConvPowerVR : public GPUOperation {
     LOCAL_MEM_ASYNC_SUBGROUP,  // we use it for PowerVR with workgroup size = 32
     LOCAL_MEM_BY_THREADS,
     GLOBAL_MEM,
+    CONSTANT_MEM,
   };
 
   struct ConvParams {
     int3 block_size;
     int3 work_group_size;
     int3 work_group_launch_order;
+    bool fixed_work_group_size;
+    bool different_weights_for_height;
     int src_depth_loop_size;
     WeightsUploadType weights_upload_type;
     bool x_kernel_is_1;
@@ -70,11 +73,17 @@ class ConvPowerVR : public GPUOperation {
               const Convolution2DAttributes& attr, const CLDevice& device);
   ConvPowerVR(const OperationDef& definition,
               const FullyConnectedAttributes& attr, const CLDevice& device);
+  explicit ConvPowerVR(const OperationDef& definition);
 
   template <DataType T>
   Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                     const ::tflite::gpu::Tensor<Linear, T>& biases,
                     CLContext* context);
+  template <DataType T>
+  Status UploadDataForWinograd4x4To6x6(
+      const ::tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
+      CLContext* context);
+
   template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
@@ -89,6 +98,10 @@ class ConvPowerVR : public GPUOperation {
                                   const FullyConnectedAttributes& attr,
                                   ConvPowerVR* result);
 
+  friend Status CreateConvPowerVRWino4x4To6x6(
+      const CreationContext& creation_context, const OperationDef& definition,
+      const Convolution2DAttributes& attr, ConvPowerVR* result);
+
   friend std::string GenerateConvPowerVR1x1(
       const OperationDef& op_def, bool stride_correction,
       const ConvParams& conv_params,
@@ -100,6 +113,9 @@ class ConvPowerVR : public GPUOperation {
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
                              const FullyConnectedAttributes& attr) const;
+  ConvParams GuessBestParamsWinograd(const CLDevice& device,
+                                     const OperationDef& definition,
+                                     const Convolution2DAttributes& attr) const;
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition, int src_depth,
                              int dst_depth, bool x_kernel_is_1,
@@ -130,6 +146,26 @@ Status ConvPowerVR::UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                               : DataType::FLOAT32;
   create_info.aligned_size = weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(create_info, biases, context, &biases_));
+  return OkStatus();
+}
+
+template <DataType T>
+Status ConvPowerVR::UploadDataForWinograd4x4To6x6(
+    const ::tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
+    CLContext* context) {
+  ::tflite::gpu::Tensor<OHWI, T> wino_weights;
+  RearrangeWeightsToWinograd4x4To6x6Weights(weights, &wino_weights);
+  RETURN_IF_ERROR(UploadWeights(wino_weights, context));
+  LinearStorageCreateInfo create_info;
+  create_info.storage_type = LinearStorageType::BUFFER;
+  create_info.data_type = definition_.precision == CalculationsPrecision::F16
+                              ? DataType::FLOAT16
+                              : DataType::FLOAT32;
+  create_info.aligned_size = weights.shape.o;
+  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> bias;
+  bias.shape = Linear(weights.shape.o);
+  bias.data.resize(weights.shape.o, 0.0f);
+  RETURN_IF_ERROR(CreateLinearStorage(create_info, bias, context, &biases_));
   return OkStatus();
 }
 
@@ -170,6 +206,11 @@ Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const FullyConnectedAttributes& attr,
                          ConvPowerVR* result);
+
+Status CreateConvPowerVRWino4x4To6x6(const CreationContext& creation_context,
+                                     const OperationDef& definition,
+                                     const Convolution2DAttributes& attr,
+                                     ConvPowerVR* result);
 
 }  // namespace cl
 }  // namespace gpu

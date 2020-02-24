@@ -257,9 +257,29 @@ def reset_uids():
 
 @keras_export('keras.backend.clear_session')
 def clear_session():
-  """Destroys the current TF graph and creates a new one.
+  """Destroys the current TF graph and session, and creates a new one.
 
-  Useful to avoid clutter from old models / layers.
+  Calling clear_session() releases the global graph state that Keras is
+  holding on to; resets the counters used for naming layers and
+  variables in Keras; and resets the learning phase. This helps avoid clutter
+  from old models and layers, especially when memory is limited, and a
+  common use-case for clear_session is releasing memory when building models
+  and layers in a loop.
+
+  >>> import tensorflow as tf
+  >>> layers = [tf.keras.layers.Dense(10) for _ in range(10)]
+  >>> new_layer = tf.keras.layers.Dense(10)
+  >>> print(new_layer.name)
+  dense_10
+  >>> tf.keras.backend.set_learning_phase(1)
+  >>> print(tf.keras.backend.learning_phase())
+  1
+  >>> tf.keras.backend.clear_session()
+  >>> new_layer = tf.keras.layers.Dense(10)
+  >>> print(new_layer.name)
+  dense
+  >>> print(tf.keras.backend.learning_phase())
+  0
   """
   global _SESSION
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
@@ -720,7 +740,7 @@ def _to_tensor(x, dtype):
   Returns:
       A tensor.
   """
-  return ops.convert_to_tensor(x, dtype=dtype)
+  return ops.convert_to_tensor_v2(x, dtype=dtype)
 
 
 @keras_export('keras.backend.is_sparse')
@@ -1726,20 +1746,14 @@ def batch_dot(x, y, axes=None):
     If the final rank is 1, we reshape it to `(batch_size, 1)`.
 
   Examples:
-    Assume `x = [[1, 2], [3, 4]]` and `y = [[5, 6], [7, 8]]`
-    `batch_dot(x, y, axes=1) = [[17], [53]]` which is the main diagonal
-    of `x.dot(y.T)`, although we never have to calculate the off-diagonal
-    elements.
 
-    Pseudocode:
-    ```
-    inner_products = []
-    for xi, yi in zip(x, y):
-        inner_products.append(xi.dot(yi))
-    result = stack(inner_products)
-    ```
+  >>> x_batch = tf.keras.backend.ones(shape=(32, 20, 1))
+  >>> y_batch = tf.keras.backend.ones(shape=(32, 30, 20))
+  >>> xy_batch_dot = tf.keras.backend.batch_dot(x_batch, y_batch, axes=(1, 2))
+  >>> tf.keras.backend.int_shape(xy_batch_dot)
+  (32, 1, 30)
 
-    Shape inference:
+  Shape inference:
     Let `x`'s shape be `(100, 20)` and `y`'s shape be `(100, 30, 20)`.
     If `axes` is (1, 2), to find the output shape of resultant tensor,
         loop through each dimension in `x`'s shape and `y`'s shape:
@@ -1752,12 +1766,6 @@ def batch_dot(x, y, axes=None):
     * `y.shape[2]` : 20 : do not append to output shape,
         dimension 2 of `y` has been summed over. (`dot_axes[1]` = 2)
     `output_shape` = `(100, 30)`
-
-  >>> x_batch = tf.keras.backend.ones(shape=(32, 20, 1))
-  >>> y_batch = tf.keras.backend.ones(shape=(32, 30, 20))
-  >>> xy_batch_dot = tf.keras.backend.batch_dot(x_batch, y_batch, axes=(1, 2))
-  >>> tf.keras.backend.int_shape(xy_batch_dot)
-  (32, 1, 30)
   """
   x_shape = int_shape(x)
   y_shape = int_shape(y)
@@ -1929,8 +1937,6 @@ def transpose(x):
   >>> input_transposed = tf.keras.backend.transpose(input)
   >>> input_transposed
   <tf.Tensor 'Transpose_...' shape=(3, 2) dtype=float32>
-
-
   """
   return array_ops.transpose(x)
 
@@ -2094,16 +2100,22 @@ def var(x, axis=None, keepdims=False):
 def std(x, axis=None, keepdims=False):
   """Standard deviation of a tensor, alongside the specified axis.
 
+  It is an alias to `tf.math.reduce_std`.
+
   Arguments:
-      x: A tensor or variable.
-      axis: An integer, the axis to compute the standard deviation.
+      x: A tensor or variable. It should have numerical dtypes. Boolean type
+        inputs will be converted to float.
+      axis: An integer, the axis to compute the standard deviation. If `None`
+        (the default), reduces all dimensions. Must be in the range
+        `[-rank(x), rank(x))`.
       keepdims: A boolean, whether to keep the dimensions or not.
           If `keepdims` is `False`, the rank of the tensor is reduced
-          by 1. If `keepdims` is `True`,
-          the reduced dimension is retained with length 1.
+          by 1. If `keepdims` is `True`, the reduced dimension is retained with
+          length 1.
 
   Returns:
-      A tensor with the standard deviation of elements of `x`.
+      A tensor with the standard deviation of elements of `x` with same dtype.
+      Boolean type input will be converted to float.
   """
   if x.dtype.base_dtype == dtypes_module.bool:
     x = math_ops.cast(x, floatx())
@@ -3364,8 +3376,7 @@ def set_value(x, value):
   """
   value = np.asarray(value, dtype=dtype(x))
   if ops.executing_eagerly_outside_functions():
-    with ops.init_scope():
-      x.assign(value)
+    x.assign(value)
   else:
     with get_graph().as_default():
       tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
@@ -3395,9 +3406,8 @@ def batch_set_value(tuples):
           `value` should be a Numpy array.
   """
   if ops.executing_eagerly_outside_functions():
-    with ops.init_scope():
-      for x, value in tuples:
-        x.assign(np.asarray(value, dtype=dtype(x)))
+    for x, value in tuples:
+      x.assign(np.asarray(value, dtype=dtype(x)))
   else:
     with get_graph().as_default():
       if tuples:
@@ -3799,7 +3809,7 @@ class EagerExecutionFunction(object):
           raise ValueError(
               'You must feed a value for placeholder %s' % (tensor,))
       if not isinstance(value, ops.Tensor):
-        value = ops.convert_to_tensor(value, dtype=tensor.dtype)
+        value = ops.convert_to_tensor_v2(value, dtype=tensor.dtype)
       if value.dtype != tensor.dtype:
         # Temporary workaround due to `convert_to_tensor` not casting floats.
         # See b/119637405
@@ -4363,6 +4373,10 @@ def in_train_phase(x, alt, training=None):
       Either `x` or `alt` based on the `training` flag.
       the `training` flag defaults to `K.learning_phase()`.
   """
+  from tensorflow.python.keras.engine import base_layer_utils  # pylint: disable=g-import-not-at-top
+  if training is None:
+    training = base_layer_utils.call_context().training
+
   if training is None:
     training = learning_phase()
 
@@ -4563,14 +4577,14 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
      [0.5  0.89 0.6 ]
      [0.05 0.01 0.94]], shape=(3, 3), dtype=float32)
   >>> loss = tf.keras.backend.categorical_crossentropy(a, b)
-  >>> print(loss)
-  tf.Tensor([0.10536055 0.8046684  0.06187541], shape=(3,), dtype=float32)
+  >>> print(np.around(loss, 5))
+  [0.10536 0.80467 0.06188]
   >>> loss = tf.keras.backend.categorical_crossentropy(a, a)
-  >>> print(loss)
-  tf.Tensor([1.1920929e-07 1.1920929e-07 1.1920930e-07], shape=(3,),
-  dtype=float32)
+  >>> print(np.around(loss, 5))
+  [0. 0. 0.]
 
   """
+  target.shape.assert_is_compatible_with(output.shape)
   if from_logits:
     return nn.softmax_cross_entropy_with_logits_v2(
         labels=target, logits=output, axis=axis)
@@ -5650,16 +5664,21 @@ def bias_add(x, bias, data_format=None):
 def random_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
   """Returns a tensor with normal distribution of values.
 
+  It is an alias to `tf.random.normal`.
+
   Arguments:
       shape: A tuple of integers, the shape of tensor to create.
-      mean: A float, mean of the normal distribution to draw samples.
-      stddev: A float, standard deviation of the normal distribution
-          to draw samples.
-      dtype: String, dtype of returned tensor.
-      seed: Integer, random seed.
+      mean: A float, the mean value of the normal distribution to draw samples.
+        Default to 0.0.
+      stddev: A float, the standard deviation of the normal distribution
+        to draw samples. Default to 1.0.
+      dtype: `tf.dtypes.DType`, dtype of returned tensor. Default to use Keras
+        backend dtype which is float32.
+      seed: Integer, random seed. Will use a random numpy integer when not
+        specified.
 
   Returns:
-      A tensor.
+      A tensor with normal distribution of values.
   """
   if dtype is None:
     dtype = floatx()

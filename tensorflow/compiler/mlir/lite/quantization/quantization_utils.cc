@@ -399,7 +399,7 @@ static bool PreferResultScale(Operation* op) {
   for (auto operand : op->getOperands()) {
     if (auto operand_type = operand.getType().dyn_cast<ShapedType>()) {
       if (operand_type.getElementType().isa<FloatType>()) {
-        if (float_operands++ > 1) return true;
+        if (++float_operands > 1) return true;
       }
     }
   }
@@ -459,7 +459,7 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
   }
 
   // Step 2: backward pass: For the ops skiped in the forward pass, propagate
-  // its results scale backwards.
+  // its results scale backwards as far as possible.
   func.walk([&](quant::StatisticsOp stats_op) {
     if (redundant_stats_ops.find(stats_op) == redundant_stats_ops.end()) {
       all_stats_ops.push_back(stats_op);
@@ -471,8 +471,7 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
     all_stats_ops.pop_back();
 
     if (auto def = stats_op.arg().getDefiningOp()) {
-      if (def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() &&
-          PreferResultScale(def)) {
+      if (def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
         for (auto input : def->getOperands()) {
           if (auto next_stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(
                   input.getDefiningOp())) {

@@ -50,7 +50,7 @@ _LOCAL_CPU = "/device:CPU:0"
 class ParameterServerStrategy(distribute_lib.Strategy):
   """An asynchronous multi-worker parameter server tf.distribute strategy.
 
-  This strategy requires two jobs: workers and parameter servers. Variables and
+  This strategy requires two roles: workers and parameter servers. Variables and
   updates to those variables will be assigned to parameter servers and other
   operations are assigned to workers.
 
@@ -388,7 +388,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
   # TODO(yuefengz): Not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
-  def _create_variable(self, next_creator, *args, **kwargs):
+  def _create_variable(self, next_creator, **kwargs):
     if self._num_replicas_in_sync > 1:
       aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
       if aggregation not in (
@@ -400,7 +400,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         raise ValueError("Invalid variable aggregation mode: " + aggregation +
                          " for variable: " + kwargs["name"])
 
-      def var_creator(*args, **kwargs):
+      def var_creator(**kwargs):
         """Create an AggregatingVariable and fix up collections."""
         # Record what collections this variable should be added to.
         collections = kwargs.pop("collections", None)
@@ -409,7 +409,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         kwargs["collections"] = []
 
         # Create and wrap the variable.
-        v = next_creator(*args, **kwargs)
+        v = next_creator(**kwargs)
         wrapped = values.AggregatingVariable(
             self._container_strategy(), v, aggregation)
 
@@ -440,14 +440,14 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
       colocate_with = kwargs["colocate_with"]
       if isinstance(colocate_with, numpy_dataset.SingleDevice):
         with ops.device(colocate_with.device):
-          return var_creator(*args, **kwargs)
+          return var_creator(**kwargs)
       with ops.device(None):
         with ops.colocate_with(colocate_with):
-          return var_creator(*args, **kwargs)
+          return var_creator(**kwargs)
 
     with ops.colocate_with(None, ignore_existing=True):
       with ops.device(self._variable_device):
-        return var_creator(*args, **kwargs)
+        return var_creator(**kwargs)
 
   def _call_for_each_replica(self, fn, args, kwargs):
     # pylint: disable=protected-access
@@ -486,8 +486,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
     def _select_fn(x):  # pylint: disable=g-missing-docstring
       if isinstance(x, values.Mirrored):
-        if len(x.devices) == 1:
-          return x.primary
+        if len(x._devices) == 1:  # pylint: disable=protected-access
+          return x._primary  # pylint: disable=protected-access
         else:
           raise ValueError(
               "You cannot update variable with a Mirrored object with multiple "
@@ -506,7 +506,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
   def _update(self, var, fn, args, kwargs, group):
     if isinstance(var, values.AggregatingVariable):
       var = var.get()
-    if not isinstance(var, resource_variable_ops.BaseResourceVariable):
+    if not resource_variable_ops.is_resource_variable(var):
       raise ValueError(
           "You can not update `var` %r. It must be a Variable." % var)
     with ops.colocate_with(var), distribute_lib.UpdateContext(var.device):
@@ -550,7 +550,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
                  cluster_spec=None,
                  task_type=None,
                  task_id=None):
-    """Configures the strategy class with `cluser_spec`.
+    """Configures the strategy class with `cluster_spec`.
 
     The strategy object will be re-initialized if `cluster_spec` is passed to
     `configure` but was not passed when instantiating the strategy.

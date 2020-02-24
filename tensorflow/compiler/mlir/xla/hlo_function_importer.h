@@ -121,6 +121,10 @@ class HloFunctionImporter {
   mlir::NamedAttribute ConvertGatherDimensionNumbers(
       const xla::GatherDimensionNumbers& dnums);
 
+  // Converts the scatter dimensions to attributes.
+  mlir::NamedAttribute ConvertScatterDimensionNumbers(
+      const xla::ScatterDimensionNumbers& dnums);
+
   // Converts XLA instruction source target pairs to MLIR attribute.
   mlir::NamedAttribute ConvertSourceTargetPairs(
       const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&

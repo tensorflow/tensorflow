@@ -43,12 +43,15 @@ enum class OperationType {
   COS,
   DEPTHWISE_CONVOLUTION,
   DIV,
+  EXP,
   FULLY_CONNECTED,
   HARD_SWISH,
   LOG,
   LSTM,
+  MAXIMUM,
   MAX_UNPOOLING_2D,
   MEAN,
+  MINIMUM,
   MUL,
   PAD,
   POOLING_2D,
@@ -63,6 +66,7 @@ enum class OperationType {
   SLICE,
   SOFTMAX,
   SPACE_TO_BATCH,
+  SPACE_TO_DEPTH,
   SQRT,
   SQUARE,
   SQUARED_DIFF,
@@ -74,6 +78,9 @@ enum class OperationType {
 std::string ToString(enum OperationType op);
 
 OperationType OperationTypeFromString(const std::string& name);
+
+typedef absl::variant<absl::monostate, Tensor<Linear, DataType::FLOAT32>, float>
+    TensorOrScalar;
 
 struct Padding2D {
   Padding2D() = default;
@@ -352,8 +359,7 @@ struct LstmAttributes {
 };
 
 struct MultiplyAttributes {
-  absl::variant<absl::monostate, Tensor<Linear, DataType::FLOAT32>, float>
-      param;
+  TensorOrScalar param;
 };
 
 enum class SamplingType {
@@ -370,6 +376,9 @@ struct Resize2DAttributes {
   // If true, the centers of the 4 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
   bool align_corners = false;
+  // half_pixel_centers assumes pixels are of half the actual dimensions, and
+  // yields more accurate resizes. Only applicable to BILINEAR sampling.
+  bool half_pixel_centers = false;
 };
 
 // TODO(b/147771327): rename to Resize3D
@@ -432,8 +441,7 @@ struct SliceAttributes {
 BHWC CalculateOutputShape(const BHWC& input, const SliceAttributes& attr);
 
 struct AddAttributes {
-  absl::variant<absl::monostate, Tensor<Linear, DataType::FLOAT32>, float>
-      param;
+  TensorOrScalar param;
 };
 
 struct FullyConnectedAttributes {
@@ -449,6 +457,10 @@ BHWC CalculateOutputShape(const BHWC& input,
 // @return shape of a tensor after Mean operation is applied to the given input.
 BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
 
+struct ElementwiseAttributes {
+  TensorOrScalar param;
+};
+
 struct ReshapeAttributes {
   BHWC new_shape;
 };
@@ -461,6 +473,10 @@ struct TransposeAttributes {
 // @return shape of a tensor after Transpose operation is applied to
 // the given input.
 BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr);
+
+struct SpaceToDepthAttributes {
+  int block_size;
+};
 
 }  // namespace gpu
 }  // namespace tflite

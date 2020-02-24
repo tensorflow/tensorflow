@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import math
 
+from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -400,7 +401,7 @@ def compute_average_loss(per_example_loss,
           labels, predictions)
 
       # Compute loss that is scaled by sample_weight and by global batch size.
-      return tf.compute_average_loss(
+      return tf.nn.compute_average_loss(
           per_example_loss,
           sample_weight=sample_weight,
           global_batch_size=GLOBAL_BATCH_SIZE)
@@ -451,13 +452,13 @@ def scale_regularization_loss(regularization_loss):
           labels, predictions)
 
       # Compute loss that is scaled by sample_weight and by global batch size.
-      loss = tf.compute_average_loss(
+      loss = tf.nn.compute_average_loss(
           per_example_loss,
           sample_weight=sample_weight,
           global_batch_size=GLOBAL_BATCH_SIZE)
 
       # Add scaled regularization losses.
-      loss += tf.scale_regularization_loss(tf.nn.l2_loss(weights))
+      loss += tf.nn.scale_regularization_loss(tf.nn.l2_loss(weights))
       return loss
   ```
 
@@ -933,7 +934,7 @@ def separable_conv2d(input,
       rate = [1, 1]
 
     # The layout of the ops in the graph are expected to be as follows:
-    # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
+    # depthwise_conv2d  // Conv2D op corresponding to native depthwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
 
     def op(input_converted, _, padding):
@@ -1294,7 +1295,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     # The shape of the weights isn't necessarily the same as x's
     # shape, just broadcast-compatible with it -- so this expression
     # performs broadcasting to give a per-item weight, with the same
-    # shape as (freqency_weights * x). This avoids having to reason
+    # shape as (frequency_weights * x). This avoids having to reason
     # through all the broadcast logic to compute a correct
     # sum_of_weights.
     broadcasted_weights = frequency_weights + array_ops.zeros_like(x)
@@ -1482,7 +1483,24 @@ def fused_batch_norm(
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
 
-  y, batch_mean, batch_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
+  if compat.forward_compatible(2019, 6, 6):
+    y, batch_mean, batch_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
+        x,
+        scale,
+        offset,
+        mean,
+        variance,
+        epsilon=epsilon,
+        data_format=data_format,
+        is_training=is_training,
+        name=name)
+    return y, batch_mean, batch_var
+
+  if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:
+    fused_batch_norm_func = gen_nn_ops.fused_batch_norm_v2
+  else:
+    fused_batch_norm_func = gen_nn_ops._fused_batch_norm  # pylint: disable=protected-access
+  y, batch_mean, batch_var, _, _ = fused_batch_norm_func(
       x,
       scale,
       offset,

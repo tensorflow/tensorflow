@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s
+// RUN: tf-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s --dump-input-on-failure
 
 // CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @element_wise
@@ -179,6 +179,22 @@ func @iota(%out: memref<7x10xi64>) {
 
 // -----
 
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d4, d0, d2)>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
+// CHECK-LABEL: func @dynamic_broadcast
+func @dynamic_broadcast(%operand: memref<?x?x?xf32>,
+                        %result: memref<?x?x?x?x?xf32>) {
+  "xla_lhlo.broadcast_in_dim"(%operand, %result)
+    {broadcast_dimensions = dense<[4,0,2]> : tensor<3xi64>}
+    : (memref<?x?x?xf32>, memref<?x?x?x?x?xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
 // CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d4, d0, 0)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
 // CHECK-LABEL: func @broadcast
@@ -194,6 +210,7 @@ func @broadcast(%operand: memref<5x7x1xf32>, %result: memref<7x10x6x4x5xf32>) {
 
 // -----
 
+// CHECK-DAG: #[[OPERAND_MPA:.*]] = affine_map<(d0, d1, d2) -> (0)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK-LABEL: func @broadcast_scalar
 func @broadcast_scalar(%operand: memref<f32>, %result: memref<7x10x6xf32>) {
@@ -202,10 +219,9 @@ func @broadcast_scalar(%operand: memref<f32>, %result: memref<7x10x6xf32>) {
     : (memref<f32>, memref<7x10x6xf32>) -> ()
   return
 }
-// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[RESULT_MAP]]]
-// CHECK-NEXT: ^bb0(%[[RESULT:.*]]: f32):
-// CHECK-NEXT: %[[CONST:.*]] = load %{{.*}} : memref<f32>
-// CHECK-NEXT:   linalg.yield %[[CONST]] : f32
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[OPERAND:[a-zA-Z0-9_]*]]: f32, %[[RESULT:.*]]: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
 
 // -----
 
@@ -216,3 +232,254 @@ func @constant(%value: memref<i32>) {
 }
 // CHECK: %[[CONSTANT:.*]] = constant 10 : i32
 // CHECK: store %[[CONSTANT]], %{{.*}}[] : memref<i32>
+
+// -----
+
+// CHECK-LABEL: func @abs
+func @abs(%input: memref<2x2xf32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.abs"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = absf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @ceil
+func @ceil(%input: memref<2x2xf32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.ceil"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = ceilf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @convert_i32_to_f32
+func @convert_i32_to_f32(%input: memref<2x2xi32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.convert"(%input, %result)
+      : (memref<2x2xi32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = sitofp %[[OPERAND_IN]] : i32 to f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @convert_i16_to_i32
+func @convert_i16_to_i32(%input: memref<2x2xi16>,
+          %result: memref<2x2xi32>) {
+  "xla_lhlo.convert"(%input, %result)
+      : (memref<2x2xi16>, memref<2x2xi32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %[[RESULT_OUT:.*]]: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = zexti %[[OPERAND_IN]] : i16 to i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+// CHECK-LABEL: func @convert_i32_to_i16
+func @convert_i32_to_i16(%input: memref<2x2xi32>,
+          %result: memref<2x2xi16>) {
+  "xla_lhlo.convert"(%input, %result)
+      : (memref<2x2xi32>, memref<2x2xi16>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i16):
+// CHECK-NEXT:   %[[RESULT:.*]] = trunci %[[OPERAND_IN]] : i32 to i16
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i16
+
+// -----
+
+// CHECK-LABEL: func @convert_f32_to_f64
+func @convert_f32_to_f64(%input: memref<2x2xf32>,
+          %result: memref<2x2xf64>) {
+  "xla_lhlo.convert"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xf64>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f64):
+// CHECK-NEXT:   %[[RESULT:.*]] = fpext %[[OPERAND_IN]] : f32 to f64
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f64
+
+// -----
+
+// CHECK-LABEL: func @convert_f64_to_f32
+func @convert_f64_to_f32(%input: memref<2x2xf64>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.convert"(%input, %result)
+      : (memref<2x2xf64>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f64, %[[RESULT_OUT:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = fptrunc %[[OPERAND_IN]] : f64 to f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @convert_i32_to_i32
+func @convert_i32_to_i32(%input: memref<2x2xi32>,
+          %result: memref<2x2xi32>) {
+  "xla_lhlo.convert"(%input, %result)
+      : (memref<2x2xi32>, memref<2x2xi32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]: i32):
+// CHECK-NEXT: linalg.yield %[[OPERAND_IN]] : i32
+
+// -----
+
+// CHECK-LABEL: func @convert_f32_to_f32
+func @convert_f32_to_f32(%input: memref<2x2xf32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.convert"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
+// CHECK-NEXT: linalg.yield %[[OPERAND_IN]] : f32
+
+// -----
+
+// CHECK-LABEL: func @cos
+func @cos(%input: memref<2x2xf32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.cos"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = cos %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @neg
+func @neg(%input: memref<2x2xf32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.neg"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = negf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @rem
+func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.remainder"(%lhs, %rhs, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = remf %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @sign
+func @sign(%input: memref<2x2xf32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.sign"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[CST:.*]] = constant 1.000000e+00 : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = copysign %[[CST]], %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @tanh
+func @tanh(%input: memref<2x2xf32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.tanh"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = tanh %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+
+// -----
+
+// CHECK: func @slice(%[[IN:.*]]: memref<?x?xf32>, %[[OUT:.*]]: memref<?x?xf32>)
+func @slice(%operand: memref<?x?xf32>, %result: memref<?x?xf32>) {
+  "xla_lhlo.slice"(%operand, %result) {
+    start_indices = dense<[0,1]> : tensor<2xi64>,
+    limit_indices = dense<[2,3]> : tensor<2xi64>,
+    strides = dense<[1,1]> : tensor<2xi64>
+  } : (memref<?x?xf32>, memref<?x?xf32>) -> ()
+  return
+}
+// CHECK: %[[L0:.*]] = constant 0 : index
+// CHECK: %[[L2:.*]] = constant 2 : index
+// CHECK: %[[L1:.*]] = constant 1 : index
+// CHECK: %[[LHS:.*]] = linalg.range %[[L0]] : %[[L2]] : %[[L1]]
+// CHECK: %[[R0:.*]] = constant 1 : index
+// CHECK: %[[R2:.*]] = constant 3 : index
+// CHECK: %[[R1:.*]] = constant 1 : index
+// CHECK: %[[RHS:.*]] = linalg.range %[[R0]] : %[[R2]] : %[[R1]]
+// CHECK: %[[RESULT:.*]] = linalg.slice %[[IN]][%[[LHS]], %[[RHS]]]
+// CHECK: linalg.copy(%[[RESULT]], %[[OUT]])
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1) -> (d0, 0, d1)>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @reshape_3D_2D
+func @reshape_3D_2D(%arg0: memref<12x1x42xi32>, %arg1 : memref<12x42xi32>) {
+  "xla_lhlo.reshape"(%arg0, %arg1) : (memref<12x1x42xi32>, memref<12x42xi32>) -> ()
+  return
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1, 0, 0)>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @reshape_4D_2D
+func @reshape_4D_2D(%arg0: memref<12x42x1x1xi32>, %arg1 : memref<12x42xi32>) {
+  "xla_lhlo.reshape"(%arg0, %arg1) : (memref<12x42x1x1xi32>, memref<12x42xi32>) -> ()
+  return
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d2)>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape_2D_4D
+func @reshape_2D_4D(%arg0: memref<12x42xi32>, %arg1 : memref<12x1x42x1xi32>) {
+  "xla_lhlo.reshape"(%arg0, %arg1) : (memref<12x42xi32>, memref<12x1x42x1xi32>) -> ()
+  return
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]

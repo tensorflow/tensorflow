@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -857,6 +857,50 @@ def _DigammaGrad(op, grad):
       return grad * partial_x
 
 
+@ops.RegisterGradient("Dawsn")
+def _DawsnGrad(op, grad):
+  """Compute gradient of dawsn(x) with respect to its argument."""
+  x = op.inputs[0]
+  y = op.outputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * (1. - 2 * x * y)
+
+
+@ops.RegisterGradient("Expint")
+def _ExpintGrad(op, grad):
+  """Compute gradient of expint(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * math_ops.exp(x) / x
+
+
+@ops.RegisterGradient("FresnelCos")
+def _FresnelCosGrad(op, grad):
+  """Compute gradient of fresnel_cos(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * math_ops.cos((np.pi  / 2.) * math_ops.square(x))
+
+
+@ops.RegisterGradient("FresnelSin")
+def _FresnelSinGrad(op, grad):
+  """Compute gradient of fresnel_sin(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    return grad * math_ops.sin((np.pi  / 2.) * math_ops.square(x))
+
+
+@ops.RegisterGradient("Spence")
+def _SpenceGrad(op, grad):
+  """Compute gradient of spence(x) with respect to its argument."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad]):
+    partial_x = math_ops.log(x) / (1 - x)
+    partial_x = array_ops.where(
+        math_ops.equal(x, 1.), -array_ops.ones_like(x), partial_x)
+    return grad * partial_x
+
+
 @ops.RegisterGradient("BesselI0e")
 def _BesselI0eGrad(op, grad):
   """Compute gradient of bessel_i0e(x) with respect to its argument."""
@@ -1661,19 +1705,18 @@ def _SparseMatMulGrad(op, grad):
   t_a = op.get_attr("transpose_a")
   t_b = op.get_attr("transpose_b")
   is_sparse = {}
-  is_sparse[op.inputs[0].experimental_ref()] = op.get_attr("a_is_sparse")
-  is_sparse[op.inputs[1].experimental_ref()] = op.get_attr("b_is_sparse")
+  is_sparse[op.inputs[0].ref()] = op.get_attr("a_is_sparse")
+  is_sparse[op.inputs[1].ref()] = op.get_attr("b_is_sparse")
   # Use heuristic to figure out if grad might be sparse
-  is_sparse[grad.experimental_ref()] = not context.executing_eagerly() and (
+  is_sparse[grad.ref()] = not context.executing_eagerly() and (
       grad.op.type == "ReluGrad")
 
   def _SparseMatMul(t1, t2, out_dtype, transpose_a=False, transpose_b=False):
     """Helper function to create SparseMatMul op."""
 
-    assert t1.experimental_ref() in is_sparse and t2.experimental_ref(
-    ) in is_sparse
-    t1_sparse = is_sparse[t1.experimental_ref()]
-    t2_sparse = is_sparse[t2.experimental_ref()]
+    assert t1.ref() in is_sparse and t2.ref() in is_sparse
+    t1_sparse = is_sparse[t1.ref()]
+    t2_sparse = is_sparse[t2.ref()]
     if transpose_b:
       t2 = array_ops.transpose(t2)
       transpose_b = False

@@ -41,21 +41,21 @@ from tensorflow.python.util.tf_export import tf_export
 class GFile(_FileIO):
   """File I/O wrappers without thread locking.
 
-  The main roles of the `tf.gfile` module are:
+  The main roles of the `tf.io.gfile` module are:
 
   1. To provide an API that is close to Python's file I/O objects, and
   2. To provide an implementation based on TensorFlow's C++ FileSystem API.
 
   The C++ FileSystem API supports multiple file system implementations,
   including local files, Google Cloud Storage (using a `gs://` prefix, and
-  HDFS (using an `hdfs://` prefix). TensorFlow exports these as `tf.gfile`,
+  HDFS (using an `hdfs://` prefix). TensorFlow exports these as `tf.io.gfile`,
   so that you can use these implementations for saving and loading checkpoints,
   writing to TensorBoard logs, and accessing training data (among other uses).
   However, if all your files are local, you can use the regular Python file
   API without any problem.
 
   *Note*: though similar to Python's I/O implementation, there are semantic
-  differences to make `tf.gfile` more efficient for backing filesystems. For
+  differences to make `tf.io.gfile` more efficient for backing filesystems. For
   example, a write mode file will not be opened until the first write call, to
   minimize RPC invocations in network filesystems.
   """

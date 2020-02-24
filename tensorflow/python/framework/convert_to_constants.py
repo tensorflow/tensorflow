@@ -249,7 +249,7 @@ def _get_control_flow_function_data(node_defs, tensor_data, name_to_node):
 
   def get_source_node_name_through_identities(node_name):
     # Trace the source node along with a chain of Identity nodes.
-    # For example, given Plaecholder -> Identity -> Identity -> node_name
+    # For example, given Placeholder -> Identity -> Identity -> node_name
     # The function will return the name of the Placeholder.
     while name_to_node[node_name].op == "Identity":
       node_name = _get_tensor_name(name_to_node[node_name].input[0])
@@ -514,7 +514,7 @@ def _convert_variables_to_constants_v2_impl(func,
       # Get dtype and data for non-variable Placeholders (ex. values for 1.X
       # Const ops that are loaded as Placeholders in 2.0)
       _save_placeholder(node.name, node.attr["dtype"])
-    elif node.op in ["ReadVariableOp", "ResourceGather"]:
+    elif node.op in ["ReadVariableOp", "ResourceGather", "ResourceGatherNd"]:
       # Get dtype and data for Placeholder ops associated with ReadVariableOp
       # and ResourceGather ops. There can be an Identity in between the
       # resource op and Placeholder. Store the dtype for the Identity ops.
@@ -568,6 +568,15 @@ def _convert_variables_to_constants_v2_impl(func,
       output_node.attr["Tparams"].CopyFrom(input_node.attr["dtype"])
       output_node.attr["Tindices"].CopyFrom(input_node.attr["Tindices"])
       output_node.attr["Taxis"].CopyFrom(axis_dtype)
+      if "_class" in input_node.attr:
+        output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
+    elif input_node.op == "ResourceGatherNd":
+      output_node.op = "GatherNd"
+      output_node.name = input_node.name
+      output_node.input.extend(
+          [input_node.input[0], input_node.input[1]])
+      output_node.attr["Tparams"].CopyFrom(input_node.attr["dtype"])
+      output_node.attr["Tindices"].CopyFrom(input_node.attr["Tindices"])
       if "_class" in input_node.attr:
         output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
     # Update the function names and argument types for the conditional ops.

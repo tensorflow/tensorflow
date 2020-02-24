@@ -26,8 +26,13 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
+
+#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
+#include "tensorflow/lite/profiling/platform_profiler.h"
+#endif
 
 namespace tflite {
 
@@ -35,6 +40,45 @@ namespace {
 // Ensure that ErrorReporter is non-null.
 ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
   return e ? e : DefaultErrorReporter();
+}
+
+template <typename T>
+void Copy(const T* data_ptr, TfLiteIntArray** arr) {
+  int size = data_ptr->values()->size();
+  *arr = TfLiteIntArrayCreate(size);
+  for (int i = 0; i < size; i++) {
+    (*arr)->data[i] = static_cast<int>(data_ptr->values()->Get(i));
+  }
+}
+
+void ParseSparseIndexVector(const DimensionMetadata* src,
+                            TfLiteDimensionMetadata* tgt) {
+  switch (src->array_segments_type()) {
+    case SparseIndexVector_Int32Vector:
+      Copy(src->array_segments_as_Int32Vector(), &tgt->array_segments);
+      break;
+    case SparseIndexVector_Uint16Vector:
+      Copy(src->array_segments_as_Uint16Vector(), &tgt->array_segments);
+      break;
+    case SparseIndexVector_Uint8Vector:
+      Copy(src->array_segments_as_Uint8Vector(), &tgt->array_segments);
+      break;
+    default:
+      break;
+  }
+  switch (src->array_indices_type()) {
+    case SparseIndexVector_Int32Vector:
+      Copy(src->array_indices_as_Int32Vector(), &tgt->array_indices);
+      break;
+    case SparseIndexVector_Uint16Vector:
+      Copy(src->array_indices_as_Uint16Vector(), &tgt->array_indices);
+      break;
+    case SparseIndexVector_Uint8Vector:
+      Copy(src->array_indices_as_Uint8Vector(), &tgt->array_indices);
+      break;
+    default:
+      break;
+  }
 }
 }  // namespace
 
@@ -100,7 +144,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
       reinterpret_cast<const uint8_t*>(allocation->base()),
       allocation->bytes());
   if (!VerifyModelBuffer(base_verifier)) {
-    error_reporter->Report("The model is not a valid Flatbuffer file");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "The model is not a valid Flatbuffer file");
     return nullptr;
   }
 
@@ -136,7 +181,8 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
   flatbuffers::Verifier base_verifier(
       reinterpret_cast<const uint8_t*>(caller_owned_buffer), buffer_size);
   if (!VerifyModelBuffer(base_verifier)) {
-    error_reporter->Report("The model is not a valid Flatbuffer buffer");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "The model is not a valid Flatbuffer buffer");
     return nullptr;
   }
 
@@ -416,8 +462,6 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   return kTfLiteOk;
 }
 
-// TODO(b/145614687): Add sparse tensor verification check in
-// lite/tools/verifier.cc.
 TfLiteStatus InterpreterBuilder::ParseSparsity(
     const SparsityParameters* src_sparsity, TfLiteSparsity** sparsity_ptr) {
   if (!src_sparsity) {
@@ -486,18 +530,7 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
     if (tgt_metadata->format == kTfLiteDimDense) {
       tgt_metadata->dense_size = src_metadata->dense_size();
     } else {
-      const int array_segments_size = src_metadata->array_segments()->size();
-      tgt_metadata->array_segments = TfLiteIntArrayCreate(array_segments_size);
-      for (int j = 0; j < array_segments_size; j++) {
-        tgt_metadata->array_segments->data[j] =
-            src_metadata->array_segments()->Get(j);
-      }
-      const int array_indices_size = src_metadata->array_indices()->size();
-      tgt_metadata->array_indices = TfLiteIntArrayCreate(array_indices_size);
-      for (int j = 0; j < array_indices_size; j++) {
-        tgt_metadata->array_indices->data[j] =
-            src_metadata->array_indices()->Get(j);
-      }
+      ParseSparseIndexVector(src_metadata, tgt_metadata);
     }
   }
 
@@ -563,6 +596,13 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       status = kTfLiteError;
     }
 
+    size_t dims_signature_rank = 0;
+    const int* dims_signature_data = nullptr;
+    if (tensor->shape_signature()) {
+      dims_signature_rank = tensor->shape_signature()->Length();
+      dims_signature_data = tensor->shape_signature()->data();
+    }
+
     bool is_variable = tensor->is_variable();
     if (buffer_ptr) {
       if (is_variable) {
@@ -590,9 +630,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
     } else {
-      if (subgraph->SetTensorParametersReadWrite(i, type, get_name(tensor),
-                                                 dims, quantization,
-                                                 is_variable) != kTfLiteOk) {
+      if (subgraph->SetTensorParametersReadWrite(
+              i, type, get_name(tensor), dims, quantization, is_variable,
+              dims_signature_rank, dims_signature_data) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
                                 i);
         status = kTfLiteError;
@@ -624,6 +664,13 @@ TfLiteStatus InterpreterBuilder::operator()(
   if (!interpreter) {
     error_reporter_->Report(
         "Null output pointer passed to InterpreterBuilder.");
+    return kTfLiteError;
+  }
+
+  if (num_threads < -1) {
+    error_reporter_->Report(
+        "num_threads should be >=0 or just -1 to let TFLite runtime set the "
+        "value.");
     return kTfLiteError;
   }
 
@@ -670,6 +717,10 @@ TfLiteStatus InterpreterBuilder::operator()(
   if (subgraphs->Length() > 1) {
     (*interpreter)->AddSubgraphs(subgraphs->Length() - 1);
   }
+
+#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
+  (*interpreter)->SetProfiler(tflite::profiling::CreatePlatformProfiler());
+#endif
 
   for (int subgraph_index = 0; subgraph_index < subgraphs->Length();
        ++subgraph_index) {

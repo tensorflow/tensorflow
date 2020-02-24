@@ -31,8 +31,6 @@ from tensorflow.python.lib.io import tf_record
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
-prefix_path = "third_party/tensorflow/core/lib"
-
 TFRecordCompressionType = tf_record.TFRecordCompressionType
 
 # Edgar Allan Poe's 'Eldorado'

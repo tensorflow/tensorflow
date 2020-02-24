@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -43,6 +45,46 @@ void AddOrUpdateIntStat(int64 metadata_id, int64 value,
 
 void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
                         tensorflow::profiler::XEvent* event);
+
+XEventBuilder CreateXEvent(
+    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
+    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
+    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats);
+
+XEventBuilder CreateXEvent(
+    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
+    HostEventType event_type, int64 offset_ps, int64 duration_ps,
+    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats);
+
+void RemovePlaneWithName(XSpace* space, absl::string_view name);
+void RemoveEmptyPlanes(XSpace* space);
+void RemoveEmptyLines(XPlane* plane);
+
+// Returns the plane with the given name in the container or null if not found.
+XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);
+
+// Returns the plane with the given name in the container. If necessary, adds a
+// new plane to the container.
+XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name);
+
+// Sorts each XLine's XEvents by offset_ps (ascending) and duration_ps
+// (descending) so nested events are sorted from outer to innermost.
+void SortXPlane(XPlane* plane);
+// Sorts each plane of the XSpace.
+void SortXSpace(XSpace* space);
+
+// Normalize the XLines by time-shifting to start_time_ns_ as origin.
+void NormalizeTimeLine(XSpace* space, uint64 start_time_ns);
+
+// Merge Xplane src_plane into Xplane dst_plane, both plane level stats, lines,
+// events and event level stats are merged; If src_plane and dst_plane both have
+// the same line, which have different start timestamps, we will normalize the
+// events offset timestamp correspondingly.
+void MergePlanes(const XPlane& src_plane, XPlane* dst_plane);
+
+// Plane's start timestamp is defined as the minimum of all lines' start
+// timestamps. If zero line exists, return 0;
+uint64 GetStartTimestampNs(const XPlane& plane);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -37,7 +37,7 @@ def tf_library(
         tfcompile_tool = "//tensorflow/compiler/aot:tfcompile",
         include_standard_runtime_deps = True,
         enable_xla_hlo_profiling = False,
-        mlir_components = None,
+        mlir_components = "None",
         deps = None,
         tags = []):
     """Runs tfcompile to compile a TensorFlow graph into executable code.
@@ -88,8 +88,8 @@ def tf_library(
       enable_xla_hlo_profiling: Enable XLA HLO profiling in the generated
         program, and emit metadata that lets us pretty-print the gathered
         profile counters.
-      mlir_components: When the value is "Bridge", use MLIR to translate
-        GraphDef to HLO.
+      mlir_components: When the value is "None", no components use MLIR. When
+        the value is "Bridge", use MLIR to translate GraphDef to HLO.
       deps: a list of deps to include on the build rules for the generated
         library, added to the standard deps if standard_runtime_deps is True.
       tags: tags to apply to subsidiary build rules.
@@ -189,10 +189,7 @@ def tf_library(
     else:
         profiling_flag = ""
 
-    if mlir_components:
-        mlir_flag = "--mlir_components=" + mlir_components
-    else:
-        mlir_flag = ""
+    mlir_flag = "--mlir_components=" + mlir_components
 
     native.genrule(
         name = ("gen_" + name),

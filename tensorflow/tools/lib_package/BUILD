@@ -164,7 +164,7 @@ genrule(
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@sobol_data//:LICENSE",
-        "@zlib_archive//:zlib.h",
+        "@zlib//:zlib.h",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -173,6 +173,9 @@ genrule(
         "//tensorflow:no_aws_support": [],
         "//conditions:default": [
             "@aws//:LICENSE",
+            "@aws-checksums//:LICENSE",
+            "@aws-c-event-stream//:LICENSE",
+            "@aws-c-common//:LICENSE",
         ],
     }) + select({
         "//tensorflow:android": [],
@@ -200,10 +203,10 @@ genrule(
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
     ]) + if_not_system_lib(
-        "grpc",
+        "com_github_grpc_grpc",
         [
-            "@grpc//:LICENSE",
-            "@grpc//third_party/address_sorting:LICENSE",
+            "@com_github_grpc_grpc//:LICENSE",
+            "@com_github_grpc_grpc//third_party/address_sorting:LICENSE",
         ],
     ) + tf_additional_license_deps(),
     outs = ["THIRD_PARTY_TF_C_LICENSES"],
@@ -228,8 +231,8 @@ genrule(
         "@fft2d//:fft2d/readme2d.txt",
         "@gemmlowp//:LICENSE",
         "@gif//:COPYING",
-        "@grpc//:LICENSE",
-        "@grpc//third_party/address_sorting:LICENSE",
+        "@com_github_grpc_grpc//:LICENSE",
+        "@com_github_grpc_grpc//third_party/address_sorting:LICENSE",
         "@highwayhash//:LICENSE",
         "@icu//:icu4j/main/shared/licenses/LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
@@ -244,7 +247,7 @@ genrule(
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@sobol_data//:LICENSE",
-        "@zlib_archive//:zlib.h",
+        "@zlib//:zlib.h",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -253,6 +256,9 @@ genrule(
         "//tensorflow:no_aws_support": [],
         "//conditions:default": [
             "@aws//:LICENSE",
+            "@aws-checksums//:LICENSE",
+            "@aws-c-event-stream//:LICENSE",
+            "@aws-c-common//:LICENSE",
         ],
     }) + select({
         "//tensorflow:android": [],

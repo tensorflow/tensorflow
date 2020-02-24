@@ -24,11 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
-
-using stream_executor::port::Status;
-using stream_executor::port::StatusOr;  // NOLINT TODO(b/130822468) fix this
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> emit_use_tuple_arg(

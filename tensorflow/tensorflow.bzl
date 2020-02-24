@@ -7,7 +7,7 @@ load(
     "register_extension_info",
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
-    "tf_exec_compatible_with",
+    "tf_exec_properties",
     "tf_gpu_tests_tags",
     "tf_sycl_tests_tags",
 )
@@ -107,16 +107,8 @@ def _add_tfcore_prefix(src):
         return src
     return "//tensorflow/core:" + src
 
-# List of proto files for android builds
-def tf_android_core_proto_sources(core_proto_sources_relative):
-    return [
-        _add_tfcore_prefix(p)
-        for p in core_proto_sources_relative
-    ]
-
-# Returns the list of pb.h and proto.h headers that are generated for
-# tf_android_core_proto_sources().
 def tf_android_core_proto_headers(core_proto_sources_relative):
+    """Returns the list of pb.h and proto.h headers that are generated for the provided sources."""
     return ([
         _add_tfcore_prefix(p).replace(":", "/").replace(".proto", ".pb.h")
         for p in core_proto_sources_relative
@@ -129,6 +121,15 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
 def tf_portable_proto_library(name, proto_deps, deps = [], **kwargs):
     _ignore = [kwargs]
     cc_library(name = name, deps = deps + [dep + "_cc" for dep in proto_deps])
+
+def tf_portable_full_lite_protos(full, lite):
+    return select({
+        "//tensorflow:mobile_lite_protos": lite,
+        "//tensorflow:mobile_full_protos": full,
+        # The default should probably be lite runtime, but since most clients
+        # seem to use the non-lite version, let's make that the default for now.
+        "//conditions:default": full,
+    })
 
 def if_android_x86(a):
     return select({
@@ -206,19 +207,13 @@ def if_ios_x86_64(a):
 
 def if_mobile(a):
     return select({
-        clean_dep("//tensorflow:android"): a,
-        clean_dep("//tensorflow:chromiumos"): a,
-        clean_dep("//tensorflow:emscripten"): a,
-        clean_dep("//tensorflow:ios"): a,
+        clean_dep("//tensorflow:mobile"): a,
         "//conditions:default": [],
     })
 
 def if_not_mobile(a):
     return select({
-        clean_dep("//tensorflow:android"): [],
-        clean_dep("//tensorflow:chromiumos"): [],
-        clean_dep("//tensorflow:emscripten"): [],
-        clean_dep("//tensorflow:ios"): [],
+        clean_dep("//tensorflow:mobile"): [],
         "//conditions:default": a,
     })
 
@@ -349,21 +344,45 @@ def tfe_xla_copts():
         "//conditions:default": [],
     })
 
-def tf_opts_nortti_if_android():
-    return if_android([
+def tf_opts_nortti():
+    return [
         "-fno-rtti",
         "-DGOOGLE_PROTOBUF_NO_RTTI",
         "-DGOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
-    ])
+    ]
 
-def tf_defines_nortti_if_android():
-    return if_android([
+def tf_opts_nortti_if_android():
+    return if_android(tf_opts_nortti())
+
+def tf_opts_nortti_if_mobile():
+    return if_mobile(tf_opts_nortti())
+
+def tf_defines_nortti():
+    return [
         "GOOGLE_PROTOBUF_NO_RTTI",
         "GOOGLE_PROTOBUF_NO_STATIC_INITIALIZER",
-    ])
+    ]
+
+def tf_defines_nortti_if_android():
+    return if_android(tf_defines_nortti())
 
 def tf_features_nomodules_if_android():
     return if_android(["-use_header_modules"])
+
+def tf_features_nomodules_if_mobile():
+    return if_mobile(["-use_header_modules"])
+
+def tf_opts_nortti_if_lite_protos():
+    return tf_portable_full_lite_protos(
+        full = [],
+        lite = tf_opts_nortti(),
+    )
+
+def tf_defines_nortti_if_lite_protos():
+    return tf_portable_full_lite_protos(
+        full = [],
+        lite = tf_defines_nortti(),
+    )
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
@@ -1027,7 +1046,7 @@ def tf_cc_test(
         data = data +
                tf_binary_dynamic_kernel_dsos() +
                tf_binary_additional_srcs(),
-        exec_compatible_with = tf_exec_compatible_with(kwargs),
+        exec_properties = tf_exec_properties(kwargs),
         # Nested select() statements seem not to be supported when passed to
         # linkstatic, and we already have a cuda select() passed in to this
         # function.
@@ -1175,7 +1194,7 @@ def tf_gpu_only_cc_test(
             "//conditions:default": 0,
         }),
         tags = tags,
-        exec_compatible_with = tf_exec_compatible_with({"tags": tags}),
+        exec_properties = tf_exec_properties({"tags": tags}),
     )
 
 register_extension_info(
@@ -1262,7 +1281,7 @@ def tf_cc_test_mkl(
             }) + _rpath_linkopts(src_to_test_name(src)),
             deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_deps(),
             data = data + tf_binary_dynamic_kernel_dsos(),
-            exec_compatible_with = tf_exec_compatible_with({"tags": tags}),
+            exec_properties = tf_exec_properties({"tags": tags}),
             linkstatic = linkstatic,
             tags = tags,
             size = size,
@@ -1630,12 +1649,12 @@ def _py_wrap_cc_impl(ctx):
     ]
     args += ["-l" + f.path for f in ctx.files.swig_includes]
     args += ["-I" + i for i in swig_include_dirs.to_list()]
-    args += [src.path]
+    args.append(src.path)
     outputs = [ctx.outputs.cc_out, ctx.outputs.py_out]
     ctx.actions.run(
         executable = ctx.executable._swig,
         arguments = args,
-        inputs = inputs.to_list(),
+        inputs = inputs,
         outputs = outputs,
         mnemonic = "PythonSwig",
         progress_message = "SWIGing " + src.path,
@@ -1739,7 +1758,7 @@ def transitive_hdrs(name, deps = [], **kwargs):
 #
 # For:
 #   * Eigen: it's a header-only library.  Add it directly to your deps.
-#   * GRPC: add a direct dep on @grpc//:grpc++_public_hdrs.
+#   * GRPC: add a direct dep on @com_github_grpc_grpc//:grpc++_public_hdrs.
 #
 def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
@@ -1961,7 +1980,7 @@ _append_init_to_versionscript = rule(
 
 def tf_py_wrap_cc(
         name,
-        srcs,
+        srcs = [],
         swig_includes = [],
         deps = [],
         copts = [],
@@ -1981,6 +2000,19 @@ def tf_py_wrap_cc(
         name.split("/")[:-1] + ["_" + module_name + ".pyd"],
     )
     extra_deps = []
+
+    # TODO(amitpatankar): Migrate from py_wrap_cc to cc_shared_library.
+    # TensorFlow python does not use any SWIG sources so we create
+    # an empty SWIG file. This rule cannot be cleaned up until bazel shared
+    # library support lands.
+    if srcs == []:
+        srcs = ["default.swig"]
+        native.genrule(
+            name = "default_swig_rule",
+            outs = srcs,
+            cmd = "touch $@",
+        )
+
     _py_wrap_cc(
         name = name + "_py_wrap",
         srcs = srcs,
@@ -2025,9 +2057,23 @@ def tf_py_wrap_cc(
         ],
     })
 
+    # Due to b/149224972 we have to add libtensorflow_framework.so
+    # as a dependency so the linker doesn't try and optimize and
+    # remove it from pywrap_tensorflow_internal.so
+    # Issue: https://github.com/tensorflow/tensorflow/issues/34117
+    # Fix: https://github.com/tensorflow/tensorflow/commit/5caa9e83798cb510c9b49acee8a64efdb746207c
+    extra_deps += if_static(
+        extra_deps = [],
+        otherwise = [
+            clean_dep("//tensorflow:libtensorflow_framework_import_lib"),
+        ],
+    )
+
     tf_cc_shared_object(
         name = cc_library_name,
         srcs = [module_name + ".cc"],
+        # framework_so is no longer needed as libtf.so is included via the extra_deps.
+        framework_so = [],
         copts = copts + if_not_windows([
             "-Wno-self-assign",
             "-Wno-sign-compare",
@@ -2101,7 +2147,7 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
             "//conditions:default": kernels,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
         }),
-        exec_compatible_with = tf_exec_compatible_with(kwargs),
+        exec_properties = tf_exec_properties(kwargs),
         **kwargs
     )
 

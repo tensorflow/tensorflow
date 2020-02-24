@@ -182,6 +182,7 @@ cc_library(
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite/tools/versioning:op_version",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -613,12 +614,12 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
-        "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
-        "@gemmlowp",
     ],
 )
 

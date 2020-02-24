@@ -16,6 +16,7 @@ animation.
 
 -   [Understand the model](#understand-the-model)
 -   [Deploy to Arduino](#deploy-to-arduino)
+-   [Deploy to ESP32](#deploy-to-esp32)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)

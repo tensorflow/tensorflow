@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_IO_SNAPPY_INPUTBUFFER_H_
-#define TENSORFLOW_LIB_IO_SNAPPY_INPUTBUFFER_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_SNAPPY_SNAPPY_INPUTBUFFER_H_
+#define TENSORFLOW_CORE_LIB_IO_SNAPPY_SNAPPY_INPUTBUFFER_H_
 
 #include <string>
 #include "tensorflow/core/lib/core/status.h"
@@ -82,11 +82,11 @@ class SnappyInputBuffer : public InputStreamInterface {
   // Should be called only after the cached output has been consumed.
   Status Inflate();
 
-  // Starts reading bytes at `next_out_` till either `bytes_to_read`
+  // Starts reading bytes at `next_out_` until either `bytes_to_read`
   // bytes have been read or `next_out_` is reached.
   // Returns the number of bytes read and advances the `next_out_`
   // pointer to the next location to read from.
-  size_t ReadBytesFromCache(size_t bytes_to_read, tstring* result);
+  size_t ReadBytesFromCache(size_t bytes_to_read, char* result);
 
   // Reads the length of the next *compressed* block and stores in `length`.
   // The length is stored in 4 bytes in little endian notation.
@@ -128,4 +128,4 @@ class SnappyInputBuffer : public InputStreamInterface {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_SNAPPY_INPUTBUFFER_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_SNAPPY_SNAPPY_INPUTBUFFER_H_

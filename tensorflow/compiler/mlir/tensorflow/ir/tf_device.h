@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Dialect.h"  // TF:llvm-project
 #include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
 
 namespace mlir {
 namespace tf_device {
@@ -42,6 +43,9 @@ class TensorFlowDeviceDialect : public Dialect {
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h.inc"
 
+// TODO(b/148642767): Use tablegen to define tf_device.parallel_execute op once
+// variadic regions can be expressed in tablegen.
+//
 // ParallelExecute op concurrently executes variadic number of regions. Regions
 // must represent separate sets of instructions to execute concurrently. In
 // order to represent concurrently executed regions with dependencies, multiple
@@ -70,9 +74,9 @@ class ParallelExecuteOp
 
   static StringRef getOperationName() { return "tf_device.parallel_execute"; }
 
-  Operation::result_range getRegionOutputs(unsigned region_index);
+  std::vector<OpResult> GetRegionOutputs(unsigned region_index);
   LogicalResult verify();
-  Block& getRegionWithIndex(unsigned index);
+  Block& GetRegionBlockWithIndex(unsigned index);
 };
 
 }  // namespace tf_device

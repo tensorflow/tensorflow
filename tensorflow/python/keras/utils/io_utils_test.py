@@ -91,7 +91,7 @@ class TestIOUtils(keras_parameterized.TestCase):
 
     # Note: you have to use shuffle='batch' or False with HDF5Matrix
     model.fit(x_train, y_train, batch_size=32, shuffle='batch', verbose=False)
-    # test that evalutation and prediction
+    # test that evaluation and prediction
     # don't crash and return reasonable results
     out_pred = model.predict(x_test, batch_size=32, verbose=False)
     out_eval = model.evaluate(x_test, y_test, batch_size=32, verbose=False)

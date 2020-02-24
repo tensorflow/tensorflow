@@ -2999,6 +2999,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["pooling_ops_test.py"],
     shard_count = 4,
+    xla_enable_strict_auto_jit = False,  # Flaky in XLA b/149568654
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

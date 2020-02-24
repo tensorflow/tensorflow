@@ -35,13 +35,13 @@ void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
   remote_op->set_name(op->Name());
 
   op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
-  remote_op->set_device(op->Device()->name());
+  remote_op->set_device(VariantDeviceName(op->Device()));
 }
 
 Status CreateUncachedKernelAndDeviceOp(
     EagerOperation* op, core::RefCountPtr<KernelAndDevice>* kernel) {
   EagerContext& ctx = op->EagerContext();
-  Device* device = op->Device();
+  Device* device = absl::get<Device*>(op->Device());
 
   FunctionLibraryRuntime* flr = ctx.func_lib(device);
   if (flr == nullptr) {
@@ -77,7 +77,7 @@ RemoteCopyNode::RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor,
       src_(src),
       ctx_(ctx),
       executor_(executor),
-      send_device_(src->DeviceOrHostCPU(*ctx)),
+      send_device_(absl::get<Device*>(src->DeviceOrHostCPU(*ctx))),
       recv_device_(recv_device),
       wire_id_(GetUniqueWireID()),
       recv_op_id_(recv_op_id),
@@ -102,7 +102,9 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
   gtl::InlinedVector<TensorValue, 4> input_vector(1);
-  TF_RETURN_IF_ERROR(src_->TensorValue(&input_vector[0]));
+  TF_RETURN_IF_ERROR(src_->TensorValue(
+      &input_vector[0],
+      ctx_->CanonicalDevice(absl::get<Device*>(op->Device()))));
 
   EagerKernelArgs args(std::move(input_vector));
   return kernel->Run(args, /*outputs=*/nullptr,
@@ -145,8 +147,8 @@ void RemoteCopyNode::StartSend() {
     request.set_context_id(ctx_->GetContextId());
     auto* remote_op = request.add_queue()->mutable_operation();
     status = ctx_->RemoteMgr()->SerializeRemoteTensorHandle(
-        src_, remote_op->add_inputs(), src_->device(),
-        src_->DeviceOrHostCPU(*ctx_)->name());
+        src_, remote_op->add_inputs(), absl::get<Device*>(src_->device()),
+        absl::get<Device*>(src_->DeviceOrHostCPU(*ctx_))->name());
     if (!status.ok()) {
       captured_state_->SetSendStatus(status);
       return;
@@ -222,12 +224,15 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
   EnqueueResponse* response = new EnqueueResponse;
   const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   Device* recv_device = recv_device_;
+  uint64 context_view_id = ctx_->GetContextViewId();
   eager_client->StreamingEnqueueAsync(
       &request, response,
-      [captured_state, response, recv_device, done](const Status& s) {
+      [captured_state, response, recv_device, context_view_id,
+       done](const Status& s) {
         if (s.ok()) {
           Status status = captured_state->dst()->SetRemoteShape(
-              response->queue_response(0).shape(0), recv_device);
+              response->queue_response(0).shape(0), recv_device,
+              context_view_id);
           if (!status.ok()) {
             LOG(ERROR) << "Ignoring an error encountered when setting remote "
                           "shape of tensor received by remote Recv op: "
@@ -275,7 +280,8 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
       done(status);
       return;
     }
-    status = captured_state_->dst()->SetTensor(std::move(outputs[0]));
+    status = captured_state_->dst()->SetTensor(
+        std::move(outputs[0]), ctx_->CanonicalDevice(recv_device_));
     done(status);
   } else {
     // Handles captured_state_->dst_ internally.
@@ -316,12 +322,14 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   captured_state->SetSrcShape(tensor.shape());
   Device* recv_device = recv_device_;
+  uint64 context_view_id = ctx_->GetContextViewId();
   eager_client->StreamingEnqueueAsync(
       &request, response,
-      [captured_state, response, recv_device, done](const Status& s) {
+      [captured_state, response, recv_device, context_view_id,
+       done](const Status& s) {
         if (s.ok()) {
           Status status = captured_state->dst()->SetRemoteShape(
-              captured_state->GetSrcShape(), recv_device);
+              captured_state->GetSrcShape(), recv_device, context_view_id);
           if (!status.ok()) {
             LOG(ERROR) << "Ignoring an error encountered when setting remote "
                           "shape of tensor received by SendTensor rpc: "

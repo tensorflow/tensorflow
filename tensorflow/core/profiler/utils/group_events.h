@@ -44,12 +44,11 @@ class EventNode {
     DCHECK(event);
   }
 
-  void SetParent(EventNode* parent) { parent_ = parent; }
-
   EventNode* GetParent() const { return parent_; }
 
-  void AddChild(const std::shared_ptr<EventNode>& child) {
+  void AddChild(EventNode* child) {
     children_.push_back(child);
+    child->parent_ = this;
   }
 
   absl::optional<int64> GetGroupId() const { return group_id_; }
@@ -61,28 +60,29 @@ class EventNode {
 
   const XEvent& GetEvent() const { return *event_; }
 
-  absl::optional<const XStat*> GetContextStat(int64 stat_type) const;
+  const XStat* GetContextStat(int64 stat_type) const;
 
   void AddStepName(absl::string_view step_name);
+
+  bool IsNestedIn(EventNode* parent);
 
  private:
   const XPlaneVisitor* visitor_;
   XEvent* event_;
   EventNode* parent_ = nullptr;
-  std::vector<std::shared_ptr<EventNode>> children_;
+  std::vector<EventNode*> children_;
   absl::optional<int64> group_id_;
 };
 
 using EventNodeMap =
     absl::flat_hash_map<int64 /*event_type*/,
-                        std::vector<std::shared_ptr<EventNode>>>;
+                        std::vector<std::unique_ptr<EventNode>>>;
 
 using EventGroupNameMap = absl::flat_hash_map<int64 /*group_id*/, std::string>;
 
-// Creates an EventNode for each event and connect events according to the
-// nesting relationship within the thread. Also, collect events of EventType in
-// event_node_map.
-void ConnectIntraThread(const XPlaneVisitor& visitor, XPlane* host_trace,
+// Creates an EventNode for each event in event_node_map and connect events
+// according to the nesting relationship within the thread.
+void ConnectIntraThread(const XPlaneVisitor& visitor, XPlane* plane,
                         EventNodeMap* event_node_map);
 
 // Connects events across threads according to connect_info_list.
@@ -97,19 +97,16 @@ void CreateEventGroup(const std::vector<int64 /*EventType*/>& root_event_types,
                       const EventNodeMap& event_node_map,
                       EventGroupNameMap* event_group_name_map);
 
-// Groups events in host_trace and device_traces using the nesting relationship
-// within the same thread and connect_info_list across threads, and populates
-// event_group_name_map.
+// Groups events in space using the nesting relationship within the same thread
+// and connect_info_list across threads, and populates event_group_name_map if
+// not nullptr.
 void GroupEvents(const std::vector<InterThreadConnectInfo>& connect_info_list,
-                 const std::vector<int64>& root_event_types, XPlane* host_trace,
-                 const std::vector<XPlane*>& device_traces,
+                 const std::vector<int64>& root_event_types, XSpace* space,
                  EventGroupNameMap* event_group_name_map);
 
 // Calls GroupEvents with connect_info_list and root_event_types specific to
 // TensorFlow.
-void GroupTfEvents(XPlane* host_trace,
-                   const std::vector<XPlane*>& device_traces,
-                   EventGroupNameMap* event_group_name_map);
+void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map);
 
 }  // namespace profiler
 }  // namespace tensorflow

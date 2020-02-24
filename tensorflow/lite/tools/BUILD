@@ -31,10 +31,10 @@ py_test(
         "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
     ],
     deps = [
+        ":test_utilities",
         ":visualize",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
     ],
 )
 
@@ -63,6 +63,45 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
+    ],
+)
+
+py_binary(
+    name = "strip_strings",
+    srcs = ["strip_strings.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/lite/python:schema_py",
+        "//tensorflow/python:platform",
+        "@flatbuffers//:runtime_py",
+    ],
+)
+
+py_test(
+    name = "strip_strings_test",
+    srcs = ["strip_strings_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
+    ],
+    deps = [
+        ":strip_strings",
+        ":test_utilities",
+        "//tensorflow/lite/python:schema_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_library(
+    name = "test_utilities",
+    srcs = ["test_utilities.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/lite/python:schema_py",
+        "@flatbuffers//:runtime_py",
     ],
 )
 

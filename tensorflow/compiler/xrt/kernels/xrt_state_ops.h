@@ -179,11 +179,11 @@ class XRTAllocateOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(allocation_info.shape()),
                 errors::Internal("allocation input should be a string scalar"));
     xrt::XLAAllocation allocation_proto;
-    OP_REQUIRES(
-        ctx,
-        allocation_proto.ParseFromString(allocation_info.scalar<tstring>()()),
-        errors::InvalidArgument(
-            "Unable to parse allocation input to XLAAllocation"));
+    OP_REQUIRES(ctx,
+                ParseFromTString(allocation_info.scalar<tstring>()(),
+                                 &allocation_proto),
+                errors::InvalidArgument(
+                    "Unable to parse allocation input to XLAAllocation"));
 
     xla::Literal literal;
     OP_REQUIRES_OK(
@@ -429,7 +429,7 @@ class XRTMakeTupleOp : public OpKernel {
         errors::Internal("tuple description input should be a string scalar"));
     xrt::XLATupleNode tuple_proto;
     OP_REQUIRES(
-        ctx, tuple_proto.ParseFromString(tuple_info.scalar<tstring>()()),
+        ctx, ParseFromTString(tuple_info.scalar<tstring>()(), &tuple_proto),
         errors::InvalidArgument("Unable to parse tuple input to XLATupleNode"));
 
     OpInputList arg_list;
@@ -639,10 +639,10 @@ class XRTWriteLiteralOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(literal_info.shape()),
                 errors::Internal("literal input should be a string scalar"));
     xla::LiteralProto literal_proto;
-    OP_REQUIRES(ctx,
-                literal_proto.ParseFromString(literal_info.scalar<tstring>()()),
-                errors::InvalidArgument(
-                    "Unable to parse allocation input to LiteralProto"));
+    OP_REQUIRES(
+        ctx, ParseFromTString(literal_info.scalar<tstring>()(), &literal_proto),
+        errors::InvalidArgument(
+            "Unable to parse allocation input to LiteralProto"));
     xla::Literal literal;
     OP_REQUIRES_OK(ctx, XRTStateHelpers::MakeLiteral(literal_proto, &literal));
 

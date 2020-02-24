@@ -16,11 +16,15 @@ platform(
     ],
     remote_execution_properties = """
         properties:{
-          name:"container-image"
-          value:"docker://gcr.io/tensorflow-testing/tf-win-rbe@sha256:6bee34693b356baf3b0ba700f4eb27a23d3a04e0c47cbb9de813c61ef30c0b9f"
+          name: "container-image"
+          value: "docker://gcr.io/tensorflow-testing/tf-win-rbe@sha256:f109576c7c0c8a1783ff22b666e8923b52dbbe7933f69a1c7a7275202c304a12"
         }
         properties:{
-          name: "OSFamily" value: "Windows"
+          name: "OSFamily"
+          value: "Windows"
+        }
+        properties:{
+          name: "Pool" value: "default"
         }
         """,
 )
@@ -33,15 +37,19 @@ platform(
     ],
     remote_execution_properties = """
         properties:{
-          name:"container-image"
-          value:""
+          name: "container-image"
+          value: ""
         }
         properties:{
-          name:"sandbox"
-          value:"none"
+          name: "sandbox"
+          value: "none"
         }
         properties:{
-          name: "OSFamily" value: "Windows"
+          name: "OSFamily"
+          value: "Windows"
+        }
+        properties:{
+          name: "Pool" value: "default"
         }
         """,
 )

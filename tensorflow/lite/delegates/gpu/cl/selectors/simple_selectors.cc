@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax1x1.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/strided_slice.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/transpose.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -42,13 +43,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
-                     const BHWC& mask_shape,
-                     std::unique_ptr<GPUOperation>* ptr) {
-  ApplyMask operation = CreateApplyMask(op_def, src_shape, mask_shape);
-  *ptr = absl::make_unique<ApplyMask>(std::move(operation));
-}
 
 void SelectLSTM(const OperationDef& op_def,
                 std::unique_ptr<GPUOperation>* ptr) {
@@ -130,6 +124,13 @@ void SelectReshape(int src_channels, int dst_channels,
     Reshape operation = CreateReshape(op_def);
     *ptr = absl::make_unique<Reshape>(std::move(operation));
   }
+}
+
+void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
+                        const OperationDef& op_def,
+                        std::unique_ptr<GPUOperation>* ptr) {
+  SpaceToDepth operation = CreateSpaceToDepth(op_def, attr);
+  *ptr = absl::make_unique<SpaceToDepth>(std::move(operation));
 }
 
 void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,

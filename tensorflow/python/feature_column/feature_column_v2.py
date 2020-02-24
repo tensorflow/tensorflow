@@ -683,7 +683,8 @@ class LinearModel(training.Model):
           }
           ```
 
-        with `sparse_combiner` as "mean", the linear model outputs conceptly are
+        with `sparse_combiner` as "mean", the linear model outputs conceptually
+        are
         ```
         y_0 = 1.0 / 2.0 * ( w_a + w_ b) + w_c + b_0
         y_1 = w_d + 1.0 / 3.0 * ( w_e + w_ f + w_g) + b_1

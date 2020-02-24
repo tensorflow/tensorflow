@@ -349,8 +349,6 @@ Stream &Stream::ThenBatchNormalizationForward(
     DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
     DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
     bool is_training,
-    std::function<const DeviceMemory<float> &()> var_to_inv_var,
-    std::function<void()> inv_var_to_var,
     ScratchAllocator *reserve_space_allocator,
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(x), PARAM(scale), PARAM(offset), PARAM(x_desc),
@@ -362,8 +360,7 @@ Stream &Stream::ThenBatchNormalizationForward(
           side_input, x_desc, scale_offset_desc, epsilon,
           exponential_average_factor, activation_mode, y, batch_mean, batch_var,
           saved_mean, saved_inv_var, is_training, reserve_space_allocator,
-          workspace_allocator, std::move(var_to_inv_var),
-          std::move(inv_var_to_var)));
+          workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -408,8 +405,6 @@ Stream &Stream::ThenBatchNormalizationForward(
     DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
     DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
     bool is_training,
-    std::function<const DeviceMemory<float> &()> var_to_inv_var,
-    std::function<void()> inv_var_to_var,
     ScratchAllocator *reserve_space_allocator,
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(x), PARAM(scale), PARAM(offset), PARAM(x_desc),
@@ -421,8 +416,7 @@ Stream &Stream::ThenBatchNormalizationForward(
           side_input, x_desc, scale_offset_desc, epsilon,
           exponential_average_factor, activation_mode, y, batch_mean, batch_var,
           saved_mean, saved_inv_var, is_training, reserve_space_allocator,
-          workspace_allocator, std::move(var_to_inv_var),
-          std::move(inv_var_to_var)));
+          workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }

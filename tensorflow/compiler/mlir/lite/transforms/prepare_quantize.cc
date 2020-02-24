@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
+#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
 #include "mlir/IR/Value.h"  // TF:llvm-project
@@ -114,6 +116,10 @@ class PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
     }
   }
 
+  // Apply some sanity check and report some warnings for those don't follow
+  // the best quantization practise. This also fixes some simple violations.
+  void SanityCheckAndAdjustment(FuncOp func);
+
   QuantizationSpecs quant_specs_;
 };
 
@@ -144,6 +150,13 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
                              int i) {
     if (auto shaped = input_type.dyn_cast<ShapedType>()) {
       if (shaped.getElementType().isa<FloatType>()) {
+        // If there are existing quantize ops, they are from training and we
+        // should respect them.
+        if (arg.hasOneUse() &&
+            llvm::isa<quant::QuantizeCastOp>(*arg.user_begin())) {
+          return;
+        }
+
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
         TypeAttr params = quant::GetQuantizedTypeAttr(
             builder, input_type, builder.getF64FloatAttr(min_max.first),
@@ -176,13 +189,56 @@ bool PrepareQuantizePass::RemoveRedundantStats(FuncOp func) {
   return RemoveRedundantStatsOps(func, GetOpQuantSpec);
 }
 
+static Value Quantized(Operation* user) {
+  if (auto q = llvm::dyn_cast_or_null<quant::QuantizeCastOp>(user)) {
+    if (auto dq = llvm::dyn_cast_or_null<quant::DequantizeCastOp>(
+            *q.getResult().user_begin())) {
+      return dq.getResult();
+    }
+  }
+  return {};
+}
+
+void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
+  // If an op output has two users: one of them is a quantize op and another
+  // one is returned directly, we decide to return the quantized result instead,
+  // so this op can be quantized. This is only applied on the returned result
+  // because the error will not be accumulated.
+  func.walk([&](ReturnOp ret) {
+    int i = 0;
+    for (Value returned : ret.operands()) {
+      llvm::SmallVector<Value, 4> quantized;
+      for (auto user : returned.getUsers()) {
+        if (auto q = Quantized(user)) {
+          quantized.push_back(q);
+        }
+      }
+      if (quantized.size() == 1) {
+        ret.setOperand(i, quantized.front());
+      }
+      i++;
+    }
+  });
+
+  // We prefer to placing quantization emulation ops on the results of the
+  // concat ops.
+  func.walk([&](ConcatenationOp concat) {
+    if (concat.output().hasOneUse() &&
+        Quantized(*concat.output().user_begin())) {
+      return;
+    }
+    concat.emitWarning(
+        "Missing quantization parameter on the output might introduce "
+        "quantization error!");
+  });
+}
+
 using PrepareQuantStats =
     quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
 
 void PrepareQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = func.getContext();
-
   ConvertTFLQuantOpsToMlirQuantOps(func);
 
   if (quant_specs_.post_training_quantization) {
@@ -211,6 +267,8 @@ void PrepareQuantizePass::runOnFunction() {
     patterns.insert<PrepareQuantStats>(8, false, false, ctx);
   }
   applyPatternsGreedily(func, patterns);
+
+  SanityCheckAndAdjustment(func);
 
   // Finally, the quantization parameters can be propagated to the rest of the
   // values (tensors).

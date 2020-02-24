@@ -156,22 +156,21 @@ class SquareLinearOperatorBlockLowerTriangularTest(
     self.assertTrue(operator.is_non_singular)
     self.assertFalse(operator.is_self_adjoint)
 
-  # TODO(emilyaf): Enable this test when the inverse registration is submitted.
-  # def test_block_lower_triangular_inverse_type(self):
-  #   matrix = [[1., 0.], [0., 1.]]
-  #   operator = block_lower_triangular.LinearOperatorBlockLowerTriangular(
-  #       [[linalg.LinearOperatorFullMatrix(matrix, is_non_singular=True)],
-  #        [linalg.LinearOperatorFullMatrix(matrix, is_non_singular=True),
-  #         linalg.LinearOperatorFullMatrix(matrix, is_non_singular=True)]],
-  #       is_non_singular=True,
-  #   )
-  #   inverse = operator.inverse()
-  #   self.assertIsInstance(
-  #       inverse,
-  #       block_lower_triangular.LinearOperatorBlockLowerTriangular)
-  #   self.assertEqual(2, len(inverse.operators))
-  #   self.assertEqual(1, len(inverse.operators[0]))
-  #   self.assertEqual(2, len(inverse.operators[1]))
+  def test_block_lower_triangular_inverse_type(self):
+    matrix = [[1., 0.], [0., 1.]]
+    operator = block_lower_triangular.LinearOperatorBlockLowerTriangular(
+        [[linalg.LinearOperatorFullMatrix(matrix, is_non_singular=True)],
+         [linalg.LinearOperatorFullMatrix(matrix, is_non_singular=True),
+          linalg.LinearOperatorFullMatrix(matrix, is_non_singular=True)]],
+        is_non_singular=True,
+    )
+    inverse = operator.inverse()
+    self.assertIsInstance(
+        inverse,
+        block_lower_triangular.LinearOperatorBlockLowerTriangular)
+    self.assertEqual(2, len(inverse.operators))
+    self.assertEqual(1, len(inverse.operators[0]))
+    self.assertEqual(2, len(inverse.operators[1]))
 
   def test_tape_safe(self):
     operator_1 = linalg.LinearOperatorFullMatrix(
