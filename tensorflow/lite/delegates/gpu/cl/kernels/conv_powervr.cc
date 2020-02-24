@@ -224,6 +224,12 @@ std::string GenerateConvPowerVR1x1(
           ? "__constant"
           : "__global";
 
+  const std::string weights_data_type =
+      conv_params.weights_data_type == DataType::FLOAT32 ? "float4" : "half4";
+
+  const std::string weights_global_ptr =
+      weights_space + " " + weights_data_type + "*";
+
   const int3 work_group_size = conv_params.work_group_size;
   const int3 block_size = conv_params.block_size;
   if (conv_params.fixed_work_group_size) {
@@ -234,8 +240,8 @@ std::string GenerateConvPowerVR1x1(
   }
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  c += "    " + weights_space + " ACCUM_FLT4* filters_buffer,    \n";
-  c += "    " + weights_space + " ACCUM_FLT4* biases             \n";
+  c += "    " + weights_global_ptr + " filters_buffer,    \n";
+  c += "    " + weights_global_ptr + " biases             \n";
   c += GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   if (!is1x1) {
@@ -308,7 +314,7 @@ std::string GenerateConvPowerVR1x1(
     }
   }
   if (need_local_mem) {
-    c += "  __local ACCUM_FLT4 weights_cache[" +
+    c += "  __local " + weights_data_type + " weights_cache[" +
          std::to_string(block_size.z * 4 * conv_params.src_depth_loop_size) +
          "];\n";
   }
@@ -316,24 +322,23 @@ std::string GenerateConvPowerVR1x1(
           ConvPowerVR::WeightsUploadType::GLOBAL_MEM ||
       conv_params.weights_upload_type ==
           ConvPowerVR::WeightsUploadType::CONSTANT_MEM) {
-    c += "    " + weights_space + " ACCUM_FLT4* weights_cache;\n";
+    c += "    " + weights_global_ptr + " weights_cache;\n";
   }
   if (is1x1) {
     if (conv_params.different_weights_for_height) {
-      c +=
-          "  " + weights_space +
-          " ACCUM_FLT4* filters_loc = filters_buffer + (Z * src_size.y + Y * " +
-          std::to_string(block_size.z) +
-          ") * "
-          "4 * src_size.z;\n";
+      c += "  " + weights_global_ptr +
+           " filters_loc = filters_buffer + (Z * src_size.y + Y * " +
+           std::to_string(block_size.z) +
+           ") * "
+           "4 * src_size.z;\n";
     } else {
-      c += "  " + weights_space +
-           " ACCUM_FLT4* filters_loc = filters_buffer + Z * 4 * "
+      c += "  " + weights_global_ptr +
+           " filters_loc = filters_buffer + Z * 4 * "
            "src_size.z;\n";
     }
   } else {
-    c += "  " + weights_space +
-         " ACCUM_FLT4* filters_loc = filters_buffer + Z * 4 * "
+    c += "  " + weights_global_ptr +
+         " filters_loc = filters_buffer + Z * 4 * "
          "src_size.z * kernel_dilation.x * kernel_dilation.y;\n";
   }
   if (buffer_type) {
@@ -382,11 +387,7 @@ std::string GenerateConvPowerVR1x1(
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
         const std::string id = std::to_string(y) + std::to_string(x);
-        if (op_def.precision == CalculationsPrecision::F32_F16) {
-          c += "    ACCUM_FLT4 src" + id + ";\n";
-        } else {
-          c += "    FLT4 src" + id + ";\n";
-        }
+        c += "    " + weights_data_type + " src" + id + ";\n";
       }
     }
   };
@@ -400,24 +401,10 @@ std::string GenerateConvPowerVR1x1(
                                        ? ""
                                        : " * (FLT)(mx" + std::to_string(x) +
                                              " && my" + std::to_string(y) + ")";
-          if (src_tensor_type == TensorStorageType::BUFFER) {
-            if (op_def.precision == CalculationsPrecision::F32_F16) {
-              c += "    src" + id + " = convert_float4(src_data[src_a_" + id +
-                   "]" + multiplier + ");\n";
-            } else {
-              c += "    src" + id + " = src_data[src_a_" + id + "]" +
-                   multiplier + ";\n";
-            }
-          }
-          if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
-            if (op_def.precision == CalculationsPrecision::F32_F16) {
-              c += "    src" + id + " = " +
-                   src_tensor.ReadAsFloat("src_a_" + id) + multiplier + ";\n";
-            } else {
-              c += "    src" + id + " = " + src_tensor.Read("src_a_" + id) +
-                   multiplier + ";\n";
-            }
-          }
+          c += "    src" + id + " = " +
+               src_tensor.ReadAsType(conv_params.weights_data_type,
+                                     "src_a_" + id) +
+               multiplier + ";\n";
           c += "    src_a_" + id + " += src_layer_offset;\n";
         } else {
           std::string id = std::to_string(y) + std::to_string(x);
@@ -425,27 +412,45 @@ std::string GenerateConvPowerVR1x1(
               is1x1 ? "X + " + std::to_string(x) : "xck" + std::to_string(x);
           const std::string yc =
               is1x1 ? "Y + " + std::to_string(y) : "yck" + std::to_string(y);
-          if (op_def.precision == CalculationsPrecision::F32_F16) {
-            c += "    src" + id + " = " +
-                 src_tensor.ReadAsFloatWHS(xc, yc, "s", mode) + ";\n";
-          } else {
-            c += "    src" + id + " = " +
-                 src_tensor.ReadWHS(xc, yc, "s", mode) + ";\n";
-          }
+          c += "    src" + id + " = " +
+               src_tensor.ReadAsTypeWHS(conv_params.weights_data_type, xc, yc,
+                                        "s", mode) +
+               ";\n";
         }
       }
     }
   };
+  const bool weights_type_as_accum_type =
+      !(op_def.precision == CalculationsPrecision::F32_F16 &&
+        conv_params.weights_data_type == DataType::FLOAT16);
   auto conv_core = [&](int shared_offset) {
     const std::string channels[] = {"x", "y", "z", "w"};
     for (int z = 0; z < block_size.z; ++z) {
-      for (int ch = 0; ch < 4; ++ch) {
+      if (weights_type_as_accum_type) {
+        for (int ch = 0; ch < 4; ++ch) {
+          for (int y = 0; y < block_size.y; ++y) {
+            for (int x = 0; x < block_size.x; ++x) {
+              std::string id = std::to_string(y) + std::to_string(x);
+              c += "    r" + std::to_string(z) + id + " += weights_cache[" +
+                   std::to_string(z * 4 + ch + shared_offset) + "] * src" + id +
+                   "." + channels[ch] + ";\n";
+            }
+          }
+        }
+      } else {  // F32_F16 precision and weights type is float16
         for (int y = 0; y < block_size.y; ++y) {
           for (int x = 0; x < block_size.x; ++x) {
             std::string id = std::to_string(y) + std::to_string(x);
-            c += "    r" + std::to_string(z) + id + " += weights_cache[" +
-                 std::to_string(z * 4 + ch + shared_offset) + "] * src" + id +
-                 "." + channels[ch] + ";\n";
+            std::string R = "r" + std::to_string(z) + id;
+            std::string S = "src" + id;
+            const int dz = z * 4 + shared_offset;
+            std::string f0 = "weights_cache[" + std::to_string(dz + 0) + "]";
+            std::string f1 = "weights_cache[" + std::to_string(dz + 1) + "]";
+            std::string f2 = "weights_cache[" + std::to_string(dz + 2) + "]";
+            std::string f3 = "weights_cache[" + std::to_string(dz + 3) + "]";
+            c += "    " + R + " += convert_float4(" + S + ".x * " + f0 + " + " +
+                 S + ".y * " + f1 + " + " + S + ".z * " + f2 + " + " + S +
+                 ".w * " + f3 + ");\n";
           }
         }
       }
@@ -511,14 +516,16 @@ std::string GenerateConvPowerVR1x1(
     c += "  }\n";
   }
   for (int z = 0; z < block_size.z; ++z) {
-    c += "  if (Z + " + std::to_string(z) + " >= dst_size.z) return;\n";
+    const std::string sz = std::to_string(z);
+    c += "  if (Z + " + sz + " >= dst_size.z) return;\n";
+    c += "  {\n";
+    c += "    FLT4 bias_val = TO_FLT4(weights_cache[" + sz + "]);\n";
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
         const std::string xs = "X + " + std::to_string(x);
         const std::string ys = "Y + " + std::to_string(y);
-        const std::string zs = "Z + " + std::to_string(z);
-        const std::string r_id =
-            std::to_string(z) + std::to_string(y) + std::to_string(x);
+        const std::string zs = "Z + " + sz;
+        const std::string r_id = sz + std::to_string(y) + std::to_string(x);
         bool need_x_check = x != 0;
         bool need_y_check = y != 0;
         if (need_x_check && need_y_check) {
@@ -530,14 +537,14 @@ std::string GenerateConvPowerVR1x1(
         } else {
           c += "  {\n";
         }
-        c += "    FLT4 res = TO_FLT4(r" + r_id + " + weights_cache[" +
-             std::to_string(z) + "]);\n";
+        c += "    FLT4 res = TO_FLT4(r" + r_id + ") + bias_val;\n";
         const LinkingContext context{"res", xs, ys, zs};
         c += PostProcess(linked_operations, context);
         c += "    " + dst_tensor.WriteWHS("res", xs, ys, zs) + "\n";
         c += "  }\n";
       }
     }
+    c += "  }\n";
   }
   c += "}\n";
   return c;
@@ -547,6 +554,8 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     const CLDevice& device, const OperationDef& definition, int src_depth,
     int dst_depth, bool x_kernel_is_1, bool y_kernel_is_1) const {
   ConvParams conv_params;
+  conv_params.weights_data_type =
+      DeduceDataTypeFromPrecision(definition.precision);
   conv_params.x_kernel_is_1 = x_kernel_is_1;
   conv_params.y_kernel_is_1 = y_kernel_is_1;
   conv_params.different_weights_for_height = false;
@@ -571,6 +580,9 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.src_depth_loop_size = 4;
     }
   } else if (device.IsPowerVR()) {
+    conv_params.weights_data_type =
+        definition.precision == CalculationsPrecision::F16 ? DataType::FLOAT16
+                                                           : DataType::FLOAT32;
     conv_params.block_size = int3(1, 1, 4);
     conv_params.work_group_size = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(2, 0, 1);
