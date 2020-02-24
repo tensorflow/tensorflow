@@ -1551,6 +1551,9 @@ xla_test(
 xla_test(
     name = "token_hlo_test",
     srcs = ["token_hlo_test.cc"],
+    tags = [
+        "no_rocm",
+    ],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla/service:hlo_verifier",
