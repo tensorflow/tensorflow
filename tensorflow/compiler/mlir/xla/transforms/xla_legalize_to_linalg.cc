@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
+#include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
 namespace mlir {
 namespace {
@@ -201,6 +202,8 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
   PatternMatchResult matchAndRewrite(
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
+    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op))
+      return ConversionPattern::matchFailure();
     auto operandType = op.operand().getType().template cast<ShapedType>();
     auto resultType = getXLAOpResultType<isLHLO>(op);
     if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op))
@@ -505,26 +508,6 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
-void populateHLOToLinalgConversionPattern(MLIRContext* context,
-                                          OwningRewritePatternList* patterns) {
-  patterns->insert<BroadcastInDimConverter<xla_hlo::BroadcastInDimOp, false>,
-                   ReshapeAddRemoveDimConverter<xla_hlo::ReshapeOp, false>,
-                   TransposeConverter<xla_hlo::TransposeOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::AbsOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::AddOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::AndOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::CeilOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::CompareOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::CopyOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::ExpOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::MulOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::NegOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::RemOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::SelectOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::SubOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::TanhOp, false>>(context);
-}
-
 // Converts LHLO ops to Linalg generic.
 // Sample result for xla_lhlo::AddOp.
 //
@@ -566,7 +549,7 @@ struct HloLegalizeToLinalg : public FunctionPass<HloLegalizeToLinalg> {
     target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect>();
 
     auto func = getFunction();
-    populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
+    xla_hlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
     if (failed(applyPartialConversion(func, target, patterns, nullptr))) {
       signalPassFailure();
     }
@@ -585,6 +568,30 @@ static PassRegistration<LhloLegalizeToLinalg> legalize_lhlo_pass(
 }  // namespace xla_lhlo
 
 namespace xla_hlo {
+
+void populateHLOToLinalgConversionPattern(MLIRContext* context,
+                                          OwningRewritePatternList* patterns) {
+  patterns->insert<BroadcastInDimConverter<xla_hlo::BroadcastInDimOp, false>,
+                   ReshapeAddRemoveDimConverter<xla_hlo::ReshapeOp, false>,
+                   TransposeConverter<xla_hlo::TransposeOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::AbsOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::AddOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::AndOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::CeilOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::CompareOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::CopyOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::DivOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::ExpOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::MaxOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::MinOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::MulOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::NegOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::RemOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::SelectOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::SubOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::TanhOp, false>>(context);
+}
+
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass() {
   return absl::make_unique<HloLegalizeToLinalg>();
 }
