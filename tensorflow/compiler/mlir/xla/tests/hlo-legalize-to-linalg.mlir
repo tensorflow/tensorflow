@@ -213,3 +213,33 @@ func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
 // CHECK-NEXT: ^bb0(%[[PRED_IN:.*]]: i1, %[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32):
 // CHECK-NEXT:   %[[RESULT:.*]] = select %[[PRED_IN]], %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d4, d0, 0)>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
+// CHECK-LABEL: func @broadcast
+func @broadcast(%operand: tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf32> {
+  %0 = "xla_hlo.broadcast_in_dim"(%operand)
+         {broadcast_dimensions = dense<[4,0,2]> : tensor<3xi64>}
+         : (tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf32>
+  return %0 : tensor<7x10x6x4x5xf32>
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2) -> (0)>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-LABEL: func @broadcast_scalar
+func @broadcast_scalar(%operand: tensor<f32>) -> tensor<7x10x6xf32> {
+  %0 = "xla_hlo.broadcast_in_dim"(%operand)
+        {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+        : (tensor<f32>) -> tensor<7x10x6xf32>
+  return %0 : tensor<7x10x6xf32>
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
