@@ -643,6 +643,18 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     if (src_depth % 2 == 0 && src_depth >= 16) {
       conv_params.src_depth_loop_size = 2;
     }
+  } else if (device.IsMali()) {
+    conv_params.block_size = int3(2, 1, 1);
+    conv_params.work_group_size = int3(4, 4, 1);
+    conv_params.work_group_launch_order = int3(0, 1, 2);
+    conv_params.fixed_work_group_size = false;
+    conv_params.src_depth_loop_size = 1;
+    conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+    if (dst_depth % 2 == 0 || dst_depth >= 4) {
+      conv_params.block_size.z = 2;
+    } else {
+      conv_params.block_size.z = 1;
+    }
   } else {
     conv_params.block_size = int3(1, 1, 4);
     conv_params.work_group_size = int3(8, 2, 1);
