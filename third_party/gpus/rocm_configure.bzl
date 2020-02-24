@@ -21,11 +21,13 @@ load(
 )
 load(
     "//third_party/remote_config:common.bzl",
+    "config_repo_label",
     "err_out",
     "execute",
     "files_exist",
     "get_bash_bin",
     "get_cpu_value",
+    "get_host_environ",
     "raw_exec",
     "realpath",
     "which",
@@ -79,10 +81,9 @@ def find_cc(repository_ctx):
     cc_path_envvar = _GCC_HOST_COMPILER_PATH
     cc_name = target_cc_name
 
-    if cc_path_envvar in repository_ctx.os.environ:
-        cc_name_from_env = repository_ctx.os.environ[cc_path_envvar].strip()
-        if cc_name_from_env:
-            cc_name = cc_name_from_env
+    cc_name_from_env = get_host_environ(repository_ctx, cc_path_envvar)
+    if cc_name_from_env:
+        cc_name = cc_name_from_env
     if cc_name.startswith("/"):
         # Absolute path, maybe we should make this supported by our which function.
         return cc_name
@@ -251,6 +252,7 @@ def _rocm_include_path(repository_ctx, rocm_config):
 
     return inc_dirs
 
+<<<<<<< HEAD
 def enable_rocm(repository_ctx):
     if "TF_NEED_ROCM" in repository_ctx.os.environ:
         enable_rocm = repository_ctx.os.environ["TF_NEED_ROCM"].strip()
@@ -259,6 +261,15 @@ def enable_rocm(repository_ctx):
                 auto_configure_warning("ROCm configure is only supported on Linux")
                 return False
             return True
+=======
+def _enable_rocm(repository_ctx):
+    enable_rocm = get_host_environ(repository_ctx, "TF_NEED_ROCM")
+    if enable_rocm == "1":
+        if get_cpu_value(repository_ctx) != "Linux":
+            auto_configure_warning("ROCm configure is only supported on Linux")
+            return False
+        return True
+>>>>>>> master
     return False
 
 def _rocm_toolkit_path(repository_ctx, bash_bin):
@@ -270,18 +281,16 @@ def _rocm_toolkit_path(repository_ctx, bash_bin):
     Returns:
       A speculative real path of the rocm toolkit install directory.
     """
-    rocm_toolkit_path = _DEFAULT_ROCM_TOOLKIT_PATH
-    if _ROCM_TOOLKIT_PATH in repository_ctx.os.environ:
-        rocm_toolkit_path = repository_ctx.os.environ[_ROCM_TOOLKIT_PATH].strip()
+    rocm_toolkit_path = get_host_environ(repository_ctx, _ROCM_TOOLKIT_PATH, _DEFAULT_ROCM_TOOLKIT_PATH)
     if files_exist(repository_ctx, [rocm_toolkit_path], bash_bin) != [True]:
         auto_configure_fail("Cannot find rocm toolkit path.")
     return realpath(repository_ctx, rocm_toolkit_path, bash_bin)
 
 def _amdgpu_targets(repository_ctx):
     """Returns a list of strings representing AMDGPU targets."""
-    if _TF_ROCM_AMDGPU_TARGETS not in repository_ctx.os.environ:
+    amdgpu_targets_str = get_host_environ(repository_ctx, _TF_ROCM_AMDGPU_TARGETS)
+    if not amdgpu_targets_str:
         return _DEFAULT_ROCM_AMDGPU_TARGETS
-    amdgpu_targets_str = repository_ctx.os.environ[_TF_ROCM_AMDGPU_TARGETS]
     amdgpu_targets = amdgpu_targets_str.split(",")
     for amdgpu_target in amdgpu_targets:
         if amdgpu_target[:3] != "gfx" or not amdgpu_target[3:].isdigit():
@@ -308,9 +317,9 @@ def _hipcc_env(repository_ctx):
         "HCC_AMDGPU_TARGET",
         "HIP_PLATFORM",
     ]:
-        if name in repository_ctx.os.environ:
-            hipcc_env = (hipcc_env + " " + name + "=\"" +
-                         repository_ctx.os.environ[name].strip() + "\";")
+        env_value = get_host_environ(repository_ctx, name)
+        if env_value:
+            hipcc_env = (hipcc_env + " " + name + "=\"" + env_value + "\";")
     return hipcc_env.strip()
 
 def _hipcc_is_hipclang(repository_ctx, rocm_config, bash_bin):
@@ -328,7 +337,7 @@ def _hipcc_is_hipclang(repository_ctx, rocm_config, bash_bin):
 
     #  check user-defined hip-clang environment variables
     for name in ["HIP_CLANG_PATH", "HIP_VDI_HOME"]:
-        if name in repository_ctx.os.environ:
+        if get_host_environ(repository_ctx, name):
             return "True"
 
     # grep for "HIP_COMPILER=clang" in /opt/rocm/hip/lib/.hipInfo
@@ -367,10 +376,7 @@ def _crosstool_verbose(repository_ctx):
     Returns:
         A string containing value of environment variable CROSSTOOL_VERBOSE.
     """
-    name = "CROSSTOOL_VERBOSE"
-    if name in repository_ctx.os.environ:
-        return repository_ctx.os.environ[name].strip()
-    return "0"
+    return get_host_environ(repository_ctx, "CROSSTOOL_VERBOSE", "0")
 
 def _lib_name(lib, version = "", static = False):
     """Constructs the name of a library on Linux.
@@ -701,9 +707,7 @@ def _create_local_rocm_repository(repository_ctx):
 
     host_compiler_includes = get_cxx_inc_directories(repository_ctx, cc)
 
-    host_compiler_prefix = "/usr/bin"
-    if _GCC_HOST_COMPILER_PREFIX in repository_ctx.os.environ:
-        host_compiler_prefix = repository_ctx.os.environ[_GCC_HOST_COMPILER_PREFIX].strip()
+    host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX, "/usr/bin")
 
     rocm_defines = {}
 
@@ -805,17 +809,32 @@ def _create_remote_rocm_repository(repository_ctx, remote_config_repo):
     )
     repository_ctx.template(
         "rocm/BUILD",
-        Label(remote_config_repo + "/rocm:BUILD"),
+        config_repo_label(remote_config_repo, "rocm:BUILD"),
         {},
     )
     repository_ctx.template(
         "rocm/build_defs.bzl",
-        Label(remote_config_repo + "/rocm:build_defs.bzl"),
+        config_repo_label(remote_config_repo, "rocm:build_defs.bzl"),
         {},
     )
     repository_ctx.template(
         "rocm/rocm/rocm_config.h",
-        Label(remote_config_repo + "/rocm:rocm/rocm_config.h"),
+        config_repo_label(remote_config_repo, "rocm:rocm/rocm_config.h"),
+        {},
+    )
+    repository_ctx.template(
+        "crosstool/BUILD",
+        config_repo_label(remote_config_repo, "crosstool:BUILD"),
+        {},
+    )
+    repository_ctx.template(
+        "crosstool/cc_toolchain_config.bzl",
+        config_repo_label(remote_config_repo, "crosstool:cc_toolchain_config.bzl"),
+        {},
+    )
+    repository_ctx.template(
+        "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
+        config_repo_label(remote_config_repo, "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc"),
         {},
     )
 
@@ -823,28 +842,37 @@ def _rocm_autoconf_impl(repository_ctx):
     """Implementation of the rocm_autoconf repository rule."""
     if not enable_rocm(repository_ctx):
         _create_dummy_repository(repository_ctx)
-    elif _TF_ROCM_CONFIG_REPO in repository_ctx.os.environ:
+    elif get_host_environ(repository_ctx, _TF_ROCM_CONFIG_REPO) != None:
         _create_remote_rocm_repository(
             repository_ctx,
-            repository_ctx.os.environ[_TF_ROCM_CONFIG_REPO],
+            get_host_environ(repository_ctx, _TF_ROCM_CONFIG_REPO),
         )
     else:
         _create_local_rocm_repository(repository_ctx)
 
-rocm_configure = repository_rule(
-    implementation = _rocm_autoconf_impl,
-    environ = [
-        _GCC_HOST_COMPILER_PATH,
-        _GCC_HOST_COMPILER_PREFIX,
-        "TF_NEED_ROCM",
-        _ROCM_TOOLKIT_PATH,
-        _TF_ROCM_VERSION,
-        _TF_MIOPEN_VERSION,
-        _TF_ROCM_AMDGPU_TARGETS,
-        _TF_ROCM_CONFIG_REPO,
-    ],
+_ENVIRONS = [
+    _GCC_HOST_COMPILER_PATH,
+    _GCC_HOST_COMPILER_PREFIX,
+    "TF_NEED_ROCM",
+    _ROCM_TOOLKIT_PATH,
+    _TF_ROCM_VERSION,
+    _TF_MIOPEN_VERSION,
+    _TF_ROCM_AMDGPU_TARGETS,
+]
+
+remote_rocm_configure = repository_rule(
+    implementation = _create_local_rocm_repository,
+    environ = _ENVIRONS,
+    remotable = True,
+    attrs = {
+        "environ": attr.string_dict(),
+    },
 )
 
+rocm_configure = repository_rule(
+    implementation = _rocm_autoconf_impl,
+    environ = _ENVIRONS + [_TF_ROCM_CONFIG_REPO],
+)
 """Detects and configures the local ROCm toolchain.
 
 Add the following to your WORKSPACE FILE:

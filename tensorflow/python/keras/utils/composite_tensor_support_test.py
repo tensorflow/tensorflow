@@ -44,6 +44,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+from tensorflow.python.util import nest
 
 
 # Define test-only Layer classes to validate passing Sparse and Ragged tensors
@@ -57,6 +58,10 @@ class ToDense(Layer):
     self._supports_ragged_inputs = True
 
   def call(self, inputs):
+    if isinstance(inputs, dict):  # Dicts are no longer flattened.
+      # Always a single element in these tests.
+      inputs = nest.flatten(inputs)[0]
+
     if isinstance(inputs, ragged_tensor.RaggedTensor):
       output = inputs.to_tensor(default_value=self._default_value)
     elif isinstance(inputs, sparse_tensor.SparseTensor):
@@ -610,80 +615,6 @@ class RaggedTensorInputValidationTest(keras_parameterized.TestCase,
       result = model.predict(input_data, **kwargs)
       self.assertAllEqual(expected_output, result)
 
-  def test_ragged_tensor_input_with_wrong_ragged_rank_fails(
-      self, use_dict, use_dataset):
-    # Define some input data that will NOT match the input shape spec.
-    data = [(ragged_factory_ops.constant([[[1, 0]], [[2, 3]]]), None)]
-
-    # Prepare the model to test.
-    input_shape = (None, 2)  # RaggedTensorInputTest uses (None, None).
-    input_name = get_input_name(use_dict)
-    model_input = input_layer.Input(
-        shape=input_shape, ragged=True, name=input_name, dtype=dtypes.int32)
-    layers = [ToDense(default_value=-1)]
-    model = get_model_from_layers_with_input(layers, model_input=model_input)
-    model.compile(
-        optimizer="sgd",
-        loss="mse",
-        metrics=["accuracy"],
-        **get_test_mode_kwargs())
-
-    # Define some input data with the wrong ragged rank
-    for data_element in data:
-      input_data, _ = prepare_inputs(
-          data_element,
-          use_dict,
-          use_dataset,
-          action="predict",
-          input_name=input_name)
-      with self.assertRaisesRegex(ValueError, ".*don't have the same nested.*"):
-        _ = model.predict(input_data)
-
-
-# CompositeTensor shape validation only happens in non-eager modes and in non-
-# subclassed models, so we run a separate parameterized test for them.
-@keras_parameterized.run_with_all_model_types(exclude_models=["subclass"])
-@keras_parameterized.run_all_keras_modes(always_skip_eager=True)
-class SparseTensorInputValidationTest(keras_parameterized.TestCase):
-
-  def test_sparse_scipy_input_checks_shape(self):
-    model_input = input_layer.Input(shape=(3,), sparse=True, dtype=dtypes.int32)
-    layers = [ToDense(default_value=-1)]
-    model = get_model_from_layers_with_input(layers, model_input=model_input)
-
-    input_data = scipy.sparse.coo_matrix(([1, 2, 3], ([0, 1, 1], [0, 0, 1])),
-                                         shape=[2, 4])
-    with self.assertRaisesRegex(ValueError, ".*got array with shape.*"):
-      _ = model.predict(input_data)
-
-  def test_sparse_tensor_input_checks_shapes(self):
-    # Create a model that accepts a sparse input and converts the sparse tensor
-    # back to a dense tensor.
-    model_input = input_layer.Input(
-        shape=(2, None), sparse=True, dtype=dtypes.int32)
-    layers = [ToDense(default_value=-1)]
-    model = get_model_from_layers_with_input(layers, model_input=model_input)
-
-    # Define some input data.
-    input_data = sparse_tensor.SparseTensor([[0, 0, 0], [1, 0, 0], [1, 0, 1]],
-                                            [1, 2, 3], [2, 1, 3])
-    kwargs = get_kwargs(use_dataset=False)
-    with self.assertRaisesRegex(ValueError, ".*got array with shape.*"):
-      _ = model.predict(input_data, **kwargs)
-
-  def test_ragged_tensor_input_with_wrong_value_shape(self):
-    # Create a model that accepts a ragged input and converts it to dense.
-    model_input = input_layer.Input(
-        shape=(None, 4), ragged=True, dtype=dtypes.int32)
-    layers = [ToDense(default_value=-1)]
-    model = get_model_from_layers_with_input(layers, model_input=model_input)
-
-    # Define some input data with the wrong ragged rank
-    input_data = ragged_factory_ops.constant([[[1, 0]], [[2, 3]]],
-                                             ragged_rank=1)
-    with self.assertRaisesRegex(ValueError, ".*got array with shape.*"):
-      _ = model.predict(input_data)
-
 
 @keras_parameterized.run_with_all_model_types()
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -707,7 +638,7 @@ class CompositeTensorModelPredictTest(keras_parameterized.TestCase):
     sparse_input = sparse_tensor.SparseTensor(
         # A two-row matrix
         indices=[(0, 0), (0, 1), (0, 2), (5, 0), (5, 1), (5, 2)],
-        values=[1, 1, 1, 1, 1, 1],
+        values=[1., 1., 1., 1., 1., 1.],
         dense_shape=(6, 3))
 
     shape = model(sparse_input).shape
@@ -734,38 +665,6 @@ class CompositeTensorModelPredictTest(keras_parameterized.TestCase):
 
     shape = model.predict(ragged_input, steps=1).shape
     self.assertEqual((2, None, 5), self._normalize_shape(shape))
-
-
-@keras_parameterized.run_with_all_model_types(
-    exclude_models=["functional"])
-@keras_parameterized.run_all_keras_modes
-class UndefinedCompositeTensorInputsTest(keras_parameterized.TestCase):
-
-  def test_subclass_implicit_sparse_inputs_fails(self):
-    # Create a model that accepts a sparse input and converts the sparse tensor
-    # back to a dense tensor.
-    layers = [ToDense(default_value=-1)]
-    model = testing_utils.get_model_from_layers(layers)
-
-    # Define some input data.
-    input_data = sparse_tensor.SparseTensor([[0, 0], [1, 0], [1, 1]], [1, 2, 3],
-                                            [2, 3])
-    kwargs = get_kwargs(False)
-    with self.assertRaisesRegex(
-        ValueError, ".*All SparseTensor and RaggedTensor inputs .*"):
-      _ = model.predict(input_data, **kwargs)
-
-  def test_subclass_implicit_sparse_scipy_inputs_fails(self):
-    # Create a model that accepts a sparse input and converts the sparse tensor
-    # back to a dense tensor.
-    layers = [ToDense(default_value=-1)]
-    model = testing_utils.get_model_from_layers(layers)
-
-    # Define some input data.
-    input_data = scipy.sparse.coo_matrix(([1, 2, 3], ([0, 1, 1], [0, 0, 1])),
-                                         shape=[2, 3])
-    with self.assertRaisesRegex(ValueError, ".*either a single array.*"):
-      _ = model.predict(input_data)
 
 
 if __name__ == "__main__":

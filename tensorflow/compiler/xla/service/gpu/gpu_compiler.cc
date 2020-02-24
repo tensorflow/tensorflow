@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
@@ -291,7 +292,13 @@ Status GpuCompiler::OptimizeHloModule(
     horizontal_fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(horizontal_fusion.Run(hlo_module).status());
   }
-
+  {
+    HloPassPipeline pipeline("all_reduce_combiner");
+    pipeline.AddPass<AllReduceCombiner>(
+        /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
+        /*combine_threshold_count=*/256);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
   return Status::OK();
 }
 

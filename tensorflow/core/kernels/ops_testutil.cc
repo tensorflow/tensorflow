@@ -71,6 +71,9 @@ OpsTestBase::OpsTestBase() : device_type_(DEVICE_CPU) {
   auto device = DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
   CHECK(device) << "Could not create CPU device";
 
+  thread_pool_ = absl::make_unique<thread::ThreadPool>(
+      Env::Default(), /*name=*/"default", /*num_threads=*/1);
+
   device_ = device.get();
   device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device));
 
@@ -104,7 +107,8 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
   device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device));
   pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
-      TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions());
+      TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions(),
+      thread_pool_.get());
 
   device_type_ = device_type;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -197,6 +197,21 @@ gentbl(
     ],
 )
 
+cc_library(
+    name = "LoopOpsTransforms",
+    srcs = ["lib/Dialect/LoopOps/Transforms/ParallelLoopFusion.cpp"],
+    hdrs = ["include/mlir/Dialect/LoopOps/Passes.h"],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LoopOps",
+        ":Pass",
+        ":StandardOps",
+        ":Transforms",
+    ],
+    alwayslink = 1,
+)
+
 filegroup(
     name = "StdOpsTdFiles",
     srcs = [
@@ -700,8 +715,8 @@ cc_library(
         ":Pass",
         ":Support",
         ":TargetNVVMIR",
-        "@llvm-project//llvm:all_targets",
         "@llvm-project//llvm:core",
+        "@llvm-project//llvm:nvptx_code_gen",
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:target",
     ],
@@ -1664,6 +1679,7 @@ cc_library(
         ":LLVMTransforms",
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
+        ":LoopOpsTransforms",
         ":NVVMDialect",
         ":Parser",
         ":Pass",
@@ -1727,6 +1743,7 @@ cc_library(
         "include/mlir/InitAllDialects.h",
         "include/mlir/InitAllPasses.h",
     ],
+    defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
     deps = [
         ":AffineOps",
         ":Analysis",
@@ -1745,6 +1762,7 @@ cc_library(
         ":LinalgToSPIRV",
         ":LinalgTransforms",
         ":LoopOps",
+        ":LoopOpsTransforms",
         ":LoopsToGPUPass",
         ":NVVMDialect",
         ":OpenMPDialect",

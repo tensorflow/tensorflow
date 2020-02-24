@@ -31,18 +31,12 @@ using tensorflow::string;
 void TFE_OpReset(TFE_Op* op_to_reset, const char* op_or_function_name,
                  const char* raw_device_name, TF_Status* status) {
   if (op_to_reset) {
-    status->status = op_to_reset->operation.Reset(
-        op_or_function_name, raw_device_name, false, nullptr);
+    status->status =
+        op_to_reset->operation->Reset(op_or_function_name, raw_device_name);
   } else {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "op_to_reset should not be nullptr");
   }
-}
-
-void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
-  op->operation.ConsumeInput(
-      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
-          ->Handle());
 }
 
 void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
@@ -520,8 +514,7 @@ void TFE_DeleteCancellationManager(
 void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TFE_CancellationManager* cancellation_manager,
                                   TF_Status* status) {
-  op->operation.SetCancellationManager(
-      &cancellation_manager->cancellation_manager);
+  status->status = op->operation->SetCancellationManager(cancellation_manager);
 }
 
 TFE_Executor* TFE_NewExecutor(bool is_async) {
@@ -567,5 +560,24 @@ void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
 void TFE_TensorHandleEnableImplicitMirroring(TFE_TensorHandle* h,
                                              TF_Status* status) {
   h->handle->EnableImplicitMirroring();
+  status->status = tensorflow::Status::OK();
+}
+
+void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
+                               TF_Buffer* buf, TF_Status* status) {
+  auto* function_def = ctx->context->FindFunctionDef(function_name);
+  if (function_def == nullptr) {
+    status->status = tensorflow::errors::NotFound(
+        "Unable to find FunctionDef with name: ", function_name);
+    return;
+  }
+  string str = function_def->SerializeAsString();
+  void* data = tensorflow::port::Malloc(str.length());
+  str.copy(static_cast<char*>(data), str.length(), 0);
+  buf->data = data;
+  buf->length = str.length();
+  buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
   status->status = tensorflow::Status::OK();
 }

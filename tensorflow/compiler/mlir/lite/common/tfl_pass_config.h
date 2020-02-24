@@ -36,7 +36,7 @@ struct PassConfig {
         form_clusters(false),
         inline_functions(true),
         unfold_batch_matmul(true),
-        legalize_tf_while(true) {}
+        legalize_tf_while(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.

@@ -42,6 +42,9 @@ TFE_TensorHandle* DoubleTestMatrixTensorHandle3X2();
 // Return a tensor handle containing a 3x2 matrix of floats
 TFE_TensorHandle* TestMatrixTensorHandle3X2();
 
+// Return an add op multiplying `a` by `b`.
+TFE_Op* AddOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b);
+
 // Return a matmul op multiplying `a` by `b`.
 TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b);
 

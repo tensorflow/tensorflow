@@ -39,6 +39,7 @@ py_test(
         "no_windows",
         "noasan",  # TODO(b/137568139): enable after this is fixed.
         "nomsan",  # TODO(b/137568139): enable after this is fixed.
+        "notsan",  # TODO(b/149882556): enable after this is fixed.
     ],
     deps = [
         ":interpreter",

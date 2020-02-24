@@ -26,8 +26,6 @@ Status ExecuteNodeArgs::Init(
   // below when we insert a copy of the Tensor into protected_tensors, and will
   // be decremented once execution is complete.
   const int n_inputs = op_inputs.size();
-  int num_protected_tensors = 0;
-  int first_index_that_needs_protecting = -1;  // Used to avoid second loop
   if (n_inputs > 0) {
     TensorHandle* const* op_inputs_array = &op_inputs[0];
     TensorValue* tensor_args_array = &tensor_args_[0];
@@ -37,30 +35,9 @@ Status ExecuteNodeArgs::Init(
         TF_RETURN_IF_ERROR(
             in->TensorValue(&tensor_args_array[i],
                             ctx->CanonicalDevice(kernel->InputDevice(i))));
-        if (!in->RefCountIsOne()) {
-          if (first_index_that_needs_protecting < 0) {
-            first_index_that_needs_protecting = i;
-          }
-          ++num_protected_tensors;
-        }
       } else {
         if (!has_remote_inputs_) {
           has_remote_inputs_ = true;
-        }
-      }
-    }
-
-    protected_tensors_.reserve(num_protected_tensors);
-    if (first_index_that_needs_protecting >= 0) {
-      for (int i = first_index_that_needs_protecting;
-           num_protected_tensors && (i < n_inputs); ++i) {
-        TensorHandle* in = op_inputs_array[i];
-        if (!in->IsRemote() && !in->RefCountIsOne()) {
-          const Tensor* input_tensor = nullptr;
-          TF_RETURN_IF_ERROR(op_inputs_array[i]->TensorFromDevice(
-              ctx->CanonicalDevice(kernel->InputDevice(i)), &input_tensor));
-          protected_tensors_.emplace_back(TensorReference(*input_tensor));
-          --num_protected_tensors;
         }
       }
     }
@@ -91,9 +68,4 @@ Status ExecuteNodeArgs::Init(
   return Status::OK();
 }
 
-ExecuteNodeArgs::~ExecuteNodeArgs() {
-  for (const auto& tensor_ref : protected_tensors_) {
-    tensor_ref.Unref();
-  }
-}
 }  // namespace tensorflow

@@ -63,6 +63,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -3220,11 +3221,7 @@ def clone_metric(metric):
 
 def clone_metrics(metrics):
   """Clones the given metric list/dict."""
-  if metrics is None:
-    return None
-  if isinstance(metrics, dict):
-    return {key: clone_metric(value) for key, value in metrics.items()}
-  return [clone_metric(metric) for metric in metrics]
+  return nest.map_structure(clone_metric, metrics)
 
 
 @keras_export('keras.metrics.serialize')
@@ -3243,6 +3240,7 @@ def deserialize(config, custom_objects=None):
 
 @keras_export('keras.metrics.get')
 def get(identifier):
+  """Return a metric given its identifer."""
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
@@ -3250,5 +3248,6 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret '
-                     'metric function identifier: %s' % identifier)
+    error_msg = 'Could not interpret metric function identifier: {}'.format(
+        identifier)
+    raise ValueError(error_msg)

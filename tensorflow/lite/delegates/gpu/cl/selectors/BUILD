@@ -66,7 +66,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_buffer_1x1",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_powervr",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_texture",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:fully_connected_texture",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:fully_connected",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",

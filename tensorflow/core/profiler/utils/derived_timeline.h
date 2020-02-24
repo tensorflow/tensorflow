@@ -33,12 +33,21 @@ typedef std::function<absl::string_view(absl::string_view hlo_module_name,
 // The device_trace is both input and output.
 void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                  const EventGroupNameMap& event_group_name_map,
-                                 XPlane* device_trace);
+                                 XPlane* device_trace,
+                                 bool step_info_only = false);
+
+// Derives "Launch Activities Summary" line from host trace.
+void DeriveEventsFromHostTrace(const XPlane* host_trace,
+                               const EventGroupNameMap& event_group_name_map,
+                               std::vector<XPlane*> device_traces);
 
 // Loops through XPlanes of input XSpace, if it is "device" XPlane, generating
 // derived timelines for the plane by calling DeriveEventsFromAnnotations.
 void GenerateDerivedTimeLines(const EventGroupNameMap& event_group_name_map,
-                              XSpace* space);
+                              XSpace* space, bool step_info_only = false);
+void GenerateDerivedTimeLines(const EventGroupNameMap& event_group_name_map,
+                              const std::vector<XPlane*>& device_traces,
+                              bool step_info_only = false);
 
 }  // namespace profiler
 }  // namespace tensorflow

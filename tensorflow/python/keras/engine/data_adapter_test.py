@@ -124,11 +124,6 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
 
-  def test_iterator_expect_batch_size_numpy(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'`batch_size` or `steps` is required'):
-      self.adapter_cls(self.numpy_input, self.numpy_target)
-
   def test_size_numpy(self):
     adapter = self.adapter_cls(
         self.numpy_input, self.numpy_target, batch_size=5)
@@ -427,12 +422,6 @@ class GenericArrayLikeDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.dataset_input))
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
-
-  def test_iterator_expect_batch_size_generic_arraylike(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'`batch_size` or `steps` is required'):
-      self.adapter_cls(self.arraylike_input,
-                       self.arraylike_target)
 
   def test_size(self):
     adapter = self.adapter_cls(
@@ -885,6 +874,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
 
   def test_insufficient_data(self):
     ds = dataset_ops.DatasetV2.from_tensor_slices([0, 1])
+    ds = ds.filter(lambda *args, **kwargs: True)
     data_handler = data_adapter.DataHandler(
         ds, initial_epoch=0, epochs=2, steps_per_epoch=3)
     returned_data = []
@@ -962,53 +952,6 @@ class DataHandlerTest(keras_parameterized.TestCase):
     returned_data = self.evaluate(returned_data)
     self.assertEqual(returned_data, [[([0],), ([1],),
                                       ([2],)], [([0],), ([1],), ([2],)]])
-
-  def test_class_weight(self):
-    data_handler = data_adapter.DataHandler(
-        x=[[0], [1], [2]],
-        y=[[2], [1], [0]],
-        class_weight={
-            0: 0.5,
-            1: 1.,
-            2: 1.5
-        },
-        epochs=2,
-        steps_per_epoch=3)
-    returned_data = []
-    for _, iterator in data_handler.enumerate_epochs():
-      epoch_data = []
-      for _ in data_handler.steps():
-        epoch_data.append(next(iterator))
-      returned_data.append(epoch_data)
-    returned_data = self.evaluate(returned_data)
-    self.assertEqual(returned_data, [[([0], [2], [1.5]), ([1], [1], [1.]),
-                                      ([2], [0], [0.5])],
-                                     [([0], [2], [1.5]), ([1], [1], [1.]),
-                                      ([2], [0], [0.5])]])
-
-  def test_class_weight_and_sample_weight(self):
-    data_handler = data_adapter.DataHandler(
-        x=[[0], [1], [2]],
-        y=[[2], [1], [0]],
-        sample_weight=[[1.], [2.], [4.]],
-        class_weight={
-            0: 0.5,
-            1: 1.,
-            2: 1.5
-        },
-        epochs=2,
-        steps_per_epoch=3)
-    returned_data = []
-    for _, iterator in data_handler.enumerate_epochs():
-      epoch_data = []
-      for _ in data_handler.steps():
-        epoch_data.append(next(iterator))
-      returned_data.append(epoch_data)
-    returned_data = self.evaluate(returned_data)
-    self.assertEqual(returned_data, [[([0], [2], [1.5]), ([1], [1], [2.]),
-                                      ([2], [0], [2.])],
-                                     [([0], [2], [1.5]), ([1], [1], [2.]),
-                                      ([2], [0], [2.])]])
 
   def test_class_weight_user_errors(self):
     with self.assertRaisesRegexp(ValueError, 'to be a dict with keys'):

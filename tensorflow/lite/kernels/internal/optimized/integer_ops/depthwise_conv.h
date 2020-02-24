@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_3x3_filter_common.h"
+#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
@@ -1789,7 +1790,8 @@ inline void DepthwiseConvWithRounding(
     const int8* input_data, const RuntimeShape& filter_shape,
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
-    int thread_start, int thread_end, int thread_dim) {
+    int thread_start, int thread_end, int thread_dim,
+    const CpuBackendContext& cpu_backend_context) {
   ruy::profiler::ScopeLabel label("DepthwiseConvInt8/8bit");
   const int depth_multiplier = params.depth_multiplier;
   const int dilation_width_factor = params.dilation_width_factor;
@@ -1807,6 +1809,36 @@ inline void DepthwiseConvWithRounding(
 // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
+#if defined(__ANDROID__) && defined(__clang__)
+  ruy::Context* ruy_context = cpu_backend_context.ruy_context();
+  const auto ruy_paths = ruy_context != nullptr
+                             ? ruy_context->GetRuntimeEnabledPaths()
+                             : ruy::Path::kNone;
+  const bool has_dot_product_instructions =
+      (ruy_paths & ruy::Path::kNeonDotprod) != ruy::Path::kNone;
+
+  // Dispatch to dot-product 3x3 kernels when supported.
+  if (has_dot_product_instructions) {
+    using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
+    DotProduct3x3KernelType kernel_type =
+        optimized_ops::depthwise_conv::CategorizeDotProductKernel<
+            optimized_ops::depthwise_conv::QuantizationType::kPerChannelInt8>(
+            input_shape, filter_shape, output_shape, params);
+    if (kernel_type != DotProduct3x3KernelType::kNone) {
+      ruy::profiler::ScopeLabel specialized_label(
+          "DepthwiseConvInt8/8bit/3x3XDotProduct");
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3PerChannel<
+          DepthwiseConvImplementation::kUseNeon3x3DotProduct>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data, thread_start,
+          thread_end, thread_dim);
+      return;
+    }
+  }
+
+#endif
+  // Dispatch to non-dot-product 3x3 kernels when supported.
+
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -1842,11 +1874,12 @@ inline void DepthwiseConvImpl(
     const int8* input_data, const RuntimeShape& filter_shape,
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
-    int thread_start, int thread_end, int thread_dim) {
+    int thread_start, int thread_end, int thread_dim,
+    const CpuBackendContext& cpu_backend_context) {
   return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kAwayFromZero>(
       params, output_multiplier, output_shift, input_shape, input_data,
       filter_shape, filter_data, bias_shape, bias_data, output_shape,
-      output_data, thread_start, thread_end, thread_dim);
+      output_data, thread_start, thread_end, thread_dim, cpu_backend_context);
 }
 
 template <typename T, typename TS>
@@ -1859,7 +1892,8 @@ struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
                           const T* filter_data, const RuntimeShape& bias_shape,
                           const TS* bias_data, const RuntimeShape& output_shape,
                           T* output_data, int thread_start, int thread_end,
-                          int thread_dim)
+                          int thread_dim,
+                          const CpuBackendContext& cpu_backend_context_x)
       : params_(params),
         output_multiplier_(output_multiplier),
         output_shift_(output_shift),
@@ -1873,13 +1907,14 @@ struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
         output_data_(output_data),
         thread_start_(thread_start),
         thread_end_(thread_end),
-        thread_dim_(thread_dim) {}
+        thread_dim_(thread_dim),
+        cpu_backend_context(cpu_backend_context_x) {}
 
   void Run() override {
     DepthwiseConvImpl(params_, output_multiplier_, output_shift_, input_shape_,
                       input_data_, filter_shape_, filter_data_, bias_shape_,
                       bias_data_, output_shape_, output_data_, thread_start_,
-                      thread_end_, thread_dim_);
+                      thread_end_, thread_dim_, cpu_backend_context);
   }
 
  private:
@@ -1897,6 +1932,7 @@ struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
   int thread_start_;
   int thread_end_;
   int thread_dim_;
+  const CpuBackendContext& cpu_backend_context;
 };
 
 inline int HowManyConvThreads(const RuntimeShape& output_shape,
@@ -1947,7 +1983,8 @@ inline void DepthwiseConvPerChannel(
     DepthwiseConvImpl(params, output_multiplier, output_shift, input_shape,
                       input_data, filter_shape, filter_data, bias_shape,
                       bias_data, output_shape, output_data, /*thread_start=*/0,
-                      /*thread_end=*/output_rows, /*thread_dim=*/1);
+                      /*thread_end=*/output_rows, /*thread_dim=*/1,
+                      *cpu_backend_context);
   } else {
     std::vector<DepthwiseConvWorkerTask<int8, int32>> tasks;
     // TODO(b/131746020) don't create new heap allocations every time.
@@ -1960,7 +1997,7 @@ inline void DepthwiseConvPerChannel(
       tasks.emplace_back(params, output_multiplier, output_shift, input_shape,
                          input_data, filter_shape, filter_data, bias_shape,
                          bias_data, output_shape, output_data, thread_start,
-                         thread_end, thread_dim);
+                         thread_end, thread_dim, *cpu_backend_context);
       thread_start = thread_end;
     }
     cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),

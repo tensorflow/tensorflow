@@ -632,10 +632,17 @@ class SingleOpModel {
         dims_count);
     for (int i = 0; i < dims_count; i++) {
       const int metadata_idx = 2 * i;
+      auto array_segments =
+          CreateInt32Vector(builder_,
+                            builder_.CreateVector(dim_metadata[metadata_idx]))
+              .Union();
+      auto array_indices =
+          CreateInt32Vector(
+              builder_, builder_.CreateVector(dim_metadata[metadata_idx + 1]))
+              .Union();
       fb_dim_metadata[i] = CreateDimensionMetadata(
-          builder_, DimensionType_SPARSE_CSR, 0,
-          builder_.CreateVector(dim_metadata[metadata_idx]),
-          builder_.CreateVector(dim_metadata[metadata_idx + 1]));
+          builder_, DimensionType_SPARSE_CSR, 0, SparseIndexVector_Int32Vector,
+          array_segments, SparseIndexVector_Int32Vector, array_indices);
     }
 
     flatbuffers::Offset<SparsityParameters> s_param = CreateSparsityParameters(

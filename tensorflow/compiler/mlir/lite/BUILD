@@ -208,6 +208,7 @@ cc_library(
         "ir/tfl_ops.h.inc",
         "ir/tfl_ops_interface.cc.inc",
         "ir/tfl_ops_interface.h.inc",
+        "runtime_verifiers.inc",
         "utils/attribute_utils.cc",
     ],
     hdrs = [
@@ -303,12 +304,14 @@ cc_library(
         "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
+        "transforms/runtime_type_verify.cc",
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
         "transforms/unroll_batch_matmul.cc",
         "transforms/while_loop_outline.cc",
     ],
     hdrs = [
+        "ir/tfl_ops_interface.h.inc",
         "transforms/dilated_conv.h",
         "transforms/passes.h",
         "transforms/unroll_batch_matmul.h",
@@ -461,9 +464,9 @@ cc_library(
 )
 
 tf_native_cc_binary(
-    name = "operator-converter-gen",
+    name = "converter-gen",
     srcs = [
-        "operator_converter_gen.cc",
+        "converter_gen.cc",
     ],
     deps = [
         "@llvm-project//llvm:support",
@@ -473,14 +476,18 @@ tf_native_cc_binary(
 )
 
 gentbl(
-    name = "operator_converter_inc",
+    name = "converter_inc",
     tbl_outs = [
         (
-            "",  # This driver has no options.
+            "--gen-operator-converters",
             "operator_converters.inc",
         ),
+        (
+            "--gen-runtime-verifiers",
+            "runtime_verifiers.inc",
+        ),
     ],
-    tblgen = ":operator-converter-gen",
+    tblgen = ":converter-gen",
     td_file = "ir/tfl_ops.td",
     td_srcs = [
         ":tensorflow_lite_ops_td_files",
@@ -582,7 +589,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
@@ -596,6 +602,7 @@ tf_cc_binary(
     name = "flatbuffer_translate",
     deps = [
         ":flatbuffer_translate_lib",
+        "@llvm-project//mlir:LoopOpsTransforms",
         "@llvm-project//mlir:MlirTranslateMain",
     ],
 )
@@ -645,12 +652,14 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -694,7 +703,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -727,7 +735,6 @@ cc_library(
         "//tensorflow/lite/tools/optimize:quantize_weights",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",

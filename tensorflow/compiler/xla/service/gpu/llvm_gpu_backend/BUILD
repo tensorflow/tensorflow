@@ -69,6 +69,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:resource_loader",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],

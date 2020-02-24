@@ -445,8 +445,11 @@ class KerasObjectLoader(tf_load.Loader):
       model.__init__(layers, name=config['name'])
       if not model.inputs:
         first_layer = self._get_child_layer_node_ids(model_id, model.name)[0]
-        input_shape = self._infer_inputs(first_layer)
-        model._set_inputs(input_shape)  # pylint: disable=protected-access
+        input_specs = self._infer_inputs(first_layer)
+        input_shapes = self._infer_inputs(first_layer, convert_to_shapes=True)
+        model._set_inputs(input_specs)  # pylint: disable=protected-access
+        if not model.built and not isinstance(input_specs, dict):
+          model.build(input_shapes)
     else:
       (inputs, outputs, created_layers) = network_lib.reconstruct_from_config(
           config, created_layers={layer.name: layer for layer in layers})

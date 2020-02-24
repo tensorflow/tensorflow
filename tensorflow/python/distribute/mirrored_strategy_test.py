@@ -357,7 +357,9 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
 
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(model_fn)
-      self.assertEqual((0, 1), self.evaluate(result.values))
+      self.assertEqual(
+          (0, 1),
+          self.evaluate(distribution.experimental_local_results(result)))
       self.assertLen(traces, distribution.num_replicas_in_sync)
 
   def testFunctionInCallForEachReplicaInsideAnotherFunction(self, distribution):
@@ -373,7 +375,9 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
 
     with distribution.scope():
       result = step()
-      self.assertEqual((0, 1), self.evaluate(result.values))
+      self.assertEqual(
+          (0, 1),
+          self.evaluate(distribution.experimental_local_results(result)))
       self.assertLen(traces, distribution.num_replicas_in_sync)
 
   def testNestedFunctionInCallForEachReplicaWithMergeCall(self, distribution):
@@ -712,21 +716,33 @@ class MirroredVariableUpdateTest(test.TestCase):
       mirrored_var_result = self.evaluate(
           mirrored_var.assign_add(6.0, read_value=True))
       self.assertEqual(7.0, mirrored_var_result)
-      self.assertEqual(7.0, self.evaluate(mirrored_var.values[0]))
-      self.assertEqual(7.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          7.0,
+          self.evaluate(
+              distribution.experimental_local_results(mirrored_var)[0]))
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          7.0,
+          self.evaluate(
+              distribution.experimental_local_results(mirrored_var)[1]))
+      self.assertEqual(
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
+      self.assertEqual(
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
       # read_value == False
       self.evaluate(mirrored_var.assign_add(2.0, read_value=False))
-      self.assertEqual(9.0, self.evaluate(mirrored_var.values[0]))
-      self.assertEqual(9.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          9.0,
+          self.evaluate(
+              distribution.experimental_local_results(mirrored_var)[0]))
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          9.0,
+          self.evaluate(
+              distribution.experimental_local_results(mirrored_var)[1]))
+      self.assertEqual(
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
+      self.assertEqual(
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
   def testAssignAddMirroredVarReplicaContext(self, distribution):
     def var_fn():
@@ -778,12 +794,18 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEqual(5.0, self.evaluate(mirrored_var))
       mirrored_var_result = self.evaluate(mirrored_var.assign_sub(2.0))
       self.assertEqual(3.0, mirrored_var_result)
-      self.assertEqual(3.0, self.evaluate(mirrored_var.values[0]))
-      self.assertEqual(3.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          3.0,
+          self.evaluate(
+              distribution.experimental_local_results(mirrored_var)[0]))
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          3.0,
+          self.evaluate(
+              distribution.experimental_local_results(mirrored_var)[1]))
+      self.assertEqual(
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
+      self.assertEqual(
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
   def testAssignSubMirroredVarReplicaContext(self, distribution):
     def var_fn():
@@ -995,7 +1017,8 @@ class MirroredStrategyDefunTest(test.TestCase):
             distribution.extended.call_for_each_replica(
                 defun.get_concrete_function, args=[mock_model] + inputs))
         for i in range(len(devices)):
-          graph_function = per_replica_graph_functions.values[i]
+          graph_function = distribution.experimental_local_results(
+              per_replica_graph_functions)[i]
           # TODO(b/129555712): re-enable an assertion here that the two sets of
           # variables are the same.
           # self.assertEqual(set(graph_function.graph.variables),
@@ -1335,7 +1358,7 @@ class FunctionTest(test.TestCase):
     def forward(x, w, b):
       return x * w + b
     x = constant_op.constant([1.0], name="x_useless")
-    concrete_forward = forward.get_concrete_function(x, w.primary, b.primary)
+    concrete_forward = forward.get_concrete_function(x, w._primary, b._primary)
 
     with ms.scope():
       def replica_fn():
@@ -1351,8 +1374,8 @@ class FunctionTest(test.TestCase):
       g1, g2 = step_fn()
       run_metadata = context.export_run_metadata()
       context.disable_run_metadata()
-      self.assertEqual(self.evaluate(g1.primary), 1.0)
-      self.assertEqual(self.evaluate(g2.primary), 1.0)
+      self.assertEqual(self.evaluate(g1._primary), 1.0)
+      self.assertEqual(self.evaluate(g2._primary), 1.0)
 
       # Verify that this node runs on both devices.
       node_name = "gradients_mul_grad_mul_1_x"
