@@ -49,8 +49,8 @@ load(
     "is_windows",
     "raw_exec",
     "read_dir",
-    "which",
     "realpath",
+    "which",
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
