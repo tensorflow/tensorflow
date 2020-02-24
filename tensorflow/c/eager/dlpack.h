@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
 #ifndef TENSORFLOW_C_DLPACK_H_
 #define TENSORFLOW_C_DLPACK_H_
 
@@ -22,14 +21,20 @@ limitations under the License.
 
 namespace tensorflow {
 
+// PyCapsule name for DLPack Tensor
 const char* const kDlTensorCapsuleName = "dltensor";
 
-TF_CAPI_EXPORT extern void* TFE_HandleToDLPack(TFE_TensorHandle* h, TF_Status* status);
+// Convert eager tensor handle to DLPack (DLManagedTensor*), and return the
+// void* for further PyCapsule construction
+TF_CAPI_EXPORT extern void* TFE_HandleToDLPack(TFE_TensorHandle* h,
+                                               TF_Status* status);
 
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status);
+// Convert DLPack (DLManagedTensor*) to eager tensor handle
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm,
+                                                             TF_Status* status);
 
+// Call the destructor of DLManagedTensor, used in the destructor of PyCapsule
 TF_CAPI_EXPORT extern void TFE_CallDLManagedTensorDeleter(void* dlm_ptr);
 }  // namespace tensorflow
-
 
 #endif  // TENSORFLOW_C_DLPACK_H_
