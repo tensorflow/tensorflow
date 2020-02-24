@@ -49,7 +49,6 @@ class RemoteMgrTest : public ::testing::Test {
         DeviceFactory::NewDevice("CPU", {}, "/job:worker/replica:0/task:0"));
     remote_device_ = devices.back().get();
     auto device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
-    context_id_ = random::New64();
     tensorflow::Rendezvous* rendezvous =
         new tensorflow::IntraProcessRendezvous(device_mgr.get());
     ctx_ = new tensorflow::EagerContext(
@@ -64,7 +63,6 @@ class RemoteMgrTest : public ::testing::Test {
 
   Device* local_device_;
   Device* remote_device_;
-  uint64 context_id_;
   EagerContext* ctx_;
 };
 
@@ -78,7 +76,7 @@ TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
   const uint64 op_id = 2;
   const int output_num = 3;
   auto tensor_handle_data = absl::make_unique<RemoteTensorHandleData>(
-      op_id, output_num, t.shape(), /*remote_task=*/"", context_id_, ctx_);
+      op_id, output_num, t.shape(), /*remote_task=*/"", ctx_);
   TF_ASSERT_OK(
       handle->AddRemoteMirror(std::move(tensor_handle_data), remote_device_));
   RemoteTensorHandle remote_handle;
@@ -98,9 +96,8 @@ TEST_F(RemoteMgrTest, SerializeRemoteTensorHandle) {
   const int output_num = 1;
   TensorHandle* handle;
   TF_ASSERT_OK(TensorHandle::CreateRemoteHandle(
-      op_id, output_num, t.shape(), /*remote_task=*/"", context_id_, DT_FLOAT,
-      remote_device_,
-      /*resource_device=*/nullptr, ctx_, &handle));
+      op_id, output_num, t.shape(), /*remote_task=*/"", DT_FLOAT,
+      remote_device_, /*resource_device=*/nullptr, ctx_, &handle));
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
       handle, &remote_handle, remote_device_, remote_device_->name()));

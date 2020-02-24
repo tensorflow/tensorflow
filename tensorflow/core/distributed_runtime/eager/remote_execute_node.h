@@ -37,13 +37,14 @@ namespace eager {
 class RemoteExecuteNode : public AsyncEagerNode {
  public:
   RemoteExecuteNode(std::unique_ptr<EnqueueRequest> request, Device* device,
-                    EagerClient* eager_client, const NodeDef& ndef,
-                    FunctionLibraryDefinition* lib_def,
+                    uint64 context_view_id, EagerClient* eager_client,
+                    const NodeDef& ndef, FunctionLibraryDefinition* lib_def,
                     const gtl::InlinedVector<TensorHandle*, 4>& inputs,
                     absl::Span<TensorHandle*> retvals)
       : AsyncEagerNode(),
         request_(std::move(request)),
         device_(device),
+        context_view_id_(context_view_id),
         eager_client_(eager_client),
         ndef_(ndef),
         lib_def_(lib_def),
@@ -96,6 +97,7 @@ class RemoteExecuteNode : public AsyncEagerNode {
  private:
   std::unique_ptr<EnqueueRequest> request_;
   Device* device_;             // Not owned
+  uint64 context_view_id_;
   EagerClient* eager_client_;  // Not owned, and must outlive this node.
   const NodeDef ndef_;
   const FunctionLibraryDefinition* lib_def_;

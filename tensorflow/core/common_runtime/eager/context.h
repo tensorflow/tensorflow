@@ -317,8 +317,8 @@ class EagerContext : public core::RefCounted {
   Status GetClient(const string& remote_task,
                    core::RefCountPtr<eager::EagerClient>* client);
 
-  uint64 GetContextId();
-  uint64 GetContextViewId();
+  uint64 GetContextId() const;
+  uint64 GetContextViewId() const;
   void IncrementContextViewId();
 
   // TODO(nareshmodi): Encapsulate remote state into a separate
@@ -601,7 +601,7 @@ class EagerContext : public core::RefCounted {
   std::shared_ptr<WorkerSession> worker_session_;
   std::unique_ptr<eager::EagerClientCache> remote_eager_workers_;
 
-  mutex remote_state_mu_;
+  mutable mutex remote_state_mu_;
 
   uint64 context_id_ GUARDED_BY(remote_state_mu_);
   // The view id of an eager context should be set to 0 when context is created,

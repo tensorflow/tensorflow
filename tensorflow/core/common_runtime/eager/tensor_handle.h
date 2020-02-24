@@ -103,19 +103,17 @@ class TensorHandle : public core::RefCounted {
 #if !defined(IS_MOBILE_PLATFORM)
   static Status CreateRemoteHandle(int64 op_id, int output_num,
                                    const TensorShape& shape,
-                                   const string& remote_task, uint64 context_id,
-                                   DataType dtype, Device* d,
-                                   Device* resource_device, EagerContext* ctx,
-                                   TensorHandle** h);
+                                   const string& remote_task, DataType dtype,
+                                   Device* d, Device* resource_device,
+                                   EagerContext* ctx, TensorHandle** h);
   static Status CreateRemoteHandle(std::unique_ptr<RemoteTensorHandleData> t,
                                    DataType dtype, Device* d,
                                    Device* resource_device, EagerContext* ctx,
                                    TensorHandle** h);
   static Status CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
                                            const string& remote_task,
-                                           uint64 context_id, DataType dtype,
-                                           Device* device, EagerContext* ctx,
-                                           TensorHandle** h);
+                                           DataType dtype, Device* device,
+                                           EagerContext* ctx, TensorHandle** h);
   static Status CreateUnshapedRemoteHandle(
       std::unique_ptr<UnshapedRemoteTensorHandleData> t, DataType dtype,
       Device* device, EagerContext* ctx, TensorHandle** h);
@@ -157,8 +155,8 @@ class TensorHandle : public core::RefCounted {
   Status AddEmptyLocalMirror(const Device* d);
 
 #if !defined(IS_MOBILE_PLATFORM)
-  bool HasRemoteMirror(const Device* d) const;
-  bool HasResourceShapeMirror(const Device* d) const;
+  bool HasRemoteMirror(const Device* d, uint64 context_view_id) const;
+  bool HasResourceShapeMirror(const Device* d, uint64 context_view_id) const;
 
   Status AddUnshapedRemoteMirror(
       std::unique_ptr<UnshapedRemoteTensorHandleData> t, const Device* d);
@@ -176,7 +174,8 @@ class TensorHandle : public core::RefCounted {
   // queried.
   // This method or Poison must be called exactly once for remote tensors that
   // were created without a known shape.
-  Status SetRemoteShape(const TensorShape& shape, const Device* d);
+  Status SetRemoteShape(const TensorShape& shape, const Device* d,
+                        uint64 context_view_id);
 #endif
 
   // Sets the `tensor` for this async non-ready handle making it ready.
@@ -273,23 +272,21 @@ class TensorHandle : public core::RefCounted {
   // TODO(yujingzhang): Remove resource_shape_mirrors_ once scalable per-replica
   // variable is ready, since we could get the shape locally without remote copy
   // then.
-  std::map<uint64, std::unique_ptr<UnshapedRemoteTensorHandleData>>
+  std::map<string, std::unique_ptr<UnshapedRemoteTensorHandleData>>
       resource_shape_mirrors_ GUARDED_BY(mu_);
   // TODO(gjn): Unshaped remote mirrors are not expected to be long-lived.
   // Consider replacing the unshaped_remote_mirrors_ map with something more
   // efficient.
-  std::map<uint64, std::unique_ptr<UnshapedRemoteTensorHandleData>>
+  std::map<string, std::unique_ptr<UnshapedRemoteTensorHandleData>>
       unshaped_remote_mirrors_ GUARDED_BY(mu_);
   // TODO(gjn): Is std::map the most optimal choice here? Perhaps this should be
   // a fixed size map.
-  std::map<uint64, std::unique_ptr<RemoteTensorHandleData>> remote_mirrors_
+  std::map<string, std::unique_ptr<RemoteTensorHandleData>> remote_mirrors_
       GUARDED_BY(mu_);
 
   // IDs required when this class is representing a remote tensor handle.
   int64 remote_op_id_;
   int32 remote_output_num_;
-  string remote_task_;
-  uint64 remote_context_id_;
 #endif
 
   // `ctx` is only guaranteed to be set if the handle is not "ready". This is
