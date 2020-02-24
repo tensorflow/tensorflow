@@ -81,7 +81,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       params.thread_pool = &unbounded_thread_pool_;
       params.cancellation_manager = &captured_state->cancellation_manager;
       params.index_manager = &index_manager_;
-      LOG(INFO) << "index_manager: " << params.index_manager;
+      //LOG(INFO) << "index_manager: " << params.index_manager;
       std::function<void()> deregister_fn;
       TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
                                                      params.cancellation_manager,
@@ -90,18 +90,18 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       s = captured_state->iterator->GetNext(IteratorContext(std::move(params)),
                                             out_tensors, end_of_sequence,
                                             out_index);
-      LOG(INFO) << "1";
+      //LOG(INFO) << "1";
       if (!s.ok() || *end_of_sequence || !out_tensors->empty()) {
         break;
       }
-      delete out_index;
-    } while (true);
+      //delete out_index;
+    } while (s.ok() && !*end_of_sequence && out_tensors->empty());
     
-    LOG(INFO) << "2";
+    //LOG(INFO) << "2";
     if (s.ok() && !*end_of_sequence) {
       index_manager_.NotifyFinished(out_index);
     }
-    LOG(INFO) << "3";
+    //LOG(INFO) << "3";
     return s;
   }
   return errors::FailedPrecondition(

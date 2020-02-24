@@ -408,8 +408,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     }
     
     std::unique_ptr<ShuffleBufferItem[]> buffer_ GUARDED_BY(mu_);
-    //std::unique_ptr<std::vector<Tensor>[]> buffer_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY
+    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     int64 epoch_ GUARDED_BY(mu_);
     int64 num_elements_ GUARDED_BY(mu_);
     std::deque<std::unique_ptr<Slice>> slices_ GUARDED_BY(mu_);

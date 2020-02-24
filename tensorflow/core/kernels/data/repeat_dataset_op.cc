@@ -218,7 +218,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
    private:
     mutex mu_;
     int64 i_ GUARDED_BY(mu_);
-std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY
+    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
   };
 
   class ForeverIterator : public DatasetIterator<Dataset> {
@@ -310,7 +310,7 @@ std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY
 
    private:
     mutex mu_;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY
+    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     bool first_call_ GUARDED_BY(mu_);
   };
 

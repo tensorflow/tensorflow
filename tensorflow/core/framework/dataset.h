@@ -419,6 +419,30 @@ class IndexManager {
   }
 
  protected:
+  bool AlreadyProcessedInternal(EparallaxTensorIndex* index);
+
+  bool IsShuffled(EparallaxTensorIndex* index) {
+    if (index->parent_indices() == nullptr) {
+      return false;
+    }
+    for (auto parent_index : *index->parent_indices()) {
+      size_t pos = parent_index->iterator_id().find_last_of("::");
+      string optype = parent_index->iterator_id().substr(pos+1);
+      if (optype.find("Shuffle") != std::string::npos) {
+        LOG(INFO) << "Shuffled";
+        return true;
+      } else if (parent_index->parent_indices() != nullptr) {
+        for (auto grand_parent_index : *parent_index->parent_indices()) {
+          if (IsShuffled(grand_parent_index)) {
+          LOG(INFO) << "Shuffled";
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   void Restore() {
     std::ifstream ckpt_file(ckpt_file_path_.data());
     if (ckpt_file.is_open()) {
@@ -447,10 +471,10 @@ class IndexManager {
         //LOG(INFO) << "Saving " << *processed_index;
         ckpt_file << "processed_index:" << *processed_index << "\n";
       }
-      for (auto issued_index : issued_indices_) {
+      /*for (auto issued_index : issued_indices_) {
         //LOG(INFO) << "Saving " << *processed_index;
         ckpt_file << "issued_index:" << *issued_index << "\n";
-      }
+      }*/
       ckpt_file.close();
     }
   }
@@ -529,7 +553,11 @@ class IndexManager {
   mutex mu_;
   std::vector<EparallaxTensorIndex*> processed_indices_ GUARDED_BY(mu_);
   std::vector<EparallaxTensorIndex*> issued_indices_ GUARDED_BY(mu_);
+  std::vector<EparallaxTensorIndex*> infertile_indices_ GUARDED_BY(mu_);
   std::map<string, int64> local_index_map_ GUARDED_BY(mu_);
+  std::map<string, int64> num_issued_indices_map_ GUARDED_BY(mu_);
+  std::map<string, EparallaxTensorIndex*> last_index_map_ GUARDED_BY(mu_);
+  std::map<string, EparallaxTensorIndex*> current_index_map_ GUARDED_BY(mu_);
   string ckpt_file_path_;
 };
 
@@ -1059,12 +1087,7 @@ class DatasetBaseIterator : public IteratorBase {
     const string prefix;
   };
 
-  explicit DatasetBaseIterator(const BaseParams& params)
-    : params_(params)
-      //input_impl_(nullptr)
-      //local_index_(-1),
-      //gai_called_(false),
-      /*last_index_(nullptr)*/ {
+  explicit DatasetBaseIterator(const BaseParams& params) : params_(params) {
     params_.dataset->Ref();
     string username = "kyunggeun-lee";
     ckpt_file_path_ = "/tmp/eparallax-" + username + "/checkpoint/" + prefix();
@@ -1271,7 +1294,7 @@ class DatasetBaseIterator : public IteratorBase {
   //std::vector<EparallaxTensorIndex*> accumulated_indices_;
   //bool gai_called_;
   string ckpt_file_path_;
-  //EparallaxTensorIndex* last_index_;
+  std::vector<EparallaxTensorIndex*>* last_parent_indices_=nullptr;
 };
 
 // Represents an iterator that is associated with a particular dataset
