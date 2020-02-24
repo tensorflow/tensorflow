@@ -112,7 +112,7 @@ namespace tensorflow {
 #define TENSOR_FORMAT_NHWC MKL_TENSOR_FORMAT_NHWC
 #define TENSOR_MAX_DIMS MKLDNN_MAX_NDIMS
 #define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemDesc()
-#define BN_FLAGS mkldnn::batch_normalization_flags
+#define BN_FLAGS mkldnn::normalization_flags
 
 #else
 
