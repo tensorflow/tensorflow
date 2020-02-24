@@ -536,8 +536,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     >>> # `from_tensors` adds one more dimension to the shape
     >>> # use `from_tensor_slices` to merge the input tensor.
-    >>> dataset = tf.data.Dataset.from_tensors([tf.random_uniform([2, 3]),
-                                               tf.random_uniform([2, 3])])
+    >>> dataset = tf.data.Dataset.from_tensors(
+            [tf.random_uniform([2, 3]), tf.random_uniform([2, 3])]
+        )
     >>> list(dataset.as_numpy_iterator())[0].shape
     (2, 2, 3)
 
@@ -620,8 +621,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     >>> # `from_tensor_slices` merges the input tensor, unlike `from_tensors`
     >>> # which increases dimensionality.
-    >>> dataset = tf.data.Dataset.from_tensor_slices([tf.random.uniform([2, 3]),
-                                                     tf.random.uniform([2, 3])])
+    >>> dataset = tf.data.Dataset.from_tensor_slices(
+            [tf.random.uniform([2, 3]), tf.random.uniform([2, 3])]
+        )
     >>> list(dataset.as_numpy_iterator())[0].shape
     (2, 3)
 
