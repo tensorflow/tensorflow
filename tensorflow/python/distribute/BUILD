@@ -1148,7 +1148,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",  # TODO(b/130551176)
-        "noguitar",
     ],
     deps = [
         ":combinations",
