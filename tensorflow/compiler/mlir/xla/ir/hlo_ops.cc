@@ -177,29 +177,18 @@ void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
 // IotaOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
-  const auto output_type = getResult().getType().cast<ShapedType>();
-  const auto output_size = output_type.getNumElements();
-  const auto dimension = iota_dimension().getSExtValue();
-  const auto max_dim_size = output_type.getDimSize(dimension);
-  int bitwidth = output_type.getElementType().getIntOrFloatBitWidth();
+static LogicalResult Verify(IotaOp op) {
+  auto shape = op.getType().cast<ShapedType>();
+  if (!shape.hasRank()) return success();
 
-  llvm::SmallVector<APInt, 10> values;
-  values.reserve(output_size);
+  if (shape.getRank() == 0)
+    return op.emitOpError() << "does not support scalars.";
 
-  int64_t increase_stride = output_size;
-  for (int i = 0; i <= dimension; i++) {
-    increase_stride /= output_type.getDimSize(i);
-  }
-
-  int64_t current_value = 0;
-  for (int i = 0; i < output_size; i++) {
-    int64_t value = (current_value / increase_stride) % max_dim_size;
-    values.push_back(APInt(bitwidth, value));
-    ++current_value;
-  }
-
-  return DenseIntElementsAttr::get(output_type, values);
+  auto iota_dimension = op.iota_dimension().getSExtValue();
+  if (iota_dimension >= shape.getRank() || iota_dimension < 0)
+    return op.emitOpError() << "iota dimension cannot go beyond the output "
+                               "rank or be negative.";
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

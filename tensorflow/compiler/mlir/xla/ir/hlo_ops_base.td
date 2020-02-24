@@ -27,13 +27,6 @@ def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 // matching the matrix to dimensions 1 and 2 of the cuboid.
 def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
 
-// Dynamic representation of a shape vector as a tensor. Ideally this would be
-// an index type (as it stores indices) but that is currently disallowed in
-// MLIR.
-def HLO_BASE_DimensionTensor : ShapedContainerType<
-    [AnyInteger], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
-    "a 1D tensor of dimensions">;
-
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -814,22 +807,6 @@ class BASE_HLO_BroadcastInDimOp  {
     The scalar value will be broadcast to every element in the target shape.
 
     See https://www.tensorflow.org/xla/broadcasting.
-  }];
-}
-
-class BASE_HLO_DynamicBroadcastInDimOp  {
-  string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
-
-  string description = [{
-    This is a generalization of the BroadcastInDimOp which accepts its output
-    dimensions as an argument. It should eventually supercede the statically
-    shaped original, but is being phased as a separate op in order to support
-    compatibility with lowerings and translations that precede dynamic
-    shapes.
-
-    Note that the `broadcast_dimensions` attribute is optional and if omitted,
-    it is assumed to be an ordered, right-aligned mapping from input to
-    output dimensions.
   }];
 }
 

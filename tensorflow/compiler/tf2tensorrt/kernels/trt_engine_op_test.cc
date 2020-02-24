@@ -62,7 +62,8 @@ class TRTEngineOpTestBase : public OpsTestBase {
  public:
   void AddSimpleTrtOp(DataType dtype, int max_cached_engines_count = 1,
                       PartialTensorShape shape = PartialTensorShape({-1, -1}),
-                      bool use_implicit_batch = true) {
+                      bool use_implicit_batch = true,
+                      bool allow_build_at_runtime = true) {
     // Create the GPU device.
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("GPU", {}, "/job:worker/replica:0/task:0"));
@@ -104,6 +105,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Attr("precision_mode", "FP32")
                      .Attr("use_calibration", false)
                      .Attr("_use_implicit_batch", use_implicit_batch)
+                     .Attr("_allow_build_at_runtime", allow_build_at_runtime)
                      .Attr("OutT", {dtype})
                      .Finalize(OpsTestBase::node_def()));
     TF_ASSERT_OK(InitOpWithFunctionLibrary());
@@ -127,9 +129,14 @@ class TRTEngineOpTestBase : public OpsTestBase {
  private:
   Status InitOpWithFunctionLibrary() {
     OpKernel* kernel = nullptr;
-    Status status = CreateOpKernel(device_type_, device_, allocator(),
-                                   pflr_->GetFLR(device_->name()), node_def_,
-                                   TF_GRAPH_DEF_VERSION, &kernel);
+    auto flr = pflr_->GetFLR(device_->name());
+    std::shared_ptr<const NodeProperties> props;
+    Status status = NodeProperties::CreateFromNodeDef(
+        node_def_, flr->GetFunctionLibraryDefinition(), &props);
+    if (status.ok()) {
+      status.Update(CreateOpKernel(device_type_, device_, allocator(), flr,
+                                   props, TF_GRAPH_DEF_VERSION, &kernel));
+    }
     kernel_ = std::unique_ptr<OpKernel>(kernel);
     if (kernel_ != nullptr) input_types_ = kernel_->input_types();
     return status;
@@ -186,6 +193,33 @@ TEST_F(TRTEngineOpTestBase, DynamicEngines) {
   EXPECT_EQ(1, cache->count({TensorShape({10, 10})}));
 }
 
+TEST_F(TRTEngineOpTestBase, AllowBuildAtRuntime) {
+  TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/1,
+                                      PartialTensorShape({-1, -1}),
+                                      /*use_implicit_batch=*/true,
+                                      /*allow_build_at_runtime=*/false);
+
+  // Execute the op
+  TensorShape input_shape({2, 2});
+  TRTEngineOpTestBase::AddSimpleInput<float>(input_shape);
+  TF_ASSERT_OK(OpsTestBase::RunOpKernel());
+
+  // Get the engine cache.
+  TRTEngineCacheResource* cache_resource = nullptr;
+  TF_ASSERT_OK(
+      device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
+  core::ScopedUnref sc(cache_resource);
+
+  // It should contain a placeholder with an empty cuda_engine (to mark that
+  // engine creation was not successful for the given input shape).
+  auto cache = &cache_resource->cache_;
+  EXPECT_EQ(1, cache->size());
+  ASSERT_EQ(1, cache->count({input_shape}));
+  EngineContext* ectx = cache->at({input_shape}).get();
+  EXPECT_EQ(ectx->cuda_engine, nullptr);
+}
+
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
 TEST_F(TRTEngineOpTestBase, ExplicitBatch) {
   // Test inference in explicit batch mode with static input shapes. Static
   // shapes in this context means that the TensorRT knows all the input shapes
@@ -225,15 +259,6 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   TensorShape input_shape({1, 2});
   TRTEngineOpTestBase::AddSimpleInput<float>(input_shape);
 
-  // We expect that TensorRT engine creation fails: we would need to configure
-  // the engine with optimization profiles to use dynamic input shapes, but that
-  // feature is not yet implemented.
-  //
-  // Since TRT engine creation has failed, we fall back to native segment.
-  // Calling the native segment fails for the same reason that is investigated
-  // in https://github.com/tensorflow/tensorflow/pull/34919. This is irrelevant
-  // for the current test, here we want to just check wether TRT engine creation
-  // has failed.
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
 
   // Get the engine cache.
@@ -246,11 +271,8 @@ TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   auto cache = &cache_resource->cache_;
   EXPECT_EQ(1, cache->size());
   ASSERT_EQ(1, cache->count({input_shape}));
-  // TODO(bixia): re-enable the check below when the problem is fixed.
-  // EngineContext* ectx = cache->at({input_shape}).get();
-  // Since engine creation failed, we expect to find nullptr. Finding a nullptr
-  // indicates that unknown shapes were used to define the TensorRT network.
-  // EXPECT_EQ(ectx->cuda_engine, nullptr);
+  EngineContext* ectx = cache->at({input_shape}).get();
+  EXPECT_NE(ectx->cuda_engine, nullptr);
 }
 
 template <typename T>
@@ -274,6 +296,7 @@ TYPED_TEST(TRTEngineOpTest, Basic) {
                                   output->NumElements()),
       ElementsAre(TypeParam(0.0f), TypeParam(2.0f)));
 }
+#endif
 
 }  // namespace tensorrt
 }  // namespace tensorflow

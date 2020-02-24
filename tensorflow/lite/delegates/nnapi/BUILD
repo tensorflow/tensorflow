@@ -179,6 +179,7 @@ cc_test(
         ":nnapi_delegate",
         ":nnapi_delegate_mock_test",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:test_util",

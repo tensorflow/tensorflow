@@ -25,56 +25,101 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export('keras.applications.resnet_v2.ResNet50V2',
               'keras.applications.ResNet50V2')
-def ResNet50V2(include_top=True,
-               weights='imagenet',
-               input_tensor=None,
-               input_shape=None,
-               pooling=None,
-               classes=1000):
+def ResNet50V2(
+    include_top=True,
+    weights='imagenet',
+    input_tensor=None,
+    input_shape=None,
+    pooling=None,
+    classes=1000,
+    classifier_activation='softmax',
+):
   """Instantiates the ResNet50V2 architecture."""
   def stack_fn(x):
     x = resnet.stack2(x, 64, 3, name='conv2')
     x = resnet.stack2(x, 128, 4, name='conv3')
     x = resnet.stack2(x, 256, 6, name='conv4')
     return resnet.stack2(x, 512, 3, stride1=1, name='conv5')
-  return resnet.ResNet(stack_fn, True, True, 'resnet50v2', include_top, weights,
-                       input_tensor, input_shape, pooling, classes)
+
+  return resnet.ResNet(
+      stack_fn,
+      True,
+      True,
+      'resnet50v2',
+      include_top,
+      weights,
+      input_tensor,
+      input_shape,
+      pooling,
+      classes,
+      classifier_activation=classifier_activation,
+  )
 
 
 @keras_export('keras.applications.resnet_v2.ResNet101V2',
               'keras.applications.ResNet101V2')
-def ResNet101V2(include_top=True,
-                weights='imagenet',
-                input_tensor=None,
-                input_shape=None,
-                pooling=None,
-                classes=1000):
+def ResNet101V2(
+    include_top=True,
+    weights='imagenet',
+    input_tensor=None,
+    input_shape=None,
+    pooling=None,
+    classes=1000,
+    classifier_activation='softmax',
+):
   """Instantiates the ResNet101V2 architecture."""
   def stack_fn(x):
     x = resnet.stack2(x, 64, 3, name='conv2')
     x = resnet.stack2(x, 128, 4, name='conv3')
     x = resnet.stack2(x, 256, 23, name='conv4')
     return resnet.stack2(x, 512, 3, stride1=1, name='conv5')
-  return resnet.ResNet(stack_fn, True, True, 'resnet101v2', include_top,
-                       weights, input_tensor, input_shape, pooling, classes)
+
+  return resnet.ResNet(
+      stack_fn,
+      True,
+      True,
+      'resnet101v2',
+      include_top,
+      weights,
+      input_tensor,
+      input_shape,
+      pooling,
+      classes,
+      classifier_activation=classifier_activation,
+  )
 
 
 @keras_export('keras.applications.resnet_v2.ResNet152V2',
               'keras.applications.ResNet152V2')
-def ResNet152V2(include_top=True,
-                weights='imagenet',
-                input_tensor=None,
-                input_shape=None,
-                pooling=None,
-                classes=1000):
+def ResNet152V2(
+    include_top=True,
+    weights='imagenet',
+    input_tensor=None,
+    input_shape=None,
+    pooling=None,
+    classes=1000,
+    classifier_activation='softmax',
+):
   """Instantiates the ResNet152V2 architecture."""
   def stack_fn(x):
     x = resnet.stack2(x, 64, 3, name='conv2')
     x = resnet.stack2(x, 128, 8, name='conv3')
     x = resnet.stack2(x, 256, 36, name='conv4')
     return resnet.stack2(x, 512, 3, stride1=1, name='conv5')
-  return resnet.ResNet(stack_fn, True, True, 'resnet152v2', include_top,
-                       weights, input_tensor, input_shape, pooling, classes)
+
+  return resnet.ResNet(
+      stack_fn,
+      True,
+      True,
+      'resnet152v2',
+      include_top,
+      weights,
+      input_tensor,
+      input_shape,
+      pooling,
+      classes,
+      classifier_activation=classifier_activation,
+  )
 
 
 @keras_export('keras.applications.resnet_v2.preprocess_input')
@@ -123,9 +168,12 @@ DOC = """
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
 
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 """
 
 setattr(ResNet50V2, '__doc__', ResNet50V2.__doc__ + DOC)

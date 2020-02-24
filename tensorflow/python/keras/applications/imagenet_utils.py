@@ -22,6 +22,7 @@ import warnings
 
 import numpy as np
 
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.util.tf_export import keras_export
@@ -355,3 +356,27 @@ def correct_pad(inputs, kernel_size):
   correct = (kernel_size[0] // 2, kernel_size[1] // 2)
   return ((correct[0] - adjust[0], correct[0]),
           (correct[1] - adjust[1], correct[1]))
+
+
+def validate_activation(classifier_activation, weights):
+  """validates that the classifer_activation is compatible with the weights.
+
+  Args:
+    classifier_activation: str or callable activation function
+    weights: The pretrained weights to load.
+
+  Raises:
+    ValueError: if an activation other than `None` or `softmax` are used with
+      pretrained weights.
+  """
+  if weights is None:
+    return
+
+  classifier_activation = activations.get(classifier_activation)
+  if classifier_activation not in [
+      activations.get('softmax'),
+      activations.get(None)
+  ]:
+    raise ValueError('Only `None` and `softmax` activations are allowed '
+                     'for the `classifier_activation` argument when using '
+                     'pretrained weights, with `include_top=True`')

@@ -18,6 +18,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -155,6 +156,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
 // TODO(lyandy): Support session handle and guaranteed consts.
 LogicalResult SetMetadataProtoFromLaunchFuncOp(
     tf_device::LaunchFuncOp op, int num_replicas, int num_cores_per_replica,
+    llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   metadata->set_num_replicas(num_replicas);
   metadata->set_num_cores_per_replica(num_cores_per_replica);
@@ -196,6 +198,10 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
           "bad '{0}' attribute at index {1} with value '{2}'", kPaddingMapAttr,
           padding_and_idx.index(), padding_attr_str.getValue()));
   }
+
+  if (xla_device_assignment.hasValue())
+    *metadata->mutable_device_assignment() =
+        std::move(xla_device_assignment.getValue());
 
   // Set args metadata in proto.
   for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
@@ -251,17 +257,19 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
 
 // Create a `tf._TPUCompileMlir` that contains a MLIR module that is
 // functionally equivalent to the function referenced by launch_func.
-Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func, int num_replicas,
-                          int num_cores_per_replica,
-                          llvm::StringRef compilation_device,
-                          OpBuilder* builder) {
+Operation* BuildCompileOp(
+    tf_device::LaunchFuncOp launch_func, int num_replicas,
+    int num_cores_per_replica, llvm::StringRef compilation_device,
+    llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
+    OpBuilder* builder) {
   // TODO(b/139377366): Use tf_tpu.compile build method when it is defined.
   OperationState compile_op_state(launch_func.getLoc(), "tf._TPUCompileMlir");
 
   // Set metadata from attributes.
   tensorflow::tpu::TPUCompileMetadataProto metadata;
   if (failed(SetMetadataProtoFromLaunchFuncOp(
-          launch_func, num_replicas, num_cores_per_replica, &metadata)))
+          launch_func, num_replicas, num_cores_per_replica,
+          std::move(xla_device_assignment), &metadata)))
     return nullptr;
 
   std::string txt_metadata;
@@ -416,7 +424,7 @@ void RemapOutputsOfParallelExecute(tf_device::LaunchFuncOp launch_func,
 }
 
 void AssignDevicesToReplicatedExecute(
-    const llvm::SmallVector<std::string, 8>& execution_devices,
+    llvm::ArrayRef<llvm::SmallVector<std::string, 8>> execution_devices,
     tf_device::ReplicateOp replicate, Operation* execute_op,
     OpBuilder* builder) {
   // If computation is replicated, execution devices are assigned to the
@@ -426,14 +434,18 @@ void AssignDevicesToReplicatedExecute(
     // Model parallelism is not support for now. Therefore, assign all ops
     // in replicate op with virtual device alias specifying that ops will be
     // executed on the zeroth core.
+    llvm::SmallVector<llvm::StringRef, 4> replicate_execution_devices;
+    replicate_execution_devices.reserve(execution_devices.size());
+    for (const auto& replica_execution_devices : execution_devices)
+      replicate_execution_devices.push_back(replica_execution_devices.front());
+
     auto device_attr = builder->getNamedAttr(
         tensorflow::GetDeviceAliasForLogicalCore(0),
-        builder->getStrArrayAttr(llvm::SmallVector<llvm::StringRef, 4>{
-            execution_devices.begin(), execution_devices.end()}));
+        builder->getStrArrayAttr(replicate_execution_devices));
     replicate.setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attr));
   } else {
-    execute_op->setAttr(kDeviceAttr,
-                        builder->getStringAttr(execution_devices.front()));
+    execute_op->setAttr(
+        kDeviceAttr, builder->getStringAttr(execution_devices.front().front()));
   }
 }
 
@@ -526,21 +538,22 @@ LogicalResult Rewrite(
   int num_cores_per_replica = num_cores_per_replica_attr.getInt();
 
   // Determine compilation and execution devices.
-  std::string compilation_device;
-  llvm::SmallVector<std::string, 8> execution_devices;
-  auto status = tensorflow::GetTPUCompilationAndExecutionDevices(
-      devices, num_replicas, num_cores_per_replica, &compilation_device,
-      &execution_devices);
-  if (!status.ok())
+  auto status_or_tpu_device_assignment =
+      tensorflow::GetTPUCompilationAndExecutionDevices(
+          devices, num_replicas, num_cores_per_replica, /*topology_attr=*/"",
+          /*device_assignment_attr=*/{});
+  if (!status_or_tpu_device_assignment.ok())
     return launch_func.emitError()
            << "error in fetching TPU compilation/execution devices: "
-           << status.error_message();
+           << status_or_tpu_device_assignment.status().error_message();
 
   // Create compile op;
+  auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
   builder->setInsertionPoint(launch_func);
-  Operation* compile_op =
-      BuildCompileOp(launch_func, num_replicas, num_cores_per_replica,
-                     compilation_device, builder);
+  Operation* compile_op = BuildCompileOp(
+      launch_func, num_replicas, num_cores_per_replica,
+      tpu_device_assignment.compilation_device,
+      std::move(tpu_device_assignment.xla_device_assignment), builder);
   if (!compile_op) return failure();
 
   // After rewrite, find if there is a TPUCompilationResultOp in the block with
@@ -566,8 +579,8 @@ LogicalResult Rewrite(
     // attributes to launch_op's within parallel_execute op.
   } else {
     execute_op = BuildExecuteOp(compile_op, launch_func, builder);
-    AssignDevicesToReplicatedExecute(execution_devices, replicate, execute_op,
-                                     builder);
+    AssignDevicesToReplicatedExecute(tpu_device_assignment.execution_devices,
+                                     replicate, execute_op, builder);
     launch_func.replaceAllUsesWith(execute_op);
   }
 

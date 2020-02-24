@@ -51,6 +51,7 @@ exports_files(
         "node_def_builder.h",
         "numeric_op.h",
         "op_kernel.h",
+        "op_requires.h",
         "op_segment.h",
         "ops_util.h",
         "partial_tensor_shape.h",
@@ -129,6 +130,7 @@ exports_files(
         "attr_value_util.h",
         "common_shape_fns.h",
         "node_def_util.h",
+        "node_properties.h",
         "op.h",
         "op_def_builder.h",
         "op_def_util.h",
@@ -172,12 +174,14 @@ filegroup(
         "model.h",
         "node_def_builder.h",
         "node_def_util.h",
+        "node_properties.h",
         "numeric_op.h",
         "numeric_types.h",
         "op.h",
         "op_def_builder.h",
         "op_def_util.h",
         "op_kernel.h",
+        "op_requires.h",
         "op_segment.h",
         "ops_util.h",
         "partial_tensor_shape.h",
@@ -338,6 +342,8 @@ filegroup(
         "node_def_builder.h",
         "node_def_util.cc",
         "node_def_util.h",
+        "node_properties.cc",
+        "node_properties.h",
         "numeric_op.h",
         "op.cc",
         "op.h",
@@ -347,6 +353,7 @@ filegroup(
         "op_def_util.h",
         "op_kernel.cc",
         "op_kernel.h",
+        "op_requires.h",
         "op_segment.cc",
         "op_segment.h",
         "ops_util.cc",
@@ -863,6 +870,21 @@ cc_library(
 )
 
 cc_library(
+    name = "node_properties",
+    srcs = ["node_properties.cc"],
+    hdrs = ["node_properties.h"],
+    deps = [
+        ":node_def_proto_cc",
+        ":node_def_util",
+        ":op",
+        ":op_def_proto_cc",
+        ":tensor",
+        ":types_proto_cc",
+        "//tensorflow/core/lib/core:status",
+    ],
+)
+
+cc_library(
     name = "op_def_builder",
     srcs = ["op_def_builder.cc"],
     hdrs = ["op_def_builder.h"],
@@ -910,6 +932,12 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
     ],
+)
+
+cc_library(
+    name = "op_requires",
+    hdrs = ["op_requires.h"],
+    deps = ["//tensorflow/core/platform:macros"],
 )
 
 # Files whose users still need to be migrated from core:framework to the
@@ -967,6 +995,7 @@ tf_cc_tests(
         "model_test.cc",
         "node_def_builder_test.cc",
         "node_def_util_test.cc",
+        "node_properties_test.cc",
         "op_compatibility_test.cc",
         "op_def_builder_test.cc",
         "op_def_util_test.cc",

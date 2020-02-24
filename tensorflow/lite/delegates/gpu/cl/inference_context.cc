@@ -174,6 +174,38 @@ bool IsBufferBased(const TensorStorageType& type) {
          type == TensorStorageType::IMAGE_BUFFER;
 }
 
+// Generic add is add that have several runtime inputs and they are not
+// broadcasted, i.e. pointwise add for N tensors where N > 1.
+bool IsGenericAdd(const Node& node,
+                  const std::vector<Value<TensorRef<BHWC>>*>& inputs,
+                  const std::vector<Value<TensorRef<BHWC>>*>& outputs) {
+  if (inputs.size() == 1) {
+    return false;
+  }
+  const OperationType op_type = OperationTypeFromString(node.operation.type);
+  if (op_type != OperationType::ADD) {
+    return false;
+  }
+
+  const auto dst_shape = outputs[0]->tensor.shape;
+  for (int i = 0; i < inputs.size(); ++i) {
+    const auto src_shape = inputs[i]->tensor.shape;
+    if (dst_shape.b != src_shape.b && src_shape.b == 1) {
+      return false;
+    }
+    if (dst_shape.h != src_shape.h && src_shape.h == 1) {
+      return false;
+    }
+    if (dst_shape.w != src_shape.w && src_shape.w == 1) {
+      return false;
+    }
+    if (dst_shape.c != src_shape.c && src_shape.c == 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 CLNode::CLNode(CLNode&& node)
@@ -304,8 +336,7 @@ Status InferenceContext::ConvertOperations(
     // ADD can be linked.
     // In current approach "linking" tensor can be only latest written
     // tensor(during linear order of execution) among input tensors.
-    const OperationType op_type = OperationTypeFromString(node.operation.type);
-    if (inputs.size() > 1 && op_type == OperationType::ADD) {
+    if (IsGenericAdd(node, inputs, outputs)) {
       int latest_written_tensor_index = 0;
       int last_usage = tensor_usages[inputs[0]->id];
       for (int j = 1; j < inputs.size(); ++j) {

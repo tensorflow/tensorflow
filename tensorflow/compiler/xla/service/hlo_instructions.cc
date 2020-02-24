@@ -555,10 +555,11 @@ HloAllReduceInstruction::HloAllReduceInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id)
+    const absl::optional<int64>& channel_id, bool use_global_device_ids)
     : HloCollectiveInstruction(HloOpcode::kAllReduce, shape, operands,
                                replica_groups, channel_id),
-      constrain_layout_(constrain_layout) {
+      constrain_layout_(constrain_layout),
+      use_global_device_ids_(use_global_device_ids) {
   AppendComputation(reduce_computation);
 }
 
@@ -574,6 +575,7 @@ bool HloAllReduceInstruction::IsNoop() const {
 HloInstructionProto HloAllReduceInstruction::ToProto() const {
   HloInstructionProto proto = HloCollectiveInstruction::ToProto();
   proto.set_constrain_layout(constrain_layout_);
+  proto.set_use_global_device_ids(use_global_device_ids_);
   return proto;
 }
 
@@ -583,6 +585,9 @@ std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
       HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
   if (constrain_layout_) {
     result.push_back("constrain_layout=true");
+  }
+  if (use_global_device_ids_) {
+    result.push_back("use_global_device_ids=true");
   }
   return result;
 }
@@ -594,6 +599,7 @@ bool HloAllReduceInstruction::IdenticalSlowPath(
   const auto& casted_other = static_cast<const HloAllReduceInstruction&>(other);
   return HloCollectiveInstruction::IdenticalSlowPath(other, eq_computations) &&
          constrain_layout() == casted_other.constrain_layout() &&
+         use_global_device_ids() == casted_other.use_global_device_ids() &&
          eq_computations(to_apply(), casted_other.to_apply());
 }
 
@@ -603,7 +609,7 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllReduceInstruction>(
       shape, new_operands, to_apply(), replica_groups(), constrain_layout(),
-      channel_id());
+      channel_id(), use_global_device_ids());
 }
 
 HloAllToAllInstruction::HloAllToAllInstruction(

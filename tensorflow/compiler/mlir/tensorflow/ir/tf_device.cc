@@ -41,10 +41,51 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "mlir/Support/STLExtras.h"  // TF:llvm-project
+#include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace tf_device {
+
+//===----------------------------------------------------------------------===//
+// TF Device Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct TFInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  // Defines the legality of inlining TF Device operations.
+  bool isLegalToInline(Operation*, Region*, BlockAndValueMapping&) const final {
+    // For now, enable inlining all operations.
+    return true;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Transformation Hooks
+  //===--------------------------------------------------------------------===//
+
+  // Attempts to materialize a conversion for a type mismatch between a call
+  // from this dialect, and a callable region. This method should generate an
+  // operation that takes 'input' as the only operand, and produces a single
+  // result of 'resultType'. If a conversion can not be generated, nullptr
+  // should be returned.
+  // This is just re-using the same logic as the TensorFlow dialect right now.
+  Operation* materializeCallConversion(OpBuilder& builder, Value input,
+                                       Type result_type,
+                                       Location conversion_loc) const final {
+    if (!result_type.isa<TensorType>() || !input.getType().isa<TensorType>())
+      return nullptr;
+    return builder.create<TF::CastOp>(conversion_loc, result_type, input,
+                                      /*truncate=*/builder.getBoolAttr(false));
+  }
+};
+}  // end anonymous namespace
 
 TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
     : Dialect(/*name=*/"tf_device", context) {
@@ -54,6 +95,8 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
       >();
 
   addOperations<ParallelExecuteOp>();
+
+  addInterfaces<TFInlinerInterface>();
 }
 
 //===----------------------------------------------------------------------===//
