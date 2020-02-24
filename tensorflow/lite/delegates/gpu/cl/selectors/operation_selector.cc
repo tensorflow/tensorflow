@@ -223,6 +223,7 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     }
     case OperationType::ABS:
     case OperationType::COS:
+    case OperationType::EXP:
     case OperationType::HARD_SWISH:
     case OperationType::LOG:
     case OperationType::RSQRT:
