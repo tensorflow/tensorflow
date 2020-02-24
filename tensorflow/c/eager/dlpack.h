@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-TF_CAPI_EXPORT extern const char* const kDlTensorCapsuleName = "dltensor";
+const char* const kDlTensorCapsuleName = "dltensor";
 
 TF_CAPI_EXPORT extern void* TFE_HandleToDLPack(TFE_TensorHandle* h, TF_Status* status);
 
