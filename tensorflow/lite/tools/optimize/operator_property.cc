@@ -94,7 +94,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       break;
     case BuiltinOperator_SPLIT_V:
       property.inputs = {{0, {}}};
-      property.outputs = {{0, {}}};
+      property.arbitrary_outputs = true;
       property.restrict_same_input_output_scale = true;
       property.version = 1;
       break;
