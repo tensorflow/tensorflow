@@ -223,6 +223,7 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
     }
     case OperationType::ABS:
     case OperationType::COS:
+    case OperationType::EXP:
     case OperationType::HARD_SWISH:
     case OperationType::LOG:
     case OperationType::RSQRT:
@@ -246,8 +247,8 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       broadcast.width = IsWidthBroadcastedForSecondInput(inputs);
       broadcast.height = IsHeightBroadcastedForSecondInput(inputs);
       broadcast.channels = IsChannelsBroadcastedForSecondInput(inputs);
-      const auto attr =
-          absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
+      const ElementwiseAttributes* attr =
+          absl::any_cast<ElementwiseAttributes>(&node.operation.attributes);
       ElementwiseTwoInput operation = CreateElementwiseTwoInput(
           creation_context, op_def, op_type, broadcast, attr);
       *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));

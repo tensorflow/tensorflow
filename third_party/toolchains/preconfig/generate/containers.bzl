@@ -10,4 +10,5 @@ container_digests = {
     "cuda10.0-cudnn7-ubuntu16.04-manylinux2010": "sha256:5812d9d0ef0a3276fc5faaf4cd01f3d6e03d635893a6e2d2e04f6f01d626c432",
     "cuda10.1-cudnn7-ubuntu16.04-manylinux2010": "sha256:23db3de806535c9d26170567ba55cf653e503057345a0e9c129124c08ea118a3",
     "rocm-ubuntu16.04": "sha256:e645447dd6127325f3e97b8bf23424f637a8579d963b34fcc6772cf7cfaa0ebe",
+    "windows-1803": "sha256:f109576c7c0c8a1783ff22b666e8923b52dbbe7933f69a1c7a7275202c304a12",
 }

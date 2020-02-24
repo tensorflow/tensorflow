@@ -197,6 +197,21 @@ gentbl(
     ],
 )
 
+cc_library(
+    name = "LoopOpsTransforms",
+    srcs = ["lib/Dialect/LoopOps/Transforms/ParallelLoopFusion.cpp"],
+    hdrs = ["include/mlir/Dialect/LoopOps/Passes.h"],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LoopOps",
+        ":Pass",
+        ":StandardOps",
+        ":Transforms",
+    ],
+    alwayslink = 1,
+)
+
 filegroup(
     name = "StdOpsTdFiles",
     srcs = [
@@ -1664,6 +1679,7 @@ cc_library(
         ":LLVMTransforms",
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
+        ":LoopOpsTransforms",
         ":NVVMDialect",
         ":Parser",
         ":Pass",
@@ -1746,6 +1762,7 @@ cc_library(
         ":LinalgToSPIRV",
         ":LinalgTransforms",
         ":LoopOps",
+        ":LoopOpsTransforms",
         ":LoopsToGPUPass",
         ":NVVMDialect",
         ":OpenMPDialect",

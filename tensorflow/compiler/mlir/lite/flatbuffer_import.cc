@@ -590,6 +590,11 @@ StatusOr<Operation*> ConvertOp(
     op_state.addTypes({type});
   }
 
+  if (op_name == "tfl.lstm") {
+    // TODO(b/147587779): add the right region if region is empty.
+    op_state.addRegion();
+  }
+
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
   if (IsCustomOp(op_name)) {
     auto status = mlir::CustomOptionsToAttributes(op_name, op.custom_options,
@@ -727,9 +732,20 @@ StatusOr<FuncOp> ConvertSubgraph(
 
   auto func_loc = mlir::NameLoc::get(builder.getIdentifier(name), base_loc);
 
-  // Construct function type
-  for (auto input : subgraph.inputs) {
-    auto& tensor = *subgraph.tensors.at(input);
+  // construct a list to store all the inputs and state variables.
+  std::vector<int32_t> intput_and_variable_index(subgraph.inputs);
+  absl::flat_hash_set<int32_t> input_index_set(
+      intput_and_variable_index.begin(), intput_and_variable_index.end());
+  for (int i = 0; i < subgraph.tensors.size(); i++) {
+    auto& tensor = *subgraph.tensors.at(i);
+    if (tensor.is_variable && !input_index_set.contains(i)) {
+      intput_and_variable_index.emplace_back(i);
+      input_index_set.insert(i);
+    }
+  }
+
+  for (auto input_or_variable : intput_and_variable_index) {
+    auto& tensor = *subgraph.tensors.at(input_or_variable);
     // TODO(b/138222071) Graph inputs must have static shape per the exporter,
     // but we cannot differentiate scalars from unranked tensors.
     // Here we reverse the default assumption that shape = [] means unranked.
@@ -781,9 +797,9 @@ StatusOr<FuncOp> ConvertSubgraph(
   std::vector<Value> vals_map(subgraph.tensors.size(), nullptr);
   Value maybe_optional_arg_marker = nullptr;
 
-  // Get or construct MLIR values for each input
-  for (int i = 0, e = subgraph.inputs.size(); i < e; i++) {
-    auto input_tensor = subgraph.inputs[i];
+  // Get or construct MLIR values for each input and variable
+  for (int i = 0, e = intput_and_variable_index.size(); i < e; i++) {
+    auto input_tensor = intput_and_variable_index[i];
     const auto& tensor = *subgraph.tensors.at(input_tensor);
     auto loc = TensorLoc(tensor, builder, base_loc);
     if (vals_map[input_tensor]) {

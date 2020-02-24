@@ -44,7 +44,7 @@ absl::optional<ReductionKind> MatchReductionComputation(
 }
 
 StatusOr<std::vector<int64>> GetParticipatingReplicas(
-    int64 device_ordinal, absl::Span<const ReplicaGroup> replica_groups,
+    GlobalDeviceId device_id, absl::Span<const ReplicaGroup> replica_groups,
     int64 total_replica_count, const DeviceAssignment& device_assn) {
   std::vector<int64> participating_replicas;
 
@@ -58,7 +58,7 @@ StatusOr<std::vector<int64>> GetParticipatingReplicas(
 
   // Use the DeviceAssignment to figure out our replica-id.
   TF_ASSIGN_OR_RETURN(int replica_id,
-                      device_assn.ReplicaIdForDeviceOrdinal(device_ordinal));
+                      device_assn.ReplicaIdForDeviceOrdinal(device_id.value()));
 
   // Figure out the other replicas that go together with this one.
   absl::optional<ReplicaGroup> replica_group;

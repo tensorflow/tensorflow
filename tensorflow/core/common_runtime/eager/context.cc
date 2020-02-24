@@ -837,12 +837,12 @@ Status EagerContext::GetClient(const string& remote_task,
   return Status::OK();
 }
 
-uint64 EagerContext::GetContextId() {
+uint64 EagerContext::GetContextId() const {
   tf_shared_lock l(remote_state_mu_);
   return context_id_;
 }
 
-uint64 EagerContext::GetContextViewId() {
+uint64 EagerContext::GetContextViewId() const {
   tf_shared_lock l(remote_state_mu_);
   return context_view_id_;
 }

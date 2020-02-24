@@ -382,10 +382,7 @@ class CpuAllReduceRendezvous : public xla::Rendezvous<std::nullptr_t> {
 xla::RefcountingHashMap<xla::RendezvousKey, CpuAllReduceRendezvous>&
 GlobalRendezvousMap() {
   static auto& m =
-      *new xla::RefcountingHashMap<xla::RendezvousKey, CpuAllReduceRendezvous>(
-          [](const xla::RendezvousKey& k) {
-            return absl::make_unique<CpuAllReduceRendezvous>(k);
-          });
+      *new xla::RefcountingHashMap<xla::RendezvousKey, CpuAllReduceRendezvous>;
   return m;
 }
 
@@ -411,18 +408,28 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
 
   std::vector<xla::ReplicaGroup> group =
       xla::ParseReplicaGroupsOnly(replica_groups_serialized).ValueOrDie();
-  xla::int32 replica_count = run_options->device_assignment()->replica_count();
-  std::vector<xla::int64> participating_replicas_vec =
-      xla::GetParticipatingReplicas(device_ordinal, group, replica_count,
+  const xla::DeviceAssignment& device_assignment =
+      *run_options->device_assignment();
+  xla::int32 replica_count = device_assignment.replica_count();
+  CHECK_EQ(device_assignment.computation_count(), 1);
+  std::vector<xla::int64> participating_replicas =
+      xla::GetParticipatingReplicas(xla::GlobalDeviceId(device_ordinal), group,
+                                    replica_count,
                                     *run_options->device_assignment())
           .ValueOrDie();
 
   xla::RendezvousKey::CollectiveOpKind op_kind =
       channel_id_present ? xla::RendezvousKey::kCrossModule
                          : xla::RendezvousKey::kCrossReplica;
-  xla::RendezvousKey rendezvous_key(run_options->run_id(),
-                                    participating_replicas_vec, op_kind, op_id);
-
+  std::vector<xla::GlobalDeviceId> participating_devices;
+  participating_devices.reserve(participating_replicas.size());
+  for (xla::int64 replica : participating_replicas) {
+    participating_devices.push_back(
+        xla::GlobalDeviceId(device_assignment(replica, 0)));
+  }
+  xla::RendezvousKey rendezvous_key(
+      run_options->run_id(), std::move(participating_devices),
+      participating_replicas.size(), op_kind, op_id);
   auto shape_str = ShapeString(shape_ptr, shape_length);
   VLOG(2) << "All-reduce input/output shape : " << shape_str;
 
@@ -444,10 +451,17 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
   participant.buffers = {buffer};
   participant.reduction_kind = static_cast<xla::ReductionKind>(reduction_kind);
 
-  TF_CHECK_OK(
-      CpuAllReduceRendezvous::SubmitParticipant(
-          [&] { return GlobalRendezvousMap()[rendezvous_key]; }, participant)
-          .status());
+  auto make_cpu_rendezvous = [](const xla::RendezvousKey& k) {
+    return absl::make_unique<CpuAllReduceRendezvous>(k);
+  };
+
+  TF_CHECK_OK(CpuAllReduceRendezvous::SubmitParticipant(
+                  [&] {
+                    return GlobalRendezvousMap().GetOrCreateIfAbsent(
+                        rendezvous_key, make_cpu_rendezvous);
+                  },
+                  participant)
+                  .status());
 }
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ReplicaId(

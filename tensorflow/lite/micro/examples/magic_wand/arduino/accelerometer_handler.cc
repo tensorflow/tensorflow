@@ -32,15 +32,16 @@ int sample_every_n;
 int sample_skip_counter = 1;
 
 TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
-  // Wait until we know the serial port is ready
-  while (!Serial) {
-  }
-
   // Switch on the IMU
   if (!IMU.begin()) {
     TF_LITE_REPORT_ERROR(error_reporter, "Failed to initialize IMU");
     return kTfLiteError;
   }
+
+  // Make sure we are pulling measurements into a FIFO.
+  // If you see an error on this line, make sure you have at least v1.1.0 of the
+  // Arduino_LSM9DS1 library installed.
+  IMU.setContinuousMode();
 
   // Determine how many measurements to keep in order to
   // meet kTargetHz
@@ -53,13 +54,7 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
 }
 
 bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
-                       int length, bool reset_buffer) {
-  // Clear the buffer if required, e.g. after a successful prediction
-  if (reset_buffer) {
-    memset(save_data, 0, 600 * sizeof(float));
-    begin_index = 0;
-    pending_initial_data = true;
-  }
+                       int length) {
   // Keep track of whether we stored any new data
   bool new_data = false;
   // Loop through new samples and add to buffer
@@ -75,13 +70,32 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
       sample_skip_counter += 1;
       continue;
     }
-    // Write samples to our buffer, converting to milli-Gs
-    // and flipping y and x order for compatibility with
-    // model (sensor orientation is different on Arduino
-    // Nano BLE Sense compared with SparkFun Edge)
-    save_data[begin_index++] = y * 1000;
-    save_data[begin_index++] = x * 1000;
-    save_data[begin_index++] = z * 1000;
+    // Write samples to our buffer, converting to milli-Gs and rotating the axis
+    // order for compatibility with model (sensor orientation is different on
+    // Arduino Nano BLE Sense compared with SparkFun Edge).
+    // The expected orientation of the Arduino on the wand is with the USB port
+    // facing down the shaft towards the user's hand, with the reset button
+    // pointing at the user's face:
+    //
+    //                  ____
+    //                 |    |<- Arduino board
+    //                 |    |
+    //                 | () |  <- Reset button
+    //                 |    |
+    //                  -TT-   <- USB port
+    //                   ||
+    //                   ||<- Wand
+    //                  ....
+    //                   ||
+    //                   ||
+    //                   ()
+    //
+    const float norm_x = -z;
+    const float norm_y = y;
+    const float norm_z = x;
+    save_data[begin_index++] = norm_x * 1000;
+    save_data[begin_index++] = norm_y * 1000;
+    save_data[begin_index++] = norm_z * 1000;
     // Since we took a sample, reset the skip counter
     sample_skip_counter = 1;
     // If we reached the end of the circle buffer, reset

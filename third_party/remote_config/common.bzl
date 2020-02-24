@@ -24,7 +24,7 @@ def which(repository_ctx, program_name):
     if is_windows(repository_ctx):
         if not program_name.endswith(".exe"):
             program_name = program_name + ".exe"
-        result = execute(repository_ctx, ["where.exe", program_name])
+        result = execute(repository_ctx, ["C:\\Windows\\System32\\where.exe", program_name])
     else:
         result = execute(repository_ctx, ["which", program_name])
     return result.stdout.rstrip()
@@ -90,7 +90,7 @@ def read_dir(repository_ctx, src_dir):
         src_dir = src_dir.replace("/", "\\")
         find_result = execute(
             repository_ctx,
-            ["cmd.exe", "/c", "dir", src_dir, "/b", "/s", "/a-d"],
+            ["C:\\Windows\\System32\\cmd.exe", "/c", "dir", src_dir, "/b", "/s", "/a-d"],
             empty_stdout_fine = True,
         )
 
@@ -121,7 +121,7 @@ def get_environ(repository_ctx, name, default_value = None):
     if is_windows(repository_ctx):
         result = execute(
             repository_ctx,
-            ["cmd.exe", "/c", "echo", "%" + name + "%"],
+            ["C:\\Windows\\System32\\cmd.exe", "/c", "echo", "%" + name + "%"],
             empty_stdout_fine = True,
         )
     else:

@@ -296,11 +296,19 @@ static LogicalResult VerifyTypesCompatibility(
 // TF op helper functions to work with layout transformation.
 //===----------------------------------------------------------------------===//
 
+SmallVector<int64_t, 4> ReversePermutation(ArrayRef<int64_t> permutation) {
+  SmallVector<int64_t, 4> reverse(permutation.size());
+  for (size_t i = 0; i < permutation.size(); ++i) {
+    reverse[permutation[i]] = i;
+  }
+  return reverse;
+}
+
 SmallVector<int64_t, 4> GetDataFormatPermutation(StringRef from, StringRef to) {
   if (from == "NHWC" && to == "NCHW") {
     return {0, 3, 1, 2};
   } else if (from == "NCHW" && to == "NHWC") {
-    return {0, 1, 2, 3};
+    return {0, 2, 3, 1};
   } else {
     return {};
   }
@@ -380,6 +388,63 @@ LogicalResult UpdateDataFormat(StringRef data_format, Op *op) {
   for (unsigned idx : layout_sensitive.GetLayoutDependentResults()) {
     OpResult result = op->getOperation()->getResult(idx);
     result.setType(ShuffleRankedTensorType(result.getType(), perm));
+  }
+
+  return success();
+}
+
+// Default implementation for folding operand transpose into the operation.
+// See `FoldOperandsTransposeInterface::FoldOperandsPermutation`.
+template <typename Op>
+LogicalResult FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation, Op *op,
+    ArrayRef<std::pair<StringRef, ArrayAttr>> shuffle_attrs = {}) {
+  MLIRContext *context = op->template getParentOfType<ModuleOp>().getContext();
+
+  // We only support NHWC <-> NCHW permutations.
+  static constexpr std::array<int64_t, 4> kNchwToNhwc = {0, 2, 3, 1};
+  static constexpr std::array<int64_t, 4> kNhwcToNchw = {0, 3, 1, 2};
+
+  // Operation data format after folding `permutation`.
+  StringRef target_data_format = [&]() -> StringRef {
+    if (op->data_format() == "NHWC" && permutation.equals(kNchwToNhwc)) {
+      return "NCHW";  // cancel NCHW->NHWC operand permutation
+    } else if (op->data_format() == "NCHW" && permutation.equals(kNhwcToNchw)) {
+      return "NHWC";  // cancel NHWC->NCHW operand permutation
+    } else {
+      return "";
+    }
+  }();
+  if (target_data_format.empty()) return failure();
+
+  // To fold operand `permutation` into the `op` we need shuffle all layout
+  // dependent attributes and types with a reverse permutation, and change
+  // operation data format to `target_data_format`.
+  //
+  // Example:
+  //   %1 = SomeOp(...)   {data_format = NHWC}
+  //   %2 = Transpose(%1) {permutation = NHWC->NCHW}
+  //   %3 = Op(%2)        {data_format = NCHW}
+  //
+  // To bypass %2 we have to change data format to shuffle data format from NCHW
+  // to NHWC, which is the reverse of operand permutation (function argument).
+  auto reverse_permutation =
+      GetDataFormatPermutation(op->data_format(), target_data_format);
+  if (reverse_permutation.empty()) return failure();
+
+  op->setAttr("data_format", StringAttr::get(target_data_format, context));
+
+  for (auto pair : shuffle_attrs) {
+    StringRef attr_name = pair.first;
+    ArrayAttr attr_value = pair.second;
+    op->setAttr(attr_name, ShuffleArrayAttr(attr_value, reverse_permutation));
+  }
+
+  auto fold = cast<FoldOperandsTransposeInterface>(op->getOperation());
+  for (unsigned idx : fold.GetLayoutDependentResults()) {
+    OpResult result = op->getOperation()->getResult(idx);
+    result.setType(
+        ShuffleRankedTensorType(result.getType(), reverse_permutation));
   }
 
   return success();
@@ -1255,6 +1320,11 @@ static LogicalResult Verify(FusedBatchNormOp op) {
   return success();
 }
 
+LogicalResult FusedBatchNormV3Op::FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation) {
+  return ::mlir::TF::FoldOperandsPermutation(permutation, this);
+}
+
 //===----------------------------------------------------------------------===//
 // GatherV2Op
 //===----------------------------------------------------------------------===//
@@ -1453,37 +1523,8 @@ void MaxOp::build(Builder *builder, OperationState &result, Value input,
 
 LogicalResult MaxPoolOp::FoldOperandsPermutation(
     ArrayRef<int64_t> permutation) {
-  MLIRContext *context = getParentOfType<ModuleOp>().getContext();
-
-  // Data format after folding permutation.
-  StringRef target_data_format;
-
-  // For now we only support folding of NCHW->NHWC and NHWC->NCHW permutations.
-  if (data_format() == "NHWC") {
-    static constexpr std::array<int64_t, 4> kPerm = {0, 2, 3, 1};  // to NHWC
-    if (permutation != ArrayRef<int64_t>(kPerm)) return failure();
-    target_data_format = "NCHW";
-
-  } else if (data_format() == "NCHW") {
-    static constexpr std::array<int64_t, 4> kPerm = {0, 3, 1, 2};  // to NCHW
-    if (permutation != ArrayRef<int64_t>(kPerm)) return failure();
-    target_data_format = "NHWC";
-
-  } else {
-    return failure();
-  }
-
-  auto perm = GetDataFormatPermutation(data_format(), target_data_format);
-  if (perm.empty()) return failure();
-
-  setAttr("data_format", StringAttr::get(target_data_format, context));
-  setAttr("strides", ShuffleArrayAttr(strides(), perm));
-  setAttr("ksize", ShuffleArrayAttr(ksize(), perm));
-
-  OpResult result = getOperation()->getResult(0);
-  result.setType(ShuffleRankedTensorType(result.getType(), perm));
-
-  return success();
+  return ::mlir::TF::FoldOperandsPermutation(
+      permutation, this, {{"strides", strides()}, {"ksize", ksize()}});
 }
 
 //===----------------------------------------------------------------------===//
@@ -1500,6 +1541,38 @@ static LogicalResult Verify(MaxPoolGradOp op) {
   if (!IsOfRankOrUnranked(op.grad(), 4)) {
     return op.emitOpError() << "requires grad to be rank 4";
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MeanOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
+  // Reduction indices must be defined by a constant operation.
+  auto reduction_op =
+      dyn_cast_or_null<TF::ConstOp>(reduction_indices().getDefiningOp());
+  if (!reduction_op) return failure();
+
+  auto reductions_value = reduction_op.value().dyn_cast<DenseElementsAttr>();
+  if (!reductions_value) return failure();
+
+  // Prepare new reduction indices according to operand permutation.
+  SmallVector<int32_t, 4> shuffled_reduction;
+  llvm::transform(reductions_value.getIntValues(),
+                  std::back_inserter(shuffled_reduction),
+                  [&](APInt idx) { return permutation[idx.getSExtValue()]; });
+
+  // Add constant operation with a new reduction indices.
+  OpBuilder builder(getOperation());
+  auto type = mlir::RankedTensorType::get(shuffled_reduction.size(),
+                                          builder.getIntegerType(32));
+  auto values = mlir::DenseIntElementsAttr::get(type, shuffled_reduction);
+  auto shuffled_reduction_op = builder.create<TF::ConstOp>(getLoc(), values);
+
+  // Use new reduction indices.
+  setOperand(1, shuffled_reduction_op);
+
   return success();
 }
 
@@ -1641,6 +1714,46 @@ static LogicalResult Verify(PackOp op) {
                           << range_begin << ", " << range_end
                           << "); actual value: " << axis;
   }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PadOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
+  // Paddings must be defined by a constant operation.
+  auto paddings_op = dyn_cast_or_null<TF::ConstOp>(paddings().getDefiningOp());
+  if (!paddings_op) return failure();
+
+  auto paddings_value = paddings_op.value().dyn_cast<DenseElementsAttr>();
+  if (!paddings_value ||
+      paddings_value.getNumElements() != permutation.size() * 2)
+    return failure();
+
+  SmallVector<int32_t, 8> shuffled_paddings(paddings_value.getNumElements());
+  for (auto index_pair : llvm::enumerate(paddings_value.getIntValues())) {
+    size_t outer_idx = index_pair.index() / 2;
+    size_t inner_idx = index_pair.index() % 2;
+
+    shuffled_paddings[permutation[outer_idx] * 2 + inner_idx] =
+        index_pair.value().getSExtValue();
+  }
+
+  // Add constant operation with a new paddings.
+  OpBuilder builder(getOperation());
+  auto type = mlir::RankedTensorType::get(paddings_value.getType().getShape(),
+                                          builder.getIntegerType(32));
+  auto values = mlir::DenseIntElementsAttr::get(type, shuffled_paddings);
+  auto shuffled_paddings_op = builder.create<TF::ConstOp>(getLoc(), values);
+
+  // Use new paddings.
+  setOperand(1, shuffled_paddings_op);
+
+  // Change the result type.
+  getResult().setType(ShuffleRankedTensorType(getResult().getType(),
+                                              ReversePermutation(permutation)));
 
   return success();
 }

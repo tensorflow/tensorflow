@@ -223,7 +223,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     map_node_name = "Map"
     if num_parallel_calls is not None:
       map_node_name = "ParallelMap"
-      if compat.forward_compatible(2020, 2, 20):
+      if compat.forward_compatible(2020, 3, 6):
         map_node_name = "ParallelMapV2"
 
     def _make_dataset(node_names):
@@ -523,12 +523,14 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     def make_apply_fn(is_fused):
       if is_fused:
+
         def apply_fn(dataset):
           return dataset.apply(
               batching.map_and_batch(map_fn, 2, 12, drop_remainder=True))
 
         return apply_fn
       else:
+
         def apply_fn(dataset):
           return dataset.map(map_fn, 12).batch(2, drop_remainder=True)
 

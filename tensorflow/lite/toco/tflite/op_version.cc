@@ -106,6 +106,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kPad, 1}, "1.5.0"},
           {{OperatorType::kPad, 2}, "1.14.0"},
           {{OperatorType::kTile, 1}, "1.10.1"},
+          {{OperatorType::kTile, 2}, kPendingReleaseOpVersion},
           {{OperatorType::kPadV2, 1}, "1.9.0"},
           {{OperatorType::kPadV2, 2}, "1.14.0"},
           {{OperatorType::kReshape, 1}, "1.5.0"},

@@ -76,16 +76,28 @@ struct EventTypeSpan {
   }
 };
 
+enum class StepMarkerType {
+  // "TraceContext" TraceMe events.
+  kExplicitHostStepMarker,
+  // Identified by group_events (e.g., FunctionRun, SessionRun).
+  kImplicitHostStepMarker,
+  // Derived from the result of group_events. A device step marker starts with
+  // the first device event of the group and ends with the last event of the
+  // group.
+  kDeviceStepMarker,
+};
+
 // Record of an event that is used as a step marker.
 struct StepMarker {
-  bool on_device;          // true if this event happened on device.
+  StepMarkerType type;
   std::string event_name;  // name of this event.
   Timespan span;           // timespan of this event.
-  StepMarker(bool device, absl::string_view name, Timespan s)
-      : on_device(device), event_name(name), span(s) {}
+  StepMarker(StepMarkerType step_marker_type, absl::string_view name,
+             Timespan s)
+      : type(step_marker_type), event_name(name), span(s) {}
   // Equality test.
   bool operator==(const StepMarker& other) const {
-    return on_device == other.on_device && event_name == other.event_name &&
+    return type == other.type && event_name == other.event_name &&
            span == other.span;
   }
   // Inequality test.
