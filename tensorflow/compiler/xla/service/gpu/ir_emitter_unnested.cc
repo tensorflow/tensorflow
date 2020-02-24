@@ -1996,25 +1996,7 @@ void IrEmitterUnnested::EmitTile(
         printf("VEC_STRIDE %d\n", vector_size);
         llvm::Value* y_loc = b_.CreateAdd(
             thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
-        // TODO: can I get rid of this conditions?
-        if (vector_size == 1) {
-          for (int64 j = 0; j < x_num_steps; j++) {
-            llvm::Value* x_loc =
-                b_.CreateAdd(constant(j * step_x), start_offset_x, "x_loc");
-            IrArray::Index source_idx_x =
-                source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
-                    .AddOffsetToDim(constant(j * step_x), kDimX, &b_);
-            auto emit_element = [&] {
-              return emit_elem_function(source_idx_x, y_loc, x_loc, j);
-            };
-            if (!x_tile_fits) {
-              ksl->If(loop_name + "_x_in_tile",
-                      b_.CreateICmpULT(x_loc, tile_width), emit_element);
-            } else {
-              emit_element();
-            }
-          }
-        } else {
+        {
           auto unroll = [&](bool add_if, int64 max_element, int64 vector_size) {
           for (int64 j = 0; j < x_num_steps/vector_size; j++) {
             //Prep some values. If we do not do this, LLVM doesn't vectorize.
@@ -2026,9 +2008,12 @@ void IrEmitterUnnested::EmitTile(
 
             for (int i = 0; i < vector_size; i++) {
               int old_j = j * vector_size + i;
-              llvm::Value* x_loc = b_.CreateAdd(constant(i), x_loc_base, "x_loc");
-              IrArray::Index source_idx_x = source_idx_x_base.AddOffsetToDim(
-                  constant(i), kDimX, &b_);
+              llvm::Value* x_loc = x_loc_base;
+              IrArray::Index source_idx_x = source_idx_x_base;
+              if (i > 0) {
+                x_loc = b_.CreateAdd(constant(i), x_loc_base, "x_loc");
+                source_idx_x = source_idx_x_base.AddOffsetToDim(constant(i), kDimX, &b_);
+              }
               auto emit_element = [&] {
                 return emit_elem_function(source_idx_x, y_loc, x_loc, j);
               };
