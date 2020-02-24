@@ -158,7 +158,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         if (!s.ok()) {
           if (errors::IsOutOfRange(s) && resume_from_ckpt) {
             ++i_;
-            ctx->index_manager()->StartFromScratch();
+            ctx->index_manager()->ResetIndex(prefix());
             TF_RETURN_IF_ERROR(
                 dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
             resume_from_ckpt = false;
@@ -170,7 +170,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
         ++i_;
-        ctx->index_manager()->StartFromScratch();
+        ctx->index_manager()->ResetIndex(prefix());
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         resume_from_ckpt = false;
@@ -251,7 +251,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           // iteration immediately. (Otherwise, this iterator
           // would loop infinitely and never produce a value.)
           if (resume_from_ckpt) {
-            ctx->index_manager()->StartFromScratch();
+            ctx->index_manager()->ResetIndex(prefix());
             input_impl_.reset();
             TF_RETURN_IF_ERROR(
                 dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -265,7 +265,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         if (!*end_of_sequence) {
           return s;
         } else {
-          ctx->index_manager()->StartFromScratch();
+          ctx->index_manager()->ResetIndex(prefix());
           input_impl_.reset();
           first_call_ = true;
           resume_from_ckpt = false;

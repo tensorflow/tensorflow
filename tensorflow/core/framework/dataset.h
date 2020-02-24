@@ -408,14 +408,19 @@ class MultiLevelIndexQueue {
     return false;
   }
 
-  void Clear() {
+  void Clear(string iterator_id) {
+    string key;
     std::vector<EparallaxTensorIndex*>* queue;
-    for (auto const& it : queues_) {
-      queue = it.second;
-      for (EparallaxTensorIndex* index : *queue) {
-        delete index;
+    for (auto& it : queues_) {
+      key = it.first;
+      if (key.substr(0, iterator_id.length()) == iterator_id) {
+        queue = it.second;
+        for (EparallaxTensorIndex* index : *queue) {
+          LOG(INFO) << "Clearing " << *index;
+          //delete index;
+        }
+        queue->clear();
       }
-      queue->clear();
     }
   }
 
@@ -460,10 +465,18 @@ class IndexManager {
 
   bool AlreadyProcessed(EparallaxTensorIndex* index);
 
-  void StartFromScratch() {
+  void ResetIndex(string iterator_id) {
     //LOG(INFO) << "START_FROM_SCRATCH";
     // TODO
-    processed_indices_.Clear();
+    processed_indices_.Clear(iterator_id);
+    issued_indices_.Clear(iterator_id);
+    infertile_indices_.Clear(iterator_id);
+    for (auto& it : local_index_map_) {
+      string key = it.first;
+      if (key.substr(0, iterator_id.length()) == iterator_id) {
+        it.second = 0;
+      }
+    }
     std::ofstream ckpt_file;
     ckpt_file.open(ckpt_file_path_.data());
     if (ckpt_file.is_open()) {
@@ -516,7 +529,7 @@ class IndexManager {
 
   void Save() {
     std::ofstream ckpt_file;
-    ckpt_file.open(ckpt_file_path_.data(), std::ios_base::app);
+    ckpt_file.open(ckpt_file_path_.data()/*, std::ios_base::app*/);
     if(ckpt_file.is_open()){
       for (auto processed_indices : processed_indices_.GetAll()) {
         for (auto processed_index : *processed_indices) {

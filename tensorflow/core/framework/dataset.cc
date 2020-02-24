@@ -415,45 +415,42 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
 void IndexManager::NotifyFinished(EparallaxTensorIndex* index) {
   mutex_lock l(mu_);
   bool all_processed;
-  std::vector<EparallaxTensorIndex*> processed_indices;
-  processed_indices.push_back(index);
+  std::vector<EparallaxTensorIndex*> processed_indices_buffer;
+  processed_indices_buffer.push_back(index);
 
-  while (!processed_indices.empty()) {
+  while (!processed_indices_buffer.empty()) {
     all_processed = true;
-    EparallaxTensorIndex* processed_index = processed_indices.back();
-    processed_indices.pop_back();
-    auto last_index = last_index_map_.find(processed_index->iterator_id());
-    std::vector<EparallaxTensorIndex*>* second_last_parent_indices = nullptr;
-    if (last_index != last_index_map_.end()) {
-      second_last_parent_indices = last_index->second->parent_indices();
-    }
-    LOG(INFO) << "Processed " << *processed_index;
-    if (second_last_parent_indices != nullptr) {
-      LOG(INFO) << "Finding second_last " << *second_last_parent_indices;
-    }
-    LOG(INFO) << "0";
+    EparallaxTensorIndex* processed_index = processed_indices_buffer.back();
+    processed_indices_buffer.pop_back();
     processed_indices_.Push(processed_index);
-    LOG(INFO) << "1";
+
+    auto last_index = last_index_map_.find(processed_index->iterator_id());
+    std::vector<EparallaxTensorIndex*>* last_parent_indices;
+    if (last_index != last_index_map_.end() &&
+        last_index->second->parent_indices() != nullptr) {
+      last_parent_indices = last_index->second->parent_indices();
+    } else {
+      continue;
+    }
+
+    LOG(INFO) << "Processed " << *processed_index;
+    LOG(INFO) << "Finding last parent indices " << *last_parent_indices;
     for (auto issued_index : *issued_indices_.Get(processed_index->iterator_id())) {
-      if (issued_index->parent_indices() != nullptr &&
-          second_last_parent_indices != nullptr &&
-          *issued_index->parent_indices() == *second_last_parent_indices &&
+      if (*issued_index->parent_indices() == *last_parent_indices &&
           !AlreadyProcessedInternal(issued_index)) {
         LOG(INFO) << "Still Not processed " << *issued_index;
         all_processed = false;
         break;
       }
     }
-    LOG(INFO) << "2";
 
-    if (all_processed && second_last_parent_indices != nullptr) {
-      for (auto parent_index : *second_last_parent_indices) {
+    if (all_processed && last_parent_indices != nullptr) {
+      for (auto parent_index : *last_parent_indices) {
         if (infertile_indices_.Contains(parent_index)) {
-          processed_indices.push_back(parent_index);
+          processed_indices_buffer.push_back(parent_index);
         }
       }
     }
-    LOG(INFO) << "3";
   }
 }
 
@@ -532,7 +529,7 @@ Status DatasetBaseIterator::GetNextFromInput(
     std::vector<EparallaxTensorIndex*>* parent_indices) {
   EparallaxTensorIndex* out_index;
   Status s = input_impl->GetNext(ctx, out_tensors, end_of_sequence, out_index);
-  if (parent_indices != nullptr) {
+  if (s.ok() && !*end_of_sequence && parent_indices != nullptr) {
     parent_indices->push_back(out_index);
   }
   return s;
