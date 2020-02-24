@@ -411,6 +411,7 @@ TfLiteStatus EvalQuantizedPerChannel16x8(
     const TfLiteTensor* input, const TfLiteTensor* filter,
     const TfLiteTensor* bias, TfLiteTensor* output) {
   DepthwiseParams op_params;
+  // TODO(b/150034149): Support Both Same & Valid padding type.
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
   op_params.padding_values.height = data->padding.height;
