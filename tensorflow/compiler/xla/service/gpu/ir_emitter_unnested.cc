@@ -1996,15 +1996,14 @@ void IrEmitterUnnested::EmitTile(
         printf("VEC_STRIDE %d\n", vector_size);
         llvm::Value* y_loc = b_.CreateAdd(
             thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
-        {
-          auto unroll = [&](bool add_if, int64 max_element, int64 vector_size) {
+        auto unroll = [&](bool add_if, int64 max_element, int64 vector_size) {
           for (int64 j = 0; j < x_num_steps/vector_size; j++) {
             //Prep some values. If we do not do this, LLVM doesn't vectorize.
             llvm::Value* x_loc_base =
-                b_.CreateAdd(constant(j * step_x * vector_size), start_offset_x, "x_loc_base");
+            b_.CreateAdd(constant(j * step_x * vector_size), start_offset_x, "x_loc_base");
             IrArray::Index source_idx_x_base =
-                source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
-                  .AddOffsetToDim(constant(j * step_x * vector_size), kDimX, &b_);
+            source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
+            .AddOffsetToDim(constant(j * step_x * vector_size), kDimX, &b_);
 
             for (int i = 0; i < vector_size; i++) {
               int old_j = j * vector_size + i;
@@ -2025,28 +2024,28 @@ void IrEmitterUnnested::EmitTile(
               }
             }
           }
-          };
+        };
 
-          char * env_if = getenv("RED_IF");
-          int red_if = 0;
-          if (env_if) {
-            red_if = atoi(env_if);
-            printf("RED_IF2 = %d %s\n", red_if, env_if);
-          }
-          if (red_if == 1 || x_tile_fits) {
-            std::cout << "IF_NB 1: " << std::endl;
-            unroll(!x_tile_fits, x_num_steps, vector_size);
-          } else {
-            std::cout << "IF_NB 2" << std::endl;
-            ksl->If(loop_name + "_is_full_tile",
-                    // if (block fully fit) {fast path} else {slow path}
-                    // tile_width is always exact. For the last block,
-                    // it will be the exact number of elements left.
-                    b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeFor(2)), tile_width),
-                    [&] {unroll(false, x_num_steps, vector_size);},
-                    [&] {unroll(true, x_num_steps, vector_size);});
-          }
-        }});
+        char * env_if = getenv("RED_IF");
+        int red_if = 0;
+        if (env_if) {
+          red_if = atoi(env_if);
+          printf("RED_IF2 = %d %s\n", red_if, env_if);
+        }
+        if (red_if == 1 || x_tile_fits) {
+          std::cout << "IF_NB 1: " << std::endl;
+          unroll(!x_tile_fits, x_num_steps, vector_size);
+        } else {
+          std::cout << "IF_NB 2" << std::endl;
+          ksl->If(loop_name + "_is_full_tile",
+                  // if (block fully fit) {fast path} else {slow path}
+                  // tile_width is always exact. For the last block,
+                  // it will be the exact number of elements left.
+                  b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeFor(2)), tile_width),
+                  [&] {unroll(false, x_num_steps, vector_size);},
+                  [&] {unroll(true, x_num_steps, vector_size);});
+        }
+      });
 }
 
 // Emits code to process a tensor element in a tile for the given kCopy HLO that
