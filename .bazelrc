@@ -37,7 +37,6 @@
 #     v2: Build TF v2
 #
 # Feature and Third party library support options:
-#     xla:          Build TF with XLA
 #     using_cuda:   CUDA is available to build system.
 #     cuda:         Build with full cuda support.
 #     rocm:         Build with AMD GPU support (rocm).
@@ -227,6 +226,14 @@ build --noincompatible_remove_legacy_whole_archive
 # https://github.com/tensorflow/community/pull/179
 build --noincompatible_prohibit_aapt1
 
+# Enable XLA
+build --action_env=TF_ENABLE_XLA=1
+build --define=with_xla_support=true
+
+# Keep config XLA until all build scripts are cleaned up.
+build:xla --action_env=TF_ENABLE_XLA=1
+build:xla --define=with_xla_support=true
+
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
@@ -238,7 +245,6 @@ build:c++1z --config=c++17
 
 # Enable using platform specific build settings
 build --enable_platform_specific_config
-build --config=xla
 
 # Suppress C++ compiler warnings, otherwise build logs become 10s of MBs.
 build:linux --copt=-w
@@ -313,10 +319,6 @@ build:v2 --action_env=TF2_BEHAVIOR=1
 build --config=v2
 test --config=v2
 
-# Enable XLA
-build:xla --action_env=TF_ENABLE_XLA=1
-build:xla --define=with_xla_support=true
-
 # BEGIN TF REMOTE BUILD EXECUTION OPTIONS
 # Options when using remote execution
 # WARNING: THESE OPTIONS WONT WORK IF YOU DO NOT HAVE PROPER AUTHENTICATION AND PERMISSIONS
@@ -349,7 +351,6 @@ build:rbe_linux --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
 build:rbe_linux --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
 
 # Non-rbe settings we should include because we do not run configure
-build:rbe_linux --config=xla
 build:rbe_linux --config=avx_linux
 build:rbe_linux --config=short_logs
 # TODO(gunan): Check why we need this specified in rbe, but not in other builds.
