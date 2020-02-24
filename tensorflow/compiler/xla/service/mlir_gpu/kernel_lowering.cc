@@ -327,7 +327,7 @@ class LowerToNVVMPass
     ::mlir::gpu::GPUModuleOp m = getOperation();
 
     ::mlir::OwningRewritePatternList patterns;
-    ::mlir::LinalgTypeConverter converter(m.getContext());
+    ::mlir::LLVMTypeConverter converter(m.getContext());
     ::mlir::populateStdToLLVMConversionPatterns(converter, patterns);
     // TODO(b/145824979) Remove linalg once sliceop is in std.
     ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,
