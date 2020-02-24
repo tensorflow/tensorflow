@@ -2110,10 +2110,9 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   name = name if name else "reduce_variance"
   with ops.name_scope(name):
     square_of_input = gen_math_ops.square(input_tensor)
-    mean_of_square = reduce_mean(
-    	squares_of_input,
-    	axis=axis,
-    	keepdims=keepdims)
+    mean_of_square = reduce_mean(square_of_input,
+    	                         axis=axis,
+    	                         keepdims=keepdims)
     mean = reduce_mean(input_tensor, axis=axis, keepdims=keepdims)
     square_of_mean = gen_math_ops.square(mean)
     return mean_of_square - square_of_mean
