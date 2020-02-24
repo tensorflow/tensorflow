@@ -389,6 +389,60 @@ class GraphDefBuilderWrapper {
 class StatsAggregator;
 class FunctionHandleCache;
 
+class MultiLevelIndexQueue {
+ public:
+  void Push(EparallaxTensorIndex* index) {
+    std::vector<EparallaxTensorIndex*>* queue = Get(index->iterator_id());
+    queue->push_back(index);
+  }
+
+  bool Contains(EparallaxTensorIndex *index) {
+    std::vector<EparallaxTensorIndex*>* queue = Get(index->iterator_id());
+    for (auto queued_index : *queue) {
+      if (*index == *queued_index) {
+        LOG(INFO) << "Index is already processed; Skipping.";
+        LOG(INFO) << *index << " == " << *queued_index;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void Clear() {
+    std::vector<EparallaxTensorIndex*>* queue;
+    for (auto const& it : queues_) {
+      queue = it.second;
+      for (EparallaxTensorIndex* index : *queue) {
+        delete index;
+      }
+      queue->clear();
+    }
+  }
+
+  std::vector<EparallaxTensorIndex*>* Get(string iterator_id) {
+    auto it = queues_.find(iterator_id);
+    if (it == queues_.end()) {
+      std::vector<EparallaxTensorIndex*>* queue =
+          new std::vector<EparallaxTensorIndex*> {};
+      queues_.insert(std::make_pair(iterator_id, queue));
+      return queue;
+    } else {
+      return it->second;
+    }
+  }
+
+  std::vector<std::vector<EparallaxTensorIndex*>*> GetAll() {
+    std::vector<std::vector<EparallaxTensorIndex*>*> queues;
+    for (auto const& it : queues_) {
+      queues.push_back(it.second);
+    }
+    return queues;
+  }
+
+ private:
+  std::map<string, std::vector<EparallaxTensorIndex*>*> queues_;
+};
+
 class IndexManager {
  public:
   IndexManager() {
@@ -409,7 +463,7 @@ class IndexManager {
   void StartFromScratch() {
     //LOG(INFO) << "START_FROM_SCRATCH";
     // TODO
-    processed_indices_.clear();
+    processed_indices_.Clear();
     std::ofstream ckpt_file;
     ckpt_file.open(ckpt_file_path_.data());
     if (ckpt_file.is_open()) {
@@ -453,10 +507,7 @@ class IndexManager {
         val = line.substr(delimiter_pos + 1);
         if (key == "processed_index") {
           EparallaxTensorIndex* index = DeserializeIndex(val);
-          processed_indices_.push_back(index);
-        } else if (key == "issued_index") {
-          EparallaxTensorIndex* index = DeserializeIndex(val);
-          issued_indices_.push_back(index);
+          processed_indices_.Push(index);
         }
       }
       ckpt_file.close();
@@ -467,14 +518,12 @@ class IndexManager {
     std::ofstream ckpt_file;
     ckpt_file.open(ckpt_file_path_.data(), std::ios_base::app);
     if(ckpt_file.is_open()){
-      for (auto processed_index : processed_indices_) {
-        //LOG(INFO) << "Saving " << *processed_index;
-        ckpt_file << "processed_index:" << *processed_index << "\n";
+      for (auto processed_indices : processed_indices_.GetAll()) {
+        for (auto processed_index : *processed_indices) {
+          //LOG(INFO) << "Saving " << *processed_index;
+          ckpt_file << "processed_index:" << *processed_index << "\n";
+        }
       }
-      /*for (auto issued_index : issued_indices_) {
-        //LOG(INFO) << "Saving " << *processed_index;
-        ckpt_file << "issued_index:" << *issued_index << "\n";
-      }*/
       ckpt_file.close();
     }
   }
@@ -551,9 +600,9 @@ class IndexManager {
 
  private:
   mutex mu_;
-  std::vector<EparallaxTensorIndex*> processed_indices_ GUARDED_BY(mu_);
-  std::vector<EparallaxTensorIndex*> issued_indices_ GUARDED_BY(mu_);
-  std::vector<EparallaxTensorIndex*> infertile_indices_ GUARDED_BY(mu_);
+  MultiLevelIndexQueue processed_indices_ GUARDED_BY(mu_);
+  MultiLevelIndexQueue issued_indices_ GUARDED_BY(mu_);
+  MultiLevelIndexQueue infertile_indices_ GUARDED_BY(mu_);
   std::map<string, int64> local_index_map_ GUARDED_BY(mu_);
   std::map<string, int64> num_issued_indices_map_ GUARDED_BY(mu_);
   std::map<string, EparallaxTensorIndex*> last_index_map_ GUARDED_BY(mu_);

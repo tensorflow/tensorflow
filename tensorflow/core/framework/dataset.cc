@@ -431,9 +431,10 @@ void IndexManager::NotifyFinished(EparallaxTensorIndex* index) {
     if (second_last_parent_indices != nullptr) {
       LOG(INFO) << "Finding second_last " << *second_last_parent_indices;
     }
-    processed_indices_.push_back(processed_index);
-    for (auto it=issued_indices_.begin(); it<issued_indices_.end(); it++) {
-      EparallaxTensorIndex* issued_index = *it;
+    LOG(INFO) << "0";
+    processed_indices_.Push(processed_index);
+    LOG(INFO) << "1";
+    for (auto issued_index : *issued_indices_.Get(processed_index->iterator_id())) {
       if (issued_index->parent_indices() != nullptr &&
           second_last_parent_indices != nullptr &&
           *issued_index->parent_indices() == *second_last_parent_indices &&
@@ -442,18 +443,17 @@ void IndexManager::NotifyFinished(EparallaxTensorIndex* index) {
         all_processed = false;
         break;
       }
-      it++;
     }
+    LOG(INFO) << "2";
 
     if (all_processed && second_last_parent_indices != nullptr) {
       for (auto parent_index : *second_last_parent_indices) {
-        if (std::find(infertile_indices_.begin(),
-                      infertile_indices_.end(),
-                      parent_index) != infertile_indices_.end()) {
+        if (infertile_indices_.Contains(parent_index)) {
           processed_indices.push_back(parent_index);
         }
       }
     }
+    LOG(INFO) << "3";
   }
 }
 
@@ -470,7 +470,7 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
     out_index = new EparallaxTensorIndex(prefix, nullptr, it->second++);
   } else {
     int64 last_local_index = -1;
-    for (auto issued_index : issued_indices_) {
+    for (auto issued_index : *issued_indices_.Get(prefix)) {
       if (issued_index->parent_indices() != nullptr &&
           *issued_index->parent_indices() == *parent_indices &&
           issued_index->local_index() > last_local_index) {
@@ -481,7 +481,7 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
                                          last_local_index + 1);
   }
 
-  issued_indices_.push_back(out_index);
+  issued_indices_.Push(out_index);
   if (num_issued_indices_map_.find(out_index->iterator_id()) ==
       num_issued_indices_map_.end()) {
     num_issued_indices_map_.insert(std::make_pair(out_index->iterator_id(), 0));
@@ -509,7 +509,7 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
           parent_index->iterator_id());
       if (last_index != last_index_map_.end()) {
         LOG(INFO) << "Infertile: " << *last_index->second;
-        infertile_indices_.push_back(last_index->second);
+        infertile_indices_.Push(last_index->second);
       }
     }
   }
@@ -522,14 +522,7 @@ bool IndexManager::AlreadyProcessed(EparallaxTensorIndex* index) {
 }
 
 bool IndexManager::AlreadyProcessedInternal(EparallaxTensorIndex* index) {
-  for (auto processed_index : processed_indices_) {
-    if (*index == *processed_index) {
-      LOG(INFO) << "Index is already processed; Skipping.";
-      LOG(INFO) << *index << " == " << *processed_index;
-      return true;
-    }
-  }
-  return false;
+  return processed_indices_.Contains(index);
 }
 
 Status DatasetBaseIterator::GetNextFromInput(
