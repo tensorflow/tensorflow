@@ -68,18 +68,7 @@ alias(
 def _label(file):
     return Label("//third_party/nccl:{}".format(file))
 
-<<<<<<< HEAD
-def _nccl_configure_impl(repository_ctx):
-    """Implementation of the nccl_configure repository rule."""
-    if ((not enable_cuda(repository_ctx) and not enable_rocm(repository_ctx))
-        or get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD")):
-        # Add a dummy build file to make bazel query happy.
-        repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
-        return
-
-=======
 def _create_local_nccl_repository(repository_ctx):
->>>>>>> master
     # Resolve all labels before doing any real work. Resolving causes the
     # function to be restarted with all previous state being lost. This
     # can easily lead to a O(n^2) runtime in the number of labels.
@@ -145,8 +134,8 @@ def _create_remote_nccl_repository(repository_ctx, remote_config_repo):
         )
 
 def _nccl_autoconf_impl(repository_ctx):
-    if (not enable_cuda(repository_ctx) or
-        get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD")):
+    if ((not enable_cuda(repository_ctx) and not enable_rocm(repository_ctx))
+        or get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD")):
         # Add a dummy build file to make bazel query happy.
         repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
     elif get_host_environ(repository_ctx, "TF_NCCL_CONFIG_REPO") != None:

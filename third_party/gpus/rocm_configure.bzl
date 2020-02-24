@@ -252,24 +252,13 @@ def _rocm_include_path(repository_ctx, rocm_config):
 
     return inc_dirs
 
-<<<<<<< HEAD
 def enable_rocm(repository_ctx):
-    if "TF_NEED_ROCM" in repository_ctx.os.environ:
-        enable_rocm = repository_ctx.os.environ["TF_NEED_ROCM"].strip()
-        if enable_rocm == "1":
-            if get_cpu_value(repository_ctx) != "Linux":
-                auto_configure_warning("ROCm configure is only supported on Linux")
-                return False
-            return True
-=======
-def _enable_rocm(repository_ctx):
-    enable_rocm = get_host_environ(repository_ctx, "TF_NEED_ROCM")
-    if enable_rocm == "1":
+    _enable_rocm = get_host_environ(repository_ctx, "TF_NEED_ROCM")
+    if _enable_rocm == "1":
         if get_cpu_value(repository_ctx) != "Linux":
             auto_configure_warning("ROCm configure is only supported on Linux")
             return False
         return True
->>>>>>> master
     return False
 
 def _rocm_toolkit_path(repository_ctx, bash_bin):
