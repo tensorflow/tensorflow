@@ -465,8 +465,6 @@ void BatchedNonMaxSuppressionOp(
   std::vector<int> final_valid_detections(num_batches);
 
   auto shard_nms = [&](int begin, int end) {
-    int boxes_per_batch = num_boxes * q * 4;
-    int scores_per_batch = num_boxes * num_classes;
     for (int idx = begin; idx < end; ++idx) {
       int batch_idx = idx / num_classes;
       int class_idx = idx % num_classes;
