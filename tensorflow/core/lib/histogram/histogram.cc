@@ -115,7 +115,7 @@ void Histogram::Add(double value) {
 
 double Histogram::Median() const { return Percentile(50.0); }
 
-// Linearly map the variable x from [x0, x1] unto [y0, y1]
+// Linearly map the variable x from [x0, x1] onto [y0, y1]
 double Histogram::Remap(double x, double x0, double x1, double y0,
                         double y1) const {
   return y0 + (x - x0) / (x1 - x0) * (y1 - y0);
