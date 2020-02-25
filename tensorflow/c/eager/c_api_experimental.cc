@@ -39,10 +39,6 @@ void TFE_OpReset(TFE_Op* op_to_reset, const char* op_or_function_name,
   }
 }
 
-void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
-  status->status = op->operation->ConsumeInput(h);
-}
-
 void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
   ctx->context->SetShouldStoreGraphs(true);
 }

@@ -56,9 +56,9 @@ message QueueItem {
     RegisterFunctionOp register_function = 4;
     CleanupFunctionOp cleanup_function = 5;
     // A remote executor is created to execute ops/functions asynchronously
-    // enqueued in streaming call. Request with this item type clears pending
-    // nodes and status of the executor on the remote worker.
-    ClearRemoteExecutorForStream clear_remote_executor_for_stream = 6;
+    // enqueued in streaming call. Request with this item type waits for pending
+    // nodes to finish on the remote executor and report status.
+    SyncRemoteExecutorForStream sync_remote_executor_for_stream = 6;
   }
 }
 
@@ -196,7 +196,7 @@ message CleanupFunctionOp {
   int64 step_id = 1;
 }
 
-message ClearRemoteExecutorForStream {}
+message SyncRemoteExecutorForStream {}
 
 message SendTensorOp {
   // All remote tensors are identified by <Op ID, Output num>. To mimic this

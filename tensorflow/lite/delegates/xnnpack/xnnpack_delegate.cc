@@ -1022,7 +1022,7 @@ class Subgraph {
       TfLiteNode* node, const TfLiteTensor* tensors,
       const TfLiteSoftmaxParams* params,
       const std::vector<uint32_t>& xnnpack_tensors) {
-    if (params->beta == 1.0f) {
+    if (params->beta != 1.0f) {
       if (logging_context != nullptr) {
         logging_context->ReportError(
             logging_context, "unsupported beta value %.7f in SOFTMAX node #%d",

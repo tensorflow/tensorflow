@@ -22,6 +22,10 @@ limitations under the License.
 #include <aws/core/utils/logging/LogSystemInterface.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/S3Errors.h>
+#include <aws/s3/model/AbortMultipartUploadRequest.h>
+#include <aws/s3/model/CompleteMultipartUploadRequest.h>
+#include <aws/s3/model/CompletedMultipartUpload.h>
+#include <aws/s3/model/CompletedPart.h>
 #include <aws/s3/model/CopyObjectRequest.h>
 #include <aws/s3/model/DeleteObjectRequest.h>
 #include <aws/s3/model/GetObjectRequest.h>
@@ -29,7 +33,9 @@ limitations under the License.
 #include <aws/s3/model/HeadObjectRequest.h>
 #include <aws/s3/model/ListObjectsRequest.h>
 #include <aws/s3/model/PutObjectRequest.h>
+#include <aws/s3/model/UploadPartCopyRequest.h>
 
+#include <cmath>
 #include <cstdlib>
 
 #include "tensorflow/core/platform/file_system_helper.h"
@@ -44,7 +50,12 @@ namespace tensorflow {
 namespace {
 static const char* kS3FileSystemAllocationTag = "S3FileSystemAllocation";
 static const size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;
+static const int64 kS3TimeoutMsec = 300000;                       // 5 min
+static const uint64 kS3MultiPartCopyPartSize = 50 * 1024 * 1024;  // 50MB
 static const int kS3GetChildrenMaxKeys = 100;
+static const int kExecutorPoolSize = 5;
+static const int kUploadRetries = 5;
+static const char* kExecutorTag = "TransferManagerExecutor";
 
 Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
   static mutex cfg_lock(LINKER_INITIALIZED);
@@ -108,21 +119,29 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
         cfg.verifySSL = true;
       }
     }
-    const char* connect_timeout = getenv("S3_CONNECT_TIMEOUT_MSEC");
-    if (connect_timeout) {
-      int64 timeout;
-
-      if (strings::safe_strto64(connect_timeout, &timeout)) {
-        cfg.connectTimeoutMs = timeout;
-      }
+    // if these timeouts are low, you may see an error when
+    // uploading/downloading large files: Unable to connect to endpoint
+    const char* connect_timeout_str = getenv("S3_CONNECT_TIMEOUT_MSEC");
+    int64 connect_timeout = kS3TimeoutMsec;
+    if (connect_timeout_str) {
+      // if conversion is unsafe, below method doesn't modify connect_timeout
+      strings::safe_strto64(connect_timeout_str, &connect_timeout);
     }
-    const char* request_timeout = getenv("S3_REQUEST_TIMEOUT_MSEC");
-    if (request_timeout) {
-      int64 timeout;
+    cfg.connectTimeoutMs = connect_timeout;
 
-      if (strings::safe_strto64(request_timeout, &timeout)) {
-        cfg.requestTimeoutMs = timeout;
-      }
+    const char* request_timeout_str = getenv("S3_REQUEST_TIMEOUT_MSEC");
+    int64 request_timeout = kS3TimeoutMsec;
+    if (request_timeout_str) {
+      strings::safe_strto64(request_timeout_str, &request_timeout);
+    }
+    cfg.requestTimeoutMs = request_timeout;
+    const char* ca_file = getenv("S3_CA_FILE");
+    if (ca_file) {
+      cfg.caFile = Aws::String(ca_file);
+    }
+    const char* ca_path = getenv("S3_CA_PATH");
+    if (ca_path) {
+      cfg.caPath = Aws::String(ca_path);
     }
 
     init = true;
@@ -137,6 +156,18 @@ void ShutdownClient(Aws::S3::S3Client* s3_client) {
     Aws::SDKOptions options;
     Aws::ShutdownAPI(options);
     AWSLogSystem::ShutdownAWSLogging();
+  }
+}
+
+void ShutdownTransferManager(Aws::Transfer::TransferManager* transfer_manager) {
+  if (transfer_manager != nullptr) {
+    delete transfer_manager;
+  }
+}
+
+void ShutdownExecutor(Aws::Utils::Threading::PooledThreadExecutor* executor) {
+  if (executor != nullptr) {
+    delete executor;
   }
 }
 
@@ -205,11 +236,14 @@ class S3RandomAccessFile : public RandomAccessFile {
 
 class S3WritableFile : public WritableFile {
  public:
-  S3WritableFile(const string& bucket, const string& object,
-                 std::shared_ptr<Aws::S3::S3Client> s3_client)
+  S3WritableFile(
+      const string& bucket, const string& object,
+      std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager,
+      std::shared_ptr<Aws::S3::S3Client> s3_client)
       : bucket_(bucket),
         object_(object),
         s3_client_(s3_client),
+        transfer_manager_(transfer_manager),
         sync_needed_(true),
         outfile_(Aws::MakeShared<Aws::Utils::TempFile>(
             kS3FileSystemAllocationTag, "/tmp/s3_filesystem_XXXXXX",
@@ -252,19 +286,37 @@ class S3WritableFile : public WritableFile {
     if (!sync_needed_) {
       return Status::OK();
     }
-    Aws::S3::Model::PutObjectRequest putObjectRequest;
-    putObjectRequest.WithBucket(bucket_.c_str()).WithKey(object_.c_str());
     long offset = outfile_->tellp();
-    outfile_->seekg(0);
-    putObjectRequest.SetBody(outfile_);
-    putObjectRequest.SetContentLength(offset);
-    auto putObjectOutcome = this->s3_client_->PutObject(putObjectRequest);
+    std::shared_ptr<Aws::Transfer::TransferHandle> handle =
+        transfer_manager_.get()->UploadFile(
+            outfile_, bucket_.c_str(), object_.c_str(),
+            "application/octet-stream", Aws::Map<Aws::String, Aws::String>());
+    handle->WaitUntilFinished();
+    int retries = 0;
+
+    while (handle->GetStatus() == Aws::Transfer::TransferStatus::FAILED &&
+           retries++ < kUploadRetries) {
+      // if multipart upload was used, only the failed parts will be re-sent
+      VLOG(1) << "Retrying Upload of s3://" << bucket_ << "/" << object_
+              << " after failure. Current retry count:" << retries;
+      transfer_manager_.get()->RetryUpload(outfile_, handle);
+      handle->WaitUntilFinished();
+    }
+
+    if (handle->GetStatus() != Aws::Transfer::TransferStatus::COMPLETED) {
+      auto error = handle->GetLastError();
+      if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+        return errors::FailedPrecondition(
+            "AWS Credentials have not been set properly. "
+            "Unable to access the specified S3 location");
+      } else {
+        return errors::Unknown(
+            error.GetExceptionName(), ": ", handle->GetFailedParts().size(),
+            " failed parts. ", handle->GetLastError().GetMessage());
+      }
+    }
     outfile_->clear();
     outfile_->seekp(offset);
-    if (!putObjectOutcome.IsSuccess()) {
-      return errors::Unknown(putObjectOutcome.GetError().GetExceptionName(),
-                             ": ", putObjectOutcome.GetError().GetMessage());
-    }
     sync_needed_ = false;
     return Status::OK();
   }
@@ -273,6 +325,7 @@ class S3WritableFile : public WritableFile {
   string bucket_;
   string object_;
   std::shared_ptr<Aws::S3::S3Client> s3_client_;
+  std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager_;
   bool sync_needed_;
   std::shared_ptr<Aws::Utils::TempFile> outfile_;
 };
@@ -292,13 +345,25 @@ class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 }  // namespace
 
 S3FileSystem::S3FileSystem()
-    : s3_client_(nullptr, ShutdownClient), client_lock_() {}
+    : s3_client_(nullptr, ShutdownClient),
+      initialization_lock_(),
+      transfer_manager_(nullptr, ShutdownTransferManager),
+      executor_(nullptr, ShutdownExecutor) {
+  const char* part_size_str = getenv("S3_MULTI_PART_COPY_PART_SIZE");
+  multi_part_copy_part_size_ = kS3MultiPartCopyPartSize;
+  if (part_size_str) {
+    uint64 part_size_num;
+    if (strings::safe_strtou64(part_size_str, &part_size_num)) {
+      multi_part_copy_part_size_ = part_size_num;
+    }
+  }
+}
 
 S3FileSystem::~S3FileSystem() {}
 
 // Initializes s3_client_, if needed, and returns it.
 std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
-  std::lock_guard<mutex> lock(this->client_lock_);
+  std::lock_guard<mutex> lock(this->initialization_lock_);
 
   if (this->s3_client_.get() == nullptr) {
     AWSLogSystem::InitializeAWSLogging();
@@ -309,6 +374,9 @@ std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
     };
     options.cryptoOptions.sha256HMACFactory_create_fn = []() {
       return Aws::MakeShared<AWSSHA256HmacFactory>(AWSCryptoAllocationTag);
+    };
+    options.cryptoOptions.secureRandomFactory_create_fn = []() {
+      return Aws::MakeShared<AWSSecureRandomFactory>(AWSCryptoAllocationTag);
     };
     Aws::InitAPI(options);
 
@@ -326,6 +394,33 @@ std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
   return this->s3_client_;
 }
 
+std::shared_ptr<Aws::Transfer::TransferManager>
+S3FileSystem::GetTransferManager() {
+  std::shared_ptr<Aws::S3::S3Client> s3_client = this->GetS3Client();
+  std::lock_guard<mutex> lock(this->initialization_lock_);
+  if (this->transfer_manager_.get() == nullptr) {
+    Aws::Transfer::TransferManagerConfiguration config(
+        this->GetExecutor().get());
+    config.s3Client = s3_client;
+    config.bufferSize = this->multi_part_copy_part_size_;
+    // must be larger than pool size * multi_part_copy_part_size
+    config.transferBufferMaxHeapSize =
+        (kExecutorPoolSize + 1) * this->multi_part_copy_part_size_;
+    this->transfer_manager_ = Aws::Transfer::TransferManager::Create(config);
+  }
+  return this->transfer_manager_;
+}
+
+std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor>
+S3FileSystem::GetExecutor() {
+  if (this->executor_.get() == nullptr) {
+    this->executor_ =
+        Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(
+            kExecutorTag, kExecutorPoolSize);
+  }
+  return this->executor_;
+}
+
 Status S3FileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string bucket, object;
@@ -338,7 +433,8 @@ Status S3FileSystem::NewWritableFile(const string& fname,
                                      std::unique_ptr<WritableFile>* result) {
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-  result->reset(new S3WritableFile(bucket, object, this->GetS3Client()));
+  result->reset(new S3WritableFile(bucket, object, this->GetTransferManager(),
+                                   this->GetS3Client()));
   return Status::OK();
 }
 
@@ -353,7 +449,8 @@ Status S3FileSystem::NewAppendableFile(const string& fname,
 
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
-  result->reset(new S3WritableFile(bucket, object, this->GetS3Client()));
+  result->reset(new S3WritableFile(bucket, object, this->GetTransferManager(),
+                                   this->GetS3Client()));
 
   while (true) {
     status = reader->Read(offset, kS3ReadAppendableFileBufferSize, &read_chunk,
@@ -583,6 +680,265 @@ Status S3FileSystem::GetFileSize(const string& fname, uint64* file_size) {
   return Status::OK();
 }
 
+void S3FileSystem::MultiPartCopyCallback(
+    const Aws::S3::Model::UploadPartCopyRequest& request,
+    const Aws::S3::Model::UploadPartCopyOutcome& uploadPartCopyOutcome,
+    const std::shared_ptr<const Aws::Client::AsyncCallerContext>& context) {
+  std::shared_ptr<tensorflow::MultiPartCopyAsyncContext> multiPartContext =
+      std::const_pointer_cast<tensorflow::MultiPartCopyAsyncContext>(
+          std::static_pointer_cast<const tensorflow::MultiPartCopyAsyncContext>(
+              context));
+
+  {
+    std::unique_lock<std::mutex> lock(*multiPartContext->multi_part_copy_mutex);
+
+    Status status;
+    if (uploadPartCopyOutcome.IsSuccess()) {
+      // success
+      Aws::String eTag =
+          uploadPartCopyOutcome.GetResult().GetCopyPartResult().GetETag();
+      multiPartContext->eTag = eTag;
+      status = Status::OK();
+    } else {
+      LOG(ERROR) << "Error when copying part " << multiPartContext->partNumber
+                 << " " << uploadPartCopyOutcome.GetError().GetMessage();
+      status =
+          errors::Unknown(uploadPartCopyOutcome.GetError().GetExceptionName(),
+                          ": ", uploadPartCopyOutcome.GetError().GetMessage());
+    }
+
+    (*multiPartContext->finishedPartStates)[multiPartContext->partNumber] =
+        multiPartContext->incompletePartStates->at(
+            multiPartContext->partNumber);
+    multiPartContext->finishedPartStates->at(multiPartContext->partNumber)
+        .status = status;
+    multiPartContext->incompletePartStates->erase(multiPartContext->partNumber);
+    // Notify the thread that started the operation
+    multiPartContext->multi_part_copy_cv->notify_one();
+  }
+}
+
+Status S3FileSystem::CopyFile(const Aws::String& source_bucket,
+                              const Aws::String& source_key,
+                              const Aws::String& target_bucket,
+                              const Aws::String& target_key) {
+  Aws::String source = Aws::String((source_bucket + "/" + source_key).c_str());
+  Aws::String source_full_path = Aws::String("s3://") + source;
+  uint64 file_length;
+  TF_RETURN_IF_ERROR(
+      this->GetFileSize(string(source_full_path.c_str()), &file_length));
+  int num_parts;
+  if (file_length <= multi_part_copy_part_size_) {
+    num_parts = 1;
+  } else {
+    num_parts = ceil((float)file_length / multi_part_copy_part_size_);
+  }
+
+  if (num_parts == 1) {
+    return SimpleCopy(source, target_bucket, target_key);
+  } else if (num_parts > 10000) {
+    string message = strings::StrCat(
+        "MultiPartCopy with number of parts more than 10000 is not supported. "
+        "Your object ",
+        source, " required ", num_parts,
+        " as multi_part_copy_part_size is set to ", multi_part_copy_part_size_,
+        ". You can control this part size using the environment variable ",
+        "S3_MULTI_PART_COPY_PART_SIZE to increase it.");
+    return tensorflow::errors::Unimplemented(message);
+  } else {
+    return MultiPartCopy(source, target_bucket, target_key, num_parts,
+                         file_length);
+  }
+}
+
+Status S3FileSystem::SimpleCopy(const Aws::String& source,
+                                const Aws::String& target_bucket,
+                                const Aws::String& target_key) {
+  VLOG(1) << "SimpleCopy from " << source << " to: " << target_bucket << "/"
+          << target_key;
+  Aws::S3::Model::CopyObjectRequest copyObjectRequest;
+  copyObjectRequest.SetBucket(target_bucket.c_str());
+  copyObjectRequest.SetKey(target_key);
+  copyObjectRequest.SetCopySource(source);
+  auto copyObjectOutcome = this->GetS3Client()->CopyObject(copyObjectRequest);
+  if (!copyObjectOutcome.IsSuccess()) {
+    return errors::Unknown(copyObjectOutcome.GetError().GetExceptionName(),
+                           ": ", copyObjectOutcome.GetError().GetMessage());
+  }
+  return Status::OK();
+}
+
+Status S3FileSystem::MultiPartCopy(const Aws::String& source,
+                                   const Aws::String& target_bucket,
+                                   const Aws::String& target_key,
+                                   const int num_parts,
+                                   const uint64 file_length) {
+  VLOG(1) << "MultiPartCopy from " << source << " to: " << target_bucket << "/"
+          << target_key;
+  Aws::S3::Model::CreateMultipartUploadRequest multipartUploadRequest;
+  multipartUploadRequest.SetBucket(target_bucket);
+  multipartUploadRequest.SetKey(target_key);
+
+  auto multipartUploadOutcome =
+      this->GetS3Client()->CreateMultipartUpload(multipartUploadRequest);
+  if (!multipartUploadOutcome.IsSuccess()) {
+    return errors::Unknown(multipartUploadOutcome.GetError().GetExceptionName(),
+                           ": ",
+                           multipartUploadOutcome.GetError().GetMessage());
+  }
+
+  Aws::String uploadID = multipartUploadOutcome.GetResult().GetUploadId();
+  VLOG(1) << "Copying from " << source << " in " << num_parts
+          << " parts of size " << multi_part_copy_part_size_ << " each";
+  Aws::S3::Model::CompletedMultipartUpload completedMPURequest;
+
+  // passed to each callback keyed by partNumber
+  std::map<int, std::shared_ptr<tensorflow::MultiPartCopyAsyncContext>>
+      partContexts;
+  // keeps track of incompleteParts keyed by partNumber
+  std::map<int, PartState> incompletePartStates;
+  // S3 API partNumber starts from 1
+  for (int partNumber = 1; partNumber <= num_parts; partNumber++) {
+    PartState ps;
+    ps.partNumber = partNumber;
+    incompletePartStates[partNumber] = ps;
+  }
+
+  // keeps track of completed parts keyed by partNumber
+  std::map<int, PartState> finishedPartStates;
+  // mutex which protects access of the partStates map
+  std::mutex multi_part_copy_mutex;
+  // condition variable to be used with above mutex for synchronization
+  std::condition_variable multi_part_copy_cv;
+
+  int retry_count_ = 3;
+  while (retry_count_-- > 0) {
+    // queue up parts
+    for (std::map<int, PartState>::iterator it = incompletePartStates.begin();
+         it != incompletePartStates.end(); it++) {
+      int partNumber = it->first;
+      uint64 startPos = (partNumber - 1) * multi_part_copy_part_size_;
+      uint64 endPos = startPos + kS3MultiPartCopyPartSize - 1;
+      if (endPos >= file_length) {
+        endPos = file_length - 1;
+      }
+
+      string range = strings::StrCat("bytes=", startPos, "-", endPos);
+
+      Aws::S3::Model::UploadPartCopyRequest uploadPartCopyRequest;
+      uploadPartCopyRequest.SetBucket(target_bucket);
+      uploadPartCopyRequest.SetKey(target_key);
+      uploadPartCopyRequest.SetCopySource(source.c_str());
+      uploadPartCopyRequest.SetCopySourceRange(range.c_str());
+      uploadPartCopyRequest.SetPartNumber(partNumber);
+      uploadPartCopyRequest.SetUploadId(uploadID);
+
+      auto multiPartContext =
+          Aws::MakeShared<tensorflow::MultiPartCopyAsyncContext>(
+              "MultiPartCopyContext");
+
+      multiPartContext->partNumber = partNumber;
+      multiPartContext->incompletePartStates = &incompletePartStates;
+      multiPartContext->finishedPartStates = &finishedPartStates;
+      multiPartContext->multi_part_copy_mutex = &multi_part_copy_mutex;
+      multiPartContext->multi_part_copy_cv = &multi_part_copy_cv;
+
+      // replace with current context
+      partContexts[partNumber] = multiPartContext;
+
+      auto callback =
+          [this](const Aws::S3::S3Client* client,
+                 const Aws::S3::Model::UploadPartCopyRequest& request,
+                 const Aws::S3::Model::UploadPartCopyOutcome& outcome,
+                 const std::shared_ptr<const Aws::Client::AsyncCallerContext>&
+                     context) {
+            this->MultiPartCopyCallback(request, outcome, context);
+          };
+
+      this->GetS3Client()->UploadPartCopyAsync(uploadPartCopyRequest, callback,
+                                               multiPartContext);
+    }
+    // wait till they finish
+    {
+      std::unique_lock<std::mutex> lock(multi_part_copy_mutex);
+      // wait on the mutex until notify is called
+      // then check the finished parts as there could be false notifications
+      multi_part_copy_cv.wait(lock, [&finishedPartStates, num_parts] {
+        return finishedPartStates.size() == num_parts;
+      });
+    }
+    // check if there was any error for any part
+    for (int partNumber = 1; partNumber <= num_parts; partNumber++) {
+      if (finishedPartStates[partNumber].status != Status::OK()) {
+        if (retry_count_ <= 0) {
+          if (finishedPartStates[partNumber].status != Status::OK()) {
+            TF_RETURN_IF_ERROR(
+                AbortMultiPartCopy(target_bucket, target_key, uploadID));
+            return finishedPartStates[partNumber].status;
+          }
+        } else {
+          // retry part
+          LOG(ERROR) << "Retrying failed copy of part " << partNumber
+                     << " due to an error with S3. ";
+          PartState ps;
+          ps.partNumber = partNumber;
+          incompletePartStates[partNumber] = ps;
+          finishedPartStates.erase(partNumber);
+        }
+      }
+    }
+  }
+
+  // if there was an error still in any part, it would abort and return in the
+  // above loop set the eTag of completed Part to the final CompletedMPURequest
+  // note these parts have to be added in order
+  for (int partNumber = 1; partNumber <= num_parts; partNumber++) {
+    Aws::S3::Model::CompletedPart completedPart;
+    completedPart.SetPartNumber(partNumber);
+    completedPart.SetETag(partContexts[partNumber]->eTag);
+    completedMPURequest.AddParts(completedPart);
+  }
+
+  Status finalStatus = CompleteMultiPartCopy(target_bucket, target_key,
+                                             uploadID, completedMPURequest);
+  if (finalStatus != Status::OK()) {
+    TF_RETURN_IF_ERROR(AbortMultiPartCopy(target_bucket, target_key, uploadID));
+  }
+  return finalStatus;
+}
+
+Status S3FileSystem::AbortMultiPartCopy(Aws::String target_bucket,
+                                        Aws::String target_key,
+                                        Aws::String uploadID) {
+  Aws::S3::Model::AbortMultipartUploadRequest abortRequest;
+  abortRequest.WithBucket(target_bucket)
+      .WithKey(target_key)
+      .WithUploadId(uploadID);
+  auto abortOutcome = this->GetS3Client()->AbortMultipartUpload(abortRequest);
+  if (!abortOutcome.IsSuccess()) {
+    return errors::Unknown(abortOutcome.GetError().GetExceptionName(), ": ",
+                           abortOutcome.GetError().GetMessage());
+  }
+  return Status::OK();
+}
+
+Status S3FileSystem::CompleteMultiPartCopy(
+    Aws::String target_bucket, Aws::String target_key, Aws::String uploadID,
+    Aws::S3::Model::CompletedMultipartUpload completedMPURequest) {
+  Aws::S3::Model::CompleteMultipartUploadRequest completeRequest;
+  completeRequest.SetBucket(target_bucket);
+  completeRequest.SetKey(target_key);
+  completeRequest.SetUploadId(uploadID);
+  completeRequest.SetMultipartUpload(completedMPURequest);
+  auto completeOutcome =
+      this->GetS3Client()->CompleteMultipartUpload(completeRequest);
+  if (!completeOutcome.IsSuccess()) {
+    return errors::Unknown(completeOutcome.GetError().GetExceptionName(), ": ",
+                           completeOutcome.GetError().GetMessage());
+  }
+  return Status::OK();
+}
+
 Status S3FileSystem::RenameFile(const string& src, const string& target) {
   string src_bucket, src_object, target_bucket, target_object;
   TF_RETURN_IF_ERROR(ParseS3Path(src, false, &src_bucket, &src_object));
@@ -622,19 +978,10 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
       Aws::String src_key = object.GetKey();
       Aws::String target_key = src_key;
       target_key.replace(0, src_object.length(), target_object.c_str());
-      Aws::String source =
-          Aws::String(src_bucket.c_str()) + "/" + src_key.c_str();
 
-      copyObjectRequest.SetBucket(target_bucket.c_str());
-      copyObjectRequest.SetKey(target_key);
-      copyObjectRequest.SetCopySource(source);
-
-      auto copyObjectOutcome =
-          this->GetS3Client()->CopyObject(copyObjectRequest);
-      if (!copyObjectOutcome.IsSuccess()) {
-        return errors::Unknown(copyObjectOutcome.GetError().GetExceptionName(),
-                               ": ", copyObjectOutcome.GetError().GetMessage());
-      }
+      TF_RETURN_IF_ERROR(CopyFile(Aws::String(src_bucket.c_str()), src_key,
+                                  Aws::String(target_bucket.c_str()),
+                                  target_key));
 
       deleteObjectRequest.SetBucket(src_bucket.c_str());
       deleteObjectRequest.SetKey(src_key.c_str());

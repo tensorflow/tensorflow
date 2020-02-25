@@ -433,7 +433,7 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
     } else if (item.has_cleanup_function()) {
       s = CleanupFunction(item.cleanup_function());
     } else {
-      DCHECK(item.has_clear_remote_executor_for_stream());
+      DCHECK(item.has_sync_remote_executor_for_stream());
       s = executor.WaitForAllPendingNodes();
     }
 

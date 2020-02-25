@@ -30,8 +30,11 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import gfile
 from tensorflow.python.util import compat
 
 # The string tokens in the extracted vocabulary
@@ -64,9 +67,17 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       vocabulary is `(max_tokens - num_oov_tokens)` when this value is set.
     num_oov_tokens: The number of out-of-vocabulary tokens to use; defaults to
       1. If this value is more than 1, OOV inputs are hashed to determine their
-      OOV value; if this value is 0, passing an OOV input will result in a
-      runtime error.
-    vocabulary: An optional list of vocabulary terms.
+      OOV value; if this value is 0, passing an OOV input will result in a '-1'
+      being returned for that value in the output tensor. (Note that, because
+      the value is -1 and not 0, this will allow you to effectively drop OOV
+      values from categorical encodings.)
+    vocabulary: An optional list of vocabulary terms, or a path to a text file
+      containing a vocabulary to load into this layer. The file should contain
+      one token per line. In either case, the vocabulary must be unique; if
+      the list or file contains the same token multiple times, an error will
+      be thrown. Note that when passing a vocabulary - either as a list or as
+      a file - the vocabulary will not be present in the layer's config dict;
+      it will instead be a part of the layer's weights.
     reserve_zero: Whether to reserve the index 0, which indicates pad values in
       the Keras masking system. If True, the output of this layer will be in the
       range `[1...max_tokens+1)`; if False, the output will be in the range
@@ -103,10 +114,9 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
       raise ValueError("max_tokens must be greater than 1.")
 
     # For now, limit the num_oov_tokens to one.
-    if num_oov_tokens != 1:
-      raise ValueError("num_oov_tokens must be 1 for the time being. Other "
-                       "values will be supported in the near future. "
-                       "You passed %s" % num_oov_tokens)
+    if num_oov_tokens < 0:
+      raise ValueError("num_oov_tokens must be greater than 0. You passed %s" %
+                       num_oov_tokens)
 
     self.max_tokens = max_tokens
     self.num_oov_tokens = num_oov_tokens
@@ -164,10 +174,38 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     self._inverse_table = None
 
     if vocabulary is not None:
-      self._export_vocab = True
+      if isinstance(vocabulary, str):
+        vocabulary = self._get_vocabulary_from_file(vocabulary)
+
+      vocabulary_set = set(vocabulary)
+      if len(vocabulary) != len(vocabulary_set):
+        repeated_items = [
+            item for item, count in collections.Counter(vocabulary).items()
+            if count > 1
+        ]
+        raise ValueError("The passed vocabulary has at least one repeated "
+                         "term. Please uniquify your dataset before passing "
+                         "it to IndexLookup(). The repeated terms are %s" %
+                         repeated_items)
       self.set_vocabulary(vocabulary)
-    else:
-      self._export_vocab = False
+
+  def _get_vocabulary_from_file(self, vocabulary_path):
+    vocab = []
+    with gfile.GFile(vocabulary_path, "r") as reader:
+      while True:
+        # Get the next line, and break if it is None.
+        text = reader.readline()
+        if not text:
+          break
+
+        # Convert the raw text into UTF8 and strip whitespace.
+        if isinstance(text, str):
+          token = text
+        elif isinstance(text, bytes):
+          token = text.decode("utf-8", "ignore")
+        token = token.strip()
+        vocab.append(token)
+    return vocab
 
   def _get_table_data(self):
     keys, values = self._table.export()
@@ -256,11 +294,10 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     return [x for _, x in sorted(zip(values, keys))]
 
   def get_config(self):
-    vocabulary = self.get_vocabulary() if self._export_vocab else None
     config = {
         "max_tokens": self.max_tokens,
         "num_oov_tokens": self.num_oov_tokens,
-        "vocabulary": vocabulary,
+        "vocabulary": None,
         "reserve_zero": self.reserve_zero,
         "mask_zero": self.mask_zero,
     }
@@ -351,19 +388,38 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     return super(IndexLookup, self).__call__(inputs, invert=invert, **kwargs)
 
+  def replace_oov_buckets(self, inputs, lookups):
+    if self.num_oov_tokens <= 1:
+      return lookups
+
+    if inputs.dtype.is_integer:
+      inputs = string_ops.as_string(inputs)
+    hashed_inputs = string_ops.string_to_hash_bucket_fast(
+        inputs, num_buckets=self.num_oov_tokens)
+    if self.reserve_zero:
+      hashed_inputs = math_ops.add(hashed_inputs, 1)
+    return array_ops.where(math_ops.equal(lookups, -1), hashed_inputs, lookups)
+
   def call(self, inputs, invert=False):
     table = self._inverse_table if invert else self._table
     # The table lookup ops don't natively support ragged tensors, so if we have
     # a RT we need to use map_flat_values to look up every element.
     if ragged_tensor.is_ragged(inputs):
       indexed_data = ragged_functional_ops.map_flat_values(table.lookup, inputs)
+      if not invert:
+        indexed_data = ragged_functional_ops.map_flat_values(
+            self.replace_oov_buckets, inputs, indexed_data)
     elif isinstance(
         inputs, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
-      indexed_data = sparse_tensor.SparseTensor(inputs.indices,
-                                                table.lookup(inputs.values),
+      if not invert:
+        values = self.replace_oov_buckets(inputs.values,
+                                          table.lookup(inputs.values))
+      indexed_data = sparse_tensor.SparseTensor(inputs.indices, values,
                                                 inputs.dense_shape)
     else:
       indexed_data = table.lookup(inputs)
+      if not invert:
+        indexed_data = self.replace_oov_buckets(inputs, indexed_data)
       # (b/149446477): output does not preserve input shape.
       indexed_data.set_shape(inputs.shape)
 
@@ -371,6 +427,11 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     # errors if this is the only layer in the model. To fix this, pass
     # the output through an identity op.
     return array_ops.identity(indexed_data)
+
+
+class _IndexLookupAccumulator(
+    collections.namedtuple("Accumulator", ["count_dict"])):
+  pass
 
 
 class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
@@ -385,7 +446,6 @@ class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
       set to a value greater than the total number of distinct tokens in the
       dataset, all tokens are retained.s
   """
-  ACCUMULATOR_CLS = collections.namedtuple("Accumulator", ["count_dict"])
 
   def __init__(self, vocab_size=None):
     self._vocab_size = vocab_size
@@ -461,4 +521,4 @@ class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
     """Accumulate a sorted array of vocab tokens and corresponding counts."""
 
     count_dict = collections.defaultdict(int)
-    return self.ACCUMULATOR_CLS(count_dict)
+    return _IndexLookupAccumulator(count_dict)

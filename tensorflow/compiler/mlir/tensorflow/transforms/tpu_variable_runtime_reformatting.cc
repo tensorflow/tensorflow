@@ -119,8 +119,10 @@ struct TPUVariableRuntimeReformattingPass
   void runOnModule() override;
 };
 
-// Returns the earlier value of which `v` is an identity.
-Value SkipIdentity(Value v, bool allow_other_use) {
+// Returns the earlier value of which `v` is an identity. If `skipped` is
+// provided, it will be used to store the identity nodes skipped.
+Value SkipIdentity(Value v, bool allow_other_use,
+                   llvm::SmallPtrSet<Operation*, 4>* skipped = nullptr) {
   while (auto result = v.dyn_cast<OpResult>()) {
     if (!(allow_other_use || v.hasOneUse())) break;
     auto op = result.getDefiningOp();
@@ -128,6 +130,7 @@ Value SkipIdentity(Value v, bool allow_other_use) {
       break;
     }
     v = op->getOperand(result.getResultNumber());
+    if (skipped) skipped->insert(op);
   }
   return v;
 }
@@ -188,18 +191,14 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
     if (data_type.getIntOrFloatBitWidth() == 64) continue;
 
     // We have found a mirrored variable which is an input to the replicated
-    // `execute`. Now set the enable_xla_sharding field in the metadata to
-    // inform the compile op.
-    auto metadata_arg = metadata.mutable_args(it->second);
-    metadata_arg->set_enable_xla_sharding(
-        ::tensorflow::tpu::TPUCompileMetadataProto_Arg::ALLOWED);
-
-    // Now find if this mirrored variable is a pass-through of while arguments.
+    // `execute`. Now find if this mirrored variable is a pass-through of while
+    // arguments.
     llvm::SmallVector<Value, 4> while_args;
     for (int64_t i = 0; i < num_replicas; ++i) {
+      llvm::SmallPtrSet<Operation*, 4> skipped_identities;
       auto replicate_operand =
           SkipIdentity(replicate.getOperand(num_replicas * replicate_arg + i),
-                       /*allow_other_use=*/false);
+                       /*allow_other_use=*/false, &skipped_identities);
       auto block_arg = replicate_operand.dyn_cast<BlockArgument>();
       // To qualify for a valid pass-through mirrored variable, it must satisfy
       //   1) it is the body's argument;
@@ -210,7 +209,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
           llvm::any_of(replicate_operand.getUsers(),
                        [&](Operation* user) {
                          return user != body.front().getTerminator() &&
-                                !llvm::isa<TF::IdentityOp>(user) &&
+                                skipped_identities.count(user) == 0 &&
                                 user != replicate;
                        }) ||
           !cond.getArgument(block_arg.getArgNumber()).use_empty()) {
@@ -220,6 +219,11 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
       while_args.push_back(while_op.getOperand(block_arg.getArgNumber()));
     }
     if (while_args.empty()) continue;
+    // Now set the enable_xla_sharding field in the metadata to inform the
+    // compile op.
+    auto metadata_arg = metadata.mutable_args(it->second);
+    metadata_arg->set_enable_xla_sharding(
+        ::tensorflow::tpu::TPUCompileMetadataProto_Arg::ALLOWED);
     mapping.emplace_back(it->second, std::move(while_args));
   }
   // Sort the mapping according to execute operand order.

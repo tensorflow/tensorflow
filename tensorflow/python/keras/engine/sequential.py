@@ -116,6 +116,7 @@ class Sequential(training.Model):
     super(Sequential, self).__init__(name=name, autocast=False)
     self.supports_masking = True
     self._compute_output_and_mask_jointly = True
+    self._auto_track_sub_layers = False
 
     self._layer_call_argspecs = {}
 

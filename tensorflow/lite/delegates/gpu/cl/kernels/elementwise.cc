@@ -48,6 +48,9 @@ std::string ElementwiseOneInput::GetCoreCode(
     case OperationType::COS:
       result = "$0 = cos($0);\n";
       break;
+    case OperationType::EXP:
+      result = "$0 = exp($0);\n";
+      break;
     case OperationType::HARD_SWISH:
       result =
           "$0 *= clamp($0 * (FLT)(0.16666667f) + (FLT)(0.5f), (FLT4)(0.0f), "
@@ -213,14 +216,16 @@ Status ElementwiseTwoInput::BindArguments(CLKernel* kernel) {
 ElementwiseTwoInput CreateElementwiseTwoInput(
     const CreationContext& creation_context, const OperationDef& definition,
     const OperationType& op_type, const BroadcastSettings& broadcast,
-    const ElementwiseAttributes& attr) {
+    const ElementwiseAttributes* attr) {
   ElementwiseTwoInput operation(definition, op_type, broadcast);
-  auto scalar = absl::get_if<float>(&attr.param);
-  if (scalar) {
-    const auto scalar_precision = creation_context.device->IsPowerVR()
-                                      ? CalculationsPrecision::F32
-                                      : definition.precision;
-    operation.SetScalarPara(FLT(scalar_precision, *scalar));
+  if (attr) {
+    const float* scalar = absl::get_if<float>(&attr->param);
+    if (scalar) {
+      const auto scalar_precision = creation_context.device->IsPowerVR()
+                                        ? CalculationsPrecision::F32
+                                        : definition.precision;
+      operation.SetScalarPara(FLT(scalar_precision, *scalar));
+    }
   }
   operation.SetLinkIndex(0);
   return operation;

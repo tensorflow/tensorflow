@@ -874,12 +874,12 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 #endif  // !IS_MOBILE_PLATFORM
 }
 
-TF_CAPI_EXPORT extern void TFE_ContextClearRemoteExecutors(TFE_Context* ctx,
-                                                           TF_Status* status) {
+TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
+                                                TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM)
   status->status = tensorflow::Status::OK();
 #else   // !defined(IS_MOBILE_PLATFORM)
-  status->status = ctx->context->ClearRemoteExecutors();
+  status->status = ctx->context->SyncExecutors();
 #endif  // !IS_MOBILE_PLATFORM
 }
 
@@ -1116,9 +1116,13 @@ TF_Tensor* tensorflow::TensorHandleInterface::Resolve(Status* status) {
     return retval;
   } else {
     tensorflow::Tensor tensor;
-    if (IsCPU(handle_->device())) {
+    if (IsCPU(handle_->device()) || handle_->HasLocalMirror(nullptr)) {
       const tensorflow::Tensor* src = nullptr;
-      *status = handle_->Tensor(&src);
+      if (handle_->HasLocalMirror(nullptr)) {
+        *status = handle_->TensorFromDevice(nullptr, &src);
+      } else {
+        *status = handle_->Tensor(&src);
+      }
       if (!status->ok()) return nullptr;
       tensor = *src;
     } else {
@@ -1126,6 +1130,13 @@ TF_Tensor* tensorflow::TensorHandleInterface::Resolve(Status* status) {
       CHECK_NE(ctx, nullptr);
       *status = handle_->CopyToDevice(*ctx, ctx->HostCPU(), &tensor);
       if (!status->ok()) return nullptr;
+      if (handle_->ImplicitMirroring()) {
+        *status = handle_->AddEmptyLocalMirror(nullptr);
+        if (!status->ok()) return nullptr;
+        Tensor mirror = tensor;
+        *status = handle_->SetTensor(std::move(mirror), nullptr);
+        if (!status->ok()) return nullptr;
+      }
     }
     return tensorflow::TF_TensorFromTensor(tensor, status);
   }
@@ -1193,7 +1204,8 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   // TODO(apassos) do we need to wrap the deallocator here to make sure to sync
   // the device?
   TF_ManagedBuffer* buf =
-      new TF_ManagedBuffer(data, len, deallocator, deallocator_arg);
+      new TF_ManagedBuffer(data, len, deallocator, deallocator_arg,
+                           /*owns_memory=*/false);
 
   tensorflow::Tensor t(static_cast<tensorflow::DataType>(dtype),
                        tensorflow::TensorShape(dimvec), buf);
@@ -1438,6 +1450,25 @@ void TFE_OpSetAttrFunctionList(TFE_Op* op, const char* attr_name,
   }
 }
 
+void TFE_OpSetAttrValueProto(const TFE_Op* op, const char* attr_name,
+                             const void* proto, size_t proto_len,
+                             TF_Status* status) {
+  tensorflow::AttrValue attr_value;
+  if (!attr_value.ParseFromArray(proto, proto_len)) {
+    status->status =
+        tensorflow::errors::InvalidArgument("Unparseable AttrValue proto");
+    return;
+  }
+  if (op == nullptr || op->operation == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Got a null or uninitialized `op` argument");
+    return;
+  }
+  auto operation = tensorflow::down_cast<tensorflow::OperationInterface*>(
+      op->operation.get());
+  operation->MutableAttrs()->Set(attr_name, attr_value);
+}
+
 TF_CAPI_EXPORT extern int TFE_OpGetInputLength(TFE_Op* op,
                                                const char* input_name,
                                                TF_Status* status) {
@@ -1594,7 +1625,7 @@ void TFE_ContextEndStep(TFE_Context* ctx) { ctx->context->EndStep(); }
 void TFE_OpGetAttrs(TFE_Op* op, TFE_OpAttrs* attrs) {
   auto operation = tensorflow::down_cast<tensorflow::OperationInterface*>(
       op->operation.get());
-  *attrs = TFE_OpAttrs(&operation->Attrs());
+  *attrs = TFE_OpAttrs(&operation->Attrs(), op->operation->Name().c_str());
 }
 
 void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
@@ -1606,6 +1637,14 @@ void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
   for (auto attribute : m) {
     destination->Set(attribute.first, attribute.second);
   }
+}
+
+void TFE_OpAttrsSerialize(const TFE_OpAttrs* attrs, TF_Buffer* buf,
+                          TF_Status* status) {
+  tensorflow::NameAttrList name_and_attrs;
+  attrs->attributes->FillAttrValueMap(name_and_attrs.mutable_attr());
+  name_and_attrs.set_name(attrs->name);
+  status->status = MessageToBuffer(name_and_attrs, buf);
 }
 
 namespace tensorflow {
@@ -1728,7 +1767,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     }
     std::vector<TFE_TensorHandle*> outputs(*num_retvals);
     TF_Status status;
-    TFE_OpAttrs attributes(&op->Attrs());
+    TFE_OpAttrs attributes(&op->Attrs(), op->Name().c_str());
     device_.execute(inputs.size(), inputs.data(), op->Name().c_str(),
                     &attributes, num_retvals, outputs.data(), &status, info_);
     if (status.status.ok()) {

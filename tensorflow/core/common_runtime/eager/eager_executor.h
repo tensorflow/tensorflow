@@ -67,6 +67,9 @@ class EagerNode {
   virtual AsyncEagerNode* AsAsync() { return nullptr; }
 
   virtual string DebugString() const = 0;
+
+  // Indicates whether a node failure should make the executor unusable.
+  virtual bool Fatal() const { return true; }
 };
 
 class AsyncEagerNode : public EagerNode {

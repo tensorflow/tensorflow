@@ -39,7 +39,6 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.data.util import random_seed
-from tensorflow.python.data.util import sparse
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
@@ -131,7 +130,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   To create a dataset of all files matching a pattern, use
   `tf.data.Dataset.list_files`:
 
-  >>> dataset = tf.data.dataset.list_files("/path/*.txt")  # doctest: +SKIP
+  >>> dataset = tf.data.Dataset.list_files("/path/*.txt")  # doctest: +SKIP
 
   See `tf.data.FixedLengthRecordDataset` and `tf.data.Dataset.from_generator`
   for more ways to create datasets.
@@ -888,9 +887,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Args:
       *args: follows the same semantics as python's xrange.
-        len(args) == 1 -> start = 0, stop = args[0], step = 1
-        len(args) == 2 -> start = args[0], stop = args[1], step = 1
-        len(args) == 3 -> start = args[0], stop = args[1, stop = args[2]
+        len(args) == 1 -> start = 0, stop = args[0], step = 1.
+        len(args) == 2 -> start = args[0], stop = args[1], step = 1.
+        len(args) == 3 -> start = args[0], stop = args[1], step = args[2].
       **kwargs:
         - output_type: Its expected dtype. (Optional, default: `tf.int64`).
 
@@ -1478,8 +1477,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       # bool(tf.TensorShape(None)) is False
       if not all(nest.flatten(padded_shapes)):
         raise ValueError("You must set the `padded_shapes` argument to "
-                         "`Dataset.padded_batch` if any component of its input"
-                         "has an unknown rank")
+                         "`Dataset.padded_batch` if any component of its "
+                         "input has an unknown rank")
     return PaddedBatchDataset(self, batch_size, padded_shapes, padding_values,
                               drop_remainder)
 
@@ -3857,10 +3856,13 @@ class PaddedBatchDataset(UnaryDataset):
                drop_remainder):
     """See `Dataset.batch()` for details."""
     self._input_dataset = input_dataset
-    if sparse.any_sparse(get_legacy_output_classes(input_dataset)):
-      # TODO(b/63669786): support batching of sparse tensors
-      raise TypeError(
-          "Batching of padded sparse tensors is not currently supported")
+
+    def check_types(component_spec):
+      if not isinstance(component_spec, tensor_spec.TensorSpec):
+        raise TypeError("Padded batching of components of type ",
+                        type(component_spec), " is not supported.")
+
+    nest.map_structure(check_types, input_dataset.element_spec)
     self._input_dataset = input_dataset
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")

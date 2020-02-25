@@ -118,6 +118,7 @@ cc_library(
     deps = [
         ":benchmark_model_lib",
         "//tensorflow/lite/profiling:profile_summarizer",
+        "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/profiling:profiler",
     ],
 )

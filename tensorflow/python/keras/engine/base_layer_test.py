@@ -900,6 +900,33 @@ class NestedTrackingTest(test.TestCase):
     self.assertEqual(defun_layer._call_fn_args,
                      ['x', 'mask', 'a', 'training', 'b'])
 
+  def test_sequential_model(self):
+    model = keras.Sequential([keras.layers.Dense(10, input_shape=(10,)),
+                              keras.layers.Dense(5)])
+    self.assertLen(model.layers, 2)
+    self.assertLen(model.weights, 4)
+
+    # Make sure a subclass model also works when it is called 'Sequential'.
+    class Sequential(keras.Model):
+
+      def __init__(self):
+        super(Sequential, self).__init__()
+        self.dense_layers = [keras.layers.Dense(10),
+                             keras.layers.Dense(5)]
+
+      def call(self, inputs):
+        x = inputs
+        for d in self.dense_layers:
+          x = d(x)
+        return x
+
+    s = Sequential()
+    self.assertLen(s.layers, 2)
+    self.assertLen(s.weights, 0)
+
+    s(keras.Input((10,)))
+    self.assertLen(s.weights, 4)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NameScopingTest(keras_parameterized.TestCase):

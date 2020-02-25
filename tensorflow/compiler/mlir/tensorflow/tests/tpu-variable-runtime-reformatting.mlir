@@ -102,18 +102,19 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   func @main(%arg0: tensor<*x!tf.resource<tensor<f32>>> {tf.device = "/device:TPU:0"},
              %arg1: tensor<*x!tf.resource<tensor<f32>>> {tf.device = "/device:TPU:1"},
              %arg2: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:0"},
-             %arg3: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:1"}) {
+             %arg3: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:1"},
+             %arg4: tensor<*x!tf.resource<tensor<f32>>> {tf.device = "/device:TPU:0"},
+             %arg5: tensor<*x!tf.resource<tensor<f32>>> {tf.device = "/device:TPU:1"}) {
     %0 = "tf.Const"() {value = dense<100> : tensor<i32>} : () -> tensor<i32>
-    %1:5 = "tf.While"(%0, %arg0, %arg1, %arg2, %arg3)
-               {T = ["tfdtype$DT_INT32", "tfdtype$DT_RESOURCE",
-                 "tfdtype$DT_RESOURCE", "tfdtype$DT_RESOURCE",
-                 "tfdtype$DT_RESOURCE"], body = @while_body_7560,
-                cond = @while_cond_7550, device = "", is_stateless = false,
-                output_shapes = ["tfshape$", "tfshape$", "tfshape$", "tfshape$", "tfshape$"]}
+    %1:7 = "tf.While"(%0, %arg0, %arg1, %arg2, %arg3, %arg4, %arg5)
+               {body = @while_body_7560,
+                cond = @while_cond_7550, device = "", is_stateless = false}
          : (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
-            tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>)
+            tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>,
+            tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
          -> (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
-             tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>)
+             tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>,
+             tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>)
     return
   }
   // CHECK: func @while_body_7560
@@ -122,9 +123,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
                         %arg1: tensor<*x!tf.resource<tensor<f32>>> {tf.device = "/device:TPU:0"},
                         %arg2: tensor<*x!tf.resource<tensor<f32>>> {tf.device = "/device:TPU:1"},
                         %arg3: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:0"},
-                        %arg4: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:1"})
+                        %arg4: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:1"},
+                        %arg5: tensor<*x!tf.resource<tensor<f32>>> {tf.device = "/device:TPU:0"},
+                        %arg6: tensor<*x!tf.resource<tensor<f32>>> {tf.device = "/device:TPU:1"})
         -> (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
-            tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>) {
+            tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>,
+            tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>) {
     %0 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
     %1 = "tf.AddV2"(%arg0, %0) {T = i32, device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
     %2:2 = "tf._TPUCompileMlir"() {
@@ -133,27 +137,33 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       metadata = "\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\0A \08\01\12\10\12\02\08\03\12\02\08\03\12\02\08\01\12\02\08 \18\01\22\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\18\02 \01",
       mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<!tf.string>)
     "tf.TPUCompileSucceededAssert"(%2#0) : (tensor<!tf.string>) -> ()
-    %new_var = "tf._UnknownOp0_"(%arg3) : (tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>) -> tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>
+    %id0 = "tf.Identity"(%arg3) : (tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>) -> tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>
+    "tf._Unknown_"(%id0) : (tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>) -> ()
+    %newvar = "tf._SomeOp"() : () -> tensor<*x!tf.resource<tensor<f32>>>
     tf_device.replicate([%arg1, %arg2] as %arg30: tensor<*x!tf.resource<tensor<f32>>>,
-                        [%new_var, %arg4] as %arg31: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>)
+                        [%arg3, %arg4] as %arg31: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>,
+                        [%newvar, %arg6] as %arg32: tensor<*x!tf.resource<tensor<f32>>>)
             {_mirrored_variable_indices = [0, 1], devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]}, n = 2 : i32} {
-      // %arg30 is used in the cond function, and %arg31 is not pass-through of
-      // while inputs, so neither should be formatted.
-      "tf.TPUExecuteAndUpdateVariables"(%arg30, %arg31, %2#1)
+      // %arg30 is used in the cond function, %arg31 has other uses (%id0), and
+      // %arg32 is not a pass-through.
+      "tf.TPUExecuteAndUpdateVariables"(%arg30, %arg31, %arg32, %2#1)
             {device_var_reads_indices = [0, 1], device_var_updates_indices = [0, 1]}
-              : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<!tf.string>) -> ()
+              : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>,
+                 tensor<*x!tf.resource<tensor<f32>>>, tensor<!tf.string>) -> ()
       tf_device.return
     }
-    return %1, %arg1, %arg2, %arg3, %arg4 : tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>,
+    return %1, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6 : tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>,
               tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>,
-              tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>
+              tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>
   }
   // CHECK-LABEL: func @while_cond_7550
   func @while_cond_7550(%arg0: tensor<i32>,
                         %arg1: tensor<*x!tf.resource<tensor<f32>>> {tf.device = "/device:TPU:0"},
                         %arg2: tensor<*x!tf.resource<tensor<f32>>> {tf.device = "/device:TPU:1"},
                         %arg3: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:0"},
-                        %arg4: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:1"})
+                        %arg4: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>> {tf.device = "/device:TPU:1"},
+                        %arg5: tensor<*x!tf.resource<tensor<f32>>> {tf.device = "/device:TPU:0"},
+                        %arg6: tensor<*x!tf.resource<tensor<f32>>> {tf.device = "/device:TPU:1"})
        -> tensor<i1> {
     %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
     %1 = "tf.GreaterEqual"(%arg0, %0) {T = i32, device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i1>

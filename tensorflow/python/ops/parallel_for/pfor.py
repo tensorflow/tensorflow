@@ -1620,6 +1620,7 @@ def _inputs_with_flattening(pfor_input, input_indices):
 @RegisterPForWithArgs("MaxPoolGradGrad", dims=[0, 1, 2])
 @RegisterPForWithArgs("MaxPoolGradGradV2", dims=[0, 1, 2])
 @RegisterPForWithArgs("SoftmaxCrossEntropyWithLogits", dims=[0, 1])
+@RegisterPForWithArgs("SparseSoftmaxCrossEntropyWithLogits", dims=[0, 1])
 @RegisterPForWithArgs("SpaceToDepth", dims=[0])
 def _convert_flatten_batch(pfor_input, op_type, dims):
   del op_type

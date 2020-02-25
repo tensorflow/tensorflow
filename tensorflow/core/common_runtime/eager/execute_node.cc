@@ -26,52 +26,30 @@ Status ExecuteNodeArgs::Init(
   // below when we insert a copy of the Tensor into protected_tensors, and will
   // be decremented once execution is complete.
   const int n_inputs = op_inputs.size();
-  int num_protected_tensors = 0;
-  int first_index_that_needs_protecting = -1;  // Used to avoid second loop
   if (n_inputs > 0) {
-    TensorHandle* const* op_inputs_array = &op_inputs[0];
-    TensorValue* tensor_args_array = &tensor_args_[0];
+    TensorHandle* const* op_inputs_flat = &op_inputs[0];
+    TensorValue* tensor_args_flat = &tensor_args_[0];
     for (int i = 0; i < n_inputs; ++i) {
-      TensorHandle* in = op_inputs_array[i];
-      if (!in->IsRemote()) {
-        TF_RETURN_IF_ERROR(
-            in->TensorValue(&tensor_args_array[i],
-                            ctx->CanonicalDevice(kernel->InputDevice(i))));
-        if (!in->RefCountIsOne()) {
-          if (first_index_that_needs_protecting < 0) {
-            first_index_that_needs_protecting = i;
+      TensorHandle* in = op_inputs_flat[i];
+      Device* d = kernel->InputDevice(i);
+      Status s = in->TensorValue(&tensor_args_flat[i], ctx->CanonicalDevice(d));
+      if (!s.ok()) {
+#if !defined(IS_MOBILE_PLATFORM)
+        uint64 context_view_id = ctx->GetContextViewId();
+        if (in->IsRemote() || in->HasRemoteMirror(d, context_view_id)) {
+          if (!has_remote_inputs_) {
+            has_remote_inputs_ = true;
           }
-          ++num_protected_tensors;
+          continue;
         }
-      } else {
-        if (!has_remote_inputs_) {
-          has_remote_inputs_ = true;
-        }
-      }
-    }
-
-    protected_tensors_.reserve(num_protected_tensors);
-    if (first_index_that_needs_protecting >= 0) {
-      for (int i = first_index_that_needs_protecting;
-           num_protected_tensors && (i < n_inputs); ++i) {
-        TensorHandle* in = op_inputs_array[i];
-        if (!in->IsRemote() && !in->RefCountIsOne()) {
-          const Tensor* input_tensor = nullptr;
-          TF_RETURN_IF_ERROR(op_inputs_array[i]->TensorFromDevice(
-              ctx->CanonicalDevice(kernel->InputDevice(i)), &input_tensor));
-          protected_tensors_.emplace_back(TensorReference(*input_tensor));
-          --num_protected_tensors;
-        }
+#endif
+        return s;
       }
     }
   }
 
+#if !defined(IS_MOBILE_PLATFORM)
   if (has_remote_inputs_) {
-#if defined(IS_MOBILE_PLATFORM)
-    return errors::Unimplemented(
-        "Eager's function execution with remote inputs is not available on "
-        "mobile devices.");
-#else   // !IS_MOBILE_PLATFORM
     serialize_remote_handle_ =
         [ctx, &op_inputs](const int i,
                           eager::RemoteTensorHandle* handle) -> Status {
@@ -86,14 +64,9 @@ Status ExecuteNodeArgs::Init(
       return ctx->RemoteMgr()->SerializeRemoteTensorHandle(
           op_inputs[i], handle, device, device->name());
     };
-#endif  // !IS_MOBILE_PLATFORM
   }
+#endif  // !IS_MOBILE_PLATFORM
   return Status::OK();
 }
 
-ExecuteNodeArgs::~ExecuteNodeArgs() {
-  for (const auto& tensor_ref : protected_tensors_) {
-    tensor_ref.Unref();
-  }
-}
 }  // namespace tensorflow

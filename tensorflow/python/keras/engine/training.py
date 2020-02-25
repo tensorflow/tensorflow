@@ -42,6 +42,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.profiler import traceme
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -308,20 +309,21 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     _keras_api_gauge.get_cell('compile').set(True)
-    self._validate_compile(optimizer, **kwargs)
-    self._run_eagerly = kwargs.pop('run_eagerly', None)
+    with self.distribute_strategy.scope():
+      self._validate_compile(optimizer, metrics, **kwargs)
+      self._run_eagerly = kwargs.pop('run_eagerly', None)
 
-    self.optimizer = self._get_optimizer(optimizer)
-    self.compiled_loss = compile_utils.LossesContainer(
-        loss, loss_weights, output_names=self.output_names)
-    self.compiled_metrics = compile_utils.MetricsContainer(
-        metrics, weighted_metrics, output_names=self.output_names)
+      self.optimizer = self._get_optimizer(optimizer)
+      self.compiled_loss = compile_utils.LossesContainer(
+          loss, loss_weights, output_names=self.output_names)
+      self.compiled_metrics = compile_utils.MetricsContainer(
+          metrics, weighted_metrics, output_names=self.output_names)
 
-    # Initializes attrs that are reset each time `compile` is called.
-    self._reset_compile_cache()
-    self._is_compiled = True
+      # Initializes attrs that are reset each time `compile` is called.
+      self._reset_compile_cache()
+      self._is_compiled = True
 
-    self.loss = loss or {}  # Backwards compat.
+      self.loss = loss or {}  # Backwards compat.
 
   def _get_optimizer(self, optimizer):
     """Wraps `optimizer` in `LossScaleOptimizer` if necessary."""
@@ -759,9 +761,15 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         callbacks.on_epoch_begin(epoch)
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
-            callbacks.on_train_batch_begin(step)
-            logs = train_function(iterator)
-            callbacks.on_train_batch_end(step, logs)
+            with traceme.TraceMe(
+                'TraceContext',
+                graph_type='train',
+                epoch_num=epoch,
+                step_num=step,
+                batch_size=batch_size):
+              callbacks.on_train_batch_begin(step)
+              logs = train_function(iterator)
+              callbacks.on_train_batch_end(step, logs)
         epoch_logs = {m.name: m.result() for m in self.metrics}
 
         # Run validation.
@@ -982,15 +990,20 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         self.reset_metrics()
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
-            callbacks.on_test_batch_begin(step)
-            logs = test_function(iterator)
-            callbacks.on_test_batch_end(step, logs)
+            with traceme.TraceMe(
+                'TraceContext',
+                graph_type='test',
+                step_num=step):
+              callbacks.on_test_batch_begin(step)
+              logs = test_function(iterator)
+              callbacks.on_test_batch_end(step, logs)
       callbacks.on_test_end()
 
+      logs = to_numpy(logs)
       if return_dict:
-        return {m.name: m.result().numpy() for m in self.metrics}
+        return logs
       else:
-        results = [m.result().numpy() for m in self.metrics]
+        results = [logs.get(name, None) for name in self.metrics_names]
         if len(results) == 1:
           return results[0]
         return results
@@ -1186,7 +1199,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                      y=None,
                      sample_weight=None,
                      class_weight=None,
-                     reset_metrics=True):
+                     reset_metrics=True,
+                     return_dict=False):
     """Runs a single gradient update on a single batch of data.
 
     Arguments:
@@ -1213,6 +1227,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         reset_metrics: If `True`, the metrics returned will be only for this
           batch. If `False`, the metrics will be statefully accumulated across
           batches.
+        return_dict: If `True`, loss and metric results are returned as a dict,
+          with each key being the name of the metric. If `False`, they are
+          returned as a list.
 
     Returns:
         Scalar training loss
@@ -1232,15 +1249,25 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                                                     y, sample_weight,
                                                     class_weight)
       train_function = self._make_train_function()
-      train_function(iterator)
-    metrics = [m.result().numpy() for m in self.metrics]
+      logs = train_function(iterator)
+
     if reset_metrics:
       self.reset_metrics()
-    if len(metrics) == 1:
-      return metrics[0]
-    return metrics
+    logs = to_numpy(logs)
+    if return_dict:
+      return logs
+    else:
+      results = [logs.get(name, None) for name in self.metrics_names]
+      if len(results) == 1:
+        return results[0]
+      return results
 
-  def test_on_batch(self, x, y=None, sample_weight=None, reset_metrics=True):
+  def test_on_batch(self,
+                    x,
+                    y=None,
+                    sample_weight=None,
+                    reset_metrics=True,
+                    return_dict=False):
     """Test the model on a single batch of samples.
 
     Arguments:
@@ -1261,6 +1288,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         reset_metrics: If `True`, the metrics returned will be only for this
           batch. If `False`, the metrics will be statefully accumulated across
           batches.
+        return_dict: If `True`, loss and metric results are returned as a dict,
+          with each key being the name of the metric. If `False`, they are
+          returned as a list.
 
     Returns:
         Scalar test loss (if the model has a single output and no metrics)
@@ -1277,13 +1307,18 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
                                                     y, sample_weight)
       test_function = self._make_test_function()
-      test_function(iterator)
-    metrics = [m.result().numpy() for m in self.metrics]
+      logs = test_function(iterator)
+
     if reset_metrics:
       self.reset_metrics()
-    if len(metrics) == 1:
-      return metrics[0]
-    return metrics
+    logs = to_numpy(logs)
+    if return_dict:
+      return logs
+    else:
+      results = [logs.get(name, None) for name in self.metrics_names]
+      if len(results) == 1:
+        return results[0]
+      return results
 
   def predict_on_batch(self, x):
     """Returns predictions for a single batch of samples.
@@ -1420,7 +1455,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           'and the first argument in `call` as positional arguments, '
           'found: ' + str(extra_args) + '.')
 
-  def _validate_compile(self, optimizer, **kwargs):
+  def _validate_compile(self, optimizer, metrics, **kwargs):
     """Performs validation checks for the default `compile`."""
     if any(
         isinstance(opt, optimizers.Optimizer)
@@ -1459,6 +1494,22 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               'with strategy.scope():\n'
               '  model=_create_model()\n'
               '  model.compile(...)' % (v, strategy))
+
+    # Model metrics must be created in the same distribution strategy scope
+    # as the model.
+    strategy = self._get_distribution_strategy()
+    for metric in nest.flatten(metrics):
+      for v in getattr(metric, 'variables', []):
+        if not strategy.extended.variable_created_in_scope(v):
+          raise ValueError(
+              'Metric (%s) passed to model.compile was created inside of a '
+              'different distribution strategy scope than the model. All '
+              'metrics must be created in the same distribution strategy '
+              'scope as the model (in this case %s). If you pass in a string '
+              'identifier for a metric to compile the metric will '
+              'automatically be created in the correct distribution '
+              'strategy scope.' % (metric, strategy)
+          )
 
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch):
     """Maybe load initial epoch from ckpt considering possible worker recovery.

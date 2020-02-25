@@ -432,4 +432,17 @@ TEST(OpVersionTest, VersioningDepthwiseConv2DTest) {
   fake_op_sig.options.depthwise_conv_2d.dilation_h_factor = 1;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
+TEST(OpVersionTest, VersioningTileOperatorTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_TILE,
+      .input_types = std::vector<TensorType>{TensorType_INT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_TILE,
+      .input_types = std::vector<TensorType>{TensorType_STRING},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
 }  // namespace tflite

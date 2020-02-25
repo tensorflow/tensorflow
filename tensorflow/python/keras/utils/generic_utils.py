@@ -44,7 +44,7 @@ _GLOBAL_CUSTOM_NAMES = {}
 _SKIP_FAILED_SERIALIZATION = False
 # If a layer does not have a defined config, then the returned config will be a
 # dictionary with the below key.
-LAYER_UNDEFINED_CONFIG_KEY = 'layer was saved without config'
+_LAYER_UNDEFINED_CONFIG_KEY = 'layer was saved without config'
 
 
 @keras_export('keras.utils.CustomObjectScope')
@@ -271,7 +271,7 @@ def serialize_keras_object(instance):
     except NotImplementedError as e:
       if _SKIP_FAILED_SERIALIZATION:
         return serialize_keras_class_and_config(
-            name, {LAYER_UNDEFINED_CONFIG_KEY: True})
+            name, {_LAYER_UNDEFINED_CONFIG_KEY: True})
       raise e
     serialization_config = {}
     for key, item in config.items():
@@ -756,12 +756,6 @@ def to_list(x):
   return [x]
 
 
-def object_list_uid(object_list):
-  """Creates a single string from object ids."""
-  object_list = nest.flatten(object_list)
-  return ', '.join(str(abs(id(x))) for x in object_list)
-
-
 def to_snake_case(name):
   intermediate = re.sub('(.)([A-Z][a-z0-9]+)', r'\1_\2', name)
   insecure = re.sub('([a-z])([A-Z])', r'\1_\2', intermediate).lower()
@@ -796,3 +790,8 @@ def validate_kwargs(kwargs,
   for kwarg in kwargs:
     if kwarg not in allowed_kwargs:
       raise TypeError(error_message, kwarg)
+
+
+def validate_config(config):
+  """Determines whether config appears to be a valid layer config."""
+  return isinstance(config, dict) and _LAYER_UNDEFINED_CONFIG_KEY not in config

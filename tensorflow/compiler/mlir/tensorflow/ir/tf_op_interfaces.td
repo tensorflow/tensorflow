@@ -50,6 +50,12 @@ def TF_LayoutSensitiveInterface : OpInterface<"LayoutSensitiveInterface"> {
       [{Returns indices of layout dependent results.}],
       "SmallVector<unsigned, 4>", "GetLayoutDependentResults", (ins)
     >,
+    InterfaceMethod<
+      [{Updates operation attributes and operands to account for the updated
+        data format. If data format is not supported, must return failure.}],
+      "LogicalResult", "UpdateDataFormat",
+      (ins "StringRef":$data_format)
+    >,
   ];
 
   let verify = [{

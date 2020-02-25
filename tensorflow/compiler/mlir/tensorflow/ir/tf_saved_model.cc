@@ -112,24 +112,20 @@ static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
   return mlir::success();
 }
 
+Type GetBoundInputArgTypeFor(GlobalTensorOp global_tensor) {
+  auto type = global_tensor.type().cast<TensorType>();
+  return RankedTensorType::get(
+      {}, TF::ResourceType::get({type}, type.getContext()));
+}
+
 static LogicalResult VerifyBoundInputArgType(Operation *op_for_diagnostics,
                                              Type arg_type,
                                              GlobalTensorOp global_tensor) {
-  if (global_tensor.is_mutable()) {
-    auto expected_type = RankedTensorType::get(
-        {}, TF::ResourceType::get({global_tensor.type().cast<TensorType>()},
-                                  arg_type.getContext()));
-    if (arg_type != expected_type) {
-      return op_for_diagnostics->emitError()
-             << "mutable bound input with type " << arg_type
-             << " expected to have type " << expected_type;
-    }
-  } else {
-    if (arg_type != global_tensor.type()) {
-      return op_for_diagnostics->emitError()
-             << "bound input for immutable 'tf_saved_model.global_tensor' must "
-                "match the global tensor's type";
-    }
+  auto expected_type = GetBoundInputArgTypeFor(global_tensor);
+  if (arg_type != expected_type) {
+    return op_for_diagnostics->emitError()
+           << "bound input with type " << arg_type << " expected to have type "
+           << expected_type;
   }
   return success();
 }

@@ -602,6 +602,7 @@ tf_cc_binary(
     name = "flatbuffer_translate",
     deps = [
         ":flatbuffer_translate_lib",
+        "@llvm-project//mlir:LoopOpsTransforms",
         "@llvm-project//mlir:MlirTranslateMain",
     ],
 )

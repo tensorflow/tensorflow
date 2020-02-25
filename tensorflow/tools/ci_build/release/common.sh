@@ -67,7 +67,7 @@ function install_bazelisk {
   esac
   mkdir -p "$HOME/bin"
   wget --no-verbose -O "$HOME/bin/bazel" \
-      "https://github.com/bazelbuild/bazelisk/releases/download/v1.2.1/$name"
+      "https://github.com/bazelbuild/bazelisk/releases/download/v1.3.0/$name"
   chmod u+x "$HOME/bin/bazel"
   if [[ ! ":$PATH:" =~ :"$HOME"/bin/?: ]]; then
     PATH="$HOME/bin:$PATH"
@@ -273,7 +273,7 @@ function copy_to_new_project_name {
   ORIGINAL_WHL_DIR_PREFIX="${ORIGINAL_PROJECT_NAME}-${VERSION}"
   NEW_WHL_DIR_PREFIX="${NEW_PROJECT_NAME}-${VERSION}"
   mv "${ORIGINAL_WHL_DIR_PREFIX}.dist-info" "${NEW_WHL_DIR_PREFIX}.dist-info"
-  mv "${ORIGINAL_WHL_DIR_PREFIX}.data" "${NEW_WHL_DIR_PREFIX}.data"
+  mv "${ORIGINAL_WHL_DIR_PREFIX}.data" "${NEW_WHL_DIR_PREFIX}.data" || echo
   sed -i.bak "s/${ORIGINAL_PROJECT_NAME}/${NEW_PROJECT_NAME}/g" "${NEW_WHL_DIR_PREFIX}.dist-info/RECORD"
 
   ORIGINAL_PROJECT_NAME_DASH="${ORIGINAL_PROJECT_NAME//_/-}"
