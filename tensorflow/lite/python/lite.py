@@ -190,9 +190,7 @@ class TFLiteConverterBase(object):
     """
     if not optimizers:
       optimizers = []
-    # MLIR converter will take care of constant folding instead of grappler.
-    if not self.experimental_new_converter:
-      optimizers.append("constfold")
+    optimizers.append("constfold")
 
     is_only_flex_enabled = (
         set([OpsSet.SELECT_TF_OPS]) == set(self.target_spec.supported_ops))
