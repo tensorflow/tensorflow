@@ -16,7 +16,6 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_env_hdrs",
     "tf_additional_lib_hdrs",
-    "tf_additional_monitoring_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
     "tf_fingerprint_deps",
@@ -24,7 +23,6 @@ load(
     "tf_google_mobile_srcs_only_runtime",
     "tf_kernel_tests_linkstatic",
     "tf_logging_deps",
-    "tf_monitoring_deps",
     "tf_platform_alias",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
@@ -83,7 +81,6 @@ exports_files(
         "load_library.h",
         "logging.h",
         "mem.h",
-        "monitoring.h",
         "mutex.h",
         "net.h",
         "numa.h",
@@ -331,12 +328,6 @@ cc_library(
     name = "logging",
     textual_hdrs = ["logging.h"],
     deps = tf_logging_deps(),
-)
-
-cc_library(
-    name = "monitoring",
-    textual_hdrs = ["monitoring.h"],
-    deps = tf_monitoring_deps(),
 )
 
 cc_library(
@@ -1236,7 +1227,6 @@ filegroup(
         "init_main.h",
         "logger.h",
         "mem.h",
-        "monitoring.h",
         "mutex.h",
         "net.h",
         "notification.h",
@@ -1261,7 +1251,7 @@ filegroup(
         "subprocess.h",
         "thread_annotations.h",
         ":base_hdrs",
-    ] + tf_additional_monitoring_hdrs() + tf_additional_env_hdrs(),
+    ] + tf_additional_env_hdrs(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -1338,7 +1328,6 @@ filegroup(
         "demangle.h",
         "denormal.h",
         "host_info.h",
-        "monitoring.h",
         "platform.h",
         "protobuf_internal.h",
         "refcount.h",
@@ -1510,7 +1499,6 @@ filegroup(
         "cpu_feature_guard.cc",
         "cpu_feature_guard.h",
         "fingerprint.h",
-        "monitoring.h",
         "notification.h",
         "platform_strings.cc",
         "platform_strings.h",

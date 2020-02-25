@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/monitoring.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
@@ -102,7 +101,6 @@ EagerContext::EagerContext(
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   eager_context_created->GetCell()->Set(true);
-  monitoring::StartExporter();
   InitPrioritizedDeviceTypeList();
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));

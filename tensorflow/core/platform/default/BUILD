@@ -194,17 +194,6 @@ cc_library(
 )
 
 cc_library(
-    name = "monitoring",
-    srcs = ["monitoring.cc"],
-    hdrs = ["//tensorflow/core/platform:monitoring.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-)
-
-cc_library(
     name = "mutex",
     srcs = [
         "mutex.cc",
@@ -529,7 +518,6 @@ filegroup(
     srcs = [
         "casts.h",
         "cord.h",
-        "monitoring.cc",
         "mutex.h",
         "mutex_data.h",
         "notification.h",
