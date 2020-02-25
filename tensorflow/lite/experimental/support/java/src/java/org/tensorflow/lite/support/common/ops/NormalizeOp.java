@@ -41,6 +41,11 @@ public class NormalizeOp implements TensorOperator {
    *   output = (input - mean) / stddev
    * </pre>
    *
+   * <p>In the following two cases, reset {@code mean} to 0 and {@code stddev} to 1 to bypass the
+   * normalization. <br>
+   * 1. Both {@code mean} and {code stddev} are 0. <br>
+   * 2. {@code mean} is 0 and {stddev} is Infinity.
+   *
    * <p>Note: If {@code mean} is set to 0 and {@code stddev} is set to 1, no computation will
    * happen, and original input will be directly returned in execution.
    *
@@ -53,7 +58,28 @@ public class NormalizeOp implements TensorOperator {
    * @throws IllegalArgumentException if {@code stddev} is zero.
    */
   public NormalizeOp(float mean, float stddev) {
-    this(new float[] {mean}, new float[] {stddev});
+    // Make exceptions to the cases that
+    // 1. Both mean and stddev are 0.0f. This may happen when reading the normalization parameters
+    // from a tensor which does not have the values populated in the metadata. The same situation
+    // may also happen to the quantization parameters.
+    // 2. mean is 0.0f and stddev is Infinity. This may happen when reading the quantization
+    // parameters from a tensor which does not have the values populated in the metadata, and then
+    // passing the parameters into the DequantizeOp.
+    // Bypass both of the two cases, by reseting stddev to 1.0f.
+    if (mean == 0.0f && (stddev == 0.0f || Float.isInfinite(stddev))) {
+      stddev = 1.0f;
+    }
+
+    SupportPreconditions.checkArgument(stddev != 0.0f, "Stddev cannot be zero.");
+    boolean meansIsZeroAndDevsIs1 = false;
+    if (mean == 0.0f && stddev == 1.0f) {
+      meansIsZeroAndDevsIs1 = true;
+    }
+
+    this.isIdentityOp = meansIsZeroAndDevsIs1;
+    this.mean = new float[] {mean};
+    this.stddev = new float[] {stddev};
+    this.numChannels = 1;
   }
 
   /**
