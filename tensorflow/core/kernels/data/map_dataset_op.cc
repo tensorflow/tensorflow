@@ -142,7 +142,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
 
       std::vector<Tensor> args;
       TF_RETURN_IF_ERROR(DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &args, end_of_sequence, parent_indices));
-      if (*end_of_sequence) {
+      if (*end_of_sequence || args.empty()) {
         return Status::OK();
       }
 
