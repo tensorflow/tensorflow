@@ -27,6 +27,7 @@ from tensorflow.python.client import device_lib
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -62,8 +63,8 @@ def validate_destinations(destinations):
   if not isinstance(
       destinations,
       (value_lib.DistributedValues, ops.Tensor, value_lib.AggregatingVariable,
-       six.string_types, value_lib.TPUMirroredVariable)
-  ) and not resource_variable_ops.is_resource_variable(destinations):
+       six.string_types, tpu_values.TPUMirroredVariable
+      )) and not resource_variable_ops.is_resource_variable(destinations):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, or a device string.")
 
