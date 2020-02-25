@@ -384,6 +384,17 @@ def _get_canonical_engine_name(name):
   return name.split("/")[-1]
 
 
+def IsExplicitBatchModeEnabled(rewriter_config):
+  """ Checks whether explicit batch is enabled by the rewriter config """
+  if rewriter_config is None:
+    return False
+  for optimizer in rewriter_config.custom_optimizers:
+    if optimizer.name == 'TensorRTOptimizer':
+      if "use_implicit_batch" in optimizer.parameter_map:
+        return not optimizer.parameter_map["use_implicit_batch"].b
+  return False
+
+
 class TrtGraphConverter(object):
   """A converter for TF-TRT transformation for TF 1.x GraphDef/SavedModels.
 
@@ -1005,15 +1016,7 @@ class TrtGraphConverterV2(object):
                        "with static TensorRT ops. Set is_dynamic_op to True.")
 
     # rewriter_config is already validated
-    self._need_trt_profiles = None
-
-    for optimizer in self._rewriter_config.custom_optimizers:
-      if optimizer.name == "TensorRTOptimizer":
-        self._need_trt_profiles = not optimizer.parameter_map[
-            "use_implicit_batch"].b \
-            if "use_implicit_batch" in optimizer.parameter_map else False
-    assert self._need_trt_profiles != None
-
+    self._need_trt_profiles = IsExplicitBatchModeEnabled(self._rewriter_config)
     self._converted = False
     self._build_called_once = False
 
