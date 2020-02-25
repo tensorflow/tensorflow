@@ -35,7 +35,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/Dialect/Traits.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -2104,7 +2104,8 @@ LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
   }
 
   Type element_type = result_ranked_type.getElementType();
-  if (!element_type.isInteger(32) && !element_type.isInteger(64))
+  if (!element_type.isSignlessInteger(32) &&
+      !element_type.isSignlessInteger(64))
     return op->emitOpError("requires int32 or int64 return type for result")
            << variadic_idx_str;
 

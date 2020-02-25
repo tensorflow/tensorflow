@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 import six
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -153,6 +154,70 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
       self.assertIn('Dimensions must be equal', cm.exception.message)
     else:
       self.assertIn('Dimensions must be equal', cm.exception.args[0])
+
+
+class RemoteAsyncTest(test.TestCase):
+
+  def setUp(self):
+    super(RemoteAsyncTest, self).setUp()
+
+    workers, _ = test_util.create_local_cluster(1, 0)
+    remote.connect_to_remote_host(workers[0].target)
+
+  def tearDown(self):
+    super(RemoteAsyncTest, self).tearDown()
+
+    # Reset the context to avoid polluting other test cases.
+    context._reset_context()
+
+  def test_out_of_range_with_while_loop(self):
+
+    with ops.device('/job:worker/task:0'):
+      dataset = dataset_ops.Dataset.from_tensor_slices([1.0, 2.0])
+      dataset = dataset.batch(1, drop_remainder=False)
+      iterator = iter(dataset)
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def train_step(iterator):
+      i = next(iterator)
+      v.assign_add(math_ops.reduce_mean(i))
+
+    while True:
+      try:
+        with ops.device('/job:worker/task:0'):
+          train_step(iterator)
+      except (errors.OutOfRangeError, errors.InternalError):
+        context.async_clear_error()
+        break
+
+    self.assertAllEqual(v.numpy(), 4.0)
+
+  def test_out_of_range_with_for_loop(self):
+
+    with ops.device('/job:worker/task:0'):
+      dataset = dataset_ops.Dataset.from_tensor_slices([1.0, 2.0])
+      dataset = dataset.batch(1, drop_remainder=False)
+      iterator = iter(dataset)
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def train_step(iterator):
+      i = next(iterator)
+      v.assign_add(math_ops.reduce_mean(i))
+
+    num_steps = 3
+    for i in range(num_steps):
+      try:
+        with ops.device('/job:worker/task:0'):
+          train_step(iterator)
+        if i == num_steps - 1:
+          context.async_wait()
+      except errors.OutOfRangeError:
+        context.async_clear_error()
+        break
+
+    self.assertAllEqual(v.numpy(), 4.0)
 
 
 class MultiWorkersTest(test.TestCase, parameterized.TestCase):

@@ -17,7 +17,6 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
-set_bazel_outdir
 
 install_ubuntu_16_pip_deps pip3.5
 

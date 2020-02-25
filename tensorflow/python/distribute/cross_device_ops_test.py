@@ -301,6 +301,11 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
 
   @combinations.generate(reduction_to_one_combinations + allreduce_combinations)
   def testReductionAndBroadcast(self, cross_device_ops, devices):
+    if isinstance(
+        cross_device_ops._obj,  # pylint: disable=protected-access
+        cross_device_ops_lib.AllReduceCrossDeviceOps
+    ) and context.executing_eagerly():
+      self.skipTest("b/149881884")
     self._testReductionAndBroadcast(cross_device_ops, devices)
 
   def testChooseAlgorithm(self):

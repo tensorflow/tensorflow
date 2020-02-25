@@ -90,6 +90,16 @@ void SelectTranspose(const TransposeAttributes& attr,
                      const OperationDef& op_def,
                      std::unique_ptr<GPUOperation>* ptr);
 
+Status SelectWinograd4x4To36(const CreationContext& creation_context,
+                             const Padding2D& padding,
+                             const OperationDef& op_def,
+                             std::unique_ptr<GPUOperation>* ptr);
+
+Status SelectWinograd36To4x4(
+    const CreationContext& creation_context, const OperationDef& op_def,
+    const ::tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
+    std::unique_ptr<GPUOperation>* ptr);
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

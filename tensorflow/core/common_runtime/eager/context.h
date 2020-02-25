@@ -236,8 +236,12 @@ class EagerContext : public core::RefCounted {
 
   Status RemoveFunction(const string& func);
 
-  // Clear remote executors on all worker targets in `remote_contexts_`.
-  Status ClearRemoteExecutors();
+  // Wait for pending nodes to be finished in local executors (including context
+  // default executor and thread executors) and executors on remote workers.
+  // Return combined status of remote executors. If there are multiple errors,
+  // the Status code will be the same as the first remote executor that has
+  // errors, and the error message will be combined from all executors.
+  Status SyncExecutors();
 
   core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
 

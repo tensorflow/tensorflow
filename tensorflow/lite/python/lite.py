@@ -46,6 +46,7 @@ from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _fr
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
+from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
 from tensorflow.lite.python.util import build_debug_info_func as _build_debug_info_func
@@ -1028,10 +1029,16 @@ class TFLiteConverter(TFLiteConverterBase):
         (self.inference_type == constants.INT8 and
          (post_training_optimize or weight_only_quantize))):
       try:
+        # TODO(b/150163103): Merge `disabling lower using switch merge' calls.
+        # Grappler will also try to lower while loop into switch merge
+        # representation which is undesired for Ophints, so we simply remove
+        # those attributes to prevent Grappler from doing so.
+        graph_def = _convert_to_constants.disable_lower_using_switch_merge(
+            optimized_graph)
         # Run function inlining optimization to ensure any models generated
         # through the from_frozen_graph path have been inlined.
         optimized_graph = _run_graph_optimizations(
-            self._graph_def,
+            graph_def,
             self._input_tensors,
             self._output_tensors,
             config=self._grappler_config(["function"]))
@@ -1128,6 +1135,10 @@ class TFLiteConverter(TFLiteConverterBase):
         tensor.set_shape(shape)
 
   def _is_unknown_shapes_allowed(self):
+    # Ophint Converted nodes will need the shapes to be known.
+    if _is_ophint_converted(self._graph_def):
+      return False
+
     if not super(TFLiteConverter, self)._is_unknown_shapes_allowed():
       return False
 

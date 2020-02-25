@@ -179,13 +179,13 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   if (!env->LocalTempFilename(&ptx_path)) {
     return port::InternalError("couldn't get temp PTX file name");
   }
-  auto ptx_cleaner = tensorflow::gtl::MakeCleanup([&ptx_path] {
-    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(ptx_path));
-  });
-
   TF_RETURN_IF_ERROR(
       tensorflow::WriteStringToFile(env, ptx_path, ptx_contents));
   VLOG(2) << "ptx written to: " << ptx_path;
+
+  auto ptx_cleaner = tensorflow::gtl::MakeCleanup([&ptx_path] {
+    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(ptx_path));
+  });
 
   // Invoke ptxas and collect its output.
   string cubin_path;
