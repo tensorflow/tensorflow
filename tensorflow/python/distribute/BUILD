@@ -883,7 +883,7 @@ distribute_py_test(
     srcs = ["values_test.py"],
     main = "values_test.py",
     tags = [
-        "no_oss",  # http://b/119349471
+        "multi_and_single_gpu",
     ],
     deps = [
         ":mirrored_strategy",
