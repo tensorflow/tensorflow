@@ -123,6 +123,17 @@ func @softmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 // CHECK:  "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<8x16xf32>) -> tensor<8x16xf32>
 }
 
+func @softplus(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+
+// CHECK-LABEL: softplus
+// CHECK-NEXT:  %[[cst:.*]] = constant dense<1.000000e+00> : tensor<f32>
+// CHECK-NEXT:  %[[exp:.*]] = "tfl.exp"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+// CHECK-NEXT:  %[[add:.*]] = "tfl.add"(%[[exp]], %[[cst]]) {fused_activation_function = "NONE"} : (tensor<8x16xf32>, tensor<f32>) -> tensor<8x16xf32>
+// CHECK-NEXT:  %[[log:.*]] = "tfl.log"(%[[add]]) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+}
+
 func @fakeQuantArgsFalse(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
   %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 3, narrow_range = false} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
   return %0 : tensor<8x8x8x8xf32>
