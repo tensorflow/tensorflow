@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/mlir_gpu/hlo_dialect_emitter.h"
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/Types.h"  // TF:llvm-project
