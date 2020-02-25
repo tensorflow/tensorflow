@@ -79,7 +79,6 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     super(TFETest, self).setUp()
-    ops.device(None).__enter__()
     context._reset_context()
     configure_virtual_cpus()
 
@@ -1064,7 +1063,6 @@ class SendRecvTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     super(SendRecvTest, self).setUp()
-    ops.device(None).__enter__()
     context._reset_context()
     configure_virtual_cpus()
 
@@ -1101,7 +1099,6 @@ class EagerTensorCacheTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     super(EagerTensorCacheTest, self).setUp()
-    ops.device(None).__enter__()
     context._reset_context()
     configure_virtual_cpus()
 
