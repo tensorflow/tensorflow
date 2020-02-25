@@ -4,7 +4,7 @@
 
   * `TF_NCCL_VERSION`: Installed NCCL version or empty to build from source.
   * `NCCL_INSTALL_PATH` (deprecated): The installation path of the NCCL library.
-  * `NCCL_HDR_PATH` (deprecated): The installation path of the NCCL header 
+  * `NCCL_HDR_PATH` (deprecated): The installation path of the NCCL header
     files.
   * `TF_CUDA_PATHS`: The base paths to look for CUDA and cuDNN. Default is
     `/usr/local/cuda,usr/`.
@@ -134,8 +134,8 @@ def _create_remote_nccl_repository(repository_ctx, remote_config_repo):
         )
 
 def _nccl_autoconf_impl(repository_ctx):
-    if ((not enable_cuda(repository_ctx) and not enable_rocm(repository_ctx))
-        or get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD")):
+    if (not enable_cuda(repository_ctx) or
+        get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD")):
         # Add a dummy build file to make bazel query happy.
         repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
     elif get_host_environ(repository_ctx, "TF_NCCL_CONFIG_REPO") != None:
