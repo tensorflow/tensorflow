@@ -374,10 +374,10 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
         scale = scale_int32 / scale_eightbit / static_cast<float>(1u << 24);
       else if (std::is_same<Toutput, float>::value) {
         scale = scale_int32 / static_cast<float>(1u << 31);
-      } else
+      } else {
         // @TODO:keeping the default qint8 as before. Change to error later.
         scale = scale_int32 / scale_eightbit / static_cast<float>(1u << 24);
-
+      }
       std::vector<float> output_scale;
       output_scale.push_back(scale);
       params.post_op_params.push_back({"output_scale", output_scale});
