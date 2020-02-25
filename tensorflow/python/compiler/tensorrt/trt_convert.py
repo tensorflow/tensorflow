@@ -1006,6 +1006,7 @@ class TrtGraphConverterV2(object):
 
     # rewriter_config is already validated
     self._need_trt_profiles = None
+
     for optimizer in self._rewriter_config.custom_optimizers:
       if optimizer.name == "TensorRTOptimizer":
         self._need_trt_profiles = not optimizer.parameter_map[
@@ -1040,6 +1041,17 @@ class TrtGraphConverterV2(object):
       for node in func.node_def:
         if node.op == _TRT_ENGINE_OP_NAME:
           fn(node)
+
+  def _rebuild_func(self, func):
+    """ Rebuild function from graph_def. """
+    rebuilt_func = wrap_function.function_from_graph_def(
+        self._converted_graph_def,
+        [tensor.name for tensor in func.inputs],
+        [tensor.name for tensor in func.outputs])
+    rebuilt_func.graph.structured_outputs = nest.pack_sequence_as(
+        func.graph.structured_outputs,
+        rebuilt_func.graph.structured_outputs)
+    return rebuilt_func
 
   # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
   # use it here (b/124792963).
@@ -1105,14 +1117,7 @@ class TrtGraphConverterV2(object):
                               _save_calibration_table)
 
       # Rebuild the function since calibration has changed the graph.
-      calibrated_func = wrap_function.function_from_graph_def(
-          self._converted_graph_def,
-          [tensor.name for tensor in self._converted_func.inputs],
-          [tensor.name for tensor in self._converted_func.outputs])
-      calibrated_func.graph.structured_outputs = nest.pack_sequence_as(
-          self._converted_func.graph.structured_outputs,
-          calibrated_func.graph.structured_outputs)
-      self._converted_func = calibrated_func
+      self._converted_func = self._rebuild_func(self._converted_func)
 
     self._converted = True
 
@@ -1143,17 +1148,6 @@ class TrtGraphConverterV2(object):
       raise RuntimeError("input_fn is None. Method build() needs input_fn "
                          "to be specified in order to build TensorRT engines")
 
-    def _rebuild_func():
-      # Rebuild function from graph_def.
-      reset_converted_func = wrap_function.function_from_graph_def(
-          self._converted_graph_def,
-          [tensor.name for tensor in self._converted_func.inputs],
-          [tensor.name for tensor in self._converted_func.outputs])
-      reset_converted_func.graph.structured_outputs = nest.pack_sequence_as(
-          self._converted_func.graph.structured_outputs,
-          reset_converted_func.graph.structured_outputs)
-      self._converted_func = reset_converted_func
-
     def _set_profile_generation_mode(value, node):
       node.attr["_profile_generation_mode"].b = value
 
@@ -1164,13 +1158,10 @@ class TrtGraphConverterV2(object):
       # Profile generation is enabled using the _profile_generation_mode
       # attribute of the TRTEngineOps. We need to rebuild the function to
       # change this attribute.
-      _rebuild_func()
+      func = self._rebuild_func(self._converted_func)
+    else:
+      func = self._converted_func
 
-    # Use the first input in explicit batch mode to build TensorRT engines
-    # after generating all the profiles. The first input is used but any of
-    # the inputs can be used because the shape of this input does not
-    # determine the engine and instead the shapes collected in profiles
-    # determine the engine.
     first_input = None
     # Run inference:
     #   Builds TRT engines if self._need_trt_profiles is False.
@@ -1178,14 +1169,17 @@ class TrtGraphConverterV2(object):
     for inp in input_fn():
       if not first_input:
         first_input = inp
-      self._converted_func(*map(ops.convert_to_tensor, inp))
+      func(*map(ops.convert_to_tensor, inp))
+
     if self._need_trt_profiles:
       # Disable profile generation.
       self._for_each_trt_node(self._converted_graph_def,
                               partial(_set_profile_generation_mode, False))
-      _rebuild_func()
-      # Run inference to build TensorRT engines out of generated optimization
-      # profiles.
+      # Use the first input in explicit batch mode to build TensorRT engines
+      # after generating all the profiles. The first input is used but any of
+      # the inputs can be used because the shape of this input does not
+      # determine the engine and instead the shapes collected in profiles
+      # determine the engine.
       self._converted_func(*map(ops.convert_to_tensor, first_input))
 
     self._build_called_once = True
