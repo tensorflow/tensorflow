@@ -383,6 +383,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._auto_track_sub_layers = True
 
   @trackable.no_automatic_dependency_tracking
+  @base_layer_utils.default
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
 
