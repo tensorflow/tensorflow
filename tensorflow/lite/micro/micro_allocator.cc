@@ -419,8 +419,8 @@ TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
                                        &(output[i].registration));
     if (status != kTfLiteOk) {
       TF_LITE_REPORT_ERROR(error_reporter_,
-                           "Failed to get registration from op code % d\n ",
-                           opcode);
+                           "Failed to get registration from op code %s\n ",
+                           EnumNameBuiltinOperator(opcode->builtin_code()));
       return status;
     }
     const auto* registration = output[i].registration;
