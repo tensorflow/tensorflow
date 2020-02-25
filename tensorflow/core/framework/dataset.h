@@ -75,11 +75,11 @@ class EparallaxTensorIndex {
 
   string ToString() const {
     string ret = iterator_id();
-    if (parent_indices() == nullptr) {
-      ret = ret + "(nullptr, " + std::to_string(local_index()) + ")";
-    } else {
+    //if (parent_indices() == nullptr) {
+    //  ret = ret + "(nullptr, " + std::to_string(local_index()) + ")";
+    //} else {
       ret = ret + "(" + ToStringV(*parent_indices()) + ", " + std::to_string(local_index()) + ")";
-    }
+    //}
     return ret;
   }
 
@@ -108,12 +108,12 @@ inline bool operator==(const EparallaxTensorIndex& index_1,
   if (index_1.local_index() != index_2.local_index()) {
     return false;
   } else {
-    if (index_1.parent_indices() == nullptr) {
-      return index_2.parent_indices() == nullptr;
-    } else {
-      return index_2.parent_indices() != nullptr &&
+    //if (index_1.parent_indices() == nullptr) {
+    //  return index_2.parent_indices() == nullptr;
+    //} else {
+      return //index_2.parent_indices() != nullptr &&
              *index_1.parent_indices() == *index_2.parent_indices();
-    }
+    //}
   }
 }
 
@@ -152,11 +152,11 @@ inline std::ostream& operator<<(std::ostream& os,
 inline std::ostream& operator<<(std::ostream& os, const EparallaxTensorIndex& t) {
   //os << t.ToString();
   os << t.iterator_id();
-  if (t.parent_indices() == nullptr) {
-    os << "(nullptr, " << t.local_index() << ")";
-  } else {
+  //if (t.parent_indices() == nullptr) {
+  //  os << "(nullptr, " << t.local_index() << ")";
+  //} else {
     os << "(" << *t.parent_indices() << ", " << t.local_index() << ")";
-  }
+  //}
   return os;
 }
 
@@ -416,11 +416,32 @@ class MultiLevelIndexQueue {
         for (EparallaxTensorIndex* index : *queue) {
           LOG(INFO) << "Clearing " << *index;
           //delete index;
+          //CleanUp(index);
         }
         queue->clear();
       }
     }
   }
+
+  /*void CleanUp(EparallaxTensorIndex* index) {
+    std::vector<EparallaxTensorIndex*>* queue;
+    for (auto& it : queues_) {
+      queue = it.second;
+      for (auto i=queue->begin(); i<queue->end(); i++) {
+        EparallaxTensorIndex* idx = *i;
+        if (idx->parent_indices() != nullptr) {
+          for (auto parent_index : *idx->parent_indices()) {
+            if (*parent_index == *index) {
+              queue->erase(i);
+              i--;
+              CleanUp(idx);
+              break;
+            }
+          }
+        }
+      }
+    }
+  }*/
 
   std::vector<EparallaxTensorIndex*>* Get(string iterator_id) {
     auto it = queues_.find(iterator_id);
@@ -469,12 +490,12 @@ class IndexManager {
     processed_indices_.Clear(iterator_id);
     issued_indices_.Clear(iterator_id);
     infertile_indices_.Clear(iterator_id);
-    for (auto& it : local_index_map_) {
+    /*for (auto& it : local_index_map_) {
       string key = it.first;
       if (key.substr(0, iterator_id.length()) == iterator_id) {
         it.second = 0;
       }
-    }
+    }*/
     std::ofstream ckpt_file;
     ckpt_file.open(ckpt_file_path_.data());
     if (ckpt_file.is_open()) {
@@ -487,9 +508,9 @@ class IndexManager {
   bool AlreadyProcessedInternal(EparallaxTensorIndex* index);
 
   bool IsShuffled(EparallaxTensorIndex* index) {
-    if (index->parent_indices() == nullptr) {
-      return false;
-    }
+    //if (index->parent_indices() == nullptr) {
+    //  return false;
+    //}
     for (auto parent_index : *index->parent_indices()) {
       size_t pos = parent_index->iterator_id().find_last_of("::");
       string optype = parent_index->iterator_id().substr(pos+1);
@@ -594,13 +615,14 @@ class IndexManager {
     size_t comma_pos = val.find_last_of(",");
     string iterator_id = val.substr(0, pos);
     string parent_indices = val.substr(pos+1,
-                                     comma_pos-pos-1);
+                                       comma_pos-pos-1);
     string local_index = val.substr(comma_pos+2,
                                     val.length()-comma_pos-3);
     EparallaxTensorIndex* index;
-    if (parent_indices == "nullptr") {
+    // TODO: Connect parent and children
+    if (parent_indices == "<>") {
       index = new EparallaxTensorIndex(iterator_id,
-                                       nullptr,
+                                       new std::vector<EparallaxTensorIndex*> {},
                                        atoi(local_index.c_str()));
     } else {
       index = new EparallaxTensorIndex(iterator_id,
@@ -615,7 +637,7 @@ class IndexManager {
   MultiLevelIndexQueue processed_indices_ GUARDED_BY(mu_);
   MultiLevelIndexQueue issued_indices_ GUARDED_BY(mu_);
   MultiLevelIndexQueue infertile_indices_ GUARDED_BY(mu_);
-  std::map<string, int64> local_index_map_ GUARDED_BY(mu_);
+  //std::map<string, int64> local_index_map_ GUARDED_BY(mu_);
   std::map<string, EparallaxTensorIndex*> last_index_map_ GUARDED_BY(mu_);
   std::map<string, EparallaxTensorIndex*> current_index_map_ GUARDED_BY(mu_);
   string ckpt_file_path_;
