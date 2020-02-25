@@ -145,11 +145,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+                           bool* end_of_sequence,
+                           std::vector<EparallaxTensorIndex*>* parent_indices) override {
       const auto& stats_aggregator = ctx->stats_aggregator();
       {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx, parent_indices));
+        TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
         // Wait until the next element in the buffer has been
         // produced, or we are shutting down.
         while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
@@ -166,7 +167,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         }
 
         if (!buffer_.empty()) {
-          return Consume(ctx, out_tensors, end_of_sequence);
+          return Consume(ctx, out_tensors, end_of_sequence, parent_indices);
         }
 
         if (prefetch_thread_finished_) {
@@ -269,10 +270,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // The buffered data element.
       std::vector<Tensor> value;
       int64 created_us;
+      EparallaxTensorIndex* index;
     };
 
     Status Consume(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                   bool* end_of_sequence) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                   bool* end_of_sequence,
+                   std::vector<EparallaxTensorIndex*>* parent_indices) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       const auto& stats_aggregator = ctx->stats_aggregator();
       if (stats_aggregator) {
         stats_aggregator->AddToHistogram(
@@ -306,6 +309,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           VLOG(2) << "Setting slack_us_: " << slack_us_;
         }
         *out_tensors = std::move(buffer_.front().value);
+        parent_indices->push_back(buffer_.front().index);
         RecordBufferDequeue(ctx, *out_tensors);
       }
       auto_tuner_.RecordConsumption(buffer_.size());
@@ -321,13 +325,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       return s;
     }
 
-    Status EnsurePrefetchThreadStarted(IteratorContext* ctx, std::vector<EparallaxTensorIndex*>* parent_indices)
+    Status EnsurePrefetchThreadStarted(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!prefetch_thread_) {
         std::shared_ptr<IteratorContext> new_ctx =
             std::make_shared<IteratorContext>(*ctx);
         prefetch_thread_ = ctx->StartThread(
-            "tf_data_prefetch", [this, new_ctx, parent_indices]() { PrefetchThread(new_ctx, parent_indices); });
+            "tf_data_prefetch", [this, new_ctx]() { PrefetchThread(new_ctx); });
       }
       return Status::OK();
     }
@@ -335,7 +339,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // Prefetches elements of the input, storing results in an internal buffer.
     //
     // It owns the iterator context passed to it.
-    void PrefetchThread(const std::shared_ptr<IteratorContext>& ctx, std::vector<EparallaxTensorIndex*>* parent_indices) {
+    void PrefetchThread(const std::shared_ptr<IteratorContext>& ctx) {
       RecordStart(ctx.get());
       auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
       // Keep track of where we are in an iteration "burst"
@@ -372,8 +376,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         mutex_lock parent_l(parent_mu_);
         bool end_of_sequence;
         BufferElement buffer_element;
-        buffer_element.status = DatasetBaseIterator::GetNextFromInput(input_impl_, 
-            ctx.get(), &buffer_element.value, &end_of_sequence, parent_indices);
+        buffer_element.status = input_impl_->GetNext( 
+            ctx.get(), &buffer_element.value, &end_of_sequence, buffer_element.index);
         if (buffer_element.status.ok() && end_of_sequence) {
           mutex_lock l(mu_);
           prefetch_thread_finished_ = true;
