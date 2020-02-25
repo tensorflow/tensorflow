@@ -1993,7 +1993,6 @@ void IrEmitterUnnested::EmitTile(
       ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
                     num_threads_y),
       /*step=*/constant(1), [&](llvm::Value* y_indvar) {
-        printf("VEC_STRIDE %d\n", vector_size);
         llvm::Value* y_loc = b_.CreateAdd(
             thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
         auto unroll = [&](bool add_if, int64 max_element, int64 vector_size) {
@@ -2026,17 +2025,13 @@ void IrEmitterUnnested::EmitTile(
           }
         };
 
-        char * env_if = getenv("RED_IF");
-        int red_if = 0;
-        if (env_if) {
-          red_if = atoi(env_if);
-          printf("RED_IF2 = %d %s\n", red_if, env_if);
-        }
-        if (red_if == 1 || x_tile_fits) {
-          std::cout << "IF_NB 1: " << std::endl;
-          unroll(!x_tile_fits, x_num_steps, vector_size);
-        } else {
-          std::cout << "IF_NB 2" << std::endl;
+        if (!x_tile_fits &&
+            mapping_scheme.GetIndexingOrder() ==
+            KernelMappingScheme::LinearDilatedIndexingX) {
+          // Only try this path when we try to vectorize the loads.
+
+          // Special case when the tile doesn't fit completly for even row size.
+          // For odd row size every other row isn't aligned, so can't be vectorized.
           ksl->If(loop_name + "_is_full_tile",
                   // if (block fully fit) {fast path} else {slow path}
                   // tile_width is always exact. For the last block,
@@ -2044,7 +2039,10 @@ void IrEmitterUnnested::EmitTile(
                   b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeFor(2)), tile_width),
                   [&] {unroll(false, x_num_steps, vector_size);},
                   [&] {unroll(true, x_num_steps, vector_size);});
+        } else {
+          unroll(!x_tile_fits, x_num_steps, vector_size);
         }
+
       });
 }
 
@@ -3161,7 +3159,10 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
                                             reduction_dimensions.dimensions[2]);
 
   KernelMappingScheme::IndexingOrder indexing_order;
-  if (reduction_dimensions.is_row_reduction) {
+  if (reduction_dimensions.is_row_reduction &&
+      // Only try to vectorize+coales memory access for row of even size.
+      // For odd row size, every other row isn't aligned, so can't be vectorized.
+      reduction_dimensions.dimensions[2] % 2 == 0) {
     indexing_order = KernelMappingScheme::LinearDilatedIndexingX;
   } else if (IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
                                                    reduction_dimensions.dimensions[2])) {
@@ -3191,7 +3192,6 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   int tile_size_x = reduction_tiling[2] * num_threads_x;
 
   int vector_size = 1;
-  char* env = getenv("VECTOR_SIZE");
   if (indexing_order == KernelMappingScheme::LinearDilatedIndexingX) {
     if (reduction_dimensions.dimensions[2] % 2 == 0 &&
         // As XLA unroll and suppose LLVM will vectorize,
@@ -3200,12 +3200,6 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       vector_size = 2;
     } else {
       indexing_order = KernelMappingScheme::DilatedIndexingX;
-    }
-  }
-  if (env) {
-    vector_size = atoi(env);
-    if (vector_size > 1) {
-      indexing_order = KernelMappingScheme::LinearDilatedIndexingX;
     }
   }
   KernelMappingScheme mapping_scheme(
