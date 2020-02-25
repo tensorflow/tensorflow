@@ -76,15 +76,61 @@ class PyRecordReader {
 
   PyRecordReader(std::unique_ptr<tensorflow::RandomAccessFile> file,
                  std::unique_ptr<tensorflow::io::RecordReader> reader)
-      : file_(std::move(file)), reader_(std::move(reader)) {
-    offset_ = 0;
-  }
+      : offset_(0), file_(std::move(file)), reader_(std::move(reader)) {}
 
   tensorflow::uint64 offset_;
   std::unique_ptr<tensorflow::RandomAccessFile> file_;
   std::unique_ptr<tensorflow::io::RecordReader> reader_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PyRecordReader);
+};
+
+class PyRecordRandomReader {
+ public:
+  static tensorflow::Status New(const std::string& filename,
+                                PyRecordRandomReader** out) {
+    std::unique_ptr<tensorflow::RandomAccessFile> file;
+    TF_RETURN_IF_ERROR(
+        tensorflow::Env::Default()->NewRandomAccessFile(filename, &file));
+    auto options =
+        tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions("");
+    options.buffer_size = kReaderBufferSize;
+    auto reader =
+        absl::make_unique<tensorflow::io::RecordReader>(file.get(), options);
+    *out = new PyRecordRandomReader(std::move(file), std::move(reader));
+    return tensorflow::Status::OK();
+  }
+
+  PyRecordRandomReader() = delete;
+  ~PyRecordRandomReader() { Close(); }
+
+  tensorflow::Status ReadRecord(tensorflow::uint64* offset,
+                                tensorflow::tstring* out) {
+    if (IsClosed()) {
+      return tensorflow::errors::FailedPrecondition(
+          "Random TFRecord Reader is closed.");
+    }
+    return reader_->ReadRecord(offset, out);
+  }
+
+  bool IsClosed() const { return file_ == nullptr && reader_ == nullptr; }
+
+  void Close() {
+    reader_ = nullptr;
+    file_ = nullptr;
+  }
+
+ private:
+  static constexpr tensorflow::uint64 kReaderBufferSize = 16 * 1024 * 1024;
+
+  PyRecordRandomReader(std::unique_ptr<tensorflow::RandomAccessFile> file,
+                       std::unique_ptr<tensorflow::io::RecordReader> reader)
+      : file_(std::move(file)), reader_(std::move(reader)) {}
+
+  std::unique_ptr<tensorflow::RandomAccessFile> file_;
+  std::unique_ptr<tensorflow::io::RecordReader> reader_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(PyRecordRandomReader);
 };
 
 class PyRecordWriter {
@@ -189,6 +235,35 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
              return py::bytes(record);
            })
       .def("close", [](PyRecordReader* self) { self->Close(); });
+
+  py::class_<PyRecordRandomReader>(m, "RandomRecordReader")
+      .def(py::init([](const std::string& filename) {
+        tensorflow::Status status;
+        PyRecordRandomReader* self = nullptr;
+        {
+          py::gil_scoped_release release;
+          status = PyRecordRandomReader::New(filename, &self);
+        }
+        MaybeRaiseRegisteredFromStatus(status);
+        return self;
+      }))
+      .def("read",
+           [](PyRecordRandomReader* self, tensorflow::uint64 offset) {
+             tensorflow::uint64 temp_offset = offset;
+             tensorflow::tstring record;
+             tensorflow::Status status;
+             {
+               py::gil_scoped_release release;
+               status = self->ReadRecord(&temp_offset, &record);
+             }
+             if (tensorflow::errors::IsOutOfRange(status)) {
+               throw py::index_error(tensorflow::strings::StrCat(
+                   "Out of range at reading offset ", offset));
+             }
+             MaybeRaiseRegisteredFromStatus(status);
+             return py::make_tuple(py::bytes(record), temp_offset);
+           })
+      .def("close", [](PyRecordRandomReader* self) { self->Close(); });
 
   using tensorflow::io::ZlibCompressionOptions;
   py::class_<ZlibCompressionOptions>(m, "ZlibCompressionOptions")

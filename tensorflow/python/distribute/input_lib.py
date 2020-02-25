@@ -45,6 +45,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
+from tensorflow.python.util.deprecation import deprecated
 
 
 def get_distributed_dataset(dataset,
@@ -175,7 +176,7 @@ def _get_next_as_optional(iterator, strategy, name=None):
     with ops.device(worker):
       worker_has_value, next_element = (
           iterator._iterators[i].get_next_as_list(new_name))  # pylint: disable=protected-access
-      # Collective all-reduce requires explict devices for inputs.
+      # Collective all-reduce requires explicit devices for inputs.
       with ops.device("/cpu:0"):
         # Converting to integers for all-reduce.
         worker_has_value = math_ops.cast(worker_has_value, dtypes.int32)
@@ -201,6 +202,30 @@ def _get_next_as_optional(iterator, strategy, name=None):
   return global_has_value, replicas
 
 
+def _is_statically_shaped(tensor_class, shape):
+  """Test if an iteratort output is statically shaped.
+
+  For sparse and ragged tensors this only tests the batch dimension.
+
+  Args:
+    tensor_class: a class from an iterator.output_classes list.
+    shape: a TensorShape from an iterator.output_shapes list.
+
+  Returns:
+    True if the shape is static, false otherwise.
+  """
+  if (tensor_class == sparse_tensor.SparseTensor or
+      isinstance(tensor_class, ragged_tensor.RaggedTensorSpec)):
+    # For sparse or ragged tensor, we should only check the first
+    # dimension in order to get_next_as_optional. This is because
+    # when these tensors get batched by dataset only the batch dimension
+    # is set.
+    if shape.rank > 0 and shape.as_list()[0] is None:
+      return False
+    return True
+  return shape.is_fully_defined()
+
+
 class DistributedIterator(object):
   """Common implementation for all input iterators."""
 
@@ -209,9 +234,10 @@ class DistributedIterator(object):
     for iterator in iterators:
       if not isinstance(iterator, _SingleWorkerDatasetIterator):
         continue
-      flattened_shapes = nest.flatten(iterator.output_shapes)
-      for output_shape in flattened_shapes:
-        if not output_shape.is_fully_defined():
+      flattened = zip(nest.flatten(iterator.output_shapes),
+                      nest.flatten(iterator.output_classes))
+      for output_shape, output_class in flattened:
+        if not _is_statically_shaped(output_class, output_shape):
           static_shape = False
           break
 
@@ -348,8 +374,7 @@ class DistributedIterator(object):
 class DistributedIteratorV1(DistributedIterator):
   """Input Iterator for tf.data.DatasetV1."""
 
-  # TODO(anjalisridhar): Move to using `initializer` instead to be consistent
-  # with tf.data iterator APIs.
+  @deprecated(None, "Use the iterator's `initializer` property instead.")
   def initialize(self):
     """Initialze underlying iterators.
 
@@ -360,6 +385,7 @@ class DistributedIteratorV1(DistributedIterator):
 
   @property
   def initializer(self):
+    """Returns a list of ops that initialize the iterator."""
     return self.initialize()
 
   # TODO(priyag): Remove when we switch to using `MultiDeviceIterator` for TPUs.
@@ -394,30 +420,6 @@ class _IterableInput(object):
 
   def __iter__(self):
     raise NotImplementedError("must be implemented in descendants")
-
-  def _autograph_for_loop(self, extra_test, body, init_state):
-    """Overload of for..in statement that iterates over the input."""
-
-    if extra_test is not None:
-      raise NotImplementedError(
-          "break and return statements are not yet supported in "
-          "for ... in distributed input loops.")
-
-    def reduce_body(state, iterate):
-      new_state = body(iterate, *state)
-      return new_state
-
-    if init_state:
-      return self.reduce(init_state, reduce_body)
-
-    # TODO(anjalisridhar): This is a workaround for Dataset.reduce not allowing
-    # empty state tensors - create a dummy state variable that remains unused.
-    # Identify if we need this workaround and remove if unnecessary.
-    def reduce_body_with_dummy_state(state, iterate):
-      reduce_body((), iterate)
-      return state
-    self.reduce((constant_op.constant(0),), reduce_body_with_dummy_state)
-    return ()
 
   def reduce(self, initial_state, reduce_fn):
     """Execute a `reduce_fn` over all the elements of the input."""
@@ -1228,4 +1230,3 @@ def _create_distributed_tensor_spec(strategy, tensor_spec):
     return values.PerReplicaSpec(*value_specs)
 
   return nest.map_structure(_get_value_per_replica, tensor_spec)
-

@@ -518,6 +518,11 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     // input nodes and mark them for allocation from backing tensor.
     for (int i = 0; i < inputs.size(); ++i) {
       auto& nd = inputs[i];
+      if (IsArg(*nd.from_node_def)) {
+        return errors::Internal(
+            "ScopedAllocatorOptimizer does not work well when the op inputs "
+            "are _Arg ops; skipping this optimizer for this function");
+      }
       VLOG(2) << "To input " << i << ": " << nd.from_node_def->name()
               << " add control input "
               << "^" << sa_name;
@@ -530,8 +535,9 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       node_map->AddOutput(sa_name, nd.from_node_def->name());
     }
 
-    // We add control edges in order to delay execution of the ScopedAllocatorOp
-    // until just before first use in order to conserve memory.
+    // We add control edges in order to (1) delay execution of the
+    // ScopedAllocatorOp until just before first use in order to conserve memory
+    // (2) ensure correctness in the presence of control flow related ops.
     bool added_delay_edge = false;
     for (auto& nd : inputs) {
       std::vector<InputDesc> inputs_to_first;

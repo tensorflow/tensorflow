@@ -7,7 +7,6 @@ package(default_visibility = [":test_friends"])
 # Please only depend on this from MLIR tests.
 package_group(
     name = "test_friends",
-    includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
     packages = ["//..."],
 )
 
@@ -106,7 +105,6 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -124,7 +122,6 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -138,26 +135,13 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
     name = "TestTransforms",
-    srcs = [
-        "lib/Transforms/TestCallGraph.cpp",
-        "lib/Transforms/TestConstantFold.cpp",
-        "lib/Transforms/TestInlining.cpp",
-        "lib/Transforms/TestLinalgTransforms.cpp",
-        "lib/Transforms/TestLiveness.cpp",
-        "lib/Transforms/TestLoopFusion.cpp",
-        "lib/Transforms/TestLoopMapping.cpp",
-        "lib/Transforms/TestLoopParametricTiling.cpp",
-        "lib/Transforms/TestMemRefStrideCalculation.cpp",
-        "lib/Transforms/TestOpaqueLoc.cpp",
-        "lib/Transforms/TestVectorToLoopsConversion.cpp",
-        "lib/Transforms/TestVectorTransforms.cpp",
-        "lib/Transforms/TestVectorizationUtils.cpp",
-    ],
+    srcs = glob([
+        "lib/Transforms/*.cpp",
+    ]),
     includes = ["lib/TestDialect"],
     deps = [
         ":TestDialect",
@@ -167,8 +151,10 @@ cc_library(
         "@llvm-project//mlir:AffineOps",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:EDSC",
+        "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Linalg",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:LoopOps",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -179,5 +165,4 @@ cc_library(
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorToLoops",
     ],
-    alwayslink = 1,
 )

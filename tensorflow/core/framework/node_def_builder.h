@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <vector>
+
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -109,9 +111,7 @@ class NodeDefBuilder {
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<StringPiece> value);
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<const char*> value);
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<string> value);
-#ifdef USE_TSTRING
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<tstring> value);
-#endif
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int32> value);
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int64> value);
   NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<float> value);

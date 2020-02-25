@@ -792,6 +792,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.version = 2;
       break;
+    case BuiltinOperator_LEAKY_RELU:
     case BuiltinOperator_RELU:
     case BuiltinOperator_RELU6:
       property.inputs = {{0, {}}};
@@ -891,7 +892,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
                          {4, tensor_property_state},
                          {3, tensor_property_bias}};
       property.outputs = {{0, {}}};
-      property.version = 2;
+      property.version = 3;
       break;
     }
     case BuiltinOperator_TRANSPOSE:

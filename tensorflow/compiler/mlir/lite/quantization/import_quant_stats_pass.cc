@@ -78,8 +78,8 @@ class ImportQuantStatsPass : public FunctionPass<ImportQuantStatsPass> {
   bool IsQuantizableResult(Operation *op, int index) {
     if (index < 0 || index >= op->getNumResults()) return false;
     Value res = op->getResult(index);
-    return res->getType().isa<ShapedType>() &&
-           res->getType().cast<ShapedType>().getElementType().isa<FloatType>();
+    return res.getType().isa<ShapedType>() &&
+           res.getType().cast<ShapedType>().getElementType().isa<FloatType>();
   }
 
   // A method to retrieve the name for the given op.
@@ -123,7 +123,7 @@ void ImportQuantStatsPass::InsertStatsOpAtResult(OpBuilder b, Value res,
                                                  IntegerAttr axis) {
   auto stats_op = b.create<quant::StatisticsOp>(b.getUnknownLoc(), res,
                                                 layer_stats, axis_stats, axis);
-  res->replaceAllUsesWith(stats_op);
+  res.replaceAllUsesWith(stats_op);
   stats_op.getOperation()->replaceUsesOfWith(stats_op, res);
 }
 
@@ -206,10 +206,17 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateImportQuantStatsPass(
 std::unique_ptr<OpPassBase<FuncOp>>
 CreateImportQuantStatsPassForTFControlDialect(const std::string &stats_str) {
   auto get_name_func = [](Operation *op) {
-    if (auto name = op->getAttrOfType<StringAttr>("name"))
-      return name.getValue();
-    else
-      return llvm::StringRef("");
+    Location loc = op->getLoc();
+    if (auto name = loc.dyn_cast<NameLoc>()) {
+      return name.getName().strref();
+    } else if (auto fused_name = loc.dyn_cast<FusedLoc>()) {
+      for (auto sub_loc : fused_name.getLocations()) {
+        if (auto named_sub_loc = sub_loc.dyn_cast<NameLoc>()) {
+          return named_sub_loc.getName().strref();
+        }
+      }
+    }
+    return llvm::StringRef("");
   };
 
   return CreateImportQuantStatsPass(get_name_func, stats_str);

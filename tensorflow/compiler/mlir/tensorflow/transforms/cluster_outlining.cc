@@ -56,12 +56,10 @@ FuncOp BuildFunction(StringRef device, llvm::ArrayRef<Value> live_ins,
                      OpBuilder* builder) {
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(live_ins.size());
-  for (Value v : live_ins) operand_types.emplace_back(v->getType());
+  for (Value v : live_ins) operand_types.emplace_back(v.getType());
 
-  llvm::SmallVector<Type, 4> result_types(launch_op.getResultTypes());
-
-  auto func_type =
-      FunctionType::get(operand_types, result_types, builder->getContext());
+  auto func_type = FunctionType::get(operand_types, launch_op.getResultTypes(),
+                                     builder->getContext());
 
   std::string func_name_prefix = Twine(device, "_func").str();
   FuncOp outlined_func =

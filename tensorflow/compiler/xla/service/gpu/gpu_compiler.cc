@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
-#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <utility>
 
 #include "absl/memory/memory.h"
@@ -32,10 +31,12 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/depthwise_convolution_converter.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
@@ -49,10 +50,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
+#include "tensorflow/compiler/xla/service/gpu/horizontal_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
@@ -80,6 +81,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
@@ -127,6 +129,7 @@ Status GpuCompiler::OptimizeHloModule(
 
     // Expand random number generation.
     pipeline.AddPass<RngExpander>();
+    pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
     // Remove zero-sized HLO from the input so that other passes don't have to
     // handle it.
@@ -135,33 +138,29 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<GpuScatterExpander>();
 
     pipeline.AddPass<DynamicIndexSplitter>();
-    pipeline.AddPass<GpuHloSupportChecker>();
 
     // TODO(b/64094172): make Call work on GPU instead of inlining.
     pipeline.AddPass<CallInliner>();
 
     pipeline.AddPass<DotDecomposer>();
 
+    pipeline.AddPass<Convolution4DExpander>();
+
+    auto cost_model = [](HloInstruction*) {
+      // We need a cost model for GPUs. Currently, do nothing.
+      return false;
+    };
+    pipeline.AddPass<DepthwiseConvolutionConverter>(cost_model);
+
     // We use the ConvolutionGroupConverter to convert backprops of filter
     // grouped convolutions into non-grouped equivalents.
-    auto batch_group_cost_model = [](HloInstruction* conv) {
-      auto dim_numbers = conv->convolution_dimension_numbers();
-      const int64 input_batch_size = conv->operand(0)->shape().dimensions(
-          dim_numbers.input_batch_dimension());
-      return conv->batch_group_count() != input_batch_size;
-    };
+    auto batch_group_cost_model = [](HloInstruction*) { return false; };
 
     pipeline.AddPass<ConvolutionGroupConverter>(
         batch_group_cost_model,
         /*convert_batch_groups_only=*/true,
-        /*canonicalize_depthwise_filter=*/false);
+        /*filter_expansion=*/true);
 
-    auto cost_model = [](HloInstruction* conv) {
-      // We need a cost model for GPUs. Currently, do nothing.
-      return false;
-    };
-
-    pipeline.AddPass<DepthwiseConvolutionConverter>(cost_model);
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
     // Convert BF16 operations to F32 operations so that the GPU backend can
@@ -200,6 +199,8 @@ Status GpuCompiler::OptimizeHloModule(
 
       AlgebraicSimplifierOptions options;
       pass.AddPass<AlgebraicSimplifier>(options);
+      // AlgebraicSimplifier may add contracting dimensions to a dot.
+      pass.AddPass<DotDecomposer>();
       pass.AddPass<SortSimplifier>();
       pass.AddPass<TupleSimplifier>();
       pass.AddPass<WhileLoopConstantSinking>();
@@ -283,8 +284,21 @@ Status GpuCompiler::OptimizeHloModule(
                            /*only_fusion_computations=*/true);
     fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
-  }
 
+    HloPassPipeline horizontal_fusion("horizontal_fusion");
+    horizontal_fusion.AddPass<GpuHorizontalFusion>();
+    horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                                      /*only_fusion_computations=*/true);
+    horizontal_fusion.AddPass<HloDCE>();
+    TF_RETURN_IF_ERROR(horizontal_fusion.Run(hlo_module).status());
+  }
+  {
+    HloPassPipeline pipeline("all_reduce_combiner");
+    pipeline.AddPass<AllReduceCombiner>(
+        /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
+        /*combine_threshold_count=*/256);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
   return Status::OK();
 }
 
@@ -433,7 +447,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
       hlo_schedule->ThunkLaunchOrder());
   if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "thunk_schedule",
+    DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
                             thunk_schedule->ToString());
   }
 

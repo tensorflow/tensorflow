@@ -49,7 +49,7 @@ Value TransposeReshape(Value arg, mlir::Location loc,
                        llvm::ArrayRef<int64_t> right_dims,
                        llvm::ArrayRef<int64_t> arg_shape,
                        PatternRewriter *rewriter) {
-  auto element_type = mlir::getElementTypeOrSelf(arg->getType());
+  auto element_type = mlir::getElementTypeOrSelf(arg.getType());
 
   int64_t left_size = 1;
   for (auto dim : left_dims) {
@@ -94,7 +94,7 @@ Value TransposeReshape(Value arg, mlir::Location loc,
 Value ProcessDotArg(Value arg, mlir::Location loc,
                     ElementsAttr contract_dims_attr, bool outer_dims_first,
                     PatternRewriter *rewriter) {
-  auto shape = arg->getType().cast<mlir::ShapedType>().getShape();
+  auto shape = arg.getType().cast<mlir::ShapedType>().getShape();
 
   llvm::SmallVector<bool, 5> is_outer_dim;
   is_outer_dim.resize(shape.size(), true);
@@ -154,8 +154,8 @@ struct GeneralDotConvert
                              /*outer_dims_first=*/false, &rewriter);
 
     // Dot resulting shape.
-    auto lhs_shape = lhs->getType().cast<mlir::ShapedType>().getShape();
-    auto rhs_shape = rhs->getType().cast<mlir::ShapedType>().getShape();
+    auto lhs_shape = lhs.getType().cast<mlir::ShapedType>().getShape();
+    auto rhs_shape = rhs.getType().cast<mlir::ShapedType>().getShape();
     auto new_dot_type =
         RankedTensorType::get({lhs_shape[0], rhs_shape[1]}, dot_element_type);
 

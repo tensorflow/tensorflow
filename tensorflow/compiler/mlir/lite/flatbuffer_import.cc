@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -75,6 +76,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -103,11 +105,39 @@ using llvm::cl::opt;
 // Commandline flag to enable the control of flatbuffer import.
 bool use_external_constant;
 
+// Commandline flag to enable graph pruning.
+bool experimental_prune_unreachable_nodes_unconditionally;
+
 // NOLINTNEXTLINE
 static opt<bool, true> use_external_constant_flag(
     "use-external-constant",
     llvm::cl::desc("Use external constant during flatbuffer import"),
     llvm::cl::location(use_external_constant), llvm::cl::init(false));
+
+// TODO(b/147111261): After the importer supports generic custom ops, we should
+// change the flag to a more lightwise flag, e.g.
+// "import_custom_ops_as_side_effect_free_ops", and let the MLIR DCE to prune
+// the operations.
+// NOLINTNEXTLINE
+static opt<bool, true> experimental_prune_unreachable_nodes_unconditionally_flg(
+    "experimental-prune-unreachable-nodes-unconditionally",
+    llvm::cl::desc("Prune nodes that are not ancestors of the output nodes."),
+    llvm::cl::location(experimental_prune_unreachable_nodes_unconditionally),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+static opt<std::string> input_arrays_flag(
+    "input-arrays",
+    llvm::cl::desc(
+        "List of input tensors, if different from the default inputs"),
+    llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+static opt<std::string> output_arrays_flag(
+    "output-arrays",
+    llvm::cl::desc(
+        "List of output tensors, if different from the default outputs"),
+    llvm::cl::init(""));
 
 namespace {
 bool IsScalar(const TensorT& tensor) {
@@ -217,7 +247,7 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
   // min/max stats is just for comments, so ignore it.
   if (!tensor.quantization || IsQuantized(tensor)) return nullptr;
   // If the result isn't float and unquantizable, the min/max is ignored.
-  if (!res->getType()
+  if (!res.getType()
            .cast<mlir::ShapedType>()
            .getElementType()
            .isa<mlir::FloatType>()) {
@@ -255,10 +285,23 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
 }
 
 StatusOr<std::string> OpNameForOpCode(const tflite::OperatorCodeT opcode) {
-  // TODO(krzysd) Support custom ops
+  // TODO(b/143872630): Support custom ops
   if (opcode.builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    return errors::Unimplemented("unsupported custom operation: ",
-                                 opcode.custom_code);
+    // Adding some custom op supported on GPU.
+    const absl::string_view custom_name = opcode.custom_code;
+    if (custom_name == "MaxPoolingWithArgmax2D") {
+      return std::string("tfl.max_pooling_with_argmax_2d");
+    }
+    if (custom_name == "Convolution2DTransposeBias") {
+      return std::string("tfl.convolution_2d_transpose_bias");
+    }
+    if (custom_name == "MaxUnpooling2D") {
+      return std::string("tfl.max_unpooling_2d");
+    }
+    // Use an unsupported op name instead of throwing an error here in case the
+    // op is pruned during the import.
+    return std::string(
+        llvm::Twine("tfl.UNSUPPORTED_custom_", opcode.custom_code).str());
   }
   if (opcode.builtin_code == tflite::BuiltinOperator_IF) {
     return std::string("tf.If");
@@ -361,7 +404,6 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
     mlir::RankedTensorType shaped_type, mlir::Type elem_type,
     const std::vector<uint8_t>& buffer) {
   unsigned bit_width;
-  mlir::RankedTensorType buffer_type;
   if (auto itype = elem_type.dyn_cast<mlir::IntegerType>()) {
     bit_width = itype.getWidth();
   } else if (auto qtype = elem_type.dyn_cast<QuantizedType>()) {
@@ -495,6 +537,13 @@ bool IsBasicLSTMOp(tflite::BuiltinOptionsUnion op_union) {
   }
 }
 
+// Returns true if this is a custom op.
+bool IsCustomOp(const std::string& op_name) {
+  return op_name == "tfl.max_pooling_with_argmax_2d" ||
+         op_name == "tfl.max_unpooling_2d" ||
+         op_name == "tfl.convolution_2d_transpose_bias";
+}
+
 // TODO(krzysd) Handle function calls
 StatusOr<Operation*> ConvertOp(
     const tflite::OperatorT& op, const std::vector<Value>& vals_map,
@@ -556,8 +605,21 @@ StatusOr<Operation*> ConvertOp(
     op_state.addTypes({type});
   }
 
+  if (op_name == "tfl.lstm") {
+    // TODO(b/147587779): add the right region if region is empty.
+    op_state.addRegion();
+  }
+
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
-  mlir::BuiltinOptionsToAttributes(op.builtin_options, builder, attrs);
+  if (IsCustomOp(op_name)) {
+    auto status = mlir::CustomOptionsToAttributes(op_name, op.custom_options,
+                                                  builder, loc, &attrs);
+    if (!status.ok()) {
+      return emitError(loc, status.ToString()), status;
+    }
+  } else {
+    mlir::BuiltinOptionsToAttributes(op.builtin_options, builder, attrs);
+  }
   op_state.addAttributes(attrs);
 
   // Handle the conversion from subgraph index to functions for If and While
@@ -568,43 +630,30 @@ StatusOr<Operation*> ConvertOp(
   return builder.createOperation(op_state);
 }
 
-// Returns the output tensor indices for the given subgraph. If
-// ordered_output_arrays is provided, then return the tensor indices in
-// ordered_output_arrays.
-StatusOr<llvm::SmallVector<int32_t, 4>> GetOutputTensorIndices(
-    const tflite::SubGraphT& subgraph, Location base_loc,
-    const std::vector<std::string>& ordered_output_arrays) {
-  if (ordered_output_arrays.empty()) {
-    return llvm::SmallVector<int32_t, 4>(subgraph.outputs.begin(),
-                                         subgraph.outputs.end());
+// Returns indices of the given tensors in the subgraph. Returns error if a
+// tensor name cannot be found in the subgraph.
+StatusOr<std::vector<int>> GetTensorIndices(
+    const tflite::SubGraphT& subgraph,
+    const std::vector<std::string>& tensor_names) {
+  absl::flat_hash_map<std::string, int> name_to_index;
+  for (auto index_and_tensor : llvm::enumerate(subgraph.tensors)) {
+    name_to_index[index_and_tensor.value()->name] = index_and_tensor.index();
   }
 
-  llvm::SmallVector<int32_t, 4> outputs;
-  outputs.resize(ordered_output_arrays.size());
-  absl::flat_hash_map<std::string, int> output_order_map;
-  for (auto output : llvm::enumerate(ordered_output_arrays)) {
-    output_order_map[output.value()] = output.index();
-  }
+  std::vector<int> indices;
+  indices.reserve(tensor_names.size());
 
-  int tensor_index = 0;
-  int found_output_tensors = 0;
-  for (const auto& tensor : subgraph.tensors) {
-    auto found = output_order_map.find(tensor->name);
-    if (found != output_order_map.end()) {
-      const int output_index = found->second;
-      outputs[output_index] = tensor_index;
-      ++found_output_tensors;
+  for (const auto& name : tensor_names) {
+    auto found = name_to_index.find(name);
+    if (found != name_to_index.end()) {
+      indices.push_back(found->second);
+    } else {
+      return errors::InvalidArgument("could not find tensor in subgraph: ",
+                                     name);
     }
-    ++tensor_index;
   }
 
-  if (found_output_tensors != ordered_output_arrays.size()) {
-    auto err = errors::InvalidArgument(
-        "cannot find all nodes in ordered_output_arrays");
-    return emitError(base_loc, err.ToString()), err;
-  }
-
-  return outputs;
+  return indices;
 }
 
 // Given a list of tensor indices, returns a string of concatenated tensor names
@@ -617,6 +666,52 @@ mlir::NamedAttribute BuildTFEntryFunctionAttribute(
       [&](int i) { return subgraph.tensors.at(i)->name; }, indices);
   return builder->getNamedAttr(
       name, builder->getStringAttr(llvm::join(tensor_names, ",")));
+}
+
+// Traverses the subgraph from output_indices to input_indices and returns the
+// set of ops that are visited.
+StatusOr<absl::flat_hash_set<const tflite::OperatorT*>> PruneSubgraph(
+    const tflite::SubGraphT& subgraph, ArrayRef<int32_t> input_indices,
+    ArrayRef<int32_t> output_indices) {
+  // Create a map from tensor index to defining op.
+  absl::flat_hash_map<int32_t, const tflite::OperatorT*> defining_op;
+  for (const auto& op : subgraph.operators) {
+    for (int32_t output : op->outputs) {
+      if (!llvm::is_contained(input_indices, output)) {
+        defining_op[output] = op.get();
+      }
+    }
+  }
+
+  std::vector<const tflite::OperatorT*> queue;
+  for (int32_t output : output_indices) {
+    if (auto& op = defining_op[output]) {
+      queue.push_back(op);
+    } else {
+      return errors::InvalidArgument("Output tensor doesn't have defining op");
+    }
+  }
+
+  // Traverse the graph towards inputs.
+  absl::flat_hash_set<const tflite::OperatorT*> visited;
+  while (!queue.empty()) {
+    const tflite::OperatorT* op = queue.back();
+    queue.pop_back();
+    if (!visited.insert(op).second) {
+      // The node has already been visited.
+      continue;
+    }
+
+    for (int32_t input : op->inputs) {
+      // Input tensor may not have a defining op in case it is a subgraph input
+      // or a constant tensor.
+      if (auto& op = defining_op[input]) {
+        queue.push_back(op);
+      }
+    }
+  }
+
+  return visited;
 }
 
 // Build a FuncOp from a tflite SubGraph
@@ -633,17 +728,40 @@ StatusOr<FuncOp> ConvertSubgraph(
     const std::vector<std::string>& op_names,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::BufferT>>& buffers,
-    Location base_loc, Builder builder,
-    const std::vector<std::string>& ordered_output_arrays, bool is_entry_point,
-    bool use_external_constant) {
+    Location base_loc, Builder builder, bool is_entry_point,
+    bool use_external_constant,
+    const std::vector<std::string>& ordered_input_arrays,
+    const std::vector<std::string>& ordered_output_arrays,
+    bool experimental_prune_unreachable_nodes_unconditionally) {
   llvm::SmallVector<mlir::Type, 2> ret_types;
   llvm::SmallVector<mlir::Type, 4> input_types;
 
   auto func_loc = mlir::NameLoc::get(builder.getIdentifier(name), base_loc);
 
-  // Construct function type
-  for (auto input : subgraph.inputs) {
-    auto& tensor = *subgraph.tensors.at(input);
+  std::vector<int> func_inputs = subgraph.inputs;
+  if (is_entry_point && !ordered_input_arrays.empty()) {
+    if (!experimental_prune_unreachable_nodes_unconditionally) {
+      // TODO(b/149922113): Resolve input-arrays/pruning flags interaction.
+      return errors::InvalidArgument(
+          "input-arrays should be used with experimental pruning flag");
+    }
+    TF_ASSIGN_OR_RETURN(func_inputs,
+                        GetTensorIndices(subgraph, ordered_input_arrays));
+  }
+
+  // Add state variables to inputs.
+  absl::flat_hash_set<int32_t> input_index_set(func_inputs.begin(),
+                                               func_inputs.end());
+  for (int i = 0; i < subgraph.tensors.size(); i++) {
+    auto& tensor = *subgraph.tensors.at(i);
+    if (tensor.is_variable && !input_index_set.contains(i)) {
+      func_inputs.emplace_back(i);
+      input_index_set.insert(i);
+    }
+  }
+
+  for (auto input_or_variable : func_inputs) {
+    auto& tensor = *subgraph.tensors.at(input_or_variable);
     // TODO(b/138222071) Graph inputs must have static shape per the exporter,
     // but we cannot differentiate scalars from unranked tensors.
     // Here we reverse the default assumption that shape = [] means unranked.
@@ -667,9 +785,11 @@ StatusOr<FuncOp> ConvertSubgraph(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto func_outputs,
-      GetOutputTensorIndices(subgraph, base_loc, ordered_output_arrays));
+  std::vector<int> func_outputs = subgraph.outputs;
+  if (is_entry_point && !ordered_output_arrays.empty()) {
+    TF_ASSIGN_OR_RETURN(func_outputs,
+                        GetTensorIndices(subgraph, ordered_output_arrays));
+  }
 
   for (auto output : func_outputs) {
     bool is_constant = !is_op_output[output];
@@ -696,8 +816,8 @@ StatusOr<FuncOp> ConvertSubgraph(
   Value maybe_optional_arg_marker = nullptr;
 
   // Get or construct MLIR values for each input
-  for (int i = 0, e = subgraph.inputs.size(); i < e; i++) {
-    auto input_tensor = subgraph.inputs[i];
+  for (int i = 0, e = func_inputs.size(); i < e; i++) {
+    auto input_tensor = func_inputs[i];
     const auto& tensor = *subgraph.tensors.at(input_tensor);
     auto loc = TensorLoc(tensor, builder, base_loc);
     if (vals_map[input_tensor]) {
@@ -720,9 +840,9 @@ StatusOr<FuncOp> ConvertSubgraph(
   // Set tf.entry_function attribute
   if (is_entry_point) {
     llvm::SmallVector<mlir::NamedAttribute, 2> attributes;
-    if (!subgraph.inputs.empty()) {
+    if (!func_inputs.empty()) {
       attributes.push_back(BuildTFEntryFunctionAttribute(
-          subgraph, &builder, "inputs", subgraph.inputs));
+          subgraph, &builder, "inputs", func_inputs));
     }
     if (!func_outputs.empty()) {
       attributes.push_back(BuildTFEntryFunctionAttribute(
@@ -731,8 +851,19 @@ StatusOr<FuncOp> ConvertSubgraph(
     func.setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
   }
 
+  absl::flat_hash_set<const tflite::OperatorT*> pruned_subgraph_ops;
+  if (experimental_prune_unreachable_nodes_unconditionally) {
+    TF_ASSIGN_OR_RETURN(pruned_subgraph_ops,
+                        PruneSubgraph(subgraph, func_inputs, func_outputs));
+  }
+
   // Construct MLIR operators from TFLite operators
   for (auto& op : subgraph.operators) {
+    if (experimental_prune_unreachable_nodes_unconditionally &&
+        !pruned_subgraph_ops.contains(op)) {
+      continue;
+    }
+
     for (auto input_num : op->inputs) {
       // The operators in a graph are topologically sorted
       // and so if no previous operation has produced a tensor
@@ -822,22 +953,22 @@ StatusOr<FuncOp> ConvertSubgraph(
 // represents TFLite, this entry point must be called "main"
 // TODO(b/131175224,b/132239787) Support multiple entry points
 std::string SubgraphName(unsigned index, const tflite::SubGraphT& subgraph) {
-  if (subgraph.name.empty()) {
-    if (index == 0) {
-      return "main";
-    } else {
-      return llvm::formatv("fn_{0}", index).str();
-    }
-  } else {
-    return subgraph.name;
+  if (index == 0) {
+    return "main";
   }
+  if (subgraph.name.empty()) {
+    return llvm::formatv("fn_{0}", index).str();
+  }
+  return subgraph.name;
 }
 }  // namespace
 
 OwningModuleRef tflite::FlatBufferToMlir(
     absl::string_view buffer, MLIRContext* context, Location base_loc,
+    bool use_external_constant,
+    const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
-    bool use_external_constant) {
+    bool experimental_prune_unreachable_nodes_unconditionally) {
   auto model_ptr =
       FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());
   if (nullptr == model_ptr) {
@@ -875,61 +1006,64 @@ OwningModuleRef tflite::FlatBufferToMlir(
                    builder.getStringAttr(model->description));
   }
 
-  if (!ordered_output_arrays.empty() && model->subgraphs.size() > 1) {
-    // TODO(b/141485522): support more than one subgraph.
-    return emitError(base_loc,
-                     "ordered_output_arrays does not support more than one "
-                     "subgraph yet"),
-           nullptr;
-  }
-
   for (auto e : llvm::enumerate(model->subgraphs)) {
     auto& subgraph = e.value();
     std::string name = SubgraphName(e.index(), *subgraph);
     auto func_or_error = ConvertSubgraph(
         *subgraph, name, operator_names, func_names, model->buffers, base_loc,
-        // Only the entry point needs pseudo_input_ops
+        builder,
         // TODO(b/131175224,b/132239787) Support multiple entry points
-        builder, ordered_output_arrays,
         /*is_entry_point=*/e.index() == 0,
-        /*use_external_constant=*/use_external_constant);
+        /*use_external_constant=*/use_external_constant, ordered_input_arrays,
+        ordered_output_arrays,
+        experimental_prune_unreachable_nodes_unconditionally);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
-                 << subgraph->name,
+                 << subgraph->name << ": "
+                 << func_or_error.status().error_message(),
              nullptr;
     }
     module.push_back(func_or_error.ConsumeValueOrDie());
   }
-  // TFLite subgraphs do not necessarily have names,
 
   return OwningModuleRef(module);
 }
 
-static OwningModuleRef FlatBufferFileToMlirTrans(llvm::SourceMgr* source_mgr,
-                                                 MLIRContext* context,
-                                                 bool use_external_constant) {
+static OwningModuleRef FlatBufferFileToMlirTrans(
+    llvm::SourceMgr* source_mgr, MLIRContext* context,
+    bool use_external_constant,
+    bool experimental_prune_unreachable_nodes_unconditionally) {
   const llvm::MemoryBuffer* input =
       source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
   std::string error;
   auto loc =
       mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
 
-  // Parses output_arrays_order from command line option.
+  // Parses input/output names from command line options.
+  std::vector<std::string> inputs;
   std::vector<std::string> outputs;
-  if (!tensorflow::ParseOutputArrayInfo(output_arrays_string, &outputs).ok()) {
+  // Use output parser since we only have tensor names.
+  if (!tensorflow::ParseOutputArrayInfo(input_arrays_flag, &inputs).ok()) {
+    return emitError(loc, "parsing input array info failed ")
+               << input_arrays_flag,
+           nullptr;
+  }
+  if (!tensorflow::ParseOutputArrayInfo(output_arrays_flag, &outputs).ok()) {
     return emitError(loc, "parsing output array info failed ")
-               << output_arrays_string,
+               << output_arrays_flag,
            nullptr;
   }
 
   return tflite::FlatBufferToMlir(
       absl::string_view(input->getBufferStart(), input->getBufferSize()),
-      context, loc, outputs, use_external_constant);
+      context, loc, use_external_constant, inputs, outputs,
+      experimental_prune_unreachable_nodes_unconditionally);
 }
 
 static mlir::TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
     "tflite-flatbuffer-to-mlir",
     [](llvm::SourceMgr& source_mgr, MLIRContext* context) {
-      return FlatBufferFileToMlirTrans(&source_mgr, context,
-                                       use_external_constant);
+      return FlatBufferFileToMlirTrans(
+          &source_mgr, context, use_external_constant,
+          experimental_prune_unreachable_nodes_unconditionally);
     });

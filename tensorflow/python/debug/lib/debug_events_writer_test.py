@@ -19,14 +19,18 @@ from __future__ import division
 from __future__ import print_function
 
 import glob
+import json as json_lib
 import os
 import threading
+import time
 
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
 from tensorflow.python.debug.lib import dumping_callback_test_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
+from tensorflow.python.framework import versions
 from tensorflow.python.platform import googletest
 
 
@@ -192,6 +196,15 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
     graph_op_names = sorted([actual.op_name for actual in actuals])
     self.assertEqual(graph_op_names, ["Op0", "Op1", "Op2"])
 
+  def testWriteAndReadMetadata(self):
+    t0 = time.time()
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root)
+    writer.Close()
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      self.assertIsInstance(reader.starting_wall_time(), float)
+      self.assertGreaterEqual(reader.starting_wall_time(), t0)
+      self.assertEqual(reader.tensorflow_version(), versions.__version__)
+
   def testWriteExecutionEventsWithCircularBuffer(self):
     writer = debug_events_writer.DebugEventsWriter(self.dump_root)
     num_execution_events = debug_events_writer.DEFAULT_CIRCULAR_BUFFER_SIZE * 2
@@ -327,6 +340,160 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
       op_names = [trace.op_name for trace in reader.graph_execution_traces()]
       self.assertLen(op_names, circular_buffer_size)
       self.assertLen(op_names, len(set(op_names)))
+
+
+class DataObjectsTest(test_util.TensorFlowTestCase):
+
+  def jsonRoundTripCheck(self, obj):
+    self.assertEqual(
+        json_lib.dumps(json_lib.loads(json_lib.dumps(obj)), sort_keys=True),
+        json_lib.dumps(obj, sort_keys=True))
+
+  def testExecutionDigestWithNoOutputToJson(self):
+    execution_digest = debug_events_reader.ExecutionDigest(
+        1234, 5678, "FooOp", output_tensor_device_ids=None)
+    json = execution_digest.to_json()
+    self.jsonRoundTripCheck(json)
+    self.assertEqual(json["wall_time"], 1234)
+    self.assertEqual(json["op_type"], "FooOp")
+    self.assertEqual(json["output_tensor_device_ids"], None)
+
+  def testExecutionDigestWithTwoOutputsToJson(self):
+    execution_digest = debug_events_reader.ExecutionDigest(
+        1234, 5678, "FooOp", output_tensor_device_ids=[1357, 2468])
+    json = execution_digest.to_json()
+    self.jsonRoundTripCheck(json)
+    self.assertEqual(json["wall_time"], 1234)
+    self.assertEqual(json["op_type"], "FooOp")
+    self.assertEqual(json["output_tensor_device_ids"], (1357, 2468))
+
+  def testExecutionNoGraphNoInputToJson(self):
+    execution_digest = debug_events_reader.ExecutionDigest(
+        1234, 5678, "FooOp", output_tensor_device_ids=[1357])
+    execution = debug_events_reader.Execution(
+        execution_digest,
+        "localhost",
+        ("a1", "b2"),
+        debug_event_pb2.TensorDebugMode.CURT_HEALTH,
+        graph_id=None,
+        input_tensor_ids=None,
+        output_tensor_ids=[2468],
+        debug_tensor_values=([1, 0],))
+    json = execution.to_json()
+    self.jsonRoundTripCheck(json)
+    self.assertEqual(json["wall_time"], 1234)
+    self.assertEqual(json["op_type"], "FooOp")
+    self.assertEqual(json["output_tensor_device_ids"], (1357,))
+    self.assertEqual(json["host_name"], "localhost")
+    self.assertEqual(json["stack_frame_ids"], ("a1", "b2"))
+    self.assertEqual(json["tensor_debug_mode"],
+                     debug_event_pb2.TensorDebugMode.CURT_HEALTH)
+    self.assertIsNone(json["graph_id"])
+    self.assertIsNone(json["input_tensor_ids"])
+    self.assertEqual(json["output_tensor_ids"], (2468,))
+    self.assertEqual(json["debug_tensor_values"], ([1, 0],))
+
+  def testExecutionNoGraphNoInputButWithOutputToJson(self):
+    execution_digest = debug_events_reader.ExecutionDigest(
+        1234, 5678, "FooOp", output_tensor_device_ids=[1357])
+    execution = debug_events_reader.Execution(
+        execution_digest,
+        "localhost",
+        ("a1", "b2"),
+        debug_event_pb2.TensorDebugMode.FULL_HEALTH,
+        graph_id="abcd",
+        input_tensor_ids=[13, 37],
+        output_tensor_ids=None,
+        debug_tensor_values=None)
+    json = execution.to_json()
+    self.jsonRoundTripCheck(json)
+    self.assertEqual(json["wall_time"], 1234)
+    self.assertEqual(json["op_type"], "FooOp")
+    self.assertEqual(json["output_tensor_device_ids"], (1357,))
+    self.assertEqual(json["host_name"], "localhost")
+    self.assertEqual(json["stack_frame_ids"], ("a1", "b2"))
+    self.assertEqual(json["tensor_debug_mode"],
+                     debug_event_pb2.TensorDebugMode.FULL_HEALTH)
+    self.assertEqual(json["graph_id"], "abcd")
+    self.assertEqual(json["input_tensor_ids"], (13, 37))
+    self.assertIsNone(json["output_tensor_ids"])
+    self.assertIsNone(json["debug_tensor_values"])
+
+  def testGraphOpCreationDigestNoInputNoDeviceNameToJson(self):
+    op_creation_digest = debug_events_reader.GraphOpCreationDigest(
+        1234, 5678, "deadbeef", "FooOp", "Model_1/Foo_2",
+        [135], input_names=None, device_name=None)
+    json = op_creation_digest.to_json()
+    self.jsonRoundTripCheck(json)
+    self.assertEqual(json["wall_time"], 1234)
+    self.assertEqual(json["graph_id"], "deadbeef")
+    self.assertEqual(json["op_type"], "FooOp")
+    self.assertEqual(json["op_name"], "Model_1/Foo_2")
+    self.assertEqual(json["output_tensor_ids"], (135,))
+    self.assertIsNone(json["input_names"])
+    self.assertIsNone(json["device_name"])
+
+  def testGraphOpCreationDigestWithInputsAndDeviceNameToJson(self):
+    op_creation_digest = debug_events_reader.GraphOpCreationDigest(
+        1234, 5678, "deadbeef", "FooOp", "Model_1/Foo_2",
+        [135], input_names=["Bar_1", "Qux_2"], device_name="/device:GPU:0")
+    json = op_creation_digest.to_json()
+    self.jsonRoundTripCheck(json)
+    self.assertEqual(json["wall_time"], 1234)
+    self.assertEqual(json["graph_id"], "deadbeef")
+    self.assertEqual(json["op_type"], "FooOp")
+    self.assertEqual(json["op_name"], "Model_1/Foo_2")
+    self.assertEqual(json["output_tensor_ids"], (135,))
+    self.assertEqual(json["input_names"], ("Bar_1", "Qux_2"))
+    self.assertEqual(json["device_name"], "/device:GPU:0")
+
+  def testGraphExecutionTraceDigestToJson(self):
+    trace_digest = debug_events_reader.GraphExecutionTraceDigest(
+        1234, 5678, "FooOp", "Model_1/Foo_2", 1, "deadbeef")
+    json = trace_digest.to_json()
+    self.assertEqual(json["wall_time"], 1234)
+    self.assertEqual(json["op_type"], "FooOp")
+    self.assertEqual(json["op_name"], "Model_1/Foo_2")
+    self.assertEqual(json["output_slot"], 1)
+    self.assertEqual(json["graph_id"], "deadbeef")
+
+  def testGraphExecutionTraceWithTensorDebugValueAndDeviceNameToJson(self):
+    trace_digest = debug_events_reader.GraphExecutionTraceDigest(
+        1234, 5678, "FooOp", "Model_1/Foo_2", 1, "deadbeef")
+    trace = debug_events_reader.GraphExecutionTrace(
+        trace_digest, ["g1", "g2", "deadbeef"],
+        debug_event_pb2.TensorDebugMode.CURT_HEALTH,
+        debug_tensor_value=[3, 1], device_name="/device:GPU:0")
+    json = trace.to_json()
+    self.assertEqual(json["wall_time"], 1234)
+    self.assertEqual(json["op_type"], "FooOp")
+    self.assertEqual(json["op_name"], "Model_1/Foo_2")
+    self.assertEqual(json["output_slot"], 1)
+    self.assertEqual(json["graph_id"], "deadbeef")
+    self.assertEqual(json["graph_ids"], ("g1", "g2", "deadbeef"))
+    self.assertEqual(json["tensor_debug_mode"],
+                     debug_event_pb2.TensorDebugMode.CURT_HEALTH)
+    self.assertEqual(json["debug_tensor_value"], (3, 1))
+    self.assertEqual(json["device_name"], "/device:GPU:0")
+
+  def testGraphExecutionTraceNoTensorDebugValueNoDeviceNameToJson(self):
+    trace_digest = debug_events_reader.GraphExecutionTraceDigest(
+        1234, 5678, "FooOp", "Model_1/Foo_2", 1, "deadbeef")
+    trace = debug_events_reader.GraphExecutionTrace(
+        trace_digest, ["g1", "g2", "deadbeef"],
+        debug_event_pb2.TensorDebugMode.NO_TENSOR,
+        debug_tensor_value=None, device_name=None)
+    json = trace.to_json()
+    self.assertEqual(json["wall_time"], 1234)
+    self.assertEqual(json["op_type"], "FooOp")
+    self.assertEqual(json["op_name"], "Model_1/Foo_2")
+    self.assertEqual(json["output_slot"], 1)
+    self.assertEqual(json["graph_id"], "deadbeef")
+    self.assertEqual(json["graph_ids"], ("g1", "g2", "deadbeef"))
+    self.assertEqual(json["tensor_debug_mode"],
+                     debug_event_pb2.TensorDebugMode.NO_TENSOR)
+    self.assertIsNone(json["debug_tensor_value"])
+    self.assertIsNone(json["device_name"])
 
 
 if __name__ == "__main__":

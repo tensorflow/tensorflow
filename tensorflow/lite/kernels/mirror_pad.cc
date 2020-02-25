@@ -157,7 +157,7 @@ struct MirrorPadWorkerTask : cpu_backend_threadpool::Task {
 }  // namespace
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  gemmlowp::ScopedProfilingLabel label("MirrorPad");
+  ruy::profiler::ScopeLabel label("MirrorPad");
   const TfLiteTensor* input_tensor = GetInput(context, node, 0);
   const TfLiteTensor* padding_matrix = GetInput(context, node, 1);
   auto* params =

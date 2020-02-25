@@ -103,11 +103,13 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       *bytes = sizeof(TfLiteFloat16);
       break;
     default:
-      context->ReportError(
-          context,
-          "Type %d is unsupported. Only float32, int8, int16, int32, int64, "
-          "uint8, bool, complex64 supported currently.",
-          type);
+      if (context) {
+        context->ReportError(
+            context,
+            "Type %d is unsupported. Only float32, int8, int16, int32, int64, "
+            "uint8, bool, complex64 supported currently.",
+            type);
+      }
       return kTfLiteError;
   }
   return kTfLiteOk;

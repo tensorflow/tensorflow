@@ -1,17 +1,14 @@
 ifeq ($(TARGET), sparkfun_edge)
   INCLUDES += \
-    -I$(APOLLO3_SDK)/boards/SparkFun_TensorFlow_Apollo3_BSP/examples/example1_edge_test/src/tf_accelerometer/ \
-    -I$(APOLLO3_SDK)/boards/SparkFun_TensorFlow_Apollo3_BSP/examples/example1_edge_test/src/tf_adc/
+    -I$(APOLLO3_SDK)/$(SF_BSPS_DEST)/common/third_party/lis2dh12/
 
   THIRD_PARTY_CC_SRCS += \
-    $(APOLLO3_SDK)/boards/SparkFun_TensorFlow_Apollo3_BSP/examples/example1_edge_test/src/tf_accelerometer/tf_accelerometer.c \
-    $(APOLLO3_SDK)/boards/SparkFun_TensorFlow_Apollo3_BSP/examples/example1_edge_test/src/tf_accelerometer/lis2dh12_reg.c \
-    $(APOLLO3_SDK)/boards/SparkFun_TensorFlow_Apollo3_BSP/examples/example1_edge_test/src/tf_adc/tf_adc.c
+    $(APOLLO3_SDK)/$(SF_BSPS_DEST)/common/third_party/lis2dh12/lis2dh12_platform_apollo3.c \
+    $(APOLLO3_SDK)/boards_sfe/common/third_party/lis2dh12/lis2dh12_reg.c
 
   THIRD_PARTY_CC_HDRS += \
-    $(APOLLO3_SDK)/boards/SparkFun_TensorFlow_Apollo3_BSP/examples/example1_edge_test/src/tf_accelerometer/tf_accelerometer.h \
-    $(APOLLO3_SDK)/boards/SparkFun_TensorFlow_Apollo3_BSP/examples/example1_edge_test/src/tf_accelerometer/lis2dh12_reg.h \
-    $(APOLLO3_SDK)/boards/SparkFun_TensorFlow_Apollo3_BSP/examples/example1_edge_test/src/tf_adc/tf_adc.h
+    $(APOLLO3_SDK)/boards_sfe/common/third_party/lis2dh12/lis2dh12_platform_apollo3.h \
+    $(APOLLO3_SDK)/boards_sfe/common/third_party/lis2dh12/lis2dh12_reg.h
 endif
 
 ACCELEROMETER_HANDLER_TEST_SRCS := \
@@ -29,7 +26,6 @@ OUTPUT_HANDLER_TEST_HDRS := \
 tensorflow/lite/micro/examples/magic_wand/output_handler.h
 
 GESTURE_PREDICTOR_TEST_SRCS := \
-tensorflow/lite/micro/examples/magic_wand/constants.cc \
 tensorflow/lite/micro/examples/magic_wand/gesture_predictor.cc \
 tensorflow/lite/micro/examples/magic_wand/gesture_predictor_test.cc
 
@@ -51,7 +47,6 @@ tensorflow/lite/micro/examples/magic_wand/ring_micro_features_data.h
 magic_wand_SRCS := \
 tensorflow/lite/micro/examples/magic_wand/main.cc \
 tensorflow/lite/micro/examples/magic_wand/main_functions.cc \
-tensorflow/lite/micro/examples/magic_wand/constants.cc \
 tensorflow/lite/micro/examples/magic_wand/magic_wand_model_data.cc \
 tensorflow/lite/micro/examples/magic_wand/accelerometer_handler.cc \
 tensorflow/lite/micro/examples/magic_wand/gesture_predictor.cc \

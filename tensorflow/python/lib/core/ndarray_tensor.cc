@@ -539,8 +539,7 @@ Status PyArrayToTF_Tensor(PyObject* ndarray, Safe_TF_TensorPtr* out_tensor) {
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
-TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
-                               TF_Status* status);
+TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status);
 
 Status NdarrayToTensor(PyObject* obj, Tensor* ret) {
   Safe_TF_TensorPtr tf_tensor = make_safe(static_cast<TF_Tensor*>(nullptr));
@@ -552,12 +551,10 @@ Status NdarrayToTensor(PyObject* obj, Tensor* ret) {
 }
 
 Status TensorToNdarray(const Tensor& t, PyObject** ret) {
-  TF_Status* status = TF_NewStatus();
-  Safe_TF_TensorPtr tf_tensor = make_safe(TF_TensorFromTensor(t, status));
-  Status tf_status = StatusFromTF_Status(status);
-  TF_DeleteStatus(status);
-  if (!tf_status.ok()) {
-    return tf_status;
+  Status status;
+  Safe_TF_TensorPtr tf_tensor = make_safe(TF_TensorFromTensor(t, &status));
+  if (!status.ok()) {
+    return status;
   }
   return TF_TensorToPyArray(std::move(tf_tensor), ret);
 }

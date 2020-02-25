@@ -58,13 +58,13 @@ void MultiplyAdd::SetLinkIndex(int index) {
 std::string MultiplyAdd::GetCoreCode(const LinkingContext& context) const {
   std::string result = absl::StrCat(context.var_name, " = ", context.var_name);
   if (use_mul_vec_) {
-    absl::StrAppend(&result, " * ", mul_vec_.ReadLinearFLT4(context.z_coord));
+    absl::StrAppend(&result, " * ", mul_vec_.ReadLinearFLT4(context.s_coord));
   }
   if (scalar_mul_.Active()) {
     absl::StrAppend(&result, " * (FLT)(", scalar_mul_.GetName(), ")");
   }
   if (use_add_vec_) {
-    absl::StrAppend(&result, " + ", add_vec_.ReadLinearFLT4(context.z_coord));
+    absl::StrAppend(&result, " + ", add_vec_.ReadLinearFLT4(context.s_coord));
   }
   if (scalar_add_.Active()) {
     absl::StrAppend(&result, " + (FLT)(", scalar_add_.GetName(), ")");
@@ -105,7 +105,7 @@ Status MultiplyAdd::BindArguments(CLKernel* kernel) {
   return OkStatus();
 }
 
-Status MultiplyAdd::UploadMul(const MultiplyScalarAttributes& attr,
+Status MultiplyAdd::UploadMul(const MultiplyAttributes& attr,
                               CalculationsPrecision scalar_precision,
                               CLContext* context) {
   auto mul = absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
@@ -135,8 +135,7 @@ Status MultiplyAdd::UploadAdd(const AddAttributes& attr,
 
 Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
-                         const MultiplyScalarAttributes& attr,
-                         MultiplyAdd* result) {
+                         const MultiplyAttributes& attr, MultiplyAdd* result) {
   const auto scalar_precision = creation_context.device->IsPowerVR()
                                     ? CalculationsPrecision::F32
                                     : definition.precision;
@@ -162,7 +161,7 @@ Status CreateMultiplyAdd(const CreationContext& creation_context,
 
 Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
-                         const MultiplyScalarAttributes& mul_attr,
+                         const MultiplyAttributes& mul_attr,
                          const AddAttributes& add_attr, MultiplyAdd* result) {
   const auto scalar_precision = creation_context.device->IsPowerVR()
                                     ? CalculationsPrecision::F32

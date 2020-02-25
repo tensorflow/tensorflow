@@ -86,12 +86,12 @@ std::string GetShiftFromElementSize(int element_size) {
 
 std::string GenerateConvBuffer1x1(
     const OperationDef& op_def, int x_elements, int y_elements,
-    int element_size,
+    int element_size, bool different_weights_for_height,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(op_def.precision);
-  TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
-                                 op_def.dst_tensors[0]);
+  TensorCodeGenerator dst_tensor(
+      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
+      op_def.dst_tensors[0]);
 
   switch (op_def.precision) {
     case CalculationsPrecision::F32:
@@ -119,7 +119,12 @@ std::string GenerateConvBuffer1x1(
   c += "  int Y = get_global_id(1) * " + std::to_string(y_elements) + ";\n";
   c += "  int Z = get_global_id(2);\n";
   c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
-  c += "  __global FLT16* temp = filters_buffer + Z * src_size.z;\n";
+  if (different_weights_for_height) {
+    c += "  __global FLT16* temp = filters_buffer + (Z * src_size.y + Y) * "
+         "src_size.z;\n";
+  } else {
+    c += "  __global FLT16* temp = filters_buffer + Z * src_size.z;\n";
+  }
   c += "  ACCUM_FLT4 bias_val = TO_ACCUM_TYPE(biases[Z]);\n";
   for (int i = 0; i < x_elements * element_size * y_elements; ++i) {
     c += "  ACCUM_FLT4 r" + std::to_string(i) + " = bias_val;\n";
@@ -173,7 +178,7 @@ std::string GenerateConvBuffer1x1(
       c += "    FLT4 res = TO_FLT4(r" + i_s + ");\n";
       const LinkingContext context{"res", "X + " + x_s, "Y + " + y_s, "Z"};
       c += PostProcess(linked_operations, context);
-      c += "  " + dst_tensor.Write3D("res", "X + " + x_s, "Y + " + y_s, "Z") +
+      c += "  " + dst_tensor.WriteWHS("res", "X + " + x_s, "Y + " + y_s, "Z") +
            "\n";
       c += "  }\n";
     }
@@ -192,14 +197,15 @@ int GetGridWidth(int width) {
 
 }  // namespace
 
-ConvBuffer1x1::ConvBuffer1x1(const OperationDef& definition,
-                             int flt4_x_count, int flt4_y_count,
-                             int flt8_x_count, int flt8_y_count)
+ConvBuffer1x1::ConvBuffer1x1(const OperationDef& definition, int flt4_x_count,
+                             int flt4_y_count, int flt8_x_count,
+                             int flt8_y_count)
     : GPUOperation(definition),
       flt4_x_count_(flt4_x_count),
       flt4_y_count_(flt4_y_count),
       flt8_x_count_(flt8_x_count),
       flt8_y_count_(flt8_y_count),
+      different_weights_for_height_(false),
       work_group_size_(2, 4, 1) {}
 
 ConvBuffer1x1::ConvBuffer1x1(ConvBuffer1x1&& operation)
@@ -212,6 +218,7 @@ ConvBuffer1x1::ConvBuffer1x1(ConvBuffer1x1&& operation)
       kernel_flt8_(std::move(operation.kernel_flt8_)),
       flt8_x_count_(operation.flt8_x_count_),
       flt8_y_count_(operation.flt8_y_count_),
+      different_weights_for_height_(operation.different_weights_for_height_),
       work_group_size_(operation.work_group_size_) {}
 
 ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
@@ -224,6 +231,8 @@ ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
     kernel_flt8_ = std::move(operation.kernel_flt8_);
     std::swap(flt8_x_count_, operation.flt8_x_count_);
     std::swap(flt8_y_count_, operation.flt8_y_count_);
+    std::swap(different_weights_for_height_,
+              operation.different_weights_for_height_);
     std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
@@ -231,13 +240,15 @@ ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
 }
 
 Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
-  std::string code_flt4 = GenerateConvBuffer1x1(
-      definition_, flt4_x_count_, flt4_y_count_, 1, linked_operations_);
+  std::string code_flt4 =
+      GenerateConvBuffer1x1(definition_, flt4_x_count_, flt4_y_count_, 1,
+                            different_weights_for_height_, linked_operations_);
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code_flt4, "main_function", *creation_context.context,
       *creation_context.device, &kernel_flt4_));
-  std::string code_flt8 = GenerateConvBuffer1x1(
-      definition_, flt8_x_count_, flt8_y_count_, 2, linked_operations_);
+  std::string code_flt8 =
+      GenerateConvBuffer1x1(definition_, flt8_x_count_, flt8_y_count_, 2,
+                            different_weights_for_height_, linked_operations_);
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code_flt8, "main_function", *creation_context.context,
       *creation_context.device, &kernel_flt8_));
@@ -253,7 +264,7 @@ CLKernel* ConvBuffer1x1::GetKernel(int width) {
 }
 
 Status ConvBuffer1x1::BindArguments() {
-  CLKernel* kernel = GetKernel(src_[0]->Width());
+  CLKernel* kernel = GetKernel(dst_[0]->Width());
   kernel->ResetBindingCounter();
   RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel->SetMemoryAuto(weights_.GetMemoryPtr()));
@@ -261,10 +272,10 @@ Status ConvBuffer1x1::BindArguments() {
   RETURN_IF_ERROR(BindArgs(kernel, linked_operations_));
   RETURN_IF_ERROR(kernel->SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   int4 src_size = int4(
-      src_[0]->Width() * src_[0]->Batch(), src_[0]->Height(), src_[0]->Depth(),
+      src_[0]->Width() * src_[0]->Batch(), src_[0]->Height(), src_[0]->Slices(),
       GetGridWidth(src_[0]->Width()) * src_[0]->Height() * src_[0]->Batch());
   RETURN_IF_ERROR(kernel->SetBytesAuto(src_size));
-  RETURN_IF_ERROR(kernel->SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel->SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   return OkStatus();
 }
 
@@ -276,7 +287,7 @@ int3 ConvBuffer1x1::GetGridSize() const {
   const int grid_x = IntegralDivideRoundUp(
       GetGridWidth(dst_[0]->Width()) * dst_[0]->Batch(), fltx_count);
   const int grid_y = IntegralDivideRoundUp(dst_[0]->Height(), flty_count);
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 
@@ -297,7 +308,7 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
   auto src_storage_type = definition.src_tensors[0].storage_type;
   return src_storage_type == TensorStorageType::BUFFER &&
          attr.weights.shape.w == 1 && attr.weights.shape.h == 1 &&
-         attr.dilations.w == 1 && attr.dilations.w == 1 &&
+         attr.dilations.w == 1 && attr.dilations.h == 1 &&
          attr.strides.w == 1 && attr.strides.h == 1 &&
          attr.padding.prepended.w == 0 && attr.padding.prepended.h == 0 &&
          attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
@@ -344,6 +355,17 @@ Status CreateConvBuffer1x1(const CreationContext& creation_context,
   *result = ConvBuffer1x1(definition, flt4_x_count, flt4_y_count, flt8_x_count,
                           flt8_y_count);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
+}
+
+Status CreateConvBuffer1x1Wino4x4To6x6(const CreationContext& creation_context,
+                                       const OperationDef& definition,
+                                       const Convolution2DAttributes& attr,
+                                       ConvBuffer1x1* result) {
+  *result = ConvBuffer1x1(definition, 4 /*flt4_x_count*/, 1 /*flt4_y_count*/,
+                          2 /*flt8_x_count*/, 1 /*flt8_y_count*/);
+  result->different_weights_for_height_ = true;
+  return result->UploadDataForWinograd4x4To6x6(
+      attr.weights, *creation_context.device, creation_context.context);
 }
 
 }  // namespace cl

@@ -29,7 +29,7 @@ LoggingOpResolver::LoggingOpResolver(
         base_resolver.FindOp(op_and_version.first, op_and_version.second);
     BuiltinOperatorKey key = op_and_version;
     builtin_op_evalfn_map_[key] = base_registration->invoke;
-    std::unique_ptr<TfLiteRegistration> logging_registation =
+    auto logging_registation =
         absl::make_unique<TfLiteRegistration>(*base_registration);
     logging_registation->invoke = logging_eval_fn;
     builtin_op_registration_map_[key] = std::move(logging_registation);

@@ -30,12 +30,12 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import losses
 from tensorflow.python.keras.distribute import distribute_strategy_test as keras_test_lib
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
 
@@ -257,11 +257,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             experimental_run_tf_function=experimental_run_tf_function)
 
       dataset = keras_test_lib.get_dataset(distribution)
-      exception_error_message = (
-          '`validation_split` argument is not supported when ')
-
       # Test with validation split
-      with self.assertRaisesRegexp(ValueError, exception_error_message):
+      with self.assertRaises(ValueError):
         model.fit(
             dataset,
             epochs=1,
@@ -272,9 +269,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
       # Test with sample weight.
       sample_weight = np.random.random((10,))
-      with self.assertRaisesRegexp(
-          ValueError, '`sample_weight` argument is not supported when.*'
-          'dataset'):
+      with self.assertRaises(ValueError):
         model.fit(
             dataset,
             epochs=1,
@@ -285,68 +280,13 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       # Test with not specifying the `steps` argument for dataset with infinite
       # cardinality.
       dataset = dataset.repeat()
-      with self.assertRaisesRegexp(
-          ValueError, 'When passing an infinitely '
-          'repeating dataset, you must specify the '
-          '`steps_per_epoch` argument'):
+      with self.assertRaises(ValueError):
         model.fit(dataset, epochs=1, verbose=0)
-      with self.assertRaisesRegexp(
-          ValueError, 'When passing an infinitely '
-          'repeating dataset, you must specify the '
-          '`steps` argument'):
+      with self.assertRaises(ValueError):
         model.evaluate(dataset, verbose=0)
 
-      with self.assertRaisesRegexp(
-          ValueError, 'When passing an infinitely '
-          'repeating dataset, you must specify the '
-          '`steps` argument'):
+      with self.assertRaises(ValueError):
         model.predict(dataset, verbose=0)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          ],
-          mode=['graph', 'eager'],
-          experimental_run_tf_function=[True, False]))
-  def test_calling_with_unsupported_predefined_callbacks(
-      self, distribution, experimental_run_tf_function):
-    with self.cached_session():
-      with distribution.scope():
-        model = keras_test_lib.get_model()
-        optimizer = gradient_descent.GradientDescentOptimizer(0.001)
-        loss = 'mse'
-        metrics = ['mae']
-        model.compile(
-            optimizer,
-            loss,
-            metrics=metrics,
-            experimental_run_tf_function=experimental_run_tf_function)
-
-      dataset = keras_test_lib.get_dataset(distribution)
-
-      def schedule(_):
-        return 0.001
-
-      with self.assertRaisesRegexp(
-          ValueError, 'You must specify a Keras Optimizer V2 when '
-          'using'):
-        model.fit(
-            dataset,
-            epochs=1,
-            steps_per_epoch=2,
-            verbose=0,
-            callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
-
-      with self.assertRaisesRegexp(
-          ValueError, 'You must specify a Keras Optimizer V2 when '
-          'using'):
-        model.fit(
-            dataset,
-            epochs=1,
-            steps_per_epoch=2,
-            verbose=0,
-            callbacks=[keras.callbacks.ReduceLROnPlateau()])
 
   @combinations.generate(
       combinations.combine(

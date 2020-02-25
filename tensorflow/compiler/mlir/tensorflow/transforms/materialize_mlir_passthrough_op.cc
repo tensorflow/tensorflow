@@ -44,7 +44,7 @@ void MaterializePassthroughOpPass::runOnFunction() {
   getFunction().walk([](Operation *op) {
     auto passthrough_op = dyn_cast<TF::MlirPassthroughOp>(op);
     if (!passthrough_op) return;
-    std::string module_string = passthrough_op.mlir_module();
+    std::string module_string(passthrough_op.mlir_module());
     // Parse the module.
     auto nested_module = parseSourceString(module_string, op->getContext());
     if (!nested_module) {
@@ -79,7 +79,7 @@ void MaterializePassthroughOpPass::runOnFunction() {
     Block &block = body.front();
     for (const auto &arg_mapping :
          llvm::zip(block.getArguments(), op->getOperands())) {
-      std::get<0>(arg_mapping)->replaceAllUsesWith(std::get<1>(arg_mapping));
+      std::get<0>(arg_mapping).replaceAllUsesWith(std::get<1>(arg_mapping));
     }
     op->getBlock()->getOperations().splice(op->getIterator(),
                                            block.getOperations(), block.begin(),
@@ -87,7 +87,7 @@ void MaterializePassthroughOpPass::runOnFunction() {
     Operation &return_op = block.front();
     for (auto ret_mapping :
          llvm::zip(op->getResults(), return_op.getOperands())) {
-      std::get<0>(ret_mapping)->replaceAllUsesWith(std::get<1>(ret_mapping));
+      std::get<0>(ret_mapping).replaceAllUsesWith(std::get<1>(ret_mapping));
     }
     op->erase();
   });

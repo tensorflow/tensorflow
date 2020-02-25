@@ -230,7 +230,7 @@ def print_v2(*inputs, **kwargs):
     output_stream: The output stream, logging level, or file to print to.
       Defaults to sys.stderr, but sys.stdout, tf.compat.v1.logging.info,
       tf.compat.v1.logging.warning, tf.compat.v1.logging.error,
-      absl.logging.info, absl.logging.warning and absl.loogging,error are also
+      absl.logging.info, absl.logging.warning and absl.logging.error are also
       supported. To print to a file, pass a string started with "file://"
       followed by the file path, e.g., "file:///tmp/foo.out".
     summarize: The first and last `summarize` elements within each dimension are

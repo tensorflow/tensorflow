@@ -83,7 +83,7 @@ TF::ReshapeOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createReshapeOp(
 template <typename BatchMatMulOpType>
 std::vector<Value> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
     Value value, int batch_size, Location loc, PatternRewriter& rewriter) {
-  RankedTensorType tensorType = value->getType().cast<RankedTensorType>();
+  RankedTensorType tensorType = value.getType().cast<RankedTensorType>();
   Type element_type = tensorType.getElementType();
 
   int rank = tensorType.getShape().size();
@@ -127,7 +127,7 @@ std::vector<Value> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
 template <typename BatchMatMulOpType>
 TF::TransposeOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createTransposeOp(
     Value value, Location loc, PatternRewriter& rewriter) {
-  auto value_type = value->getType().cast<RankedTensorType>();
+  auto value_type = value.getType().cast<RankedTensorType>();
   auto shape = value_type.getShape();
   int dims = shape.size();
 
@@ -197,17 +197,17 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   Value input_lhs = op.x();
   Value input_rhs = op.y();
 
-  if (!input_lhs->getType().isa<RankedTensorType>()) {
+  if (!input_lhs.getType().isa<RankedTensorType>()) {
     // LHS must be a ranked tensor type
     return this->matchFailure();
   }
-  if (!input_rhs->getType().isa<RankedTensorType>()) {
+  if (!input_rhs.getType().isa<RankedTensorType>()) {
     // RHS must be a ranked tensor type
     return this->matchFailure();
   }
 
-  auto lhs_type = input_lhs->getType().cast<RankedTensorType>();
-  auto rhs_type = input_rhs->getType().cast<RankedTensorType>();
+  auto lhs_type = input_lhs.getType().cast<RankedTensorType>();
+  auto rhs_type = input_rhs.getType().cast<RankedTensorType>();
 
   auto element_type = lhs_type.getElementType();
 
@@ -233,7 +233,7 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   if (op.adj_x()) {
     input_lhs = createTransposeOp(input_lhs, loc, rewriter);
 
-    lhs_type = input_lhs->getType().cast<RankedTensorType>();
+    lhs_type = input_lhs.getType().cast<RankedTensorType>();
     lhs_shape = lhs_type.getShape();
   }
 
@@ -241,7 +241,7 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   if (op.adj_y()) {
     input_rhs = createTransposeOp(input_rhs, loc, rewriter);
 
-    rhs_type = input_rhs->getType().cast<RankedTensorType>();
+    rhs_type = input_rhs.getType().cast<RankedTensorType>();
     rhs_shape = rhs_type.getShape();
   }
 
@@ -263,6 +263,18 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
     return this->matchSuccess();
   }
 
+  // Input dimensions must be defined. MatMulBCast does not support partial
+  // shapes.
+  for (auto dim : lhs_shape) {
+    if (dim == -1) {
+      return this->matchFailure();
+    }
+  }
+  for (auto dim : rhs_shape) {
+    if (dim == -1) {
+      return this->matchFailure();
+    }
+  }
   // Ensure that batch shapes are broadcastable.
   tensorflow::MatMulBCast bcast(absl::InlinedVector<tensorflow::int64, 4>(
                                     lhs_shape.begin(), lhs_shape.end()),

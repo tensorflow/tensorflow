@@ -83,7 +83,7 @@ LogicalResult DuplicateValueIfNeeded(Operation* op,
     // We can only clone the constant op at this point.
     // Since all ops have been legalized to tflite ops, so we only care about
     // ConstOp or QConstOp or mlir constant op/
-    Operation* input_op = operand->getDefiningOp();
+    Operation* input_op = operand.getDefiningOp();
     if (input_op == nullptr) return failure();
 
     Attribute attr;

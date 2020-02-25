@@ -39,7 +39,7 @@ void PruneGraph(GraphOp graph) {
   // Visit an op's operands if it is output of an Operation in same graph.
   auto visit_op = [&](Operation* op) {
     for (Value operand : op->getOperands()) {
-      Operation* def = operand->getDefiningOp();
+      Operation* def = operand.getDefiningOp();
       if (def && def->getParentOp() == graph &&
           reachable_ops.insert(def).second) {
         // Op has not been visited, add to queue to visit later.
@@ -86,7 +86,15 @@ namespace {
 // This transformation pass prunes a TF graph eliminating dead-nodes.
 struct GraphPruning : public FunctionPass<GraphPruning> {
   void runOnFunction() override {
-    getFunction().walk([](tf_executor::GraphOp graph) { PruneGraph(graph); });
+    getFunction().walk([](tf_executor::GraphOp graph) {
+      // For TensorFlow V1.0 compatibility: when importing a graph without
+      // providing feeds/fetches we should not attempt to prune. The best
+      // approximation here is to check if the graph does not have any fetched
+      // values.
+      if (!graph.GetFetch().getNumOperands()) return;
+
+      PruneGraph(graph);
+    });
   }
 };
 

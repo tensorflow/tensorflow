@@ -11,7 +11,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["src/testdata/add.bin"])
+exports_files([
+    "src/testdata/add.bin",
+    "src/testdata/add_unknown_dimensions.bin",
+])
 
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
@@ -20,7 +23,7 @@ JAVA_SRCS = glob([
 
 # Building tensorflow-lite.aar including 4 variants of .so
 # To build an aar for release, run below command:
-# bazel build --cxxopt='-std=c++11' -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
+# bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
 #   tensorflow/lite/java:tensorflow-lite
 aar_with_jni(
     name = "tensorflow-lite",
@@ -143,6 +146,35 @@ java_test(
 )
 
 java_test(
+    name = "TensorFlowLiteNoNativeLibTest",
+    size = "small",
+    srcs = JAVA_SRCS + ["src/test/java/org/tensorflow/lite/TensorFlowLiteNoNativeLibTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.TensorFlowLiteNoNativeLibTest",
+    visibility = ["//visibility:private"],
+    deps = [
+        "@com_google_truth",
+        "@junit",
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_test(
+    name = "TensorFlowLiteInvalidNativeLibTest",
+    size = "small",
+    srcs = JAVA_SRCS + ["src/test/java/org/tensorflow/lite/TensorFlowLiteInvalidNativeLibTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.lite.TensorFlowLiteInvalidNativeLibTest",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/lite/java/src/test/native:libtensorflowlite_jni.so",
+        "@com_google_truth",
+        "@junit",
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_test(
     name = "DataTypeTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/DataTypeTest.java"],
@@ -197,6 +229,7 @@ java_test(
     ],
     data = [
         "src/testdata/add.bin",
+        "src/testdata/add_unknown_dimensions.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],

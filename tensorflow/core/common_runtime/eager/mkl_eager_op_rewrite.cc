@@ -87,7 +87,7 @@ REGISTER_REWRITE(EagerOpRewriteRegistry::PRE_EXECUTION, MklEagerOpRewrite);
 
 // Constructor
 MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
-    : EagerOpRewrite(name, file, line) {
+    : EagerOpRewrite(name, file, line), registered_kernels_map_() {
   InsertMKLEagerOps({"BatchMatMul", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"BatchMatMulV2", AlwaysRewrite, CreateGenericMklOp});
   InsertMKLEagerOps({"Conv2D", RewriteConv2D, CreateMklConv2DOp});
@@ -112,13 +112,10 @@ Status MklEagerOpRewrite::Run(
 Status MklEagerOpRewrite::SetupNewOp(
     EagerOperation* orig_op, const string mkl_op_name,
     std::unique_ptr<EagerOperation>* new_mkl_op) {
-  const tensorflow::AttrTypeMap* types;
-  bool is_function = false;
-  TF_RETURN_IF_ERROR(
-      tensorflow::AttrTypeMapForOp(mkl_op_name.c_str(), &types, &is_function));
-  EagerContext* ctx = orig_op->EagerContext();
-  new_mkl_op->reset(new tensorflow::EagerOperation(ctx, mkl_op_name.c_str(),
-                                                   is_function, types));
+  bool is_remote = false;
+  new_mkl_op->reset(new tensorflow::EagerOperation(&orig_op->EagerContext()));
+  TF_RETURN_IF_ERROR(new_mkl_op->get()->Reset(mkl_op_name.c_str(), nullptr,
+                                              is_remote, nullptr));
 
   int num_inputs = orig_op->Inputs().size();
   // Add all inputs to the new op.
@@ -138,11 +135,13 @@ Status MklEagerOpRewrite::SetupNewOp(
       ->MutableAttrs()
       ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
 
-  if (orig_op->Device() != nullptr) {
-    (*new_mkl_op)->SetDevice(orig_op->Device());
-  } else {
+  if (orig_op->Device() == kVariantDeviceNull) {
     string device_name = orig_op->GetDeviceName();
     (*new_mkl_op)->SetDeviceName(device_name.c_str());
+  } else if (VariantDeviceIsCustom(orig_op->Device())) {
+    (*new_mkl_op)->SetDevice(absl::get<CustomDevice*>(orig_op->Device()));
+  } else {
+    (*new_mkl_op)->SetDevice(absl::get<Device*>(orig_op->Device()));
   }
   return Status::OK();
 }

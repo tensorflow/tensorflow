@@ -2,6 +2,7 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
     "tf_copts",
     "tf_cuda_cc_test",
     "tf_cuda_library",
@@ -26,8 +27,10 @@ tf_cuda_library(
         "c_api.cc",
         "c_api_debug.cc",
         "c_api_experimental.h",
-        "c_api_internal.cc",
         "c_api_internal.h",
+        "operation_interface.cc",
+        "operation_interface.h",
+        "tensor_handle_interface.h",
     ],
     hdrs = ["c_api.h"],
     copts = tf_copts() + tfe_xla_copts(),
@@ -55,6 +58,7 @@ tf_cuda_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
+            "//tensorflow/core/platform:casts",
             "//tensorflow/core/platform:errors",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/profiler/lib:traceme",
@@ -81,18 +85,18 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core/profiler/lib:profiler_lib",
-        "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core:gpu_runtime",
     ],
     alwayslink = 1,
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "c_api_experimental.h",
         "c_api_internal.h",
+        "operation_interface.h",
+        "tensor_handle_interface.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -102,7 +106,11 @@ filegroup(
 
 tf_cuda_library(
     name = "c_api_internal",
-    srcs = ["c_api_experimental.h"],
+    srcs = [
+        "c_api_experimental.h",
+        "operation_interface.h",
+        "tensor_handle_interface.h",
+    ],
     hdrs = ["c_api_internal.h"],
     visibility = [
         "//learning/deepmind/courier:__subpackages__",
@@ -125,19 +133,7 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
-        "//tensorflow/core/distributed_runtime:remote_device",
-        "//tensorflow/core/distributed_runtime:server_lib",
-        "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core/distributed_runtime/eager:eager_client",
-        "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
-        "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
-        "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
-        "//tensorflow/core/profiler/lib:profiler_lib",
-        "//tensorflow/core/profiler/lib:profiler_session",
+        "@com_google_absl//absl/container:fixed_array",
     ],
 )
 
@@ -209,6 +205,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/platform:casts",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -266,8 +263,6 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:remote_device",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core/profiler/rpc:profiler_server",
-        "//tensorflow/core/profiler/rpc/client:capture_profile",
         "//tensorflow/core:gpu_runtime",
     ],
     alwayslink = 1,
@@ -297,6 +292,27 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "custom_device_test",
+    size = "small",
+    srcs = [
+        "custom_device_test.cc",
+    ],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 cc_library(
     name = "tape",
     hdrs = ["tape.h"],
@@ -309,7 +325,10 @@ cc_library(
 
 filegroup(
     name = "headers",
-    srcs = ["c_api.h"],
+    srcs = [
+        "c_api.h",
+        "c_api_experimental.h",
+    ],
     visibility = ["//tensorflow:__subpackages__"],
 )
 

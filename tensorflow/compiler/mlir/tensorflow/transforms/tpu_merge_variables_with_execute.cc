@@ -115,12 +115,15 @@ bool OpAccessesResource(Operation* op) {
   });
 }
 
-// Finds the variable access info for a TPUExecute op. `check_device` specifies
-// whether it checks the device assignment of the variables to match the
-// TPUExecute op. This is optional in some context, e.g., guaranteed by
-// replication.
+// Finds the variable access info for a TPUExecute op.
+//  - `check_device` specifies  whether it checks the device assignment of the
+//  variables to match the TPUExecute op. This is optional in some context,
+//  e.g., guaranteed by replication.
+//  - `check_same_region` specifies whether the reads/assigns need to be in the
+//  same region as `execute`. This is needed if `execute` is inside ReplicateOp.
 VariableAccessesForTPUExecute BuildVariableAccessInfo(Operation* execute,
-                                                      bool check_device) {
+                                                      bool check_device,
+                                                      bool check_same_region) {
   VariableAccessesForTPUExecute infos;
   auto device_attr = execute->getAttr(kDeviceAttr);
   if (check_device && !device_attr) return infos;
@@ -135,23 +138,28 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(Operation* execute,
   // Find inputs that are variable reads.
   for (auto operand : llvm::enumerate(execute->getOpOperands())) {
     infos.new_operand_values.push_back(operand.value().get());
-    if (!operand.value().get()->getDefiningOp()) continue;
+    if (!operand.value().get().getDefiningOp()) continue;
     auto read_op = llvm::dyn_cast<TF::ReadVariableOp>(
-        operand.value().get()->getDefiningOp());
+        operand.value().get().getDefiningOp());
     if (!read_op) continue;
+    if (check_same_region &&
+        read_op.getParentRegion() != execute->getParentRegion()) {
+      continue;
+    }
     auto resource = read_op.resource();
 
     if (check_device) {
-      if (auto resource_op = resource->getDefiningOp()) {
+      if (auto resource_op = resource.getDefiningOp()) {
         auto resource_attr = resource_op->getAttr(kDeviceAttr);
         // Check device matching for the node defining the resource.
         if (!resource_attr || resource_attr != device_attr) continue;
       } else {
-        auto resource_arg = resource->dyn_cast<BlockArgument>();
+        auto resource_arg = resource.dyn_cast<BlockArgument>();
         assert(resource_arg);
+        if (resource_arg.getOwner() != &func.front()) continue;
         // Check device matching for the argument defining the resource.
         auto resource_attr = func.getArgAttrOfType<mlir::StringAttr>(
-            resource_arg->getArgNumber(), kFuncDeviceAttr);
+            resource_arg.getArgNumber(), kFuncDeviceAttr);
         if (!resource_attr || resource_attr != device_attr) continue;
       }
     }
@@ -222,9 +230,8 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(Operation* execute,
   llvm::SmallVector<bool, 8> output_fused(execute->getNumResults(), false);
   for (int i = 0; i < execute->getNumResults(); ++i) {
     auto result = execute->getResult(i);
-    if (!result->hasOneUse()) continue;
-    auto assign_op =
-        llvm::dyn_cast<TF::AssignVariableOp>(*result->user_begin());
+    if (!result.hasOneUse()) continue;
+    auto assign_op = llvm::dyn_cast<TF::AssignVariableOp>(*result.user_begin());
     if (!assign_op) continue;
     auto resource = assign_op.resource();
     auto it = infos.per_resource_info.find(resource);
@@ -289,8 +296,9 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(Operation* execute,
 
 // Merges the variable accesses into one TPUExecute op.
 void MergeForOneTPUExecute(Operation* execute, bool check_device,
-                           OpBuilder* builder) {
-  auto infos = BuildVariableAccessInfo(execute, check_device);
+                           bool check_same_region, OpBuilder* builder) {
+  auto infos =
+      BuildVariableAccessInfo(execute, check_device, check_same_region);
   if (infos.per_resource_info.empty()) {
     return;
   }
@@ -330,7 +338,7 @@ void MergeForOneTPUExecute(Operation* execute, bool check_device,
   // Replace the uses.
   for (int i = 0; i < infos.old_to_new_output_mapping.size(); ++i) {
     if (infos.old_to_new_output_mapping[i] < 0) continue;
-    execute->getResult(i)->replaceAllUsesWith(
+    execute->getResult(i).replaceAllUsesWith(
         merged_execute.getResult(infos.old_to_new_output_mapping[i]));
   }
   // Remove the assign ops.
@@ -359,8 +367,10 @@ void TPUMergeVariablesWithExecutePass::runOnFunction() {
         llvm::isa<tf_device::ReplicateOp>(execute->getParentOp());
     // If this is inside a tf_device::ReplicateOp, the variables are guaranteed
     // to be on the same device as the TPUExecute op. Skip device checking in
-    // that case.
-    MergeForOneTPUExecute(execute, !parent_is_replicate, &builder);
+    // that case, but we need to check that we are only merging reads/assigns
+    // that are also in this replicated region.
+    MergeForOneTPUExecute(execute, !parent_is_replicate, parent_is_replicate,
+                          &builder);
   }
 }
 

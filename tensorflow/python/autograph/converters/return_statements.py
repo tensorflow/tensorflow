@@ -39,7 +39,7 @@ class _RewriteBlock(object):
 
 
 class ConditionalReturnRewriter(converter.Base):
-  """Rewrites a a pattern where it's unbovious that all paths return a value.
+  """Rewrites a a pattern where it's unobvious that all paths return a value.
 
   This rewrite allows avoiding intermediate None return values.
 
@@ -71,7 +71,7 @@ class ConditionalReturnRewriter(converter.Base):
 
   def _postprocess_statement(self, node):
     # If the node definitely returns (e.g. it's a with statement with a
-    # return stateent in it), then the current block also definitely returns.
+    # return statement in it), then the current block also definitely returns.
     if anno.getanno(node, STMT_DEFINITELY_RETURNS, default=False):
       self.state[_RewriteBlock].definitely_returns = True
 
@@ -349,7 +349,7 @@ class ReturnStatementsTransformer(converter.Base):
     docstring = None
     if converted_body:
       if (isinstance(converted_body[0], gast.Expr) and
-          isinstance(converted_body[0].value, gast.Str)):
+          isinstance(converted_body[0].value, gast.Constant)):
         docstring = converted_body[0]
         converted_body = converted_body[1:]
 

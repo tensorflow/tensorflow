@@ -32,7 +32,7 @@ void ReportError(ErrorReporter* error_reporter, const char* format, ...) {
   if (error_reporter) {
     va_list args;
     va_start(args, format);
-    error_reporter->Report(format, args);
+    TF_LITE_REPORT_ERROR(error_reporter, format, args);
     va_end(args);
   }
 }
@@ -113,6 +113,65 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
   return true;
 }
 
+int GetSizeOfSegments(const DimensionMetadata* dim_metadata) {
+  switch (dim_metadata->array_segments_type()) {
+    case SparseIndexVector_Int32Vector:
+      return dim_metadata->array_segments_as_Int32Vector()->values()->size();
+    case SparseIndexVector_Uint16Vector:
+      return dim_metadata->array_segments_as_Uint16Vector()->values()->size();
+    case SparseIndexVector_Uint8Vector:
+      return dim_metadata->array_segments_as_Uint8Vector()->values()->size();
+    default:
+      return -1;
+  }
+}
+
+int GetValueOfSegmentsAt(const DimensionMetadata* dim_metadata, const int i) {
+  switch (dim_metadata->array_segments_type()) {
+    case SparseIndexVector_Int32Vector:
+      return static_cast<int>(
+          dim_metadata->array_segments_as_Int32Vector()->values()->Get(i));
+    case SparseIndexVector_Uint16Vector:
+      return static_cast<int>(
+          dim_metadata->array_segments_as_Uint16Vector()->values()->Get(i));
+    case SparseIndexVector_Uint8Vector:
+      return static_cast<int>(
+          dim_metadata->array_segments_as_Uint8Vector()->values()->Get(i));
+    default:
+      return -1;
+  }
+}
+
+int GetSizeOfIndices(const DimensionMetadata* dim_metadata) {
+  switch (dim_metadata->array_indices_type()) {
+    case SparseIndexVector_Int32Vector:
+      return dim_metadata->array_indices_as_Int32Vector()->values()->size();
+    case SparseIndexVector_Uint16Vector:
+      return dim_metadata->array_indices_as_Uint16Vector()->values()->size();
+    case SparseIndexVector_Uint8Vector:
+      return dim_metadata->array_indices_as_Uint8Vector()->values()->size();
+    default:
+      return -1;
+  }
+}
+
+int GetValueOfIndicesAt(const DimensionMetadata* dim_metadata, const int i) {
+  switch (dim_metadata->array_indices_type()) {
+    case SparseIndexVector_Int32Vector:
+      return static_cast<int>(
+          dim_metadata->array_indices_as_Int32Vector()->values()->Get(i));
+    case SparseIndexVector_Uint16Vector:
+      return static_cast<int>(
+          dim_metadata->array_indices_as_Uint16Vector()->values()->Get(i));
+    case SparseIndexVector_Uint8Vector:
+      return static_cast<int>(
+          dim_metadata->array_indices_as_Uint8Vector()->values()->Get(i));
+    default:
+      return -1;
+  }
+  return -1;
+}
+
 // The sparsity parameter defines a tree structure to map each non-zero element
 // stored in the flattened buffer back to its index in the conceptual dense
 // tensor.
@@ -139,31 +198,36 @@ absl::optional<uint64_t> VerifyAndCountElements(
         return absl::nullopt;
       }
 
-      for (int j = 0; j < array_segments->size() - 1; j++) {
-        if (array_segments->Get(j) < 0 || array_segments->Get(j + 1) < 0 ||
-            array_segments->Get(j) > array_segments->Get(j + 1)) {
+      int array_segments_size = GetSizeOfSegments(dim_metadata);
+      int array_indices_size = GetSizeOfIndices(dim_metadata);
+
+      for (int j = 0; j < array_segments_size - 1; j++) {
+        if (GetValueOfSegmentsAt(dim_metadata, j) < 0 ||
+            GetValueOfSegmentsAt(dim_metadata, j + 1) < 0 ||
+            GetValueOfSegmentsAt(dim_metadata, j) >
+                GetValueOfSegmentsAt(dim_metadata, j + 1)) {
           return absl::nullopt;
         }
       }
 
-      if (num_elements != array_segments->size() - 1) {
+      if (num_elements != array_segments_size - 1) {
         return absl::nullopt;
       }
 
-      if (array_indices->size() !=
-          array_segments->Get(array_segments->size() - 1)) {
+      if (array_indices_size !=
+          GetValueOfSegmentsAt(dim_metadata, array_segments_size - 1)) {
         return absl::nullopt;
       }
 
-      for (int j = 0; j < array_indices->size(); j++) {
-        if (array_indices->Get(j) < 0 ||
-            array_indices->Get(j) >= dim_sizes[original_dim]) {
+      for (int j = 0; j < array_indices_size; j++) {
+        if (GetValueOfIndicesAt(dim_metadata, j) < 0 ||
+            GetValueOfIndicesAt(dim_metadata, j) >= dim_sizes[original_dim]) {
           return absl::nullopt;
         }
       }
 
       // Need to reset num_elements when seeing a sparse dimension.
-      num_elements = array_indices->size();
+      num_elements = array_indices_size;
     }
   }
 
@@ -178,16 +242,40 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   }
 
   const int total_dims = sparsity->traversal_order()->size();
+  const int original_rank = tensor.shape()->size();
 
-  if (total_dims < tensor.shape()->size() ||
+  if (total_dims < original_rank ||
       sparsity->dim_metadata()->size() != total_dims) {
     return absl::nullopt;
   }
 
-  const int block_rank = total_dims - tensor.shape()->size();
+  const int block_rank = total_dims - original_rank;
   if (block_rank > 0 && (sparsity->block_map() == nullptr ||
                          sparsity->block_map()->size() != block_rank)) {
     return absl::nullopt;
+  }
+
+  // For a n-dimensional tensor (d0, ..., dn-1) with k-dimensional block (dn,
+  // ..., dn+k-1), the first n elements in the traversal order should be a
+  // permutation of (d0, ..., dn-1), and the last k elements should be a
+  // permutation of (dn, ..., dn+k-1).
+  std::vector<int> traversal_order(total_dims);
+  for (int i = 0; i < total_dims; i++) {
+    traversal_order[i] = sparsity->traversal_order()->Get(i);
+  }
+
+  std::sort(traversal_order.begin(), traversal_order.begin() + original_rank);
+  for (int i = 0; i < original_rank; i++) {
+    if (traversal_order[i] != i) {
+      return absl::nullopt;
+    }
+  }
+
+  std::sort(traversal_order.begin() + original_rank, traversal_order.end());
+  for (int i = original_rank; i < total_dims; i++) {
+    if (traversal_order[i] != i) {
+      return absl::nullopt;
+    }
   }
 
   // For a n-dimensional tensor (d0, ..., dn-1) with k-dimensional block (dn,
@@ -197,7 +285,6 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
   // 2}.
   std::vector<int> expanded_dim_sizes;
   expanded_dim_sizes.resize(total_dims);
-  const int original_rank = tensor.shape()->size();
   // First go through the original tensor dimensions, populate their sizes.
   for (int i = 0; i < original_rank; i++) {
     expanded_dim_sizes[i] = tensor.shape()->Get(i);

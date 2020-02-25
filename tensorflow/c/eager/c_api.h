@@ -206,14 +206,14 @@ typedef struct TFE_TensorDebugInfo TFE_TensorDebugInfo;
 // error and nullptr is returned. This function can block till the operation
 // that produces `handle` has completed.
 TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
-    TFE_TensorHandle* handle, TF_Status* status);
+    TFE_TensorHandle* h, TF_Status* status);
 
 // Deletes `debug_info`.
 TF_CAPI_EXPORT extern void TFE_DeleteTensorDebugInfo(
     TFE_TensorDebugInfo* debug_info);
 
 // Returns the number of dimensions used to represent the tensor on its device.
-// The number of dimensions used to reprensent the tensor on device can be
+// The number of dimensions used to represent the tensor on device can be
 // different from the number returned by TFE_TensorHandleNumDims.
 // The return value was current at the time of TFE_TensorDebugInfo creation.
 TF_CAPI_EXPORT extern int TFE_TensorDebugInfoOnDeviceNumDims(

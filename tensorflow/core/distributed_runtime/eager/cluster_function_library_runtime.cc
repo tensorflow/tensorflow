@@ -24,36 +24,40 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 
 namespace tensorflow {
 namespace eager {
+namespace {
+void StripDefaultAttributesInRegisterFunctionOp(
+    RegisterFunctionOp* register_function) {
+  StripDefaultAttributes(
+      *OpRegistry::Global(),
+      register_function->mutable_function_def()->mutable_node_def());
+  for (auto& function :
+       *register_function->mutable_library()->mutable_function()) {
+    StripDefaultAttributes(*OpRegistry::Global(), function.mutable_node_def());
+  }
+}
+}  // namespace
 
 void EagerClusterFunctionLibraryRuntime::Instantiate(
     const string& function_name, const FunctionLibraryDefinition& lib_def,
     AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::LocalHandle* handle,
     FunctionLibraryRuntime::DoneCallback done) {
-  const tensorflow::AttrTypeMap* attr_types;
-  bool is_function = false;
-  Status s;
-  s = tensorflow::AttrTypeMapForOp(function_name.c_str(), &attr_types,
-                                   &is_function);
-  if (!s.ok()) {
-    done(s);
-    return;
-  }
-  if (!is_function) {
-    done(errors::Internal(function_name, " is not a function."));
-    return;
-  }
   auto target = options.target;
-  auto* released_op =
-      new EagerOperation(ctx_, function_name.c_str(), is_function, attr_types);
-  s = released_op->SetDeviceName(target.c_str());
+  auto released_op = std::make_unique<EagerOperation>(ctx_);
+  Status s =
+      released_op->Reset(function_name.c_str(), target.c_str(), true, nullptr);
   if (!s.ok()) {
     done(s);
+    return;
+  }
+  if (!released_op->is_function()) {
+    done(errors::Internal(function_name, " is not a function."));
     return;
   }
 
@@ -94,22 +98,22 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   *register_function->mutable_library() =
       func_lib_def.ReachableDefinitions(register_function->function_def())
           .ToProto();
+  StripDefaultAttributesInRegisterFunctionOp(register_function);
 
-  eager_client->EnqueueAsync(request, response,
-                             [this, request, response, handle, released_op,
-                              target, eager_client = eager_client.get(),
-                              done](const Status& s) {
-                               {
-                                 mutex_lock l(mu_);
-                                 *handle = function_data_.size();
-                                 function_data_.emplace_back(
-                                     target, eager_client,
-                                     absl::WrapUnique(released_op));
-                               }
-                               done(s);
-                               delete request;
-                               delete response;
-                             });
+  eager_client->EnqueueAsync(
+      request, response,
+      [this, request, response, handle, released_op = released_op.release(),
+       target, eager_client = eager_client.get(), done](const Status& s) {
+        {
+          mutex_lock l(mu_);
+          *handle = function_data_.size();
+          function_data_.emplace_back(target, eager_client,
+                                      absl::WrapUnique(released_op));
+        }
+        done(s);
+        delete request;
+        delete response;
+      });
 }
 
 void EagerClusterFunctionLibraryRuntime::Run(

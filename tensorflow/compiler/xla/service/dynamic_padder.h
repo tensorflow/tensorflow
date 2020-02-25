@@ -32,11 +32,25 @@ namespace xla {
 // identity value so that in doesn't affect the result of subsequent
 // instruction. For example, it'd reset the padding to 0 before a bounded shape
 // is consumed by a reduce-sum.
+//
+// Dynamic_padder removes dynamic shapes from the entry computation, and inserts
+// custom calls (with dynamic shapes), which are lowered by specialized
+// emitters: PadToStatic and SliceToDynamic.
 class DynamicPadder : public HloModulePass {
  public:
+  // If `slice_dynamic_output` is true, insert 'slice_to_dynamic' ops to all
+  // outputs that are inferred to be dynamic.
+  explicit DynamicPadder(bool slice_dynamic_output = true)
+      : slice_dynamic_output_(slice_dynamic_output) {}
+
   absl::string_view name() const override { return "dynamic_padder"; }
 
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  // Insert 'slice_to_dynamic' ops to all outputs that are inferred to be
+  // dynamic.
+  bool slice_dynamic_output_;
 };
 
 }  // namespace xla

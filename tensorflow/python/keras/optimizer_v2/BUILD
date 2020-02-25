@@ -38,9 +38,9 @@ py_library(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:backend_config",
-        "//tensorflow/python/keras:base_layer_utils",
         "//tensorflow/python/keras:initializers",
-        "//tensorflow/python/keras:tf_utils",
+        "//tensorflow/python/keras/engine:base_layer_utils",
+        "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
 
@@ -55,7 +55,7 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python/keras:generic_utils",
+        "//tensorflow/python/keras/utils:generic_utils",
     ],
 )
 
@@ -198,10 +198,7 @@ cuda_py_test(
     srcs = ["optimizer_v2_test.py"],
     shard_count = 8,
     tags = [
-        "manual",
-        "no_oss",
         "no_windows",
-        "notap",
     ],
     deps = [
         ":optimizer_v2",

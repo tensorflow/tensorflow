@@ -80,33 +80,14 @@ TfLiteStatus StaticHashtable<KeyType, ValueType>::Import(
   return kTfLiteOk;
 }
 
-template <typename KeyType>
-LookupInterface* CreateStaticHashtableWithGivenKey(TfLiteType key_type,
-                                                   TfLiteType value_type) {
-  switch (value_type) {
-    case kTfLiteInt32:
-      return new StaticHashtable<KeyType, std::int32_t>(key_type, value_type);
-    case kTfLiteString:
-      return new StaticHashtable<KeyType, std::string>(key_type, value_type);
-    case kTfLiteFloat32:
-      return new StaticHashtable<KeyType, float>(key_type, value_type);
-    default:
-      return nullptr;
-  }
-}
-
 LookupInterface* CreateStaticHashtable(TfLiteType key_type,
                                        TfLiteType value_type) {
-  switch (key_type) {
-    case kTfLiteInt32:
-      return CreateStaticHashtableWithGivenKey<std::int32_t>(key_type,
-                                                             value_type);
-    case kTfLiteString:
-      return CreateStaticHashtableWithGivenKey<std::string>(key_type,
-                                                            value_type);
-    default:
-      return nullptr;
+  if (key_type == kTfLiteInt64 && value_type == kTfLiteString) {
+    return new StaticHashtable<std::int64_t, std::string>(key_type, value_type);
+  } else if (key_type == kTfLiteString && value_type == kTfLiteInt64) {
+    return new StaticHashtable<std::string, std::int64_t>(key_type, value_type);
   }
+  return nullptr;
 }
 
 }  // namespace internal

@@ -65,10 +65,9 @@ struct ShapeInference : public ModulePass<ShapeInference> {
     }
     for (auto func : module.getOps<FuncOp>()) {
       InferShapeUntilFixPoint(&func.getBody(), producer.getInt());
-    }
-
-    if (auto main_func = module.lookupSymbol<mlir::FuncOp>("main")) {
-      InferShapeForFunctionType(main_func);
+      // TODO(yuanzx): Verify that it is always fine to refine a function's
+      // return type, as long as we do not change the argument shapes.
+      InferShapeForFunctionType(func);
     }
   }
 };

@@ -119,7 +119,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
 
   // Match all obtained files to the input pattern.
   for (const auto& f : all_files) {
-    if (env->MatchPath(f, eval_pattern)) {
+    if (fs->Match(f, eval_pattern)) {
       results->push_back(f);
     }
   }

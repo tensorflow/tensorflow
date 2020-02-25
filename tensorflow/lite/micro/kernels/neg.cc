@@ -38,7 +38,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                             GetTensorData<float>(output));
       break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Neg only currently supports float32, got %d.", input->type);
       return kTfLiteError;
   }
@@ -48,8 +48,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace neg
 
 TfLiteRegistration* Register_NEG() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
-                                 /*prepare=*/nullptr, neg::Eval};
+  static TfLiteRegistration r = {};
+  r.invoke = neg::Eval;
   return &r;
 }
 

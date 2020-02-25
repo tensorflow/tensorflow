@@ -52,7 +52,7 @@ class FIFOQueueTest(test.TestCase):
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueueV2'
+      name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list { type: DT_FLOAT } } }
       attr { key: 'shapes' value { list {} } }
       attr { key: 'capacity' value { i: 10 } }
@@ -68,7 +68,7 @@ class FIFOQueueTest(test.TestCase):
           name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueueV2'
+      name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
         type: DT_INT32 type : DT_FLOAT
       } } }
@@ -87,7 +87,7 @@ class FIFOQueueTest(test.TestCase):
           name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueueV2'
+      name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
         type: DT_INT32 type : DT_FLOAT
       } } }
@@ -397,6 +397,34 @@ class FIFOQueueTest(test.TestCase):
                         array_ops.placeholder(dtypes_lib.int32)))
 
     _f()
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class GPUCompatibleFIFOQueueTests(test.TestCase):
+
+  def testEnqueueWithShape(self):
+    with test_util.use_gpu():
+      q = data_flow_ops.GPUCompatibleFIFOQueue(
+          10, dtypes_lib.float32, shapes=(3, 2))
+      self.evaluate(q.enqueue(([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],)))
+      with self.assertRaises(ValueError):
+        q.enqueue(([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],))
+      self.assertEqual(1, self.evaluate(q.size()))
+
+  def testEnqueueDequeue(self):
+    with test_util.use_gpu():
+      q = data_flow_ops.GPUCompatibleFIFOQueue(10, dtypes_lib.float32)
+      elems_numpy = [10.0, 20.0, 30.0]
+      elems = [constant_op.constant(x) for x in elems_numpy]
+
+      for x in elems:
+        self.evaluate(q.enqueue((x,)))
+
+      for i in xrange(len(elems)):
+        dequeued_tensor = q.dequeue()
+        self.assertEqual(elems[0].device, dequeued_tensor.device)
+        vals = self.evaluate(dequeued_tensor)
+        self.assertEqual([elems_numpy[i]], vals)
 
 
 @test_util.run_v1_only(
@@ -1619,7 +1647,7 @@ class FIFOQueueDictTest(test.TestCase):
           name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueueV2'
+      name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
         type: DT_INT32 type : DT_FLOAT
       } } }
@@ -1640,7 +1668,7 @@ class FIFOQueueDictTest(test.TestCase):
           name="Q")
     self.assertTrue(isinstance(q.queue_ref, ops.Tensor))
     self.assertProtoEquals("""
-      name:'Q' op:'FIFOQueueV2'
+      name:'Q' device: "/device:CPU:*" op:'FIFOQueueV2'
       attr { key: 'component_types' value { list {
         type: DT_INT32 type : DT_FLOAT
       } } }

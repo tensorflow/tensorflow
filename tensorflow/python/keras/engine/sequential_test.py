@@ -26,7 +26,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
@@ -166,9 +166,8 @@ class TestSequential(keras_parameterized.TestCase):
 
   # TODO(kaftan) This test fails w/ run_with_all_keras_modes. File ticket
   @parameterized.parameters((True,), (False,))
-  @tf_test_util.run_deprecated_v1
   def test_training_and_eval_methods_on_symbolic_tensors(self, deferred):
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
 
       def get_model():
         if deferred:
@@ -215,23 +214,6 @@ class TestSequential(keras_parameterized.TestCase):
     with self.assertRaises(TypeError):
       model = keras.models.Sequential()
       model.add(None)
-
-    # Added layers cannot have multiple outputs
-    class MyLayer(keras.layers.Layer):
-
-      def call(self, inputs):
-        return [3 * inputs, 2 * inputs]
-
-      def compute_output_shape(self, input_shape):
-        return [input_shape, input_shape]
-
-    with self.assertRaises(ValueError):
-      model = keras.models.Sequential()
-      model.add(MyLayer(input_shape=(3,)))
-    with self.assertRaises(TypeError):
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(1, input_dim=1))
-      model.add(MyLayer())
 
   @keras_parameterized.run_all_keras_modes
   def test_nested_sequential_trainability(self):
@@ -304,9 +286,16 @@ class TestSequential(keras_parameterized.TestCase):
     self.assertTrue(model.built)
 
     config = model.get_config()
-    self.assertIn('build_input_shape', config)
-
     new_model = keras.models.Sequential.from_config(config)
+    new_model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        metrics=[keras.metrics.CategoricalAccuracy()],
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+    x = np.random.random((batch_size, input_dim))
+    y = np.random.random((batch_size, num_classes))
+    new_model.train_on_batch(x, y)
     self.assertEqual(len(new_model.layers), 2)
     self.assertEqual(len(new_model.weights), 4)
 
@@ -339,15 +328,12 @@ class TestSequential(keras_parameterized.TestCase):
     self.assertFalse(model.built)
     model(array_ops.zeros([1, 2]))
     self.assertTrue(model.built)
-    self.assertEqual(len(model.outputs), 0)
     model.compile(
         'rmsprop',
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly(),
         experimental_run_tf_function=testing_utils.should_run_tf_function())
-    self.assertEqual(len(model.outputs), 0)
     model.train_on_batch(np.zeros((1, 2)), np.zeros((1, 5)))
-    self.assertEqual(len(model.outputs), 1)
 
   @keras_parameterized.run_all_keras_modes
   def test_sequential_nesting(self):
@@ -406,29 +392,32 @@ class TestSequential(keras_parameterized.TestCase):
         ValueError, 'should have a single output tensor'):
       keras.Sequential([MultiOutputLayer(input_shape=(3,))])
 
-  @keras_parameterized.run_all_keras_modes
+    with self.assertRaisesRegexp(
+        ValueError, 'should have a single output tensor'):
+      keras.Sequential([
+          keras.layers.Dense(1, input_shape=(3,)),
+          MultiOutputLayer()])
+
+    # Should also raise error in a deferred build mode
+    with self.assertRaisesRegexp(
+        ValueError, 'should have a single output tensor'):
+      keras.Sequential([MultiOutputLayer()])(np.zeros((10, 10)))
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_layer_add_after_compile_deferred(self):
     model = keras.Sequential([keras.layers.Dense(3)])
-
     self.assertFalse(model.built)
-    self.assertFalse(model.inputs)
-    self.assertFalse(model.outputs)
 
     model.compile('adam', loss='mse')
     model.fit(np.random.random((1, 3)), np.random.random((1, 3)))
-
     self.assertTrue(model.built)
-    self.assertTrue(model.inputs)
-    self.assertTrue(model.outputs)
 
     model.add(keras.layers.Dense(3))
-
-    self.assertTrue(model.built)
-    self.assertTrue(model.inputs)
-    self.assertTrue(model.outputs)
+    self.assertFalse(model.built)
 
     model.compile('adam', loss='mse')
     model.fit(np.random.random((1, 3)), np.random.random((1, 3)))
+    self.assertTrue(model.built)
 
   def test_sequential_layer_tracking(self):
     """Test that Sequential only tracks layers added in init or `.add`."""
@@ -448,21 +437,6 @@ class TestSequential(keras_parameterized.TestCase):
 
     model.pop()
     self.assertEqual(model._layers[-1], layer)
-
-  @testing_utils.enable_v2_dtype_behavior
-  def test_sequential_does_not_autocast(self):
-
-    class AssertFloat64InputLayer(keras.layers.Layer):
-
-      def __init__(self):
-        super(AssertFloat64InputLayer, self).__init__(autocast=False)
-
-      def call(self, inputs):
-        assert inputs.dtype == 'float64', 'inputs are %s' % inputs.dtype
-        return array_ops.identity(inputs)
-
-    model = keras.Sequential([AssertFloat64InputLayer(), keras.layers.Dense(4)])
-    model(np.random.random((4, 4)))
 
 
 class TestSequentialEagerIntegration(keras_parameterized.TestCase):
@@ -506,27 +480,6 @@ class TestSequentialEagerIntegration(keras_parameterized.TestCase):
     x = np.random.random((2, 6))
     y = np.random.random((2, 5))
     model.fit(x, y, epochs=1)
-
-  @keras_parameterized.run_all_keras_modes
-  def test_sequential_model_fails_with_dict_inputs(self):
-    num_classes = 5
-    model = testing_utils.get_small_sequential_mlp(
-        num_hidden=10, num_classes=num_classes)
-    model.compile(
-        'rmsprop',
-        metrics=['acc'],
-        weighted_metrics=['mae'],
-        loss='categorical_crossentropy',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
-
-    x = {'dense_input': np.random.random((10, 1))}
-    y = np.random.randint(num_classes, size=(10, 1))
-
-    with self.assertRaisesRegexp(
-        ValueError, 'Passing a dictionary input to a Sequential Model which '
-        'doesn\'t have FeatureLayer as the first layer is an error'):
-      model.fit(x, y, batch_size=5, epochs=1)
 
 
 if __name__ == '__main__':

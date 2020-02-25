@@ -320,9 +320,12 @@ class Interpreter(object):
     tensor_index = int(tensor_index)
     tensor_name = self._interpreter.TensorName(tensor_index)
     tensor_size = self._interpreter.TensorSize(tensor_index)
+    tensor_size_signature = self._interpreter.TensorSizeSignature(tensor_index)
     tensor_type = self._interpreter.TensorType(tensor_index)
     tensor_quantization = self._interpreter.TensorQuantization(tensor_index)
     tensor_quantization_params = self._interpreter.TensorQuantizationParameters(
+        tensor_index)
+    tensor_sparsity_params = self._interpreter.TensorSparsityParameters(
         tensor_index)
 
     if not tensor_name or not tensor_type:
@@ -332,13 +335,15 @@ class Interpreter(object):
         'name': tensor_name,
         'index': tensor_index,
         'shape': tensor_size,
+        'shape_signature': tensor_size_signature,
         'dtype': tensor_type,
         'quantization': tensor_quantization,
         'quantization_parameters': {
             'scales': tensor_quantization_params[0],
             'zero_points': tensor_quantization_params[1],
             'quantized_dimension': tensor_quantization_params[2],
-        }
+        },
+        'sparsity_parameters': tensor_sparsity_params
     }
 
     return details

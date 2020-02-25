@@ -110,6 +110,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
   size_t num_args = args.size();
+  rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
       rets->push_back(args[info.indices[i]]);
@@ -125,6 +126,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
   size_t num_args = args.size();
+  rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
       if (info.can_move[i]) {
@@ -404,9 +406,10 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
 }
 
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+    IteratorContext* ctx, const IteratorBase* parent,
+    const std::vector<Tensor>& input_element, int64 thread_index,
+    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator) {
   std::vector<Tensor> return_values;
 
   TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
@@ -425,7 +428,17 @@ Status MakeIteratorFromInputElement(
 
   // Create an iterator for the dataset that was returned by `f`.
   return returned_dataset->MakeIterator(
-      ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
+      ctx, parent, strings::StrCat(prefix, "[", thread_index, "]"),
+      out_iterator);
+}
+
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const std::vector<Tensor>& input_element,
+    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
+    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+  return MakeIteratorFromInputElement(ctx, /*parent=*/nullptr, input_element,
+                                      thread_index, inst_captured_func, prefix,
+                                      out_iterator);
 }
 
 /* static */

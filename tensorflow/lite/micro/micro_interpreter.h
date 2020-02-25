@@ -39,10 +39,15 @@ class MicroInterpreter {
                    uint8_t* tensor_arena, size_t tensor_arena_size,
                    ErrorReporter* error_reporter);
 
+  ~MicroInterpreter();
+
   // Runs through the model and allocates all necessary input, output and
   // intermediate tensors.
   TfLiteStatus AllocateTensors();
 
+  // In order to support partial graph runs for strided models, this can return
+  // values other than kTfLiteOk and kTfLiteError.
+  // TODO(b/149795762): Add this to the TfLiteStatus enum.
   TfLiteStatus Invoke();
 
   size_t tensors_size() const { return context_.tensors_size; }
@@ -89,12 +94,19 @@ class MicroInterpreter {
     return nullptr;
   }
 
+  // Reset all variable tensors to the default value.
+  TfLiteStatus ResetVariableTensors();
+
   TfLiteStatus initialization_status() const { return initialization_status_; }
 
   ErrorReporter* error_reporter() { return error_reporter_; }
 
   size_t operators_size() const { return operators_->size(); }
-  struct pairTfLiteNodeAndRegistration node_and_registration(int node_index);
+
+  // For debugging only.
+  const NodeAndRegistration node_and_registration(int node_index) const {
+    return node_and_registrations_[node_index];
+  }
 
  private:
   void CorrectTensorEndianness(TfLiteTensor* tensorCorr);
@@ -102,7 +114,7 @@ class MicroInterpreter {
   template <class T>
   void CorrectTensorDataEndianness(T* data, int32_t size);
 
-  NodeAndRegistration* node_and_registrations_;
+  NodeAndRegistration* node_and_registrations_ = nullptr;
 
   const Model* model_;
   const OpResolver& op_resolver_;

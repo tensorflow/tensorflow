@@ -106,10 +106,8 @@ class BufferedInputStream : public InputStreamInterface {
 #ifndef SWIG
 extern template tensorflow::Status BufferedInputStream::ReadAll<string>(
     string* result);
-#ifdef USE_TSTRING
 extern template tensorflow::Status BufferedInputStream::ReadAll<tstring>(
     tstring* result);
-#endif  // USE_TSTRING
 #endif  // SWIG
 
 }  // namespace io

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <random>
@@ -27,33 +28,17 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
-#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
-
-#if defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/delegate.h"
-#include "tensorflow/lite/nnapi/nnapi_util.h"
-#elif defined(__APPLE__)
-#include "TargetConditionals.h"
-#if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
-// Only enable metal delegate when using a real iPhone device.
-#define REAL_IPHONE_DEVICE
-#include "tensorflow/lite/delegates/gpu/metal_delegate.h"
-#endif
-#endif
-
+#include "tensorflow/lite/experimental/ruy/profiler/profiler.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
-#include "tensorflow/lite/profiling/buffered_profiler.h"
-#include "tensorflow/lite/profiling/profile_summarizer.h"
+#include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
+#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
+#include "tensorflow/lite/tools/benchmark/profiling_listener.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
-
-#ifdef GEMMLOWP_PROFILING
-#include "profiling/profiler.h"
-#endif
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
@@ -74,92 +59,23 @@ constexpr int kOpProfilingEnabledDefault = true;
 constexpr int kOpProfilingEnabledDefault = false;
 #endif
 
-// Dumps profiling events if profiling is enabled.
-class ProfilingListener : public BenchmarkListener {
+// Dumps ruy profiling events if the ruy profiler is enabled.
+class RuyProfileListener : public BenchmarkListener {
  public:
-  ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
-      : interpreter_(interpreter), profiler_(max_num_entries) {
-    TFLITE_BENCHMARK_CHECK(interpreter);
-    interpreter_->SetProfiler(&profiler_);
-
-    // We start profiling here in order to catch events that are recorded during
-    // the benchmark run preparation stage where TFLite interpreter is
-    // initialized and model graph is prepared.
-    profiler_.Reset();
-    profiler_.StartProfiling();
-  }
-
   void OnBenchmarkStart(const BenchmarkParams& params) override;
-
-  void OnSingleRunStart(RunType run_type) override;
-
-  void OnSingleRunEnd() override;
 
   void OnBenchmarkEnd(const BenchmarkResults& results) override;
 
  private:
-  Interpreter* interpreter_;
-  profiling::BufferedProfiler profiler_;
-  profiling::ProfileSummarizer run_summarizer_;
-  profiling::ProfileSummarizer init_summarizer_;
+  std::unique_ptr<ruy::profiler::ScopeProfile> ruy_profile_;
 };
 
-// Dumps gemmlowp profiling events if gemmlowp profiling is enabled.
-class GemmlowpProfilingListener : public BenchmarkListener {
- public:
-  void OnBenchmarkStart(const BenchmarkParams& params) override;
-
-  void OnBenchmarkEnd(const BenchmarkResults& results) override;
-};
-
-void ProfilingListener::OnBenchmarkStart(const BenchmarkParams& params) {
-  // At this point, we have completed the prepration for benchmark runs
-  // including TFLite interpreter initialization etc. So we are going to process
-  // profiling events recorded during this stage.
-  profiler_.StopProfiling();
-  auto profile_events = profiler_.GetProfileEvents();
-  init_summarizer_.ProcessProfiles(profile_events, *interpreter_);
-  profiler_.Reset();
+void RuyProfileListener::OnBenchmarkStart(const BenchmarkParams& params) {
+  ruy_profile_.reset(new ruy::profiler::ScopeProfile);
 }
 
-void ProfilingListener::OnSingleRunStart(RunType run_type) {
-  if (run_type == REGULAR) {
-    profiler_.Reset();
-    profiler_.StartProfiling();
-  }
-}
-
-void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
-  if (init_summarizer_.HasProfiles()) {
-    TFLITE_LOG(INFO) << "Profiling Info for Benchmark Initialization:";
-    TFLITE_LOG(INFO) << init_summarizer_.GetOutputString();
-  }
-  if (run_summarizer_.HasProfiles()) {
-    TFLITE_LOG(INFO)
-        << "Operator-wise Profiling Info for Regular Benchmark Runs:";
-    TFLITE_LOG(INFO) << run_summarizer_.GetOutputString();
-  }
-}
-
-void ProfilingListener::OnSingleRunEnd() {
-  profiler_.StopProfiling();
-  auto profile_events = profiler_.GetProfileEvents();
-  run_summarizer_.ProcessProfiles(profile_events, *interpreter_);
-}
-
-void GemmlowpProfilingListener::OnBenchmarkStart(
-    const BenchmarkParams& params) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::RegisterCurrentThreadForProfiling();
-  gemmlowp::StartProfiling();
-#endif
-}
-
-void GemmlowpProfilingListener::OnBenchmarkEnd(
-    const BenchmarkResults& results) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::FinishProfiling();
-#endif
+void RuyProfileListener::OnBenchmarkEnd(const BenchmarkResults& results) {
+  ruy_profile_ = nullptr;
 }
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
@@ -223,7 +139,7 @@ TfLiteStatus PopulateInputLayerInfo(
 
   // Populate input value range if it's specified.
   std::vector<std::string> value_ranges = Split(value_ranges_string, ':');
-  for (const auto val : value_ranges) {
+  for (const auto& val : value_ranges) {
     std::vector<std::string> name_range = Split(val, ',');
     if (name_range.size() != 3) {
       TFLITE_LOG(FATAL) << "Wrong input value range item specified: " << val;
@@ -269,6 +185,13 @@ std::vector<int> TfLiteIntArrayToVector(const TfLiteIntArray* int_array) {
   return values;
 }
 
+std::shared_ptr<profiling::ProfileSummaryFormatter>
+CreateProfileSummaryFormatter(bool format_as_csv) {
+  return format_as_csv
+             ? std::make_shared<profiling::ProfileSummaryCSVFormatter>()
+             : std::make_shared<profiling::ProfileSummaryDefaultFormatter>();
+}
+
 }  // namespace
 
 BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
@@ -280,22 +203,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("input_layer_value_range",
                           BenchmarkParam::Create<std::string>(""));
-  default_params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
-  default_params.AddParam("nnapi_execution_preference",
-                          BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_legacy_nnapi",
                           BenchmarkParam::Create<bool>(false));
-  default_params.AddParam("nnapi_accelerator_name",
-                          BenchmarkParam::Create<std::string>(""));
-  default_params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
-#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
-  default_params.AddParam("gpu_precision_loss_allowed",
-                          BenchmarkParam::Create<bool>(true));
-#endif
-#if defined(REAL_IPHONE_DEVICE)
-  default_params.AddParam("gpu_wait_type",
-                          BenchmarkParam::Create<std::string>(""));
-#endif
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("require_full_delegation",
                           BenchmarkParam::Create<bool>(false));
@@ -304,6 +213,13 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
       BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
   default_params.AddParam("max_profiling_buffer_entries",
                           BenchmarkParam::Create<int32_t>(1024));
+  default_params.AddParam("profiling_output_csv_file",
+                          BenchmarkParam::Create<std::string>(""));
+
+  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
+    delegate_util->AddParams(&default_params);
+  }
+
   return default_params;
 }
 
@@ -321,45 +237,35 @@ BenchmarkTfLiteModel::~BenchmarkTfLiteModel() { CleanUp(); }
 std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
   std::vector<Flag> flags = BenchmarkTfLiteModel::BenchmarkModel::GetFlags();
   std::vector<Flag> specific_flags = {
-    CreateFlag<std::string>("graph", &params_, "graph file name"),
-    CreateFlag<std::string>("input_layer", &params_, "input layer names"),
-    CreateFlag<std::string>("input_layer_shape", &params_, "input layer shape"),
-    CreateFlag<std::string>(
-        "input_layer_value_range", &params_,
-        "A map-like string representing value range for *integer* input "
-        "layers. Each item is separated by ':', and the item value consists of "
-        "input layer name and integer-only range values (both low and high are "
-        "inclusive) separated by ',', e.g. input1,1,2:input2,0,254"),
-    CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
-    CreateFlag<std::string>(
-        "nnapi_execution_preference", &params_,
-        "execution preference for nnapi delegate. Should be one of the "
-        "following: fast_single_answer, sustained_speed, low_power, undefined"),
-    CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
-    CreateFlag<std::string>(
-        "nnapi_accelerator_name", &params_,
-        "the name of the nnapi accelerator to use (requires Android Q+)"),
-    CreateFlag<bool>("use_gpu", &params_, "use gpu"),
-#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
-    CreateFlag<bool>("gpu_precision_loss_allowed", &params_,
-                     "Allow to process computation in lower precision than "
-                     "FP32 in GPU. By default, it's enabled."),
-#endif
-#if defined(REAL_IPHONE_DEVICE)
-    CreateFlag<std::string>(
-        "gpu_wait_type", &params_,
-        "GPU wait type. Should be one of the following: passive, active, "
-        "do_not_wait, aggressive"),
-#endif
-    CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
-    CreateFlag<bool>("require_full_delegation", &params_,
-                     "require delegate to run the entire graph"),
-    CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
-    CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
-                        "max profiling buffer entries")
-  };
+      CreateFlag<std::string>("graph", &params_, "graph file name"),
+      CreateFlag<std::string>("input_layer", &params_, "input layer names"),
+      CreateFlag<std::string>("input_layer_shape", &params_,
+                              "input layer shape"),
+      CreateFlag<std::string>(
+          "input_layer_value_range", &params_,
+          "A map-like string representing value range for *integer* input "
+          "layers. Each item is separated by ':', and the item value consists "
+          "of input layer name and integer-only range values (both low and "
+          "high are inclusive) separated by ',', e.g. input1,1,2:input2,0,254"),
+      CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
+      CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
+      CreateFlag<bool>("require_full_delegation", &params_,
+                       "require delegate to run the entire graph"),
+      CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
+      CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
+                          "max profiling buffer entries"),
+      CreateFlag<std::string>(
+          "profiling_output_csv_file", &params_,
+          "File path to export profile data as CSV, if not set "
+          "prints to stdout.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
+
+  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
+    auto delegate_flags = delegate_util->CreateFlags(&params_);
+    flags.insert(flags.end(), delegate_flags.begin(), delegate_flags.end());
+  }
+
   return flags;
 }
 
@@ -374,34 +280,8 @@ void BenchmarkTfLiteModel::LogParams() {
                    << params_.Get<std::string>("input_layer_value_range")
                    << "]";
 #if defined(__ANDROID__)
-  TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
-  if (!params_.Get<std::string>("nnapi_execution_preference").empty()) {
-    TFLITE_LOG(INFO) << "nnapi execution preference: ["
-                     << params_.Get<std::string>("nnapi_execution_preference")
-                     << "]";
-  }
   TFLITE_LOG(INFO) << "Use legacy nnapi : ["
                    << params_.Get<bool>("use_legacy_nnapi") << "]";
-  if (params_.Get<bool>("use_nnapi")) {
-    std::string log_string =
-        "nnapi accelerator name: [" +
-        params_.Get<std::string>("nnapi_accelerator_name") + "]";
-    std::string string_device_names_list = nnapi::GetStringDeviceNamesList();
-    // Print available devices when possible
-    if (!string_device_names_list.empty()) {
-      log_string += " (Available: " + string_device_names_list + ")";
-    }
-    TFLITE_LOG(INFO) << log_string;
-  }
-#endif
-  TFLITE_LOG(INFO) << "Use gpu : [" << params_.Get<bool>("use_gpu") << "]";
-#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
-  TFLITE_LOG(INFO) << "Allow lower precision in gpu : ["
-                   << params_.Get<bool>("gpu_precision_loss_allowed") << "]";
-#endif
-#if defined(REAL_IPHONE_DEVICE)
-  TFLITE_LOG(INFO) << "GPU delegate wait type : ["
-                   << params_.Get<std::string>("gpu_wait_type") << "]";
 #endif
   TFLITE_LOG(INFO) << "Allow fp16 : [" << params_.Get<bool>("allow_fp16")
                    << "]";
@@ -412,6 +292,13 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "Max profiling buffer entries: ["
                    << params_.Get<int32_t>("max_profiling_buffer_entries")
                    << "]";
+  TFLITE_LOG(INFO) << "CSV File to export profiling data to: ["
+                   << params_.Get<std::string>("profiling_output_csv_file")
+                   << "]";
+
+  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
+    delegate_util->LogParams(params_);
+  }
 }
 
 TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
@@ -435,6 +322,12 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
     total_input_bytes += t->bytes;
   }
   return total_input_bytes;
+}
+
+int64_t BenchmarkTfLiteModel::MayGetModelFileSize() {
+  std::ifstream in_file(params_.Get<std::string>("graph"),
+                        std::ios::binary | std::ios::ate);
+  return in_file.tellg();
 }
 
 TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
@@ -552,13 +445,7 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
 }
 
 TfLiteStatus BenchmarkTfLiteModel::Init() {
-  std::string graph = params_.Get<std::string>("graph");
-  model_ = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
-  if (!model_) {
-    TFLITE_LOG(ERROR) << "Failed to mmap model " << graph;
-    return kTfLiteError;
-  }
-  TFLITE_LOG(INFO) << "Loaded model " << graph;
+  TF_LITE_ENSURE_STATUS(LoadModel());
 
   auto resolver = GetOpResolver();
 
@@ -644,118 +531,33 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     return kTfLiteError;
   }
 
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp_profiling_listener_.reset(new GemmlowpProfilingListener());
-  AddListener(gemmlowp_profiling_listener_.get());
-#endif
+  ruy_profiling_listener_.reset(new RuyProfileListener());
+  AddListener(ruy_profiling_listener_.get());
 
+  return kTfLiteOk;
+}
+
+TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
+  std::string graph = params_.Get<std::string>("graph");
+  model_ = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
+  if (!model_) {
+    TFLITE_LOG(ERROR) << "Failed to mmap model " << graph;
+    return kTfLiteError;
+  }
+  TFLITE_LOG(INFO) << "Loaded model " << graph;
   return kTfLiteOk;
 }
 
 BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     const {
   TfLiteDelegatePtrMap delegates;
-  if (params_.Get<bool>("use_gpu")) {
-#if defined(__ANDROID__)
-    TfLiteGpuDelegateOptionsV2 gpu_opts = TfLiteGpuDelegateOptionsV2Default();
-    gpu_opts.inference_preference =
-        TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
-    if (params_.Get<bool>("gpu_precision_loss_allowed")) {
-      gpu_opts.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
-      gpu_opts.inference_priority2 =
-          TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
-      gpu_opts.inference_priority3 =
-          TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
-    }
-    Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateGPUDelegate(model_.get(), &gpu_opts);
-#elif defined(REAL_IPHONE_DEVICE)
-    TFLGpuDelegateOptions gpu_opts = {0};
-    gpu_opts.allow_precision_loss =
-        params_.Get<bool>("gpu_precision_loss_allowed");
-
-    std::string string_gpu_wait_type =
-        params_.Get<std::string>("gpu_wait_type");
-    if (!string_gpu_wait_type.empty()) {
-      TFLGpuDelegateWaitType wait_type = TFLGpuDelegateWaitTypePassive;
-      if (string_gpu_wait_type == "passive") {
-        wait_type = TFLGpuDelegateWaitTypePassive;
-      } else if (string_gpu_wait_type == "active") {
-        wait_type = TFLGpuDelegateWaitTypeActive;
-      } else if (string_gpu_wait_type == "do_not_wait") {
-        wait_type = TFLGpuDelegateWaitTypeDoNotWait;
-      } else if (string_gpu_wait_type == "aggressive") {
-        wait_type = TFLGpuDelegateWaitTypeAggressive;
-      }
-      gpu_opts.wait_type = wait_type;
-    }
-    Interpreter::TfLiteDelegatePtr delegate(TFLGpuDelegateCreate(&gpu_opts),
-                                            &TFLGpuDelegateDelete);
-#else
-    TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported "
-                        "to be benchmarked on Android or iOS platforms.";
-    Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateGPUDelegate(model_.get());
-#endif
-
-    if (!delegate) {
-      TFLITE_LOG(WARN) << "GPU acceleration is unsupported on this platform.";
-    } else {
-      delegates.emplace("GPU", std::move(delegate));
+  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
+    auto delegate = delegate_util->CreateTfLiteDelegate(params_);
+    if (delegate != nullptr) {
+      delegates.emplace(delegate_util->GetName(), std::move(delegate));
     }
   }
-  if (params_.Get<bool>("use_nnapi")) {
-    StatefulNnApiDelegate::Options options;
-    std::string accelerator_name =
-        params_.Get<std::string>("nnapi_accelerator_name");
-    if (!accelerator_name.empty()) {
-      options.accelerator_name = accelerator_name.c_str();
-    }
-    std::string string_execution_preference =
-        params_.Get<std::string>("nnapi_execution_preference");
-    // Only set execution preference if user explicitly passes one. Otherwise,
-    // leave it as whatever NNAPI has as the default.
-    if (!string_execution_preference.empty()) {
-      tflite::StatefulNnApiDelegate::Options::ExecutionPreference
-          execution_preference =
-              tflite::StatefulNnApiDelegate::Options::kUndefined;
-      if (string_execution_preference == "low_power") {
-        execution_preference =
-            tflite::StatefulNnApiDelegate::Options::kLowPower;
-      } else if (string_execution_preference == "sustained_speed") {
-        execution_preference =
-            tflite::StatefulNnApiDelegate::Options::kSustainedSpeed;
-      } else if (string_execution_preference == "fast_single_answer") {
-        execution_preference =
-            tflite::StatefulNnApiDelegate::Options::kFastSingleAnswer;
-      } else if (string_execution_preference == "undefined") {
-        execution_preference =
-            tflite::StatefulNnApiDelegate::Options::kUndefined;
-      } else {
-        TFLITE_LOG(WARN) << "The provided value ("
-                         << string_execution_preference
-                         << ") is not a valid nnapi execution preference.";
-      }
-      options.execution_preference = execution_preference;
-    }
-    Interpreter::TfLiteDelegatePtr delegate =
-        evaluation::CreateNNAPIDelegate(options);
-    if (!delegate) {
-      TFLITE_LOG(WARN) << "NNAPI acceleration is unsupported on this platform.";
-    } else {
-      delegates.emplace("NNAPI", std::move(delegate));
-    }
-  } else if (!params_.Get<std::string>("nnapi_accelerator_name").empty()) {
-    TFLITE_LOG(WARN)
-        << "`--use_nnapi=true` must be set for the provided NNAPI accelerator ("
-        << params_.Get<std::string>("nnapi_accelerator_name")
-        << ") to be used.";
-  } else if (!params_.Get<std::string>("nnapi_execution_preference").empty()) {
-    TFLITE_LOG(WARN) << "`--use_nnapi=true` must be set for the provided NNAPI "
-                        "execution preference ("
-                     << params_.Get<std::string>("nnapi_execution_preference")
-                     << ") to be used.";
-  }
+
   return delegates;
 }
 
@@ -770,8 +572,10 @@ std::unique_ptr<BenchmarkListener>
 BenchmarkTfLiteModel::MayCreateProfilingListener() const {
   if (!params_.Get<bool>("enable_op_profiling")) return nullptr;
   return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
-      interpreter_.get(),
-      params_.Get<int32_t>("max_profiling_buffer_entries")));
+      interpreter_.get(), params_.Get<int32_t>("max_profiling_buffer_entries"),
+      params_.Get<std::string>("profiling_output_csv_file"),
+      CreateProfileSummaryFormatter(
+          !params_.Get<std::string>("profiling_output_csv_file").empty())));
 }
 
 TfLiteStatus BenchmarkTfLiteModel::RunImpl() { return interpreter_->Invoke(); }

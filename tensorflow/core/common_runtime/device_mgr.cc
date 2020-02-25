@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <vector>
+
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -28,7 +29,9 @@ namespace tensorflow {
 DeviceMgr::~DeviceMgr() {}
 
 StaticDeviceMgr::StaticDeviceMgr(std::vector<std::unique_ptr<Device>> devices)
-    : devices_(std::move(devices)), name_backing_store_(128) {
+    : devices_(std::move(devices)),
+      name_backing_store_(128),
+      cpu_device_(nullptr) {
   for (auto& d : devices_) {
     // Register under the (1) full name and (2) canonical name.
     for (const string& name :
@@ -40,7 +43,11 @@ StaticDeviceMgr::StaticDeviceMgr(std::vector<std::unique_ptr<Device>> devices)
          DeviceNameUtils::GetLocalNamesForDeviceMappings(d->parsed_name())) {
       device_map_[CopyToBackingStore(name)] = d.get();
     }
-    device_type_counts_[d->device_type()]++;
+    const auto& t = d->device_type();
+    device_type_counts_[t]++;
+    if (cpu_device_ == nullptr && t == "CPU") {
+      cpu_device_ = d.get();
+    }
   }
 }
 
@@ -139,5 +146,7 @@ int StaticDeviceMgr::NumDeviceType(const string& type) const {
   if (iter != device_type_counts_.end()) return iter->second;
   return 0;
 }
+
+Device* StaticDeviceMgr::HostCPU() const { return cpu_device_; }
 
 }  // namespace tensorflow

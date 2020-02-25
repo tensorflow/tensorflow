@@ -74,8 +74,8 @@ cc_library(
 )
 
 cc_library(
-    name = "external_tpu_driver",
-    srcs = ["external_tpu_driver.cc"],
+    name = "direct_tpu_driver",
+    srcs = ["direct_tpu_driver.cc"],
     deps = [
         ":tpu_driver",
         "@com_google_absl//absl/strings:str_format",
@@ -87,7 +87,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         ":tpu_service_proto_cc",
         ":tpu_driver_proto_cc",
-        "//tensorflow/compiler/xla/python/tpu_driver/client:c_api",
+        "//tensorflow/compiler/xla/python/tpu_driver/client:libtpu",
     ] + external_deps(),
     alwayslink = 1,
 )

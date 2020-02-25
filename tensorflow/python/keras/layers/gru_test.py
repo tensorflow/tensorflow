@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -46,6 +47,8 @@ class GRULayerTest(keras_parameterized.TestCase):
 
   @tf_test_util.run_v2_only
   def test_float64_GRU(self):
+    if test.is_built_with_rocm():
+      self.skipTest('Double type is yet not supported in ROCm')
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -131,6 +134,8 @@ class GRULayerTest(keras_parameterized.TestCase):
     gru_model.predict(x_train)
 
   def test_with_masking_layer_GRU(self):
+    if test.is_built_with_rocm():
+      self.skipTest('MIOpen only supports packed input output')
     layer_class = keras.layers.GRU
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
@@ -146,6 +151,8 @@ class GRULayerTest(keras_parameterized.TestCase):
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_statefulness_GRU(self):
+    if test.is_built_with_rocm():
+      self.skipTest('MIOpen only supports packed input output')
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
@@ -210,6 +217,15 @@ class GRULayerTest(keras_parameterized.TestCase):
     out7 = model.predict(right_padded_input)
 
     np.testing.assert_allclose(out7, out6, atol=1e-5)
+
+  def test_get_initial_states(self):
+    batch_size = 4
+    cell = keras.layers.GRUCell(20)
+    initial_state = cell.get_initial_state(
+        batch_size=batch_size, dtype=dtypes.float32)
+    _, state = cell(np.ones((batch_size, 20), dtype=np.float32), initial_state)
+    self.assertLen(state, 1)
+    self.assertEqual(state[0].shape, initial_state.shape)
 
 
 @tf_test_util.run_all_in_graph_and_eager_modes

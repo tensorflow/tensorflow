@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/map_lhlo_to_scalar_op.h"
+#include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 
 namespace mlir {
 namespace xla_lhlo {
@@ -39,8 +39,8 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
                                      PatternRewriter& rewriter) const override {
     const auto& lhs = op.lhs();
     const auto& rhs = op.rhs();
-    const auto& lhs_type = lhs->getType().template cast<MemRefType>();
-    const auto& rhs_type = rhs->getType().template cast<MemRefType>();
+    const auto& lhs_type = lhs.getType().template cast<MemRefType>();
+    const auto& rhs_type = rhs.getType().template cast<MemRefType>();
     const auto& element_type = lhs_type.getElementType();
 
     if (lhs_type.getShape() != rhs_type.getShape()) {
@@ -56,13 +56,12 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
     }
     auto l = rewriter.create<LoadOp>(loc, lhs, induction_vars);
     auto r = rewriter.create<LoadOp>(loc, rhs, induction_vars);
-    Operation* result = MapLhloOpToStdScalarOp<LhloOp>(
-        llvm::cast<LhloOp>(op), element_type, {l, r}, rewriter);
-    if (result == nullptr) {
+    Value opResult = MapXlaOpToStdScalarOp<LhloOp>(
+        llvm::cast<LhloOp>(op), element_type, {l, r}, &rewriter);
+    if (opResult == nullptr) {
       return this->matchFailure();
     }
-    rewriter.create<StoreOp>(loc, result->getResult(0), op.out(),
-                             induction_vars);
+    rewriter.create<StoreOp>(loc, opResult, op.out(), induction_vars);
     rewriter.eraseOp(op);
     return this->matchSuccess();
   }

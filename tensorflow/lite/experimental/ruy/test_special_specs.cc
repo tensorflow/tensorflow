@@ -41,7 +41,8 @@ template <typename AccumScalar, typename DstScalar, typename LhsKernelLayout,
 struct StandardCppKernelLayoutSpec : BasicSpec<AccumScalar, DstScalar> {
   using StandardCppKernelLhsLayout = LhsKernelLayout;
   using StandardCppKernelRhsLayout = RhsKernelLayout;
-  static int cache_friendly_traversal_threshold() { return 0; }
+  static int local_data_cache_size() { return 1; }
+  static int shared_data_cache_size() { return 1; }
 };
 
 using LhsScalar = RUY_TEST_LHSSCALAR;

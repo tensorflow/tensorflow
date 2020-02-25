@@ -23,6 +23,8 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
@@ -34,14 +36,14 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/Value.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/ir/tfl_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/core/platform/logging.h"
 
+#define DEBUG_TYPE "quantization-driver"
+
 namespace mlir {
-namespace TFL {
+namespace quant {
 namespace {
 static bool EmptyParams(QuantParams p) { return p == quant::QuantizedType(); }
 
@@ -146,14 +148,14 @@ class QuantizationDriver {
 
   // Adds all the users of index-th result of op to the work list.
   void AddUserToList(Operation *op, int index) {
-    for (auto *user : op->getResult(index)->getUsers()) {
+    for (auto *user : op->getResult(index).getUsers()) {
       work_list_.push_back(user);
     }
   }
 
   // Adds the defining op of index-th operand of op to the work list.
   void AddOperandToList(Operation *op, int index) {
-    if (auto *inst = op->getOperand(index)->getDefiningOp()) {
+    if (auto *inst = op->getOperand(index).getDefiningOp()) {
       work_list_.push_back(inst);
     }
   }
@@ -248,7 +250,7 @@ class QuantizationDriver {
       return;
     }
     QuantParams params =
-        quant::QuantizedType::getQuantizedElementType(in->getType());
+        quant::QuantizedType::getQuantizedElementType(in.getType());
     bool immutable = !EmptyParams(params);
     int next_state_index = states_.size();
     states_.push_back({params, immutable});
@@ -280,6 +282,37 @@ class QuantizationDriver {
       return;
     }
     cached.first->second = InitializeState(op, index, res, /*as_result=*/true);
+  }
+
+  void DumpStates(Operation *current_op) {
+    if (current_op) {
+      llvm::errs() << "\n\n\n" << current_op->getName() << "\n";
+    }
+    fn_.walk([&](Operation *op) {
+      if (llvm::isa<quant::QuantizeCastOp>(op) ||
+          llvm::isa<quant::DequantizeCastOp>(op) || llvm::isa<ConstantOp>(op))
+        return;
+      if (current_op == op) llvm::errs() << "===>>>";
+      llvm::errs() << op->getName() << " : (";
+      for (auto i = 0; i < op->getNumOperands(); ++i) {
+        if (auto params = GetOperandQuantState(op, i).params)
+          params.print(llvm::errs());
+        else
+          op->getOperand(i).getType().cast<ShapedType>().getElementType().print(
+              llvm::errs());
+        llvm::errs() << ",";
+      }
+      llvm::errs() << ") -> (";
+      for (auto i = 0; i < op->getNumResults(); ++i) {
+        if (auto params = GetResultQuantState(op, i).params)
+          params.print(llvm::errs());
+        else
+          op->getResult(i).getType().cast<ShapedType>().getElementType().print(
+              llvm::errs());
+        llvm::errs() << ",";
+      }
+      llvm::errs() << ")\n";
+    });
   }
 
   FuncOp fn_;
@@ -338,7 +371,7 @@ bool QuantizationDriver::IsQuantized(Operation *op) {
 int QuantizationDriver::InitializeState(Operation *op, int index, Value val,
                                         bool as_result) {
   QuantParams params =
-      quant::QuantizedType::getQuantizedElementType(val->getType());
+      quant::QuantizedType::getQuantizedElementType(val.getType());
   bool immutable = !EmptyParams(params);
   int next_state_index = states_.size();
   states_.push_back({params, immutable});
@@ -351,7 +384,7 @@ int QuantizationDriver::InitializeState(Operation *op, int index, Value val,
 }
 
 bool QuantizationDriver::SetConstantResultParams(Operation *op) {
-  ElementsAttr attr;
+  DenseFPElementsAttr attr;
   Value res = op->getResult(0);
   if (!matchPattern(res, m_Constant(&attr))) {
     return false;
@@ -447,25 +480,23 @@ void QuantizationDriver::QuantizeOpResult(Operation *op, int index,
 }
 
 void QuantizationDriver::QuantizeArg(BlockArgument arg, QuantParams params) {
-  builder_.setInsertionPointToStart(arg->getOwner());
+  builder_.setInsertionPointToStart(arg.getOwner());
   QuantizeValue(arg, params, builder_.getUnknownLoc());
 }
 
 void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
                                        Location loc) {
-  Type expressed_type = value->getType();
+  Type expressed_type = value.getType();
   Type new_type = params.castFromExpressedType(expressed_type);
   // This value isn't an expressed type (float), skip.
   if (!new_type) return;
 
-  TypeAttr type_attr = TypeAttr::get(new_type);
-  auto quantize =
-      builder_.create<TFL::QuantizeOp>(loc, new_type, value, type_attr);
-  auto dequantize = builder_.create<TFL::DequantizeOp>(loc, expressed_type,
-                                                       quantize.output());
+  auto quantize = builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
+  auto dequantize = builder_.create<quant::DequantizeCastOp>(
+      loc, expressed_type, quantize.getResult());
   // `original_result` has a use to `quantize`, so this will replace that use
   // by the result of `dequantize`. Remember to reset that use afterwards
-  value->replaceAllUsesWith(dequantize);
+  value.replaceAllUsesWith(dequantize);
   quantize.getOperation()->replaceUsesOfWith(dequantize, value);
 }
 
@@ -475,8 +506,8 @@ void QuantizationDriver::RequantizeOpResult(Operation *op, int index,
   builder_.setInsertionPointAfter(op);
   Value value = op->getResult(index);
   if (state->pos == RequantizeState::ON_OUTPUT) {
-    Operation *user = value->getUses().begin().getUser();
-    if (llvm::isa<TFL::QuantizeOp>(user)) {
+    Operation *user = value.getUses().begin().getUser();
+    if (llvm::isa<quant::QuantizeCastOp>(user)) {
       // The requantize op is inserted between `quantize` and `dequantize` ops.
       value = user->getResult(0);
       builder_.setInsertionPointAfter(user);
@@ -488,12 +519,12 @@ void QuantizationDriver::RequantizeOpResult(Operation *op, int index,
 void QuantizationDriver::RequantizeArg(BlockArgument arg,
                                        RequantizeState *state) {
   Value value = arg;
-  builder_.setInsertionPointToStart(arg->getOwner());
-  if (value->hasOneUse()) {
-    auto user = value->use_begin().getUser();
-    if (auto q = llvm::dyn_cast<TFL::QuantizeOp>(user)) {
-      value = q.output();
-      builder_.setInsertionPoint(arg->getOwner(), ++Block::iterator(user));
+  builder_.setInsertionPointToStart(arg.getOwner());
+  if (value.hasOneUse()) {
+    auto user = value.use_begin().getUser();
+    if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
+      value = q.getResult();
+      builder_.setInsertionPoint(arg.getOwner(), ++Block::iterator(user));
     }
   }
   RequantizeValue(value, state, builder_.getUnknownLoc());
@@ -503,13 +534,13 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeState *state,
                                          Location loc) {
   Type new_type;
   if (state->pos == RequantizeState::ON_INPUT) {
-    Type expressed_type = value->getType();
+    Type expressed_type = value.getType();
     // The value needs to be requantized. A Quantize op will be created to use
     // it as the operand and replace its uses.
     new_type = state->params.castFromExpressedType(expressed_type);
   } else {
     Type expressed_type =
-        quant::QuantizedType::castToExpressedType(value->getType());
+        quant::QuantizedType::castToExpressedType(value.getType());
     if (!expressed_type) return;
 
     // The value needs to be requantized. A Quantize op will be created to use
@@ -519,10 +550,9 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeState *state,
   // This value isn't an expressed type (float), skip.
   if (!new_type) return;
 
-  TypeAttr type_attr = TypeAttr::get(new_type);
   auto requantize_op =
-      builder_.create<TFL::QuantizeOp>(loc, new_type, value, type_attr);
-  value->replaceAllUsesWith(requantize_op);
+      builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
+  value.replaceAllUsesWith(requantize_op);
   requantize_op.getOperation()->replaceUsesOfWith(requantize_op, value);
 }
 
@@ -603,7 +633,7 @@ void QuantizationDriver::PreprocessConstantOps() {
     Value value = cst.getResult();
     SmallVector<std::pair<Operation *, int>, 4> bias_users;
     bool used_as_weight = false;
-    for (auto &use : value->getUses()) {
+    for (auto &use : value.getUses()) {
       auto spec = GetQuantSpec(use.getOwner());
       auto biases = spec->biases_params;
       Operation *user = use.getOwner();
@@ -649,10 +679,10 @@ void QuantizationDriver::SetupAllStates() {
     args_.push_back(arg);
     Value value = arg;
     // If the argument is quantized, it should only has one user.
-    if (arg->hasOneUse()) {
-      auto user = value->use_begin().getUser();
-      if (auto q = llvm::dyn_cast<TFL::QuantizeOp>(user)) {
-        value = q.output();
+    if (arg.hasOneUse()) {
+      auto user = value.use_begin().getUser();
+      if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
+        value = q.getResult();
       }
     }
     InitializeArgState(arg, value, &value_to_state);
@@ -660,31 +690,33 @@ void QuantizationDriver::SetupAllStates() {
 
   fn_.walk([&](Operation *op) {
     if (op->isKnownTerminator() ||
-        op->hasTrait<OpTrait::quant::NoQuantizableResult>())
+        op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
+        llvm::isa<quant::DequantizeCastOp>(op) ||
+        llvm::isa<quant::QuantizeCastOp>(op))
       return;
     work_list_.push_back(op);
 
     for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
       auto operand = op->getOperand(i);
-      if (auto *inst = operand->getDefiningOp()) {
+      if (auto *inst = operand.getDefiningOp()) {
         // If the operand comes from a tfl.dequantize op, we use the quantized
         // input of this tfl.dequantize op to set the state.
-        if (auto dq = llvm::dyn_cast<TFL::DequantizeOp>(inst)) {
-          operand = dq.input();
+        if (auto dq = llvm::dyn_cast<quant::DequantizeCastOp>(inst)) {
+          operand = dq.arg();
         }
       }
       InitializeOperandState(op, i, operand, &value_to_state);
     }
 
     for (int res = 0, e = op->getNumResults(); res != e; ++res) {
-      auto result = op->getResult(res);
+      Value result = op->getResult(res);
       // If the result has been quantized, it should only be used by a
       // tfl.quantize op. For this case, we uses the quantized result to
       // create the state and mark it immutable.
-      if (result->hasOneUse()) {
-        auto user = result->use_begin().getUser();
-        if (auto q = llvm::dyn_cast<TFL::QuantizeOp>(user)) {
-          result = q.output();
+      if (result.hasOneUse()) {
+        auto user = result.use_begin().getUser();
+        if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
+          result = q.getResult();
         }
       }
       InitializeResultState(op, res, result, &value_to_state);
@@ -714,6 +746,8 @@ bool QuantizationDriver::PropagateParams() {
     Operation *op = work_list_.back();
     work_list_.pop_back();
 
+    LLVM_DEBUG(DumpStates(op));
+
     // This op has been quantized, so we should not consider it again.
     if (llvm::is_contained(quantized_, op)) continue;
     quantized_.insert(op);
@@ -738,12 +772,23 @@ bool QuantizationDriver::PropagateParams() {
       }
 
       // Use the final state to set all the operands' parameters.
-      for (int i = 0, e = op->getNumOperands(); i != e; ++i)
-        changed |= SetOperandParams(op, i, params);
+      for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
+        if (auto type = op->getOperand(i).getType().dyn_cast<ShapedType>()) {
+          // Without this check, it will accidently propagate the quantization
+          // information by the shared non-float tensors.
+          if (type.getElementType().isa<FloatType>())
+            changed |= SetOperandParams(op, i, params);
+        }
+      }
 
       // Use the final state to set all the results' parameters.
       for (int res = 0, e = op->getNumResults(); res != e; ++res)
-        changed |= SetResultParams(op, res, params);
+        if (auto type = op->getResult(res).getType().dyn_cast<ShapedType>()) {
+          // Without this check, it will accidently propagate the quantization
+          // information by the shared non-float-tensors.
+          if (type.getElementType().isa<FloatType>())
+            changed |= SetResultParams(op, res, params);
+        }
     }
 
     // TODO(fengliuai): make the bit width configurable.
@@ -822,5 +867,5 @@ void ApplyQuantizationParamsPropagation(
       .Run();
 }
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir

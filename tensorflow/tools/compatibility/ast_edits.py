@@ -921,7 +921,7 @@ class ASTCodeUpgrader(object):
                                      temp_file)
     # pylint: enable=g-backslash-continuation
 
-    if no_change_to_outfile_on_error and (ret[0] == 0 or ret[-1]):
+    if no_change_to_outfile_on_error and ret[0] == 0:
       os.remove(temp_file.name)
     else:
       shutil.move(temp_file.name, out_filename)

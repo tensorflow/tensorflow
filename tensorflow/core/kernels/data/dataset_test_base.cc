@@ -15,23 +15,74 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 
+#include <algorithm>
+#include <complex>
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
 #include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/map_dataset_op.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/io/record_writer.h"
-#include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
 namespace data {
@@ -147,6 +198,20 @@ Status IsEqual(const Tensor& t1, const Tensor& t2) {
   return Status::OK();
 }
 
+DatasetOpsTestBase::DatasetOpsTestBase()
+    : device_(DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0")),
+      device_type_(DEVICE_CPU),
+      cpu_num_(kDefaultCPUNum),
+      thread_num_(kDefaultThreadNum) {
+  allocator_ = device_->GetAllocator(AllocatorAttributes());
+}
+
+DatasetOpsTestBase::~DatasetOpsTestBase() {
+  if (dataset_) {
+    dataset_->Unref();
+  }
+}
+
 Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
   switch (a.dtype()) {
 #define CASE(DT)                           \
@@ -239,9 +304,14 @@ Status DatasetOpsTestBase::ExpectEqual(std::vector<Tensor> produced_tensors,
 Status DatasetOpsTestBase::CreateOpKernel(
     const NodeDef& node_def, std::unique_ptr<OpKernel>* op_kernel) {
   OpKernel* kernel;
-  TF_RETURN_IF_ERROR(tensorflow::CreateOpKernel(device_type_, device_.get(),
-                                                allocator_, flr_, node_def,
-                                                TF_GRAPH_DEF_VERSION, &kernel));
+  Status s;
+
+  std::shared_ptr<const NodeProperties> props;
+  TF_RETURN_IF_ERROR(NodeProperties::CreateFromNodeDef(
+      node_def, flr_->GetFunctionLibraryDefinition(), &props));
+  TF_RETURN_IF_ERROR(tensorflow::CreateOpKernel(
+      device_type_, device_.get(), allocator_, flr_,
+      device_->resource_manager(), props, TF_GRAPH_DEF_VERSION, &kernel));
   op_kernel->reset(kernel);
   return Status::OK();
 }
@@ -333,7 +403,7 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
       nullptr /* cluster_flr */);
   flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   if (thread_pool_ == nullptr) {
-    runner_ = [](std::function<void()> fn) { fn(); };
+    runner_ = [](const std::function<void()>& fn) { fn(); };
   } else {
     runner_ = [this](std::function<void()> fn) {
       thread_pool_->Schedule(std::move(fn));
@@ -370,9 +440,10 @@ Status DatasetOpsTestBase::RunFunction(
   LocalExecutorParams params;
   params.function_library = flr_;
   params.device = device_.get();
-  params.create_kernel = [this, version](const NodeDef& ndef,
-                                         OpKernel** kernel) {
-    return CreateNonCachedKernel(device_.get(), this->flr_, ndef, version,
+  params.create_kernel = [this, version](
+                             const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+    return CreateNonCachedKernel(device_.get(), this->flr_, props, version,
                                  kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) {
@@ -523,6 +594,11 @@ Status DatasetOpsTestBase::CheckIteratorGetNext(
     TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &next, &end_of_sequence));
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
+  // Call GetNext one more time to make sure it still reports
+  // end_of_sequence = True.
+  std::vector<Tensor> unused;
+  TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &unused, &end_of_sequence));
+  EXPECT_TRUE(end_of_sequence);
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, expected_outputs,
                            /*compare_order=*/compare_order));
@@ -584,8 +660,8 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
     const string& iterator_prefix, const std::vector<Tensor>& expected_outputs,
     const std::vector<int>& breakpoints, bool compare_order) {
   std::unique_ptr<IteratorBase> iterator;
-  TF_RETURN_IF_ERROR(
-      dataset_->MakeIterator(iterator_ctx_.get(), iterator_prefix, &iterator));
+  TF_RETURN_IF_ERROR(dataset_->MakeIterator(
+      iterator_ctx_.get(), /*parent=*/nullptr, iterator_prefix, &iterator));
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_RETURN_IF_ERROR(CreateSerializationContext(&serialization_ctx));
   bool end_of_sequence = false;
@@ -634,8 +710,9 @@ Status DatasetOpsTestBase::Initialize(const DatasetParams& dataset_params) {
   TF_RETURN_IF_ERROR(MakeDataset(dataset_params, &dataset_kernel_, &params_,
                                  &dataset_ctx_, &tensors_, &dataset_));
   TF_RETURN_IF_ERROR(CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
-  TF_RETURN_IF_ERROR(dataset_->MakeIterator(
-      iterator_ctx_.get(), dataset_params.iterator_prefix(), &iterator_));
+  TF_RETURN_IF_ERROR(
+      dataset_->MakeIterator(iterator_ctx_.get(), /*parent=*/nullptr,
+                             dataset_params.iterator_prefix(), &iterator_));
   initialized_ = true;
   return Status::OK();
 }
@@ -721,7 +798,8 @@ Status DatasetOpsTestBase::MakeIterator(
       CreateIteratorContext(dataset.op_kernel_context(), &iterator_ctx));
   std::unique_ptr<IteratorBase> iterator_base;
   TF_RETURN_IF_ERROR(dataset.dataset()->MakeIterator(
-      iterator_ctx.get(), dataset_params.iterator_prefix(), &iterator_base));
+      iterator_ctx.get(), /*parent=*/nullptr, dataset_params.iterator_prefix(),
+      &iterator_base));
   *iterator = std::make_unique<TestIterator>(std::move(iterator_ctx),
                                              std::move(iterator_base));
   return Status::OK();

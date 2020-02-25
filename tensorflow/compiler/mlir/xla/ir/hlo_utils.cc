@@ -23,8 +23,8 @@ namespace mlir {
 namespace xla {
 
 DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value x, Value y) {
-  TensorType xType = x->getType().dyn_cast<RankedTensorType>();
-  TensorType yType = y->getType().dyn_cast<RankedTensorType>();
+  TensorType xType = x.getType().dyn_cast<RankedTensorType>();
+  TensorType yType = y.getType().dyn_cast<RankedTensorType>();
   if (xType == yType || !xType || !yType) return {};
 
   // If the shapes have the same rank, then there is nothing to do.
@@ -55,7 +55,6 @@ DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value x, Value y) {
 DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
 
-  DenseElementsAttr attr;
   if (auto float_ty = ty.dyn_cast<FloatType>()) {
     APFloat value(float_ty.getFloatSemantics(), raw_value);
     return DenseElementsAttr::get(scalar_ty, value);

@@ -22,8 +22,7 @@ from absl.testing import parameterized
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.compat import compat
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.kernel_tests import test_base
@@ -90,50 +89,80 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
   def testExternalStatePolicyIgnore(self):
-    with compat.forward_compatibility_horizon(2019, 11, 30):
-      with ops.device(self._device0):
-        dataset0 = dataset_ops.Dataset.range(100).map(
-            lambda _: random_ops.random_uniform(  # pylint:disable=g-long-lambda
-                [],
-                minval=1,
-                maxval=10,
-                dtype=dtypes.float32))
-        opt = dataset_ops.Options()
-        opt.experimental_external_state_policy = (
-            distribute_options.ExternalStatePolicy.IGNORE)
-        dataset0 = dataset0.with_options(opt)
-      replicated_ds = distribute.replicate(dataset0,
-                                           [self._device1, self._device2])
-      dataset1 = replicated_ds[self._device1]
-      dataset2 = replicated_ds[self._device2]
+    with ops.device(self._device0):
+      dataset0 = dataset_ops.Dataset.range(100).map(
+          lambda _: random_ops.random_uniform(  # pylint:disable=g-long-lambda
+              [],
+              minval=1,
+              maxval=10,
+              dtype=dtypes.float32))
+      opt = dataset_ops.Options()
+      opt.experimental_external_state_policy = (
+          distribute_options.ExternalStatePolicy.IGNORE)
+      dataset0 = dataset0.with_options(opt)
+    replicated_ds = distribute.replicate(dataset0,
+                                         [self._device1, self._device2])
+    dataset1 = replicated_ds[self._device1]
+    dataset2 = replicated_ds[self._device2]
 
-      with ops.device(self._device0):
-        get_next0 = self.getNext(dataset0)
-      with ops.device(self._device1):
-        get_next1 = self.getNext(dataset1)
-      with ops.device(self._device2):
-        get_next2 = self.getNext(dataset2)
+    with ops.device(self._device0):
+      get_next0 = self.getNext(dataset0)
+    with ops.device(self._device1):
+      get_next1 = self.getNext(dataset1)
+    with ops.device(self._device2):
+      get_next2 = self.getNext(dataset2)
 
-      for _ in range(100):
-        self.evaluate(get_next0())
-        self.evaluate(get_next1())
-        self.evaluate(get_next2())
+    for _ in range(100):
+      self.evaluate(get_next0())
+      self.evaluate(get_next1())
+      self.evaluate(get_next2())
 
   @combinations.generate(
       combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
   def testExternalStatePolicyWarn(self):
-    with compat.forward_compatibility_horizon(2019, 11, 30):
-      with ops.device(self._device0):
-        dataset0 = dataset_ops.Dataset.range(100).map(
-            lambda _: random_ops.random_uniform(  # pylint:disable=g-long-lambda
-                [],
-                minval=1,
-                maxval=10,
-                dtype=dtypes.float32))
-        opt = dataset_ops.Options()
-        opt.experimental_external_state_policy = (
-            distribute_options.ExternalStatePolicy.WARN)
-        dataset0 = dataset0.with_options(opt)
+    with ops.device(self._device0):
+      dataset0 = dataset_ops.Dataset.range(100).map(
+          lambda _: random_ops.random_uniform(  # pylint:disable=g-long-lambda
+              [],
+              minval=1,
+              maxval=10,
+              dtype=dtypes.float32))
+      opt = dataset_ops.Options()
+      opt.experimental_external_state_policy = (
+          distribute_options.ExternalStatePolicy.WARN)
+      dataset0 = dataset0.with_options(opt)
+    replicated_ds = distribute.replicate(dataset0,
+                                         [self._device1, self._device2])
+    dataset1 = replicated_ds[self._device1]
+    dataset2 = replicated_ds[self._device2]
+
+    with ops.device(self._device0):
+      get_next0 = self.getNext(dataset0)
+    with ops.device(self._device1):
+      get_next1 = self.getNext(dataset1)
+    with ops.device(self._device2):
+      get_next2 = self.getNext(dataset2)
+
+    for _ in range(100):
+      self.evaluate(get_next0())
+      self.evaluate(get_next1())
+      self.evaluate(get_next2())
+
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
+  def testExternalStatePolicyFail(self):
+    with ops.device(self._device0):
+      dataset0 = dataset_ops.Dataset.range(100).map(
+          lambda _: random_ops.random_uniform(  # pylint:disable=g-long-lambda
+              [],
+              minval=1,
+              maxval=10,
+              dtype=dtypes.float32))
+      opt = dataset_ops.Options()
+      opt.experimental_external_state_policy = (
+          distribute_options.ExternalStatePolicy.FAIL)
+      dataset0 = dataset0.with_options(opt)
+    with self.assertRaises(errors.FailedPreconditionError):
       replicated_ds = distribute.replicate(dataset0,
                                            [self._device1, self._device2])
       dataset1 = replicated_ds[self._device1]
@@ -150,39 +179,6 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.evaluate(get_next0())
         self.evaluate(get_next1())
         self.evaluate(get_next2())
-
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
-  def testExternalStatePolicyFail(self):
-    with compat.forward_compatibility_horizon(2019, 11, 30):
-      with ops.device(self._device0):
-        dataset0 = dataset_ops.Dataset.range(100).map(
-            lambda _: random_ops.random_uniform(  # pylint:disable=g-long-lambda
-                [],
-                minval=1,
-                maxval=10,
-                dtype=dtypes.float32))
-        opt = dataset_ops.Options()
-        opt.experimental_external_state_policy = (
-            distribute_options.ExternalStatePolicy.FAIL)
-        dataset0 = dataset0.with_options(opt)
-      with self.assertRaises(errors.FailedPreconditionError):
-        replicated_ds = distribute.replicate(dataset0,
-                                             [self._device1, self._device2])
-        dataset1 = replicated_ds[self._device1]
-        dataset2 = replicated_ds[self._device2]
-
-        with ops.device(self._device0):
-          get_next0 = self.getNext(dataset0)
-        with ops.device(self._device1):
-          get_next1 = self.getNext(dataset1)
-        with ops.device(self._device2):
-          get_next2 = self.getNext(dataset2)
-
-        for _ in range(100):
-          self.evaluate(get_next0())
-          self.evaluate(get_next1())
-          self.evaluate(get_next2())
 
 
 JOB_NAME = "remote_device"
@@ -224,7 +220,7 @@ class RemoteReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
   def setUp(self):
     super(RemoteReplicateTest, self).setUp()
     # Start the local server.
-    local_port = pywrap_tensorflow.TF_PickUnusedPortOrDie()
+    local_port = pywrap_tfe.TF_PickUnusedPortOrDie()
     context.set_server_def(
         server_def=_get_server_def(
             JOB_NAME,

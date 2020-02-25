@@ -64,6 +64,7 @@ keras_packages = [
     "tensorflow.python.keras.layers.wrappers",
     "tensorflow.python.keras.losses",
     "tensorflow.python.keras.metrics",
+    "tensorflow.python.keras.mixed_precision.experimental.get_layer_policy",
     "tensorflow.python.keras.mixed_precision.experimental.loss_scale_optimizer",
     "tensorflow.python.keras.mixed_precision.experimental.policy",
     "tensorflow.python.keras.models",

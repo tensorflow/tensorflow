@@ -20,6 +20,7 @@ import android.content.res.AssetFileDescriptor;
 import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -47,9 +48,22 @@ public class FileUtil {
       throws IOException {
     SupportPreconditions.checkNotNull(context, "Context cannot be null.");
     SupportPreconditions.checkNotNull(filePath, "File path cannot be null.");
+    InputStream inputStream = context.getAssets().open(filePath);
+    return loadLabels(inputStream);
+  }
+
+  /**
+   * Loads labels from an input stream of an opened label file. See details for label files in
+   * {@link FileUtil#loadLabels(Context, String)}.
+   *
+   * @param inputStream the input stream of an opened label file.
+   * @return a list of labels.
+   * @throws IOException if error occurs to open or read the file.
+   */
+  @NonNull
+  public static List<String> loadLabels(@NonNull InputStream inputStream) throws IOException {
     List<String> labels = new ArrayList<>();
-    BufferedReader reader =
-        new BufferedReader(new InputStreamReader(context.getAssets().open(filePath)));
+    BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
     String line;
     while ((line = reader.readLine()) != null) {
       labels.add(line);

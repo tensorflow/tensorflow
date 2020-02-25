@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
+#include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
@@ -74,7 +74,7 @@ std::function<void(std::function<void()>)>* KernelAndDevice::get_runner()
   } else {
     static auto* default_runner =
         new std::function<void(std::function<void()>)>(
-            [](std::function<void()> f) { f(); });
+            [](const std::function<void()>& f) { f(); });
     return default_runner;
   }
 }
@@ -98,7 +98,10 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
         "A valid FunctionLibraryRuntime must be provided when running ops "
         "based on OpKernel.");
   }
-  TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
+  std::shared_ptr<const NodeProperties> props;
+  TF_RETURN_IF_ERROR(NodeProperties::CreateFromNodeDef(
+      ndef, flr_->GetFunctionLibraryDefinition(), &props));
+  TF_RETURN_IF_ERROR(flr_->CreateKernel(props, &k));
   kernel_.reset(k);
 
   input_alloc_attrs_.resize(kernel_->num_inputs());
@@ -133,7 +136,7 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
   if (function_def != nullptr) {
     op_def = &(function_def->signature());
   } else {
-    TF_RETURN_IF_ERROR(OpDefForOp(ndef.op().c_str(), &op_def));
+    TF_RETURN_IF_ERROR(OpDefForOp(ndef.op(), &op_def));
   }
   TF_RETURN_IF_ERROR(
       InOutTypesForNode(ndef, *op_def, &input_dtypes_, &output_dtypes_));
@@ -279,14 +282,11 @@ Status KernelAndDeviceOp::Run(
   OpKernelContext context(&params);
 
   {
-    const string& op_name = kernel_->name();
-    // 'ScopedActivity' will trace the OpKernel scheduling time on host.
-    profiler::TraceMe activity(
-        [&] { return absl::StrCat(op_name, ":", kernel_->type_string()); },
+    // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
+    // time on device of the OpKernel.
+    profiler::AnnotatedTraceMe activity(
+        [&] { return kernel_->TraceString(&context, /*verbose=*/false); },
         profiler::TraceMeLevel::kInfo);
-    // 'ScopedAnnotation' will trace the OpKernel execution time on device.
-    profiler::ScopedAnnotation annotation(
-        [&]() { return absl::StrCat(op_name, ":", kernel_->type_string()); });
     device_->Compute(kernel_.get(), &context);
   }
 
