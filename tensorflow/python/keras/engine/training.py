@@ -537,7 +537,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             of either `(inputs, targets)` or
             `(inputs, targets, sample_weights)`.
           - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
-            or `(inputs, targets, sample weights)`.
+            or `(inputs, targets, sample_weights)`.
           A more detailed description of unpacking behavior for iterator types
           (Dataset, generator, Sequence) is given below.
         y: Target data. Like the input data `x`,
