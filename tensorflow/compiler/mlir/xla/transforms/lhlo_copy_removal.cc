@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,7 +31,12 @@ namespace {
 struct LhloCopyRemoval : mlir::FunctionPass<LhloCopyRemoval> {
   void runOnFunction() override {
     llvm::SmallVector<mlir::Operation*, 2> eraseList;
-    getFunction().walk([&](mlir::xla_lhlo::CopyOp copyOp) {
+    auto function = getFunction();
+    // This pass only supports single block functions.
+    if (function.getBody().getBlocks().size() > 1) {
+      return;
+    }
+    function.walk([&](mlir::xla_lhlo::CopyOp copyOp) {
       mlir::Value fromOperand = copyOp.operand();
       mlir::Value toOperand = copyOp.output();
 
@@ -41,13 +46,30 @@ struct LhloCopyRemoval : mlir::FunctionPass<LhloCopyRemoval> {
         return;
       }
 
+      // The copy operation removal is illegal if there is at least a single use
+      // of toOperand value that lies between the first use of fromOperand value
+      // and the copy operation.
+      auto fromOperandUsers = fromOperand.getUsers();
+      auto firstUser = *fromOperandUsers.begin();
+      for (auto op : fromOperandUsers) {
+        if (op->isBeforeInBlock(firstUser)) firstUser = op;
+      }
+      for (auto op : toOperand.getUsers()) {
+        if (op->isBeforeInBlock(copyOp) && firstUser->isBeforeInBlock(op)) {
+          return;
+        }
+      }
+
+      // TODO(DFKI): Use live variable analysis to solve aliasing issues among block
+      // arguments.
+
       // Remove the associated alloc operation.
       auto allocOp = fromOperand.getDefiningOp();
       eraseList.push_back(allocOp);
 
       // Iterate over all uses of the fromOperand to find the associated
       // deallocOp (if any).
-      for (auto op : fromOperand.getUsers()) {
+      for (auto op : fromOperandUsers) {
         if (isa<mlir::DeallocOp>(op)) {
           eraseList.push_back(op);
           break;

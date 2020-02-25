@@ -1,4 +1,4 @@
-// RUN: tf-opt -hlo-legalize-to-lhlo %s -o - | FileCheck %s --dump-input=always
+// RUN: tf-opt -hlo-legalize-to-lhlo %s -o - | FileCheck %s --dump-input-on-failure
 
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
