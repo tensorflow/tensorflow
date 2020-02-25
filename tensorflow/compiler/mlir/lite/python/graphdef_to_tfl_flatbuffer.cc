@@ -87,6 +87,17 @@ const char kUnidirectionalSequenceLstmOp[] =
     "'LastState' type: DT_FLOAT } output_arg: { name: 'Output' type: DT_FLOAT} "
     "attr : { name: '_tflite_input_indices' type: 'list(int)'}";
 
+const char kUnidirectionalSequenceRnnOp[] =
+    "name: 'UnidirectionalSequenceRnn' input_arg: {name: 'Input' type: "
+    "DT_FLOAT} input_arg: { name: 'Weights' type: DT_FLOAT } "
+    "input_arg: { name: 'RecurrentWeights' type: DT_FLOAT } input_arg: { "
+    "name: 'Bias' type: DT_FLOAT} "
+    "input_arg: { name: 'HiddenState' type: DT_FLOAT} "
+    "output_arg: { name: "
+    "'LastState' type: DT_FLOAT } output_arg: { name: 'Output' type: "
+    "DT_FLOAT} "
+    "attr : { name: '_tflite_input_indices' type: 'list(int)'}";
+
 // Converts the toco::IODataType to tensorflow::DataType. Only contains the
 // conversion mapping for constants defined in TFLite Python API.
 DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
@@ -285,6 +296,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                       toco_flags.custom_opdefs().end());
   extra_tf_opdefs.push_back(kDetectionPostProcessOp);
   extra_tf_opdefs.push_back(kUnidirectionalSequenceLstmOp);
+  extra_tf_opdefs.push_back(kUnidirectionalSequenceRnnOp);
   TF_RETURN_IF_ERROR(RegisterCustomBuiltinOps(extra_tf_opdefs));
 
   TF_ASSIGN_OR_RETURN(
