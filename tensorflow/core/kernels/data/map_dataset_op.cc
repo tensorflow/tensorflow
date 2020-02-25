@@ -141,7 +141,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
       // non-deterministic order.
 
       std::vector<Tensor> args;
-      TF_RETURN_IF_ERROR(DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &args, end_of_sequence, parent_indices));
+      TF_RETURN_IF_ERROR(this->GetNextFromInput(input_impl_, ctx, &args, end_of_sequence, parent_indices));
       if (*end_of_sequence || args.empty()) {
         return Status::OK();
       }

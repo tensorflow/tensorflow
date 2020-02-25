@@ -426,8 +426,7 @@ void IndexManager::NotifyFinished(EparallaxTensorIndex* index) {
 
     auto last_index = last_index_map_.find(processed_index->iterator_id());
     std::vector<EparallaxTensorIndex*>* last_parent_indices;
-    if (last_index != last_index_map_.end()) {// &&
-        //last_index->second->parent_indices() != nullptr) {
+    if (last_index != last_index_map_.end()) {
       last_parent_indices = last_index->second->parent_indices();
     } else {
       continue;
@@ -444,7 +443,7 @@ void IndexManager::NotifyFinished(EparallaxTensorIndex* index) {
       }
     }
 
-    if (all_processed) {// && last_parent_indices != nullptr) {
+    if (all_processed) {
       for (auto parent_index : *last_parent_indices) {
         LOG(INFO) << *parent_index;
         if (infertile_indices_.Contains(parent_index)) {
@@ -461,30 +460,15 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
   mutex_lock l(mu_);
   EparallaxTensorIndex* out_index;
 
-  //if (parent_indices->empty()) {
-  //  if (local_index_map_.find(prefix) == local_index_map_.end()) {
-  //    local_index_map_.insert(std::make_pair(prefix, 0));
-  //  }
-  //  auto it = local_index_map_.find(prefix);
-  //  out_index = new EparallaxTensorIndex(prefix, nullptr, it->second++);
-  //} else {
-  LOG(INFO) << "1";
   int64 last_local_index = -1;
   for (auto issued_index : *issued_indices_.Get(prefix)) {
-    if (issued_index->parent_indices() == nullptr) {
-      LOG(INFO) << *issued_index;
-    }
-    if (//issued_index->parent_indices() != nullptr &&
-        //parent_indices != nullptr &&
-        *issued_index->parent_indices() == *parent_indices &&
+    if (*issued_index->parent_indices() == *parent_indices &&
         issued_index->local_index() > last_local_index) {
       last_local_index = issued_index->local_index();
     }
   }
   out_index = new EparallaxTensorIndex(prefix, parent_indices,
                                        last_local_index + 1);
-  //}
-  LOG(INFO) << "2";
 
   issued_indices_.Push(out_index);
   auto last_index = current_index_map_.find(out_index->iterator_id());
@@ -503,8 +487,7 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
   }
 
   // Mark infertile indices.
-  if (out_index->local_index() == 0 && !IsShuffled(out_index)) { //&&
-      //out_index->parent_indices() != nullptr) {
+  if (out_index->local_index() == 0 && !IsShuffled(out_index)) {
     auto last_index = last_index_map_.find(out_index->iterator_id());
     if (last_index == last_index_map_.end()) return out_index;
     for (auto last_parent_index : *last_index->second->parent_indices()) {

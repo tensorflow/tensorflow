@@ -166,7 +166,7 @@ TEST_P(ParameterizedDatasetOpTest, GetNext) {
     // We test only a finite number of steps of the infinite sequence.
     for (int i = 0; i < 100; ++i) {
       out_tensors.clear();
-      TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
+      TF_EXPECT_OK(this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
                                      &end_of_sequence, parent_indices));
       for (const auto &tensor : out_tensors) {
         TF_EXPECT_OK(ExpectEqual(tensor, *expected_outputs_it));
@@ -182,7 +182,7 @@ TEST_P(ParameterizedDatasetOpTest, GetNext) {
     EXPECT_FALSE(end_of_sequence);
   } else {
     while (!end_of_sequence) {
-      TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
+      TF_EXPECT_OK(this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
                                      &end_of_sequence, parent_indices));
       if (!end_of_sequence) {
         for (const auto &tensor : out_tensors) {
@@ -553,7 +553,7 @@ TEST_P(ParameterizedDatasetOpTest, Roundtrip) {
 
     while (cur_iteration < breakpoint) {
       out_tensors.clear();
-      TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
+      TF_EXPECT_OK(this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
                                      &end_of_sequence, parent_indices));
       if (!end_of_sequence) {
         for (auto &tensor : out_tensors) {

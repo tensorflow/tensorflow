@@ -144,7 +144,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
         // Fetch and throw away Tensors.
         std::vector<Tensor> dummy_out_tensors;
         TF_RETURN_IF_ERROR(
-            DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &dummy_out_tensors, end_of_sequence, parent_indices));
+            this->GetNextFromInput(input_impl_, ctx, &dummy_out_tensors, end_of_sequence, parent_indices));
         if (*end_of_sequence) {
           // We reached the end before the count was reached.
           input_impl_.reset();
@@ -156,7 +156,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
       // Return GetNext() on the underlying iterator.
       TF_RETURN_IF_ERROR(
-          DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
+          this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
       if (*end_of_sequence) {
         input_impl_.reset();
       }

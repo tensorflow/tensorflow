@@ -330,7 +330,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, GetNext) {
   while (!end_of_sequence) {
     std::vector<Tensor> next;
     TF_EXPECT_OK(
-        DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
+        this->GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
 
@@ -766,7 +766,7 @@ TEST_P(ParameterizedParallelMapDatasetOpTest, Roundtrip) {
     while (cur_iteration <= breakpoint) {
       std::vector<Tensor> next;
       TF_EXPECT_OK(
-          DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
+          this->GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
       out_tensors.insert(out_tensors.end(), next.begin(), next.end());
       cur_iteration++;
     }

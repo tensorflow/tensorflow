@@ -91,10 +91,10 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
             *end_of_sequence = true;
             return Status::OK();
           }
-          Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+          Status s = this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
           while (!s.ok()) {
             out_tensors->clear();
-            s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+            s = this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
           }
         }
         if (*end_of_sequence) {

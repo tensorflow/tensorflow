@@ -639,7 +639,7 @@ Status DatasetOpsTestBase::CheckIteratorGetNext(
   while (!end_of_sequence) {
     std::vector<Tensor> next;
     TF_RETURN_IF_ERROR(
-        DatasetBaseIterator::GetNextFromInput(iterator, iterator_context, &next, &end_of_sequence));
+        this->GetNextFromInput(iterator, iterator_context, &next, &end_of_sequence));
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
 
@@ -672,7 +672,7 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
 
     while (cur_iteration <= breakpoint) {
       TF_RETURN_IF_ERROR(
-          DatasetBaseIterator::GetNextFromInput(iterator, iterator_context, &out_tensors, &end_of_sequence));
+          this->GetNextFromInput(iterator, iterator_context, &out_tensors, &end_of_sequence));
       if (!end_of_sequence) {
         EXPECT_NE(expected_outputs_it, expected_outputs.end());
         TF_EXPECT_OK(ExpectEqual(out_tensors.back(), *expected_outputs_it));

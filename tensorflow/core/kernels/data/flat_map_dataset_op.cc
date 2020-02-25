@@ -129,7 +129,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           // We are currently precessing a mapped element, so try to get the
           // next subelement.
           bool end_of_element;
-          TF_RETURN_IF_ERROR(DatasetBaseIterator::GetNextFromInput(current_element_iterator_, 
+          TF_RETURN_IF_ERROR(this->GetNextFromInput(current_element_iterator_, 
               ctx, out_tensors, &end_of_element));
           if (!end_of_element) {
             // Produce the subelement as output.
@@ -147,7 +147,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         do {
           parent_indices->clear();
           TF_RETURN_IF_ERROR(
-              DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &captured_func_inputs_, end_of_sequence, parent_indices));
+              this->GetNextFromInput(input_impl_, ctx, &captured_func_inputs_, end_of_sequence, parent_indices));
           element_index_++;
           if (*end_of_sequence) {
             input_impl_.reset();

@@ -481,7 +481,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(iterator_->Initialize(ctx));
         }
 
-        return DatasetBaseIterator::GetNextFromInput(iterator_, ctx, out_tensors, end_of_sequence);
+        return this->GetNextFromInput(iterator_, ctx, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -838,7 +838,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         Status FillBuffer(IteratorContext* ctx, std::vector<EparallaxTensorIndex*>* parent_indices) LOCKS_EXCLUDED(mu_) {
           BufferElement elem;
           TF_RETURN_IF_ERROR(
-              DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &elem.value, &elem.end_of_sequence, parent_indices));
+              this->GetNextFromInput(input_impl_, ctx, &elem.value, &elem.end_of_sequence, parent_indices));
 
           mutex_lock l(mu_);
           next_elem_ = std::move(elem);
@@ -1051,7 +1051,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         Status GetNextInternal(IteratorContext* ctx,
                                std::vector<Tensor>* out_tensors,
                                bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
-          return DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+          return this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
         }
 
        private:

@@ -153,7 +153,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       bool resume_from_ckpt = true;
       while (i_ < dataset()->count_) {
         StoreValueToCheckpoint<int64>(i_, "i_");
-        Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+        Status s = this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
 
         if (!s.ok()) {
           if (errors::IsOutOfRange(s) && resume_from_ckpt) {
@@ -243,7 +243,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(
               dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         }
-        Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+        Status s = this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
         DCHECK(!*end_of_sequence || out_tensors->empty());
         if (first_call_ && *end_of_sequence) {
           // If the first call to GetNext() fails because the end

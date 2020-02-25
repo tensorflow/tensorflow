@@ -244,7 +244,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
     // Get the next input element.
     std::vector<Tensor> input_element;
     result->status =
-        DatasetBaseIterator::GetNextFromInput(input_impl_, ctx.get(), &input_element, &result->end_of_input, parent_indices);
+        this->GetNextFromInput(input_impl_, ctx.get(), &input_element, &result->end_of_input, parent_indices);
     if (result->end_of_input || !result->status.ok()) {
       CallCompleted(ctx, result);
       return;

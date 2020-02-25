@@ -565,7 +565,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       bool end_of_input = false;
       for (int64 i = 0; i < num_results; ++i) {
         auto result = std::make_shared<Result>();
-        result->status = DatasetBaseIterator::GetNextFromInput(element->iterator, 
+        result->status = this->GetNextFromInput(element->iterator, 
             ctx.get(), &result->return_values, &end_of_input);
         if (end_of_input) {
           break;
@@ -649,7 +649,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       auto element = std::make_shared<Element>();
       element->id = element_id_counter_++;
       Status status =
-          DatasetBaseIterator::GetNextFromInput(input_impl_, ctx.get(), &element->inputs, &end_of_input_, parent_indices);
+          this->GetNextFromInput(input_impl_, ctx.get(), &element->inputs, &end_of_input_, parent_indices);
       if (!status.ok()) {
         auto result = std::make_shared<Result>();
         result->is_ready = true;

@@ -105,7 +105,7 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
                              bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         tf_shared_lock l(mu_);
         uint64 start = ctx->env()->NowMicros();
-        Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+        Status s = this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
         uint64 end = ctx->env()->NowMicros();
         auto stats_aggregator = ctx->stats_aggregator();
         if (stats_aggregator && !*end_of_sequence) {
@@ -215,7 +215,7 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         tf_shared_lock l(mu_);
-        Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+        Status s = this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
         auto stats_aggregator = ctx->stats_aggregator();
         if (stats_aggregator && s.ok() && !*end_of_sequence) {
           size_t total_bytes = 0;

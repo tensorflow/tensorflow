@@ -227,7 +227,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
           }
           return threads[0].result->status;
         }
-        return GetNextFromInput(fastest_input_impl_, ctx, out_tensors, end_of_sequence);
+        return this->GetNextFromInput(fastest_input_impl_, ctx, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -320,7 +320,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
 
       void RunnerThread(IteratorContext* ctx, InvocationResult* result, int i) {
         int64 start = Env::Default()->NowNanos();
-        Status s = GetNextFromInput(input_impls_[i], ctx, &result->out_tensors,
+        Status s = this->GetNextFromInput(input_impls_[i], ctx, &result->out_tensors,
                                     &result->end_of_sequence);
         histograms_[i].Add(
             static_cast<double>(Env::Default()->NowNanos() - start));

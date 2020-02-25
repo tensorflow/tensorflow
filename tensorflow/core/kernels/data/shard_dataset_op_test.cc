@@ -304,7 +304,7 @@ TEST_P(ParameterizedShardDatasetOpTest, GetNext) {
   std::vector<Tensor> out_tensors;
   while (!end_of_sequence) {
     TF_EXPECT_OK(
-        DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence));
+        this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence));
     if (!end_of_sequence) {
       EXPECT_LT(expected_outputs_it, test_case.expected_outputs.end());
       TF_EXPECT_OK(ExpectEqual(out_tensors.back(), *expected_outputs_it));
@@ -729,7 +729,7 @@ TEST_P(ParameterizedShardDatasetOpTest, Roundtrip) {
     while (cur_iteration <= breakpoint) {
       std::vector<Tensor> next;
       TF_EXPECT_OK(
-          DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
+          this->GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
       out_tensors.insert(out_tensors.end(), next.begin(), next.end());
       cur_iteration++;
     }
@@ -828,7 +828,7 @@ TEST_F(ShardDatasetOpTest, NoElemForEachShard) {
   std::vector<Tensor> out_tensors;
 
   EXPECT_EQ(
-      DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence)
+      this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence)
           .code(),
       tensorflow::error::INVALID_ARGUMENT);
 }

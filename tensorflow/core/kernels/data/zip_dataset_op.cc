@@ -141,7 +141,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       for (const auto& input_impl : input_impls_) {
         std::vector<Tensor> input_tensors;
         TF_RETURN_IF_ERROR(
-            DatasetBaseIterator::GetNextFromInput(input_impl, ctx, &input_tensors, end_of_sequence, parent_indices));
+            this->GetNextFromInput(input_impl, ctx, &input_tensors, end_of_sequence, parent_indices));
         if (*end_of_sequence) {
           break;
         }

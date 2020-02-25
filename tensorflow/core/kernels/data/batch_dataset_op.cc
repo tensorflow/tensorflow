@@ -148,7 +148,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         for (int i = 0; i < dataset()->batch_size_ && !*end_of_sequence; ++i) {
           std::vector<Tensor> batch_element_tuple;
           TF_RETURN_IF_ERROR(
-              DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &batch_element_tuple, end_of_sequence, parent_indices));
+              this->GetNextFromInput(input_impl_, ctx, &batch_element_tuple, end_of_sequence, parent_indices));
           if (!*end_of_sequence) {
             batch_elements.emplace_back(std::move(batch_element_tuple));
           } else {

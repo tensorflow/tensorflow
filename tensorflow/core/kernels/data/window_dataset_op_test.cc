@@ -352,7 +352,7 @@ TEST_P(ParameterizedWindowDatasetOpTest, GetNext) {
     // vector.
     std::vector<Tensor> out_tensors;
     TF_EXPECT_OK(
-        DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence));
+        this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence));
     if (!end_of_sequence) {
       for (const auto& window_dataset_tensor : out_tensors) {
         // Not owned.
@@ -367,7 +367,7 @@ TEST_P(ParameterizedWindowDatasetOpTest, GetNext) {
         // Fetches all the elements in window_dataset.
         while (!end_of_window_dataset) {
           std::vector<Tensor> next_element;
-          TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(window_dataset_iterator, 
+          TF_EXPECT_OK(this->GetNextFromInput(window_dataset_iterator, 
               iterator_ctx.get(), &next_element, &end_of_window_dataset));
           window_elements.insert(window_elements.end(), next_element.begin(),
                                  next_element.end());
@@ -816,7 +816,7 @@ TEST_P(ParameterizedWindowDatasetOpTest, Roundtrip) {
         // Owns the datasets, which are stored as the variant tensors in the
         // vector.
         std::vector<Tensor> out_tensors;
-        TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
+        TF_EXPECT_OK(this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
                                        &end_of_sequence, parent_indices));
         if (!end_of_sequence) {
           for (const auto& window_dataset_tensor : out_tensors) {
@@ -831,7 +831,7 @@ TEST_P(ParameterizedWindowDatasetOpTest, Roundtrip) {
             std::vector<Tensor> window_elements;
             while (!end_of_window_dataset) {
               std::vector<Tensor> next_element;
-              TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(window_dataset_iterator, 
+              TF_EXPECT_OK(this->GetNextFromInput(window_dataset_iterator, 
                   iterator_ctx.get(), &next_element, &end_of_window_dataset));
               window_elements.insert(window_elements.end(),
                                      next_element.begin(), next_element.end());

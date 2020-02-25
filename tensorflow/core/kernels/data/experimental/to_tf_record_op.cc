@@ -46,7 +46,7 @@ class ToTFRecordOp : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    // The call to `DatasetBaseIterator::GetNextFromInput(iterator, )` may block and depend on an inter-op
+    // The call to `this->GetNextFromInput(iterator, )` may block and depend on an inter-op
     // thread pool thread, so we issue the call using a background thread.
     background_worker_.Schedule(std::bind(
         [this, ctx](std::function<void()>& done) {

@@ -163,7 +163,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
         std::vector<Tensor> next_element;
         TF_RETURN_IF_ERROR(
-            DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &next_element, end_of_sequence, parent_indices));
+            this->GetNextFromInput(input_impl_, ctx, &next_element, end_of_sequence, parent_indices));
         if (*end_of_sequence) {
           return Status::OK();
         }

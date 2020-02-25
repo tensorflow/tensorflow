@@ -561,7 +561,7 @@ TEST_P(ParameterizedPaddedBatchDatasetOpTest, GetNext) {
   while (!end_of_sequence) {
     std::vector<Tensor> next;
     TF_EXPECT_OK(
-        DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
+        this->GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
 
@@ -1049,7 +1049,7 @@ TEST_P(ParameterizedPaddedBatchDatasetOpTest, Roundtrip) {
     while (cur_iteration <= breakpoint) {
       std::vector<Tensor> next;
       TF_EXPECT_OK(
-          DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
+          this->GetNextFromInput(iterator, iterator_ctx.get(), &next, &end_of_sequence));
       out_tensors.insert(out_tensors.end(), next.begin(), next.end());
       cur_iteration++;
     }
@@ -1114,7 +1114,7 @@ TEST_F(PaddedBatchDatasetOpTest, ShortPadding) {
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
   EXPECT_EQ(
-      DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence)
+      this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence)
           .code(),
       tensorflow::error::DATA_LOSS);
 }
@@ -1167,7 +1167,7 @@ TEST_F(PaddedBatchDatasetOpTest, InvalidPaddedShapes) {
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
   EXPECT_EQ(
-      DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence)
+      this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence)
           .code(),
       tensorflow::error::INVALID_ARGUMENT);
 }

@@ -188,7 +188,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             stats_utils::BufferCapacityScalarName(dataset()->node_name()),
             static_cast<float>(auto_tuner_.buffer_limit()), num_elements());
       }
-      return DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+      return this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
     }
 
    protected:

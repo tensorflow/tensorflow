@@ -180,7 +180,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
                                                 dataset()->tag_,
                                                 dataset()->prefix_));
         IteratorContext iter_ctx(std::move(params));
-        return DatasetBaseIterator::GetNextFromInput(input_impl_, &iter_ctx, out_tensors, end_of_sequence, parent_indices);
+        return this->GetNextFromInput(input_impl_, &iter_ctx, out_tensors, end_of_sequence, parent_indices);
       }
 
      protected:

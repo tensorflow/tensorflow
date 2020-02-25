@@ -124,7 +124,7 @@ class SamplingDatasetOp : public UnaryDatasetOpKernel {
               return Status::OK();
             }
             TF_RETURN_IF_ERROR(
-                DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
+                this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
           }
           if (*end_of_sequence) {
             mutex_lock l(mu_);

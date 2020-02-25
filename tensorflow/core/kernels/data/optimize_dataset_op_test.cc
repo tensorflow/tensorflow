@@ -102,7 +102,7 @@ TEST_F(OptimizeDatasetOpTest, NoopElimination) {
   while (!end_of_sequence) {
     std::vector<Tensor> next;
     TF_EXPECT_OK(
-        DatasetBaseIterator::GetNextFromInput(iterator, iterator_context.get(), &next, &end_of_sequence));
+        this->GetNextFromInput(iterator, iterator_context.get(), &next, &end_of_sequence));
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
 

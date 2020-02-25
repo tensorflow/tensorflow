@@ -93,7 +93,7 @@ class WrapperDataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
-      return DatasetBaseIterator::GetNextFromInput(dataset()->real_iterator_, ctx, out_tensors,
+      return this->GetNextFromInput(dataset()->real_iterator_, ctx, out_tensors,
                                                 end_of_sequence, parent_indices);
     }
 
@@ -378,7 +378,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        return DatasetBaseIterator::GetNextFromInput(current_iterator_, ctx, out_tensors, end_of_sequence);
+        return this->GetNextFromInput(current_iterator_, ctx, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -446,7 +446,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
 
         int64 start = ctx->env()->NowNanos();
         Status s =
-            DatasetBaseIterator::GetNextFromInput(current_iterator_, ctx, out_tensors, end_of_sequence);
+            this->GetNextFromInput(current_iterator_, ctx, out_tensors, end_of_sequence);
 
         if (experiment_counter_ > 0) {
           // Ignore the first experiment when benchmarking. It may be an outlier

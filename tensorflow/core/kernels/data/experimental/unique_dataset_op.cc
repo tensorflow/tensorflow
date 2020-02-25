@@ -103,7 +103,7 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
           saw_new_value = false;
           out_tensors->clear();
           TF_RETURN_IF_ERROR(
-              DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
+              this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
           if (*end_of_sequence) {
             break;
           }

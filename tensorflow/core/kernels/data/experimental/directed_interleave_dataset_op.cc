@@ -167,7 +167,7 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
         while (true) {
           std::vector<Tensor> selector_result;
           *end_of_sequence = false;
-          TF_RETURN_IF_ERROR(DatasetBaseIterator::GetNextFromInput(selector_input_impl_, 
+          TF_RETURN_IF_ERROR(this->GetNextFromInput(selector_input_impl_, 
               ctx, &selector_result, end_of_sequence, parent_indices));
           if (*end_of_sequence) {
             selector_input_impl_.reset();
@@ -186,7 +186,7 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
 
           if (data_input_impls_[selected_input]) {
             bool end_of_selected_input = false;
-            TF_RETURN_IF_ERROR(DatasetBaseIterator::GetNextFromInput(
+            TF_RETURN_IF_ERROR(this->GetNextFromInput(
                 data_input_impls_[selected_input], ctx, out_tensors, &end_of_selected_input));
 
             if (!end_of_selected_input) {

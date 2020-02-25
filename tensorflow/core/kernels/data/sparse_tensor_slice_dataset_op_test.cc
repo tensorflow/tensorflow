@@ -169,7 +169,7 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, GetNext) {
   auto expected_outputs_it = expected_outputs.begin();
   while (!end_of_sequence) {
     TF_EXPECT_OK(
-        DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence));
+        this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence));
     if (!end_of_sequence) {
       TF_EXPECT_OK(ExpectEqual(out_tensors[0], expected_outputs_it->indices));
       TF_EXPECT_OK(ExpectEqual(out_tensors[1], expected_outputs_it->values));
@@ -501,7 +501,7 @@ TEST_P(ParameterizedSparseTensorSliceDatasetOpTest, Roundtrip) {
 
   for (int breakpoint : breakpoints) {
     while (cur_iteration < breakpoint) {
-      TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
+      TF_EXPECT_OK(this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
                                      &end_of_sequence, parent_indices));
       cur_iteration++;
     }

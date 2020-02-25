@@ -191,7 +191,7 @@ TEST_P(ParameterizedSkipDatasetOpTest, GetNext) {
   std::vector<Tensor> out_tensors;
   while (!end_of_sequence) {
     TF_EXPECT_OK(
-        DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence));
+        this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors, &end_of_sequence));
     if (!end_of_sequence) {
       for (const auto &tensor : out_tensors) {
         EXPECT_NE(expected_outputs_it, test_case.expected_outputs.end());
@@ -562,7 +562,7 @@ TEST_P(ParameterizedSkipDatasetOpTest, Roundtrip) {
                                  *skip_dataset, &iterator));
 
     while (cur_iteration <= breakpoint) {
-      TF_EXPECT_OK(DatasetBaseIterator::GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
+      TF_EXPECT_OK(this->GetNextFromInput(iterator, iterator_ctx.get(), &out_tensors,
                                      &end_of_sequence, parent_indices));
       if (!end_of_sequence) {
         for (auto &tensor : out_tensors) {

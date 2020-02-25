@@ -201,7 +201,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
-        return DatasetBaseIterator::GetNextFromInput(input_impl_, IteratorContext(CreateParams(ctx)),
+        return this->GetNextFromInput(input_impl_, IteratorContext(CreateParams(ctx)),
                                     out_tensors, end_of_sequence, parent_indices);
       }
 
@@ -314,7 +314,7 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
         auto max_parallelism = dataset()->max_intra_op_parallelism_;
         params.runner =
             RunnerWithMaxParallelism(*ctx->runner(), max_parallelism);
-        return DatasetBaseIterator::GetNextFromInput(input_impl_, IteratorContext{std::move(params)},
+        return this->GetNextFromInput(input_impl_, IteratorContext{std::move(params)},
                                     out_tensors, end_of_sequence, parent_indices);
       }
 
@@ -417,7 +417,7 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
           pool->Schedule(std::move(c));
         };
         params.runner_threadpool_size = dataset()->num_threads_;
-        return DatasetBaseIterator::GetNextFromInput(input_impl_, IteratorContext{std::move(params)},
+        return this->GetNextFromInput(input_impl_, IteratorContext{std::move(params)},
                                     out_tensors, end_of_sequence, parent_indices);
       }
 

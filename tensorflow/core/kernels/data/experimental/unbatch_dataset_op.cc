@@ -121,7 +121,7 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
           current_batch_size_ = 0;
           tensors_.clear();
           TF_RETURN_IF_ERROR(
-              DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &tensors_, end_of_sequence, parent_indices));
+              this->GetNextFromInput(input_impl_, ctx, &tensors_, end_of_sequence, parent_indices));
           if (!*end_of_sequence) {
             for (size_t i = 0; i < tensors_.size(); ++i) {
               if (tensors_[i].dims() == 0) {

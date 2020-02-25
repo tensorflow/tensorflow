@@ -165,7 +165,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         while (this->dataset()->count_ == -1 ||
                epoch_ < this->dataset()->count_) {
           input_parent_indices.clear();
-          TF_RETURN_IF_ERROR(DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &input_element,
+          TF_RETURN_IF_ERROR(this->GetNextFromInput(input_impl_, ctx, &input_element,
                                                   &end_of_input_sequence, &input_parent_indices));
           if (!end_of_input_sequence) {
             first_call = false;

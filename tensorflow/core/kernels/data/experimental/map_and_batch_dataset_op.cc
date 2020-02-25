@@ -359,7 +359,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         std::vector<Tensor> input_element;
         bool end_of_input;
         Status status =
-            DatasetBaseIterator::GetNextFromInput(input_impl_, ctx.get(), &input_element, &end_of_input);
+            this->GetNextFromInput(input_impl_, ctx.get(), &input_element, &end_of_input);
         bool return_early;
         {
           mutex_lock l(result->mu);

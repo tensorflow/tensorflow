@@ -132,7 +132,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(EnsureOptimizeThreadStarted(ctx));
           params.model = model_;
         }
-        return DatasetBaseIterator::GetNextFromInput(input_impl_, IteratorContext(std::move(params)),
+        return this->GetNextFromInput(input_impl_, IteratorContext(std::move(params)),
                                     out_tensors, end_of_sequence, parent_indices);
       }
 

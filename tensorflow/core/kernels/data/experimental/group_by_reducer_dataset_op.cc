@@ -221,7 +221,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
         while (!end_of_input_) {
           std::vector<Tensor> next_input_element;
           TF_RETURN_IF_ERROR(
-              DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &next_input_element, &end_of_input_));
+              this->GetNextFromInput(input_impl_, ctx, &next_input_element, &end_of_input_));
 
           if (!end_of_input_) {
             // Run the key function on the input element.

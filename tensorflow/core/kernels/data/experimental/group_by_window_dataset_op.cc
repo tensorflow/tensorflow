@@ -200,7 +200,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             // We are currently processing a group, so try to get the
             // next element.
             bool end_of_group;
-            TF_RETURN_IF_ERROR(GetNextFromInput(
+            TF_RETURN_IF_ERROR(this->GetNextFromInput(
                 current_group_iterator_, ctx, out_tensors, &end_of_group));
             if (!end_of_group) {
               // Produce the subelement as output.
@@ -218,7 +218,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           while (!end_of_input_) {
             std::vector<Tensor> next_input_element;
             TF_RETURN_IF_ERROR(
-                DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &next_input_element, &end_of_input_, parent_indices));
+                this->GetNextFromInput(input_impl_, ctx, &next_input_element, &end_of_input_, parent_indices));
 
             if (!end_of_input_) {
               // Run the key function on the input element to identify its

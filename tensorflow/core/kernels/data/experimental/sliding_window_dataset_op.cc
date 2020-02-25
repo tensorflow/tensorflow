@@ -160,7 +160,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                ++i) {
             std::vector<Tensor> element;
             TF_RETURN_IF_ERROR(
-                DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &element, end_of_sequence, parent_indices));
+                this->GetNextFromInput(input_impl_, ctx, &element, end_of_sequence, parent_indices));
             if (!*end_of_sequence) {
               buffer_.push_back(std::move(element));
             } else {
@@ -184,7 +184,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
               bool end_of_input;
               std::vector<Tensor> element;
               TF_RETURN_IF_ERROR(
-                  DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &element, &end_of_input));
+                  this->GetNextFromInput(input_impl_, ctx, &element, &end_of_input));
               if (end_of_input) {
                 input_impl_.reset();
                 break;

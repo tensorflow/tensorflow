@@ -118,7 +118,7 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
     }
     while (dataset()->count_ < 0 || i_ < dataset()->count_) {
       TF_RETURN_IF_ERROR(
-          DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
+          this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
       if (!*end_of_sequence) {
         ++i_;
         return Status::OK();

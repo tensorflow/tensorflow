@@ -147,7 +147,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           // We are currently processing a mapped element, so try to get the
           // next subelement.
           bool end_of_element;
-          TF_RETURN_IF_ERROR(GetNextFromInput(
+          TF_RETURN_IF_ERROR(this->GetNextFromInput(
               current_elements_[cycle_index_], ctx, out_tensors, &end_of_element));
           if (!end_of_element) {
             // Produce the subelement as output.
@@ -164,7 +164,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         } else if (!end_of_input_) {
           // Get the next element from the input dataset, and create
           // an iterator from it.
-          TF_RETURN_IF_ERROR(DatasetBaseIterator::GetNextFromInput(input_impl_, 
+          TF_RETURN_IF_ERROR(this->GetNextFromInput(input_impl_, 
               ctx, &args_list_[cycle_index_], &end_of_input_, parent_indices));
           if (!end_of_input_) {
             TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(

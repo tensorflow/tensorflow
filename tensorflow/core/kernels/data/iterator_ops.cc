@@ -456,7 +456,7 @@ class ToSingleElementOp : public AsyncOpKernel {
         background_worker_(ctx->env(), "tf_data_to_single_element") {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    // The call to `DatasetBaseIterator::GetNextFromInput(iterator, )` may block and depend on an
+    // The call to `this->GetNextFromInput(iterator, )` may block and depend on an
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
     background_worker_.Schedule(std::bind(
@@ -566,7 +566,7 @@ class ReduceDatasetOp : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    // The call to `DatasetBaseIterator::GetNextFromInput(iterator, )` may block and depend on an
+    // The call to `this->GetNextFromInput(iterator, )` may block and depend on an
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
     background_worker_.Schedule(std::bind(
@@ -911,7 +911,7 @@ void IteratorGetNextOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   IteratorResource* iterator;
   OP_REQUIRES_OK_ASYNC(
       ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
-  // The call to `DatasetBaseIterator::GetNextFromInput(iterator, )` may block and depend on an
+  // The call to `this->GetNextFromInput(iterator, )` may block and depend on an
   // inter-op thread pool thread, so we issue the call from the
   // owned thread pool.
   background_worker_.Schedule(std::bind(
@@ -960,7 +960,7 @@ void IteratorGetNextAsOptionalOp::ComputeAsync(OpKernelContext* ctx,
   IteratorResource* iterator;
   OP_REQUIRES_OK_ASYNC(
       ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
-  // The call to `DatasetBaseIterator::GetNextFromInput(iterator, )` may block and depend on an
+  // The call to `this->GetNextFromInput(iterator, )` may block and depend on an
   // inter-op thread pool thread, so we issue the call from the
   // owned thread pool.
   background_worker_.Schedule(std::bind(

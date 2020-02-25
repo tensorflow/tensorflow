@@ -299,7 +299,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
               // Start prefetching a new iterator.
               std::vector<Tensor> args;
               bool end_of_input = false;
-              Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &args, &end_of_input, parent_indices);
+              Status s = this->GetNextFromInput(input_impl_, ctx, &args, &end_of_input, parent_indices);
               if (end_of_input) {
                 input_impl_.reset();
               } else {
@@ -564,7 +564,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         for (int64 i = 0; i < dataset()->num_threads(); ++i) {
           std::vector<Tensor> args;
           bool end_of_input = false;
-          Status s = DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, &args, &end_of_input, parent_indices);
+          Status s = this->GetNextFromInput(input_impl_, ctx, &args, &end_of_input, parent_indices);
           if (end_of_input) {
             input_impl_.reset();
             return Status::OK();
@@ -727,7 +727,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                       .output_elem.output.empty() &&
                   !worker_thread_states_[thread_index].end_of_sequence) {
                 worker_thread_states_[thread_index].output_elem.status =
-                    DatasetBaseIterator::GetNextFromInput(worker_thread_states_[thread_index].iterator, 
+                    this->GetNextFromInput(worker_thread_states_[thread_index].iterator, 
                         ctx.get(),
                         &worker_thread_states_[thread_index].output_elem.output,
                         &worker_thread_states_[thread_index].end_of_sequence);

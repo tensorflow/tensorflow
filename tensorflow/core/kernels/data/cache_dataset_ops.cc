@@ -151,7 +151,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
-      return DatasetBaseIterator::GetNextFromInput(iterator_, ctx, out_tensors, end_of_sequence);
+      return this->GetNextFromInput(iterator_, ctx, out_tensors, end_of_sequence);
     }
 
    protected:
@@ -267,7 +267,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
         }
 
         TF_RETURN_IF_ERROR(
-            DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
+            this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
         if (*end_of_sequence && out_tensors->empty()) {
           TF_RETURN_IF_ERROR(Finish());
           cur_index_++;
@@ -723,7 +723,7 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
-      return DatasetBaseIterator::GetNextFromInput(iterator_, ctx, out_tensors, end_of_sequence);
+      return this->GetNextFromInput(iterator_, ctx, out_tensors, end_of_sequence);
     }
 
    protected:
@@ -837,7 +837,7 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
                              bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
-            DatasetBaseIterator::GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
+            this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
         if (*end_of_sequence) {
           cache_->Complete();
           return Status::OK();
