@@ -103,25 +103,6 @@ function update_bazel_linux {
 # LINT.ThenChange(
 #   //tensorflow_estimator/google/kokoro/common.sh)
 
-# Install the given bazel version on macos
-function update_bazel_macos {
-  if [[ -z "$1" ]]; then
-    BAZEL_VERSION=${LATEST_BAZEL_VERSION}
-  else
-    BAZEL_VERSION=$1
-  fi
-  BAZEL_COMMAND="curl -L https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-darwin-x86_64.sh -O && \
-  chmod +x bazel-*.sh && ./bazel-${BAZEL_VERSION}-installer-darwin-x86_64.sh --user && \
-  rm -f bazel-${BAZEL_VERSION}-installer-darwin-x86_64.sh"
-  # If the bazel update fails retry again in 60 seconds.
-  run_with_retry "${BAZEL_COMMAND}"
-  # Add new bazel installation to path
-  PATH="/Users/kbuilder/bin:$PATH"
-  set_bazel_outdir
-  which bazel
-  bazel version
-}
-
 function install_pip2 {
   curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
   sudo python2 get-pip.py
