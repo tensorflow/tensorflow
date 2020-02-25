@@ -59,6 +59,7 @@ limitations under the License.
 namespace micro_test {
 extern int tests_passed;
 extern int tests_failed;
+extern int errs_count;
 extern bool is_test_complete;
 extern bool did_test_fail;
 extern tflite::ErrorReporter* reporter;
@@ -68,6 +69,7 @@ extern tflite::ErrorReporter* reporter;
   namespace micro_test {                       \
   int tests_passed;                            \
   int tests_failed;                            \
+  int errs_count;                              \
   bool is_test_complete;                       \
   bool did_test_fail;                          \
   tflite::ErrorReporter* reporter;             \
@@ -156,6 +158,23 @@ extern tflite::ErrorReporter* reporter;
       micro_test::did_test_fail = true;                                        \
     }                                                                          \
   } while (false)
+
+#define TF_LITE_MICRO_EXPECT_NEAR_COUNT(x, y, count, epsilon, max_errs)      \
+  micro_test::errs_count = 0;                                                        \
+  for (int i = 0; i < count; ++i) {                                          \
+    auto delta = ((x[i]) > (y[i])) ? ((x[i]) - (y[i])) : ((y[i]) - (x[i]));  \
+    if (delta > epsilon) {                                                   \
+      if (micro_test::errs_count < max_errs) {                                           \
+        ++micro_test::errs_count;                                                        \
+      } else {                                                               \
+        micro_test::reporter->Report("Exceeded limit of %d errors at %s:%d", \
+                                     static_cast<int>(max_errs), __FILE__,   \
+                                     __LINE__);                              \
+        micro_test::did_test_fail = true;                                    \
+        break;                                                               \
+      }                                                                      \
+    }                                                                        \
+  }
 
 #define TF_LITE_MICRO_EXPECT_GT(x, y)                                        \
   do {                                                                       \

@@ -79,6 +79,7 @@ TfLiteRegistration* Register_SQUARE();
 TfLiteRegistration* Register_STRIDED_SLICE();
 TfLiteRegistration* Register_SUB();
 TfLiteRegistration* Register_SVDF();
+TfLiteRegistration* Register_TANH();
 TfLiteRegistration* Register_UNPACK();
 TfLiteRegistration* Register_L2_NORMALIZATION();
 TfLiteRegistration* Register_TANH();

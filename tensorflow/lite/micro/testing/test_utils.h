@@ -143,6 +143,18 @@ inline TfLiteTensor CreateTensor(std::initializer_list<input_type> data,
                                                      is_variable);
 }
 
+template <typename T>
+inline std::vector<T> quantize_vec(
+    const std::initializer_list<float>& vec, const float min, const float max,
+    const std::function<T(float, float, float)>& q_func) {
+  static_assert(sizeof(T) == 1, "Valid only for 8bit data types");
+  std::vector<T> res{};
+  for (float val : vec) {
+    res.push_back(q_func(val, min, max));
+  }
+  return res;
+}
+
 }  // namespace testing
 }  // namespace tflite
 
