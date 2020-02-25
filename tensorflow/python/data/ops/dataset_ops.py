@@ -534,13 +534,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> list(dataset.as_numpy_iterator())
     [(array([1, 2, 3], dtype=int32), b'A')]
 
-    >>> # `from_tensors` adds one more dimension to the shape
-    >>> # use `from_tensor_slices` to merge the input tensor.
-    >>> dataset = tf.data.Dataset.from_tensors(
-            [tf.random_uniform([2, 3]), tf.random_uniform([2, 3])]
-        )
-    >>> list(dataset.as_numpy_iterator())[0].shape
-    (2, 2, 3)
+    >>> # `from_tensors` does not change the shape of input tensor.
+    >>> # use `from_tensor_slices` to slice the input tensor.
+    >>> example = tf.constant([1,2,3])
+    >>> dataset = tf.data.Dataset.from_tensors(example).repeat(1000)
+    >>> np.array(list(dataset1.as_numpy_iterator())).shape
+    (1000, 3)
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
@@ -619,13 +618,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
            [3, 2]], dtype=int32), array([[b'A'],
            [b'B']], dtype=object))
 
-    >>> # `from_tensor_slices` merges the input tensor, unlike `from_tensors`
-    >>> # which increases dimensionality.
-    >>> dataset = tf.data.Dataset.from_tensor_slices(
-            [tf.random.uniform([2, 3]), tf.random.uniform([2, 3])]
-        )
-    >>> list(dataset.as_numpy_iterator())[0].shape
-    (2, 3)
+    >>> # `from_tensor_slices` slices the input tensor,
+    >>> # unlike `from_tensors` which retains the shape of input tensor.
+    >>> example = tf.constant([1,2,3])
+    >>> dataset = tf.data.Dataset.from_tensor_slices(example).repeat(1000)
+    >>> np.array(list(dataset1.as_numpy_iterator())).shape
+    (3000,)
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
