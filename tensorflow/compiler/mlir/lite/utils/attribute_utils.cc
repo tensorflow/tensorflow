@@ -38,7 +38,7 @@ FloatAttr GetSingleElementAsFloatOrSelf(Attribute attr) {
 
 IntegerAttr ExtractSingleElementAsInteger(ElementsAttr attr) {
   if (attr.getType().getNumElements() != 1 ||
-      !attr.getType().getElementType().isa<IntegerType>()) {
+      !attr.getType().getElementType().isSignlessInteger()) {
     return {};
   }
   SmallVector<uint64_t, 8> index(attr.getType().getRank(), 0);

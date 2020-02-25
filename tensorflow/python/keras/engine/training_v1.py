@@ -1546,7 +1546,7 @@ class Model(training_lib.Model):
     if self.run_eagerly:
       raise TypeError('total loss can not be computed when compiled with '
                       'run_eagerly = True.')
-    total_loss = None
+    loss_list = []
     with K.name_scope('loss'):
       for endpoint, mask in zip(self._training_endpoints, masks):
         if endpoint.should_skip_target():
@@ -1605,23 +1605,25 @@ class Model(training_lib.Model):
         if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
           output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
-        if total_loss is None:
-          total_loss = loss_weight * output_loss
-        else:
-          total_loss += loss_weight * output_loss
-      if total_loss is None:
-        if not self.losses:
-          raise ValueError('The model cannot be compiled '
-                           'because it has no loss to optimize.')
-        else:
-          total_loss = 0.
+        loss_list.append(loss_weight * output_loss)
+      if not loss_list and not self.losses:
+        raise ValueError('The model cannot be compiled '
+                         'because it has no loss to optimize.')
 
       # Add regularization penalties and other layer-specific losses.
       custom_losses = self.get_losses_for(None) + self.get_losses_for(
           self.inputs)
       if custom_losses:
-        total_loss += losses_utils.scale_loss_for_distribution(
-            math_ops.add_n(custom_losses))
+        total_custom_loss = math_ops.add_n(
+            losses_utils.cast_losses_to_common_dtype(custom_losses))
+        loss_list.append(
+            losses_utils.scale_loss_for_distribution(total_custom_loss))
+
+      loss_list = losses_utils.cast_losses_to_common_dtype(loss_list)
+      if loss_list:
+        total_loss = math_ops.add_n(loss_list)
+      else:
+        total_loss = 0.
     return total_loss
 
   def _get_callback_model(self):

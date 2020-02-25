@@ -40,6 +40,9 @@ class ElementwiseOneArgument : public NodeShader {
       case OperationType::COS:
         source = "value_0 = cos(value_0);";
         break;
+      case OperationType::EXP:
+        source = "value_0 = exp(value_0);";
+        break;
       case OperationType::HARD_SWISH:
         source =
             "value_0 *= clamp(value_0 / 6.0 + vec4(0.5), vec4(0.0), "
@@ -258,11 +261,13 @@ class ElementwiseTwoArguments : public NodeShader {
     if (IsSupportedBroadcast(ctx)) {
       return ImplementElementwiseBroadcast(ctx, generated_code);
     }
-    auto attr =
-        absl::any_cast<ElementwiseAttributes>(ctx.node->operation.attributes);
-    auto scalar = absl::get_if<float>(&attr.param);
-    if (scalar) {
-      return ImplementElementwiseWithScalar(ctx, *scalar, generated_code);
+    const ElementwiseAttributes* attr =
+        absl::any_cast<ElementwiseAttributes>(&ctx.node->operation.attributes);
+    if (attr) {
+      auto scalar = absl::get_if<float>(&attr->param);
+      if (scalar) {
+        return ImplementElementwiseWithScalar(ctx, *scalar, generated_code);
+      }
     }
     return InvalidArgumentError(
         "This case is not supported by elementwise with two arguments "
@@ -280,6 +285,7 @@ std::unique_ptr<NodeShader> NewElementwiseNodeShader(
   switch (operation_type) {
     case OperationType::ABS:
     case OperationType::COS:
+    case OperationType::EXP:
     case OperationType::LOG:
     case OperationType::HARD_SWISH:
     case OperationType::RSQRT:

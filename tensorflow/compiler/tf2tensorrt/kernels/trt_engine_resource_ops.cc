@@ -157,7 +157,7 @@ class InitializeTRTResource : public OpKernel {
       }
       resource->cache_.emplace(engine_input_shapes,
                                absl::make_unique<EngineContext>(
-                                   std::move(engine), std::move(ctx_vec[0])));
+                                   std::move(engine), std::move(ctx_vec)));
       ++num_loaded_engine;
     } while (1);
     VLOG(1) << "Loaded " << num_loaded_engine << " TRT engines for op "

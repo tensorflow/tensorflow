@@ -75,7 +75,7 @@ template <typename T>
 struct NumTrue<CPUDevice, T, int64> {
   static Status Compute(OpKernelContext* ctx, const CPUDevice& d,
                         typename TTypes<T>::ConstFlat input,
-                        TTypes<int64>::Scalar num_true) {
+                        TTypes<int64>::UnalignedScalar num_true) {
     num_true() = CountAccumulator<T>(input.data(), input.data() + input.size());
     return Status::OK();
   }
@@ -140,18 +140,14 @@ class WhereCPUOp : public OpKernel {
 
     const int input_dims = input.dims();
 
-    Tensor num_true;
-    AllocatorAttributes attr;
-    attr.set_on_host(true);
-    OP_REQUIRES_OK(context, context->allocate_temp(DT_INT64, TensorShape({}),
-                                                   &num_true, attr));
-    auto num_true_t = num_true.scalar<int64>();
+    int64 num_true;
+    TTypes<int64>::UnalignedScalar num_true_t(&num_true);
 
     Status s = functor::NumTrue<CPUDevice, T, int64>::Compute(
         context, context->eigen_device<CPUDevice>(), input.flat<T>(),
         num_true_t);
     OP_REQUIRES_OK(context, s);
-    TensorShape output_shape({num_true_t(), input_dims});
+    TensorShape output_shape({num_true, input_dims});
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
@@ -216,7 +212,7 @@ namespace functor {
   template <>                                                               \
   Status NumTrue<GPUDevice, T, Tindex>::Compute(                            \
       OpKernelContext* ctx, const GPUDevice& d, TTypes<T>::ConstFlat input, \
-      TTypes<Tindex>::Scalar num_true);                                     \
+      TTypes<Tindex>::UnalignedScalar num_true);                            \
   extern template struct NumTrue<GPUDevice, T, Tindex>
 
 #define DECLARE_GPU_NUMTRUE_TYPE(T) \
@@ -287,8 +283,8 @@ class WhereGPUOp : public AsyncOpKernel {
                          context->allocate_temp(DataTypeToEnum<Tindex>::v(),
                                                 TensorShape({}), &num_true),
                          done);
-
-    auto num_true_t = num_true.scalar<Tindex>();
+    typename TTypes<Tindex>::UnalignedScalar num_true_t(
+        num_true.scalar<Tindex>().data());
 
     se::DeviceMemoryBase num_true_ptr(static_cast<void*>(num_true_t.data()));
     // Push kernel to stream to get number of true elements.

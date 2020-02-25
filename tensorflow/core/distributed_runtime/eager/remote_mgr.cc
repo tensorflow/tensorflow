@@ -168,8 +168,7 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
           "Unable to find remote task corresponding to device ", device_name);
     }
     auto remote_handle_data = absl::make_unique<UnshapedRemoteTensorHandleData>(
-        in.op_id(), in.output_num(), remote_task, parent_->GetContextId(),
-        parent_);
+        in.op_id(), in.output_num(), remote_task, parent_);
     remote_handle_data->ReleaseRemoteTensorHandle();
     TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
         std::move(remote_handle_data), in.dtype(), device, parent_, out));

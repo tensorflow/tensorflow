@@ -43,6 +43,7 @@ from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
@@ -1254,6 +1255,50 @@ class TrainingTest(keras_parameterized.TestCase):
     model = MyModel()
     with self.assertRaisesRegex(RuntimeError, 'must compile your model'):
       model.fit(np.random.random((32, 1)), epochs=2)
+
+  @keras_parameterized.run_all_keras_modes
+  @testing_utils.enable_v2_dtype_behavior
+  def test_losses_of_different_dtypes(self):
+    inp = keras.Input(shape=(2,))
+    out_1 = keras.layers.Dense(2, dtype='float32', kernel_regularizer='l2')(inp)
+    out_2 = keras.layers.Dense(2, dtype='float16', kernel_regularizer='l2')(inp)
+    model = keras.Model(inp, [out_1, out_2])
+    extra_loss = math_ops.reduce_sum(math_ops.cast(out_2, 'float64'))
+    model.add_loss(extra_loss)
+    model.compile('sgd', ['mse', 'mse'],
+                  run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 2)), np.ones((10, 2))
+    model.fit(x, [y, y])
+
+  @keras_parameterized.run_all_keras_modes
+  @testing_utils.enable_v2_dtype_behavior
+  def test_losses_of_different_dtypes_with_subclassed_model(self):
+    class MyModel(keras.Model):
+
+      def build(self, _):
+        self.dense = keras.layers.Dense(2)
+
+      def call(self, inputs):
+        self.add_loss(math_ops.cast(nn_ops.l2_loss(inputs), 'float64'))
+        return self.dense(inputs)
+
+    model = MyModel(dtype='float32')
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 2)), np.ones((10, 2))
+    model.fit(x, y)
+
+  @keras_parameterized.run_all_keras_modes
+  @testing_utils.enable_v2_dtype_behavior
+  def test_regularizer_of_different_dtype(self):
+    inp = keras.Input(shape=(2,))
+    def regularizer(weight):
+      return math_ops.cast(nn_ops.l2_loss(weight), 'float64')
+    out = keras.layers.Dense(2, dtype='float32',
+                             kernel_regularizer=regularizer)(inp)
+    model = keras.Model(inp, out)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 2)), np.ones((10, 2))
+    model.fit(x, y)
 
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):

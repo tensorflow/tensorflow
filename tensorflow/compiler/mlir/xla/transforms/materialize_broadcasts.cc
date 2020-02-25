@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <numeric>
 
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
@@ -164,7 +164,6 @@ std::vector<Value> ComputeBroadcastedShape(SrcOp op, Value small, Value large,
           loc, rewriter->getIntegerAttr(rewriter->getIndexType(), 1));
       DimOp lrg_dim = rewriter->create<mlir::DimOp>(loc, large, i);
       DimOp sml_dim = rewriter->create<mlir::DimOp>(loc, small, indexes[i]);
-      sml_dim.dump();
       CmpIOp compare =
           rewriter->create<mlir::CmpIOp>(loc, CmpIPredicate::eq, lrg_dim, one);
       index_value =

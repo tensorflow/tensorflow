@@ -43,6 +43,7 @@ enum class OperationType {
   COS,
   DEPTHWISE_CONVOLUTION,
   DIV,
+  EXP,
   FULLY_CONNECTED,
   HARD_SWISH,
   LOG,
@@ -65,6 +66,7 @@ enum class OperationType {
   SLICE,
   SOFTMAX,
   SPACE_TO_BATCH,
+  SPACE_TO_DEPTH,
   SQRT,
   SQUARE,
   SQUARED_DIFF,
@@ -471,6 +473,10 @@ struct TransposeAttributes {
 // @return shape of a tensor after Transpose operation is applied to
 // the given input.
 BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr);
+
+struct SpaceToDepthAttributes {
+  int block_size;
+};
 
 }  // namespace gpu
 }  // namespace tflite

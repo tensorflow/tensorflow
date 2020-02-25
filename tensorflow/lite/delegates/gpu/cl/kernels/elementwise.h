@@ -92,7 +92,7 @@ class ElementwiseTwoInput : public ElementwiseOperation {
 ElementwiseTwoInput CreateElementwiseTwoInput(
     const CreationContext& creation_context, const OperationDef& definition,
     const OperationType& op_type, const BroadcastSettings& broadcast,
-    const ElementwiseAttributes& attr);
+    const ElementwiseAttributes* attr);
 
 ElementwiseTwoInput CreateElementwiseTwoInput(
     const OperationDef& definition, const OperationType& op_type,

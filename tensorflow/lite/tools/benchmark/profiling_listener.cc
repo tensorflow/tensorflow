@@ -20,14 +20,15 @@ limitations under the License.
 namespace tflite {
 namespace benchmark {
 
-ProfilingListener::ProfilingListener(Interpreter* interpreter,
-                                     uint32_t max_num_entries,
-                                     const std::string& csv_file_path)
-    : interpreter_(interpreter),
-      profiler_(max_num_entries),
-      run_summarizer_(CreateProfileSummaryFormatter(!csv_file_path.empty())),
-      init_summarizer_(CreateProfileSummaryFormatter(!csv_file_path.empty())),
-      csv_file_path_(csv_file_path) {
+ProfilingListener::ProfilingListener(
+    Interpreter* interpreter, uint32_t max_num_entries,
+    const std::string& csv_file_path,
+    std::shared_ptr<profiling::ProfileSummaryFormatter> summarizer_formatter)
+    : run_summarizer_(summarizer_formatter),
+      init_summarizer_(summarizer_formatter),
+      csv_file_path_(csv_file_path),
+      interpreter_(interpreter),
+      profiler_(max_num_entries) {
   TFLITE_BENCHMARK_CHECK(interpreter);
   interpreter_->SetProfiler(&profiler_);
 
@@ -83,13 +84,6 @@ void ProfilingListener::WriteOutput(const std::string& header,
                                     const string& data, std::ostream* stream) {
   (*stream) << header << std::endl;
   (*stream) << data << std::endl;
-}
-
-std::unique_ptr<profiling::ProfileSummaryFormatter>
-ProfilingListener::CreateProfileSummaryFormatter(bool format_as_csv) const {
-  return format_as_csv
-             ? std::make_unique<profiling::ProfileSummaryDefaultFormatter>()
-             : std::make_unique<profiling::ProfileSummaryCSVFormatter>();
 }
 
 }  // namespace benchmark

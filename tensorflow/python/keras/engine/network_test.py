@@ -1869,6 +1869,15 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     self.assertEqual(network.dynamic, False)
     self.assertEqual(network.stateful, False)
 
+  def test_compute_output_shape_cache(self):
+    # See https://github.com/tensorflow/tensorflow/issues/32029.
+    x = input_layer_lib.Input(shape=(None, 32))
+    dense = keras.layers.Dense(2)
+    y = dense(x)
+    network = network_lib.Network(x, y, name='dense_network')
+
+    for i in range(999, 1024):
+      self.assertEqual(network.compute_output_shape((1, i, 32)), (1, i, 2))
 
 
 if __name__ == '__main__':

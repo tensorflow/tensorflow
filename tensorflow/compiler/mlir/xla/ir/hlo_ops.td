@@ -52,7 +52,7 @@ def HLO_FpTensor : TensorOf<[AnyFloat]>;
 
 def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 
-def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger, AnyComplex]>;
+def HLO_Tensor : TensorOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
 
 def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
 
@@ -64,13 +64,13 @@ def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 // an index type (as it stores indices) but that is currently disallowed in
 // MLIR.
 def HLO_DimensionTensor : ShapedContainerType<
-    [AnyInteger], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
+    [AnySignlessInteger], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
     "a 1D tensor of dimensions">;
 
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
 def HLO_StaticShapeTensor : StaticShapeTensorOf<[
-      AnyFloat, AnyInteger, AnyComplex]>;
+      AnyFloat, AnySignlessInteger, AnyComplex]>;
 
 //===----------------------------------------------------------------------===//
 // XLA combined type definitions.
@@ -121,8 +121,6 @@ def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]>, BASE_HLO_IotaOp {
   let arguments = (ins I64Attr:$iota_dimension);
 
   let results = (outs HLO_IntFpOrComplexTensor:$output);
-
-  let hasFolder = 1;
 
   // TODO(b/130357376): Iota has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -786,7 +784,7 @@ def HLO_ScalarsToDimensionTensorOp : HLO_Op<"scalars_to_dimension_tensor",
     compute shape arguments to dynamic operations.
   }];
 
-  let arguments = (ins Variadic<AnyInteger>);
+  let arguments = (ins Variadic<AnySignlessInteger>);
   let results = (outs HLO_DimensionTensor);
 
   // Cannot be exported to legacy formats.
