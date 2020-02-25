@@ -406,6 +406,8 @@ void CreateLayoutOptimizationPipeline(
     const LayoutOptimizationPipelineOptions& options) {
   using Direction = MoveTransposesPass::Direction;
 
+  if (options.force_data_format.empty()) return;
+
   // Assign optimal layout for layout sensitive ops.
   pm.addPass(std::make_unique<LayoutAssignmentPass>(options.force_data_format));
 

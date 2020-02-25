@@ -929,6 +929,7 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
     VLOG(2) << "PyLocalExecutable::Compile using default device_assignment:\n"
             << device_assignment->ToString();
   }
+  options.set_device_assignment(device_assignment.value());
 
   if (!argument_layouts) {
     TF_ASSIGN_OR_RETURN(ProgramShape program_shape,

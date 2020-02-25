@@ -3,6 +3,12 @@
 load("//third_party/toolchains/preconfig/generate:containers.bzl", "container_digests")
 
 containers = {
+    # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.ubuntu16.04-manylinux2010.
+    "ubuntu16.04-manylinux2010": {
+        "registry": "gcr.io",
+        "repository": "tensorflow-testing/nosla-ubuntu16.04-manylinux2010",
+        "digest": container_digests["ubuntu16.04-manylinux2010"],
+    },
 
     # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda10.0-cudnn7-ubuntu16.04-manylinux2010.
     "cuda10.0-cudnn7-ubuntu16.04-manylinux2010": {

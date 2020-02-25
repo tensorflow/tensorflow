@@ -89,6 +89,11 @@ ConvPowerVR::ConvPowerVR(const OperationDef& definition,
       kernel_dilation_(1, 1, 1, 1),
       conv_params_(GuessBestParams(device, definition, attr)) {}
 
+ConvPowerVR::ConvPowerVR(const OperationDef& definition)
+    : GPUOperation(definition),
+      stride_padding_(1, 1, 0, 0),
+      kernel_dilation_(1, 1, 1, 1) {}
+
 ConvPowerVR::ConvPowerVR(ConvPowerVR&& operation)
     : GPUOperation(std::move(operation)),
       weights_(std::move(operation.weights_)),
@@ -314,9 +319,18 @@ std::string GenerateConvPowerVR1x1(
     c += "    " + weights_space + " ACCUM_FLT4* weights_cache;\n";
   }
   if (is1x1) {
-    c += "  " + weights_space +
-         " ACCUM_FLT4* filters_loc = filters_buffer + Z * 4 * "
-         "src_size.z;\n";
+    if (conv_params.different_weights_for_height) {
+      c +=
+          "  " + weights_space +
+          " ACCUM_FLT4* filters_loc = filters_buffer + (Z * src_size.y + Y * " +
+          std::to_string(block_size.z) +
+          ") * "
+          "4 * src_size.z;\n";
+    } else {
+      c += "  " + weights_space +
+           " ACCUM_FLT4* filters_loc = filters_buffer + Z * 4 * "
+           "src_size.z;\n";
+    }
   } else {
     c += "  " + weights_space +
          " ACCUM_FLT4* filters_loc = filters_buffer + Z * 4 * "
@@ -535,6 +549,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
   ConvParams conv_params;
   conv_params.x_kernel_is_1 = x_kernel_is_1;
   conv_params.y_kernel_is_1 = y_kernel_is_1;
+  conv_params.different_weights_for_height = false;
   if (device.IsNvidia()) {
     conv_params.block_size = int3(1, 1, 4);
     conv_params.work_group_size = int3(8, 4, 1);
@@ -618,7 +633,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     }
   } else {
     conv_params.block_size = int3(1, 1, 4);
-    conv_params.work_group_size = int3(8, 4, 1);
+    conv_params.work_group_size = int3(8, 2, 1);
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.fixed_work_group_size = false;
     conv_params.src_depth_loop_size = 1;
@@ -665,7 +680,25 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
   ConvPowerVR::ConvParams params =
       GuessBestParams(device, definition, src_depth, dst_depth, true, true);
-  params.work_group_size = int3(32, 1, 1);
+  params.work_group_size.x *= params.work_group_size.y;
+  params.work_group_size.y = 1;
+  params.block_size.x *= params.block_size.y;
+  params.block_size.y = 1;
+  return params;
+}
+
+ConvPowerVR::ConvParams ConvPowerVR::GuessBestParamsWinograd(
+    const CLDevice& device, const OperationDef& definition,
+    const Convolution2DAttributes& attr) const {
+  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  ConvPowerVR::ConvParams params =
+      GuessBestParams(device, definition, src_depth, dst_depth, true, true);
+  params.work_group_size.x *= params.work_group_size.y;
+  params.work_group_size.y = 1;
+  params.block_size.x *= params.block_size.y;
+  params.block_size.y = 1;
+  params.different_weights_for_height = true;
   return params;
 }
 
@@ -683,6 +716,17 @@ Status CreateConvPowerVR(const CreationContext& creation_context,
                          ConvPowerVR* result) {
   *result = ConvPowerVR(definition, attr, *creation_context.device);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
+}
+
+Status CreateConvPowerVRWino4x4To6x6(const CreationContext& creation_context,
+                                     const OperationDef& definition,
+                                     const Convolution2DAttributes& attr,
+                                     ConvPowerVR* result) {
+  *result = ConvPowerVR(definition);
+  result->conv_params_ = result->GuessBestParamsWinograd(
+      *creation_context.device, definition, attr);
+  return result->UploadDataForWinograd4x4To6x6(
+      attr.weights, *creation_context.device, creation_context.context);
 }
 
 }  // namespace cl

@@ -2558,6 +2558,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
         "no_windows",
+        "noasan",  # TODO(b/149948895): Re-enable.
         "nomsan",  # TODO(b/149948895): Re-enable.
         "notsan",  # TODO(b/149948895): Re-enable.
     ],

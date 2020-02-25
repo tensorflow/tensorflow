@@ -1193,6 +1193,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
     switch (operation_type_) {
       case OperationType::ABS:
       case OperationType::COS:
+      case OperationType::EXP:
       case OperationType::LOG:
       case OperationType::RSQRT:
       case OperationType::SIGMOID:

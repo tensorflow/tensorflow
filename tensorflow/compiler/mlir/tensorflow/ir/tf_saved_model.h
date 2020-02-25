@@ -57,6 +57,10 @@ bool HasTfSavedModelSemantics(ModuleOp module);
 GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
                                 const SymbolTable &symbol_table);
 
+// Gets the type that an exported function arg that is bound to `global_tensor`
+// should have.
+Type GetBoundInputArgTypeFor(GlobalTensorOp global_tensor);
+
 }  // namespace tf_saved_model
 }  // namespace mlir
 

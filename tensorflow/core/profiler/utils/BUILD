@@ -304,3 +304,14 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "kernel_stats_utils",
+    srcs = ["kernel_stats_utils.cc"],
+    hdrs = ["kernel_stats_utils.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)

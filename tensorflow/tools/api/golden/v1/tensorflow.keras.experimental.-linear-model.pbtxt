@@ -296,7 +296,7 @@ tf_class {
   }
   member_method {
     name: "test_on_batch"
-    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'reset_metrics\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'reset_metrics\', \'return_dict\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'False\'], "
   }
   member_method {
     name: "to_json"
@@ -308,7 +308,7 @@ tf_class {
   }
   member_method {
     name: "train_on_batch"
-    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\', \'reset_metrics\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\', \'reset_metrics\', \'return_dict\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'False\'], "
   }
   member_method {
     name: "with_name_scope"
