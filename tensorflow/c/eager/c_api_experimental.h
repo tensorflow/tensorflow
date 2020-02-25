@@ -382,9 +382,11 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
                                                  const char* worker_name,
                                                  TF_Status* status);
 
-// Clear pending streaming requests and error statuses on remote executors.
-TF_CAPI_EXPORT extern void TFE_ContextClearRemoteExecutors(TFE_Context* ctx,
-                                                           TF_Status* status);
+// Sync pending nodes in local executors (including the context default executor
+// and thread executors) and streaming requests to remote executors, and get the
+// combined status.
+TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
+                                                TF_Status* status);
 
 // If the TensorHandle is copied to another device as part of an op execution,
 // the copy is destroyed after the op has executed. Enabling implicit mirroring

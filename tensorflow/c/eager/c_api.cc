@@ -874,12 +874,12 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 #endif  // !IS_MOBILE_PLATFORM
 }
 
-TF_CAPI_EXPORT extern void TFE_ContextClearRemoteExecutors(TFE_Context* ctx,
-                                                           TF_Status* status) {
+TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
+                                                TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM)
   status->status = tensorflow::Status::OK();
 #else   // !defined(IS_MOBILE_PLATFORM)
-  status->status = ctx->context->ClearRemoteExecutors();
+  status->status = ctx->context->SyncExecutors();
 #endif  // !IS_MOBILE_PLATFORM
 }
 

@@ -621,8 +621,25 @@ class Context(object):
     else:
       raise ValueError("Context is not initialized.")
 
-  def clear_remote_executors(self):
-    """Clear executors on remote workers.
+  def sync_executors(self):
+    """Sync both local executors and the ones on remote workers.
+
+    In async execution mode, local function calls can return before the
+    coresponding remote op/function execution requests are completed. Calling
+    this method creates a synchronization barrier for remote executors. It only
+    returns when all remote pending nodes are finished, potentially with errors
+    if any remote executors are in error state.
+
+    Raises:
+      ValueError: if context is not initialized.
+    """
+    if self._context_handle:
+      pywrap_tfe.TFE_ContextSyncExecutors(self._context_handle)
+    else:
+      raise ValueError("Context is not initialized.")
+
+  def clear_executor_errors(self):
+    """Clear errors in both local executors and remote workers.
 
     After receiving errors from remote workers, additional requests on the fly
     could further taint the status on the remote workers due to the async nature
@@ -633,7 +650,7 @@ class Context(object):
       ValueError: if context is not initialized.
     """
     if self._context_handle:
-      pywrap_tfe.TFE_ContextClearRemoteExecutors(self._context_handle)
+      pywrap_tfe.TFE_ContextClearExecutors(self._context_handle)
     else:
       raise ValueError("Context is not initialized.")
 
@@ -2019,16 +2036,6 @@ def is_async():
   return context().is_async()
 
 
-def async_wait():
-  """Waits for ops dispatched in ASYNC mode to finish."""
-  return context().executor.wait()
-
-
-def async_clear_error():
-  """Clears errors raised during ASYNC execution mode."""
-  return context().executor.clear_error()
-
-
 def num_gpus():
   """Get the number of available GPU devices.
 
@@ -2133,6 +2140,65 @@ def update_server_def(server_def):
 
 def check_alive(worker_name):
   return context().check_alive(worker_name)
+
+
+def async_wait():
+  """Sync all async operations and raise any errors during execution.
+
+  In async execution mode, an op/function call can return before finishing the
+  actual execution. Calling this method creates a synchronization barrier for
+  all async op and function execution. It only returns when all pending nodes
+  are finished, potentially raising exceptions if async execution results in
+  an error state.
+
+  Users may write the following code to asynchronuously invoke `train_step_fn`
+  and log the `loss` metric for every `num_steps` steps in a training loop.
+  `train_step_fn` internally consumes data using `iterator.get_next()`, and may
+  throw OutOfRangeError when running out of data. In the case:
+    - If the exception is thrown during the loop of scheduling function steps,
+      the next call to function triggers an exception. In the except block,
+      we clear the error and break from the loop;
+    - If all `train_step_fn`s are scheduled before throwing an exception, we
+      block at the last iteration to wait for the scheduled functions to finish
+      excution and throw the OutOfRangeError.
+
+  ```
+  for i in range(num_steps):
+    try:
+      # Step function updates the metric `loss` internally
+      train_step_fn()
+      if i == num_steps - 1:
+        context.async_wait()
+    except tf.errors.OutOfRangeError:
+      context.async_clear_error()
+      break
+  logging.info('loss =', loss.numpy())
+  ```
+  """
+  context().sync_executors()
+
+
+def async_clear_error():
+  """Clear pending operations and error statuses in async execution.
+
+  In async execution mode, an error in op/function execution can lead to errors
+  in subsequent ops/functions that are scheduled but not yet executed. Calling
+  this method clears all pending operations and reset the async execution state.
+
+  Example:
+
+  ```
+  while True:
+    try:
+      # Step function updates the metric `loss` internally
+      train_step_fn()
+    except tf.errors.OutOfRangeError:
+      context.async_clear_error()
+      break
+  logging.info('loss =', loss.numpy())
+  ```
+  """
+  context().clear_executor_errors()
 
 
 def add_function(fdef):
