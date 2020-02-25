@@ -48,11 +48,9 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
   std::string serialized_model(
       reinterpret_cast<const char*>(input_builder.GetBufferPointer()),
       input_builder.GetSize());
-  std::vector<std::string> output_arrays_order;
 
-  OwningModuleRef module =
-      tflite::FlatBufferToMlir(serialized_model, &context,
-                               UnknownLoc::get(&context), output_arrays_order);
+  OwningModuleRef module = tflite::FlatBufferToMlir(serialized_model, &context,
+                                                    UnknownLoc::get(&context));
   if (!module) {
     error_reporter->Report("Couldn't import flatbuffer to MLIR.");
     return kTfLiteError;
