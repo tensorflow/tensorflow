@@ -46,6 +46,7 @@ from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _fr
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
+from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
 from tensorflow.lite.python.util import build_debug_info_func as _build_debug_info_func
@@ -1130,6 +1131,10 @@ class TFLiteConverter(TFLiteConverterBase):
         tensor.set_shape(shape)
 
   def _is_unknown_shapes_allowed(self):
+    # Ophint Converted nodes will need the shapes to be known.
+    if _is_ophint_converted(self._graph_def):
+      return False
+
     if not super(TFLiteConverter, self)._is_unknown_shapes_allowed():
       return False
 
