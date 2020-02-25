@@ -446,7 +446,9 @@ void IndexManager::NotifyFinished(EparallaxTensorIndex* index) {
 
     if (all_processed && last_parent_indices != nullptr) {
       for (auto parent_index : *last_parent_indices) {
+        LOG(INFO) << *parent_index;
         if (infertile_indices_.Contains(parent_index)) {
+          LOG(INFO) << "Also processed: " << *parent_index;
           processed_indices_buffer.push_back(parent_index);
         }
       }
@@ -479,17 +481,12 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
   }
 
   issued_indices_.Push(out_index);
-  if (num_issued_indices_map_.find(out_index->iterator_id()) ==
-      num_issued_indices_map_.end()) {
-    num_issued_indices_map_.insert(std::make_pair(out_index->iterator_id(), 0));
-  }
-  int64 num_issued = ++num_issued_indices_map_.find(out_index->iterator_id())->second;
-  if (num_issued > 1) {
-    auto last_index = current_index_map_.find(out_index->iterator_id());
-    if (last_index_map_.find(out_index->iterator_id()) == last_index_map_.end()) {
+  auto last_index = current_index_map_.find(out_index->iterator_id());
+  if (last_index != current_index_map_.end()) {
+    if (last_index_map_.find(last_index->second->iterator_id()) == last_index_map_.end()) {
       last_index_map_.insert(*last_index);
     } else {
-      last_index_map_.find(out_index->iterator_id())->second = last_index->second;
+      last_index_map_.find(last_index->second->iterator_id())->second = last_index->second;
     }
     //LOG(INFO) << "last_index: " << *last_index->second;
   }
@@ -499,23 +496,28 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
     current_index_map_.find(out_index->iterator_id())->second = out_index;
   }
 
+  // Mark infertile indices.
   if (out_index->local_index() == 0 && !IsShuffled(out_index) &&
       out_index->parent_indices() != nullptr) {
-    for (auto parent_index : *out_index->parent_indices()) {
-      auto last_index = last_index_map_.find(
-          parent_index->iterator_id());
-      if (last_index != last_index_map_.end()) {
-        LOG(INFO) << "Infertile: " << *last_index->second;
-        infertile_indices_.Push(last_index->second);
-      }
+    auto last_index = last_index_map_.find(out_index->iterator_id());
+    if (last_index == last_index_map_.end()) return out_index;
+    for (auto last_parent_index : *last_index->second->parent_indices()) {
+      //LOG(INFO) << "Infertile: " << *last_parent_index;
+      infertile_indices_.Push(last_parent_index);
     }
   }
+  LOG(INFO) << "Issued " << *out_index;
   return out_index;
 }
 
 bool IndexManager::AlreadyProcessed(EparallaxTensorIndex* index) {
   mutex_lock l(mu_);
-  return AlreadyProcessedInternal(index);
+  bool already_processed = AlreadyProcessedInternal(index);
+  if (already_processed) {
+    LOG(INFO) << "Index is already processed; Skipping.";
+    LOG(INFO) << *index;
+  }
+  return already_processed;
 }
 
 bool IndexManager::AlreadyProcessedInternal(EparallaxTensorIndex* index) {

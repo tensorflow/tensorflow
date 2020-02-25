@@ -400,8 +400,6 @@ class MultiLevelIndexQueue {
     std::vector<EparallaxTensorIndex*>* queue = Get(index->iterator_id());
     for (auto queued_index : *queue) {
       if (*index == *queued_index) {
-        LOG(INFO) << "Index is already processed; Skipping.";
-        LOG(INFO) << *index << " == " << *queued_index;
         return true;
       }
     }
@@ -495,13 +493,14 @@ class IndexManager {
     for (auto parent_index : *index->parent_indices()) {
       size_t pos = parent_index->iterator_id().find_last_of("::");
       string optype = parent_index->iterator_id().substr(pos+1);
-      if (optype.find("Shuffle") != std::string::npos) {
+      if (optype.find("Shuffle") != std::string::npos ||
+          optype.find("Interleave") != std::string::npos) {
         LOG(INFO) << "Shuffled";
         return true;
       } else if (parent_index->parent_indices() != nullptr) {
         for (auto grand_parent_index : *parent_index->parent_indices()) {
           if (IsShuffled(grand_parent_index)) {
-          LOG(INFO) << "Shuffled";
+            LOG(INFO) << "Shuffled";
             return true;
           }
         }
@@ -559,7 +558,7 @@ class IndexManager {
         if (line.length() - pos < 4) {
           break;
         } else {
-          line = line.substr(pos+1);
+          line = line.substr(pos+2);
           pos = 0;
           found = false;
           level = 0;
@@ -617,7 +616,6 @@ class IndexManager {
   MultiLevelIndexQueue issued_indices_ GUARDED_BY(mu_);
   MultiLevelIndexQueue infertile_indices_ GUARDED_BY(mu_);
   std::map<string, int64> local_index_map_ GUARDED_BY(mu_);
-  std::map<string, int64> num_issued_indices_map_ GUARDED_BY(mu_);
   std::map<string, EparallaxTensorIndex*> last_index_map_ GUARDED_BY(mu_);
   std::map<string, EparallaxTensorIndex*> current_index_map_ GUARDED_BY(mu_);
   string ckpt_file_path_;
