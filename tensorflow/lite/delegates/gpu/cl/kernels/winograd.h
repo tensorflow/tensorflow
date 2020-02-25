@@ -54,6 +54,9 @@ class Winograd4x4To36 : public GPUOperation {
 
   Status UploadBt(CLContext* context);
 
+  // Must be called after kernel compilation
+  int3 SelectBestWorkGroup();
+
   Status BindArguments();
   int3 GetGridSize() const;
 
@@ -90,6 +93,9 @@ class Winograd36To4x4 : public GPUOperation {
       Winograd36To4x4* result);
 
   Status UploadAt(CLContext* context);
+
+  // Must be called after kernel compilation
+  int3 SelectBestWorkGroup();
 
   Status BindArguments();
   int3 GetGridSize() const;

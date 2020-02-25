@@ -1558,7 +1558,7 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
   if (!reductions_value) return failure();
 
   // Prepare new reduction indices according to operand permutation.
-  SmallVector<int64_t, 4> shuffled_reduction;
+  SmallVector<int32_t, 4> shuffled_reduction;
   llvm::transform(reductions_value.getIntValues(),
                   std::back_inserter(shuffled_reduction),
                   [&](APInt idx) { return permutation[idx.getSExtValue()]; });
@@ -1566,7 +1566,7 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
   // Add constant operation with a new reduction indices.
   OpBuilder builder(getOperation());
   auto type = mlir::RankedTensorType::get(shuffled_reduction.size(),
-                                          builder.getIntegerType(64));
+                                          builder.getIntegerType(32));
   auto values = mlir::DenseIntElementsAttr::get(type, shuffled_reduction);
   auto shuffled_reduction_op = builder.create<TF::ConstOp>(getLoc(), values);
 
@@ -1732,7 +1732,7 @@ LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
       paddings_value.getNumElements() != permutation.size() * 2)
     return failure();
 
-  SmallVector<int64_t, 8> shuffled_paddings(paddings_value.getNumElements());
+  SmallVector<int32_t, 8> shuffled_paddings(paddings_value.getNumElements());
   for (auto index_pair : llvm::enumerate(paddings_value.getIntValues())) {
     size_t outer_idx = index_pair.index() / 2;
     size_t inner_idx = index_pair.index() % 2;
@@ -1743,8 +1743,8 @@ LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
 
   // Add constant operation with a new paddings.
   OpBuilder builder(getOperation());
-  auto type = mlir::RankedTensorType::get(shuffled_paddings.size(),
-                                          builder.getIntegerType(64));
+  auto type = mlir::RankedTensorType::get(paddings_value.getType().getShape(),
+                                          builder.getIntegerType(32));
   auto values = mlir::DenseIntElementsAttr::get(type, shuffled_paddings);
   auto shuffled_paddings_op = builder.create<TF::ConstOp>(getLoc(), values);
 

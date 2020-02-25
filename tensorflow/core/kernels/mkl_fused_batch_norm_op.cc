@@ -65,8 +65,11 @@ template <typename T, typename U>
 class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
  public:
   explicit MklFusedBatchNormFwdPrimitive(const MklBatchNormFwdParams& fwdParams)
-      : cpu_engine_(ENGINE_CPU, 0) {
-    context_.fwd_stream.reset(new CPU_STREAM(cpu_engine_));
+      : cpu_engine_(engine::cpu, 0) {
+#ifndef ENABLE_MKLDNN_V1
+    context_.fwd_stream.reset(
+        new mkldnn::stream(mkldnn::stream::kind::eager_nostore));
+#endif
     if (context_.bn_fwd == nullptr) Setup(fwdParams);
   }
 
@@ -364,8 +367,11 @@ template <typename T, typename U>
 class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
  public:
   explicit MklFusedBatchNormBwdPrimitive(const MklBatchNormBwdParams& bwdParams)
-      : cpu_engine_(ENGINE_CPU, 0) {
-    context_.bwd_stream.reset(new CPU_STREAM(cpu_engine_));
+      : cpu_engine_(engine::cpu, 0) {
+#ifndef ENABLE_MKLDNN_V1
+    context_.bwd_stream.reset(
+        new mkldnn::stream(mkldnn::stream::kind::eager_nostore));
+#endif
     if (context_.bn_bwd == nullptr) Setup(bwdParams);
   }
 

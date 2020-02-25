@@ -176,12 +176,19 @@ Status GoogleAuthProvider::GetToken(string* t) {
     return Status::OK();
   }
 
-  LOG(WARNING)
-      << "All attempts to get a Google authentication bearer token failed, "
-      << "returning an empty token. Retrieving token from files failed with \""
-      << token_from_files_status.ToString() << "\"."
-      << " Retrieving token from GCE failed with \""
-      << token_from_gce_status.ToString() << "\".";
+  if (skip_gce_check) {
+    LOG(INFO)
+        << "Attempting an empty bearer token since no token was retrieved "
+        << "from files, and GCE metadata check was skipped.";
+  } else {
+    LOG(WARNING)
+        << "All attempts to get a Google authentication bearer token failed, "
+        << "returning an empty token. Retrieving token from files failed with "
+           "\""
+        << token_from_files_status.ToString() << "\"."
+        << " Retrieving token from GCE failed with \""
+        << token_from_gce_status.ToString() << "\".";
+  }
 
   // Public objects can still be accessed with an empty bearer token,
   // so return an empty token instead of failing.

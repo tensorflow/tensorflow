@@ -42,6 +42,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.profiler import traceme
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -760,9 +761,15 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         callbacks.on_epoch_begin(epoch)
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
-            callbacks.on_train_batch_begin(step)
-            logs = train_function(iterator)
-            callbacks.on_train_batch_end(step, logs)
+            with traceme.TraceMe(
+                'TraceContext',
+                graph_type='train',
+                epoch_num=epoch,
+                step_num=step,
+                batch_size=batch_size):
+              callbacks.on_train_batch_begin(step)
+              logs = train_function(iterator)
+              callbacks.on_train_batch_end(step, logs)
         epoch_logs = {m.name: m.result() for m in self.metrics}
 
         # Run validation.
@@ -983,9 +990,13 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         self.reset_metrics()
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
-            callbacks.on_test_batch_begin(step)
-            logs = test_function(iterator)
-            callbacks.on_test_batch_end(step, logs)
+            with traceme.TraceMe(
+                'TraceContext',
+                graph_type='test',
+                step_num=step):
+              callbacks.on_test_batch_begin(step)
+              logs = test_function(iterator)
+              callbacks.on_test_batch_end(step, logs)
       callbacks.on_test_end()
 
       logs = to_numpy(logs)

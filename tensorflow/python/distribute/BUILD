@@ -791,8 +791,7 @@ cuda_py_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     tags = [
-        # TODO(b/138143527): Re-enable after fixing Guitar failure.
-        # "multi_and_single_gpu",
+        "multi_and_single_gpu",
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1148,7 +1147,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",  # TODO(b/130551176)
-        "noguitar",
     ],
     deps = [
         ":combinations",

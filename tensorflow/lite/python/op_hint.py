@@ -1280,6 +1280,18 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   return hinted_outputs_nodes
 
 
+def is_ophint_converted(graph_def):
+  if graph_def is None:
+    raise ValueError("Must provide the graph_def.")
+  ophint_converted = False
+  for node in graph_def.node:
+    attr = node.attr
+    if OpHint.FUNCTION_INPUT_INDEX_ATTR in attr:
+      ophint_converted = True
+      break
+  return ophint_converted
+
+
 @_tf_export(v1=["lite.experimental.convert_op_hints_to_stubs"])
 def convert_op_hints_to_stubs(session=None,
                               graph_def=None,
@@ -1313,7 +1325,10 @@ def convert_op_hints_to_stubs(session=None,
 
 
 _allowed_symbols = [
-    "OpHint", "convert_op_hints_to_stubs", "convert_op_hints_to_stubs_new",
-    "find_all_hinted_output_nodes"
+    "OpHint",
+    "convert_op_hints_to_stubs",
+    "convert_op_hints_to_stubs_new",
+    "find_all_hinted_output_nodes",
+    "is_ophint_converted",
 ]
 remove_undocumented(__name__, _allowed_symbols)

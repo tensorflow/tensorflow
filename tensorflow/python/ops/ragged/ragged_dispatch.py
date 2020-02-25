@@ -539,8 +539,9 @@ def _ragged_op_signature(op, ragged_args):
     arg_names[pos] = '**' + arg_names[pos] + '**'
 
   # Add argument defaults.
-  for pos in range(-1, -len(argspec.defaults) - 1, -1):
-    arg_names[pos] += '=`{!r}`'.format(argspec.defaults[pos])
+  if argspec.defaults is not None:
+    for pos in range(-1, -len(argspec.defaults) - 1, -1):
+      arg_names[pos] += '=`{!r}`'.format(argspec.defaults[pos])
 
   # Add varargs and keyword args
   if argspec.varargs:

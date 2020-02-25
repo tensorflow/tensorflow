@@ -1,6 +1,6 @@
 """Configurations of RBE builds used with remote config."""
 
-load("//third_party/toolchains/remote_config:rbe_config.bzl", "tensorflow_rbe_config")
+load("//third_party/toolchains/remote_config:rbe_config.bzl", "tensorflow_rbe_config", "tensorflow_rbe_win_config")
 
 def initialize_rbe_configs():
     tensorflow_rbe_config(
@@ -28,4 +28,9 @@ def initialize_rbe_configs():
         os = "ubuntu16.04",
         python_version = "3",
         rocm_version = "2.5",  # Any version will do.
+    )
+
+    tensorflow_rbe_win_config(
+        name = "windows_py37",
+        python_bin_path = "C:/Python37/python.exe",
     )

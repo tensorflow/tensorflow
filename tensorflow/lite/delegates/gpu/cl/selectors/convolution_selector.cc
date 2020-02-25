@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_selector.h"
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer_1x1.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_constants.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_powervr.h"
@@ -83,14 +82,10 @@ Status SelectConvolutionMali(const Convolution2DAttributes& attr,
     ConvBuffer1x1 conv;
     RETURN_IF_ERROR(CreateConvBuffer1x1(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvBuffer1x1>(std::move(conv));
-  } else if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
-    ConvBuffer conv;
-    RETURN_IF_ERROR(CreateConvBuffer(creation_context, op_def, attr, &conv));
-    *ptr = absl::make_unique<ConvBuffer>(std::move(conv));
   } else {
-    ConvTexture conv;
-    RETURN_IF_ERROR(CreateConvTexture(creation_context, op_def, attr, &conv));
-    *ptr = absl::make_unique<ConvTexture>(std::move(conv));
+    ConvPowerVR conv;
+    RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
+    *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
   }
   return OkStatus();
 }

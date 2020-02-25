@@ -18,8 +18,6 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-set_bazel_outdir
-
 # Install python dependencies
 install_ubuntu_16_pip_deps pip2.7
 

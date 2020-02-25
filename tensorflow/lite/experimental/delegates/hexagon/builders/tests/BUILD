@@ -27,7 +27,7 @@ hexagon_op_tests(
         "activations_test.cc",
         "arg_min_max_test.cc",
         "concat_test.cc",
-        "depthwise_conv_test.cc",
+        "conv_test.cc",
         "neg_test.cc",
         "pad_test.cc",
         "pool_test.cc",

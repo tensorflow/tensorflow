@@ -167,6 +167,7 @@ def : Pat<(TF_SigmoidOp $arg), (TFL_LogisticOp $arg)>;
 def : Pat<(TF_SinOp F32Tensor:$arg), (TFL_SinOp $arg)>;
 def : Pat<(TF_SliceOp $input, $begin, $size), (TFL_SliceOp $input, $begin, $size)>;
 def : Pat<(TF_SoftmaxOp $arg), (TFL_SoftmaxOp $arg, ConstF32Attr<"1.0">)>;
+def : Pat<(TF_SoftplusOp F32Tensor:$arg0), (TFL_LogOp (TFL_AddOp (TFL_ExpOp $arg0), (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">), TFL_AF_None))>;
 def : Pat<(TF_SqueezeOp $arg, $squeeze_dims), (TFL_SqueezeOp $arg, $squeeze_dims)>;
 def : Pat<(TF_TanhOp $arg), (TFL_TanhOp $arg)>;
 def : Pat<(TF_TransposeOp $arg, $perm), (TFL_TransposeOp $arg, $perm)>;
