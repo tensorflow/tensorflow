@@ -44,6 +44,24 @@ _HDF5_EXTENSIONS = ['.h5', '.hdf5', '.keras']
 _KERAS_SAVED_MODEL_STILL_EXPERIMENTAL = True
 
 
+def _could_write_as_hdf5(filepath) -> bool:
+  """detect if `filepath` is a h5py.File object or its extension belongs to HDF5 extensions
+  """
+  file_is_h5_object = h5py is not None and isinstance(filepath, h5py.File)
+  implicit_h5_format = os.path.splitext(filepath)[1] in _HDF5_EXTENSIONS
+
+  return file_is_h5_object or implicit_h5_format
+
+
+def _could_read_as_hdf5(filepath) -> bool:
+  """detect if `filepath` is a h5py.File object or an hdf5 file
+  """
+  if h5py is None:
+    return False
+
+  return isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath)
+
+
 @keras_export('keras.models.save_model')
 def save_model(model,
                filepath,
@@ -114,10 +132,7 @@ def save_model(model,
 
   filepath = path_to_string(filepath)
 
-  if (save_format == 'h5' or
-      (h5py is not None and isinstance(filepath, h5py.File)) or
-      os.path.splitext(filepath)[1] in _HDF5_EXTENSIONS):
-    # TODO(b/130258301): add utility method for detecting model type.
+  if save_format == 'h5' or _could_write_as_hdf5(filepath):
     if (not model._is_graph_network and  # pylint:disable=protected-access
         not isinstance(model, sequential.Sequential)):
       raise NotImplementedError(
@@ -175,8 +190,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
       IOError: In case of an invalid savefile.
   """
   with generic_utils.CustomObjectScope(custom_objects or {}):
-    if (h5py is not None and (
-        isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
+    if _could_read_as_hdf5(filepath):
       return hdf5_format.load_model_from_hdf5(filepath, custom_objects, compile)
 
     filepath = path_to_string(filepath)
