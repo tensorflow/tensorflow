@@ -1603,4 +1603,52 @@ TEST(CAPI, TestTFE_OpGetAttrs) {
   TFE_DeleteContext(ctx);
 }
 
+TEST(CAPI, TestTFE_OpAttrsSerialize) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_Op* var_op = TFE_NewOp(ctx, "VarHandleOp", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpSetAttrType(var_op, "dtype", TF_INT64);
+  TFE_OpSetAttrShape(var_op, "shape", {}, 0, status);
+  TFE_OpAttrs attributes;
+  TFE_OpGetAttrs(var_op, &attributes);
+
+  TF_Buffer* serialized_attr_values = TF_NewBuffer();
+  TFE_OpAttrsSerialize(&attributes, serialized_attr_values, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  tensorflow::NameAttrList name_and_attrs;
+  ASSERT_TRUE(name_and_attrs.ParseFromArray(serialized_attr_values->data,
+                                            serialized_attr_values->length));
+  ASSERT_EQ("VarHandleOp", name_and_attrs.name());
+  ASSERT_EQ(tensorflow::DT_INT64,
+            name_and_attrs.attr().find("dtype")->second.type());
+  TF_DeleteBuffer(serialized_attr_values);
+
+  TFE_Op* second_var_op = TFE_NewOp(ctx, "VarHandleOp", status);
+
+  string serialized_dtype;
+  ASSERT_TRUE(name_and_attrs.attr().find("dtype")->second.SerializeToString(
+      &serialized_dtype));
+  TFE_OpSetAttrValueProto(
+      second_var_op, "dtype",
+      reinterpret_cast<const void*>(serialized_dtype.c_str()),
+      serialized_dtype.length(), status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  tensorflow::AttrValueMap attr_values;
+  auto op = tensorflow::down_cast<tensorflow::OperationInterface*>(
+      second_var_op->operation.get());
+  op->Attrs().FillAttrValueMap(&attr_values);
+  EXPECT_EQ(tensorflow::DT_INT64, attr_values.find("dtype")->second.type());
+
+  TF_DeleteStatus(status);
+  TFE_DeleteOp(var_op);
+  TFE_DeleteOp(second_var_op);
+  TFE_DeleteContext(ctx);
+}
+
 }  // namespace
