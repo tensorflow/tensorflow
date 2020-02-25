@@ -395,7 +395,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testMultiCpuPlacement(self):
     with ops.device('cpu:1'):
-      x = constant_op.constant(1.0)
+      x = array_ops.identity(1.0)
     with ops.device('cpu:0'):
       y = array_ops.identity(x)
     self.assertEqual(x.device, '/job:localhost/replica:0/task:0/device:CPU:1')
@@ -1084,7 +1084,7 @@ class SendRecvTest(test_util.TensorFlowTestCase):
   def testLocalCrossDevice(self):
     gpu_device_name = '/job:localhost/replica:0/task:0/device:GPU:0'
     with ops.device('GPU:0'):
-      t0 = constant_op.constant(1.0)
+      t0 = array_ops.identity(1.0)
       self._send(t0, 't0', self.cpu_device)
     with ops.device('cpu:0'):
       self.assertAllEqual(
@@ -1115,4 +1115,5 @@ class EagerTensorCacheTest(test_util.TensorFlowTestCase):
 
 
 if __name__ == '__main__':
+  context.set_log_device_placement(True)
   test.main()

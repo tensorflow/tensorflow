@@ -167,6 +167,16 @@ std::vector<string> DevicesToString(const PrioritizedDeviceVector& devices) {
   return v;
 }
 
+std::vector<string> DeviceTypesToString(
+    const PrioritizedDeviceTypeVector& types) {
+  std::vector<string> v;
+  v.reserve(types.size());
+  for (const auto& p : types) {
+    v.push_back(p.first.type_string());
+  }
+  return v;
+}
+
 // Selects the "best" device that both exists and is supported.
 //
 // The `existing` argument specifies the available devices in the system, in
@@ -232,13 +242,17 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
     return errors::InvalidArgument(
         "Could not satisfy device specification '", preferred,
         "'. enable_soft_placement=", AllowSoftPlacement(),
-        ". All available devices [",
+        ". Supported device types [",
+        absl::StrJoin(DeviceTypesToString(supported), ", "),
+        "]. All available devices [",
         absl::StrJoin(DevicesToString(existing), ", "), "].");
   }
   return errors::InvalidArgument(
       "No supported device found in available devices [",
       absl::StrJoin(DevicesToString(existing), ", "),
-      "]. enable_soft_placement=", AllowSoftPlacement(), ".");
+      "]. enable_soft_placement=", AllowSoftPlacement(),
+      ". Supported devices types [",
+      absl::StrJoin(DeviceTypesToString(supported), ", "), "].");
 }
 
 void EagerContext::ResetClusterFLR(
