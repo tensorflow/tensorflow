@@ -63,6 +63,30 @@ const char kDetectionPostProcessOp[] =
     "'detections_per_class' type: 'int' default_value { i : 100 }} attr { "
     "name: 'use_regular_nms' type: 'bool' default_value { b : false }}";
 
+const char kUnidirectionalSequenceLstmOp[] =
+    "name: 'UnidirectionalSequenceLstm' input_arg: {name: 'Input' type: "
+    "DT_FLOAT} input_arg: { name: 'InputToInputWeights' type: DT_FLOAT } "
+    "input_arg: { name: 'InputToForgetWeights' type: DT_FLOAT } input_arg: { "
+    "name: 'InputToCellWeights' type: DT_FLOAT} input_arg: { name: "
+    "'InputToOutputWeights' type: DT_FLOAT } input_arg: { name: "
+    "'RecurrentToInputWeights' type: DT_FLOAT} input_arg: { name: "
+    "'RecurrentToForgetWeights' type: DT_FLOAT} input_arg: { name: "
+    "'RecurrentToCellWeights' type: DT_FLOAT } input_arg: { name: "
+    "'RecurrentToOutputWeights' type: DT_FLOAT } input_arg: { name: "
+    "'CellToInputWeights' type: DT_FLOAT} input_arg: { name: "
+    "'CellToForgetWeights' type: DT_FLOAT } input_arg: { name: "
+    "'CellToOutputWeights' type: DT_FLOAT } input_arg: { name: 'InputGateBias' "
+    "type: DT_FLOAT } input_arg: { name: 'ForgetGateBias' type: DT_FLOAT } "
+    "input_arg: { name: 'kCellGateBias' type: DT_FLOAT } input_arg: { name: "
+    "'OutputGateBias' type: DT_FLOAT } input_arg: { name: 'ProjectionWeights' "
+    "type: DT_FLOAT } input_arg: { name: 'ProjectionBias' type: DT_FLOAT } "
+    "input_arg: { name: 'InputActivationState' type: DT_FLOAT} input_arg: { "
+    "name: 'InputCellStateTensor' type: DT_FLOAT } "
+    "output_arg: { name: 'Concat' type: DT_FLOAT} "
+    "output_arg: { name: "
+    "'LastState' type: DT_FLOAT } output_arg: { name: 'Output' type: DT_FLOAT} "
+    "attr : { name: '_tflite_input_indices' type: 'list(int)'}";
+
 // Converts the toco::IODataType to tensorflow::DataType. Only contains the
 // conversion mapping for constants defined in TFLite Python API.
 DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
@@ -260,6 +284,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   std::vector<string> extra_tf_opdefs(toco_flags.custom_opdefs().begin(),
                                       toco_flags.custom_opdefs().end());
   extra_tf_opdefs.push_back(kDetectionPostProcessOp);
+  extra_tf_opdefs.push_back(kUnidirectionalSequenceLstmOp);
   TF_RETURN_IF_ERROR(RegisterCustomBuiltinOps(extra_tf_opdefs));
 
   TF_ASSIGN_OR_RETURN(
