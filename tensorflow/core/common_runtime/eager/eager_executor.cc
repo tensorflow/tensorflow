@@ -231,7 +231,7 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
       DCHECK_GT(result, 0);
     }
 
-    if (!status.ok()) {
+    if (!status.ok() && item->node->Fatal()) {
       // Since we received an error, broadcast to any waiters.
       need_notification = true;
       status_ = status;
