@@ -153,6 +153,7 @@ function install_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install astunparse==1.6.3
   ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
   "${PIP_CMD}" install numpy==1.16.0 --user
+  "${PIP_CMD}" install PyYAML==3.12 --user
   ${SUDO_CMD} ${PIP_CMD} install gast==0.3.3
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.10.0
   ${SUDO_CMD} ${PIP_CMD} install six==1.12.0
@@ -193,6 +194,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install portpicker --user
   "${PIP_CMD}" install scipy --user
   "${PIP_CMD}" install scikit-learn --user
+  "${PIP_CMD}" install PyYAML==3.12 --user
   "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
   "${PIP_CMD}" install --user --upgrade tb-nightly
   # LINT.ThenChange(:ubuntu_pip_installations)
