@@ -61,7 +61,10 @@ py_library(
 py_library(
     name = "test_utils",
     testonly = 1,
-    srcs = ["test_utils.py"],
+    srcs = [
+        "__init__.py",
+        "test_utils.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//third_party/py/numpy",
@@ -988,6 +991,11 @@ tf_xla_py_test(
     name = "unstack_test",
     size = "medium",
     srcs = ["unstack_test.py"],
+    disabled_backends = [
+        # TODO(b/149750262): timeout on CPU.
+        "cpu",
+        "cpu_ondemand",
+    ],
     python_version = "PY3",
     shard_count = 5,
     tags = [

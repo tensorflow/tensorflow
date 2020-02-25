@@ -120,9 +120,7 @@ def HLO_ConstOp : HLO_Op<"constant", [NoSideEffect]>, BASE_HLO_ConstOp {
 def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]>, BASE_HLO_IotaOp {
   let arguments = (ins I64Attr:$iota_dimension);
 
-  let results = (outs HLO_Tensor:$output);
-
-  let hasFolder = 1;
+  let results = (outs HLO_IntFpOrComplexTensor:$output);
 
   // TODO(b/130357376): Iota has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -774,6 +772,22 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
   let results = (outs HLO_StaticShapeTensor);
 
   // Only handles a static subset of the legacy format.
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_ScalarsToDimensionTensorOp : HLO_Op<"scalars_to_dimension_tensor",
+    [SameOperandsElementType, NoSideEffect]> {
+  string summary = "Converts a sequence of scalars into a 1d tensor.";
+
+  string description = [{
+    This is a useful operation that is currently missing in Standard. Used to
+    compute shape arguments to dynamic operations.
+  }];
+
+  let arguments = (ins Variadic<AnyInteger>);
+  let results = (outs HLO_DimensionTensor);
+
+  // Cannot be exported to legacy formats.
   let hasCustomHLOConverter = 1;
 }
 

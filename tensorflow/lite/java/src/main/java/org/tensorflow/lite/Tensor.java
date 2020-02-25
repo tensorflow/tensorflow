@@ -85,6 +85,18 @@ public final class Tensor {
   }
 
   /**
+   * Returns the original <a
+   * href="https://www.tensorflow.org/resources/dims_types.html#shape">shape</a> of the Tensor,
+   * i.e., the sizes of each dimension - before any resizing was performed. Unknown dimensions are
+   * designated with a value of -1.
+   *
+   * @return an array where the i-th element is the size of the i-th dimension of the tensor.
+   */
+  public int[] shapeSignature() {
+    return shapeSignatureCopy;
+  }
+
+  /**
    * Returns the (global) index of the tensor within the owning {@link Interpreter}.
    *
    * @hide
@@ -363,11 +375,13 @@ public final class Tensor {
   private long nativeHandle;
   private final DataType dtype;
   private int[] shapeCopy;
+  private final int[] shapeSignatureCopy;
 
   private Tensor(long nativeHandle) {
     this.nativeHandle = nativeHandle;
     this.dtype = DataType.fromC(dtype(nativeHandle));
     this.shapeCopy = shape(nativeHandle);
+    this.shapeSignatureCopy = shapeSignature(nativeHandle);
   }
 
   private ByteBuffer buffer() {
@@ -385,6 +399,8 @@ public final class Tensor {
   private static native int dtype(long handle);
 
   private static native int[] shape(long handle);
+
+  private static native int[] shapeSignature(long handle);
 
   private static native int numBytes(long handle);
 

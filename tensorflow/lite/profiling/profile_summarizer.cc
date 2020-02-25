@@ -89,8 +89,8 @@ OperatorDetails GetOperatorDetails(const tflite::Interpreter& interpreter,
 }  // namespace
 
 ProfileSummarizer::ProfileSummarizer(
-    std::unique_ptr<ProfileSummaryFormatter> summary_formatter)
-    : summary_formatter_(std::move(summary_formatter)) {
+    std::shared_ptr<ProfileSummaryFormatter> summary_formatter)
+    : summary_formatter_(summary_formatter) {
   // Create stats calculator for the primary graph.
   stats_calculator_map_[0] = std::unique_ptr<tensorflow::StatsCalculator>(
       new tensorflow::StatsCalculator(

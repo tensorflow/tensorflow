@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #if GOOGLE_CUDA
@@ -660,6 +661,9 @@ size_t TRT_ShapedWeights::size_bytes() const {
       data_type_size = 2;
       break;
     case nvinfer1::DataType::kINT8:
+#if IS_TRT_VERSION_GE(7, 0, 0, 0)
+    case nvinfer1::DataType::kBOOL:
+#endif
       data_type_size = 1;
       break;
   }
@@ -2222,6 +2226,21 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   return Status::OK();
 }
 
+bool AllowInefficientTranspose() {
+  static bool result = [] {
+    bool value;
+    Status status =
+        ReadBoolFromEnvVar("TF_DEBUG_TRT_ALLOW_INEFFICIENT_TRANSPOSE",
+                           /*default_value=*/false, &value);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
+    return value;
+  }();
+
+  return result;
+}
+
 Status ConvertTranspose(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   TF_RETURN_IF_ERROR(
@@ -2248,7 +2267,7 @@ Status ConvertTranspose(OpConverterParams* params) {
   // So check tensor size, and don't convert if it is too large.
   constexpr int64_t kMaxEfficientTranspose = 2500000;
   int64_t tensor_size = TrtTensorDimsNumElements(input_tensor->getDimensions());
-  if (tensor_size > kMaxEfficientTranspose) {
+  if (!AllowInefficientTranspose() && tensor_size > kMaxEfficientTranspose) {
     return errors::Unimplemented(StrCat("Transpose too large:", tensor_size));
   }
 

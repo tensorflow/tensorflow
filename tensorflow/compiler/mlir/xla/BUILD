@@ -131,12 +131,37 @@ cc_library(
 )
 
 cc_library(
-    name = "lhlo_legalize_to_affine",
-    srcs = ["transforms/lhlo_legalize_to_affine.cc"],
+    name = "map_xla_to_scalar_op",
+    srcs = [],
     hdrs = ["transforms/map_xla_to_scalar_op.h"],
     deps = [
         ":hlo",
         ":lhlo",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
+    name = "hlo_shape_derivation",
+    srcs = [],
+    hdrs = ["transforms/hlo_shape_derivation.h"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "lhlo_legalize_to_affine",
+    srcs = ["transforms/lhlo_legalize_to_affine.cc"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+        ":map_xla_to_scalar_op",
         "//tensorflow/compiler/xla:status",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
@@ -151,10 +176,10 @@ cc_library(
 cc_library(
     name = "xla_legalize_to_linalg",
     srcs = ["transforms/xla_legalize_to_linalg.cc"],
-    hdrs = ["transforms/map_xla_to_scalar_op.h"],
     deps = [
         ":hlo",
         ":lhlo",
+        ":map_xla_to_scalar_op",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
@@ -169,10 +194,10 @@ cc_library(
 cc_library(
     name = "lhlo_legalize_to_gpu",
     srcs = ["transforms/lhlo_legalize_to_gpu.cc"],
-    hdrs = ["transforms/map_xla_to_scalar_op.h"],
     deps = [
         ":hlo",
         ":lhlo",
+        ":map_xla_to_scalar_op",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:GPUDialect",
@@ -192,6 +217,7 @@ cc_library(
     deps = [
         ":lhlo",
         "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
@@ -205,9 +231,9 @@ cc_library(
     srcs = ["transforms/hlo_legalize_to_lhlo.cc"],
     deps = [
         ":hlo",
+        ":hlo_shape_derivation",
         ":lhlo",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -304,6 +330,7 @@ cc_library(
     deps = [
         ":hlo",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -332,6 +359,7 @@ cc_library(
         ":xla_unfuse_batch_norm",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,

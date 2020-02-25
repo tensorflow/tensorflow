@@ -921,4 +921,4 @@ def _control_input(inputs, control_inputs, idx):
     raise ValueError(
         'control_inputs must match the device of the inputs, %s != %s' %
         (control_inputs[idx].device, inputs[idx].device))
-  return control_inputs[idx]
+  return [control_inputs[idx]]

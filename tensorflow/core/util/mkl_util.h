@@ -677,7 +677,7 @@ inline void ExecutePrimitive(const std::vector<primitive>& net,
   }
   cpu_stream.wait();
 #else
-  stream(stream::kind::eager).submit(net).wait();
+  stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
 }
 
@@ -1012,6 +1012,11 @@ memory::data_type MklDnnType<float>() {
 
 template <>
 memory::data_type MklDnnType<quint8>() {
+  return memory::data_type::u8;
+}
+
+template <>
+memory::data_type MklDnnType<uint8>() {
   return memory::data_type::u8;
 }
 
@@ -1624,7 +1629,7 @@ class MklDnnData {
       reorder_memory_ = new memory(op_pd);
       std::vector<primitive> net;
       net.push_back(FindOrCreateReorder<T>(user_memory_, reorder_memory_));
-      stream(stream::kind::eager).submit(net).wait();
+      stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
       return true;
     }
@@ -1702,7 +1707,7 @@ class MklDnnData {
       std::vector<primitive> net;
       reorder_memory_ = new memory(op_pd, reorder_data_handle);
       net.push_back(FindOrCreateReorder<T>(user_memory_, reorder_memory_));
-      stream(stream::kind::eager).submit(net).wait();
+      stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
       return true;
     }

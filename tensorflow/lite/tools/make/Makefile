@@ -68,6 +68,10 @@ ifeq ($(HOST_OS),windows)
 CXXFLAGS += -fext-numeric-literals -D__LITTLE_ENDIAN__
 endif
 
+ifeq ($(TARGET),ios)
+CXXFLAGS += --std=c++11
+endif
+
 # Auto-detect optimization opportunity if building natively.
 ifeq ($(HOST_OS),$(TARGET))
 ifeq ($(HOST_ARCH),$(TARGET_ARCH))
@@ -105,6 +109,7 @@ PROFILER_SRCS := \
 
 PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/lite/profiling/profile_summarizer.cc \
+	tensorflow/lite/profiling/profile_summary_formatter.cc \
 	tensorflow/core/util/stats_calculator.cc
 
 CMD_LINE_TOOLS_SRCS := \
@@ -116,7 +121,7 @@ $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
-$(wildcard tensorflow/lite/experimental/resource_variable/*.cc) \
+$(wildcard tensorflow/lite/experimental/resource/*.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/*.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
@@ -143,6 +148,7 @@ $(wildcard tensorflow/lite/*/*/benchmark.cc) \
 $(wildcard tensorflow/lite/*/*/example*.cc) \
 $(wildcard tensorflow/lite/*/*/test*.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
+$(wildcard tensorflow/lite/*/*/*tool.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util*.cc) \

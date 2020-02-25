@@ -69,6 +69,8 @@ void AWSLogSystem::LogMessage(Aws::Utils::Logging::LogLevel log_level,
   }
 }
 
+void AWSLogSystem::Flush() { return; }
+
 namespace {
 
 // Taken from tensorflow/core/platform/default/logging.cc

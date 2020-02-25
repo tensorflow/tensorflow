@@ -34,9 +34,6 @@ TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Op* op_to_reset,
                                        const char* raw_device_name,
                                        TF_Status* status);
 
-TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
-                                              TF_Status* status);
-
 // Enables only graph collection in RunMetadata on the functions executed from
 // this context.
 TF_CAPI_EXPORT extern void TFE_ContextEnableGraphCollection(TFE_Context* ctx);
@@ -385,9 +382,11 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
                                                  const char* worker_name,
                                                  TF_Status* status);
 
-// Clear pending streaming requests and error statuses on remote executors.
-TF_CAPI_EXPORT extern void TFE_ContextClearRemoteExecutors(TFE_Context* ctx,
-                                                           TF_Status* status);
+// Sync pending nodes in local executors (including the context default executor
+// and thread executors) and streaming requests to remote executors, and get the
+// combined status.
+TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
+                                                TF_Status* status);
 
 // If the TensorHandle is copied to another device as part of an op execution,
 // the copy is destroyed after the op has executed. Enabling implicit mirroring
@@ -424,7 +423,42 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
 TF_CAPI_EXPORT extern void TFE_HostAddressSpace(TFE_Context* ctx,
                                                 TF_Buffer* buf);
 
-#define TFE_CUSTOM_DEVICE_VERSION 0
+// APIs for generically dealing with op attributes (e.g. when forwarding them
+// through custom device implementations).
+//
+// TODO(allenl): Currently these are black boxes, but we should have some way to
+// inspect values. This would let people e.g. copy over most attributes and then
+// modify some based on their values.
+
+// A reference to an op's name -> attribute mapping
+typedef struct TFE_OpAttrs TFE_OpAttrs;
+
+// Fetch a struct with a reference to information about attributes of `op`.
+//
+// The `attrs` struct does not own any memory, and `op` must outlive it.
+TF_CAPI_EXPORT extern void TFE_OpGetAttrs(TFE_Op* op, TFE_OpAttrs* attrs);
+
+// Add attributes in `attrs` to `op`.
+//
+// Does not overwrite or update existing attributes, but adds new ones.
+TF_CAPI_EXPORT extern void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs);
+
+// Serialize `attrs` as a tensorflow::NameAttrList protocol buffer (into `buf`),
+// containing the op name and a map of its attributes.
+TF_CAPI_EXPORT extern void TFE_OpAttrsSerialize(const TFE_OpAttrs* attrs,
+                                                TF_Buffer* buf,
+                                                TF_Status* status);
+
+// Set an op's attribute from a serialized AttrValue protocol buffer.
+//
+// Analogous to TF_SetAttrValueProto for building graph operations.
+TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
+                                                   const char* attr_name,
+                                                   const void* proto,
+                                                   size_t proto_len,
+                                                   TF_Status* status);
+
+#define TFE_CUSTOM_DEVICE_VERSION 1
 
 // Struct to be filled in
 typedef struct TFE_CustomDevice {
@@ -441,10 +475,10 @@ typedef struct TFE_CustomDevice {
                                                void* device_info);
 
   // Method to execute an operation.
-  // TODO(allenl) figure out a generic way of passing attrs here
   void (*execute)(int num_inputs, TFE_TensorHandle** inputs,
-                  const char* operation_name, int* num_outputs,
-                  TFE_TensorHandle** outputs, TF_Status* s, void* device_info);
+                  const char* operation_name, const TFE_OpAttrs* attributes,
+                  int* num_outputs, TFE_TensorHandle** outputs, TF_Status* s,
+                  void* device_info);
 
   // Method to delete a device.
   void (*delete_device)(void* device_info);
@@ -474,6 +508,11 @@ typedef struct TFE_CustomDevice {
 // is added.
 void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
                               const char* device_name, void* device_info);
+
+TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
+                                                     const char* function_name,
+                                                     TF_Buffer* buf,
+                                                     TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

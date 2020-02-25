@@ -573,9 +573,9 @@ void Print(SwitchNOp switchn, OpAsmPrinter &p) {
 
 ParseResult ParseSwitchNOp(OpAsmParser &parser, OperationState &result) {
   // Parsing:
-  //       %2:6 = tf_executor.SwitchN %0, %1 by 5 : tensor<??xf32>
+  //       %2:6 = tf_executor.SwitchN %0, %1 of 5 : tensor<??xf32>
   // Where the first operand is the data to replicate, the second is an i32
-  // indicating which output to populate, followed by the keyword `by` and the
+  // indicating which output to populate, followed by the keyword `of` and the
   // number of outputs (+1 for the control token).
   SmallVector<OpAsmParser::OperandType, 2> op_infos;
   SmallVector<Type, 1> types;

@@ -602,6 +602,7 @@ tf_cc_binary(
     name = "flatbuffer_translate",
     deps = [
         ":flatbuffer_translate_lib",
+        "@llvm-project//mlir:LoopOpsTransforms",
         "@llvm-project//mlir:MlirTranslateMain",
     ],
 )
@@ -651,6 +652,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/stream_executor/lib",

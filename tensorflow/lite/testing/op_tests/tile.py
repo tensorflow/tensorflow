@@ -27,7 +27,7 @@ from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 def make_tile_tests(options):
   """Make a set of tests to do tile."""
   test_parameters = [{
-      "input_dtype": [tf.float32, tf.int32, tf.bool],
+      "input_dtype": [tf.float32, tf.int32, tf.bool, tf.string],
       "input_shape": [[3, 2, 1], [2, 2, 2]],
       "multiplier_dtype": [tf.int32, tf.int64],
       "multiplier_shape": [[3]]

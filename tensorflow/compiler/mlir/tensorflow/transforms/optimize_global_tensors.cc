@@ -45,37 +45,27 @@ struct GlobalTensorUse {
 using GlobalTensorUsesMap =
     std::map<GlobalTensorOp, std::vector<GlobalTensorUse>>;
 
-// TODO(silvasean): Are there other read-only variable ops?
-// It would be nice if we eventually had an interface that we could use
-// to determine if an op is read-only and how to rewrite it.
-// For now, IsReadOnlyVariableOp and RewriteReadOnlyVariableOpToTensorOp need to
-// be keep in sync.
-bool IsReadOnlyVariableOp(Operation* op) { return isa<TF::ReadVariableOp>(op); }
-
-void RewriteReadOnlyVariableOpToTensorOp(Operation* op, Value tensor_value) {
-  auto read_variable = cast<TF::ReadVariableOp>(op);
-  read_variable.value().replaceAllUsesWith(tensor_value);
-}
-
-bool IsFreezable(GlobalTensorOp global_tensor,
+bool IsImmutable(GlobalTensorOp global_tensor,
                  ArrayRef<GlobalTensorUse> global_tensor_uses) {
-  // If this tensor is already immutable, don't freeze it.
+  // Global tensor is already known to be immutable.
   if (!global_tensor.is_mutable()) {
     return false;
   }
-  // Can't freeze if exported.
+  // An exported global tensor that is not already known to be immutable might
+  // be externally mutated.
   if (IsExported(global_tensor)) {
     return false;
   }
 
-  // Can't freeze if it is used by anything that we aren't sure is read-only.
+  // Check the uses to see if this global tensor is only used in a way that
+  // is compatible with being immutable.
   // Right now, this uses a very simple algorithm that only checks the top-level
   // func for tf.ReadVariableOp. If the resource is passed into other functions
   // or control flow, we fail to prove it is freezable even though we could.
   for (auto& global_tensor_use : global_tensor_uses) {
     auto arg = global_tensor_use.func.getArgument(global_tensor_use.arg_index);
     for (auto user : arg.getUsers()) {
-      if (!IsReadOnlyVariableOp(user)) {
+      if (!isa<TF::ReadVariableOp>(user)) {
         return false;
       }
     }
@@ -103,37 +93,16 @@ static GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
   return global_tensor_uses;
 }
 
-void FreezeGlobalTensors(ModuleOp module,
-                         const GlobalTensorUsesMap& global_tensor_uses_map) {
-  // Remove `is_mutable` attribute from tf_saved_model.global_tensor
-  // and update func arguments to match.
-  //
-  // This amounts to changing the type of the argument to a tensor type, and
-  // replacing all the tf.ReadVariableOp's with the new tensor argument value.
-  OpBuilder builder(module.getBodyRegion());
+// Removes `is_mutable` attribute from tf_saved_model.global_tensor ops where we
+// can prove it is safe to do so.
+void MarkGlobalTensorsImmutable(
+    ModuleOp module, const GlobalTensorUsesMap& global_tensor_uses_map) {
   for (const auto& kv : global_tensor_uses_map) {
     auto global_tensor = kv.first;
     const auto& global_tensor_uses = kv.second;
-    if (!IsFreezable(global_tensor, global_tensor_uses)) {
-      continue;
+    if (IsImmutable(global_tensor, global_tensor_uses)) {
+      global_tensor.removeAttr("is_mutable");
     }
-    for (auto global_tensor_use : global_tensor_uses) {
-      auto func = global_tensor_use.func;
-      auto arg_index = global_tensor_use.arg_index;
-      Value arg = func.getArgument(arg_index);
-      for (Operation* user : llvm::make_early_inc_range(arg.getUsers())) {
-        RewriteReadOnlyVariableOpToTensorOp(user, arg);
-        user->erase();
-      }
-      Type new_type = global_tensor.value().Attribute::getType();
-      arg.setType(new_type);
-      auto old_ftype = func.getType();
-      auto input_types = old_ftype.getInputs().vec();
-      input_types[arg_index] = new_type;
-      func.setType(
-          builder.getFunctionType(input_types, old_ftype.getResults()));
-    }
-    global_tensor.removeAttr("is_mutable");
   }
 }
 
@@ -178,7 +147,7 @@ void OptimizeGlobalTensorsPass::runOnModule() {
   // Figure out which func's use each tf_saved_model.global_tensor.
   GlobalTensorUsesMap global_tensor_uses = CreateGlobalTensorUsesMap(module);
 
-  FreezeGlobalTensors(module, global_tensor_uses);
+  MarkGlobalTensorsImmutable(module, global_tensor_uses);
   EraseUnusedGlobalTensors(module, global_tensor_uses);
 }
 

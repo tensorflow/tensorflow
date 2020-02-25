@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/qr.h"
 #include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
+#include "tensorflow/compiler/xla/client/lib/sorting.h"
 #include "tensorflow/compiler/xla/client/lib/svd.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -349,7 +350,10 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("precision_config") = nullptr);
   ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
           py::arg("new_element_type"));
+  // TODO(phawkins): remove CustomCall after callers are updated to use
+  // CustomCallWithLayout.
   ops.def("CustomCall", &CustomCallWithLayout);
+  ops.def("CustomCallWithLayout", &CustomCallWithLayout);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr);
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
@@ -451,6 +455,7 @@ void BuildOpsSubmodule(py::module* m) {
       },
       py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1,
       py::arg("comparator") = absl::nullopt);
+  ops.def("TopK", &TopK, py::arg("input"), py::arg("k"));
   ops.def("Transpose", &Transpose);
   ops.def("TriangularSolve", &TriangularSolve);
   ops.def("Tuple", &Tuple);
@@ -496,6 +501,7 @@ void BuildOpsSubmodule(py::module* m) {
 
 #define UNARY_OP(op) ops.def(#op, &op)
   UNARY_OP(Not);
+  UNARY_OP(PopulationCount);
   UNARY_OP(Clz);
   UNARY_OP(Abs);
   UNARY_OP(Exp);

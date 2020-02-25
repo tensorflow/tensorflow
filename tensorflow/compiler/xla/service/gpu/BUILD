@@ -55,6 +55,22 @@ tf_proto_library_cc(
 )
 
 cc_library(
+    name = "gpu_executable_run_options",
+    srcs = ["gpu_executable_run_options.cc"],
+    hdrs = ["gpu_executable_run_options.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "gpu_constants",
     srcs = ["gpu_constants.cc"],
     hdrs = ["gpu_constants.h"],
@@ -385,6 +401,7 @@ cc_library(
     hdrs = ["thunk.h"],
     deps = [
         ":buffer_allocations",
+        ":gpu_executable_run_options",
         ":hlo_execution_profiler",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla/service:hlo",
@@ -413,6 +430,7 @@ tf_cuda_library(
         ":buffer_allocations",
         ":hlo_execution_profiler",
         ":thunk",
+        ":gpu_executable_run_options",
         "@com_google_absl//absl/base:core_headers",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla:refcounting_hash_map",
@@ -522,6 +540,7 @@ cc_library(
         ":cudnn_batchnorm_runner",
         ":gpu_conv_runner",
         ":gpu_debug_info_manager",
+        ":gpu_executable_run_options",
         ":gpu_types",
         ":hlo_execution_profiler",
         ":infeed_manager",
@@ -1131,6 +1150,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:all_reduce_combiner",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:call_inliner",
@@ -1285,6 +1305,7 @@ cc_library(
         ":reduction_dimension_grouper",
         ":reduction_layout_normalizer",
         ":target_constants",
+        ":tree_reduction_rewriter",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:hlo",
@@ -1658,6 +1679,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/stream_executor:dnn",
     ],
 )

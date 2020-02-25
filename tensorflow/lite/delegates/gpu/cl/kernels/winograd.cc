@@ -19,8 +19,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -49,8 +52,22 @@ std::string GetWinograd4x4To36Code(
       src_tensor_type == TensorStorageType::IMAGE_BUFFER;
   const bool is_buffer = src_tensor_type == TensorStorageType::BUFFER;
 
+  switch (op_def.precision) {
+    case CalculationsPrecision::F32:
+    case CalculationsPrecision::F32_F16:
+      c += "#define ACCUM_FLT float\n";
+      break;
+    case CalculationsPrecision::F16:
+      c += "#define ACCUM_FLT half\n";
+      break;
+  }
+
+  const DataType accum_type = op_def.precision == CalculationsPrecision::F16
+                                  ? DataType::FLOAT16
+                                  : DataType::FLOAT32;
+
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
-  c += "constant FLT Bt[36] = {\n";
+  c += "constant ACCUM_FLT Bt[36] = {\n";
   for (int y = 0; y < 6; ++y) {
     c += "\t";
     for (int x = 0; x < 6; ++x) {
@@ -79,10 +96,12 @@ std::string GetWinograd4x4To36Code(
   c += "  }\n";
   c += "  int tile_x = (DST_X % tiles_x) * 4;\n";
   c += "  int tile_y = (DST_X / tiles_x) * 4;\n";
-  c += "  FLT4 I0, I1, I2, I3, I4, I5;\n";
-  c += "  FLT bt_ar[6];\n";
-  c += "  FLT4 t0 = " + bt_arr.ReadLinearFLT4("DST_Y * 2 + 0") + ";\n";
-  c += "  FLT4 t1 = " + bt_arr.ReadLinearFLT4("DST_Y * 2 + 1") + ";\n";
+  c += "  ACCUM_FLT4 I0, I1, I2, I3, I4, I5;\n";
+  c += "  ACCUM_FLT bt_ar[6];\n";
+  c += "  ACCUM_FLT4 t0 = TO_ACCUM_TYPE(" +
+       bt_arr.ReadLinearFLT4("DST_Y * 2 + 0") + ");\n";
+  c += "  ACCUM_FLT4 t1 = TO_ACCUM_TYPE(" +
+       bt_arr.ReadLinearFLT4("DST_Y * 2 + 1") + ");\n";
   c += "  DST_Y *= 6;\n";
   c += "  bt_ar[0] = t0.x;\n";
   c += "  bt_ar[1] = t0.y;\n";
@@ -92,15 +111,17 @@ std::string GetWinograd4x4To36Code(
   c += "  bt_ar[5] = t1.y;\n";
   auto read_src = [&](const std::string& src, const std::string& xs) {
     if (is_image_buffer) {
-      c += "    FLT4 " + src + " = " +
-           src_tensor.Read("src_a_" + xs + " + offset") + ";\n";
+      c += "    ACCUM_FLT4 " + src + " = " +
+           src_tensor.ReadAsType(accum_type, "src_a_" + xs + " + offset") +
+           ";\n";
     } else if (is_buffer) {
-      c += "    FLT4 " + src + " = " +
-           src_tensor.Read("src_a_" + xs + " + offset") + " * m" + xs + "_x;\n";
+      c += "    ACCUM_FLT4 " + src + " = " +
+           src_tensor.ReadAsType(accum_type, "src_a_" + xs + " + offset") +
+           " * m" + xs + "_x;\n";
     } else {
-      c += "    FLT4 " + src + " = " +
-           src_tensor.ReadWHSB("tile_x + padding.x + " + xs, "yc", "DST_Z",
-                               batch_id) +
+      c += "    ACCUM_FLT4 " + src + " = " +
+           src_tensor.ReadAsTypeWHSB(accum_type, "tile_x + padding.x + " + xs,
+                                     "yc", "DST_Z", batch_id) +
            ";\n";
     }
   };
@@ -108,8 +129,8 @@ std::string GetWinograd4x4To36Code(
     for (int x = 0; x < 6; ++x) {
       const std::string xs = std::to_string(x);
       c += "  int xc" + xs + " = tile_x + padding.x + " + xs + ";\n";
-      c += "  FLT m" + xs + "_x = (FLT)(xc" + xs + " >= 0 && xc" + xs +
-           " < src_size.x);\n";
+      c += "  ACCUM_FLT m" + xs + "_x = (ACCUM_FLT)(xc" + xs + " >= 0 && xc" +
+           xs + " < src_size.x);\n";
       c += "  bool inx" + xs + " = (xc" + xs + " >= 0 && xc" + xs +
            " < src_size.x);\n";
       c += "  xc" + xs + " = clamp(xc" + xs + ", 0, src_size.x - 1);\n";
@@ -126,9 +147,9 @@ std::string GetWinograd4x4To36Code(
   if (is_buffer || is_image_buffer) {
     c += "    bool iny = (yc >= 0 && yc < src_size.y);\n";
     c += "    int offset = select(0, yc * src_size.x, iny);\n";
-    c += "    FLT bt = bt_ar[0] * (FLT)(iny);\n";
+    c += "    ACCUM_FLT bt = bt_ar[0] * (ACCUM_FLT)(iny);\n";
   } else {
-    c += "    FLT bt = bt_ar[0];\n";
+    c += "    ACCUM_FLT bt = bt_ar[0];\n";
   }
   for (int x = 0; x < 6; ++x) {
     const std::string xs = std::to_string(x);
@@ -144,9 +165,9 @@ std::string GetWinograd4x4To36Code(
     if (is_buffer || is_image_buffer) {
       c += "    bool iny = (yc >= 0 && yc < src_size.y);\n";
       c += "    int offset = select(0, yc * src_size.x, iny);\n";
-      c += "    FLT bt = bt_ar[" + ys + "] * (FLT)(iny);\n";
+      c += "    ACCUM_FLT bt = bt_ar[" + ys + "] * (ACCUM_FLT)(iny);\n";
     } else {
-      c += "    FLT bt = bt_ar[" + ys + "];\n";
+      c += "    ACCUM_FLT bt = bt_ar[" + ys + "];\n";
     }
     for (int x = 0; x < 6; ++x) {
       const std::string xs = std::to_string(x);
@@ -158,42 +179,50 @@ std::string GetWinograd4x4To36Code(
   }
   const LinkingContext context{"r0", "DST_X", "DST_Y", "DST_Z"};
   c += "  {\n";
-  c += "    FLT4 r0 = I0 + Bt[2] * I2 + Bt[4] * I4;\n";
+  c += "    FLT4 r0 = TO_FLT4(I0 + Bt[2] * I2 + Bt[4] * I4);\n";
   c += PostProcess(linked_operations, context);
   c += "    " + dst_tensor.WriteWHSB("r0", "DST_X", "DST_Y", "DST_Z", batch_id);
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
-  c += "    FLT4 r0 = Bt[7] * I1 + Bt[8] * I2 + Bt[9] * I3 + Bt[10] * I4;\n";
+  c += "    FLT4 r0 = TO_FLT4(Bt[7] * I1 + Bt[8] * I2 + Bt[9] * I3 + Bt[10] * "
+       "I4);\n";
   c += PostProcess(linked_operations, context);
   c += "    " + dst_tensor.WriteWHSB("r0", "DST_X", "DST_Y", "DST_Z", batch_id);
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
-  c += "    FLT4 r0 = Bt[13] * I1 + Bt[14] * I2 + Bt[15] * I3 + Bt[16] * I4;\n";
+  c += "    FLT4 r0 = TO_FLT4(Bt[13] * I1 + Bt[14] * I2 + Bt[15] * I3 + Bt[16] "
+       "* "
+       "I4);\n";
   c += PostProcess(linked_operations, context);
   c += "    " + dst_tensor.WriteWHSB("r0", "DST_X", "DST_Y", "DST_Z", batch_id);
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
-  c += "    FLT4 r0 = Bt[19] * I1 + Bt[20] * I2 + Bt[21] * I3 + Bt[22] * I4;\n";
+  c += "    FLT4 r0 = TO_FLT4(Bt[19] * I1 + Bt[20] * I2 + Bt[21] * I3 + Bt[22] "
+       "* "
+       "I4);\n";
   c += PostProcess(linked_operations, context);
   c += "    " + dst_tensor.WriteWHSB("r0", "DST_X", "DST_Y", "DST_Z", batch_id);
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
-  c += "    FLT4 r0 = Bt[25] * I1 + Bt[26] * I2 + Bt[27] * I3 + Bt[28] * I4;\n";
+  c += "    FLT4 r0 = TO_FLT4(Bt[25] * I1 + Bt[26] * I2 + Bt[27] * I3 + Bt[28] "
+       "* "
+       "I4);\n";
   c += PostProcess(linked_operations, context);
   c += "    " + dst_tensor.WriteWHSB("r0", "DST_X", "DST_Y", "DST_Z", batch_id);
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
-  c += "    FLT4 r0 = Bt[31] * I1 + Bt[33] * I3 + I5;\n";
+  c += "    FLT4 r0 = TO_FLT4(Bt[31] * I1 + Bt[33] * I3 + I5);\n";
   c += PostProcess(linked_operations, context);
   c += "    " + dst_tensor.WriteWHSB("r0", "DST_X", "DST_Y", "DST_Z", batch_id);
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "}\n";
+  // std::cout << c << std::endl;
   return c;
 }
 
@@ -213,8 +242,22 @@ std::string GetWinograd36To4x4Code(
   const std::string batch_id = op_def.IsBatchSupported() ? "batch_id" : "";
   std::string c = GetCommonDefines(op_def.precision);
 
+  switch (op_def.precision) {
+    case CalculationsPrecision::F32:
+    case CalculationsPrecision::F32_F16:
+      c += "#define ACCUM_FLT float\n";
+      break;
+    case CalculationsPrecision::F16:
+      c += "#define ACCUM_FLT half\n";
+      break;
+  }
+
+  const DataType accum_type = op_def.precision == CalculationsPrecision::F16
+                                  ? DataType::FLOAT16
+                                  : DataType::FLOAT32;
+
   auto at_mat = AtMatrixForWinograd4x4To6x6();
-  c += "constant FLT At[24] = {\n";
+  c += "constant ACCUM_FLT At[24] = {\n";
   for (int y = 0; y < 4; ++y) {
     c += "\t";
     for (int x = 0; x < 6; ++x) {
@@ -243,10 +286,12 @@ std::string GetWinograd36To4x4Code(
        "dst_size.z) {\n";
   c += "    return; \n";
   c += "  }\n";
-  c += "  FLT4 I0, I1, I2, I3, I4, I5;\n";
-  c += "  FLT at_ar[6];\n";
-  c += "  FLT4 t00 = " + at_arr.ReadLinearFLT4("DST_Y * 2 + 0") + ";\n";
-  c += "  FLT4 t01 = " + at_arr.ReadLinearFLT4("DST_Y * 2 + 1") + ";\n";
+  c += "  ACCUM_FLT4 I0, I1, I2, I3, I4, I5;\n";
+  c += "  ACCUM_FLT at_ar[6];\n";
+  c += "  ACCUM_FLT4 t00 = TO_ACCUM_TYPE(" +
+       at_arr.ReadLinearFLT4("DST_Y * 2 + 0") + ");\n";
+  c += "  ACCUM_FLT4 t01 = TO_ACCUM_TYPE(" +
+       at_arr.ReadLinearFLT4("DST_Y * 2 + 1") + ");\n";
   c += "  at_ar[0] = t00.x;\n";
   c += "  at_ar[1] = t00.y;\n";
   c += "  at_ar[2] = t00.z;\n";
@@ -254,56 +299,60 @@ std::string GetWinograd36To4x4Code(
   c += "  at_ar[4] = t01.x;\n";
   c += "  at_ar[5] = t01.y;\n";
   c += "  {\n";
-  c += "    FLT at = at_ar[0];\n";
+  c += "    ACCUM_FLT at = at_ar[0];\n";
   for (int x = 0; x < 6; ++x) {
     const std::string yc = std::to_string(x);
     const std::string src = "src" + std::to_string(x);
-    c += "    FLT4 " + src + " = " +
-         src_tensor.ReadWHSB("tile_id", yc, "DST_Z", batch_id) + ";\n";
+    c += "    ACCUM_FLT4 " + src + " = " +
+         src_tensor.ReadAsTypeWHSB(accum_type, "tile_id", yc, "DST_Z",
+                                   batch_id) +
+         ";\n";
     c += "    I" + std::to_string(x) + " = at * " + src + ";\n";
   }
   c += "  }\n";
   for (int y = 1; y < 6; ++y) {
     c += "  {\n";
-    c += "    FLT at = at_ar[" + std::to_string(y) + "];\n";
+    c += "    ACCUM_FLT at = at_ar[" + std::to_string(y) + "];\n";
     for (int x = 0; x < 6; ++x) {
       const std::string yc = std::to_string(y * 6 + x);
       const std::string src = "src" + std::to_string(x);
-      c += "    FLT4 " + src + " = " +
-           src_tensor.ReadWHSB("tile_id", yc, "DST_Z", batch_id) + ";\n";
+      c += "    ACCUM_FLT4 " + src + " = " +
+           src_tensor.ReadAsTypeWHSB(accum_type, "tile_id", yc, "DST_Z",
+                                     batch_id) +
+           ";\n";
       c += "    I" + std::to_string(x) + " += at * " + src + ";\n";
     }
     c += "  }\n";
   }
-  c += "  FLT4 t0 = I1 + I2;\n";
-  c += "  FLT4 t1 = I3 + I4;\n";
+  c += "  ACCUM_FLT4 t0 = I1 + I2;\n";
+  c += "  ACCUM_FLT4 t1 = I3 + I4;\n";
   c += "  FLT4 bias_val = " + biases.ReadLinearFLT4("DST_Z") + ";\n";
   c += "  {\n";
   const LinkingContext context{"r0", "tile_x", "tile_y", "DST_Z"};
-  c += "    FLT4 r0 = I0 + t0 + t1 + bias_val;\n";
+  c += "    FLT4 r0 = TO_FLT4(I0 + t0 + t1) + bias_val;\n";
   c += PostProcess(linked_operations, context);
   c += "    " +
        dst_tensor.WriteWHSB("r0", "tile_x", "tile_y", "DST_Z", batch_id);
   c += "    tile_x++;\n";
   c += "  }\n";
-  c += "  FLT4 t2 = I1 - I2;\n";
-  c += "  FLT4 t3 = I3 - I4;\n";
+  c += "  ACCUM_FLT4 t2 = I1 - I2;\n";
+  c += "  ACCUM_FLT4 t3 = I3 - I4;\n";
   c += "  if (tile_x < dst_size.x) {\n";
-  c += "    FLT4 r0 = t2 * At[7] + t3 * At[9] + bias_val;\n";
-  c += PostProcess(linked_operations, context);
-  c += "    " +
-       dst_tensor.WriteWHSB("r0", "tile_x", "tile_y", "DST_Z", batch_id);
-  c += "    tile_x++;\n";
-  c += "  }\n";
-  c += "  if (tile_x < dst_size.x) {\n";
-  c += "    FLT4 r0 = t0 * At[13] + t1 * At[15] + bias_val;\n";
+  c += "    FLT4 r0 = TO_FLT4(t2 * At[7] + t3 * At[9]) + bias_val;\n";
   c += PostProcess(linked_operations, context);
   c += "    " +
        dst_tensor.WriteWHSB("r0", "tile_x", "tile_y", "DST_Z", batch_id);
   c += "    tile_x++;\n";
   c += "  }\n";
   c += "  if (tile_x < dst_size.x) {\n";
-  c += "    FLT4 r0 = t2 * At[19] + t3 * At[21] + I5 + bias_val;\n";
+  c += "    FLT4 r0 = TO_FLT4(t0 * At[13] + t1 * At[15]) + bias_val;\n";
+  c += PostProcess(linked_operations, context);
+  c += "    " +
+       dst_tensor.WriteWHSB("r0", "tile_x", "tile_y", "DST_Z", batch_id);
+  c += "    tile_x++;\n";
+  c += "  }\n";
+  c += "  if (tile_x < dst_size.x) {\n";
+  c += "    FLT4 r0 = TO_FLT4(t2 * At[19] + t3 * At[21] + I5) + bias_val;\n";
   c += PostProcess(linked_operations, context);
   c += "    " +
        dst_tensor.WriteWHSB("r0", "tile_x", "tile_y", "DST_Z", batch_id);
@@ -337,12 +386,18 @@ Status Winograd4x4To36::Compile(const CreationContext& creation_context) {
   if (creation_context.device->IsAdreno()) {
     options.push_back(CompilerOptions::ADRENO_MORE_WAVES);
   }
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      creation_context.device->IsPowerVR()) {
+    options.push_back(CompilerOptions::POWERVR_FP16);
+  }
   RETURN_IF_ERROR(UploadBt(creation_context.context));
   const auto code =
       GetWinograd4x4To36Code(definition_, bt_, linked_operations_);
-  return creation_context.cache->GetOrCreateCLKernel(
+  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
+      *creation_context.device, &kernel_));
+  work_group_size_ = SelectBestWorkGroup();
+  return OkStatus();
 }
 
 Status Winograd4x4To36::UploadBt(CLContext* context) {
@@ -363,6 +418,13 @@ Status Winograd4x4To36::UploadBt(CLContext* context) {
   create_info.data_type = definition_.GetDataType();
   create_info.name = "bt_arr";
   return CreateLinearStorage(create_info, bt_aligned, context, &bt_);
+}
+
+int3 Winograd4x4To36::SelectBestWorkGroup() {
+  const std::vector<int3> wgs = {{8, 6, 4}, {8, 6, 2}, {4, 6, 2},
+                                 {4, 6, 2}, {2, 6, 2}, {2, 6, 1},
+                                 {1, 6, 1}, {1, 3, 1}, {1, 1, 1}};
+  return GetFirstSuitableWorkGroup(wgs, kernel_.GetMaxWorkGroupSize());
 }
 
 Status Winograd4x4To36::BindArguments() {
@@ -394,8 +456,16 @@ int3 Winograd4x4To36::GetGridSize() const {
 }
 
 Status Winograd4x4To36::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
+  switch (params.tuning_type) {
+    case TuningType::EXHAUSTIVE:
+      RETURN_IF_ERROR(BindArguments());
+      return GetBestWorkGroup(params, kernel_, GetGridSize(),
+                              &work_group_size_);
+    case TuningType::FAST:
+    default:
+      work_group_size_ = SelectBestWorkGroup();
+      return OkStatus();
+  }
 }
 
 Status Winograd4x4To36::AddToQueue(CLCommandQueue* queue) {
@@ -430,11 +500,18 @@ Winograd36To4x4& Winograd36To4x4::operator=(Winograd36To4x4&& operation) {
 }
 
 Status Winograd36To4x4::Compile(const CreationContext& creation_context) {
+  std::vector<CompilerOptions> options;
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      creation_context.device->IsPowerVR()) {
+    options.push_back(CompilerOptions::POWERVR_FP16);
+  }
   const auto code =
       GetWinograd36To4x4Code(definition_, at_, biases_, linked_operations_);
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
+  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
+      code, "main_function", options, *creation_context.context,
+      *creation_context.device, &kernel_));
+  work_group_size_ = SelectBestWorkGroup();
+  return OkStatus();
 }
 
 Status Winograd36To4x4::UploadAt(CLContext* context) {
@@ -455,6 +532,13 @@ Status Winograd36To4x4::UploadAt(CLContext* context) {
   create_info.data_type = definition_.GetDataType();
   create_info.name = "at_arr";
   return CreateLinearStorage(create_info, at_aligned, context, &at_);
+}
+
+int3 Winograd36To4x4::SelectBestWorkGroup() {
+  const std::vector<int3> wgs = {{32, 4, 2}, {16, 4, 2}, {16, 4, 1},
+                                 {8, 4, 1},  {4, 4, 1},  {2, 4, 1},
+                                 {1, 4, 1},  {1, 2, 1},  {1, 1, 1}};
+  return GetFirstSuitableWorkGroup(wgs, kernel_.GetMaxWorkGroupSize());
 }
 
 Status Winograd36To4x4::BindArguments() {
@@ -482,8 +566,16 @@ int3 Winograd36To4x4::GetGridSize() const {
 }
 
 Status Winograd36To4x4::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
+  switch (params.tuning_type) {
+    case TuningType::EXHAUSTIVE:
+      RETURN_IF_ERROR(BindArguments());
+      return GetBestWorkGroup(params, kernel_, GetGridSize(),
+                              &work_group_size_);
+    case TuningType::FAST:
+    default:
+      work_group_size_ = SelectBestWorkGroup();
+      return OkStatus();
+  }
 }
 
 Status Winograd36To4x4::AddToQueue(CLCommandQueue* queue) {

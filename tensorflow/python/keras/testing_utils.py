@@ -632,6 +632,9 @@ class _MultiIOSubclassModel(keras.Model):
         inputs = layer(inputs)
       a = inputs
       b = inputs
+    elif isinstance(inputs, dict):
+      a = inputs['input_1']
+      b = inputs['input_2']
     else:
       a, b = inputs
 

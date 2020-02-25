@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
@@ -23,16 +24,25 @@ namespace tflite {
 namespace testing {
 namespace {
 
-static const int kMaxFilterChannels = 64;
-static const int kMaxBiasChannels = 64;
+constexpr int kMaxFilterChannels = 64;
+constexpr int kMaxBiasChannels = 64;
 
+// Index of the output tensor in context->tensors, specific to
+// DepthwiseConv.
+constexpr int kOutputTensorIndex = 3;
+
+// Creates a DepthwiseConv opeerator, calls it with the provided input tensors
+// and some defaults parameters, and compares the output with
+// expected_output_data.
+//
+// The tensors parameter contains both the input tensors as well as a
+// preallocated output tensor into which the output is stored.
 template <typename T>
-TfLiteStatus ValidateDepthwiseConvGoldens(TfLiteTensor* tensors,
-                                          int tensors_size,
-                                          const T* expected_output_data,
-                                          T* output_data, int output_length,
+TfLiteStatus ValidateDepthwiseConvGoldens(const T* expected_output_data,
+                                          int output_length,
                                           TfLiteFusedActivation activation,
-                                          float tolerance = 1e-5) {
+                                          float tolerance, int tensors_size,
+                                          TfLiteTensor* tensors) {
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, &context);
 
@@ -87,6 +97,8 @@ TfLiteStatus ValidateDepthwiseConvGoldens(TfLiteTensor* tensors,
   if (registration->free) {
     registration->free(&context, user_data);
   }
+
+  const T* output_data = tflite::GetTensorData<T>(&tensors[kOutputTensorIndex]);
   for (int i = 0; i < output_length; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i],
                               tolerance);
@@ -118,8 +130,8 @@ void TestDepthwiseConvFloat(const int* input_dims_data, const float* input_data,
       CreateFloatTensor(output_data, output_dims, "output_tensor"),
   };
 
-  ValidateDepthwiseConvGoldens(tensors, tensors_size, expected_output_data,
-                               output_data, output_dims_count, activation);
+  ValidateDepthwiseConvGoldens(expected_output_data, output_dims_count,
+                               activation, 1e-5, tensors_size, tensors);
 }
 
 void TestDepthwiseConvQuantizedPerLayer(
@@ -171,8 +183,8 @@ void TestDepthwiseConvQuantizedPerLayer(
 
   AsymmetricQuantize(golden, golden_quantized, output_dims_count, output_scale,
                      output_zero_point);
-  ValidateDepthwiseConvGoldens(tensors, tensors_size, golden_quantized,
-                               output_data, output_dims_count, activation, 1.0);
+  ValidateDepthwiseConvGoldens(golden_quantized, output_dims_count, activation,
+                               1.0, tensors_size, tensors);
 }
 
 void TestDepthwiseConvQuantizedPerChannel(
@@ -240,9 +252,9 @@ void TestDepthwiseConvQuantizedPerChannel(
                      output_dims_count, output_scale, output_zero_point);
 
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, ValidateDepthwiseConvGoldens(
-                     tensors, tensors_size, expected_output_data_quantized,
-                     output_data, output_dims_count, activation, 1.0));
+      kTfLiteOk, ValidateDepthwiseConvGoldens(expected_output_data_quantized,
+                                              output_dims_count, activation,
+                                              1.0, tensors_size, tensors));
 }
 
 }  // namespace
@@ -261,7 +273,6 @@ TF_LITE_MICRO_TEST(SimpleTest) {
                                  5, 6, 7, 8, 13, -14, 15,  -16};
   const int bias_elements = 4;
   const int bias_shape[] = {4, 1, 1, 1, 4};
-  const int output_elements = 8;
   const float bias_values[] = {1, 2, 3, 4};
   const float golden[] = {
       71, -34, 99, -20, 91, -26, 127, -4,
@@ -290,7 +301,6 @@ TF_LITE_MICRO_TEST(SimpleTestQuantized) {
       71, -34, 99, -20, 91, -26, 127, -4,
   };
   const int output_shape[] = {4, 1, 2, 1, 4};
-  const int output_dims_count = 8;
 
   const float input_scale = 0.5f;
   const int input_zero_point = 128;
@@ -646,16 +656,16 @@ TF_LITE_MICRO_TEST(FilterDimsNotMatchingAffineQuantization) {
   quant->scale->size = 2;
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteError, tflite::testing::ValidateDepthwiseConvGoldens(
-                        tensors, tensors_size, golden_quantized, output_data,
-                        output_size, kTfLiteActNone));
+                        golden_quantized, output_size, kTfLiteActNone, 1e-5,
+                        tensors_size, tensors));
 
   // Set scale back to correct dimension, and make zero point array too short.
   quant->scale->size = filter_shape[0];
   quant->zero_point->size = 2;
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteError, tflite::testing::ValidateDepthwiseConvGoldens(
-                        tensors, tensors_size, golden_quantized, output_data,
-                        output_size, kTfLiteActNone));
+                        golden_quantized, output_size, kTfLiteActNone, 1e-5,
+                        tensors_size, tensors));
 }
 
 TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
@@ -751,8 +761,8 @@ TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
 
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, tflite::testing::ValidateDepthwiseConvGoldens(
-                     tensors, tensors_size, golden_quantized, output_data,
-                     output_dims_count, kTfLiteActNone));
+                     golden_quantized, output_dims_count, kTfLiteActNone, 1e-5,
+                     tensors_size, tensors));
 }
 
 TF_LITE_MICRO_TESTS_END

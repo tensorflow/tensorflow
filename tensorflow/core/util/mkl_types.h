@@ -111,13 +111,14 @@ namespace tensorflow {
 #define TENSOR_FORMAT MKL_TENSOR_FORMAT
 #define TENSOR_FORMAT_NHWC MKL_TENSOR_FORMAT_NHWC
 #define TENSOR_MAX_DIMS MKLDNN_MAX_NDIMS
+#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemDesc()
 
 #else
 
 #define ADD_MD add_pd
 #define ALGORITHM mkldnn
 #define ALGORITHM_UNDEF ALGORITHM::algorithm_undef
-#define CPU_STREAM(engine) stream(stream::kind::eager)
+#define CPU_STREAM(engine) stream(stream::kind::eager_nostore)
 #define DATA_WITH_ENGINE(data, engine) data
 #define DST_MD dst_pd
 #define ENGINE_CPU engine::cpu
@@ -152,7 +153,7 @@ namespace tensorflow {
 #define IS_SRC_REORDER_NEEDED(src_md, op_pd, op) \
   src_md.data.format != op->GetSrcMemoryFormat()
 #define IS_WEIGHTS_REORDER_NEEDED(weights_md, op_pd, op) \
-  weights_md.data.format != op->GetWeightsMemoryFormat()
+  weights_md.data.format != op->GetWeightMemoryFormat()
 #define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) \
   mem_ptr->get_primitive_desc().desc()
 #define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \
@@ -208,6 +209,7 @@ namespace tensorflow {
 #define SUMMAND_MD summand_pd
 #define TENSOR_FORMAT TensorFormat
 #define TENSOR_FORMAT_NHWC FORMAT_NHWC
+#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemPrimDesc()
 #endif  // ENABLE_MKLDNN_V1
 
 }  // namespace tensorflow

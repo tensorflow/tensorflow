@@ -24,7 +24,7 @@ def which(repository_ctx, program_name):
     if is_windows(repository_ctx):
         if not program_name.endswith(".exe"):
             program_name = program_name + ".exe"
-        result = execute(repository_ctx, ["where.exe", program_name])
+        result = execute(repository_ctx, ["C:\\Windows\\System32\\where.exe", program_name])
     else:
         result = execute(repository_ctx, ["which", program_name])
     return result.stdout.rstrip()
@@ -90,7 +90,7 @@ def read_dir(repository_ctx, src_dir):
         src_dir = src_dir.replace("/", "\\")
         find_result = execute(
             repository_ctx,
-            ["cmd.exe", "/c", "dir", src_dir, "/b", "/s", "/a-d"],
+            ["C:\\Windows\\System32\\cmd.exe", "/c", "dir", src_dir, "/b", "/s", "/a-d"],
             empty_stdout_fine = True,
         )
 
@@ -121,7 +121,7 @@ def get_environ(repository_ctx, name, default_value = None):
     if is_windows(repository_ctx):
         result = execute(
             repository_ctx,
-            ["cmd.exe", "/c", "echo", "%" + name + "%"],
+            ["C:\\Windows\\System32\\cmd.exe", "/c", "echo", "%" + name + "%"],
             empty_stdout_fine = True,
         )
     else:
@@ -282,3 +282,24 @@ def err_out(result):
     if len(result.stderr) == 0:
         return result.stdout
     return result.stderr
+
+def config_repo_label(config_repo, target):
+    """Construct a label from config_repo and target.
+
+    This function exists to ease the migration from preconfig to remote config. In preconfig
+    the TF_*_CONFIG_REPO environ variables are set to packages in the main repo while in
+    remote config they will point to remote repositories.
+
+    Args:
+      config_repo: a remote repository or package.
+      target: a target
+    Returns:
+      A label constructed from config_repo and target.
+    """
+    if config_repo.startswith("@") and not config_repo.find("//") > 0:
+        # remote config is being used.
+        return Label(config_repo + "//" + target)
+    elif target.startswith(":"):
+        return Label(config_repo + target)
+    else:
+        return Label(config_repo + "/" + target)

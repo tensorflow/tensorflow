@@ -3,6 +3,8 @@
 #   - Hexagon SDK 3.5 Toolkit (for hexagon-clang++, hexagon-sim).
 #   - HEXAGON_SDK_PREFIX environment variable must be set to location of
 #     Hexagon_SDK/<version>/ on your machine.
+#   - HEXAGON_CPU_VER: The CPU version to use, will cause a compiler exception
+#                  without providing a version. Acceptable values: v55-v67
 #
 # Unlike other targets, there is not currently a way to automatically download
 # the Hexagon SDK.  For this reason, users are required to manually download
@@ -42,8 +44,8 @@ ifeq ($(TARGET), hexagon)
     -fomit-frame-pointer \
     -fpermissive \
     -funsigned-char \
-    -mcpu=v66 \
-    -mv66
+    -mcpu=$(HEXAGON_CPU_VER) \
+    -m$(HEXAGON_CPU_VER)
 
   TARGET_TOOLCHAIN_PREFIX := hexagon-
   CXX_TOOL := clang++
