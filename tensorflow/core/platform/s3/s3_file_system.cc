@@ -144,7 +144,7 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
     if (ca_path) {
       cfg.caPath = Aws::String(ca_path);
     }
-    
+
     init = true;
   }
 
