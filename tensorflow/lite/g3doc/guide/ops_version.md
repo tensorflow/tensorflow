@@ -209,8 +209,8 @@ is supported for every node in Delegation code.
 ```
 const int kMinVersion = 1;
 TfLiteNode* node;
-TfLiteRegistration;
-context->GetNodeAndRegistration(context, node_index, &node, &registration);
+TfLiteRegistration* registration = nullptr;
+TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(context, node_index, &node, &registration));
 
 if (registration->version > kMinVersion) {
   // Reject the node if the version isn't supported.

@@ -48,17 +48,6 @@ import traceback
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python import _pywrap_utils
-from tensorflow.python import _pywrap_tfprof
-from tensorflow.python import _pywrap_events_writer
-from tensorflow.python import _pywrap_util_port
-from tensorflow.python import _pywrap_stat_summarizer
-from tensorflow.python import _pywrap_py_exception_registry
-from tensorflow.python import _pywrap_python_op_gen
-from tensorflow.python import _pywrap_kernel_registry
-from tensorflow.python import _pywrap_quantize_training
-from tensorflow.python import _pywrap_transform_graph
-from tensorflow.python import _pywrap_stacktrace_handler
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *

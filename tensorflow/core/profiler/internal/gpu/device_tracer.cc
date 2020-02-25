@@ -56,7 +56,14 @@ bool IsHostEvent(const CuptiTracerEvent& event) {
 }
 
 void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
-                  XLineBuilder* line) {
+                  uint64 start_gpu_ns, uint64 end_gpu_ns, XLineBuilder* line) {
+  if (event.start_time_ns < start_gpu_ns || event.end_time_ns > end_gpu_ns ||
+      event.start_time_ns > event.end_time_ns) {
+    VLOG(2) << "events have abnormal timestamps:" << event.name
+            << " start time(ns): " << event.start_time_ns
+            << " end time(ns): " << event.end_time_ns;
+    return;
+  }
   std::string kernel_name = port::MaybeAbiDemangle(event.name.c_str());
   XEventMetadata* event_metadata = plane->GetOrCreateEventMetadata(kernel_name);
   XEventBuilder xevent = line->AddEvent(*event_metadata);
@@ -203,14 +210,15 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
               << " activity events.";
+    uint64 end_gpu_ns = CuptiTracer::GetTimestamp();
     XPlaneBuilder host_plane(GetOrCreatePlane(space, kCuptiDriverApiPlaneName));
     host_plane.SetId(kCuptiDriverApiPlaneId);
     for (int device_ordinal = 0; device_ordinal < num_gpus_; ++device_ordinal) {
       std::string name = absl::StrCat(kGpuPlanePrefix, device_ordinal);
       XPlaneBuilder device_plane(GetOrCreatePlane(space, name));
       device_plane.SetId(kGpuPlaneBaseId + device_ordinal);
-      per_device_collector_[device_ordinal].Flush(start_gpu_ns_, &device_plane,
-                                                  &host_plane);
+      per_device_collector_[device_ordinal].Flush(start_gpu_ns_, end_gpu_ns,
+                                                  &device_plane, &host_plane);
       per_device_collector_[device_ordinal].GetDeviceCapabilities(
           device_ordinal, &device_plane);
       NormalizeTimeStamps(&device_plane, start_walltime_ns_);
@@ -348,8 +356,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       events.clear();
     }
 
-    void Flush(uint64 start_gpu_ns, XPlaneBuilder* device_plane,
-               XPlaneBuilder* host_plane) {
+    void Flush(uint64 start_gpu_ns, uint64 end_gpu_ns,
+               XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
       absl::MutexLock lock(&mutex);
 
       // Tracking event types per line.
@@ -365,7 +373,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         auto* plane = is_host_event ? host_plane : device_plane;
         XLineBuilder line = plane->GetOrCreateLine(line_id);
         line.SetTimestampNs(start_gpu_ns);
-        CreateXEvent(event, plane, &line);
+        CreateXEvent(event, plane, start_gpu_ns, end_gpu_ns, &line);
         events_types_per_line[line_id].emplace(event.type);
       }
       device_plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {

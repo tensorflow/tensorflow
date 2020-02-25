@@ -60,7 +60,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
       : cpu_engine_(engine::cpu, 0) {
 #ifndef ENABLE_MKLDNN_V1
     context_.fwd_stream.reset(
-        new mkldnn::stream(mkldnn::stream::kind::eager));
+        new mkldnn::stream(mkldnn::stream::kind::eager_nostore));
 #endif
     if (context_.bn_fwd == nullptr) Setup(fwdParams);
   }
@@ -349,7 +349,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
       : cpu_engine_(engine::cpu, 0) {
 #ifndef ENABLE_MKLDNN_V1
     context_.bwd_stream.reset(
-        new mkldnn::stream(mkldnn::stream::kind::eager));
+        new mkldnn::stream(mkldnn::stream::kind::eager_nostore));
 #endif
     if (context_.bn_bwd == nullptr) Setup(bwdParams);
   }

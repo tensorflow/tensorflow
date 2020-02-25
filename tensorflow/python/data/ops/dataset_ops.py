@@ -887,9 +887,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Args:
       *args: follows the same semantics as python's xrange.
-        len(args) == 1 -> start = 0, stop = args[0], step = 1
-        len(args) == 2 -> start = args[0], stop = args[1], step = 1
-        len(args) == 3 -> start = args[0], stop = args[1, stop = args[2]
+        len(args) == 1 -> start = 0, stop = args[0], step = 1.
+        len(args) == 2 -> start = args[0], stop = args[1], step = 1.
+        len(args) == 3 -> start = args[0], stop = args[1], step = args[2].
       **kwargs:
         - output_type: Its expected dtype. (Optional, default: `tf.int64`).
 

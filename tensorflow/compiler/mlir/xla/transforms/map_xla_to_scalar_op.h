@@ -167,7 +167,14 @@ inline Value MapXlaOpToStdScalarOp<xla_hlo::AndOp>(xla_hlo::AndOp xla_op,
       xla_op.getLoc(), result_types, args, b);
 }
 
-inline Optional<CmpFPredicate> getFloatCmpPredicate(
+template <typename PredicateType>
+inline Optional<PredicateType> getCmpPredicate(
+    StringRef xla_comparison_direction) {
+  return llvm::None;
+}
+
+template <>
+inline Optional<CmpFPredicate> getCmpPredicate<CmpFPredicate>(
     StringRef xla_comparison_direction) {
   return llvm::StringSwitch<CmpFPredicate>(xla_comparison_direction)
       .Case("EQ", CmpFPredicate::OEQ)
@@ -179,7 +186,8 @@ inline Optional<CmpFPredicate> getFloatCmpPredicate(
       .Default(CmpFPredicate::NumPredicates);
 }
 
-inline Optional<CmpIPredicate> getIntCmpPredicate(
+template <>
+inline Optional<CmpIPredicate> getCmpPredicate<CmpIPredicate>(
     StringRef xla_comparison_direction) {
   return llvm::StringSwitch<Optional<CmpIPredicate>>(xla_comparison_direction)
       .Case("EQ", CmpIPredicate::eq)
@@ -200,14 +208,14 @@ inline Value MapXlaCompareOpToStdScalarOp(XLACompareOpTy xla_op,
   Type element_type = lhs.getType();
   if (element_type.isa<IntegerType>()) {
     Optional<CmpIPredicate> predicate =
-        getIntCmpPredicate(xla_op.comparison_direction());
+        getCmpPredicate<CmpIPredicate>(xla_op.comparison_direction());
     assert(predicate.hasValue() && "expected valid comparison direction");
     return b->create<ScalarIOp<XLACompareOpTy>>(xla_op.getLoc(),
                                                 predicate.getValue(), lhs, rhs);
   }
   if (element_type.isa<FloatType>()) {
     Optional<CmpFPredicate> predicate =
-        getFloatCmpPredicate(xla_op.comparison_direction());
+        getCmpPredicate<CmpFPredicate>(xla_op.comparison_direction());
     assert(predicate.hasValue() && "expected valid comparison direction");
     return b->create<ScalarFOp<XLACompareOpTy>>(xla_op.getLoc(),
                                                 predicate.getValue(), lhs, rhs);
@@ -338,25 +346,58 @@ inline Value MapXlaOpToStdScalarOp<xla_hlo::CosOp>(xla_hlo::CosOp xla_op,
       xla_op.getLoc(), result_types, args, b);
 }
 
+/// Implements the conversion of XLA op to scalar op (to use within region of a
+/// linalg.generic op) for compare-select style operations like min/max.
+template <typename... Args>
+struct MapXlaCompareSelectOpToStdScalarOp {
+  Value operator()(Location loc, StringRef comparison_direction,
+                   ArrayRef<Type> result_types, ArrayRef<Value> args,
+                   OpBuilder* b) {
+    return nullptr;
+  }
+};
+
+/// Specialization which allows converting to a comparison operation in standard
+/// dialect with a given predicate based on the element type of the operand.
+template <typename SupportedType, typename StdCompareOp, typename Predicate,
+          typename... Args>
+struct MapXlaCompareSelectOpToStdScalarOp<SupportedType, StdCompareOp,
+                                          Predicate, Args...> {
+  Value operator()(Location loc, StringRef comparison_direction,
+                   ArrayRef<Type> result_types, ArrayRef<Value> args,
+                   OpBuilder* b) {
+    Type element_type = args.front().getType();
+    if (element_type.isa<SupportedType>()) {
+      auto predicate = getCmpPredicate<Predicate>(comparison_direction);
+      assert(predicate.hasValue() && "expected valid comparison direction");
+      auto cmp = b->template create<StdCompareOp>(loc, predicate.getValue(),
+                                                  args[0], args[1]);
+      return b->create<::mlir::SelectOp>(loc, cmp, args[0], args[1]);
+    }
+    return MapXlaCompareSelectOpToStdScalarOp<Args...>{}(
+        loc, comparison_direction, result_types, args, b);
+  }
+};
+
 template <>
 inline Value MapXlaOpToStdScalarOp<xla_lhlo::MaxOp>(xla_lhlo::MaxOp xla_op,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,
                                                     OpBuilder* b) {
-  const auto& lhs = args[0];
-  const auto& rhs = args[1];
-  Type element_type = lhs.getType();
-  if (element_type.isa<IntegerType>()) {
-    auto lhs_gt_rhs = b->create<ScalarIOp<xla_lhlo::CompareOp>>(
-        xla_op.getLoc(), CmpIPredicate::sgt, lhs, rhs);
-    return b->create<::mlir::SelectOp>(xla_op.getLoc(), lhs_gt_rhs, lhs, rhs);
-  }
-  if (element_type.isa<FloatType>()) {
-    auto lhs_gt_rhs = b->create<ScalarFOp<xla_lhlo::CompareOp>>(
-        xla_op.getLoc(), CmpFPredicate::OGT, lhs, rhs);
-    return b->create<::mlir::SelectOp>(xla_op.getLoc(), lhs_gt_rhs, lhs, rhs);
-  }
-  return nullptr;
+  return MapXlaCompareSelectOpToStdScalarOp<
+      IntegerType, ScalarIOp<xla_lhlo::CompareOp>, CmpIPredicate, FloatType,
+      ScalarFOp<xla_lhlo::CompareOp>, CmpFPredicate>{}(xla_op.getLoc(), "GT",
+                                                       result_types, args, b);
+}
+template <>
+inline Value MapXlaOpToStdScalarOp<xla_hlo::MaxOp>(xla_hlo::MaxOp xla_op,
+                                                   ArrayRef<Type> result_types,
+                                                   ArrayRef<Value> args,
+                                                   OpBuilder* b) {
+  return MapXlaCompareSelectOpToStdScalarOp<
+      IntegerType, ScalarIOp<xla_hlo::CompareOp>, CmpIPredicate, FloatType,
+      ScalarFOp<xla_hlo::CompareOp>, CmpFPredicate>{}(xla_op.getLoc(), "GT",
+                                                      result_types, args, b);
 }
 
 template <>
@@ -364,20 +405,20 @@ inline Value MapXlaOpToStdScalarOp<xla_lhlo::MinOp>(xla_lhlo::MinOp xla_op,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,
                                                     OpBuilder* b) {
-  const auto& lhs = args[0];
-  const auto& rhs = args[1];
-  Type element_type = lhs.getType();
-  if (element_type.isa<IntegerType>()) {
-    auto lhs_lt_rhs = b->create<ScalarIOp<xla_lhlo::CompareOp>>(
-        xla_op.getLoc(), CmpIPredicate::slt, lhs, rhs);
-    return b->create<::mlir::SelectOp>(xla_op.getLoc(), lhs_lt_rhs, lhs, rhs);
-  }
-  if (element_type.isa<FloatType>()) {
-    auto lhs_lt_rhs = b->create<ScalarFOp<xla_lhlo::CompareOp>>(
-        xla_op.getLoc(), CmpFPredicate::OLT, lhs, rhs);
-    return b->create<::mlir::SelectOp>(xla_op.getLoc(), lhs_lt_rhs, lhs, rhs);
-  }
-  return nullptr;
+  return MapXlaCompareSelectOpToStdScalarOp<
+      IntegerType, ScalarIOp<xla_lhlo::CompareOp>, CmpIPredicate, FloatType,
+      ScalarFOp<xla_lhlo::CompareOp>, CmpFPredicate>{}(xla_op.getLoc(), "LT",
+                                                       result_types, args, b);
+}
+template <>
+inline Value MapXlaOpToStdScalarOp<xla_hlo::MinOp>(xla_hlo::MinOp xla_op,
+                                                   ArrayRef<Type> result_types,
+                                                   ArrayRef<Value> args,
+                                                   OpBuilder* b) {
+  return MapXlaCompareSelectOpToStdScalarOp<
+      IntegerType, ScalarIOp<xla_hlo::CompareOp>, CmpIPredicate, FloatType,
+      ScalarFOp<xla_hlo::CompareOp>, CmpFPredicate>{}(xla_op.getLoc(), "LT",
+                                                      result_types, args, b);
 }
 
 template <>

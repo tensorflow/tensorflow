@@ -10,7 +10,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/cl:model_hints",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:conv_buffer",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_buffer_1x1",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_constants",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_powervr",

@@ -1656,7 +1656,7 @@ def TFL_MaximumOp : TFL_Op<"maximum", [
   let hasOptions = 0;
 }
 
-def TFL_MeanOp : TFL_Op<"mean", [NoSideEffect, SameOperandsAndResultsScale]> {
+def TFL_MeanOp : TFL_Op<"mean", [NoSideEffect]> {
   let summary = "Mean operator";
 
   let description = [{

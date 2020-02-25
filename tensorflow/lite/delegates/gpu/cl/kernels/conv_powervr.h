@@ -58,6 +58,14 @@ class ConvPowerVR : public GPUOperation {
   };
 
   struct ConvParams {
+    // Usually we use this combinations for CalculationPrecision:
+    // F32: all F32
+    // F16: all F16
+    // F32_F16: all besides accumulator is F16, including weights
+    // But for PowerVR we can achieve better performance in F32_F16 with F32
+    // weights, so for PowerVR in this kernel we have F32 weights for
+    // F32_F16 precision mode
+    DataType weights_data_type;  // used for weights and biases
     int3 block_size;
     int3 work_group_size;
     int3 work_group_launch_order;
@@ -141,9 +149,7 @@ Status ConvPowerVR::UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
   RETURN_IF_ERROR(UploadWeights(weights, context));
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::BUFFER;
-  create_info.data_type = definition_.precision == CalculationsPrecision::F16
-                              ? DataType::FLOAT16
-                              : DataType::FLOAT32;
+  create_info.data_type = conv_params_.weights_data_type;
   create_info.aligned_size = weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(create_info, biases, context, &biases_));
   return OkStatus();
@@ -158,9 +164,7 @@ Status ConvPowerVR::UploadDataForWinograd4x4To6x6(
   RETURN_IF_ERROR(UploadWeights(wino_weights, context));
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::BUFFER;
-  create_info.data_type = definition_.precision == CalculationsPrecision::F16
-                              ? DataType::FLOAT16
-                              : DataType::FLOAT32;
+  create_info.data_type = conv_params_.weights_data_type;
   create_info.aligned_size = weights.shape.o;
   ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> bias;
   bias.shape = Linear(weights.shape.o);
@@ -175,7 +179,7 @@ Status ConvPowerVR::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
 
-  const bool f32_weights = definition_.precision != CalculationsPrecision::F16;
+  const bool f32_weights = conv_params_.weights_data_type == DataType::FLOAT32;
   const int float4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
   const int dst_depth_aligned = AlignByN(dst_depth, conv_params_.block_size.z);
