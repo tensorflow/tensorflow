@@ -615,10 +615,10 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
   tensorflow::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
                                  &use_immediate_mode_);
 
-  bool disable_pooling_cache = false;
-  tensorflow::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE_DISABLE", false, &disable_pooling_cache);
-  if(disable_pooling_cache)
-    m_pooling_cache_allowed = false;
+  bool enable_pooling_cache = false;
+  tensorflow::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false, &enable_pooling_cache);
+  if(enable_pooling_cache)
+    m_pooling_cache_allowed = true;
 }
 
 port::Status MIOpenSupport::Init() {
@@ -4289,11 +4289,9 @@ bool PoolingWorkspaceCache::find(const void* p, const dnn::BatchDescriptor& inpu
   pdesc=0;
   auto it = cache.find(p); 
   if(it==cache.end()) {
-    //printf("No cache entry for %p\n", p);
     return false;
   }
   if(!it->second.IsSame(input_dimensions, output_dimensions, pooling_dimensions, _type)) {
-    //printf("Type mismatch for %p\n", p);
     return false;
   }
   pdesc = &it->second;
@@ -4366,7 +4364,6 @@ bool MIOpenSupport::DoPoolForward(
     const dnn::BatchDescriptor& output_dimensions,
     DeviceMemory<float>* output_data, ScratchAllocator* workspace_allocator) {
   auto miopen = miopen_->GetHandle(parent_, stream);
-
   // Alpha is the scaling factor for input.
   float alpha = 1.0;
   // Beta is the scaling factor for output.
@@ -4405,7 +4402,6 @@ bool MIOpenSupport::DoPoolForward(
         wsp_mem = stream->AllocateTemporaryArray<uint8>(workspace_size)
               .ConsumeValueOrDie();
         workspace = reinterpret_cast<uint8*>(wsp_mem->mutable_device_memory()->opaque());
-        //printf("Inserting %p\n", input_data.opaque());
         m_pooling_cache.insert(input_data.opaque(),
           input_dimensions,
           output_dimensions,
@@ -4470,13 +4466,12 @@ bool MIOpenSupport::DoPoolBackwardImpl(
     DeviceMemory<T>* output_diff_data,
     ScratchAllocator* workspace_allocator) {
   auto miopen = miopen_->GetHandle(parent_, stream);
-
   if(m_pooling_cache_allowed)
     m_pooling_cache_enabled = true;
   // Alpha is the scaling factor for input.
-  T alpha = T(1.0);
+  float alpha = 1.0;
   // Beta is the scaling factor for output.
-  T beta = T(0.0);
+  float beta = 0.0;
 
   auto type = std::is_same<T,float>::value ? miopenFloat : (std::is_same<T,Eigen::half>::value ? miopenHalf : (miopenDataType_t)-1);
 
@@ -4526,7 +4521,7 @@ bool MIOpenSupport::DoPoolBackwardImpl(
       std::vector<int64> dims64 =
           output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
       // miopen does not use strides and must have 4D tensor.
-      std::vector<int> dims(pooling_dimensions.ndims() + 2);
+      //std::vector<int> dims(pooling_dimensions.ndims() + 2);
 
       dest2_size = sizeof(T);
       for(auto& x: dims64)
