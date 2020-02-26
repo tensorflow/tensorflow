@@ -36,7 +36,9 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/debug_log.h"
 
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
 #include <cstdio>
+#endif
 
 extern "C" void DebugLog(const char* s) {
 #ifndef TF_LITE_STRIP_ERROR_STRINGS
