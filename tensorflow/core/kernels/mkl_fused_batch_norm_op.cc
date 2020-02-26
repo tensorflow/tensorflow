@@ -26,9 +26,6 @@ limitations under the License.
 #define GET_FLAG(bn_flag) static_cast<int>(BN_FLAGS::bn_flag)
 #define IS_SET(cflag) (context_.flags & GET_FLAG(cflag))
 
-#define GET_FLAG(bn_flag) static_cast<int>(BN_FLAGS::bn_flag)
-#define IS_SET(cflag) (context_.flags & GET_FLAG(cflag))
-
 using mkldnn::batch_normalization_backward;
 using mkldnn::batch_normalization_forward;
 using mkldnn::prop_kind;

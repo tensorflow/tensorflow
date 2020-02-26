@@ -19,12 +19,13 @@ config_setting(
 )
 
 template_rule(
-    name = "mkldnn_config_h",
-    src = "include/mkldnn_config.h.in",
-    out = "include/mkldnn_config.h",
+    name = "dnnl_config_h",
+    src = "include/dnnl_config.h.in",
+    out = "include/dnnl_config.h",
     substitutions = {
-        "#cmakedefine MKLDNN_CPU_RUNTIME MKLDNN_RUNTIME_${MKLDNN_CPU_RUNTIME_CURRENT}": "#define MKLDNN_CPU_RUNTIME MKLDNN_RUNTIME_OMP",
-        "#cmakedefine MKLDNN_GPU_RUNTIME MKLDNN_RUNTIME_${MKLDNN_GPU_RUNTIME}": "#define MKLDNN_GPU_RUNTIME MKLDNN_RUNTIME_NONE",
+        "#cmakedefine DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_${DNNL_CPU_THREADING_RUNTIME}": "#define DNNL_CPU_THREADING_RUNTIME DNNL_RUNTIME_OMP",
+        "#cmakedefine DNNL_CPU_RUNTIME DNNL_RUNTIME_${DNNL_CPU_RUNTIME}": "#define DNNL_CPU_RUNTIME DNNL_RUNTIME_OMP",
+        "#cmakedefine DNNL_GPU_RUNTIME DNNL_RUNTIME_${DNNL_GPU_RUNTIME}": "#define DNNL_GPU_RUNTIME DNNL_RUNTIME_NONE",
     },
 )
 
@@ -37,14 +38,14 @@ template_rule(
 # TODO(agramesh1) Automatically get the version numbers from CMakeLists.txt.
 
 template_rule(
-    name = "mkldnn_version_h",
-    src = "include/mkldnn_version.h.in",
-    out = "include/mkldnn_version.h",
+    name = "dnnl_version_h",
+    src = "include/dnnl_version.h.in",
+    out = "include/dnnl_version.h",
     substitutions = {
-        "@MKLDNN_VERSION_MAJOR@": "1",
-        "@MKLDNN_VERSION_MINOR@": "0",
-        "@MKLDNN_VERSION_PATCH@": "0",
-        "@MKLDNN_VERSION_HASH@": "N/A",
+        "@DNNL_VERSION_MAJOR@": "1",
+        "@DNNL_VERSION_MINOR@": "2",
+        "@DNNL_VERSION_PATCH@": "0",
+        "@DNNL_VERSION_HASH@": "N/A",
     },
 )
 
@@ -59,8 +60,8 @@ cc_library(
         "src/cpu/**/*.hpp",
         "src/cpu/xbyak/*.h",
     ]) + if_mkl_v1_open_source_only([
-        ":mkldnn_config_h",
-    ]) + [":mkldnn_version_h"],
+        ":dnnl_config_h",
+    ]) + [":dnnl_version_h"],
     hdrs = glob(["include/*"]),
     copts = [
         "-fexceptions",
@@ -117,7 +118,7 @@ cc_library(
         "src/cpu/**/*.cpp",
         "src/cpu/**/*.hpp",
         "src/cpu/xbyak/*.h",
-    ]) + [":mkldnn_config_h"],
+    ]) + [":dnnl_config_h"],
     hdrs = glob(["include/*"]),
     copts = [
         "-fexceptions",
