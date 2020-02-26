@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Region.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -663,52 +664,6 @@ StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(
   return operands;
 }
 
-// TODO(suderman): Move to a general library when needed in other places.
-StatusOr<mlir::RankedTensorType> HloFunctionImporter::ConvertTensorType(
-    const Shape& shape) {
-  auto type = shape.element_type();
-
-  llvm::SmallVector<int64_t, 4> array;
-  array.reserve(shape.dimensions_size());
-  for (auto val : shape.dimensions()) {
-    array.push_back(val);
-  }
-
-  switch (type) {
-    case PrimitiveType::PRED:
-      return mlir::RankedTensorType::get(array, builder_->getI1Type());
-    case PrimitiveType::F16:
-      return mlir::RankedTensorType::get(array, builder_->getF16Type());
-    case PrimitiveType::F32:
-      return mlir::RankedTensorType::get(array, builder_->getF32Type());
-    case PrimitiveType::F64:
-      return mlir::RankedTensorType::get(array, builder_->getF64Type());
-    case PrimitiveType::S8:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(8));
-    case PrimitiveType::S16:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(16));
-    case PrimitiveType::S32:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(32));
-    case PrimitiveType::S64:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(64));
-    // TODO(b/130356985): Update once MLIR supports unsigned integers.
-    case PrimitiveType::U8:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(8));
-    case PrimitiveType::U16:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(16));
-    case PrimitiveType::U32:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(32));
-    case PrimitiveType::U64:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(64));
-    case PrimitiveType::C64:
-      return mlir::RankedTensorType::get(
-          array, mlir::ComplexType::get(builder_->getF32Type()));
-    default:
-      return tensorflow::errors::Internal(
-          absl::StrCat("Unsupported type: ", PrimitiveType_Name(type)));
-  }
-}
-
 StatusOr<mlir::Type> HloFunctionImporter::ConvertType(const Shape& shape) {
   if (shape.IsToken()) {
     return mlir::xla_hlo::TokenType::get(builder_->getContext());
@@ -724,7 +679,7 @@ StatusOr<mlir::Type> HloFunctionImporter::ConvertType(const Shape& shape) {
     return builder_->getTupleType(contents);
   }
 
-  return ConvertTensorType(shape);
+  return ConvertTensorShapeToType<RankedTensorType>(shape, *builder_);
 }
 
 tensorflow::Status HloFunctionImporter::GetMlirTypes(

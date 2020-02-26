@@ -545,6 +545,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        ":hlo_utils",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status",
