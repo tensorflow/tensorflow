@@ -50,15 +50,18 @@ class SubclassedModelNoConfig(keras.Model):
     self.a = a
     self.b = b
     self.shared = CustomLayerNoConfig(a, b)
-    self.all_layers = [
+    self.all_layers = []
+
+  def build(self, input_shape):
+    self.all_layers.extend([
         self.shared,
-        CustomLayerWithConfig(a + 1, b + 2),
-        CustomLayerNoConfig(a + 3, b + 4),
+        CustomLayerWithConfig(self.a + 1, self.b + 2),
+        CustomLayerNoConfig(self.a + 3, self.b + 4),
         keras.Sequential([
             # TODO(b/145029112): Bug with losses when there are shared layers.
             # self.shared,  <-- Enable when bug is fixed.
-            CustomLayerNoConfig(a + 5, b + 6)
-        ])]
+            CustomLayerNoConfig(self.a + 5, self.b + 6)])])
+    super(SubclassedModelNoConfig, self).build(input_shape)
 
   def call(self, inputs):
     x = inputs

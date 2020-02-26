@@ -113,7 +113,7 @@ class NormalizationTest(keras_parameterized.TestCase,
 
   def test_combiner_api_compatibility(self):
     data = np.array([[1], [2], [3], [4], [5]])
-    combiner = normalization.Normalization._NormalizingCombiner(axis=-1)
+    combiner = normalization._NormalizingCombiner(axis=-1)
     expected = {
         "count": np.array(5.0),
         "variance": np.array([2.]),
@@ -180,7 +180,7 @@ class NormalizationTest(keras_parameterized.TestCase,
               "3d_multi_element_internal_axis"
       })
   def test_combiner_computation_multi_value_axis(self, data, axis, expected):
-    combiner = normalization.Normalization._NormalizingCombiner(axis=axis)
+    combiner = normalization._NormalizingCombiner(axis=axis)
     expected_accumulator = combiner._create_accumulator(**expected)
     self.validate_accumulator_computation(combiner, data, expected_accumulator)
 

@@ -210,6 +210,10 @@ def convert_shapes(input_shape, to_tuples=True):
 
   Returns:
     Nested structure of shapes in desired format.
+
+  Raises:
+    ValueError: when the input tensor shape can't be converted to tuples, eg
+      unknown tensor shape.
   """
 
   def _is_shape_component(value):

@@ -3171,6 +3171,8 @@ class Graph(object):
     Raises:
       ValueError: if another function is defined with the same name.
     """
+    self._check_not_finalized()
+
     name = function.name
     # Sanity checks on gradient definition.
     if (function.grad_func_name is not None) and (function.python_grad_func is
@@ -3455,6 +3457,8 @@ class Graph(object):
     Returns:
       A list of the new `Operation` objects.
     """
+    self._check_not_finalized()
+
     # Create all Operation objects before accessing their inputs since an op may
     # be created before its inputs.
     new_ops = [

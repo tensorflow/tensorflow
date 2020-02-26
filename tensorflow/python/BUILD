@@ -623,10 +623,9 @@ tf_python_pybind_extension(
         "@pybind11",
         "//third_party/python_runtime:headers",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:core_cpu_headers_lib",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:lib_headers_for_pybind",
         "@com_google_absl//absl/types:optional",
     ] + if_static(
         extra_deps = [
@@ -2558,6 +2557,7 @@ tf_py_test(
         "no_oss",
         "no_pip",
         "no_windows",
+        "noasan",  # TODO(b/149948895): Re-enable.
         "nomsan",  # TODO(b/149948895): Re-enable.
         "notsan",  # TODO(b/149948895): Re-enable.
     ],
@@ -2882,6 +2882,7 @@ tf_gen_op_wrapper_private_py(
     name = "resource_variable_ops_gen",
     visibility = [
         "//tensorflow/compiler/tf2xla:internal",
+        "//tensorflow/python/distribute:__pkg__",
     ],
 )
 
@@ -5822,6 +5823,7 @@ filegroup(
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:tf_status_helper",  # tfe
+        "//tensorflow/compiler/jit:flags",  #tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/core:core_cpu_base_no_ops",  # tf_session
         "//tensorflow/core:core_cpu_impl",  # device_lib
@@ -7494,7 +7496,7 @@ tf_python_pybind_extension(
         ":pybind11_status",
         "@pybind11",
         "//tensorflow/core:core_cpu_headers_lib",
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:gpu_id",
         "//tensorflow/core:protos_all_cc",
     ] + if_not_windows(["//tensorflow/core/grappler/costs:graph_properties"]),  # b/148556093,
@@ -7569,9 +7571,9 @@ tf_python_pybind_extension(
     deps = [
         ":pybind11_status",
         "//tensorflow/core:core_cpu_headers_lib",
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:gpu_id",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/types:span",
         "@pybind11",
@@ -7630,9 +7632,9 @@ tf_python_pybind_extension(
     deps = [
         ":pybind11_status",
         "//tensorflow/core:core_cpu_headers_lib",
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:gpu_id",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "@pybind11",
     ],
@@ -8046,6 +8048,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:optional",
         "@pybind11",
         "//third_party/python_runtime:headers",
+        "//tensorflow/compiler/jit:flags_headers_only",
         "//tensorflow/core:core_cpu_headers_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -8054,13 +8057,11 @@ tf_python_pybind_extension(
         "//tensorflow/core/platform:platform",
     ] + if_static(
         extra_deps = [
-            "//tensorflow/compiler/jit:flags",
             "//tensorflow/core:eager_service_proto_cc",
             "//tensorflow/core:master_proto_cc",
             "//tensorflow/core:worker_proto_cc",
         ],
         otherwise = [
-            "//tensorflow/compiler/jit:flags_headers_only",
             "//tensorflow/core:eager_service_proto_cc_headers_only",
             "//tensorflow/core:master_proto_cc_headers_only",
             "//tensorflow/core:worker_proto_cc_headers_only",

@@ -1805,6 +1805,15 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         experimental_run_tf_function=testing_utils.should_run_tf_function())
     return model
 
+  def _get_trace_file(self, logdir):
+    profile_dir = os.path.join(logdir, 'plugins', 'profile')
+    for (dirpath, dirnames, filenames) in os.walk(profile_dir):
+      del dirnames  # unused
+      for filename in filenames:
+        if filename.endswith('.trace'):
+          return os.path.join(dirpath, filename)
+    return None
+
   def fitModelAndAssertKerasModelWritten(self, model):
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(self.logdir,
@@ -1873,6 +1882,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag=u'batch_1'),
         },
     )
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
 
   def test_TensorBoard_autoTrace_tagNameWithBatchNum(self):
     model = self._get_seq_model()
@@ -1895,6 +1905,78 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag=u'batch_2'),
         },
     )
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+
+  def test_TensorBoard_autoTrace_profileBatchRangeSingle(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch='2,2', write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=3,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            # Trace will be logged once at the batch it stops profiling.
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_2'),
+        },
+    )
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+
+  def test_TensorBoard_autoTrace_profileBatchRange(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch='1,3', write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=4,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            # Trace will be logged once at the batch it stops profiling.
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_3'),
+        },
+    )
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+
+  def test_TensorBoard_autoTrace_profileInvalidBatchRange(self):
+    with self.assertRaises(ValueError):
+      keras.callbacks.TensorBoard(
+          self.logdir,
+          histogram_freq=1,
+          profile_batch='-1,3',
+          write_graph=False)
+
+    with self.assertRaises(ValueError):
+      keras.callbacks.TensorBoard(
+          self.logdir,
+          histogram_freq=1,
+          profile_batch='1,None',
+          write_graph=False)
+
+    with self.assertRaises(ValueError):
+      keras.callbacks.TensorBoard(
+          self.logdir, histogram_freq=1, profile_batch='6,5', write_graph=False)
+
+    with self.assertRaises(ValueError):
+      keras.callbacks.TensorBoard(
+          self.logdir, histogram_freq=1, profile_batch=-1, write_graph=False)
 
   def test_TensorBoard_autoTrace_profile_batch_largerThanBatchCount(self):
     model = self._get_seq_model()
@@ -1913,6 +1995,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
 
     # Enabled trace only on the 10000th batch, thus it should be empty.
     self.assertEmpty(summary_file.tensors)
+    self.assertIsNone(self._get_trace_file(logdir=self.train_dir))
 
 
 class MostRecentlyModifiedFileMatchingPatternTest(test.TestCase):

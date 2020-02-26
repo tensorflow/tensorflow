@@ -123,12 +123,35 @@ struct EngineContext {
   EngineContext(
       TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
       TrtUniquePtrType<nvinfer1::IExecutionContext>&& input_execution_context)
+      : cuda_engine(std::move(input_cuda_engine)) {
+    execution_context.push_back(std::move(input_execution_context));
+  }
+  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
+                std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>&&
+                    input_execution_context)
       : cuda_engine(std::move(input_cuda_engine)),
         execution_context(std::move(input_execution_context)) {}
 
   mutex mu;
   TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
-  TrtUniquePtrType<nvinfer1::IExecutionContext> execution_context
+
+  Status GetExecutionContext(int idx, nvinfer1::IExecutionContext** exec_ctx)
+      EXCLUSIVE_LOCKS_REQUIRED(mu) {
+    if (idx >= execution_context.size()) {
+      return errors::Internal("Requested engine context with index ", idx,
+                              ", but only ", execution_context.size(),
+                              "contexts are present.");
+    }
+    *exec_ctx = execution_context[idx].get();
+    return Status::OK();
+  }
+
+  // In explicit batch mode, we maintain a vector of contexts for each engine,
+  // where each context is created for a different profile. The
+  // IExecutionContext object is not thread safe: only one thread should use it
+  // for inference at a time therefore we need a mutex. More details at
+  // https://docs.nvidia.com/deeplearning/sdk/tensorrt-best-practices/index.html#thread-safety
+  std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> execution_context
       GUARDED_BY(mu);
 };
 
@@ -171,6 +194,16 @@ class TRTEngineCacheResource : public ResourceBase {
   ~TRTEngineCacheResource() override;
 
   string DebugString() const override;
+
+  // Returns the EngineContext that is compatible with input_shapes.
+  // Returns nullptr if no compatible EngineContexts is found in cache.
+  EngineContext* GetEngineContext(const std::vector<TensorShape>& input_shapes);
+
+  // Returns the EngineContext that is compatible with profile_id.
+  // This function should be only called in explicit batch mode where
+  // cache size is expected to be at most one.
+  // Returns nullptr if no compatible EngineContexts is found in cache.
+  EngineContext* GetEngineContext(const int profile_id);
 
   // Keep device allocator for TRT.
   std::unique_ptr<TRTBaseAllocator> allocator_;

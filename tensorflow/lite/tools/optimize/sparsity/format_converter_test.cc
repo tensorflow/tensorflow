@@ -425,6 +425,39 @@ TEST(FormatConverterTest, BlockTestD0S1LastBlockEmpty) {
   EXPECT_EQ(data_back, dense_values);
 }
 
+TEST(FormatConverterTest, BlockTestD0S1ColMajorBlock) {
+  const std::vector<int> dense_values = {1, 0, 2, 3, 0, 4, 0, 0, 1, 0, 2,
+                                         3, 0, 4, 0, 0, 0, 0, 5, 0, 0, 0,
+                                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  const std::vector<int> dense_shape = {4, 8};
+  const std::vector<int> traversal_order = {0, 1, 3, 2};
+  const std::vector<TfLiteDimensionType> format = {kTfLiteDimDense,
+                                                   kTfLiteDimSparseCSR};
+  const std::vector<int> block_size = {2, 2};
+  const std::vector<int> block_map = {0, 1};
+  FormatConverter<int> converter(dense_shape, traversal_order, format,
+                                 block_size, block_map);
+  converter.DenseToSparse(dense_values.data());
+
+  const auto& dim_metadata = converter.GetDimMetadata();
+  const std::vector<int> dm = {2};
+  const std::vector<int> dm1_0 = {0, 3, 4};
+  const std::vector<int> dm1_1 = {0, 1, 2, 1};
+  EXPECT_EQ(dm, dim_metadata[0]);
+  EXPECT_EQ(dm1_0, dim_metadata[2]);
+  EXPECT_EQ(dm1_1, dim_metadata[3]);
+  EXPECT_EQ(dm, dim_metadata[4]);
+  EXPECT_EQ(dm, dim_metadata[6]);
+
+  const auto& data = converter.GetData();
+  const std::vector<int> expected_data = {1, 1, 0, 0, 2, 2, 3, 3,
+                                          0, 0, 4, 4, 5, 0, 0, 0};
+  EXPECT_EQ(expected_data, data);
+
+  converter.SparseToDense(expected_data.data());
+  const auto& data_back = converter.GetData();
+  EXPECT_EQ(data_back, dense_values);
+}
 }  // namespace
 }  // namespace sparsity
 }  // namespace optimize

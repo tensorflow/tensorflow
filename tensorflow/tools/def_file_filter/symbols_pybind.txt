@@ -340,3 +340,6 @@ tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
 [cost_analyzer_lib] # cost_analyzer
 tensorflow::grappler::CostAnalyzer::CostAnalyzer
 tensorflow::grappler::CostAnalyzer::GenerateReport
+
+[flags] # tfe
+tensorflow::IsXlaEnabled

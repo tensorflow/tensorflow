@@ -134,17 +134,8 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
                {{StatType::kCorrelationId, 100}});
 
-  std::vector<InterThreadConnectInfo> connect_info_list(
-      {{HostEventType::kFunctionRun,
-        HostEventType::kExecutorStateProcess,
-        {StatType::kStepId}},
-       {HostEventType::kKernelLaunch,
-        HostEventType::kKernelExecute,
-        {StatType::kCorrelationId}}});
   EventGroupNameMap event_group_name_map;
-  GroupEvents(connect_info_list,
-              {HostEventType::kTraceContext, HostEventType::kFunctionRun},
-              &space, &event_group_name_map);
+  GroupTfEvents(&space, &event_group_name_map);
   XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
   EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 2);
   EXPECT_EQ(device_plane_visitor.GetStatType(
@@ -152,6 +143,38 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
             StatType::kGroupId);
   EXPECT_EQ(event_group_name_map.size(), 1);
   EXPECT_EQ(event_group_name_map[0], "123");
+}
+
+TEST(GroupEventsTest, GroupHostTrainingLoopTest) {
+  XSpace space;
+  XPlaneBuilder host_plane_builder(space.add_planes());
+  host_plane_builder.SetName(kHostThreads);
+  host_plane_builder.ReserveLines(1);
+
+  auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&host_plane_builder, &tf_executor_thread,
+               HostEventType::kExecutorStateProcess, 20, 80,
+               {{StatType::kStepId, 0}, {StatType::kIterNum, 10}});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70,
+               {{StatType::kCorrelationId, 100}});
+
+  XPlane* device_plane = space.add_planes();
+  XPlaneBuilder device_plane_builder(device_plane);
+  device_plane_builder.ReserveLines(1);
+
+  auto stream = device_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
+               {{StatType::kCorrelationId, 100}});
+
+  EventGroupNameMap event_group_name_map;
+  GroupTfEvents(&space, &event_group_name_map);
+  XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
+  EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 2);
+  EXPECT_EQ(device_plane_visitor.GetStatType(
+                device_plane->lines(0).events(0).stats(1)),
+            StatType::kGroupId);
+  EXPECT_EQ(event_group_name_map.size(), 1);
+  EXPECT_EQ(event_group_name_map[0], "10");
 }
 
 }  // namespace

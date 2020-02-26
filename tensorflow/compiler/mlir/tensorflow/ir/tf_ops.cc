@@ -35,7 +35,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/Dialect/Traits.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -295,6 +295,14 @@ static LogicalResult VerifyTypesCompatibility(
 //===----------------------------------------------------------------------===//
 // TF op helper functions to work with layout transformation.
 //===----------------------------------------------------------------------===//
+
+SmallVector<int64_t, 4> ReversePermutation(ArrayRef<int64_t> permutation) {
+  SmallVector<int64_t, 4> reverse(permutation.size());
+  for (size_t i = 0; i < permutation.size(); ++i) {
+    reverse[permutation[i]] = i;
+  }
+  return reverse;
+}
 
 SmallVector<int64_t, 4> GetDataFormatPermutation(StringRef from, StringRef to) {
   if (from == "NHWC" && to == "NCHW") {
@@ -1499,6 +1507,29 @@ void LogicalNotOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// MatrixBandPartOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(MatrixBandPartOp op) {
+  if (!HasRankAtLeast(op.input(), 2)) {
+    return op.emitOpError()
+           << "requires `input` to have rank of at least 2, but found "
+           << op.input().getType();
+  }
+  if (!IsOfRankOrUnranked(op.num_lower(), 0)) {
+    return op.emitOpError()
+           << "requires `num_lower` to have 0 dimensions, but found "
+           << op.num_lower().getType();
+  }
+  if (!IsOfRankOrUnranked(op.num_upper(), 0)) {
+    return op.emitOpError()
+           << "requires `num_upper` to have 0 dimensions, but found "
+           << op.num_upper().getType();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MaxOp
 //===----------------------------------------------------------------------===//
 
@@ -1550,7 +1581,7 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
   if (!reductions_value) return failure();
 
   // Prepare new reduction indices according to operand permutation.
-  SmallVector<int64_t, 4> shuffled_reduction;
+  SmallVector<int32_t, 4> shuffled_reduction;
   llvm::transform(reductions_value.getIntValues(),
                   std::back_inserter(shuffled_reduction),
                   [&](APInt idx) { return permutation[idx.getSExtValue()]; });
@@ -1558,7 +1589,7 @@ LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
   // Add constant operation with a new reduction indices.
   OpBuilder builder(getOperation());
   auto type = mlir::RankedTensorType::get(shuffled_reduction.size(),
-                                          builder.getIntegerType(64));
+                                          builder.getIntegerType(32));
   auto values = mlir::DenseIntElementsAttr::get(type, shuffled_reduction);
   auto shuffled_reduction_op = builder.create<TF::ConstOp>(getLoc(), values);
 
@@ -1706,6 +1737,46 @@ static LogicalResult Verify(PackOp op) {
                           << range_begin << ", " << range_end
                           << "); actual value: " << axis;
   }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PadOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
+  // Paddings must be defined by a constant operation.
+  auto paddings_op = dyn_cast_or_null<TF::ConstOp>(paddings().getDefiningOp());
+  if (!paddings_op) return failure();
+
+  auto paddings_value = paddings_op.value().dyn_cast<DenseElementsAttr>();
+  if (!paddings_value ||
+      paddings_value.getNumElements() != permutation.size() * 2)
+    return failure();
+
+  SmallVector<int32_t, 8> shuffled_paddings(paddings_value.getNumElements());
+  for (auto index_pair : llvm::enumerate(paddings_value.getIntValues())) {
+    size_t outer_idx = index_pair.index() / 2;
+    size_t inner_idx = index_pair.index() % 2;
+
+    shuffled_paddings[permutation[outer_idx] * 2 + inner_idx] =
+        index_pair.value().getSExtValue();
+  }
+
+  // Add constant operation with a new paddings.
+  OpBuilder builder(getOperation());
+  auto type = mlir::RankedTensorType::get(paddings_value.getType().getShape(),
+                                          builder.getIntegerType(32));
+  auto values = mlir::DenseIntElementsAttr::get(type, shuffled_paddings);
+  auto shuffled_paddings_op = builder.create<TF::ConstOp>(getLoc(), values);
+
+  // Use new paddings.
+  setOperand(1, shuffled_paddings_op);
+
+  // Change the result type.
+  getResult().setType(ShuffleRankedTensorType(getResult().getType(),
+                                              ReversePermutation(permutation)));
 
   return success();
 }
@@ -2056,7 +2127,8 @@ LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
   }
 
   Type element_type = result_ranked_type.getElementType();
-  if (!element_type.isInteger(32) && !element_type.isInteger(64))
+  if (!element_type.isSignlessInteger(32) &&
+      !element_type.isSignlessInteger(64))
     return op->emitOpError("requires int32 or int64 return type for result")
            << variadic_idx_str;
 

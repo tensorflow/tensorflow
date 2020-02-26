@@ -209,6 +209,21 @@ cc_library(
 )
 
 cc_library(
+    name = "cache",
+    srcs = [
+        "cache.cc",
+    ],
+    hdrs = [
+        "cache.h",
+    ],
+    deps = [
+        "//tensorflow/core/platform:coding",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+cc_library(
     name = "table",
     srcs = [
         "table.cc",
@@ -220,6 +235,7 @@ cc_library(
     ],
     deps = [
         ":block",
+        ":cache",
         ":iterator",
         ":table_options",
         "//tensorflow/core/lib/core:coding",
@@ -290,6 +306,8 @@ filegroup(
         "block_builder.h",
         "buffered_inputstream.cc",
         "buffered_inputstream.h",
+        "cache.cc",
+        "cache.h",
         "compression.cc",
         "compression.h",
         "format.cc",
@@ -352,6 +370,7 @@ filegroup(
     name = "legacy_lib_io_all_tests",
     srcs = [
         "buffered_inputstream_test.cc",
+        "cache_test.cc",
         "inputbuffer_test.cc",
         "inputstream_interface_test.cc",
         "path_test.cc",
@@ -369,6 +388,7 @@ filegroup(
     name = "legacy_lib_io_headers",
     srcs = [
         "buffered_inputstream.h",
+        "cache.h",
         "compression.h",
         "inputstream_interface.h",
         "path.h",

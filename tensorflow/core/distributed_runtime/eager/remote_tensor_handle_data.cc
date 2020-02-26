@@ -86,24 +86,24 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
 RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,
                                                const TensorShape& shape,
                                                const string& remote_task,
-                                               uint64 context_id,
                                                EagerContext* ctx)
     : op_id_(op_id),
       output_num_(output_num),
       shape_(shape),
       remote_task_(remote_task),
-      context_id_(context_id),
-      ctx_(ctx) {
+      context_id_(ctx->GetContextId()),
+      context_view_id_(ctx->GetContextViewId()),
+      ctx_(*ctx) {
   DCHECK(op_id_ >= 0 && output_num_ >= 0)
       << "Op ID and output num should be >= 0. Op ID: " << op_id
       << ", Output num: " << output_num;
-  ctx->Ref();
+  ctx_.Ref();
 }
 
 RemoteTensorHandleData::~RemoteTensorHandleData() {
-  DestroyRemoteTensorHandle(ctx_, remote_task_, context_id_, op_id_,
+  DestroyRemoteTensorHandle(&ctx_, remote_task_, context_id_, op_id_,
                             output_num_, /*ready=*/true);
-  ctx_->Unref();
+  ctx_.Unref();
 }
 
 Status RemoteTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
@@ -152,26 +152,26 @@ string RemoteTensorHandleData::DebugString() const {
 }
 
 UnshapedRemoteTensorHandleData::UnshapedRemoteTensorHandleData(
-    int64 op_id, int32 output_num, const string& remote_task, uint64 context_id,
-    EagerContext* ctx)
+    int64 op_id, int32 output_num, const string& remote_task, EagerContext* ctx)
     : op_id_(op_id),
       output_num_(output_num),
       delete_remote_tensor_(true),
       remote_task_(remote_task),
-      context_id_(context_id),
-      ctx_(ctx) {
+      context_id_(ctx->GetContextId()),
+      context_view_id_(ctx->GetContextViewId()),
+      ctx_(*ctx) {
   DCHECK(op_id_ >= 0 && output_num_ >= 0)
       << "Op ID and output num should be >= 0. Op ID: " << op_id
       << ", Output num: " << output_num;
-  ctx->Ref();
+  ctx_.Ref();
 }
 
 UnshapedRemoteTensorHandleData::~UnshapedRemoteTensorHandleData() {
   if (delete_remote_tensor_) {
-    DestroyRemoteTensorHandle(ctx_, remote_task_, context_id_, op_id_,
+    DestroyRemoteTensorHandle(&ctx_, remote_task_, context_id_, op_id_,
                               output_num_, /*ready=*/false);
   }
-  ctx_->Unref();
+  ctx_.Unref();
 }
 
 Status UnshapedRemoteTensorHandleData::Tensor(
