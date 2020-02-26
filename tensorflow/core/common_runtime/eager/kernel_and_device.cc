@@ -138,7 +138,7 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
   if (function_def != nullptr) {
     op_def = &(function_def->signature());
   } else {
-    TF_RETURN_IF_ERROR(OpDefForOp(ndef.op().c_str(), &op_def));
+    TF_RETURN_IF_ERROR(OpDefForOp(ndef.op(), &op_def));
   }
   TF_RETURN_IF_ERROR(
       InOutTypesForNode(ndef, *op_def, &input_dtypes_, &output_dtypes_));

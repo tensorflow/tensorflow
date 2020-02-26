@@ -213,6 +213,39 @@ class TestSaveModel(test.TestCase):
                         rnn_layers[1].kernel.name)
     self.assertIn('rnn_cell1', rnn_layers[1].kernel.name)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_saving_optimizer_weights(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.layer = keras.layers.Dense(1)
+
+      def call(self, x):
+        return self.layer(x)
+
+    path = os.path.join(self.get_temp_dir(), 'weights_path')
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+
+    model = MyModel()
+    model.compile('rmsprop', loss='bce')
+    model.train_on_batch(x, y)
+    model.reset_metrics()
+    model.save_weights(path, save_format='tf')
+
+    batch_loss = model.train_on_batch(x, y)
+
+    new_model = MyModel()
+    new_model.compile('rmsprop', loss='bce')
+    new_model.train_on_batch(x, y)
+    new_model.reset_metrics()
+
+    new_model.load_weights(path)
+    new_batch_loss = new_model.train_on_batch(x, y)
+
+    self.assertAllClose(batch_loss, new_batch_loss)
+
 
 if __name__ == '__main__':
   test.main()

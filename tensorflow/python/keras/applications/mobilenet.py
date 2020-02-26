@@ -90,6 +90,7 @@ def MobileNet(input_shape=None,
               input_tensor=None,
               pooling=None,
               classes=1000,
+              classifier_activation='softmax',
               **kwargs):
   """Instantiates the MobileNet architecture.
 
@@ -138,14 +139,18 @@ def MobileNet(input_shape=None,
     classes: Optional number of classes to classify images into, only to be
       specified if `include_top` is True, and if no `weights` argument is
       specified. Defaults to 1000.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
     **kwargs: For backwards compatibility only.
-
   Returns:
-    A `tf.keras.Model` instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
   if 'layers' in kwargs:
     global layers
@@ -252,7 +257,9 @@ def MobileNet(input_shape=None,
     x = layers.Dropout(dropout, name='dropout')(x)
     x = layers.Conv2D(classes, (1, 1), padding='same', name='conv_preds')(x)
     x = layers.Reshape((classes,), name='reshape_2')(x)
-    x = layers.Activation('softmax', name='act_softmax')(x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Activation(activation=classifier_activation,
+                          name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D()(x)
@@ -429,9 +436,34 @@ def _depthwise_conv_block(inputs,
 
 @keras_export('keras.applications.mobilenet.preprocess_input')
 def preprocess_input(x, data_format=None):
+  """Preprocesses a numpy array encoding a batch of images.
+
+  Arguments
+    x: A 4D numpy array consists of RGB values within [0, 255].
+
+  Returns
+    Preprocessed array.
+
+  Raises
+    ValueError: In case of unknown `data_format` argument.
+  """
   return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.mobilenet.decode_predictions')
 def decode_predictions(preds, top=5):
+  """Decodes the prediction result from the model.
+
+  Arguments
+    preds: Numpy tensor encoding a batch of predictions.
+    top: Integer, how many top-guesses to return.
+
+  Returns
+    A list of lists of top class prediction tuples
+    `(class_name, class_description, score)`.
+    One list of tuples per sample in batch input.
+
+  Raises
+    ValueError: In case of invalid shape of the `preds` array (must be 2D).
+  """
   return imagenet_utils.decode_predictions(preds, top=top)

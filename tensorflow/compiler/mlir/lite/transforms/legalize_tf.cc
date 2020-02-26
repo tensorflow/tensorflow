@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
 #include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
@@ -62,6 +63,10 @@ namespace {
 
 using xla::Status;
 using xla::StatusOr;
+
+constexpr char kUnidirectionalSequenceLstm[] = "tf.UnidirectionalSequenceLstm";
+constexpr char kUnidirectionalSequenceRnn[] = "tf.UnidirectionalSequenceRnn";
+constexpr char kTfLiteInputIndices[] = "_tflite_input_indices";
 
 // Legalize operations in functions.
 struct LegalizeTF : public FunctionPass<LegalizeTF> {
@@ -250,7 +255,7 @@ PatternMatchResult ConvertTFReshapeOp::matchAndRewrite(
 
   ShapedType shape_type = shape.getType().cast<ShapedType>();
   // The tfl reshape's #2 operand needs to i32 tensor type, so we have to cast.
-  if (!shape_type.getElementType().isInteger(32)) {
+  if (!shape_type.getElementType().isSignlessInteger(32)) {
     auto new_shape = shape_type.getShape();
     IntegerType new_ele_type = rewriter.getIntegerType(32);
     ShapedType new_type = RankedTensorType::get(new_shape, new_ele_type);
@@ -561,6 +566,134 @@ PatternMatchResult ConvertTFReciprocalOp::matchAndRewrite(
   return matchSuccess();
 }
 
+// Legalize unidirectional sequence lstm.
+struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
+  explicit LegalizeUnidirectionalSequenceLstm(MLIRContext* context)
+      : RewritePattern(kUnidirectionalSequenceLstm, 1, context) {}
+
+  PatternMatchResult matchAndRewrite(Operation* op,
+                                     PatternRewriter& rewriter) const override {
+    auto tflite_indices_attr =
+        op->getAttrOfType<ArrayAttr>(kTfLiteInputIndices);
+    if (!tflite_indices_attr) return matchFailure();
+
+    SmallVector<int64_t, 20> tflite_indices;
+    for (auto index_attr : tflite_indices_attr.getValue()) {
+      IntegerAttr index = index_attr.cast<IntegerAttr>();
+      tflite_indices.push_back(index.getInt());
+    }
+
+    // Optional input placeholder.
+    Value none = rewriter.create<mlir::ConstantOp>(
+        op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
+
+    // Populate inputs.
+    // UnidirectionalSequenceLstm is expected to have 24 inputs.
+    SmallVector<Value, 24> inputs;
+    int count = 0;
+    int total_ophint_converted_inputs = tflite_indices.size();
+    for (int i = 0; i < 24; ++i) {
+      if (count < total_ophint_converted_inputs && tflite_indices[count] == i) {
+        // specified input.
+        inputs.push_back(op->getOperand(i));
+        count++;
+      } else {
+        // Non specified input.
+        inputs.push_back(none);
+      }
+    }
+
+    // Populate outputs.
+    // UnidirectionalSequenceLstm should only have 1 output, and that is the
+    // original ophint converted node's 3rd output.
+    SmallVector<Type, 4> result_types;
+    result_types.push_back(op->getOpResult(2).getType());
+
+    // Populate attributes.
+    SmallVector<NamedAttribute, 4> attributes;
+    // Activation will always be tanh.
+    attributes.push_back(rewriter.getNamedAttr("fused_activation_function",
+                                               rewriter.getStringAttr("TANH")));
+    // cell_clip.
+    attributes.push_back(
+        rewriter.getNamedAttr("cell_clip", rewriter.getF32FloatAttr(10.0)));
+    // proj_clip.
+    attributes.push_back(
+        rewriter.getNamedAttr("proj_clip", rewriter.getF32FloatAttr(0.0)));
+    // will always be time_majored.
+    attributes.push_back(
+        rewriter.getNamedAttr("time_major", rewriter.getBoolAttr(true)));
+
+    auto lstm_op = rewriter.create<TFL::UnidirectionalSequenceLSTMOp>(
+        op->getLoc(), result_types, inputs, attributes);
+
+    // Rewire the output.
+    op->getResult(2).replaceAllUsesWith(lstm_op.getResult());
+    op->erase();
+    return matchSuccess();
+  }
+};
+
+// Legalize unidirectional seqeucen rnn.
+struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
+  explicit LegalizeUnidirectionalSequenceRnn(MLIRContext* context)
+      : RewritePattern(kUnidirectionalSequenceRnn, 1, context) {}
+
+  PatternMatchResult matchAndRewrite(Operation* op,
+                                     PatternRewriter& rewriter) const override {
+    auto tflite_indices_attr =
+        op->getAttrOfType<ArrayAttr>(kTfLiteInputIndices);
+    if (!tflite_indices_attr) return matchFailure();
+
+    if (op->getNumOperands() != 5) {
+      op->emitError()
+          << "We're expecting 5 inputs for UnidirectionalSequenceRNN, only "
+          << op->getNumOperands() << " provided";
+      return matchFailure();
+    }
+
+    if (op->getNumResults() != 2) {
+      op->emitError()
+          << "We're expecting 2 inputs for UnidirectionalSequenceRNN, only "
+          << op->getNumResults() << " found";
+      return matchFailure();
+    }
+
+    // Populate inputs.
+    // UnidirectionalSequenceRnn is expected to have 5 inputs, and none of them
+    // are optional inputs.
+    SmallVector<Value, 5> inputs;
+    for (int i = 0; i < 5; ++i) {
+      inputs.push_back(op->getOperand(i));
+    }
+
+    // Populate outputs.
+    // UnidirectionalSequenceRnn should only have 1 output, and that is the
+    // original ophint converted node's 2nd output.
+    SmallVector<Type, 4> result_types;
+    result_types.push_back(op->getOpResult(1).getType());
+
+    // Populate attributes.
+    SmallVector<NamedAttribute, 2> attributes;
+    // Activation will always be tanh.
+    attributes.push_back(rewriter.getNamedAttr("fused_activation_function",
+                                               rewriter.getStringAttr("TANH")));
+
+    // will always be time_majored.
+    attributes.push_back(
+        rewriter.getNamedAttr("time_major", rewriter.getBoolAttr(true)));
+
+    auto rnn_op = rewriter.create<TFL::UnidirectionalSequenceRNNOp>(
+        op->getLoc(), result_types, inputs, attributes);
+
+    // Rewire the output.
+    op->getResult(1).replaceAllUsesWith(rnn_op.getResult());
+    op->erase();
+
+    return matchSuccess();
+  }
+};
+
 void LegalizeTF::runOnFunction() {
   OwningRewritePatternList patterns;
   auto* ctx = &getContext();
@@ -574,6 +707,10 @@ void LegalizeTF::runOnFunction() {
               ConvertTFReshapeOp, ConvertTFSplitOp, ConvertTFSplitVOp,
               ConvertTFStridedSliceOp, ConvertTFUnpackOp, ConvertTFAssertOp,
               ConvertTFReciprocalOp, ConvertTFRandomUniformOp>(ctx);
+
+  // Ophint python converter converted tf node pattern.
+  patterns.insert<LegalizeUnidirectionalSequenceLstm,
+                  LegalizeUnidirectionalSequenceRnn>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 

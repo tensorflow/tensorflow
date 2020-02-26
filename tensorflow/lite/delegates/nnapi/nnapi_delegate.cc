@@ -4185,24 +4185,28 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
       .version = 1,
   };
 
-  std::vector<int>& nodes_to_delegate = supported_nodes;
+  std::vector<int> nodes_to_delegate;
+
+  int num_partitions;
+  TfLiteDelegateParams* params_array;
   if (is_accelerator_specified) {
-    std::vector<int> device_supported_nodes;
-    int num_partitions;
-    TfLiteDelegateParams* params_array;
-
+    // Filtering out nodes not supported by target accelerators
     TF_LITE_ENSURE_STATUS(GetNodesSupportedByAccelerator(
-        context, delegate, nnapi, supported_nodes, &device_supported_nodes,
+        context, delegate, nnapi, supported_nodes, &nodes_to_delegate,
         &num_partitions, &params_array, nnapi_errno));
-
-    TF_LITE_ENSURE_STATUS(LimitDelegatedPartitions(
-        delegate_options.max_number_delegated_partitions,
-        std::vector<TfLiteDelegateParams>(params_array,
-                                          params_array + num_partitions),
-        &device_supported_nodes));
-
-    nodes_to_delegate = device_supported_nodes;
+  } else {
+    nodes_to_delegate = supported_nodes;
+    auto supported_nodes_int_array = BuildTfLiteIntArray(supported_nodes);
+    TF_LITE_ENSURE_STATUS(context->PreviewDelegatePartitioning(
+        context, supported_nodes_int_array.get(), &params_array,
+        &num_partitions));
   }
+
+  TF_LITE_ENSURE_STATUS(
+      LimitDelegatedPartitions(delegate_options.max_number_delegated_partitions,
+                               std::vector<TfLiteDelegateParams>(
+                                   params_array, params_array + num_partitions),
+                               &nodes_to_delegate));
 
   if (nodes_to_delegate.empty()) {
     return kTfLiteOk;

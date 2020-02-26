@@ -525,10 +525,8 @@ class KerasModelTest(keras_parameterized.TestCase):
             input_shape=(1,))
         if use_input_spec:
           layer.input_spec = input_spec.InputSpec(shape=(2, 1))
-        cast_f32_layer = layers.Lambda(lambda x: math_ops.cast(x, 'float32'))
-        model = testing_utils.get_model_from_layers(
-            [layer, cast_f32_layer], input_shape=(1,),
-            input_dtype=dtypes.float16)
+        model = testing_utils.get_model_from_layers([layer], input_shape=(1,),
+                                                    input_dtype=dtypes.float16)
         if get_config:
           config = model.get_config()
           model = model.__class__.from_config(
@@ -712,12 +710,10 @@ class KerasModelTest(keras_parameterized.TestCase):
                   expected_dtype=dtypes.float16,
                   expected_gradient=[expected_gradient]))
           y = core.Lambda(identity_with_grad_check_fn)(y)
-        y = math_ops.cast(y, dtypes.float32)
         model = models.Model(inputs=x, outputs=y)
 
         def loss_fn(y_true, y_pred):
-          self.assertEqual(y_true.dtype, dtypes.float32)
-          self.assertEqual(y_pred.dtype, dtypes.float32)
+          del y_true
           return math_ops.reduce_mean(y_pred)
 
         opt = gradient_descent.SGD(learning_rate)
@@ -804,7 +800,6 @@ class KerasModelTest(keras_parameterized.TestCase):
                 expected_dtype=dtypes.float16,
                 expected_gradient=expected_gradient))
         y = core.Lambda(identity_with_grad_check_fn)(y)
-        y = math_ops.cast(y, dtypes.float32)
         model = models.Model(inputs=x, outputs=y)
         if get_config:
           config = model.get_config()
@@ -914,7 +909,6 @@ class KerasModelTest(keras_parameterized.TestCase):
         x = layers.Input(shape=(1,), batch_size=2)
         layer = mp_test_util.MultiplyLayer(assert_type=dtypes.float16)
         y = layer(x)
-        y = math_ops.cast(y, dtypes.float32)
         model = models.Model(inputs=x, outputs=y)
 
     model.set_weights([np.array(100.)])
@@ -960,7 +954,6 @@ class KerasModelTest(keras_parameterized.TestCase):
       layer = mp_test_util.MultiplyLayer(assert_type=dtypes.float16,
                                          var_name=var_name)
       y = layer(x)
-      y = math_ops.cast(y, dtypes.float32)
       model = models.Model(inputs=x, outputs=y)
       opt = gradient_descent.SGD(1., 1.)
       model.compile(

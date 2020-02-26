@@ -195,6 +195,11 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
         &data->output_activation_max));
   }
 
+  if (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
   // If we have to perform on-the-fly quantization (with quantized weights and
   // float inputs) first we need to quantize the inputs. Allocate a temporary
   // buffer to store the intermediate quantized values.
@@ -432,9 +437,7 @@ void FullyConnectedInt16(const OpData* data, const TfLiteTensor* input,
                          const TfLiteTensor* filter, const TfLiteTensor* bias,
                          TfLiteTensor* output) {
   FullyConnectedParams op_params;
-  op_params.input_offset = -input->params.zero_point;
   op_params.weights_offset = -filter->params.zero_point;
-  op_params.output_offset = output->params.zero_point;
   op_params.output_multiplier = data->output_multiplier;
   op_params.output_shift = data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;

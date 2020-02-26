@@ -32,8 +32,8 @@ namespace profiling {
 class ProfileSummarizer {
  public:
   explicit ProfileSummarizer(
-      std::unique_ptr<ProfileSummaryFormatter> summary_formatter =
-          std::make_unique<ProfileSummaryDefaultFormatter>());
+      std::shared_ptr<ProfileSummaryFormatter> summary_formatter =
+          std::make_shared<ProfileSummaryDefaultFormatter>());
   virtual ~ProfileSummarizer() {}
 
   // Process profile events to update statistics for operator invocations.
@@ -70,7 +70,7 @@ class ProfileSummarizer {
   std::unique_ptr<tensorflow::StatsCalculator> delegate_stats_calculator_;
 
   // Summary formatter for customized output formats.
-  std::unique_ptr<ProfileSummaryFormatter> summary_formatter_;
+  std::shared_ptr<ProfileSummaryFormatter> summary_formatter_;
 };
 
 }  // namespace profiling

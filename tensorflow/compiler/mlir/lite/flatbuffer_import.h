@@ -35,9 +35,9 @@ namespace tflite {
 // are not ancestors of the output nodes will be pruned.
 mlir::OwningModuleRef FlatBufferToMlir(
     absl::string_view buffer, mlir::MLIRContext* context,
-    mlir::Location base_loc,
-    const std::vector<std::string>& ordered_output_arrays,
-    bool use_external_constant = false,
+    mlir::Location base_loc, bool use_external_constant = false,
+    const std::vector<std::string>& ordered_input_arrays = {},
+    const std::vector<std::string>& ordered_output_arrays = {},
     bool experimental_prune_unreachable_nodes_unconditionally = false);
 }  // namespace tflite
 

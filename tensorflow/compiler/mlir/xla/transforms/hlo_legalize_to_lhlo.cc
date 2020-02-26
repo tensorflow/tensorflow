@@ -16,7 +16,7 @@ limitations under the License.
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
 #include "absl/memory/memory.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/hlo_shape_derivation.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
@@ -47,6 +48,48 @@ Operation* FindInsertionPointForCopy(Value value) {
     }
   }
   return nullptr;
+}
+
+Value InsertDynamicAllocAndDealloc(Location loc, Value result,
+                                   Value shape_operand,
+                                   ConversionPatternRewriter* rewriter) {
+  auto result_type = result.getType().dyn_cast<ShapedType>();
+  if (!result_type) {
+    result.getDefiningOp()->emitOpError()
+        << "tensor to buffer conversion expects ranked results";
+  }
+  auto memref_type =
+      MemRefType::get(result_type.getShape(), result_type.getElementType());
+
+  Operation* op = result.getDefiningOp();
+  auto block = op->getBlock();
+
+  // Extract the required element out of the vector.
+  SmallVector<Value, 4> dynamic_operands;
+  for (auto shape_element : llvm::enumerate(result_type.getShape())) {
+    if (shape_element.value() != ShapedType::kDynamicSize) continue;
+    Value index = rewriter->create<ConstantOp>(
+        loc, rewriter->getIntegerAttr(rewriter->getIndexType(),
+                                      shape_element.index()));
+    Value alloc_operand = rewriter->create<ExtractElementOp>(loc, shape_operand,
+                                                             ValueRange{index});
+    if (!alloc_operand.getType().isIndex()) {
+      alloc_operand = rewriter->create<IndexCastOp>(loc, alloc_operand,
+                                                    rewriter->getIndexType());
+    }
+    dynamic_operands.push_back(alloc_operand);
+  }
+
+  // Insert in front of op to ensure sizes are available.
+  OpBuilder allocBuilder(op);
+  auto alloc = allocBuilder.create<AllocOp>(loc, memref_type, dynamic_operands);
+
+  alloc.setAttr(kTempBufferAttr, rewriter->getBoolAttr(true));
+
+  allocBuilder.setInsertionPoint(block, std::prev(block->end()));
+  allocBuilder.create<DeallocOp>(loc, alloc);
+
+  return alloc;
 }
 
 Value InsertAllocAndDealloc(Location loc, Value result,
@@ -85,13 +128,52 @@ class HloToLhloOpConverter : public ConversionPattern {
       ConversionPatternRewriter& rewriter) const final {
     const auto& original_results = op->getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
-    for (auto result : original_results) {
-      buffer_args.push_back(
-          InsertAllocAndDealloc(op->getLoc(), result, &rewriter));
+    for (auto result : llvm::enumerate(original_results)) {
+      RankedTensorType resultType =
+          result.value().getType().dyn_cast<RankedTensorType>();
+      if (!resultType) {
+        return matchFailure();
+      }
+      if (resultType.hasStaticShape()) {
+        buffer_args.push_back(
+            InsertAllocAndDealloc(op->getLoc(), result.value(), &rewriter));
+      } else {
+        Value shape_value = ShapeDerivation<HloOpTy>::impl::deriveShapeFromOp(
+            op, result.index(), &rewriter);
+        if (!shape_value) {
+          return matchFailure();
+        }
+        buffer_args.push_back(InsertDynamicAllocAndDealloc(
+            op->getLoc(), result.value(), shape_value, &rewriter));
+      }
     }
     rewriter.create<LhloOpTy>(op->getLoc(), llvm::None, buffer_args,
                               op->getAttrs());
     rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
+    return matchSuccess();
+  }
+};
+
+struct HloToLHloDynamicBroadcastInDimOpConverter
+    : public OpConversionPattern<xla_hlo::DynamicBroadcastInDimOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      xla_hlo::DynamicBroadcastInDimOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = op.getLoc();
+    auto broadcast_dimensions = op.broadcast_dimensions();
+    if (!broadcast_dimensions.hasValue()) {
+      return matchFailure();
+    }
+    Value resultBuffer = InsertDynamicAllocAndDealloc(
+        loc, op.getResult(), op.output_dimensions(), &rewriter);
+    rewriter.create<xla_lhlo::BroadcastInDimOp>(
+        loc, operands[0], resultBuffer, broadcast_dimensions.getValue());
+
+    rewriter.replaceOp(op, {resultBuffer});
+
     return matchSuccess();
   }
 };
@@ -254,6 +336,7 @@ struct HloLegalizeToLhlo : public ModulePass<HloLegalizeToLhlo> {
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
     target.addLegalOp<ModuleTerminatorOp>();
+    target.addLegalOp<ScalarsToDimensionTensorOp>();
     target.addIllegalDialect<xla_hlo::XlaHloDialect>();
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();
@@ -264,7 +347,8 @@ struct HloLegalizeToLhlo : public ModulePass<HloLegalizeToLhlo> {
     auto module = getModule();
     populateHLOToLHLOConversionPattern(module.getContext(), &patterns);
 
-    if (failed(applyFullConversion(module, target, patterns, nullptr))) {
+    // Do partial conversion so we can have unknown ops in tests.
+    if (failed(applyPartialConversion(module, target, patterns, nullptr))) {
       signalPassFailure();
     }
   }
@@ -354,7 +438,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
                                         OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<
-      HloToLHloReduceOpConverter,
+      HloToLHloDynamicBroadcastInDimOpConverter,
       HloToLhloFuncOpConverter,
       HloToLhloOpConverter<xla_hlo::AbsOp, xla_lhlo::AbsOp>,
       HloToLhloOpConverter<xla_hlo::AddOp, xla_lhlo::AddOp>,
@@ -379,9 +463,10 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<xla_hlo::SignOp, xla_lhlo::SignOp>,
       HloToLhloOpConverter<xla_hlo::SubOp, xla_lhlo::SubOp>,
       HloToLhloOpConverter<xla_hlo::TanhOp, xla_lhlo::TanhOp>,
+      HloToLHloReduceOpConverter,
+      StdToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,
-      HloToLhloTensorStoreOpConverter,
-      StdToLhloReturnOpConverter
+      HloToLhloTensorStoreOpConverter
   >(context);
   // clang-format on
 }

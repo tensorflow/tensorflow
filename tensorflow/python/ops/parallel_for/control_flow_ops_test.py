@@ -52,6 +52,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import stateless_random_ops
@@ -616,6 +617,20 @@ class NNTest(PForTestCase):
             labels=labels_i, logits=logits_i)
         total_loss = math_ops.reduce_sum(loss)
       return loss, g.gradient(total_loss, logits_i)
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_sparse_softmax_cross_entropy_with_logits(self):
+    logits = random_ops.random_uniform([3, 2, 4])
+    labels = random_ops.random_uniform(
+        shape=[3, 2], maxval=4, dtype=dtypes.int32)
+
+    def loop_fn(i):
+      logits_i = array_ops.gather(logits, i)
+      labels_i = array_ops.gather(labels, i)
+      loss = nn.sparse_softmax_cross_entropy_with_logits(
+          labels=labels_i, logits=logits_i)
+      return loss
 
     self._test_loop_fn(loop_fn, 3)
 
@@ -1260,6 +1275,26 @@ class StatelessIfTest(PForTestCase):
           x_i < y,  # Note that else branch is empty.
           lambda: (y - x_i, y, 1., 2.),
           lambda: (x_i - y, 0., y, 3.))
+
+    self._test_loop_fn(loop_fn, iters=5)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+@test_util.with_control_flow_v2
+class IfTest(PForTestCase):
+
+  def test_read_var(self):
+    x = [1, 2, 3, 4, 5.]
+    y = 2.5
+    z = resource_variable_ops.ResourceVariable(5.)
+
+    @def_function.function
+    def loop_fn(i):
+      x_i = array_ops.gather(x, i)
+      return cond_v2.cond_v2(
+          x_i < y,
+          lambda: z - x_i,
+          lambda: z + x_i)
 
     self._test_loop_fn(loop_fn, iters=5)
 

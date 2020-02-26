@@ -405,7 +405,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
           /*constrain_layout=*/proto.constrain_layout(),
-          /*channel_id=*/channel_id);
+          /*channel_id=*/channel_id,
+          /*use_global_device_ids=*/proto.use_global_device_ids());
       break;
     }
     case HloOpcode::kAllToAll: {
@@ -928,10 +929,10 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id) {
+    const absl::optional<int64>& channel_id, bool use_global_device_ids) {
   return absl::make_unique<HloAllReduceInstruction>(
       shape, operands, reduce_computation, replica_groups, constrain_layout,
-      channel_id);
+      channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(

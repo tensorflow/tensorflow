@@ -40,6 +40,9 @@ class ElementwiseOneArgument : public NodeShader {
       case OperationType::COS:
         source = "value_0 = cos(value_0);";
         break;
+      case OperationType::EXP:
+        source = "value_0 = exp(value_0);";
+        break;
       case OperationType::HARD_SWISH:
         source =
             "value_0 *= clamp(value_0 / 6.0 + vec4(0.5), vec4(0.0), "
@@ -139,6 +142,14 @@ class ElementwiseTwoArguments : public NodeShader {
         source = "value_0 /= value_1;";
         break;
       }
+      case OperationType::MAXIMUM: {
+        source = "value_0 = max(value_0, value_1);";
+        break;
+      }
+      case OperationType::MINIMUM: {
+        source = "value_0 = min(value_0, value_1);";
+        break;
+      }
       case OperationType::POW: {
         // From documentation :
         // The result is undefined if x<0 or if x=0 and y≤0.
@@ -156,6 +167,37 @@ class ElementwiseTwoArguments : public NodeShader {
     }
     *generated_code = {
         /*parameters=*/{},
+        /*objects=*/{},
+        /*shared_variables=*/{},
+        /*workload=*/uint3(),
+        /*workgroup=*/uint3(),
+        /*source_code=*/source,
+        /*input=*/IOStructure::AUTO,
+        /*output=*/IOStructure::AUTO,
+    };
+    return OkStatus();
+  }
+
+  Status ImplementElementwiseWithScalar(const GenerationContext& ctx,
+                                        const float scalar,
+                                        GeneratedCode* generated_code) const {
+    std::string source;
+    switch (operation_type_) {
+      case OperationType::MAXIMUM: {
+        source = "value_0 = max(value_0, $scalar$);";
+        break;
+      }
+      case OperationType::MINIMUM: {
+        source = "value_0 = min(value_0, $scalar$);";
+        break;
+      }
+
+      default:
+        return InvalidArgumentError(
+            "Incorrect elementwise with scalar operation type.");
+    }
+    *generated_code = {
+        /*parameters=*/{{"scalar", scalar}},
         /*objects=*/{},
         /*shared_variables=*/{},
         /*workload=*/uint3(),
@@ -219,8 +261,17 @@ class ElementwiseTwoArguments : public NodeShader {
     if (IsSupportedBroadcast(ctx)) {
       return ImplementElementwiseBroadcast(ctx, generated_code);
     }
+    const ElementwiseAttributes* attr =
+        absl::any_cast<ElementwiseAttributes>(&ctx.node->operation.attributes);
+    if (attr) {
+      auto scalar = absl::get_if<float>(&attr->param);
+      if (scalar) {
+        return ImplementElementwiseWithScalar(ctx, *scalar, generated_code);
+      }
+    }
     return InvalidArgumentError(
-        "This case is not supported by subtract operation");
+        "This case is not supported by elementwise with two arguments "
+        "operation");
   }
 
  private:
@@ -234,6 +285,7 @@ std::unique_ptr<NodeShader> NewElementwiseNodeShader(
   switch (operation_type) {
     case OperationType::ABS:
     case OperationType::COS:
+    case OperationType::EXP:
     case OperationType::LOG:
     case OperationType::HARD_SWISH:
     case OperationType::RSQRT:
@@ -244,6 +296,8 @@ std::unique_ptr<NodeShader> NewElementwiseNodeShader(
     case OperationType::TANH:
       return absl::make_unique<ElementwiseOneArgument>(operation_type);
     case OperationType::DIV:
+    case OperationType::MAXIMUM:
+    case OperationType::MINIMUM:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
     case OperationType::SUB:

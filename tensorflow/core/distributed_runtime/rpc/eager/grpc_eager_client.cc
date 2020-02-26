@@ -115,6 +115,10 @@ class GrpcEagerClient : public EagerClient {
   }
   ~GrpcEagerClient() override { thread_->Unref(); }
 
+  bool allow_multiple_pending_requests() const override {
+    return EnableStreaming();
+  }
+
 #define CLIENT_METHOD(method)                                             \
   void method##Async(const method##Request* request,                      \
                      method##Response* response, StatusCallback done)     \

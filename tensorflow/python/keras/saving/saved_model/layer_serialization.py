@@ -68,6 +68,8 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
         hasattr(self.obj.activity_regularizer, 'get_config')):
       metadata['activity_regularizer'] = generic_utils.serialize_keras_object(
           self.obj.activity_regularizer)
+    if self.obj._build_input_shape is not None:  # pylint: disable=protected-access
+      metadata['build_input_shape'] = self.obj._build_input_shape  # pylint: disable=protected-access
     return metadata
 
   def objects_to_serialize(self, serialization_cache):

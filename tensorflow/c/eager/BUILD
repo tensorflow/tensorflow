@@ -28,6 +28,8 @@ tf_cuda_library(
         "c_api_debug.cc",
         "c_api_experimental.h",
         "c_api_internal.h",
+        "operation_interface.cc",
+        "operation_interface.h",
         "tensor_handle_interface.h",
     ],
     hdrs = ["c_api.h"],
@@ -56,6 +58,7 @@ tf_cuda_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
+            "//tensorflow/core/platform:casts",
             "//tensorflow/core/platform:errors",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/profiler/lib:traceme",
@@ -92,6 +95,7 @@ filegroup(
     srcs = [
         "c_api_experimental.h",
         "c_api_internal.h",
+        "operation_interface.h",
         "tensor_handle_interface.h",
     ],
     visibility = [
@@ -104,6 +108,7 @@ tf_cuda_library(
     name = "c_api_internal",
     srcs = [
         "c_api_experimental.h",
+        "operation_interface.h",
         "tensor_handle_interface.h",
     ],
     hdrs = ["c_api_internal.h"],
@@ -128,6 +133,7 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@com_google_absl//absl/container:fixed_array",
     ],
 )
 
@@ -199,6 +205,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/platform:casts",
         "@com_google_absl//absl/strings",
     ],
 )

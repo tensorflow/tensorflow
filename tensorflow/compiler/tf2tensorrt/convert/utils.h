@@ -98,13 +98,17 @@ inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
   return trt_dims;
 }
 
-// Return a string that includes compile time
-// TensorRT library version information {Maj, Min, Patch}.
+// Returns a string that includes compile time TensorRT library version
+// information {Maj, Min, Patch}.
 string GetLinkedTensorRTVersion();
 
-// Return a string that includes runtime time
-// TensorRT library version information {Maj, Min, Patch}.
+// Returns a string that includes runtime time TensorRT library version
+// information {Maj, Min, Patch}.
 string GetLoadedTensorRTVersion();
+
+// Returns true if an engine built for cached_shapes can also run actual_shapes.
+bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
+                         const std::vector<TensorShape>& cached_shapes);
 
 // Returns the number of inputs for the engine, which also correspends to the
 // number of input tensors for the network. This can differ from the number of

@@ -37,6 +37,7 @@ from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -498,7 +499,8 @@ class NormalizationLayersGraphModeOnlyTest(
 
 def _run_layernorm_correctness_test(layer, dtype='float32'):
   model = keras.models.Sequential()
-  norm = layer(input_shape=(2, 2, 2))
+  model.add(keras.layers.Lambda(lambda x: math_ops.cast(x, dtype='float16')))
+  norm = layer(input_shape=(2, 2, 2), dtype=dtype)
   model.add(norm)
   model.compile(
       loss='mse',

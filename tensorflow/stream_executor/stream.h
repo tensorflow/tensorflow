@@ -2014,7 +2014,7 @@ class Stream {
   internal::TemporaryMemoryManager *temporary_memory_manager();
 
   // Returns a debugging string "[stream=0x...,impl=0x...]".
-  string DebugStreamPointers() const;
+  std::string DebugStreamPointers() const;
 
  private:
   friend class host::HostBlas;  // for parent_.

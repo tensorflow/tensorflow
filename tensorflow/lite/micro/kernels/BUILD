@@ -190,6 +190,7 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
@@ -203,6 +204,7 @@ tflite_micro_cc_test(
     deps = [
         ":portable_optimized_ops_resolver",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
     ],

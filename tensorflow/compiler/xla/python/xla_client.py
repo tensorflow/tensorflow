@@ -1725,6 +1725,7 @@ _OTHER_OPS = [
     'Rev',
     'Select',
     'SliceInDim',
+    'TopK',
 ]
 
 

@@ -254,24 +254,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return (inferenceDurationNanoseconds < 0) ? null : inferenceDurationNanoseconds;
   }
 
-  /**
-   * Gets the quantization zero point of an output.
-   *
-   * @throws IllegalArgumentException if the output index is invalid.
-   */
-  int getOutputQuantizationZeroPoint(int index) {
-    return getOutputQuantizationZeroPoint(interpreterHandle, index);
-  }
-
-  /**
-   * Gets the quantization scale of an output.
-   *
-   * @throws IllegalArgumentException if the output index is invalid.
-   */
-  float getOutputQuantizationScale(int index) {
-    return getOutputQuantizationScale(interpreterHandle, index);
-  }
-
   /** Gets the number of input tensors. */
   int getInputTensorCount() {
     return inputTensors.length;
@@ -373,10 +355,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   }
 
   private static native int getOutputDataType(long interpreterHandle, int outputIdx);
-
-  private static native int getOutputQuantizationZeroPoint(long interpreterHandle, int outputIdx);
-
-  private static native float getOutputQuantizationScale(long interpreterHandle, int outputIdx);
 
   private static final int ERROR_BUFFER_SIZE = 512;
 

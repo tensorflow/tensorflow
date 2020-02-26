@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OPERATION_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OPERATION_H_
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
@@ -55,17 +56,19 @@ class EagerOperation {
   bool is_function() const { return is_function_; }
 
   tensorflow::EagerContext& EagerContext() { return ctx_; }
+  const tensorflow::EagerContext& EagerContext() const { return ctx_; }
 
   AttrBuilder* MutableAttrs() { return &attrs_; }
   const AttrBuilder& Attrs() const { return attrs_; }
   const tensorflow::OpDef* OpDef() const { return op_def_; }
 
-  const gtl::InlinedVector<TensorHandle*, 4>& Inputs() const { return inputs_; }
-  gtl::InlinedVector<TensorHandle*, 4>* MutableInputs() { return &inputs_; }
+  const absl::InlinedVector<TensorHandle*, 4>& Inputs() const {
+    return inputs_;
+  }
+  absl::InlinedVector<TensorHandle*, 4>* MutableInputs() { return &inputs_; }
 
   void AddInput(TensorHandle* h);
   void UpdateInput(int i, TensorHandle* h);
-  void ConsumeInput(TensorHandle* h);
 
   const string& Name() const { return attrs_.op_name(); }
   const AttrTypeMap* AttrTypes() const { return attr_types_; }
@@ -139,7 +142,7 @@ class EagerOperation {
   tensorflow::EagerContext& ctx_;
   AttrBuilder attrs_;
   const AttrTypeMap* attr_types_;
-  gtl::InlinedVector<TensorHandle*, 4> inputs_;
+  absl::InlinedVector<TensorHandle*, 4> inputs_;
   absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> device_;
   string raw_device_name_;
   string device_name_;
@@ -171,11 +174,6 @@ inline void EagerOperation::UpdateInput(int i, TensorHandle* h) {
     existing->Unref();
     *slot = h;  // Update inputs_[i] to h
   }
-}
-
-inline void EagerOperation::ConsumeInput(TensorHandle* h) {
-  inputs_.push_back(h);
-  attrs_.NumInputs(static_cast<int>(inputs_.size()));
 }
 }  // namespace tensorflow
 

@@ -90,6 +90,8 @@ std::string ToString(enum OperationType op) {
       return "depthwise_convolution";
     case OperationType::DIV:
       return "div";
+    case OperationType::EXP:
+      return "exp";
     case OperationType::FULLY_CONNECTED:
       return "fully_connected";
     case OperationType::HARD_SWISH:
@@ -98,10 +100,14 @@ std::string ToString(enum OperationType op) {
       return "log";
     case OperationType::LSTM:
       return "lstm";
+    case OperationType::MAXIMUM:
+      return "maximum";
     case OperationType::MAX_UNPOOLING_2D:
       return "max_unpooling";
     case OperationType::MEAN:
       return "mean";
+    case OperationType::MINIMUM:
+      return "minimum";
     case OperationType::MUL:
       return "mul";
     case OperationType::PAD:
@@ -130,6 +136,8 @@ std::string ToString(enum OperationType op) {
       return "softmax";
     case OperationType::SPACE_TO_BATCH:
       return "space_to_batch";
+    case OperationType::SPACE_TO_DEPTH:
+      return "space_to_depth";
     case OperationType::SQRT:
       return "sqrt";
     case OperationType::SQUARE:
@@ -161,12 +169,15 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"cos", OperationType::COS},
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
           {"div", OperationType::DIV},
+          {"exp", OperationType::EXP},
           {"fully_connected", OperationType::FULLY_CONNECTED},
           {"hard_swish", OperationType::HARD_SWISH},
           {"log", OperationType::LOG},
           {"lstm", OperationType::LSTM},
+          {"maximum", OperationType::MAXIMUM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
           {"mean", OperationType::MEAN},
+          {"minimum", OperationType::MINIMUM},
           {"mul", OperationType::MUL},
           {"pad", OperationType::PAD},
           {"pooling_2d", OperationType::POOLING_2D},
@@ -180,6 +191,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"sin", OperationType::SIN},
           {"slice", OperationType::SLICE},
           {"softmax", OperationType::SOFTMAX},
+          {"space_to_depth", OperationType::SPACE_TO_DEPTH},
           {"sqrt", OperationType::SQRT},
           {"square", OperationType::SQUARE},
           {"squared_diff", OperationType::SQUARED_DIFF},

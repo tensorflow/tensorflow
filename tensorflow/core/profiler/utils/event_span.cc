@@ -19,6 +19,7 @@ limitations under the License.
 #include <thread>  // NOLINT
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
@@ -219,9 +220,20 @@ std::string PrintEventTypeSpan(const EventTypeSpan& event_type_span) {
                       event_type_span.span.DebugString(), ")");
 }
 
+absl::string_view PrintStepMarkerType(StepMarkerType type) {
+  switch (type) {
+    case StepMarkerType::kExplicitHostStepMarker:
+      return "ExplicitHostStepMarker";
+    case StepMarkerType::kImplicitHostStepMarker:
+      return "ImplicitHostStepMarker";
+    case StepMarkerType::kDeviceStepMarker:
+      return "DeviceStepMarker";
+  }
+}
+
 std::string PrintStepMarker(const StepMarker& step_marker) {
-  std::string device_or_host = step_marker.on_device ? "device" : "host";
-  return absl::StrCat("(", device_or_host, ", ", step_marker.event_name, ", ",
+  return absl::StrCat("(", PrintStepMarkerType(step_marker.type), ", ",
+                      step_marker.event_name, ", ",
                       step_marker.span.DebugString(), ")");
 }
 
@@ -287,15 +299,24 @@ void StepDetails::AppendEvents(const std::vector<EventTypeSpan>& other_events) {
 }
 
 Timespan StepDetails::StepTime() const {
-  // If there are multiple step-markers, uses the one that has the maximum
-  // duration.
-  Timespan max_steptime;
+  Timespan max_host_step_time;
+  Timespan max_device_step_time;
   for (const auto& marker : markers_) {
-    const Timespan& timespan = marker.span;
-    if (timespan.duration_ps() > max_steptime.duration_ps())
-      max_steptime = timespan;
+    Timespan& cur_max_step_time =
+        marker.type == StepMarkerType::kDeviceStepMarker ? max_device_step_time
+                                                         : max_host_step_time;
+    const Timespan& new_step_time = marker.span;
+    if (new_step_time.duration_ps() > cur_max_step_time.duration_ps())
+      cur_max_step_time = new_step_time;
   }
-  return max_steptime;
+  // If the host step time includes the device step time, use the host step
+  // time. This covers two cases: (1) the device step marker is not available
+  // (e.g., CPU-only profiles) and (2) the device is synchronized at the end of
+  // each step.
+  if (max_host_step_time.Includes(max_device_step_time)) {
+    return max_host_step_time;
+  }
+  return max_device_step_time;
 }
 
 std::string StepDetails::DebugString() const {

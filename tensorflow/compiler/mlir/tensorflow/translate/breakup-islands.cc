@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
@@ -60,7 +60,7 @@ void BreakUpIslands::runOnFunction() {
         getOperation().getBody().front().front());
   }
   if (!graph_op) {
-    getOperation().emitError("Expected function to contain only a graph_op");
+    getOperation().emitError("expected function to contain only a graph_op");
     signalPassFailure();
     return;
   }
@@ -239,7 +239,7 @@ void BreakUpIslands::BreakUpIsland(
     } else {
       // TODO(parkers): Any defining op that has a control output can be handled
       // just like an island.
-      fetch.getDefiningOp()->emitError("Fetching non-island as dependency.");
+      fetch.getDefiningOp()->emitError("fetching non-island as dependency");
       return signalPassFailure();
     }
   }
@@ -298,18 +298,21 @@ void BreakUpIslands::BreakUpIsland(
   auto& sink_island_control = sink_island_controls[0];
   island_op.control().replaceAllUsesWith(sink_island_control);
   // All existing outputs need to add sink_island_control as control input.
+  // GraphOp, YieldOp and NextIterationSourceOp don't have control inputs so
+  // exclude them below.
   for (Value out : island_op.outputs()) {
     for (auto& use : out.getUses()) {
       Operation* owner = use.getOwner();
       if (auto other_island_op =
               llvm::dyn_cast<tf_executor::IslandOp>(owner->getParentOp())) {
         (*new_control_inputs)[other_island_op].push_back(sink_island_control);
-      } else if (llvm::isa<tf_executor::FetchOp>(owner) ||
-                 llvm::isa<tf_executor::MergeOp>(owner) ||
-                 llvm::isa<tf_executor::SwitchOp>(owner)) {
+      } else if (owner->getDialect() == island_op.getDialect() &&
+                 !llvm::isa<tf_executor::GraphOp>(owner) &&
+                 !llvm::isa<tf_executor::YieldOp>(owner) &&
+                 !llvm::isa<tf_executor::NextIterationSourceOp>(owner)) {
         (*new_control_inputs)[owner].push_back(sink_island_control);
       } else {
-        use.getOwner()->emitError("Adding control dependency not supported");
+        owner->emitOpError("adding control dependency not supported");
         return signalPassFailure();
       }
     }

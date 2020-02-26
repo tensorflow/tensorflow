@@ -194,8 +194,8 @@ Device* DynamicDeviceMgr::HostCPU() const {
   }
   cpu_device_ = nullptr;
   for (const auto& pair : dynamic_devices_) {
-    std::cerr << "WOWZA: " << pair.first << std::endl;
-    if (pair.first->device_type() == DEVICE_CPU) {
+    if (pair.first->device_type() == DEVICE_CPU &&
+        pair.first->parsed_name().id == 0) {
       cpu_device_ = pair.first;
       break;
     }

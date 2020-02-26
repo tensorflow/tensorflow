@@ -1128,7 +1128,7 @@ class TracingCallbackTest(
         # 1st element: tensor ID; 2nd element: 0 indicating no inf or nan.
         self.assertAllClose(trace.debug_tensor_value, [tensor_id, 0])
     elif tensor_debug_mode == "CONCISE_HEALTH":
-      for tensor_value in tensor_values:
+      for trace in graph_exec_traces:
         tensor_id = reader.graph_execution_trace_to_tensor_id(trace)
         # 1st element: tensor ID.
         # 2nd element: element count. Remaining elements: all zero because there

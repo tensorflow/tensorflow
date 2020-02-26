@@ -32,6 +32,13 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+// TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
+// to look up tensorflow op name from hlo_module/hlo_op.
+absl::string_view DummySymbolResolver(absl::string_view hlo_module,
+                                      absl::string_view hlo_op) {
+  return absl::string_view();
+}
+
 // Helper for deriving an XLine from events in another XLine.
 class DerivedXLineBuilder {
  public:
@@ -147,7 +154,7 @@ void ProcessTfOpEvent(const XEventVisitor& event,
 
 void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                  const EventGroupNameMap& event_group_name_map,
-                                 XPlane* device_trace) {
+                                 XPlane* device_trace, bool step_info_only) {
   // Merge and sort events by Timespan as they come from different lines.
   std::vector<XEventVisitor> events;
   uint64 start_timestamp_ns = 0;
@@ -203,6 +210,8 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                 event, group_id);
       }
     }
+
+    if (step_info_only) continue;
 
     // For HLO/TF op lines, only use kernel events (i.e. excluding memcpy or
     // allocation events).
@@ -331,17 +340,21 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
 }
 
 void GenerateDerivedTimeLines(const EventGroupNameMap& event_group_name_map,
-                              XSpace* space) {
-  // TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
-  // to look up tensorflow op name from hlo_module/hlo_op.
-  auto symbol_resolver = [&](absl::string_view hlo_module,
-                             absl::string_view hlo_op) -> absl::string_view {
-    return absl::string_view();
-  };
+                              XSpace* space, bool step_info_only) {
   for (XPlane& plane : *space->mutable_planes()) {
     // Derived timelines only generated for device traces.
     if (plane.id() == kHostPlaneId) continue;
-    DeriveEventsFromAnnotations(symbol_resolver, event_group_name_map, &plane);
+    DeriveEventsFromAnnotations(DummySymbolResolver, event_group_name_map,
+                                &plane, step_info_only);
+  }
+}
+
+void GenerateDerivedTimeLines(const EventGroupNameMap& event_group_name_map,
+                              const std::vector<XPlane*>& device_traces,
+                              bool step_info_only) {
+  for (XPlane* plane : device_traces) {
+    DeriveEventsFromAnnotations(DummySymbolResolver, event_group_name_map,
+                                plane, step_info_only);
   }
 }
 
