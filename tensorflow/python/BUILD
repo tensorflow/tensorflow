@@ -1642,11 +1642,21 @@ py_library(
     srcs = ["framework/auto_control_deps.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":auto_control_deps_utils",
         ":control_flow_ops",
         ":framework_ops",
         ":sparse_tensor",
         ":tensor_array_ops",
         ":util",
+    ],
+)
+
+py_library(
+    name = "auto_control_deps_utils",
+    srcs = ["framework/auto_control_deps_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
     ],
 )
 
@@ -2155,6 +2165,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":auto_control_deps_utils",
         ":constant_op",
         ":control_flow_ops",
         ":framework_ops",
@@ -3353,6 +3364,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":auto_control_deps_utils",
         ":c_api_util",
         ":control_flow_util_v2",
         ":framework_ops",
@@ -3379,6 +3391,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":auto_control_deps_utils",
         ":constant_op",
         ":control_flow_ops",
         ":control_flow_util",
@@ -3984,6 +3997,7 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":auto_control_deps_utils",
         ":dtypes",
         ":framework_ops",
         ":pywrap_tf_session",

@@ -90,7 +90,7 @@ gentbl(
     td_file = "ir/tf_saved_model_ops.td",
     td_srcs = [
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
-        "@llvm-project//mlir:include/mlir/Dialect/StandardOps/Ops.td",
+        "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
     ],
 )
 
@@ -114,7 +114,7 @@ gentbl(
     td_file = "ir/tf_executor_ops.td",
     td_srcs = [
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
-        "@llvm-project//mlir:include/mlir/Dialect/StandardOps/Ops.td",
+        "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
     ],
 )
 
@@ -138,7 +138,7 @@ gentbl(
     td_file = "ir/tf_device_ops.td",
     td_srcs = [
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
-        "@llvm-project//mlir:include/mlir/Dialect/StandardOps/Ops.td",
+        "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
     ],
 )
 

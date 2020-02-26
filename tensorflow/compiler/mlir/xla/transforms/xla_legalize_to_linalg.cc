@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/AffineExpr.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -83,7 +83,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
       emitError(loc, "lhlo to linalg conversion expects ranked args");
       return ConversionPattern::matchFailure();
     }
-    if (!argType.getElementType().isIntOrFloat()) {
+    if (!argType.getElementType().isSignlessIntOrFloat()) {
       return ConversionPattern::matchFailure();
     }
 
@@ -171,7 +171,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
     auto loc = lhlo_op.getLoc();
     auto argType =
         lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
-    if (!argType || !argType.getElementType().isIntOrFloat() ||
+    if (!argType || !argType.getElementType().isSignlessIntOrFloat() ||
         (argType.getRank() != 0)) {
       return ConversionPattern::matchFailure();
     }
@@ -385,7 +385,7 @@ class IotaConverter : public OpConversionPattern<xla_lhlo::IotaOp> {
     if (!resultMemrefType) return matchFailure();
 
     auto resultElementType = resultMemrefType.getElementType();
-    if (!resultElementType.isIntOrFloat()) return matchFailure();
+    if (!resultElementType.isSignlessIntOrFloat()) return matchFailure();
 
     // Construct the indexing maps needed for linalg.generic ops.
     unsigned nloops = resultMemrefType.getRank();

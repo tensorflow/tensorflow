@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/cloud/retrying_utils.h"
+#include "tensorflow/core/platform/retrying_utils.h"
 
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"

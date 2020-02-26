@@ -360,6 +360,37 @@ MetricCollector<metric_kind, Value, NumLabels> MetricCollectorGetter::Get(
                                         collector_);
 }
 
+class Exporter {
+ public:
+  virtual ~Exporter() {}
+  virtual void PeriodicallyExportMetrics() = 0;
+  virtual void ExportMetrics() = 0;
+};
+
+namespace exporter_registration {
+
+class ExporterRegistration {
+ public:
+  explicit ExporterRegistration(Exporter* exporter) : exporter_(exporter) {
+    exporter_->PeriodicallyExportMetrics();
+  }
+
+ private:
+  Exporter* exporter_;
+};
+
+}  // namespace exporter_registration
+
+#define REGISTER_TF_METRICS_EXPORTER(exporter) \
+  REGISTER_TF_METRICS_EXPORTER_UNIQ_HELPER(__COUNTER__, exporter)
+
+#define REGISTER_TF_METRICS_EXPORTER_UNIQ_HELPER(ctr, exporter) \
+  REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)
+
+#define REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)                       \
+  static ::tensorflow::monitoring::exporter_registration::ExporterRegistration \
+      exporter_registration_##ctr(new exporter())
+
 }  // namespace monitoring
 }  // namespace tensorflow
 

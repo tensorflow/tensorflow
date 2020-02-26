@@ -178,8 +178,8 @@ class KernelBase {
   KernelCacheConfig GetPreferredCacheConfig() const;
 
   void set_name(absl::string_view name);
-  const string &name() const { return name_; }
-  const string &demangled_name() const { return demangled_name_; }
+  const std::string &name() const { return name_; }
+  const std::string &demangled_name() const { return demangled_name_; }
 
  private:
   // The StreamExecutor that loads this kernel object.
@@ -188,8 +188,8 @@ class KernelBase {
   // Implementation delegated to for platform-specific functionality.
   std::unique_ptr<internal::KernelInterface> implementation_;
 
-  string name_;
-  string demangled_name_;
+  std::string name_;
+  std::string demangled_name_;
 
   KernelMetadata metadata_;
 
