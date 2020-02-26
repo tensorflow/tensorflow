@@ -215,6 +215,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     }
 
     // BatchNorm forward primitive.
+    //TODO : Merge all the #ifdefs and simplify code
     if (!fwdParams.training && !(IS_SET(use_global_stats))) {
 #ifdef ENABLE_MKLDNN_V1
       if ((IS_SET(use_scale_shift)) && mkldnn_use_scaleshift) {
@@ -431,6 +432,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
 
 #ifdef ENABLE_MKLDNN_V1
     // Execute backward batch-normalization primitives.
+    //TODO Use execute_primitive instead of the inlined code.
     DCHECK_EQ(context_.bwd_primitives.size(), context_.net_args.size());
     for (size_t i = 0; i < context_.bwd_primitives.size(); ++i) {
       context_.bwd_primitives.at(i).execute(*context_.bwd_stream,
