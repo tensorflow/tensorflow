@@ -251,7 +251,7 @@ class BaseSaverBuilder(object):
     # prefix directly, instead of any physical pathname.  (On failure and
     # subsequent restore, an outdated and orphaned temporary directory can be
     # safely removed.)
-    _SHARDED_SUFFIX = control_flow_ops.cond(
+    _SHARDED_SUFFIX = control_flow_ops.where(
         string_ops.regex_full_match(checkpoint_prefix, '^s3://.*'),
         lambda: ".part",
         lambda: "_temp_%s/part" % uuid.uuid4().hex)
