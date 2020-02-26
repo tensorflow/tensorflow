@@ -177,6 +177,12 @@ from tensorflow.python.keras.layers.pooling import GlobalMaxPool1D
 from tensorflow.python.keras.layers.pooling import GlobalMaxPool2D
 from tensorflow.python.keras.layers.pooling import GlobalMaxPool3D
 
+# Differentiating layers.
+from tensorflow.python.keras.layers.differentiating import Differentiating1D
+
+# Differentiating layer aliases.
+from tensorflow.python.keras.layers.differentiating import Diff1D
+
 # Recurrent layers.
 from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.keras.layers.recurrent import AbstractRNNCell

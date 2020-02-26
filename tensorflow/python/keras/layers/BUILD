@@ -35,6 +35,7 @@ py_library(
         ":normalization",
         ":normalization_v2",
         ":pooling",
+        ":differentiating",
         ":recurrent",
         ":recurrent_v2",
         ":rnn_cell_wrapper_v2",
@@ -325,6 +326,24 @@ py_library(
 )
 
 py_library(
+    name = "differentiating",
+    srcs = ["differentiating.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:base_layer",
+        "//tensorflow/python/keras/engine:input_spec",
+        "//tensorflow/python/keras/utils:engine_utils",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "recurrent",
     srcs = ["recurrent.py"],
     srcs_version = "PY2AND3",
@@ -508,6 +527,21 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     # TODO(b/127881287): Re-enable.
+    tags = [
+        "no_windows_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "differentiating_test",
+    size = "medium",
+    srcs = ["differentiating_test.py"],
+    python_version = "PY3",
     tags = [
         "no_windows_gpu",
     ],
