@@ -4194,6 +4194,7 @@ cuda_py_test(
     srcs = ["ops/stateful_random_ops_test.py"],
     python_version = "PY3",
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         ":client_testlib",
         ":config",
