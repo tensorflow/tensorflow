@@ -278,7 +278,8 @@ Status PosixFileSystem::CreateDir(const string& name) {
   if (translated.empty()) {
     return errors::AlreadyExists(name);
   }
-  if (mkdir(translated.c_str(), 0755) != 0) {
+  // Note: 0777 (511) matches python's default behavior
+  if (mkdir(translated.c_str(), 0777) != 0) {
     return IOError(name, errno);
   }
   return Status::OK();
