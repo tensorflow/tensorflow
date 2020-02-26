@@ -197,6 +197,10 @@ struct NodeItem {
   // Number of output edges.
   size_t num_output_edges;
 
+  // If non-null, contains an array of num_outputs bools, where the ith bool
+  // is true if and only if the ith output is consumed by another node.
+  std::unique_ptr<bool[]> outputs_required;
+
   const EdgeInfo* output_edge_list() const { return output_edge_base(); }
 
   // ith output edge.
@@ -708,19 +712,24 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     }
 
     // Record information about whether each output of the op is used.
-    std::vector<bool> used_outputs(n->num_outputs(), false);
+    std::unique_ptr<bool[]> outputs_required(new bool[n->num_outputs()]);
+    std::fill(&outputs_required[0], &outputs_required[n->num_outputs()], false);
+    size_t unused_outputs = n->num_outputs();
     for (const Edge* e : n->out_edges()) {
       if (e->src_output() >= 0) {
-        used_outputs[e->src_output()] = true;
+        if (!outputs_required[e->src_output()]) {
+          --unused_outputs;
+          outputs_required[e->src_output()] = true;
+        }
       }
     }
-    int i = 0;
-    for (bool used_output : used_outputs) {
-      if (!used_output) {
-        metrics::RecordUnusedOutput(n->type_string());
-        item->kernel->set_output_required(i, false);
+    if (unused_outputs > 0) {
+      for (int i = 0; i < n->num_outputs(); ++i) {
+        if (!outputs_required[i]) {
+          metrics::RecordUnusedOutput(n->type_string());
+        }
       }
-      ++i;
+      item->outputs_required = std::move(outputs_required);
     }
   }
 
@@ -1826,6 +1835,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
       params.is_input_dead = is_input_dead;
       params.output_attr_array = item.output_attrs();
       params.forward_from_array = item.forward_from();
+      params.outputs_required_array = item.outputs_required.get();
 
       if (item.kernel_is_async) {
         // Asynchronous computes.
@@ -2098,7 +2108,8 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
     if (val.tensor == nullptr) {
       // Unless it's a Switch or a Recv, or the executor has marked the output
       // as not required, the node must produce a tensor value at i-th output.
-      if (!(item.is_recv_or_switch || !item.kernel->output_required(i))) {
+      if (!(item.is_recv_or_switch ||
+            (item.outputs_required && !item.outputs_required[i]))) {
         s.Update(errors::Internal("Missing ", i, "-th output from ",
                                   FormatNodeDefForError(item.kernel->def())));
       }
