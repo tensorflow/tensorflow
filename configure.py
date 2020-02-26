@@ -49,8 +49,8 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '1.2.1'
-_TF_MAX_BAZEL_VERSION = '1.2.1'
+_TF_MIN_BAZEL_VERSION = '2.0.0'
+_TF_MAX_BAZEL_VERSION = '2.0.0'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -1221,7 +1221,7 @@ def is_reduced_optimize_huge_functions_available(environ_cp):
   only, as of 2019-11-19). TensorFlow needs this flag to massively reduce
   compile times, but until 16.4 is officially released, we can't depend on it.
 
-  See also https://groups.google.com/a/tensorflow.org/g/build/c/SsW98Eo7l3o
+  See also https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
 
   Because it's very annoying to check this manually (to check the MSVC installed
   versions, you need to use the registry, and it's not clear if Bazel will be
@@ -1389,10 +1389,6 @@ def main():
     environ_cp['TF_NEED_TENSORRT'] = '0'
   else:
     environ_cp['TF_CONFIGURE_IOS'] = '0'
-
-  xla_enabled_by_default = is_linux() or is_macos()
-  set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
-                xla_enabled_by_default, 'xla')
 
   set_action_env_var(
       environ_cp,

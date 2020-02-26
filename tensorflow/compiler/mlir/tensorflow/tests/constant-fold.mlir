@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -test-constant-fold | FileCheck %s
+// RUN: tf-opt %s -canonicalize | FileCheck %s
 
 // CHECK-LABEL: func @testShape
 func @testShape(tensor<f32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0xi32>, tensor<?xi32>, tensor<?xi32>) {

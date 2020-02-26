@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
@@ -962,6 +963,22 @@ absl::optional<string> MarkForCompilationPassImpl::GetXlaScope(Node* node) {
   return absl::nullopt;
 }
 
+// Returns true iff the attribute `attr_name` is attached to either the node or
+// to it's callee.
+static bool GetNodeOrFuncAttr(Node* node, FunctionLibraryDefinition* flib_def,
+                              const char* attr_name) {
+  bool out = false;
+  bool attr_value;
+  if (TryGetNodeAttr(node->attrs(), attr_name, &attr_value)) {
+    out |= attr_value;
+  }
+
+  if (flib_def->GetAttr(*node, attr_name, &attr_value).ok()) {
+    out |= attr_value;
+  }
+  return out;
+}
+
 Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
   auto ignore_resource_ops = [&](const Node& n, bool* ignore) {
     return IgnoreResourceOpForSafetyAnalysis(&device_info_cache_, n, ignore);
@@ -1015,16 +1032,9 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
       resource_var_operation_node_id = node->id();
     }
 
-    bool is_xla_compile_attr_true = false;
-
-    bool xla_compile_attr;
-    if (TryGetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr)) {
-      is_xla_compile_attr_true |= xla_compile_attr;
-    }
-
-    if (flib_def_->GetAttr(*node, kXlaCompileAttr, &xla_compile_attr).ok()) {
-      is_xla_compile_attr_true |= xla_compile_attr;
-    }
+    bool is_xla_compile_attr_true =
+        GetNodeOrFuncAttr(node, flib_def_, kXlaCompileAttr) ||
+        GetNodeOrFuncAttr(node, flib_def_, kXlaMustCompileAttr);
 
     DeviceSet devices;
     devices.Insert(device);
@@ -1616,8 +1626,8 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
 
   if (!should_compile && global_jit_level_ != OptimizerOptions::OFF &&
       device_type.type_string() == DEVICE_CPU) {
-    static std::once_flag once;
-    std::call_once(once, [] {
+    static absl::once_flag once;
+    absl::call_once(once, [] {
       LOG(WARNING)
           << "(One-time warning): Not using XLA:CPU for cluster because envvar "
              "TF_XLA_FLAGS=--tf_xla_cpu_global_jit was not set.  If you want "
@@ -1776,9 +1786,9 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
             "Lgamma", "Digamma",
             // Binary
             "Add", "AddV2", "Sub", "Mul", "Div", "Atan2", "Complex", "DivNoNan",
-            "MulNoNan", "FloorDiv", "Xlogy", "Xdivy", "FloorMod", "BitwiseAnd",
-            "BitwiseOr", "BitwiseXor", "LeftShift", "RightShift", "LogicalAnd",
-            "LogicalOr", "Mod", "Maximum", "Minimum", "RealDiv",
+            "MulNoNan", "FloorDiv", "Xlogy", "Xlog1py", "Xdivy", "FloorMod",
+            "BitwiseAnd", "BitwiseOr", "BitwiseXor", "LeftShift", "RightShift",
+            "LogicalAnd", "LogicalOr", "Mod", "Maximum", "Minimum", "RealDiv",
             "ReciprocalGrad", "RsqrtGrad", "SqrtGrad", "TruncateDiv",
             "TruncateMod", "Equal", "NotEqual", "Greater", "GreaterEqual",
             "Less", "LessEqual", "SigmoidGrad", "SoftplusGrad", "SoftsignGrad",
@@ -1872,6 +1882,10 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "Einsum",
                                      "EmptyTensorList",
                                      "ExtractImagePatches",
+                                     "Igamma",
+                                     "IgammaGradA",
+                                     "RandomGammaGrad",
+                                     "Igammac",
                                      "FFT",
                                      "FFT2D",
                                      "FFT3D",
@@ -1993,6 +2007,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "StatelessRandomNormal",
                                      "StatelessRandomUniform",
                                      "StatelessRandomUniformInt",
+                                     "StatelessRandomUniformFullInt",
                                      "StatelessTruncatedNormal",
                                      "StatelessWhile",
                                      "Svd",

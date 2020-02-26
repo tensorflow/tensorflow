@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
 #include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/AffineExpr.h"  // TF:llvm-project
 #include "mlir/IR/AffineMap.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
@@ -206,10 +206,17 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateImportQuantStatsPass(
 std::unique_ptr<OpPassBase<FuncOp>>
 CreateImportQuantStatsPassForTFControlDialect(const std::string &stats_str) {
   auto get_name_func = [](Operation *op) {
-    if (auto name = op->getAttrOfType<StringAttr>("name"))
-      return name.getValue();
-    else
-      return llvm::StringRef("");
+    Location loc = op->getLoc();
+    if (auto name = loc.dyn_cast<NameLoc>()) {
+      return name.getName().strref();
+    } else if (auto fused_name = loc.dyn_cast<FusedLoc>()) {
+      for (auto sub_loc : fused_name.getLocations()) {
+        if (auto named_sub_loc = sub_loc.dyn_cast<NameLoc>()) {
+          return named_sub_loc.getName().strref();
+        }
+      }
+    }
+    return llvm::StringRef("");
   };
 
   return CreateImportQuantStatsPass(get_name_func, stats_str);

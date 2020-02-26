@@ -8,10 +8,17 @@ ifeq ($(TARGET), xtensa-xpg)
 
   PLATFORM_ARGS = \
     -DTF_LITE_STATIC_MEMORY \
+    -DTF_LITE_STRIP_ERROR_STRINGS \
     -DNDEBUG \
     -DTF_LITE_MCU_DEBUG_LOG \
     --xtensa-core=$(XTENSA_CORE) \
-    -g -O2 \
+    -mcoproc \
+    -O3 \
+    -DXTENSA -DMAX_RFFT_PWR=9 -DMIN_RFFT_PWR=MAX_RFFT_PWR \
+    -fdata-sections \
+    -ffunction-sections \
+    -fno-exceptions \
+    -fno-unwind-tables \
     -fmessage-length=0
 
   TARGET_TOOLCHAIN_PREFIX := xt-
@@ -20,6 +27,8 @@ ifeq ($(TARGET), xtensa-xpg)
 
   CXXFLAGS = $(PLATFORM_ARGS) -std=c++11
   CCFLAGS = $(PLATFORM_ARGS) -std=c11
+
+  LDFLAGS += -Wl,-gc-sections
 
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_xtensa_xpg_binary.sh
 

@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
 #include "tensorflow/core/platform/cloud/ram_file_block_cache.h"
-#include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/cloud/time_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/retrying_utils.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -128,23 +128,8 @@ constexpr char kAllowedBucketLocations[] = "GCS_ALLOWED_BUCKET_LOCATIONS";
 // is running in and restricts to buckets in that region.
 constexpr char kDetectZoneSentinalValue[] = "auto";
 
-// TODO: DO NOT use a hardcoded path
 Status GetTmpFilename(string* filename) {
-#ifndef _WIN32
-  char buffer[] = "/tmp/gcs_filesystem_XXXXXX";
-  int fd = mkstemp(buffer);
-  if (fd < 0) {
-    return errors::Internal("Failed to create a temporary file.");
-  }
-  close(fd);
-#else
-  char buffer[] = "/tmp/gcs_filesystem_XXXXXX";
-  char* ret = _mktemp(buffer);
-  if (ret == nullptr) {
-    return errors::Internal("Failed to create a temporary file.");
-  }
-#endif
-  *filename = buffer;
+  *filename = io::GetTempFilename("");
   return Status::OK();
 }
 

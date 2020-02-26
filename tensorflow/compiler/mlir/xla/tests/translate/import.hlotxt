@@ -82,6 +82,20 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT broadcast.4 = f32[3,1,2] broadcast(%Arg_0.1), dimensions={1, 2}
 }
 
+// CHECK-LABEL:  func @test_batch_norm_grad
+%test_batch_norm_grad (input: f32[2,2,2,2], scale: f32[2], mean: f32[2], variance: f32[2], grad_output: f32[2,2,2,2]) -> (f32[2,2,2,2], f32[2], f32[2]) {
+  %input = f32[2,2,2,2] parameter(0)
+  %scale = f32[2] parameter(1)
+  %mean = f32[2] parameter(2)
+  %variance = f32[2] parameter(3)
+  %grad_output = f32[2,2,2,2] parameter(4)
+
+  // CHECK:  "xla_hlo.batch_norm_grad"
+  // CHECK-SAME:  epsilon = 1.000000e-03 : f32
+  // CHECK-SAME:  feature_index = 1 : i64
+  ROOT %batch-norm-grad = (f32[2,2,2,2], f32[2], f32[2]) batch-norm-grad(f32[2,2,2,2] %input, f32[2] %scale, f32[2] %mean, f32[2] %variance, f32[2,2,2,2] %grad_output), epsilon=0.001, feature_index=1
+}
+
 // CHECK-LABEL:  func @call(%arg0: tensor<i64>) -> tensor<i64> {
 %call (arg_1: s64[]) -> s64[] {
   %arg_1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
@@ -308,6 +322,16 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // TODO(b/129709049) consider making this default precision config inferred.
   // CHECK-NEXT:  "xla_hlo.dot_general"([[ARG0]], [[ARG1]]) {dot_dimension_numbers = {lhs_batching_dimensions = dense<[]> : tensor<0xi64>, lhs_contracting_dimensions = dense<0> : tensor<1xi64>, rhs_batching_dimensions = dense<[]> : tensor<0xi64>, rhs_contracting_dimensions = dense<1> : tensor<1xi64>}, name = "{{.*}}", precision_config = ["DEFAULT", "DEFAULT"]}
   ROOT %dot.6 = f32[] dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+// CHECK-LABEL:  func @test_dynamic_slice
+// CHECK-SAME:  [[OPERAND:%.*]]: tensor<2x2x258xi32>, [[START_INDICES:%.*]]: tensor<3xi32>
+%test_dynamic_slice (operand: s32[2,2,258], start_indices: s32[3]) -> s32[1,1,32] {
+  %operand = s32[2,2,258] parameter(0)
+  %start_indices = s32[3] parameter(1)
+  // CHECK:  "xla_hlo.dynamic-slice"([[OPERAND]], [[START_INDICES]])
+  // CHECK-SAME:  slice_sizes = dense<[1, 1, 32]> : tensor<3xi64>
+  ROOT %dynamic-slice = s32[1,1,32] dynamic-slice(s32[2,2,258] %operand, s32[3] %start_indices), dynamic_slice_sizes={1,1,32}
 }
 
 // CHECK-LABEL:  func @test_dynamic_update_slice_1(%arg0: tensor<4x4xf32>, %arg1: tensor<1x4xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<4x4xf32> {
@@ -692,6 +716,37 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %Arg_0.1 = f32[] parameter(0)
 }
 
+// Test scatter
+%update_computation {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %sum = f32[] add(f32[] %lhs, f32[] %rhs)
+}
+
+%test_scatter {
+  %input_tensor = f32[200,100,300] parameter(0)
+  %scatter_indices = s64[10,2] parameter(1)
+  %updates = f32[10,300] parameter(2)
+  ROOT %scatter = f32[200,100,300] scatter(f32[200,100,300] %input_tensor, s64[10,2] %scatter_indices, f32[10,300] %updates), update_window_dims={1}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=1, to_apply=%update_computation
+}
+
+// CHECK-LABEL:  func @test_scatter
+// CHECK-SAME:   [[ARG_0:%.*]]: tensor<200x100x300xf32>, [[ARG_1:%.*]]: tensor<10x2xi64>, [[ARG_2:%.*]]: tensor<10x300xf32>) -> tensor<200x100x300xf32>
+// CHECK:  "xla_hlo.scatter"([[ARG_0]], [[ARG_1]], [[ARG_2]]) ( {
+// CHECK:    ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
+// CHECK:      [[ADD:%.*]] = xla_hlo.add [[LHS]], [[RHS]]
+// CHECK:      "xla_hlo.return"([[ADD]]) : (tensor<f32>) -> ()
+// CHECK:    })
+// CHECK-SAME:  indices_are_sorted = false
+// CHECK-SAME:  scatter_dimension_numbers = {
+// CHECK-SAME:    index_vector_dim = 1 : i64
+// CHECK-SAME:    inserted_window_dims = dense<[0, 1]> : tensor<2xi64>
+// CHECK-SAME:    scatter_dims_to_operand_dims = dense<[0, 1]> : tensor<2xi64>
+// CHECK-SAME:    update_window_dims = dense<1> : tensor<1xi64>
+// CHECK-SAME:  }
+// CHECK-SAME:  unique_indices = false
+
+
 // CHECK-LABEL:  func @test_select(%arg0: tensor<2x3xi1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
 %test_select {
   %Arg_0.1 = pred[2,3] parameter(0)
@@ -719,6 +774,25 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %sine.3 = f32[1,16,16,3]{3,2,1,0} sine(f32[1,16,16,3]{3,2,1,0} %arg0.1)
 }
 
+// Test sort
+%compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+%test_sort {
+  x = f32[1024]{0} parameter(0)
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}, is_stable=true, to_apply=compare
+}
+// CHECK-LABEL:  func @test_sort
+// CHECK-SAME:  [[ARG:%.*]]: tensor<1024xf32>) -> tensor<1024xf32>
+// CHECK:  "xla_hlo.sort"([[ARG]]) ( {
+// CHECK:    ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+// CHECK:      [[CMP:%.*]] = "xla_hlo.compare"([[ARG0]], [[ARG1]]) {comparison_direction = "LT", name = "lt"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+// CHECK:      "xla_hlo.return"([[CMP]]) : (tensor<i1>) -> ()
+// CHECK:    }) {dimension = 0 : i64, is_stable = true} : (tensor<1024xf32>) -> tensor<1024xf32>
+
 // CHECK-LABEL:  func @test_subtract
 %test_subtract (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
@@ -742,6 +816,19 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 
   // CHECK:  "xla_hlo.transpose"(%arg0) {name = "{{.*}}", permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
   ROOT %transpose.2 = s32[2,1,4,3] transpose(s32[1,2,3,4] %Arg_0.1), dimensions={1,0,3,2}
+}
+
+// CHECK-LABEL:  func @test_triangular_solve
+// CHECK-SAME:  ([[ARG_A:%.*]]: tensor<4x4xf32>, [[ARG_B:%.*]]: tensor<4x3xf32>) -> tensor<4x3xf32>
+%test_triangular_solve (Arg_0.1: f32[4,4], Arg_1.2: f32[4,3]) -> f32[4,3] {
+  %Arg_0.1 = f32[4,4] parameter(0)
+  %Arg_1.2 = f32[4,3] parameter(1)
+  // CHECK-NEXT:  "xla_hlo.triangular_solve"([[ARG_A]], [[ARG_B]])
+  // CHECK-SAME:  left_side = true
+  // CHECK-SAME:  lower = true
+  // CHECK-SAME:  transpose_a = "NO_TRANSPOSE"
+  // CHECK-SAME:  unit_diagonal = true
+  ROOT %triangular-solve.3 = f32[4,3] triangular-solve(f32[4,4] %Arg_0.1, f32[4,3] %Arg_1.2), left_side=true, lower=true, transpose_a=NO_TRANSPOSE, unit_diagonal=true
 }
 
 // CHECK-LABEL:  func @test_tuple(%arg0: tensor<1xi32>, %arg1: tensor<1x2xf32>) -> tuple<tensor<1xi32>, tensor<1x2xf32>> {

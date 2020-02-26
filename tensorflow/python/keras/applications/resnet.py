@@ -61,6 +61,7 @@ def ResNet(stack_fn,
            input_shape=None,
            pooling=None,
            classes=1000,
+           classifier_activation='softmax',
            **kwargs):
   """Instantiates the ResNet, ResNetV2, and ResNeXt architecture.
 
@@ -103,14 +104,18 @@ def ResNet(stack_fn,
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
     **kwargs: For backwards compatibility only.
-
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
   if 'layers' in kwargs:
     global layers
@@ -147,14 +152,12 @@ def ResNet(stack_fn,
   bn_axis = 3 if backend.image_data_format() == 'channels_last' else 1
 
   x = layers.ZeroPadding2D(
-      padding=((3, 3), (3, 3)), name='conv1_pad')(
-          img_input)
+      padding=((3, 3), (3, 3)), name='conv1_pad')(img_input)
   x = layers.Conv2D(64, 7, strides=2, use_bias=use_bias, name='conv1_conv')(x)
 
   if not preact:
     x = layers.BatchNormalization(
-        axis=bn_axis, epsilon=1.001e-5, name='conv1_bn')(
-            x)
+        axis=bn_axis, epsilon=1.001e-5, name='conv1_bn')(x)
     x = layers.Activation('relu', name='conv1_relu')(x)
 
   x = layers.ZeroPadding2D(padding=((1, 1), (1, 1)), name='pool1_pad')(x)
@@ -164,13 +167,14 @@ def ResNet(stack_fn,
 
   if preact:
     x = layers.BatchNormalization(
-        axis=bn_axis, epsilon=1.001e-5, name='post_bn')(
-            x)
+        axis=bn_axis, epsilon=1.001e-5, name='post_bn')(x)
     x = layers.Activation('relu', name='post_relu')(x)
 
   if include_top:
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
-    x = layers.Dense(classes, activation='softmax', name='probs')(x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
@@ -226,32 +230,26 @@ def block1(x, filters, kernel_size=3, stride=1, conv_shortcut=True, name=None):
 
   if conv_shortcut:
     shortcut = layers.Conv2D(
-        4 * filters, 1, strides=stride, name=name + '_0_conv')(
-            x)
+        4 * filters, 1, strides=stride, name=name + '_0_conv')(x)
     shortcut = layers.BatchNormalization(
-        axis=bn_axis, epsilon=1.001e-5, name=name + '_0_bn')(
-            shortcut)
+        axis=bn_axis, epsilon=1.001e-5, name=name + '_0_bn')(shortcut)
   else:
     shortcut = x
 
   x = layers.Conv2D(filters, 1, strides=stride, name=name + '_1_conv')(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_1_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_1_bn')(x)
   x = layers.Activation('relu', name=name + '_1_relu')(x)
 
   x = layers.Conv2D(
-      filters, kernel_size, padding='SAME', name=name + '_2_conv')(
-          x)
+      filters, kernel_size, padding='SAME', name=name + '_2_conv')(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(x)
   x = layers.Activation('relu', name=name + '_2_relu')(x)
 
   x = layers.Conv2D(4 * filters, 1, name=name + '_3_conv')(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_3_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_3_bn')(x)
 
   x = layers.Add(name=name + '_add')([shortcut, x])
   x = layers.Activation('relu', name=name + '_out')(x)
@@ -295,23 +293,19 @@ def block2(x, filters, kernel_size=3, stride=1, conv_shortcut=False, name=None):
   bn_axis = 3 if backend.image_data_format() == 'channels_last' else 1
 
   preact = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_preact_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_preact_bn')(x)
   preact = layers.Activation('relu', name=name + '_preact_relu')(preact)
 
   if conv_shortcut:
     shortcut = layers.Conv2D(
-        4 * filters, 1, strides=stride, name=name + '_0_conv')(
-            preact)
+        4 * filters, 1, strides=stride, name=name + '_0_conv')(preact)
   else:
     shortcut = layers.MaxPooling2D(1, strides=stride)(x) if stride > 1 else x
 
   x = layers.Conv2D(
-      filters, 1, strides=1, use_bias=False, name=name + '_1_conv')(
-          preact)
+      filters, 1, strides=1, use_bias=False, name=name + '_1_conv')(preact)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_1_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_1_bn')(x)
   x = layers.Activation('relu', name=name + '_1_relu')(x)
 
   x = layers.ZeroPadding2D(padding=((1, 1), (1, 1)), name=name + '_2_pad')(x)
@@ -320,11 +314,9 @@ def block2(x, filters, kernel_size=3, stride=1, conv_shortcut=False, name=None):
       kernel_size,
       strides=stride,
       use_bias=False,
-      name=name + '_2_conv')(
-          x)
+      name=name + '_2_conv')(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(x)
   x = layers.Activation('relu', name=name + '_2_relu')(x)
 
   x = layers.Conv2D(4 * filters, 1, name=name + '_3_conv')(x)
@@ -382,18 +374,15 @@ def block3(x,
         1,
         strides=stride,
         use_bias=False,
-        name=name + '_0_conv')(
-            x)
+        name=name + '_0_conv')(x)
     shortcut = layers.BatchNormalization(
-        axis=bn_axis, epsilon=1.001e-5, name=name + '_0_bn')(
-            shortcut)
+        axis=bn_axis, epsilon=1.001e-5, name=name + '_0_bn')(shortcut)
   else:
     shortcut = x
 
   x = layers.Conv2D(filters, 1, use_bias=False, name=name + '_1_conv')(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_1_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_1_bn')(x)
   x = layers.Activation('relu', name=name + '_1_relu')(x)
 
   c = filters // groups
@@ -403,29 +392,21 @@ def block3(x,
       strides=stride,
       depth_multiplier=c,
       use_bias=False,
-      name=name + '_2_conv')(
-          x)
+      name=name + '_2_conv')(x)
   x_shape = backend.int_shape(x)[1:-1]
   x = layers.Reshape(x_shape + (groups, c, c))(x)
-  output_shape = x_shape + (groups,
-                            c) if backend.backend() == 'theano' else None
   x = layers.Lambda(
       lambda x: sum(x[:, :, :, :, i] for i in range(c)),
-      output_shape=output_shape,
-      name=name + '_2_reduce')(
-          x)
+      name=name + '_2_reduce')(x)
   x = layers.Reshape(x_shape + (filters,))(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_2_bn')(x)
   x = layers.Activation('relu', name=name + '_2_relu')(x)
 
   x = layers.Conv2D(
-      (64 // groups) * filters, 1, use_bias=False, name=name + '_3_conv')(
-          x)
+      (64 // groups) * filters, 1, use_bias=False, name=name + '_3_conv')(x)
   x = layers.BatchNormalization(
-      axis=bn_axis, epsilon=1.001e-5, name=name + '_3_bn')(
-          x)
+      axis=bn_axis, epsilon=1.001e-5, name=name + '_3_bn')(x)
 
   x = layers.Add(name=name + '_add')([shortcut, x])
   x = layers.Activation('relu', name=name + '_out')(x)

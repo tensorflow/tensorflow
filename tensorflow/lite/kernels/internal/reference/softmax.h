@@ -46,13 +46,15 @@ inline void Softmax(const SoftmaxParams& params,
     // Compute sum.
     float sum = 0.f;
     for (int c = 0; c < depth; ++c) {
-      sum += std::exp((input_data[i * depth + c] - max) * params.beta);
+      sum += std::exp((input_data[i * depth + c] - max) *
+                      static_cast<float>(params.beta));
     }
 
     // Compute result.
     for (int c = 0; c < depth; ++c) {
-      output_data[i * depth + c] =
-          std::exp((input_data[i * depth + c] - max) * params.beta) / sum;
+      output_data[i * depth + c] = std::exp((input_data[i * depth + c] - max) *
+                                            static_cast<float>(params.beta)) /
+                                   sum;
     }
   }
 }

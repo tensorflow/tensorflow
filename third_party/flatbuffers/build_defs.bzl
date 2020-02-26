@@ -17,7 +17,7 @@ def flatbuffer_library_public(
         include_paths = [],
         flatc_args = DEFAULT_FLATC_ARGS,
         reflection_name = "",
-        reflection_visiblity = None,
+        reflection_visibility = None,
         output_to_bindir = False):
     """Generates code files for reading/writing the given flatbuffers in the requested language using the public compiler.
 
@@ -101,7 +101,7 @@ def flatbuffer_library_public(
         #     entries = [
         #         native.FilesetEntry(files = reflection_outs),
         #     ],
-        #     visibility = reflection_visiblity,
+        #     visibility = reflection_visibility,
         # )
 
 def flatbuffer_cc_library(
@@ -191,7 +191,7 @@ def flatbuffer_cc_library(
         include_paths = include_paths,
         flatc_args = flatc_args,
         reflection_name = reflection_name,
-        reflection_visiblity = visibility,
+        reflection_visibility = visibility,
     )
     native.cc_library(
         name = name,
@@ -214,4 +214,211 @@ def flatbuffer_cc_library(
         name = srcs_filegroup_name if srcs_filegroup_name else "%s_includes" % (name),
         srcs = srcs,
         visibility = srcs_filegroup_visibility if srcs_filegroup_visibility != None else visibility,
+    )
+
+# Custom provider to track dependencies transitively.
+FlatbufferInfo = provider(
+    fields = {
+        "transitive_srcs": "flatbuffer schema definitions.",
+    },
+)
+
+def _flatbuffer_schemas_aspect_impl(target, ctx):
+    _ignore = [target]
+    transitive_srcs = depset()
+    if hasattr(ctx.rule.attr, "deps"):
+        for dep in ctx.rule.attr.deps:
+            if FlatbufferInfo in dep:
+                transitive_srcs = depset(dep[FlatbufferInfo].transitive_srcs, transitive = [transitive_srcs])
+    if hasattr(ctx.rule.attr, "srcs"):
+        for src in ctx.rule.attr.srcs:
+            if FlatbufferInfo in src:
+                transitive_srcs = depset(src[FlatbufferInfo].transitive_srcs, transitive = [transitive_srcs])
+            for f in src.files:
+                if f.extension == "fbs":
+                    transitive_srcs = depset([f], transitive = [transitive_srcs])
+    return [FlatbufferInfo(transitive_srcs = transitive_srcs)]
+
+# An aspect that runs over all dependencies and transitively collects
+# flatbuffer schema files.
+_flatbuffer_schemas_aspect = aspect(
+    attr_aspects = [
+        "deps",
+        "srcs",
+    ],
+    implementation = _flatbuffer_schemas_aspect_impl,
+)
+
+# Rule to invoke the flatbuffer compiler.
+def _gen_flatbuffer_srcs_impl(ctx):
+    outputs = ctx.attr.outputs
+    include_paths = ctx.attr.include_paths
+    if ctx.attr.no_includes:
+        no_includes_statement = ["--no-includes"]
+    else:
+        no_includes_statement = []
+
+    # Need to generate all files in a directory.
+    if not outputs:
+        outputs = [ctx.actions.declare_directory("{}_all".format(ctx.attr.name))]
+        output_directory = outputs[0].path
+    else:
+        outputs = [ctx.actions.declare_file(output) for output in outputs]
+        output_directory = outputs[0].dirname
+
+    deps = depset(ctx.files.srcs + ctx.files.deps, transitive = [
+        dep[FlatbufferInfo].transitive_srcs
+        for dep in ctx.attr.deps
+        if FlatbufferInfo in dep
+    ])
+
+    include_paths_cmd_line = []
+    for s in include_paths:
+        include_paths_cmd_line.extend(["-I", s])
+
+    for src in ctx.files.srcs:
+        ctx.actions.run(
+            inputs = deps,
+            outputs = outputs,
+            executable = ctx.executable._flatc,
+            arguments = [
+                            ctx.attr.language_flag,
+                            "-o",
+                            output_directory,
+                            # Allow for absolute imports and referencing of generated files.
+                            "-I",
+                            "./",
+                            "-I",
+                            ctx.genfiles_dir.path,
+                            "-I",
+                            ctx.bin_dir.path,
+                        ] + no_includes_statement +
+                        include_paths_cmd_line + [
+                "--no-union-value-namespacing",
+                "--gen-object-api",
+                src.path,
+            ],
+            progress_message = "Generating flatbuffer files for {}:".format(src),
+        )
+    return [
+        DefaultInfo(files = depset(outputs)),
+    ]
+
+_gen_flatbuffer_srcs = rule(
+    _gen_flatbuffer_srcs_impl,
+    attrs = {
+        "srcs": attr.label_list(
+            allow_files = [".fbs"],
+            mandatory = True,
+        ),
+        "outputs": attr.string_list(
+            default = [],
+            mandatory = False,
+        ),
+        "deps": attr.label_list(
+            default = [],
+            mandatory = False,
+            aspects = [_flatbuffer_schemas_aspect],
+        ),
+        "include_paths": attr.string_list(
+            default = [],
+            mandatory = False,
+        ),
+        "language_flag": attr.string(
+            mandatory = True,
+        ),
+        "no_includes": attr.bool(
+            default = False,
+            mandatory = False,
+        ),
+        "_flatc": attr.label(
+            default = Label("@flatbuffers//:flatc"),
+            executable = True,
+            cfg = "host",
+        ),
+    },
+    output_to_genfiles = True,
+)
+
+def _concat_flatbuffer_py_srcs_impl(ctx):
+    # Merge all generated python files. The files are concatenated and the
+    # import statements are removed. Finally we import the flatbuffer runtime
+    # library.
+    ctx.actions.run_shell(
+        inputs = ctx.attr.deps[0].files,
+        outputs = [ctx.outputs.out],
+        command = (
+            "find '%s' -name '*.py' -exec cat {} + |" +
+            "sed '/import flatbuffers/d' |" +
+            "sed 's/from flatbuffers." +
+            "/from flatbuffers.python.flatbuffers./' |" +
+            "sed '1s/^/from flatbuffers.python " +
+            "import flatbuffers\\n/' > %s"
+        ) % (
+            ctx.attr.deps[0].files.to_list()[0].path,
+            ctx.outputs.out.path,
+        ),
+    )
+
+_concat_flatbuffer_py_srcs = rule(
+    _concat_flatbuffer_py_srcs_impl,
+    attrs = {
+        "deps": attr.label_list(mandatory = True),
+    },
+    output_to_genfiles = True,
+    outputs = {"out": "%{name}.py"},
+)
+
+def flatbuffer_py_library(
+        name,
+        srcs,
+        deps = [],
+        include_paths = []):
+    """A py_library with the generated reader/writers for the given schema.
+
+    This rule assumes that the schema files define non-conflicting names, so that
+    they can be merged in a single file. This is e.g. the case if only a single
+    namespace is used.
+    The rule call the flatbuffer compiler for all schema files and merges the
+    generated python files into a single file that is wrapped in a py_library.
+
+    Args:
+      name: Rule name. (required)
+      srcs: List of source .fbs files. (required)
+      deps: List of dependencies.
+      include_paths: Optional, list of paths the includes files can be found in.
+    """
+    all_srcs = "{}_srcs".format(name)
+    _gen_flatbuffer_srcs(
+        name = all_srcs,
+        srcs = srcs,
+        language_flag = "--python",
+        deps = deps,
+        include_paths = include_paths,
+    )
+    all_srcs_no_include = "{}_srcs_no_include".format(name)
+    _gen_flatbuffer_srcs(
+        name = all_srcs_no_include,
+        srcs = srcs,
+        language_flag = "--python",
+        deps = deps,
+        no_includes = True,
+        include_paths = include_paths,
+    )
+    concat_py_srcs = "{}_generated".format(name)
+    _concat_flatbuffer_py_srcs(
+        name = concat_py_srcs,
+        deps = [
+            ":{}".format(all_srcs_no_include),
+        ],
+    )
+    native.py_library(
+        name = name,
+        srcs = [
+            ":{}".format(concat_py_srcs),
+        ],
+        srcs_version = "PY2AND3",
+        deps = deps + [
+            "@flatbuffers//:runtime_py",
+        ],
     )

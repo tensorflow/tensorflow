@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_BENCHMARK_BENCHMARK_MODEL_H_
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <ostream>
 #include <string>
@@ -39,18 +40,21 @@ enum RunType {
 
 class BenchmarkResults {
  public:
-  BenchmarkResults(int64_t startup_latency_us, uint64_t input_bytes,
+  BenchmarkResults(double model_size_mb, int64_t startup_latency_us,
+                   uint64_t input_bytes,
                    tensorflow::Stat<int64_t> warmup_time_us,
                    tensorflow::Stat<int64_t> inference_time_us,
                    const profiling::memory::MemoryUsage& init_mem_usage,
                    const profiling::memory::MemoryUsage& overall_mem_usage)
-      : startup_latency_us_(startup_latency_us),
+      : model_size_mb_(model_size_mb),
+        startup_latency_us_(startup_latency_us),
         input_bytes_(input_bytes),
         warmup_time_us_(warmup_time_us),
         inference_time_us_(inference_time_us),
         init_mem_usage_(init_mem_usage),
         overall_mem_usage_(overall_mem_usage) {}
 
+  const double model_size_mb() const { return model_size_mb_; }
   tensorflow::Stat<int64_t> inference_time_us() const {
     return inference_time_us_;
   }
@@ -71,6 +75,7 @@ class BenchmarkResults {
   }
 
  private:
+  double model_size_mb_;
   int64_t startup_latency_us_;
   uint64_t input_bytes_;
   tensorflow::Stat<int64_t> warmup_time_us_;
@@ -192,6 +197,8 @@ class BenchmarkModel {
   }
   virtual std::vector<Flag> GetFlags();
 
+  // Get the model file size if it's available.
+  virtual int64_t MayGetModelFileSize() { return -1; }
   virtual uint64_t ComputeInputBytes() = 0;
   virtual tensorflow::Stat<int64_t> Run(int min_num_times, float min_secs,
                                         float max_secs, RunType run_type,

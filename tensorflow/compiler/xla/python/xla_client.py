@@ -43,6 +43,9 @@ from tensorflow.compiler.xla.python.xla_extension import ops
 # pylint: disable=invalid-name
 
 
+profiler = _xla.profiler
+
+
 class Backend(object, metaclass=abc.ABCMeta):
   """Abstract base class for XLA backends."""
 
@@ -71,7 +74,7 @@ class Backend(object, metaclass=abc.ABCMeta):
     """Returns the integer ID of this host."""
 
   @abc.abstractmethod
-  def buffer_from_pyval(self, pyval, device=None):
+  def buffer_from_pyval(self, pyval, device=None, force_copy=False):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
   @abc.abstractmethod
@@ -83,20 +86,21 @@ class Backend(object, metaclass=abc.ABCMeta):
     """Compiles a computation. Returns an executable."""
 
   @abc.abstractmethod
-  def get_default_device_assignment(self, num_replicas):
+  def get_default_device_assignment(self, num_replicas, num_partitions):
     """Returns the default device assignment that `compile` would use.
 
     If `compile_options.device_assignment` isn't set, `compile` will pick a
-    deterministic device assignment based on the number of replicas, possibly
-    optimizing for device locality. This method returns that assignment, which
-    is useful for e.g. manually replicating a value before passing it to a
-    compiled executable.
+    deterministic device assignment based on the number of replicas and
+    partitions, possibly optimizing for device locality. This method returns
+    that assignment, which is useful for e.g. manually replicating a value
+    before passing it to a compiled executable.
 
     Args:
       num_replicas: the number of replicas needed.
+      num_partitions: the number of partitions needed.
 
     Returns:
-      A list of Devices of length `num_replicas` indexed by replica ID.
+      A list of list of Devices of size `(num_replicas, num_partitions)`.
     """
 
 
@@ -128,10 +132,11 @@ class LocalBackend(Backend):
   def host_id(self):
     return self.client.host_id()
 
-  def buffer_from_pyval(self, pyval, device=None):
+  def buffer_from_pyval(self, pyval, device=None, force_copy=False):
     if device is None:
       device = self.local_devices()[0]
-    return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
+    return _xla.PyLocalBuffer.from_python(pyval, self.client, device,
+                                          force_copy)
 
   def make_tuple(self, c_buffers, device):
     return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device)
@@ -139,6 +144,7 @@ class LocalBackend(Backend):
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
+    options.num_partitions = compile_options.num_partitions
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
@@ -151,14 +157,13 @@ class LocalBackend(Backend):
                                         options, self.client,
                                         compile_options.device_assignment)
 
-  def get_default_device_assignment(self, num_replicas):
-    return self.client.GetDefaultDeviceAssignment(num_replicas)
-
-  def serialize(self, executable):
-    return self.client.SerializeExecutable(executable)
-
-  def deserialize(self, serialized_executable):
-    return self.client.DeserializeExecutable(serialized_executable, self.client)
+  def get_default_device_assignment(self, num_replicas, num_partitions=None):
+    if num_partitions is not None:
+      return self.client.GetDefaultDeviceAssignment(num_replicas,
+                                                    num_partitions)
+    else:
+      # TODO(skye): delete this case after all callers can handle 2D output
+      return self.client.GetDefaultDeviceAssignment(num_replicas)
 
 
 xla_platform_names = {
@@ -168,10 +173,7 @@ xla_platform_names = {
 
 
 def _cpu_backend_factory():
-  client = _xla.LocalClient.Get(
-      platform='cpu',
-      xla_platform_id=xla_platform_names['cpu'],
-      asynchronous=True)
+  client = _xla.get_cpu_client(asynchronous=True)
   return LocalBackend(platform='cpu', client=client)
 
 
@@ -184,22 +186,19 @@ def _gpu_backend_factory():
     raise ValueError(
         'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", or '
         '"bfc", got "%s"' % allocator)
-  config = _xla.AllocatorConfig()
+  config = _xla.GpuAllocatorConfig()
   if allocator == 'default':
-    config.kind = _xla.AllocatorConfig.Kind.DEFAULT
+    config.kind = _xla.GpuAllocatorConfig.Kind.DEFAULT
   if allocator == 'platform':
-    config.kind = _xla.AllocatorConfig.Kind.PLATFORM
+    config.kind = _xla.GpuAllocatorConfig.Kind.PLATFORM
   if allocator == 'bfc':
-    config.kind = _xla.AllocatorConfig.Kind.BFC
+    config.kind = _xla.GpuAllocatorConfig.Kind.BFC
   if memory_fraction:
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  client = _xla.LocalClient.Get(
-      platform='gpu',
-      xla_platform_id=xla_platform_names['gpu'],
-      asynchronous=True,
-      allocator_config=config)
+  client = _xla.get_nvidia_gpu_client(asynchronous=True,
+                                      allocator_config=config)
   return LocalBackend(platform='gpu', client=client)
 
 
@@ -390,10 +389,10 @@ class Buffer(object):
   """
 
   @staticmethod
-  def from_pyval(pyval, device=None, backend=None):
+  def from_pyval(pyval, device=None, backend=None, force_copy=False):
     """Copies the `pyval` to a freshly allocated on-device buffer."""
     backend = backend or get_local_backend()
-    return backend.buffer_from_pyval(pyval, device)
+    return backend.buffer_from_pyval(pyval, device, force_copy=force_copy)
 
   @staticmethod
   def make_tuple(buffers, device, backend=None):
@@ -458,7 +457,7 @@ def transfer_to_infeed(value, device=None):
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
   device = device or backend.local_devices()[0]
-  backend.client.TransferToInfeed(value, device)
+  device.TransferToInfeed(value)
 
 
 def transfer_from_outfeed(shape, device=None):
@@ -475,8 +474,8 @@ def transfer_from_outfeed(shape, device=None):
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
   device = device or backend.local_devices()[0]
-  return backend.client.TransferFromOutfeed(
-      shape.with_major_to_minor_layout_if_absent(), device)
+  return device.TransferFromOutfeed(
+      shape.with_major_to_minor_layout_if_absent())
 
 
 DeviceAssignment = _xla.DeviceAssignment
@@ -518,6 +517,7 @@ class CompileOptions(object):
     self.dump_hlo_as_proto = None
     self.hlo_profile = None
     self.num_replicas = 1
+    self.num_partitions = 1
     self.argument_layouts = None
     self.result_layout = None
     self.device_assignment = None
@@ -749,7 +749,7 @@ class ComputationBuilder(object):
   def ClearSharding(self):
     """Clears the sharding.
 
-    Ops will be shared according to the default placement policy.
+    Ops will be sharded according to the default placement policy.
     """
     self._builder.ClearSharding()
 
@@ -877,7 +877,8 @@ class ComputationBuilder(object):
     """
     return self.Constant(np.array(value, dtype=np.bool))
 
-  def ParameterWithShape(self, shape, name=None, parameter_num=None):
+  def ParameterWithShape(self, shape, name=None, parameter_num=None,
+                         replicated=False):
     """Enqueues a Parameter op onto the computation, given a shape.
 
     Args:
@@ -887,6 +888,8 @@ class ComputationBuilder(object):
         next linear parameter number is used. The default value capability can
         be used for auto-numbering. If you're using auto-numbering for some
         parameters, use it for *all* parameters to avoid clashes.
+      replicated: whether to mark the parameter's leaves as replicated. May be
+        a bool, in which case it applies to all leaves, or an iterable of bools.
 
     Returns:
       An XlaOp.
@@ -895,10 +898,12 @@ class ComputationBuilder(object):
       name = ''
     if parameter_num is None:
       parameter_num = next(self._parameter_numbering)
+    if isinstance(replicated, bool):
+      replicated = [replicated] * shape.leaf_count()
 
     return ops.Parameter(self._builder, parameter_num,
                          shape.with_major_to_minor_layout_if_absent(),
-                         name.encode('utf8'))
+                         name.encode('utf8'), replicated)
 
   def ParameterFromNumpy(self, value, name=None, parameter_num=None):
     """Enqueues a Parameter op onto the computation.
@@ -1184,12 +1189,12 @@ class ComputationBuilder(object):
     return ops.Call(self._builder, computation_to_apply.computation,
                     list(operands))
 
-  def CustomCall(self,
-                 call_target_name,
-                 operands,
-                 shape_with_layout,
-                 operand_shapes_with_layout,
-                 opaque=None):
+  def CustomCallWithLayout(self,
+                           call_target_name,
+                           operands,
+                           shape_with_layout,
+                           operand_shapes_with_layout,
+                           opaque=None):
     """Enqueues a custom call operation onto the computation.
 
     Args:
@@ -1208,6 +1213,10 @@ class ComputationBuilder(object):
     return ops.CustomCall(self._builder, call_target_name,
                           list(operands), shape_with_layout,
                           list(operand_shapes_with_layout), opaque)
+
+  # TODO(phawkins): remove CustomCall after callers are updated to use
+  # CustomCallWithLayout.
+  CustomCall = CustomCallWithLayout
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
@@ -1630,6 +1639,7 @@ FftType = _xla.FftType
 
 _UNARY_OPS = [
     'Not',
+    'PopulationCount',
     'Clz',
     'Abs',
     'Exp',
@@ -1692,6 +1702,9 @@ _BINARY_OPS = [
     'ShiftRightArithmetic',
     'ShiftRightLogical',
     'Atan2',
+    'Igamma',
+    'IgammaGradA',
+    'Igammac',
     'Complex',
     'NextAfter',
 ]
@@ -1712,6 +1725,7 @@ _OTHER_OPS = [
     'Rev',
     'Select',
     'SliceInDim',
+    'TopK',
 ]
 
 

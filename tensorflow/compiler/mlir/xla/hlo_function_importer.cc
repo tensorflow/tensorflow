@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -58,7 +58,7 @@ namespace {
 // direction. Longterm solution is to add a function attribute to maintain the
 // original HLO naming.
 string SanitizeFunctionName(llvm::StringRef name) {
-  string output = name;
+  string output(name);
   llvm::for_each(output, [](char& x) { x = x == '-' ? '_' : x; });
   return output;
 }
@@ -241,6 +241,23 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       }
       MakeAndReturn(BroadcastInDimOp);
     }
+#define MakeAndReturnBatchNormOp(batch_norm_op)                         \
+  {                                                                     \
+    attributes.push_back(builder_->getNamedAttr(                        \
+        "epsilon", builder_->getF32FloatAttr(instruction->epsilon()))); \
+    attributes.push_back(builder_->getNamedAttr(                        \
+        "feature_index",                                                \
+        builder_->getI64IntegerAttr(instruction->feature_index())));    \
+    MakeAndReturn(batch_norm_op);                                       \
+  }
+    case HloOpcode::kBatchNormGrad:
+      MakeAndReturnBatchNormOp(BatchNormGradOp);
+    case HloOpcode::kBatchNormInference:
+      MakeAndReturnBatchNormOp(BatchNormInferenceOp);
+    case HloOpcode::kBatchNormTraining:
+      MakeAndReturnBatchNormOp(BatchNormTrainingOp);
+#undef MakeAndReturnBatchNormOp
+
     case HloOpcode::kDot: {
       attributes.push_back(ConvertPrecisionConfig(instruction));
 
@@ -304,6 +321,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
 
       MakeAndReturn(GatherOp);
     }
+    case HloOpcode::kDynamicSlice: {
+      std::vector<int64_t> slice_sizes(
+          instruction->dynamic_slice_sizes().begin(),
+          instruction->dynamic_slice_sizes().end());
+      attributes.push_back(
+          builder_->getNamedAttr("slice_sizes", Convert(slice_sizes)));
+      MakeAndReturn(DynamicSliceOp);
+    }
     case HloOpcode::kDynamicUpdateSlice: {
       return func_builder
           ->create<mlir::xla_hlo::DynamicUpdateSliceOp>(
@@ -345,6 +370,22 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
                                          Convert(interior_padding))
           .getOperation();
     }
+    case HloOpcode::kScatter: {
+      auto scatter = static_cast<HloScatterInstruction*>(instruction);
+      attributes.push_back(
+          ConvertScatterDimensionNumbers(scatter->scatter_dimension_numbers()));
+      attributes.push_back(builder_->getNamedAttr(
+          "indices_are_sorted",
+          builder_->getBoolAttr(scatter->indices_are_sorted())));
+      attributes.push_back(builder_->getNamedAttr(
+          "unique_indices", builder_->getBoolAttr(scatter->unique_indices())));
+
+      auto scatter_op = func_builder->create<mlir::xla_hlo::ScatterOp>(
+          loc, result_type, operands, attributes);
+      TF_RETURN_IF_ERROR(ImportComputation(scatter->to_apply(),
+                                           &scatter_op.update_computation()));
+      return scatter_op.getOperation();
+    }
     case HloOpcode::kSetDimensionSize: {
       attributes.push_back(builder_->getNamedAttr(
           "dimension", builder_->getIntegerAttr(builder_->getIntegerType(32),
@@ -359,6 +400,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
               ConvertDimensions(instruction->slice_limits()),
               ConvertDimensions(instruction->slice_strides()))
           .getOperation();
+    }
+    case HloOpcode::kSort: {
+      auto sort_instruction = static_cast<HloSortInstruction*>(instruction);
+      auto sort_op = func_builder->create<mlir::xla_hlo::SortOp>(
+          loc, result_type, operands,
+          builder_->getI64IntegerAttr(sort_instruction->sort_dimension()),
+          builder_->getBoolAttr(sort_instruction->is_stable()));
+      TF_RETURN_IF_ERROR(ImportComputation(sort_instruction->to_apply(),
+                                           &sort_op.comparator()));
+      return sort_op.getOperation();
     }
     case HloOpcode::kConditional: {
       llvm::SmallVector<Type, 4> rets;
@@ -449,6 +500,24 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           "permutation", ConvertDimensions(instruction->dimensions())));
       MakeAndReturn(TransposeOp);
     }
+    case HloOpcode::kTriangularSolve: {
+      attributes.push_back(builder_->getNamedAttr(
+          "left_side",
+          builder_->getBoolAttr(
+              instruction->triangular_solve_options().left_side())));
+      attributes.push_back(builder_->getNamedAttr(
+          "lower", builder_->getBoolAttr(
+                       instruction->triangular_solve_options().lower())));
+      attributes.push_back(builder_->getNamedAttr(
+          "unit_diagonal",
+          builder_->getBoolAttr(
+              instruction->triangular_solve_options().unit_diagonal())));
+      auto transpose_a =
+          builder_->getStringAttr(TriangularSolveOptions::Transpose_Name(
+              instruction->triangular_solve_options().transpose_a()));
+      attributes.push_back(builder_->getNamedAttr("transpose_a", transpose_a));
+      MakeAndReturn(TriangularSolveOp);
+    }
     case HloOpcode::kMap: {
       auto op = func_builder->create<mlir::xla_hlo::MapOp>(
           loc, result_type, operands,
@@ -507,12 +576,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // broadcast dimensions are never added here because they don't exist as
       // part of the HLO instruction. They are only a convenience in the XLA
       // builder API.
+      NoAttributeCase(kAbs, AbsOp);
       NoAttributeCase(kAdd, AddOp);
       NoAttributeCase(kAfterAll, AfterAllOp);
       NoAttributeCase(kAnd, AndOp);
       NoAttributeCase(kAtan2, Atan2Op);
       NoAttributeCase(kBitcastConvert, BitcastConvertOp);
       NoAttributeCase(kConvert, ConvertOp);
+      NoAttributeCase(kCeil, CeilOp);
       NoAttributeCase(kClamp, ClampOp);
       NoAttributeCase(kComplex, ComplexOp);
       NoAttributeCase(kCos, CosOp);
@@ -520,6 +591,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kExp, ExpOp);
       NoAttributeCase(kExpm1, Expm1Op);
       NoAttributeCase(kFloor, FloorOp);
+      NoAttributeCase(kIsFinite, IsFiniteOp);
       NoAttributeCase(kImag, ImagOp);
       NoAttributeCase(kLog, LogOp);
       NoAttributeCase(kLog1p, Log1pOp);
@@ -544,7 +616,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kShiftLeft, ShiftLeftOp);
       NoAttributeCase(kShiftRightArithmetic, ShiftRightArithmeticOp);
       NoAttributeCase(kShiftRightLogical, ShiftRightLogicalOp);
+      NoAttributeCase(kSign, SignOp);
       NoAttributeCase(kSin, SinOp);
+      NoAttributeCase(kSqrt, SqrtOp);
       NoAttributeCase(kSubtract, SubOp);
       NoAttributeCase(kTanh, TanhOp);
       NoAttributeCase(kTuple, TupleOp);
@@ -640,7 +714,6 @@ StatusOr<mlir::Type> HloFunctionImporter::ConvertType(const Shape& shape) {
     return mlir::xla_hlo::TokenType::get(builder_->getContext());
   }
   if (shape.IsTuple()) {
-    mlir::Type mlir_type;
     llvm::SmallVector<mlir::Type, 4> contents;
     contents.reserve(shape.tuple_shapes_size());
     for (const auto& subtype : shape.tuple_shapes()) {
@@ -785,6 +858,22 @@ mlir::NamedAttribute HloFunctionImporter::ConvertGatherDimensionNumbers(
       Convert(start_index_map),
       builder_->getI64IntegerAttr(dnums.index_vector_dim()), context_);
   return builder_->getNamedAttr("dimension_numbers", attr);
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertScatterDimensionNumbers(
+    const xla::ScatterDimensionNumbers& dnums) {
+  std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
+                                          dnums.update_window_dims().end());
+  std::vector<int64_t> inserted_window_dims(
+      dnums.inserted_window_dims().begin(), dnums.inserted_window_dims().end());
+  std::vector<int64_t> scatter_dims_to_operand_dims(
+      dnums.scatter_dims_to_operand_dims().begin(),
+      dnums.scatter_dims_to_operand_dims().end());
+  auto attr = mlir::xla_hlo::ScatterDimensionNumbers::get(
+      Convert(update_window_dims), Convert(inserted_window_dims),
+      Convert(scatter_dims_to_operand_dims),
+      builder_->getI64IntegerAttr(dnums.index_vector_dim()), context_);
+  return builder_->getNamedAttr("scatter_dimension_numbers", attr);
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(

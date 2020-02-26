@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import threading
 
 from tensorflow.python.framework import ops
@@ -267,6 +268,20 @@ def experimental_set_strategy(strategy):
 
 
 # ------------------------------------------------------------------------------
+# Internal helpers.
+
+
+@contextlib.contextmanager
+def enter_or_assert_strategy(strategy):
+  if not has_strategy():
+    with strategy.scope():
+      yield
+  else:
+    _assert_strategy(strategy)
+    yield
+
+
+# ------------------------------------------------------------------------------
 # Defaults that are used when no tf.distribute.Strategy is explicitly created.
 # We create them lazily in a function so that we can workaround the circular
 # dependency on distribute_lib. See lazy loader at the top of this file.
@@ -282,6 +297,17 @@ _defaults = {
 _default_strategy_lock = threading.Lock()
 _default_replica_context_lock = threading.Lock()
 _default_replica_mode_lock = threading.Lock()
+
+
+def _assert_strategy(strategy):
+  if not has_strategy():
+    raise RuntimeError('Need to be inside "with strategy.scope()" for %s' %
+                       (strategy,))
+  current_strategy = get_strategy()
+  if current_strategy is not strategy:
+    raise RuntimeError(
+        "Mixing different tf.distribute.Strategy objects: %s is not %s" %
+        (current_strategy, strategy))
 
 
 def _get_default_strategy():

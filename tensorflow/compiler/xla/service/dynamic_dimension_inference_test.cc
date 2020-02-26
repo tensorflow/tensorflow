@@ -17,8 +17,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -42,9 +44,10 @@ class DynamicDimensionInferenceTest : public HloTestBase {
     module_ = CreateNewVerifiedModule();
   }
 
-  Status RunInference() {
+  Status RunInference(
+      DynamicDimensionInference::CustomCallInferenceHandler handler = nullptr) {
     TF_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
-                        DynamicDimensionInference::Run(module_.get()));
+                        DynamicDimensionInference::Run(module_.get(), handler));
 
     inference_ = absl::make_unique<DynamicDimensionInference>(inference);
     return Status::OK();
@@ -984,6 +987,37 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceSingleElementTest) {
 
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(slice, {}, 0), nullptr);
+}
+
+TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
+  auto builder = HloComputation::Builder(TestName());
+
+  auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param"));
+  builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeShape(F32, {1, 1}), {data_param}, "MyCustomOp", ""));
+
+  module_->AddEntryComputation(builder.Build());
+
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  bool handler_called = false;
+  auto handler = [&](HloInstruction* hlo,
+                     DynamicDimensionInference* inference) {
+    CHECK(inference != nullptr);
+    CHECK(Cast<HloCustomCallInstruction>(hlo) != nullptr);
+    handler_called = true;
+    return Status::OK();
+  };
+  TF_ASSERT_OK(RunInference(handler));
+
+  EXPECT_TRUE(handler_called);
 }
 
 }  // namespace

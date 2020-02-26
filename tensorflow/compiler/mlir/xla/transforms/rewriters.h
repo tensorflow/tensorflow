@@ -41,6 +41,10 @@ void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
 void populateHLOToLHLOConversionPattern(MLIRContext *context,
                                         OwningRewritePatternList *patterns);
 
+// Collection of rewrite patterns for lowering of HLO to Linalg dialect.
+void populateHLOToLinalgConversionPattern(MLIRContext *context,
+                                          OwningRewritePatternList *patterns);
+
 // Sets up legality definitions for materializing broadcasts.
 void SetupMaterializeBroadcastsLegality(MLIRContext *context,
                                         ConversionTarget *conversionTarget);
@@ -49,6 +53,12 @@ void SetupMaterializeBroadcastsLegality(MLIRContext *context,
 // attributes to equivalent sequences of ops.
 void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
                                            OwningRewritePatternList *patterns);
+
+// Populate a collection of conversion patterns for un-fusing
+// batch_norm_inference and batch_norm_training into constituent HLO ops.
+// TODO(laurenzo): Implement un-fusing of batch_norm_training.
+void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
+                                     OwningRewritePatternList *patterns);
 
 }  // namespace xla_hlo
 }  // namespace mlir

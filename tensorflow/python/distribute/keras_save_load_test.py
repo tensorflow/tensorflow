@@ -33,8 +33,12 @@ class KerasSaveLoadTest(test_base.TestSavedModelBase):
   def _save_model(self, model, saved_dir):
     model.save(saved_dir, save_format='tf')
 
-  def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
-                          output_name, experimental_run_tf_function):
+  def _load_and_run_model(self,
+                          distribution,
+                          saved_dir,
+                          predict_dataset,
+                          experimental_run_tf_function,
+                          output_name='output_1'):
     restored_keras_model = save.load_model(saved_dir)
     restored_keras_model._experimental_run_tf_function = (
         experimental_run_tf_function)
@@ -54,9 +58,6 @@ class KerasSaveLoadTest(test_base.TestSavedModelBase):
   def test_save_strategy_restore_no_strategy(self, model_and_input,
                                              distribution, save_in_scope,
                                              experimental_run_tf_function):
-    if save_in_scope:
-      self.skipTest(('b/134703272 - Saving model in tf.distribute.Strategy ',
-                     'scope is not supported.'))
     self.run_test_save_strategy_restore_no_strategy(
         model_and_input, distribution, save_in_scope,
         experimental_run_tf_function)
@@ -69,9 +70,6 @@ class KerasSaveLoadTest(test_base.TestSavedModelBase):
                                           distribution_for_restoring,
                                           save_in_scope,
                                           experimental_run_tf_function):
-    if save_in_scope:
-      self.skipTest(('b/134703272 - Saving model in tf.distribute.Strategy ',
-                     'scope is not supported.'))
     self.run_test_save_strategy_restore_strategy(model_and_input,
                                                  distribution_for_saving,
                                                  distribution_for_restoring,

@@ -35,9 +35,11 @@ import inspect as _inspect
 import logging as _logging
 import os as _os
 import site as _site
+import six as _six
 import sys as _sys
 
 from tensorflow.python.tools import module_util as _module_util
+from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
 
 # API IMPORTS PLACEHOLDER
 
@@ -69,13 +71,13 @@ except ImportError:
   _logging.warning(
       "Limited tf.summary API due to missing TensorBoard installation.")
 
-try:
-  from tensorflow_estimator.python.estimator.api._v2 import estimator
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
-  setattr(_current_module, "estimator", estimator)
-except ImportError:
-  pass
+# Lazy-load estimator.
+_estimator_module = "tensorflow_estimator.python.estimator.api._v2.estimator"
+estimator = _LazyLoader("estimator", globals(), _estimator_module)
+_module_dir = _module_util.get_parent_dir_for_name(_estimator_module)
+if _module_dir:
+  _current_module.__path__ = [_module_dir] + _current_module.__path__
+setattr(_current_module, "estimator", estimator)
 
 try:
   from .python.keras.api._v2 import keras
@@ -85,6 +87,13 @@ try:
 except ImportError:
   pass
 
+# Explicitly import lazy-loaded modules to support autocompletion.
+# pylint: disable=g-import-not-at-top
+if not _six.PY2:
+  import typing as _typing
+  if _typing.TYPE_CHECKING:
+    from tensorflow_estimator.python.estimator.api._v2 import estimator
+# pylint: enable=g-import-not-at-top
 
 # Enable TF2 behaviors
 from tensorflow.python.compat import v2_compat as _compat  # pylint: disable=g-import-not-at-top

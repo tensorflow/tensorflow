@@ -23,44 +23,20 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
-#include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
+#include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
-#include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-#include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
 
-const absl::string_view kTensorflowStats = "tensorflow_stats";
-
-template <typename Proto>
-void AddToolData(absl::string_view tool_name, const Proto& tool_output,
-                 ProfileResponse* response) {
-  auto* tool_data = response->add_tool_data();
-  tool_data->set_name(string(tool_name));
-  tool_output.SerializeToString(tool_data->mutable_data());
-}
-
 Status CollectDataToResponse(const ProfileRequest& req,
                              ProfilerSession* profiler,
                              ProfileResponse* response) {
-  // For now, only support a single tool at a time.
-  absl::flat_hash_set<absl::string_view> tools(req.tools().begin(),
-                                               req.tools().end());
-  if (tools.size() == 1 && tools.contains(kTensorflowStats)) {
-    profiler::XSpace space;
-    TF_RETURN_IF_ERROR(profiler->CollectData(&space));
-    profiler::OpStats op_stats = profiler::ConvertXSpaceToOpStats(space);
-    profiler::TfStatsDatabase tf_stats_db =
-        profiler::ConvertOpStatsToTfStats(op_stats);
-    AddToolData(kTensorflowStats, tf_stats_db, response);
-  } else {  // By default, return "trace_viewer" data.
-    TF_RETURN_IF_ERROR(
-        profiler->SerializeToString(response->mutable_encoded_trace()));
-  }
+  profiler::XSpace xspace;
+  TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
+  profiler::ConvertXSpaceToProfileResponse(xspace, req, response);
   return Status::OK();
 }
 
@@ -73,7 +49,7 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
 
   ::grpc::Status Profile(::grpc::ServerContext* ctx, const ProfileRequest* req,
                          ProfileResponse* response) override {
-    LOG(INFO) << "Received a profile request: " << req->DebugString();
+    VLOG(1) << "Received a profile request: " << req->DebugString();
     std::unique_ptr<ProfilerSession> profiler = ProfilerSession::Create();
     Status status = profiler->Status();
     if (!status.ok()) {

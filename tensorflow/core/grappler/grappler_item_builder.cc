@@ -479,22 +479,29 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       const CollectionDef& collection =
           meta_graph.collection_def().at("saved_model_assets");
       const auto& any_assets = collection.any_list().value();
-      for (const auto& any_asset : any_assets) {
-        AssetFileDef asset_file_def;
-        if (!ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef")
-                 .ok()) {
-          LOG(ERROR) << "Failed to parse AssetFile.";
-          continue;
+      if (!any_assets.empty()) {
+#ifndef TENSORFLOW_LITE_PROTOS
+        for (const auto& any_asset : any_assets) {
+          AssetFileDef asset_file_def;
+          if (!ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef")
+                   .ok()) {
+            LOG(ERROR) << "Failed to parse AssetFile.";
+            continue;
+          }
+          string asset_filepath = io::JoinPath(cfg.assets_directory_override,
+                                               asset_file_def.filename());
+          if (!FilesExist({asset_filepath}, nullptr)) {
+            LOG(ERROR) << "Can't access one or more of the asset files "
+                       << asset_filepath << ", skipping this input";
+            return nullptr;
+          }
+          asset_node_to_value[NodeName(asset_file_def.tensor_info().name())] =
+              asset_filepath;
         }
-        string asset_filepath = io::JoinPath(cfg.assets_directory_override,
-                                             asset_file_def.filename());
-        if (!FilesExist({asset_filepath}, nullptr)) {
-          LOG(ERROR) << "Can't access one or more of the asset files "
-                     << asset_filepath << ", skipping this input";
-          return nullptr;
-        }
-        asset_node_to_value[NodeName(asset_file_def.tensor_info().name())] =
-            asset_filepath;
+#else
+        LOG(ERROR) << "Can't parse AssetFileDef on mobile.";
+        return nullptr;
+#endif  // TENSORFLOW_LITE_PROTOS
       }
     }
   } else if (meta_graph.collection_def().count("asset_filepaths") > 0) {

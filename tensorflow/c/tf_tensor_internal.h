@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
 #define TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
 
+#include <memory>
+
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,18 +31,19 @@ limitations under the License.
 // passed to or returned from C functions *by pointer*. Otherwise, changes to
 // its internal structure will break the C API's binary interface.
 typedef struct TF_Tensor {
-  tensorflow::TensorInterface tensor;
+  std::unique_ptr<AbstractTensorInterface> tensor;
 } TF_Tensor;
 
 class TF_ManagedBuffer : public tensorflow::TensorBuffer {
  public:
   TF_ManagedBuffer(void* data, size_t len,
                    void (*deallocator)(void* data, size_t len, void* arg),
-                   void* deallocator_arg)
+                   void* deallocator_arg, bool owns_memory)
       : TensorBuffer(data),
         len_(len),
         deallocator_(deallocator),
-        deallocator_arg_(deallocator_arg) {}
+        deallocator_arg_(deallocator_arg),
+        owns_memory_(owns_memory) {}
 
   ~TF_ManagedBuffer() override {
     (*deallocator_)(data(), len_, deallocator_arg_);
@@ -55,13 +58,13 @@ class TF_ManagedBuffer : public tensorflow::TensorBuffer {
     proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
   }
 
-  // Prevents input forwarding from mutating this buffer.
-  bool OwnsMemory() const override { return false; }
+  bool OwnsMemory() const override { return owns_memory_; }
 
  private:
   const size_t len_;
   void (*const deallocator_)(void* data, size_t len, void* arg);
   void* const deallocator_arg_;
+  bool owns_memory_;
 };
 
 namespace tensorflow {

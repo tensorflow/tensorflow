@@ -30,12 +30,21 @@ import numpy as np
 import six
 
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 _GLOBAL_CUSTOM_OBJECTS = {}
 _GLOBAL_CUSTOM_NAMES = {}
+
+# Flag that determines whether to skip the NotImplementedError when calling
+# get_config in custom models and layers. This is only enabled when saving to
+# SavedModel, when the config isn't required.
+_SKIP_FAILED_SERIALIZATION = False
+# If a layer does not have a defined config, then the returned config will be a
+# dictionary with the below key.
+_LAYER_UNDEFINED_CONFIG_KEY = 'layer was saved without config'
 
 
 @keras_export('keras.utils.CustomObjectScope')
@@ -201,6 +210,17 @@ def get_registered_name(obj):
     return obj.__name__
 
 
+@tf_contextlib.contextmanager
+def skip_failed_serialization():
+  global _SKIP_FAILED_SERIALIZATION
+  prev = _SKIP_FAILED_SERIALIZATION
+  try:
+    _SKIP_FAILED_SERIALIZATION = True
+    yield
+  finally:
+    _SKIP_FAILED_SERIALIZATION = prev
+
+
 @keras_export('keras.utils.get_registered_object')
 def get_registered_object(name, custom_objects=None, module_objects=None):
   """Returns the class associated with `name` if it is registered with Keras.
@@ -245,7 +265,14 @@ def serialize_keras_object(instance):
     return None
 
   if hasattr(instance, 'get_config'):
-    config = instance.get_config()
+    name = get_registered_name(instance.__class__)
+    try:
+      config = instance.get_config()
+    except NotImplementedError as e:
+      if _SKIP_FAILED_SERIALIZATION:
+        return serialize_keras_class_and_config(
+            name, {_LAYER_UNDEFINED_CONFIG_KEY: True})
+      raise e
     serialization_config = {}
     for key, item in config.items():
       if isinstance(item, six.string_types):
@@ -267,6 +294,15 @@ def serialize_keras_object(instance):
   if hasattr(instance, '__name__'):
     return get_registered_name(instance)
   raise ValueError('Cannot serialize', instance)
+
+
+def get_custom_objects_by_name(item, custom_objects=None):
+  """Returns the item if it is in either local or global custom objects."""
+  if item in _GLOBAL_CUSTOM_OBJECTS:
+    return _GLOBAL_CUSTOM_OBJECTS[item]
+  elif custom_objects and item in custom_objects:
+    return custom_objects[item]
+  return None
 
 
 def class_and_config_for_serialized_keras_object(
@@ -503,7 +539,7 @@ class Progbar(object):
     self._start = time.time()
     self._last_update = 0
 
-  def update(self, current, values=None):
+  def update(self, current, values=None, finalize=None):
     """Updates the progress bar.
 
     Arguments:
@@ -511,7 +547,15 @@ class Progbar(object):
         values: List of tuples: `(name, value_for_last_step)`. If `name` is in
           `stateful_metrics`, `value_for_last_step` will be displayed as-is.
           Else, an average of the metric over time will be displayed.
+        finalize: Whether this is the last update for the progress bar. If
+          `None`, defaults to `current >= self.target`.
     """
+    if finalize is None:
+      if self.target is None:
+        finalize = False
+      else:
+        finalize = current >= self.target
+
     values = values or []
     for k, v in values:
       if k not in self._values_order:
@@ -537,8 +581,7 @@ class Progbar(object):
     now = time.time()
     info = ' - %.0fs' % (now - self._start)
     if self.verbose == 1:
-      if (now - self._last_update < self.interval and
-          self.target is not None and current < self.target):
+      if now - self._last_update < self.interval and not finalize:
         return
 
       prev_total_width = self._total_width
@@ -571,7 +614,15 @@ class Progbar(object):
         time_per_unit = (now - self._start) / current
       else:
         time_per_unit = 0
-      if self.target is not None and current < self.target:
+
+      if self.target is None or finalize:
+        if time_per_unit >= 1 or time_per_unit == 0:
+          info += ' %.0fs/%s' % (time_per_unit, self.unit_name)
+        elif time_per_unit >= 1e-3:
+          info += ' %.0fms/%s' % (time_per_unit * 1e3, self.unit_name)
+        else:
+          info += ' %.0fus/%s' % (time_per_unit * 1e6, self.unit_name)
+      else:
         eta = time_per_unit * (self.target - current)
         if eta > 3600:
           eta_format = '%d:%02d:%02d' % (eta // 3600,
@@ -582,13 +633,6 @@ class Progbar(object):
           eta_format = '%ds' % eta
 
         info = ' - ETA: %s' % eta_format
-      else:
-        if time_per_unit >= 1 or time_per_unit == 0:
-          info += ' %.0fs/%s' % (time_per_unit, self.unit_name)
-        elif time_per_unit >= 1e-3:
-          info += ' %.0fms/%s' % (time_per_unit * 1e3, self.unit_name)
-        else:
-          info += ' %.0fus/%s' % (time_per_unit * 1e6, self.unit_name)
 
       for k in self._values_order:
         info += ' - %s:' % k
@@ -605,14 +649,14 @@ class Progbar(object):
       if prev_total_width > self._total_width:
         info += (' ' * (prev_total_width - self._total_width))
 
-      if self.target is not None and current >= self.target:
+      if finalize:
         info += '\n'
 
       sys.stdout.write(info)
       sys.stdout.flush()
 
     elif self.verbose == 2:
-      if self.target is not None and current >= self.target:
+      if finalize:
         numdigits = int(np.log10(self.target)) + 1
         count = ('%' + str(numdigits) + 'd/%d') % (current, self.target)
         info = count + info
@@ -712,12 +756,6 @@ def to_list(x):
   return [x]
 
 
-def object_list_uid(object_list):
-  """Creates a single string from object ids."""
-  object_list = nest.flatten(object_list)
-  return ', '.join(str(abs(id(x))) for x in object_list)
-
-
 def to_snake_case(name):
   intermediate = re.sub('(.)([A-Z][a-z0-9]+)', r'\1_\2', name)
   insecure = re.sub('([a-z])([A-Z])', r'\1_\2', intermediate).lower()
@@ -752,3 +790,8 @@ def validate_kwargs(kwargs,
   for kwarg in kwargs:
     if kwarg not in allowed_kwargs:
       raise TypeError(error_message, kwarg)
+
+
+def validate_config(config):
+  """Determines whether config appears to be a valid layer config."""
+  return isinstance(config, dict) and _LAYER_UNDEFINED_CONFIG_KEY not in config

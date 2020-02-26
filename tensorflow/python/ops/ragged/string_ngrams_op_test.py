@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -272,6 +273,14 @@ class StringNgramsTest(test_util.TensorFlowTestCase):
         b"a", b"b", b"c", b"d", b"a|b", b"b|c", b"c|d", b"a|b|c", b"b|c|d"
     ], [b"e", b"f", b"g", b"h", b"e|f", b"f|g", b"g|h", b"e|f|g", b"f|g|h"]]
     self.assertAllEqual(expected_ngrams, result)
+
+  def test_input_with_no_values(self):
+    data = ragged_factory_ops.constant([[], [], []], dtype=dtypes.string)
+    ngram_op = ragged_string_ops.ngrams(data, (1, 2))
+    result = self.evaluate(ngram_op)
+    self.assertAllEqual([0, 0, 0, 0], result.row_splits)
+    self.assertAllEqual(constant_op.constant([], dtype=dtypes.string),
+                        result.values)
 
 
 if __name__ == "__main__":

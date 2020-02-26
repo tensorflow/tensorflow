@@ -56,7 +56,8 @@ static void EmitOpAttrPopulators(const std::vector<Operator> &ops,
       const auto &attr = named_attr.attr;
       if (!attr.isDerivedAttr()) continue;
       auto retType = attr.getReturnType();
-      if (retType == "ShapedType") {
+      if (retType == "ShapedType" || retType == "mlir::TF::OperandShapeRange" ||
+          retType == "mlir::TF::ResultShapeRange") {
         OUT(2) << "TF_RETURN_IF_ERROR(SetShapeAttribute(\"" << attr_name
                << "\", op." << attr_name << "(), values));\n";
       } else if (retType == "Type" ||

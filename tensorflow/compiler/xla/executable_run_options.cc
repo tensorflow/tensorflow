@@ -100,6 +100,17 @@ const DeviceAssignment* ExecutableRunOptions::device_assignment() const {
   return device_assignment_;
 }
 
+ExecutableRunOptions& ExecutableRunOptions::set_gpu_executable_run_options(
+    const GpuExecutableRunOptions* gpu_executable_run_options) {
+  gpu_executable_run_options_ = gpu_executable_run_options;
+  return *this;
+}
+
+const GpuExecutableRunOptions*
+ExecutableRunOptions::gpu_executable_run_options() const {
+  return gpu_executable_run_options_;
+}
+
 ExecutableRunOptions& ExecutableRunOptions::set_rng_seed(int rng_seed) {
   rng_seed_ = rng_seed;
   return *this;

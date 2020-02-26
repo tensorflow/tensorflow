@@ -260,7 +260,7 @@ def _group_device_list(devices):
 
   Returns:
     a dict of list of device strings mapping from task_type to a list of devices
-    for the task_type in the asceding order of task_id.
+    for the task_type in the ascending order of task_id.
   """
   assert not _is_device_list_single_worker(devices)
   device_dict = {}
@@ -569,18 +569,18 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
       return initial_value_fn
 
-  def _create_variable(self, next_creator, *args, **kwargs):
+  def _create_variable(self, next_creator, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
       devices = self._devices
     elif isinstance(colocate_with, numpy_dataset.SingleDevice):
       with ops.device(colocate_with.device):
-        return next_creator(*args, **kwargs)
+        return next_creator(**kwargs)
     else:
-      devices = colocate_with.devices
+      devices = colocate_with._devices  # pylint: disable=protected-access
 
-    def _real_mirrored_creator(*args, **kwargs):  # pylint: disable=g-missing-docstring
+    def _real_mirrored_creator(**kwargs):  # pylint: disable=g-missing-docstring
       value_list = []
       for i, d in enumerate(devices):
         with ops.device(d):
@@ -600,14 +600,15 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
             # Don't record operations (e.g. other variable reads) during
             # variable creation.
             with tape.stop_recording():
-              v = next_creator(*args, **kwargs)
+              v = next_creator(**kwargs)
           assert not isinstance(v, values.DistributedVariable)
           value_list.append(v)
       return value_list
 
-    return values.create_mirrored_variable(
-        self._container_strategy(), _real_mirrored_creator,
-        values.MirroredVariable, values.SyncOnReadVariable, *args, **kwargs)
+    return values.create_mirrored_variable(self._container_strategy(),
+                                           _real_mirrored_creator,
+                                           values.MirroredVariable,
+                                           values.SyncOnReadVariable, **kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate_distributed_variable(colocate_with_variable, self)
@@ -754,7 +755,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # When a tf.function is wrapped to trigger _call_for_each_replica (see
       # the other branch above), AutoGraph stops conversion at
       # _call_for_each_replica itself (TF library functions are whitelisted).
-      # This makes suresure that the Python function that originally passed to
+      # This makes sure that the Python function that originally passed to
       # the tf.function is still converted.
       fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
 
@@ -787,7 +788,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _get_cross_device_ops(self):
     return self._cross_device_ops or self._inferred_cross_device_ops
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.Mirrored) and
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
@@ -800,11 +801,16 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
     return self._get_cross_device_ops().reduce(
-        reduce_op, value, destinations=destinations)
+        reduce_op,
+        value,
+        destinations=destinations,
+        experimental_hints=experimental_hints)
 
-  def _batch_reduce_to(self, reduce_op, value_destination_pairs):
+  def _batch_reduce_to(self, reduce_op, value_destination_pairs,
+                       experimental_hints):
     return self._get_cross_device_ops().batch_reduce(reduce_op,
-                                                     value_destination_pairs)
+                                                     value_destination_pairs,
+                                                     experimental_hints)
 
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.
@@ -837,11 +843,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     if isinstance(replica_local_var, values.SyncOnReadVariable):
       return replica_local_var._get_cross_replica()  # pylint: disable=protected-access
     assert isinstance(replica_local_var, values.Mirrored)
-    return array_ops.identity(replica_local_var.get())
+    return array_ops.identity(replica_local_var._get())  # pylint: disable=protected-access
 
   def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
-      return val.values
+      return val._values  # pylint: disable=protected-access
     return (val,)
 
   def value_container(self, val):

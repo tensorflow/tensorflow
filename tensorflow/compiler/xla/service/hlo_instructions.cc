@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
@@ -554,10 +555,11 @@ HloAllReduceInstruction::HloAllReduceInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id)
+    const absl::optional<int64>& channel_id, bool use_global_device_ids)
     : HloCollectiveInstruction(HloOpcode::kAllReduce, shape, operands,
                                replica_groups, channel_id),
-      constrain_layout_(constrain_layout) {
+      constrain_layout_(constrain_layout),
+      use_global_device_ids_(use_global_device_ids) {
   AppendComputation(reduce_computation);
 }
 
@@ -573,6 +575,7 @@ bool HloAllReduceInstruction::IsNoop() const {
 HloInstructionProto HloAllReduceInstruction::ToProto() const {
   HloInstructionProto proto = HloCollectiveInstruction::ToProto();
   proto.set_constrain_layout(constrain_layout_);
+  proto.set_use_global_device_ids(use_global_device_ids_);
   return proto;
 }
 
@@ -582,6 +585,9 @@ std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
       HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
   if (constrain_layout_) {
     result.push_back("constrain_layout=true");
+  }
+  if (use_global_device_ids_) {
+    result.push_back("use_global_device_ids=true");
   }
   return result;
 }
@@ -593,6 +599,7 @@ bool HloAllReduceInstruction::IdenticalSlowPath(
   const auto& casted_other = static_cast<const HloAllReduceInstruction&>(other);
   return HloCollectiveInstruction::IdenticalSlowPath(other, eq_computations) &&
          constrain_layout() == casted_other.constrain_layout() &&
+         use_global_device_ids() == casted_other.use_global_device_ids() &&
          eq_computations(to_apply(), casted_other.to_apply());
 }
 
@@ -602,22 +609,51 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllReduceInstruction>(
       shape, new_operands, to_apply(), replica_groups(), constrain_layout(),
-      channel_id());
+      channel_id(), use_global_device_ids());
 }
 
 HloAllToAllInstruction::HloAllToAllInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     const std::vector<ReplicaGroup>& replica_groups,
-    const absl::optional<int64>& channel_id)
+    const absl::optional<int64>& channel_id,
+    const absl::optional<int64>& split_dimension)
     : HloCollectiveInstruction(HloOpcode::kAllToAll, shape, operands,
-                               replica_groups, channel_id) {}
+                               replica_groups, channel_id),
+      split_dimension_(split_dimension) {}
 
 std::unique_ptr<HloInstruction>
 HloAllToAllInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllToAllInstruction>(
-      shape, new_operands, replica_groups(), channel_id());
+      shape, new_operands, replica_groups(), channel_id(), split_dimension());
+}
+
+HloInstructionProto HloAllToAllInstruction::ToProto() const {
+  HloInstructionProto proto = HloCollectiveInstruction::ToProto();
+  if (split_dimension_) {
+    proto.add_dimensions(*split_dimension_);
+  }
+  return proto;
+}
+
+std::vector<string> HloAllToAllInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  std::vector<string> result =
+      HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
+  if (split_dimension_) {
+    result.push_back(StrCat("dimensions={", *split_dimension_, "}"));
+  }
+  return result;
+}
+
+bool HloAllToAllInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloAllToAllInstruction&>(other);
+  return HloCollectiveInstruction::IdenticalSlowPath(other, eq_computations) &&
+         split_dimension_ == casted_other.split_dimension();
 }
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
@@ -1291,9 +1327,6 @@ HloInstruction* HloFusionInstruction::AddFusionOperand(
   CHECK_EQ(operand_count(),
            fused_instructions_computation()->parameter_instructions().size());
   const int64 param_no = operand_count();
-  // Name the parameter after the instruction it represents in the outer
-  // (non-fusion) computation.
-  // string param_name = StrCat(new_operand->name(), ".param_", param_no);
   string param_name = StrCat("param_", param_no);
   HloInstruction* fused_parameter =
       fused_instructions_computation()->AddParameter(
@@ -2155,6 +2188,23 @@ HloCustomCallInstruction::HloCustomCallInstruction(
 
 HloCustomCallInstruction::HloCustomCallInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* to_apply, absl::string_view custom_call_target,
+    string opaque)
+    : HloInstruction(HloOpcode::kCustomCall, shape),
+      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      feature_group_count_(1),
+      batch_group_count_(1),
+      layout_constrained_(false),
+      custom_call_has_side_effect_(false) {
+  set_raw_backend_config_string(std::move(opaque));
+  for (auto operand : operands) {
+    AppendOperand(operand);
+  }
+  AppendComputation(to_apply);
+}
+
+HloCustomCallInstruction::HloCustomCallInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target, string opaque,
     absl::Span<const Shape> operand_shapes_with_layout)
     : HloInstruction(HloOpcode::kCustomCall, shape),
@@ -2196,7 +2246,7 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
 std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   std::vector<string> extra;
-  if (window_ != nullptr && window_->dimensions_size() != 0) {
+  if (window_ != nullptr) {
     extra.push_back(StrCat("window={", window_util::ToString(*window_), "}"));
   }
   if (convolution_dimension_numbers_ != nullptr) {
@@ -2874,6 +2924,42 @@ HloRngGetAndUpdateStateInstruction::CloneWithNewOperandsImpl(
     LOG(FATAL) << "expects 0 operand";
   }
   return absl::make_unique<HloRngGetAndUpdateStateInstruction>(shape, delta());
+}
+
+HloRngBitGeneratorInstruction::HloRngBitGeneratorInstruction(
+    const Shape& shape, HloInstruction* state, RandomAlgorithm algorithm)
+    : HloInstruction(HloOpcode::kRngBitGenerator, shape),
+      algorithm_(algorithm) {
+  AppendOperand(state);
+}
+
+HloInstructionProto HloRngBitGeneratorInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_rng_algorithm(algorithm_);
+  return proto;
+}
+
+std::vector<string> HloRngBitGeneratorInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("algorithm=", RandomAlgorithmToString(algorithm_))};
+}
+
+bool HloRngBitGeneratorInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other =
+      static_cast<const HloRngBitGeneratorInstruction&>(other);
+  return algorithm() == casted_other.algorithm();
+}
+
+std::unique_ptr<HloInstruction>
+HloRngBitGeneratorInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* /*context*/) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return absl::make_unique<HloRngBitGeneratorInstruction>(
+      shape, new_operands[0], algorithm());
 }
 
 }  // namespace xla

@@ -127,15 +127,43 @@ class Masking(Layer):
 class Dropout(Layer):
   """Applies Dropout to the input.
 
-  Dropout consists in randomly setting
-  a fraction `rate` of input units to 0 at each update during training time,
-  which helps prevent overfitting.
-  
-  Usage Example:
-     model = tf.keras.models.Sequential()
-     model.add(tf.keras.layers.Dropout(0.2, input_shape=(16,)))
-     model.add(tf.keras.layers.Dense(1))
+  The Dropout layer randomly sets input units to 0 with a frequency of `rate`
+  at each step during training time, which helps prevent overfitting.
+  Inputs not set to 0 are scaled up by 1/(1 - rate) such that the sum over
+  all inputs is unchanged.
 
+  Note that the Dropout layer only applies when `training` is set to True
+  such that no values are dropped during inference. When using `model.fit`,
+  `training` will be appropriately set to True automatically, and in other
+  contexts, you can set the kwarg explicitly to True when calling the layer.
+
+  (This is in contrast to setting `trainable=False` for a Dropout layer.
+  `trainable` does not affect the layer's behavior, as Dropout does
+  not have any variables/weights that can be frozen during training.)
+  
+   Usage Example:
+   model = tf.keras.models.Sequential()
+   model.add(tf.keras.layers.Dropout(0.2, input_shape=(16,)))
+   model.add(tf.keras.layers.Dense(1))
+
+  >>> tf.random.set_seed(0)
+  >>> layer = tf.keras.layers.Dropout(.2, input_shape=(2,))
+  >>> data = np.arange(10).reshape(5, 2).astype(np.float32)
+  >>> print(data)
+  [[0. 1.]
+   [2. 3.]
+   [4. 5.]
+   [6. 7.]
+   [8. 9.]]
+  >>> outputs = layer(data, training=True)
+  >>> print(outputs)
+  tf.Tensor(
+  [[ 0.    1.25]
+   [ 2.5   3.75]
+   [ 5.    6.25]
+   [ 7.5   8.75]
+   [10.    0.  ]], shape=(5, 2), dtype=float32)
+ 
   Arguments:
     rate: Float between 0 and 1. Fraction of the input units to drop.
     noise_shape: 1D integer tensor representing the shape of the
@@ -170,7 +198,7 @@ class Dropout(Layer):
     noise_shape = []
     for i, value in enumerate(self.noise_shape):
       noise_shape.append(concrete_inputs_shape[i] if value is None else value)
-    return ops.convert_to_tensor(noise_shape)
+    return ops.convert_to_tensor_v2(noise_shape)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -368,9 +396,20 @@ class Activation(Layer):
     activation: Activation function, such as `tf.nn.relu`, or string name of
       built-in activation function, such as "relu".
 
+  Usage:
+
+  >>> layer = tf.keras.layers.Activation('relu')
+  >>> output = layer([-3.0, -1.0, 0.0, 2.0])
+  >>> list(output.numpy())
+  [0.0, 0.0, 0.0, 2.0]
+  >>> layer = tf.keras.layers.Activation(tf.nn.relu)
+  >>> output = layer([-3.0, -1.0, 0.0, 2.0])
+  >>> list(output.numpy())
+  [0.0, 0.0, 0.0, 2.0]
+
   Input shape:
     Arbitrary. Use the keyword argument `input_shape`
-    (tuple of integers, does not include the samples axis)
+    (tuple of integers, does not include the batch axis)
     when using this layer as the first layer in a model.
 
   Output shape:
@@ -396,41 +435,45 @@ class Activation(Layer):
 
 @keras_export('keras.layers.Reshape')
 class Reshape(Layer):
-  """Reshapes an output to a certain shape.
-
-  Arguments:
-    target_shape: Target shape. Tuple of integers,
-      does not include the samples dimension (batch size).
+  """Layer that reshapes inputs into the given shape.
 
   Input shape:
-    Arbitrary, although all dimensions in the input shaped must be fixed.
-    Use the keyword argument `input_shape`
-    (tuple of integers, does not include the samples axis)
-    when using this layer as the first layer in a model.
+    Arbitrary, although all dimensions in the input shape must be known/fixed.
+    Use the keyword argument `input_shape` (tuple of integers, does not include
+    the samples/batch size axis) when using this layer as the first layer
+    in a model.
 
   Output shape:
     `(batch_size,) + target_shape`
 
   Example:
 
-  ```python
-  # as first layer in a Sequential model
-  model = Sequential()
-  model.add(Reshape((3, 4), input_shape=(12,)))
-  # now: model.output_shape == (None, 3, 4)
-  # note: `None` is the batch dimension
+  >>> # as first layer in a Sequential model
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Reshape((3, 4), input_shape=(12,)))
+  >>> # model.output_shape == (None, 3, 4), `None` is the batch size.
+  >>> model.output_shape
+  (None, 3, 4)
 
-  # as intermediate layer in a Sequential model
-  model.add(Reshape((6, 2)))
-  # now: model.output_shape == (None, 6, 2)
+  >>> # as intermediate layer in a Sequential model
+  >>> model.add(tf.keras.layers.Reshape((6, 2)))
+  >>> model.output_shape
+  (None, 6, 2)
 
-  # also supports shape inference using `-1` as dimension
-  model.add(Reshape((-1, 2, 2)))
-  # now: model.output_shape == (None, None, 2, 2)
-  ```
+  >>> # also supports shape inference using `-1` as dimension
+  >>> model.add(tf.keras.layers.Reshape((-1, 2, 2)))
+  >>> model.output_shape
+  (None, None, 2, 2)
   """
 
   def __init__(self, target_shape, **kwargs):
+    """Creates a `tf.keras.layers.Reshape`  layer instance.
+
+    Args:
+      target_shape: Target shape. Tuple of integers, does not include the
+        samples dimension (batch size).
+      **kwargs: Any additional layer keyword arguments.
+    """
     super(Reshape, self).__init__(**kwargs)
     self.target_shape = tuple(target_shape)
 
@@ -858,9 +901,10 @@ class Lambda(Layer):
       # checking only to immediately discard it.
       return
 
-    tracked_weights = set(v.experimental_ref() for v in self.weights)
-    untracked_new_vars = [v for v in created_variables
-                          if v.experimental_ref() not in tracked_weights]
+    tracked_weights = set(v.ref() for v in self.weights)
+    untracked_new_vars = [
+        v for v in created_variables if v.ref() not in tracked_weights
+    ]
     if untracked_new_vars:
       variable_str = '\n'.join('  {}'.format(i) for i in untracked_new_vars)
       error_str = textwrap.dedent(
@@ -876,8 +920,9 @@ class Lambda(Layer):
       ).format(name=self.name, variable_str=variable_str)
       raise ValueError(error_str)
 
-    untracked_used_vars = [v for v in accessed_variables
-                           if v.experimental_ref() not in tracked_weights]
+    untracked_used_vars = [
+        v for v in accessed_variables if v.ref() not in tracked_weights
+    ]
     if untracked_used_vars and not self._already_warned:
       variable_str = '\n'.join('  {}'.format(i) for i in untracked_used_vars)
       self._warn(textwrap.dedent(
@@ -1019,8 +1064,15 @@ class Dense(Layer):
   created by the layer, and `bias` is a bias vector created by the layer
   (only applicable if `use_bias` is `True`).
 
-  Note: If the input to the layer has a rank greater than 2, then
-  it is flattened prior to the initial dot product with `kernel`.
+  Note: If the input to the layer has a rank greater than 2, then `Dense`
+  computes the dot product between the `inputs` and the `kernel` along the
+  last axis of the `inputs` and axis 1 of the `kernel` (using `tf.tensordot`).
+  For example, if input has dimensions `(batch_size, d0, d1)`,
+  then we create a `kernel` with shape `(d1, units)`, and the `kernel` operates
+  along axis 2 of the `input`, on every sub-tensor of shape `(1, 1, d1)`
+  (there are `batch_size * d0` such sub-tensors).
+  The output in this case will have shape `(batch_size, d0, units)`.
+
   Besides, layer attributes cannot be modified after the layer has been called
   once (except the `trainable` attribute).
 
@@ -1107,8 +1159,7 @@ class Dense(Layer):
       raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
     last_dim = tensor_shape.dimension_value(input_shape[-1])
-    self.input_spec = InputSpec(min_ndim=2,
-                                axes={-1: last_dim})
+    self.input_spec = InputSpec(min_ndim=2, axes={-1: last_dim})
     self.kernel = self.add_weight(
         'kernel',
         shape=[last_dim, self.units],

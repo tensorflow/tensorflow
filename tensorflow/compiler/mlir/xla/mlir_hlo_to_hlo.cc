@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/IR/Location.h"  // TF:llvm-project
@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
+#include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
@@ -124,7 +125,8 @@ static xla::FftType Convert_fft_type(llvm::StringRef fft_type_str) {
   xla::FftType fft_type_enum;
   // Illegal fft_type string would be caught by the verifier, so 'FftType_Parse'
   // call below should never return false.
-  if (!FftType_Parse(fft_type_str, &fft_type_enum)) return xla::FftType::FFT;
+  if (!FftType_Parse(std::string(fft_type_str), &fft_type_enum))
+    return xla::FftType::FFT;
   return fft_type_enum;
 }
 
@@ -171,6 +173,18 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
     result.push_back(group);
   }
   return result;
+}
+
+// Converts StringRef to xla Transpose enum.
+static xla::TriangularSolveOptions::Transpose Convert_transpose_a(
+    llvm::StringRef transpose_str) {
+  xla::TriangularSolveOptions::Transpose transpose_enum;
+  // Illegal tanspose string would be caught by the verifier, so
+  // 'Transpose_Parse' call below should never return false.
+  if (!xla::TriangularSolveOptions::Transpose_Parse(std::string(transpose_str),
+                                                    &transpose_enum))
+    return xla::TriangularSolveOptions::NO_TRANSPOSE;
+  return transpose_enum;
 }
 
 #define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)                \
@@ -358,6 +372,23 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
   return output;
 }
 
+// Returns an OpSharding proto from the "sharding" attribute of the op. If the
+// op doesn't have a sharding attribute or the sharding attribute is invalid,
+// returns absl::nullopt.
+static absl::optional<xla::OpSharding> CreateOpShardingFromAttribute(
+    mlir::Operation* op) {
+  auto sharding = op->getAttrOfType<mlir::StringAttr>("xla_hlo.sharding");
+  if (!sharding) {
+    return absl::nullopt;
+  }
+  ::xla::OpSharding sharding_proto;
+  if (!::tensorflow::protobuf::TextFormat::ParseFromString(
+          sharding.getValue().str(), &sharding_proto)) {
+    return absl::nullopt;
+  }
+  return sharding_proto;
+}
+
 namespace mlir {
 namespace {
 class ConvertToHloModule {
@@ -502,6 +533,17 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(ScalarsToDimensionTensorOp op,
+                          OpLoweringContext ctx) {
+  // This op has no expression in the legacy export format.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
+  // This op has no expression in the legacy export format.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
   xla::XlaComputation true_branch;
   xla::XlaComputation false_branch;
@@ -538,8 +580,23 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   if (op.has_side_effect()) return failure();
   auto& value_map = *ctx.values;
   value_map[op] = xla::CustomCall(
-      ctx.builder, op.call_target_name(), GetTuple(op.args(), ctx),
-      xla::TypeToShape(op.getType()), op.backend_config());
+      ctx.builder, std::string(op.call_target_name()), GetTuple(op.args(), ctx),
+      xla::TypeToShape(op.getType()), std::string(op.backend_config()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(DequantizeOp op, OpLoweringContext ctx) {
+  xla::QuantizedRange range(ConvertAPFloat(op.min_range()),
+                            ConvertAPFloat(op.max_range()));
+  auto& value_map = *ctx.values;
+  auto casted = xla::ConvertElementType(value_map[op.input()], xla::U32);
+  if (op.is_16bits()) {
+    value_map[op] = xla::Dequantize<uint16>(
+        casted, range, ConvertStringRef(op.mode()), op.transpose_output());
+  } else {
+    value_map[op] = xla::Dequantize<uint8>(
+        casted, range, ConvertStringRef(op.mode()), op.transpose_output());
+  }
   return success();
 }
 
@@ -548,8 +605,9 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   // The shape argument expected by the xla client API is the type of the first
   // element in the result tuple.
   auto result_type = op.getType().cast<mlir::TupleType>().getType(0);
-  value_map[op] = xla::InfeedWithToken(
-      value_map[op.token()], xla::TypeToShape(result_type), op.infeed_config());
+  value_map[op] =
+      xla::InfeedWithToken(value_map[op.token()], xla::TypeToShape(result_type),
+                           std::string(op.infeed_config()));
   return success();
 }
 
@@ -574,9 +632,10 @@ LogicalResult ExportXlaOp(MapOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  value_map[op] = xla::OutfeedWithToken(
-      value_map[op.operand()], value_map[op.token()],
-      xla::TypeToShape(op.operand().getType()), op.outfeed_config());
+  value_map[op] =
+      xla::OutfeedWithToken(value_map[op.operand()], value_map[op.token()],
+                            xla::TypeToShape(op.operand().getType()),
+                            std::string(op.outfeed_config()));
   return success();
 }
 
@@ -737,6 +796,12 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Sort(GetTuple(op.operands(), ctx), comparator,
                             op.dimension().getSExtValue(), op.is_stable());
+  return success();
+}
+
+LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::Trace(std::string(op.tag()), value_map[op.operand()]);
   return success();
 }
 
@@ -918,6 +983,14 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
       auto attr = f.getArgAttrOfType<mlir::BoolAttr>(i, kRepicationAttr);
       entry_args_same_across_replicas.push_back(attr && attr.getValue());
       any_arg_replicated |= entry_args_same_across_replicas.back();
+      // Pass the alias info to the builder so that it will build the alias info
+      // into the resulting HloModule.
+      auto aliasing_output =
+          f.getArgAttrOfType<mlir::IntegerAttr>(i, "tf.aliasing_output");
+      if (aliasing_output) {
+        builder.SetUpAlias(/*output_index=*/{aliasing_output.getInt()},
+                           /*param_number=*/i, /*param_index=*/{});
+      }
     }
     // Do not populate this field when nothing is replicated, since empty field
     // means no replication. This avoids the need for unrelated tests to handle
@@ -1148,7 +1221,7 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
                  << "requires arg " << padding_arg_index
                  << " to be a scalar for use as a dynamic parameter";
 
-      if (!mlir::getElementTypeOrSelf(padding_arg_type).isa<IntegerType>())
+      if (!mlir::getElementTypeOrSelf(padding_arg_type).isSignlessInteger())
         return entry_func.emitError()
                << "requires arg " << padding_arg_index
                << " to be of an int type for use as a dynamic parameter";

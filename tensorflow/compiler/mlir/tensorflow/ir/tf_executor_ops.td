@@ -165,7 +165,7 @@ def TfExecutor_IslandOp : TfExecutor_Op<"island",
     The `tf_executor.island` operation has a single region with a single block
     attached (only functional control flow is allowed). The block is terminated
     by a `tf_executor.yield` operation. The operands of the terminator
-    correspond to the result values of the `tf_executor.graph` operation. An
+    correspond to the result values of the `tf_executor.island` operation. An
     extra result of type `!tf_executor.control` is always produced by every
     `tf_executor.island`.
     Within an island, execution semantics follow standard sequential behavior as
@@ -202,6 +202,7 @@ def TfExecutor_IslandOp : TfExecutor_Op<"island",
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
     YieldOp GetYield();
+    bool WrapsSingleOp();
   }];
 
   let hasCanonicalizer = 1;
@@ -231,7 +232,7 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
 }
 
 def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
-    [NoSideEffect, ControlOperandsAfterAllData, HasParent<"GraphOp">,
+    [ControlOperandsAfterAllData, HasParent<"GraphOp">,
      PredOpTrait<"data operand must be broadcastable to true result",
                  TCOpIsBroadcastableToRes<0, 0>>,
      PredOpTrait<"data operand must be broadcastable to false result",
@@ -277,7 +278,7 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
 }
 
 def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
-    [NoSideEffect, ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
+    [ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
   let summary = [{
     The "tf_executor.SwitchN" operation takes two inputs, `data` and `index` and
     an integer attribute `num_outs` indicating the number of outputs. The `data`
@@ -298,7 +299,7 @@ def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
         .SetShapeFn(SwitchNShape);
 
     For example:
-      %2:6 = tf_executor.SwitchN %0, %1 by 5 : tensor<??xf32>
+      %2:6 = tf_executor.SwitchN %0, %1 of 5 : tensor<??xf32>
 
     Note: One additional result corresponds to the control output.
   }];
@@ -318,7 +319,7 @@ def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
 }
 
 def TfExecutor_MergeOp : TfExecutor_Op<"Merge",
-    [NoSideEffect, ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
+    [ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
   let summary = [{
     The "tf_executor.Merge" operation takes a list of input operands and returns
     a value of the operand type along with the index of the first match encountered.
@@ -353,7 +354,7 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge",
 }
 
 def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
-    [NoSideEffect, ControlOperandsAfterAllData, HasParent<"GraphOp">,
+    [ControlOperandsAfterAllData, HasParent<"GraphOp">,
      PredOpTrait<"data operand must be broadcastable to result",
                  TCOpIsBroadcastableToRes<0, 0>>]>{
   let summary = [{
@@ -403,7 +404,7 @@ def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
 }
 
 def TfExecutor_NextIterationSourceOp : TfExecutor_Op<"NextIteration.Source",
-    [NoSideEffect, HasParent<"GraphOp">]> {
+    [HasParent<"GraphOp">]> {
   let summary = [{
     The "tf_executor.NextIteration.Source" is paired with a
     "tf_executor.NextIteration.sink" to represent NextIteration op in
@@ -528,7 +529,7 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
 }
 
 def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
-    [NoSideEffect, HasParent<"GraphOp">,
+    [HasParent<"GraphOp">,
      PredOpTrait<"data operand must be broadcastable to result",
                  TCOpIsBroadcastableToRes<0, 0>>]>{
 
@@ -569,7 +570,7 @@ def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
 }
 
 def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
-    [NoSideEffect, HasParent<"GraphOp">]> {
+    [HasParent<"GraphOp">]> {
   let summary = [{
     The `tf_executor.ControlTrigger` operation is similar to a no-op except that
     it always produces a valid output even when inputs are dead.
@@ -608,7 +609,7 @@ def TfExecutor_ControlTriggerOp : TfExecutor_Op<"ControlTrigger",
 }
 
 def TfExecutor_LoopCondOp : TfExecutor_Op<"LoopCond",
-    [NoSideEffect, HasParent<"GraphOp">]> {
+    [HasParent<"GraphOp">]> {
   let summary = [{
     The "tf_executor.LoopCond" operation forwards a boolean value as loop
     condition of Tensorflow while loops.

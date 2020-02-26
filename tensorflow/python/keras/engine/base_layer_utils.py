@@ -44,7 +44,7 @@ def create_mean_metric(value, name=None):
   # import keras will import base_layer and then this module, and metric relies
   # on base_layer, which result into a cyclic dependency.
   from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
-  metric_obj = metrics_module.Mean(name=name)
+  metric_obj = metrics_module.Mean(name=name, dtype=value.dtype)
   return metric_obj, metric_obj(value)
 
 
@@ -109,18 +109,17 @@ def make_variable(name,
   if initializer is not None and not callable(initializer):
     initializing_from_value = True
 
-  with ops.init_scope():
-    if initializing_from_value:
-      init_val = initializer
-      variable_dtype = None
-    else:
-      # Instantiate initializer if provided initializer is a type object.
-      if isinstance(
-          initializer,
-          (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
-        initializer = initializer()
-      init_val = lambda: initializer(shape, dtype=dtype)
-      variable_dtype = dtype.base_dtype
+  if initializing_from_value:
+    init_val = initializer
+    variable_dtype = None
+  else:
+    # Instantiate initializer if provided initializer is a type object.
+    if isinstance(
+        initializer,
+        (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
+      initializer = initializer()
+    init_val = lambda: initializer(shape, dtype=dtype)
+    variable_dtype = dtype.base_dtype
   if use_resource is None:
     use_resource = True
 
@@ -783,3 +782,13 @@ class TrackableWeightHandler(object):
     for idx, tensor in enumerate(weights):
       feed_dict[self._placeholder_tensors[idx]] = tensor
     backend.get_session().run(self._assign_op, feed_dict)
+
+
+# TODO(kathywu): This is a temporary hack. When a network of layers is revived
+# from SavedModel, only the top-level layer will have losses. This causes issues
+# in eager mode because the child layers may have graph losses
+# (thus model.losses returns a mix of Eager and graph tensors). To fix this,
+# whenever eager losses are added to one layer, add eager losses to all
+# child layers. This causes `.losses` to only return eager losses.
+REVIVED_LOSS_PLACEHOLDER = (
+    'This layer\'s losses have been added to the parent layer.')

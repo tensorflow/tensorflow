@@ -41,6 +41,14 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
   def setUp(self):
     super(SnapshotDatasetTest, self).setUp()
     self.removeTFRecords()
+    tmpdir = self.get_temp_dir()
+    tmpdir = os.path.join(tmpdir, "snapshot")
+    os.mkdir(tmpdir)
+    self.snapshot_dir = tmpdir
+
+  def tearDown(self):
+    super(SnapshotDatasetTest, self).tearDown()
+    shutil.rmtree(self.snapshot_dir)
 
   def removeTFRecords(self):
     for filename in self.test_filenames:
@@ -53,10 +61,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     self.test_filenames = self._createFiles()
 
   def makeSnapshotDirectory(self):
-    tmpdir = self.get_temp_dir()
-    tmpdir = os.path.join(tmpdir, "snapshot")
-    os.mkdir(tmpdir)
-    return tmpdir
+    return self.snapshot_dir
 
   def assertSnapshotDirectoryContains(
       self, directory, num_fingerprints, num_runs_per_fp, num_snapshot_files):
@@ -89,7 +94,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testWriteDifferentPipelinesInOneDirectory(self):
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
 
     dataset = dataset_ops.Dataset.range(1000)
     dataset = dataset.apply(snapshot.snapshot(tmpdir))
@@ -103,7 +108,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testWriteSnapshotMultipleSimultaneous(self):
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
 
     dataset1 = dataset_ops.Dataset.range(1000)
     dataset1 = dataset1.apply(snapshot.snapshot(tmpdir))
@@ -123,7 +128,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testGetNextCreatesDir(self):
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
 
     # We create two iterators but call getNext on only one.
     dataset1 = dataset_ops.Dataset.range(1000)
@@ -148,7 +153,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
               snapshot.COMPRESSION_SNAPPY
           ])))
   def testWriteSnapshotSimpleSuccessful(self, compression):
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
 
     dataset = dataset_ops.Dataset.range(1000)
     dataset = dataset.apply(snapshot.snapshot(tmpdir, compression=compression))
@@ -156,20 +161,52 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testWriteSnapshotRepeatAfterwards(self):
-    tmpdir = self.makeSnapshotDirectory()
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(compression=[
+              snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP,
+              snapshot.COMPRESSION_SNAPPY
+          ])))
+  def testWriteSnapshotRepeatAfterwards(self, compression):
+    tmpdir = self.snapshot_dir
 
     dataset = dataset_ops.Dataset.range(10)
-    dataset = dataset.apply(snapshot.snapshot(tmpdir))
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, compression=compression))
     dataset = dataset.repeat(10)
     self.assertDatasetProduces(dataset, list(range(10)) * 10)
 
     self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
 
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(compression=[
+              snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP,
+              snapshot.COMPRESSION_SNAPPY
+          ])))
+  def testWriteSnapshotMixTypes(self, compression):
+    tmpdir = self.snapshot_dir
+
+    dataset = dataset_ops.Dataset.range(10)
+
+    def map_fn(x):
+      return (x, string_ops.as_string(x), string_ops.as_string(2 * x), 2 * x)
+
+    dataset = dataset.map(map_fn)
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, compression=compression))
+    dataset = dataset.repeat(10)
+
+    expected = []
+    for i in range(10):
+      expected.append((i, str(i), str(2 * i), 2 * i))
+    self.assertDatasetProduces(dataset, expected * 10)
+
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+
   @combinations.generate(test_base.default_test_combinations())
   def testSpecifySnapshotNameWriteAndRead(self):
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
 
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(
@@ -186,7 +223,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testForcePassthroughMode(self):
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
 
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(snapshot.snapshot(tmpdir, mode="passthrough"))
@@ -197,7 +234,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testForceWriteMode(self):
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
 
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(snapshot.snapshot(tmpdir, mode="write"))
@@ -209,7 +246,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testForceReadMode(self):
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
 
     # We write a copy of the snapshot first.
     dataset = dataset_ops.Dataset.range(10)
@@ -236,7 +273,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testForceReadNonexistentSnapshot(self):
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
     dataset = dataset_ops.Dataset.range(10)
     with self.assertRaises(errors.NotFoundError):
       dataset = dataset.apply(snapshot.snapshot(tmpdir, mode="read"))
@@ -245,7 +282,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testForceReadNonexistentNamedSnapshot(self):
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
     dataset = dataset_ops.Dataset.range(10)
     with self.assertRaises(errors.NotFoundError):
       dataset = dataset.apply(
@@ -271,7 +308,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         for r in range(0, 10)
     ]
 
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
     dataset = core_readers._TFRecordDataset(filenames)
     dataset = dataset.apply(snapshot.snapshot(tmpdir, compression=compression))
     self.assertDatasetProduces(dataset, expected)
@@ -295,16 +332,17 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         for r in range(0, 50)
     ]
 
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
     dataset = core_readers._TFRecordDataset(filenames)
-    dataset = dataset.apply(snapshot.snapshot(tmpdir, shard_size_bytes=10))
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, shard_size_bytes=100))
     self.assertDatasetProduces(dataset, expected)
 
     # remove the original files and try to read the data back only from snapshot
     self.removeTFRecords()
 
     dataset2 = core_readers._TFRecordDataset(filenames)
-    dataset2 = dataset2.apply(snapshot.snapshot(tmpdir, shuffle_on_read=True))
+    dataset2 = dataset2.apply(
+        snapshot.snapshot(tmpdir, shard_size_bytes=100, shuffle_on_read=True))
     next2 = self.getNext(dataset2)
 
     res1 = self.evaluate(next2())
@@ -318,7 +356,8 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     # make sure all the elements are still there
     dataset3 = core_readers._TFRecordDataset(filenames)
-    dataset3 = dataset3.apply(snapshot.snapshot(tmpdir, shuffle_on_read=True))
+    dataset3 = dataset3.apply(
+        snapshot.snapshot(tmpdir, shard_size_bytes=100, shuffle_on_read=True))
     self.assertDatasetProduces(dataset3, expected, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -332,7 +371,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         for r in range(0, 50)
     ]
 
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
     dataset = core_readers._TFRecordDataset(filenames)
     dataset = dataset.apply(snapshot.snapshot(tmpdir, shard_size_bytes=10))
     self.assertDatasetProduces(dataset, expected)
@@ -342,12 +381,14 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     dataset2 = core_readers._TFRecordDataset(filenames)
     dataset2 = dataset2.apply(
-        snapshot.snapshot(tmpdir, shuffle_on_read=True, shuffle_seed=123456))
+        snapshot.snapshot(tmpdir, shard_size_bytes=10, shuffle_on_read=True,
+                          shuffle_seed=123456))
     next2 = self.getNext(dataset2)
 
     dataset3 = core_readers._TFRecordDataset(filenames)
     dataset3 = dataset3.apply(
-        snapshot.snapshot(tmpdir, shuffle_on_read=True, shuffle_seed=123456))
+        snapshot.snapshot(tmpdir, shard_size_bytes=10,
+                          shuffle_on_read=True, shuffle_seed=123456))
     next3 = self.getNext(dataset3)
 
     # make sure that the items are read back in the same order for both datasets
@@ -356,8 +397,14 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
       res3 = self.evaluate(next3())
       self.assertEqual(res2, res3)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testReadSnapshotParallelAfterWrite(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(compression=[
+              snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP,
+              snapshot.COMPRESSION_SNAPPY
+          ])))
+  def testReadSnapshotParallelAfterWrite(self, compression):
     self.setUpTFRecord(10, 4000)
     filenames = self.test_filenames
 
@@ -367,14 +414,15 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         for r in range(0, 4000)
     ]
 
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
     dataset = core_readers._TFRecordDataset(filenames)
     dataset = dataset.apply(
         snapshot.snapshot(
             tmpdir,
             shard_size_bytes=1024 * 1024,
             num_reader_threads=2,
-            reader_buffer_size=10))
+            reader_buffer_size=10,
+            compression=compression))
     self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
 
     # remove the original files and try to read the data back only from
@@ -387,7 +435,8 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
             tmpdir,
             shard_size_bytes=1024 * 1024,
             num_reader_threads=2,
-            reader_buffer_size=10))
+            reader_buffer_size=10,
+            compression=compression))
     self.assertDatasetProduces(dataset2, expected, assert_items_equal=True)
 
   # Not testing Snappy here because Snappy reads currently require a lot of
@@ -412,7 +461,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         for r in range(0, 10)
     ]
 
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
     dataset = core_readers._TFRecordDataset(filenames)
     dataset = dataset.apply(
         snapshot.snapshot(
@@ -433,7 +482,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testSameFingerprintWithDifferentInitializationOrder(self):
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
 
     dataset1 = dataset_ops.Dataset.range(0, 100)
     dataset2 = dataset_ops.Dataset.range(100, 200)
@@ -455,7 +504,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testExpiredSnapshotRewrite(self):
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
 
     dataset1 = dataset_ops.Dataset.range(1000)
     dataset1 = dataset1.apply(
@@ -483,20 +532,53 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     self.assertSnapshotDirectoryContains(tmpdir, 1, 2, 1)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testSpecifyShardSize(self):
-    tmpdir = self.makeSnapshotDirectory()
+  def testSnapshotArgsCreateNewSnapshot(self):
+    tmpdir = self.snapshot_dir
+
+    dataset1 = dataset_ops.Dataset.range(1000)
+    dataset1 = dataset1.apply(
+        snapshot.snapshot(tmpdir, shard_size_bytes=10000))
+    next1 = self.getNext(dataset1)
+
+    for _ in range(1000):
+      self.evaluate(next1())
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+
+    # Create second snapshot with a different shard_size_bytes
+    dataset2 = dataset_ops.Dataset.range(1000)
+    dataset2 = dataset1.apply(
+        snapshot.snapshot(tmpdir, shard_size_bytes=20000))
+    next2 = self.getNext(dataset2)
+
+    for _ in range(1000):
+      self.evaluate(next2())
+    self.assertSnapshotDirectoryContains(tmpdir, 2, 1, 1)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(compression=[
+              snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP,
+              snapshot.COMPRESSION_SNAPPY
+          ])))
+  def testSpecifyShardSize(self, compression):
+    tmpdir = self.snapshot_dir
 
     dataset = dataset_ops.Dataset.from_tensor_slices([1.0])
     dataset = dataset.map(lambda x: gen_array_ops.broadcast_to(x, [1024, 1024]))
     dataset = dataset.repeat(10)
     dataset = dataset.apply(
-        snapshot.snapshot(tmpdir, shard_size_bytes=10 * 1024 * 1024))
+        snapshot.snapshot(
+            tmpdir, shard_size_bytes=10 * 1024 * 1024, compression=compression))
     next_fn = self.getNext(dataset)
 
     for _ in range(10):
       self.evaluate(next_fn())
 
-    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 4)
+    num_files = 1
+    if compression == snapshot.COMPRESSION_NONE:
+      num_files = 3
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, num_files)
 
   @combinations.generate(test_base.default_test_combinations())
   def testAdditionalOperationsAfterReadBack(self):
@@ -509,7 +591,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         for r in range(0, 10)
     ]
 
-    tmpdir = self.makeSnapshotDirectory()
+    tmpdir = self.snapshot_dir
     dataset = core_readers._TFRecordDataset(filenames)
     dataset = dataset.apply(snapshot.snapshot(tmpdir))
     self.assertDatasetProduces(dataset, expected)

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,16 +33,18 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/max_unpooling.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/mean.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/mul.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/prelu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/reshape.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/upsample.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
@@ -136,6 +138,12 @@ std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(const GraphFloat32& graph,
   }
 }
 
+std::vector<ComputeTaskDescriptorPtr> SelectSpaceToDepth(
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
+    const SpaceToDepthAttributes& attr) {
+  return SpaceToDepth(id, input_id, output_id, attr);
+}
+
 Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
                           const std::vector<ValueId>& inputs,
                           const std::vector<ValueId>& outputs,
@@ -194,11 +202,19 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           node_id, inputs[0], inputs[1], outputs[0],
           absl::any_cast<MaxUnpooling2DAttributes>(node->operation.attributes));
       break;
-    case OperationType::MULTIPLY_SCALAR:
-      *tasks = Multiply(
-          node_id, inputs[0], outputs[0],
-          absl::any_cast<MultiplyScalarAttributes>(node->operation.attributes),
-          options);
+    case OperationType::MEAN:
+      *tasks = Mean(node_id, inputs[0], outputs[0],
+                    absl::any_cast<MeanAttributes>(node->operation.attributes));
+      break;
+    case OperationType::MUL:
+      if (node->operation.attributes.has_value()) {
+        *tasks = Multiply(
+            node_id, inputs[0], outputs[0],
+            absl::any_cast<MultiplyAttributes>(node->operation.attributes),
+            options);
+      } else {
+        *tasks = ApplyMask(node_id, inputs[0], inputs[1], outputs[0], options);
+      }
       break;
     case OperationType::PAD: {
       auto attr = absl::any_cast<PadAttributes>(node->operation.attributes);
@@ -227,6 +243,11 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           graph, node_id, inputs[0], outputs[0],
           absl::any_cast<ReshapeAttributes>(node->operation.attributes));
       break;
+    case OperationType::RESIZE:
+      *tasks = Resize(
+          node_id, inputs[0], outputs[0],
+          absl::any_cast<Resize2DAttributes>(node->operation.attributes));
+      break;
     case OperationType::SLICE:
       *tasks =
           Slice(node_id, inputs[0], outputs[0],
@@ -240,13 +261,14 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       *tasks = SelectSoftmax(graph, node_id, inputs[0], outputs[0]);
       break;
     }
-    case OperationType::UPSAMPLE_2D:
-      *tasks = Upsample(
-          node_id, inputs[0], outputs[0],
-          absl::any_cast<Upsample2DAttributes>(node->operation.attributes));
+    case OperationType::SPACE_TO_DEPTH:
+      *tasks = SelectSpaceToDepth(
+          graph, node_id, inputs[0], outputs[0],
+          absl::any_cast<SpaceToDepthAttributes>(node->operation.attributes));
       break;
     case OperationType::ABS:
     case OperationType::COS:
+    case OperationType::EXP:
     case OperationType::HARD_SWISH:
     case OperationType::LOG:
     case OperationType::RSQRT:
@@ -257,19 +279,21 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::TANH:
       *tasks = ElementwiseWithOneInput(node_id, inputs[0], outputs[0], op_type);
       break;
-    case OperationType::SUB:
     case OperationType::DIV:
+    case OperationType::MAXIMUM:
+    case OperationType::MINIMUM:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
-      *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type);
-      break;
-    case OperationType::APPLY_MASK:
+    case OperationType::SUB: {
+      const ElementwiseAttributes* attr =
+          absl::any_cast<ElementwiseAttributes>(&node->operation.attributes);
+      *tasks =
+          ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type, attr);
+    } break;
     case OperationType::BATCH_NORMALIZATION:
     case OperationType::BATCH_TO_SPACE:
     case OperationType::CONST:
     case OperationType::LSTM:
-    case OperationType::MUL:
-    case OperationType::RESIZE:
     case OperationType::SPACE_TO_BATCH:
     case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:

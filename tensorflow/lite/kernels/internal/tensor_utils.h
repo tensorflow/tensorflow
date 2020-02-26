@@ -76,8 +76,7 @@ void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
 // sparse row format with block pattern 1x16 which consists of two arrays:
 //   1. A matrix array stores non-zero blocks of the matrix in row major.
 //   2. A ledger array stores nrows groups, one group per row. Each group starts
-//   with
-//      an integer representing the number of non-zero blocks for the
+//      with an integer representing the number of non-zero blocks for the
 //      corresponding row and follows with column indexes of the first element
 //      of each non-zero block.
 // This function assumes that
@@ -86,7 +85,7 @@ void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
 void SparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
-    float* __restrict__ result, int result_stride);
+    float* __restrict__ result);
 
 // Same as the function above, but for values quantized using symmetric
 // quantization (e.g. by calling SymmetricQuantizeFloats).
@@ -97,34 +96,55 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
 // each batch in the batch-vector matrix independently).
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride);
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, int result_stride);
+
+// Same as the function above, but provide a scratch buffer for the
+// int8 x int8 -> int32 and a CpuBackendContext for the accumulator
+// computation.
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    int32_t* __restrict__ scratch, float* __restrict__ result,
+    int result_stride, CpuBackendContext* __restrict__ context);
 
 // Same as the function above except that vector values
 // are quantized with asymmetric quantization per-batch and the matrix
 // is quantized per row.
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, int result_stride,
+    const float* __restrict__ per_channel_scale,
+    const int32_t* __restrict__ input_offset);
+
+// Same as the function above except that can make use of cached row sums.
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride,
-    const float* per_channel_scale, const int32_t* input_offset);
+    const float* per_channel_scale, const int32_t* input_offset,
+    int32_t* scratch, int32_t* row_sums, bool* compute_row_sums,
+    CpuBackendContext* context);
 
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
 //   1. A matrix array stores non-zero blocks of the matrix in row major.
 //   2. A ledger array stores nrows groups, one group per row. Each group starts
-//   with
-//      an integer representing the number of non-zero blocks for the
+//      with an integer representing the number of non-zero blocks for the
 //      corresponding row followed by column index of the first element of
 //      each non-zero block.
 // This function assumes that
 //   1. m_cols is a multiple of 16 so that all blocks are full blocks.
 //   2. m_cols < 254 * 16 so that block index can be represented by uint8.
 void SparseMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
-    const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result,
-    int result_stride);
+    const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
+    const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result);
 
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
@@ -189,6 +209,27 @@ void MatrixBatchVectorMultiplyAccumulate(
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int8_t* output, CpuBackendContext* context);
 
+// Same as the above 8, 8, 8 integer matmul except for the presence of zero
+// point and non-accumulative.
+// TODO(b/148688698): remove this function by folding zero point calculation in
+// prepare() function.
+void MatrixBatchVectorMultiply(const int8_t* input, int32_t input_zeropoint,
+                               const int8_t* input_to_gate_weights,
+                               int32_t input_to_gate_effective_scale_a,
+                               int32_t input_to_gate_effective_scale_b,
+                               int32_t n_batch, int32_t n_input, int32_t n_cell,
+                               int8_t* gate_output, int8_t gate_output_zp);
+
+// Same as above but has 16 bit and 8 bit input and 8 bit output.
+// Used in projection when hidden is 16bit.
+void MatrixBatchVectorMultiply(const int16_t* hidden,
+                               const int8_t* hidden_to_output_weights,
+                               int32_t proj_effective_scale_a,
+                               int32_t proj_effective_scale_b,
+                               const int32_t* gate_bias, int32_t n_batch,
+                               int32_t n_hidden, int32_t n_output,
+                               int32_t output_zp, int8_t* proj_output);
+
 // Multiplies a matrix with a scalar and reduce the result on each row to a
 // scalar.
 // Parameters:
@@ -221,6 +262,13 @@ void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
                     int32_t layer_norm_scale_b, int32_t variance_limit,
                     int n_batch, int n_input, int16_t* output);
 
+// Same as above but the internal calculation is done in float.
+void ApplyLayerNormFloat(const int16_t* input,
+                         const int16_t* layer_norm_weights,
+                         int32_t layer_norm_scale_a, int32_t layer_norm_scale_b,
+                         const int32_t* bias, int n_batch, int n_input,
+                         int16_t* output);
+
 // Apply Sigmoid to a quantized vector.
 // Parameters:
 //     - input: batch vector of size n_batch * n_input; 16 bit.
@@ -230,6 +278,10 @@ void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 // The input is in Q3.12 format and the output is in Q0.15 format.
 void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                   int16_t* output);
+
+// Same as above but the internal calcualtion is float.
+void ApplySigmoidFloat(const int16_t* input, int32_t n_batch, int32_t n_input,
+                       int16_t* output);
 
 // Apply Tanh to a quantized vector.
 // Parameters:
@@ -242,6 +294,12 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
 // The input is in Qm.15-m format and the output is in Q0.15 format.
 void ApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
                int32_t n_input, int16_t* output);
+
+// Apply Tanh to a quantized vector. Tbe internal calculation is in float.
+//    - Input has 2^(integer_bits) as scale.
+//    - Output has Q0.15 as scale.
+void ApplyTanhFloat(const int16_t* input, int32_t n_batch, int32_t n_input,
+                    int32_t integer_bits, int16_t* output);
 
 // Element-wise multiplication of two quantized vectors.
 // Parameters:
@@ -348,29 +406,26 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
 //            y_2_1, y_2_2, ..., y_2_vsize,
 //            ...
 //            y_nbatch_1,..., y_nbatch_vsize]
-// Then result will be a vector of n_batch size which will be saved with a
-// stride of result_stride in memory starting from 'result':
+// Then result will be a vector of n_batch size starting from 'result':
 // [x_1_1 * y_1_1 + x_1_2 * y_1_2 + ... + x_1_vsize * y_1_vsize,
 //  x_2_1 * y_2_1 + x_2_2 * y_2_2 + ... + x_2_vsize * y_2_vsize,
 //  ...
 //  x_nbatch_1 * y_nbatch_1 + ... + x_nbatch_vsize * y_nbatch_vsize]
 template <typename T>
 inline void BatchVectorBatchVectorDotProduct(const T* vector1, const T* vector2,
-                                             int v_size, int n_batch, T* result,
-                                             int result_stride) {
+                                             int v_size, int n_batch,
+                                             T* result) {
   for (int b = 0; b < n_batch; b++) {
-    *result = VectorVectorDotProduct(vector1, vector2, v_size);
+    result[b] = VectorVectorDotProduct(vector1, vector2, v_size);
     vector1 += v_size;
     vector2 += v_size;
-    result += result_stride;
   }
 }
 
 // Same as above but input is 16bit and output is 32bit.
 void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       const int16_t* vector2, int v_size,
-                                      int n_batch, int32_t* result,
-                                      int result_stride);
+                                      int n_batch, int32_t* result);
 
 // Cwise product of a vector and a batch-vector.
 template <typename T>
@@ -529,9 +584,23 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
 void ReductionSumVector(const int32_t* input_vector, int32_t* output_vector,
                         int output_size, int reduction_size);
 
+// Same as above but input is 8 bit integer.
+void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
+                        int output_size, int reduction_size);
+
 // Layer norm for each batch.
 void MeanStddevNormalization(const float* input_vector, float* output_vector,
                              int v_size, int n_batch);
+
+// Saturate Add with rescale on both inputs.
+void TwoGateSaturationgAdd(const int8_t* input, int8_t input_zp,
+                           const int8_t* recurrent, int8_t recurrent_zp,
+                           int32_t input_effective_scale_a,
+                           int32_t input_effective_scale_b,
+                           int32_t recurrent_effective_scale_a,
+                           int32_t recurrent_effective_scale_b, int32_t n_batch,
+                           int32_t n_cell, int16_t* output);
+
 }  // namespace tensor_utils
 }  // namespace tflite
 

@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/Dialect/Traits.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:llvm-project
 #include "mlir/IR/Value.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Support/STLExtras.h"  // TF:llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -313,6 +314,19 @@ ParseResult ParseFetchOp(OpAsmParser &parser, OperationState &result) {
 
 YieldOp IslandOp::GetYield() { return llvm::cast<YieldOp>(GetBody().back()); }
 
+// Checks if a tf_executor.island wraps a single operation and the single
+// operation results are perfectly forwarded to the islands yield.
+bool IslandOp::WrapsSingleOp() {
+  auto body = GetBody().without_terminator();
+  if (!has_single_element(body)) return false;
+
+  Operation &wrapped_op = *body.begin();
+  YieldOp yield = GetYield();
+  return wrapped_op.getNumResults() == yield.getNumOperands() &&
+         std::equal(wrapped_op.getResults().begin(),
+                    wrapped_op.getResults().end(), yield.getOperands().begin());
+}
+
 namespace {
 
 LogicalResult Verify(IslandOp island) {
@@ -359,23 +373,17 @@ void Print(IslandOp op, OpAsmPrinter &p) {
   // Check if we can print the short "wraps" form: that is if the island
   // contains a single operation and the result of this operation are perfectly
   // forwarded to the yield.
-  if (op.getAttrs().empty() &&
-      std::next(op.GetBody().begin(), 2) == op.GetBody().end()) {
+  if (op.getAttrs().empty() && op.WrapsSingleOp()) {
     Operation &wrapped_op = op.GetBody().front();
-    Operation &yield_op = op.GetBody().back();
+    YieldOp yield_op = op.GetYield();
     // The "wraps" syntax only encodes a single location.
     // In order to correctly round-trip, we can only use this syntax when all
     // the locations are identical.
     if (wrapped_op.getLoc() == op.getLoc() &&
         yield_op.getLoc() == op.getLoc()) {
-      if (wrapped_op.getNumResults() == yield_op.getNumOperands() &&
-          std::equal(wrapped_op.getResults().begin(),
-                     wrapped_op.getResults().end(),
-                     yield_op.getOperands().begin())) {
-        p << " wraps ";
-        p.printGenericOp(&op.GetBody().front());
-        return;
-      }
+      p << " wraps ";
+      p.printGenericOp(&wrapped_op);
+      return;
     }
   }
   p.printRegion(op.getOperation()->getRegion(0));
@@ -475,7 +483,8 @@ ParseResult ParseSwitchOp(OpAsmParser &parser, OperationState &result) {
 
   // Support parsing either a functional type (in which case all the types are
   // fully qualified) or a short form with a single type (in which case the data
-  // input and the outputs are all using this type).
+  // input and the outputs are all using this type and predicate is tensor<i1>
+  // type).
   if (types.front().isa<FunctionType>()) {
     FunctionType type = types.front().cast<FunctionType>();
     if (type.getNumInputs() != 2)
@@ -508,7 +517,8 @@ void Print(SwitchOp switch_op, OpAsmPrinter &p) {
   // else print the shorter single type.
   p << " : ";
   if (switch_op.trueOutput().getType() != data_operand_ty ||
-      switch_op.falseOutput().getType() != data_operand_ty) {
+      switch_op.falseOutput().getType() != data_operand_ty ||
+      switch_op.predicate().getType().isa<UnrankedTensorType>()) {
     p.printFunctionalType(switch_op.getOperation());
   } else {
     p << switch_op.getType(0);
@@ -563,9 +573,9 @@ void Print(SwitchNOp switchn, OpAsmPrinter &p) {
 
 ParseResult ParseSwitchNOp(OpAsmParser &parser, OperationState &result) {
   // Parsing:
-  //       %2:6 = tf_executor.SwitchN %0, %1 by 5 : tensor<??xf32>
+  //       %2:6 = tf_executor.SwitchN %0, %1 of 5 : tensor<??xf32>
   // Where the first operand is the data to replicate, the second is an i32
-  // indicating which output to populate, followed by the keyword `by` and the
+  // indicating which output to populate, followed by the keyword `of` and the
   // number of outputs (+1 for the control token).
   SmallVector<OpAsmParser::OperandType, 2> op_infos;
   SmallVector<Type, 1> types;
@@ -1162,12 +1172,7 @@ struct DropEmptyIslandNoOperandOneDataResult
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
       return matchFailure();
 
-    // TODO(jpienaar): Revert this, this accounts for an intermediate bug that
-    // has already been fixed upstream but has not been integrated yet. The
-    // second result is unused here and so should be removed, but just using
-    // the same result in both places (which should not matter as unused).
-    rewriter.replaceOp(
-        op, {op.GetYield().getOperand(0), op.GetYield().getOperand(0)});
+    rewriter.replaceOp(op, {op.GetYield().getOperand(0), nullptr});
 
     return matchSuccess();
   }

@@ -24,7 +24,7 @@ namespace calibration {
 namespace builtin {
 
 TfLiteStatus lstm_logging_kernel(TfLiteContext* context, TfLiteNode* node,
-                                 Logger* logger);
+                                 Logger* logger, ErrorReporter* error_reporter);
 
 }  // namespace builtin
 }  // namespace calibration

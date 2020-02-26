@@ -533,8 +533,8 @@ class _WithSpaceToBatch(object):
     spatial_dims = sorted(set(int(x) for x in orig_spatial_dims))
     if spatial_dims != orig_spatial_dims or any(x < 1 for x in spatial_dims):
       raise ValueError(
-          "spatial_dims must be a montonically increasing sequence of positive "
-          "integers")
+          "spatial_dims must be a monotonically increasing sequence of "
+          "positive integers")
 
     if data_format is not None and data_format.startswith("NC"):
       expected_input_rank = spatial_dims[-1]
@@ -1849,6 +1849,22 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
   horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+  
+  Usage Example:
+  
+  >>> x_in = np.array([[
+  ...   [[2], [1], [2], [0], [1]],
+  ...   [[1], [3], [2], [2], [3]],
+  ...   [[1], [1], [3], [3], [0]],
+  ...   [[2], [2], [0], [1], [1]],
+  ...   [[0], [0], [3], [1], [2]], ]])  
+  >>> kernel_in = np.array([
+  ...  [ [[2, 0.1]], [[3, 0.2]] ],
+  ...  [ [[0, 0.3]],[[1, 0.4]] ], ])
+  >>> x = tf.constant(x_in, dtype=tf.float32)
+  >>> kernel = tf.constant(kernel_in, dtype=tf.float32)
+  >>> tf.nn.conv2d(x, kernel, strides=[1, 1, 1, 1], padding='VALID')
+  <tf.Tensor: shape=(1, 4, 4, 2), dtype=float32, numpy=..., dtype=float32)>
 
   Args:
     input: A `Tensor`. Must be one of the following types:
@@ -4343,7 +4359,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
   rely on the output of other nodes.
 
   More precisely: With probability `rate` elements of `x` are set to `0`.
-  The remaining elemenst are scaled up by `1.0 / (1 - rate)`, so that the
+  The remaining elements are scaled up by `1.0 / (1 - rate)`, so that the
   expected value is preserved.
 
   >>> tf.random.set_seed(0)

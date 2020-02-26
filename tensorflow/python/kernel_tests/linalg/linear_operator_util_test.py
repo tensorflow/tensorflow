@@ -188,36 +188,6 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
       linear_operator_util.broadcast_matrix_batch_dims([y, x])
 
 
-class CholeskySolveWithBroadcastTest(test.TestCase):
-
-  def test_static_dims_broadcast(self):
-    # batch_shape = [2]
-    chol = rng.rand(3, 3)
-    rhs = rng.rand(2, 3, 7)
-    chol_broadcast = chol + np.zeros((2, 1, 1))
-
-    result = linear_operator_util.cholesky_solve_with_broadcast(chol, rhs)
-    self.assertAllEqual((2, 3, 7), result.shape)
-    expected = linalg_ops.cholesky_solve(chol_broadcast, rhs)
-    self.assertAllClose(*self.evaluate([expected, result]))
-
-  def test_dynamic_dims_broadcast_64bit(self):
-    # batch_shape = [2, 2]
-    chol = rng.rand(2, 3, 3)
-    rhs = rng.rand(2, 1, 3, 7)
-    chol_broadcast = chol + np.zeros((2, 2, 1, 1))
-    rhs_broadcast = rhs + np.zeros((2, 2, 1, 1))
-
-    chol_ph = array_ops.placeholder_with_default(chol, shape=None)
-    rhs_ph = array_ops.placeholder_with_default(rhs, shape=None)
-
-    result, expected = self.evaluate([
-        linear_operator_util.cholesky_solve_with_broadcast(chol_ph, rhs_ph),
-        linalg_ops.cholesky_solve(chol_broadcast, rhs_broadcast)
-    ])
-    self.assertAllClose(expected, result)
-
-
 class MatrixSolveWithBroadcastTest(test.TestCase):
 
   def test_static_dims_broadcast_matrix_has_extra_dims(self):
@@ -299,74 +269,6 @@ class MatrixSolveWithBroadcastTest(test.TestCase):
     result, expected = self.evaluate([
         linear_operator_util.matrix_solve_with_broadcast(matrix_ph, rhs_ph),
         linalg_ops.matrix_solve(matrix_broadcast, rhs_broadcast)
-    ])
-    self.assertAllClose(expected, result)
-
-
-class MatrixTriangularSolveWithBroadcastTest(test.TestCase):
-
-  def test_static_dims_broadcast_matrix_has_extra_dims(self):
-    # batch_shape = [2]
-    matrix = rng.rand(2, 3, 3)
-    rhs = rng.rand(3, 7)
-    rhs_broadcast = rhs + np.zeros((2, 1, 1))
-
-    result = linear_operator_util.matrix_triangular_solve_with_broadcast(
-        matrix, rhs)
-    self.assertAllEqual((2, 3, 7), result.shape)
-    expected = linalg_ops.matrix_triangular_solve(matrix, rhs_broadcast)
-    self.assertAllClose(*self.evaluate([expected, result]))
-
-  def test_static_dims_broadcast_rhs_has_extra_dims(self):
-    # Since the second arg has extra dims, and the domain dim of the first arg
-    # is larger than the number of linear equations, code will "flip" the extra
-    # dims of the first arg to the far right, making extra linear equations
-    # (then call the matrix function, then flip back).
-    # We have verified that this optimization indeed happens.  How? We stepped
-    # through with a debugger.
-    # batch_shape = [2]
-    matrix = rng.rand(3, 3)
-    rhs = rng.rand(2, 3, 2)
-    matrix_broadcast = matrix + np.zeros((2, 1, 1))
-
-    result = linear_operator_util.matrix_triangular_solve_with_broadcast(
-        matrix, rhs)
-    self.assertAllEqual((2, 3, 2), result.shape)
-    expected = linalg_ops.matrix_triangular_solve(matrix_broadcast, rhs)
-    self.assertAllClose(*self.evaluate([expected, result]))
-
-  def test_static_dims_broadcast_rhs_has_extra_dims_and_adjoint(self):
-    # Since the second arg has extra dims, and the domain dim of the first arg
-    # is larger than the number of linear equations, code will "flip" the extra
-    # dims of the first arg to the far right, making extra linear equations
-    # (then call the matrix function, then flip back).
-    # We have verified that this optimization indeed happens.  How? We stepped
-    # through with a debugger.
-    # batch_shape = [2]
-    matrix = rng.rand(3, 3)
-    rhs = rng.rand(2, 3, 2)
-    matrix_broadcast = matrix + np.zeros((2, 1, 1))
-
-    result = linear_operator_util.matrix_triangular_solve_with_broadcast(
-        matrix, rhs, adjoint=True)
-    self.assertAllEqual((2, 3, 2), result.shape)
-    expected = linalg_ops.matrix_triangular_solve(
-        matrix_broadcast, rhs, adjoint=True)
-    self.assertAllClose(*self.evaluate([expected, result]))
-
-  def test_dynamic_dims_broadcast_64bit(self):
-    # batch_shape = [2]
-    matrix = rng.rand(2, 3, 3)
-    rhs = rng.rand(3, 7)
-    rhs_broadcast = rhs + np.zeros((2, 1, 1))
-
-    matrix_ph = array_ops.placeholder_with_default(matrix, shape=None)
-    rhs_ph = array_ops.placeholder_with_default(rhs, shape=None)
-
-    result, expected = self.evaluate([
-        linear_operator_util.matrix_triangular_solve_with_broadcast(
-            matrix_ph, rhs_ph),
-        linalg_ops.matrix_triangular_solve(matrix, rhs_broadcast)
     ])
     self.assertAllClose(expected, result)
 
