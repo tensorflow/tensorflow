@@ -107,7 +107,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params)
-        : DatasetIterator<Dataset>(params) {}
+        : DatasetIterator<Dataset>(params), current_element_index_(nullptr) {}
 
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
@@ -118,7 +118,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+                           bool* end_of_sequence,
+                           std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       do {
         if (!input_impl_) {
@@ -129,8 +130,9 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           // We are currently precessing a mapped element, so try to get the
           // next subelement.
           bool end_of_element;
-          TF_RETURN_IF_ERROR(this->GetNextFromInput(current_element_iterator_, 
-              ctx, out_tensors, &end_of_element));
+          parent_indices->push_back(current_element_index_);
+          TF_RETURN_IF_ERROR(this->GetNextFromInput(
+              current_element_iterator_, ctx, out_tensors, &end_of_element));
           if (!end_of_element) {
             // Produce the subelement as output.
             *end_of_sequence = false;
@@ -140,22 +142,26 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           // We have reached the end of the current element, so maybe move on
           // to the next element.
           current_element_iterator_.reset();
+          current_element_index_ = nullptr;
         }
 
         // Get the next element from the input dataset.
         captured_func_inputs_.clear();
         do {
           parent_indices->clear();
-          TF_RETURN_IF_ERROR(
-              this->GetNextFromInput(input_impl_, ctx, &captured_func_inputs_, end_of_sequence, parent_indices));
+          std::vector<EparallaxTensorIndex*> parent_indices_buffer;
+          TF_RETURN_IF_ERROR(this->GetNextFromInput(
+                input_impl_, ctx, &captured_func_inputs_, end_of_sequence, &parent_indices_buffer));
           element_index_++;
           if (*end_of_sequence) {
             input_impl_.reset();
             return Status::OK();
           }
+          CHECK(parent_indices_buffer.size() == 1);
+          current_element_index_ = parent_indices_buffer.back();
         } while (captured_func_inputs_.empty());
 
-        TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx, (*parent_indices)[0]));
+        TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx));
       } while (true);
     }
 
@@ -225,7 +231,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
                 &captured_func_inputs_.back()));
           }
           element_index_--;
-          TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx, nullptr));
+          TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx));
           TF_RETURN_IF_ERROR(
               RestoreInput(ctx, reader, current_element_iterator_));
         }
@@ -234,18 +240,18 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    Status BuildCurrentElementIteratorLocked(IteratorContext* ctx, EparallaxTensorIndex* index)
+    Status BuildCurrentElementIteratorLocked(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      string s = index ? index->ToString() : "";
       return MakeIteratorFromInputElement(
-          ctx, captured_func_inputs_, s,
+          ctx, captured_func_inputs_, current_element_index_->ToString(),
           *instantiated_captured_func_, prefix(), &current_element_iterator_);
     }
 
     mutex mu_;
-    int64 element_index_ GUARDED_BY(mu_) = 0;
+    size_t element_index_ GUARDED_BY(mu_) = 0;
     std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> current_element_iterator_ GUARDED_BY(mu_);
+    EparallaxTensorIndex* current_element_index_ GUARDED_BY(mu_);
     std::vector<Tensor> captured_func_inputs_ GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
   };
