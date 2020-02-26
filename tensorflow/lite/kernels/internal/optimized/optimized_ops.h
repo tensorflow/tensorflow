@@ -5304,43 +5304,21 @@ inline void PadImageStyle(const tflite::PadParams& op_params,
 }
 
 template <typename T>
-inline void Slice(tflite::SliceParams& op_params,
+inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape,
                   const RuntimeShape& output_shape,
                   SequentialTensorWriter<T>* writer) {
   ruy::profiler::ScopeLabel label("Slice");
-  const int slice_dimensions = input_shape.DimensionsCount();
-
-  // Below values are under condition if the input is 1-D, as it is a special
-  // case, where we will not have next axis to fetch the copy length which is
-  // input for memcpy operation below, so we are alligning the variables to the
-  // required in the case where input is 1-D. NOTE: This is done only to attain
-  // code reuse of compute_slice() defined below.
-  bool is_input_1d = slice_dimensions == 1;
-  int final_axis = is_input_1d ? 0 : slice_dimensions - 2;
-  int copy_len =
-      is_input_1d
-          ? op_params.size[final_axis] - op_params.begin[final_axis]
-          : op_params.size[final_axis + 1] - op_params.begin[final_axis + 1];
-  int dim_mul = is_input_1d ? 1 : input_shape.Dims(final_axis + 1);
-  int start_fin = is_input_1d ? 0 : op_params.begin[final_axis + 1];
-
-  if (is_input_1d) {
-    // (This is very important): Set size so that the final loop will run only
-    // once to accommodate complete memcpy operation
-    op_params.size[final_axis] = op_params.begin[final_axis] + 1;
-  }
+  int final_axis = input_shape.DimensionsCount() - 1;
+  int copy_len = op_params.size[final_axis] - op_params.begin[final_axis];
+  int begin_fin = op_params.begin[final_axis];
 
   // Store as std::function to allow recursion.
   std::function<void(int, int)> compute_slice =
-      [&compute_slice, final_axis, copy_len, dim_mul, start_fin, writer,
-       input_shape, op_params](int axis, int curr_indices) {
-        if (axis == (final_axis)) {
-          for (int in_x = op_params.begin[axis]; in_x < op_params.size[axis];
-               in_x++) {
-            int index = (in_x + curr_indices) * dim_mul + start_fin;
-            if (copy_len > 0) writer->WriteN(index, copy_len);
-          }
+      [&compute_slice, final_axis, copy_len, begin_fin, writer, input_shape,
+       op_params](int axis, int curr_indices) {
+        if (axis == final_axis) {
+          if (copy_len > 0) writer->WriteN(curr_indices + begin_fin, copy_len);
         } else {
           for (int in_x = op_params.begin[axis]; in_x < op_params.size[axis];
                in_x++) {
@@ -5354,7 +5332,7 @@ inline void Slice(tflite::SliceParams& op_params,
 }
 
 template <typename T>
-inline void Slice(tflite::SliceParams& op_params,
+inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
   SequentialTensorWriter<T> writer(input_data, output_data);
@@ -5362,7 +5340,7 @@ inline void Slice(tflite::SliceParams& op_params,
 }
 
 template <typename T>
-inline void Slice(tflite::SliceParams& op_params,
+inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape, const TfLiteTensor* input,
                   const RuntimeShape& output_shape, TfLiteTensor* output) {
   SequentialTensorWriter<T> writer(input, output);
