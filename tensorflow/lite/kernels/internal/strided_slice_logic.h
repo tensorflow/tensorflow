@@ -35,7 +35,7 @@ inline int Clamp(const int v, const int lo, const int hi) {
 inline void StridedSlicePadIndices(tflite::StridedSliceParams* p,
                                    int dim_count) {
   // Add indices and mask bits to fully include extra dimensions
-  TFLITE_CHECK_LE(dim_count, 5);
+  TFLITE_CHECK_LE(dim_count, 4);
   TFLITE_CHECK_GE(dim_count, p->start_indices_count);
   TFLITE_CHECK_EQ(p->start_indices_count, p->stop_indices_count);
   TFLITE_CHECK_EQ(p->stop_indices_count, p->strides_count);

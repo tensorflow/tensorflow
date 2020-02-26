@@ -1165,15 +1165,6 @@ class StridedSlice
     op->new_axis_mask = options.new_axis_mask();
     op->shrink_axis_mask = options.shrink_axis_mask();
   }
-
-  int GetVersion(const OperatorSignature& op_signature) const override {
-    const auto& ss_op =
-        static_cast<const StridedSliceOperator&>(*op_signature.op);
-    ::tflite::OpSignature op_sig =
-        GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.strided_slice.num_dims = ss_op.start_indices.size();
-    return ::tflite::GetBuiltinOperatorVersion(op_sig);
-  }
 };
 
 class TopK_V2 : public BuiltinOperator<TopKV2Operator, ::tflite::TopKV2Options,
