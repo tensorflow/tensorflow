@@ -136,7 +136,6 @@ build --host_java_toolchain=//third_party/toolchains/java:tf_java_toolchain
 # environment variable "TF_MKL_ROOT" every time before build.
 build:mkl --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl --define=tensorflow_mkldnn_contraction_kernel=0
-build:mkl --define=build_with_mkl_dnn_v1_only=true
 build:mkl -c opt
 
 # This config option is used to enable MKL-DNN open source library only,
