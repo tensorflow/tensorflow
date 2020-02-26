@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ifeq ($(TARGET), "esp")
+ifeq ($(TARGET), esp)
 
 # Adding some esp specific files in the main CMakeLists.txt
 ESP_MICRO_SPEECH_SRCS := \

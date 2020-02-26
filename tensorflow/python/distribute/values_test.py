@@ -29,6 +29,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
@@ -824,7 +825,7 @@ def _make_replica_local(method, strategy=None):
           name=n, initializer=init, use_resource=True))
 
   if (strategy is not None) and isinstance(strategy, _TPU_STRATEGIES):
-    var_cls = values.TPUSyncOnReadVariable
+    var_cls = tpu_values.TPUSyncOnReadVariable
   else:
     var_cls = values.SyncOnReadVariable
   replica_local = var_cls(strategy, v, method)

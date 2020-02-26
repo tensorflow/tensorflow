@@ -383,6 +383,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._auto_track_sub_layers = True
 
   @trackable.no_automatic_dependency_tracking
+  @base_layer_utils.default
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
 
@@ -973,21 +974,24 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @property
   def dtype(self):
+    """Dtype used by the weights of the layer, set in the constructor."""
     return self._dtype_policy.variable_dtype
 
   @property
   def name(self):
+    """Name of the layer (string), set in the constructor."""
     return self._name
 
   @property
   @trackable_layer_utils.cache_recursive_attribute('dynamic')
   def dynamic(self):
+    """Whether the layer is dynamic (eager-only); set in the constructor."""
     # NOTE(taylorrobie): Currently self._dynamic is read-only. If that changes
     #                    then this cache logic must be updated.
     return self._dynamic
 
   @property
-  @doc_controls.do_not_generate_docs
+  @doc_controls.do_not_doc_inheritable
   @trackable_layer_utils.cache_recursive_attribute('stateful')
   def stateful(self):
     return self._stateful
@@ -1019,6 +1023,37 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @property
   def input_spec(self):
+    """`InputSpec` instance(s) describing the input format for this layer.
+
+    When you create a layer subclass, you can set `self.input_spec` to enable
+    the layer to run input compatibility checks when it is called.
+    Consider a `Conv2D` layer: it can only be called on a single input tensor
+    of rank 4. As such, you can set, in `__init__()`:
+
+    ```python
+    self.input_spec = tf.keras.layers.InputSpec(ndim=4)
+    ```
+
+    Now, if you try to call the layer on an input that isn't rank 4
+    (for instance, an input of shape `(2,)`, it will raise a nicely-formatted
+    error:
+
+    ```
+    ValueError: Input 0 of layer conv2d is incompatible with the layer:
+    expected ndim=4, found ndim=1. Full shape received: [2]
+    ```
+
+    Input checks that can be specified via `input_spec` include:
+    - Structure (e.g. a single input, a list of 2 inputs, etc)
+    - Shape
+    - Rank (ndim)
+    - Dtype
+
+    For more information, see `tf.keras.layers.InputSpec`.
+
+    Returns:
+      A `tf.keras.layers.InputSpec` instance, or nested structure thereof.
+    """
     return self._input_spec
 
   @input_spec.setter
@@ -1034,6 +1069,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @property
   def trainable_weights(self):
+    """List of all trainable weights tracked by this layer.
+
+    Trainable weights are updated via gradient descent during training.
+
+    Returns:
+      A list of trainable variables.
+    """
     if self.trainable:
       children_weights = self._gather_children_attribute('trainable_weights')
       return self._dedup_weights(self._trainable_weights + children_weights)
@@ -1042,6 +1084,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @property
   def non_trainable_weights(self):
+    """List of all non-trainable weights tracked by this layer.
+
+    Non-trainable weights are *not* updated during training. They are expected
+    to be updated manually in `call()`.
+
+    Returns:
+      A list of non-trainable variables.
+    """
     if self.trainable:
       children_weights = self._gather_children_attribute(
           'non_trainable_weights')
@@ -1063,6 +1113,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return self.trainable_weights + self.non_trainable_weights
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def updates(self):
     collected_updates = []
     all_layers = self._gather_unique_layers()
@@ -1113,7 +1164,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           collected_losses.append(loss_tensor)
     return collected_losses
 
-  @doc_controls.for_subclass_implementers
   def add_loss(self, losses, inputs=None):
     """Add loss tensor(s), potentially dependent on layer inputs.
 
@@ -1248,6 +1298,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @property
   def metrics(self):
+    """List of `tf.keras.metrics.Metric` instances tracked by the layer."""
     collected_metrics = []
     all_layers = self._gather_unique_layers()
     for layer in all_layers:
@@ -1255,7 +1306,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         collected_metrics.extend(layer._metrics)
     return collected_metrics
 
-  @doc_controls.for_subclass_implementers
   def add_metric(self, value, aggregation=None, name=None):
     """Adds metric tensor to the layer.
 
@@ -1328,7 +1378,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @deprecation.deprecated_args(None, '`inputs` is now automatically inferred',
                                'inputs')
-  @doc_controls.for_subclass_implementers
+  @doc_controls.do_not_doc_inheritable
   def add_update(self, updates, inputs=None):
     """Add update op(s), potentially dependent on layer inputs.
 
@@ -1536,6 +1586,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         output_weights.append(weight)
     return backend.batch_get_value(output_weights)
 
+  @doc_controls.do_not_generate_docs
   def get_updates_for(self, inputs):
     """Retrieves updates relevant to a specific set of inputs.
 
@@ -1555,6 +1606,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     reachable = tf_utils.get_reachable_from_inputs(inputs, updates)
     return [u for u in updates if u in reachable]
 
+  @doc_controls.do_not_doc_inheritable
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
 
@@ -1574,6 +1626,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     reachable = tf_utils.get_reachable_from_inputs(inputs, losses)
     return [l for l in losses if l in reachable]
 
+  @doc_controls.do_not_doc_inheritable
   def get_input_mask_at(self, node_index):
     """Retrieves the input mask tensor(s) of a layer at a given node.
 
@@ -1593,6 +1646,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     else:
       return getattr(inputs, '_keras_mask', None)
 
+  @doc_controls.do_not_doc_inheritable
   def get_output_mask_at(self, node_index):
     """Retrieves the output mask tensor(s) of a layer at a given node.
 
@@ -1613,6 +1667,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       return getattr(output, '_keras_mask', None)
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def input_mask(self):
     """Retrieves the input mask tensor(s) of a layer.
 
@@ -1634,6 +1689,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       return getattr(inputs, '_keras_mask', None)
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def output_mask(self):
     """Retrieves the output mask tensor(s) of a layer.
 
@@ -1654,6 +1710,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     else:
       return getattr(output, '_keras_mask', None)
 
+  @doc_controls.do_not_doc_inheritable
   def get_input_shape_at(self, node_index):
     """Retrieves the input shape(s) of a layer at a given node.
 
@@ -1673,6 +1730,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return self._get_node_attribute_at_index(node_index, 'input_shapes',
                                              'input shape')
 
+  @doc_controls.do_not_doc_inheritable
   def get_output_shape_at(self, node_index):
     """Retrieves the output shape(s) of a layer at a given node.
 
@@ -1692,6 +1750,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return self._get_node_attribute_at_index(node_index, 'output_shapes',
                                              'output shape')
 
+  @doc_controls.do_not_doc_inheritable
   def get_input_at(self, node_index):
     """Retrieves the input tensor(s) of a layer at a given node.
 
@@ -1710,6 +1769,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return self._get_node_attribute_at_index(node_index, 'input_tensors',
                                              'input')
 
+  @doc_controls.do_not_doc_inheritable
   def get_output_at(self, node_index):
     """Retrieves the output tensor(s) of a layer at a given node.
 
@@ -1767,6 +1827,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return self._get_node_attribute_at_index(0, 'output_tensors', 'output')
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def input_shape(self):
     """Retrieves the input shape(s) of a layer.
 
@@ -1820,6 +1881,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return layer_utils.count_params(self.weights)
 
   @property
+  @doc_controls.do_not_doc_inheritable
   def output_shape(self):
     """Retrieves the output shape(s) of a layer.
 
@@ -1892,6 +1954,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return self.add_weight(*args, **kwargs)
 
   @property
+  @doc_controls.do_not_generate_docs
   def variables(self):
     """Returns the list of all layer variables/weights.
 
@@ -1903,10 +1966,12 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return self.weights
 
   @property
+  @doc_controls.do_not_generate_docs
   def trainable_variables(self):
     return self.trainable_weights
 
   @property
+  @doc_controls.do_not_generate_docs
   def non_trainable_variables(self):
     return self.non_trainable_weights
 

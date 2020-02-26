@@ -85,7 +85,7 @@ class TF_TensorFlowType <string name, string description> :
 
 // Any tensor element type allowed in TensorFlow ops
 def TF_ElementType : Type<Or<[AnyFloat.predicate,
-                              AnyInteger.predicate,
+                              AnySignlessInteger.predicate,
                               AnyComplex.predicate,
                               TF_TFDialectType.predicate]>,
                           "tf.dtype">;

@@ -61,11 +61,19 @@ class ConvBuffer1x1 : public GPUOperation {
                                     const OperationDef& definition,
                                     const FullyConnectedAttributes& attr,
                                     ConvBuffer1x1* result);
+  friend Status CreateConvBuffer1x1Wino4x4To6x6(
+      const CreationContext& creation_context, const OperationDef& definition,
+      const Convolution2DAttributes& attr, ConvBuffer1x1* result);
 
   template <DataType T>
   Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                     const ::tflite::gpu::Tensor<Linear, T>& biases,
                     CLContext* context);
+  template <DataType T>
+  Status UploadDataForWinograd4x4To6x6(
+      const ::tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
+      CLContext* context);
+
   template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
@@ -86,6 +94,11 @@ class ConvBuffer1x1 : public GPUOperation {
   int flt8_x_count_;
   int flt8_y_count_;
 
+  // By default in 2d convolution we have the same weights for WH dims, but in
+  // some cases we need separate weights for H dimension and convolution kernel
+  // requires very small modifications to support it.
+  bool different_weights_for_height_;
+
   int3 work_group_size_;
 };
 
@@ -100,6 +113,24 @@ Status ConvBuffer1x1::UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
   create_info.aligned_size = weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(create_info, biases, context, &biases_));
   return OkStatus();
+}
+
+template <DataType T>
+Status ConvBuffer1x1::UploadDataForWinograd4x4To6x6(
+    const ::tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
+    CLContext* context) {
+  ::tflite::gpu::Tensor<OHWI, T> wino_weights;
+  RearrangeWeightsToWinograd4x4To6x6Weights(weights, &wino_weights);
+  RETURN_IF_ERROR(UploadWeights(wino_weights, context));
+
+  LinearStorageCreateInfo create_info;
+  create_info.storage_type = LinearStorageType::BUFFER;
+  create_info.data_type = definition_.GetDataType();
+  create_info.aligned_size = weights.shape.o;
+  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> bias;
+  bias.shape = Linear(weights.shape.o);
+  bias.data.resize(weights.shape.o, 0.0f);
+  return CreateLinearStorage(create_info, bias, context, &biases_);
 }
 
 template <DataType T>
@@ -142,6 +173,11 @@ Status CreateConvBuffer1x1(const CreationContext& creation_context,
                            const OperationDef& definition,
                            const FullyConnectedAttributes& attr,
                            ConvBuffer1x1* result);
+
+Status CreateConvBuffer1x1Wino4x4To6x6(const CreationContext& creation_context,
+                                       const OperationDef& definition,
+                                       const Convolution2DAttributes& attr,
+                                       ConvBuffer1x1* result);
 
 }  // namespace cl
 }  // namespace gpu

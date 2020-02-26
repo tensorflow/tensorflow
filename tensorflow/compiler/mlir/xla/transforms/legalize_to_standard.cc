@@ -16,7 +16,7 @@ limitations under the License.
 // This file implements logic for lowering XLA dialect to Standard dialect.
 
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
@@ -45,8 +45,8 @@ class CompareIConvert : public OpRewritePattern<xla_hlo::CompareOp> {
     // Broadcasting not supported by this rewrite.
     if (lhs_type.getShape() != rhs_type.getShape()) return matchFailure();
 
-    if (!lhs_type.getElementType().isa<IntegerType>() ||
-        !rhs_type.getElementType().isa<IntegerType>())
+    if (!lhs_type.getElementType().isSignlessInteger() ||
+        !rhs_type.getElementType().isSignlessInteger())
       return matchFailure();
 
     auto comparison_direction = op.comparison_direction();
@@ -113,7 +113,8 @@ class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
                                      PatternRewriter &rewriter) const override {
     auto output_type = op.getType().cast<ShapedType>();
     // TODO(prakalps): Handle FP and ComplexType iota ops.
-    if (!output_type.getElementType().isa<IntegerType>()) return matchFailure();
+    if (!output_type.getElementType().isSignlessInteger())
+      return matchFailure();
     auto output_size = output_type.getNumElements();
     auto dimension = op.iota_dimension().getSExtValue();
     auto max_dim_size = output_type.getDimSize(dimension);

@@ -82,6 +82,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"PartitionedCallOp", kPartitionedCallOp},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
+      // Virtual events for grouping.
+      {"HostTrainingLoopIteration", kHostTrainingLoopIteration},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},

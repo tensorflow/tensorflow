@@ -266,6 +266,7 @@ size_t GreedyMemoryPlanner::GetMaximumMemorySize() {
 }
 
 void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
+#ifndef NDEBUG
   CalculateOffsetsIfNeeded();
 
   for (int i = 0; i < buffer_count_; ++i) {
@@ -333,6 +334,7 @@ void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
     line[kLineWidth] = 0;
     TF_LITE_REPORT_ERROR(error_reporter, "%s", line);
   }
+#endif
 }
 
 int GreedyMemoryPlanner::GetBufferCount() { return buffer_count_; }

@@ -30,7 +30,7 @@ limitations under the License.
 namespace stream_executor {
 namespace interpreter {
 
-XlaInterpreterPlatform::XlaInterpreterPlatform(const string& name,
+XlaInterpreterPlatform::XlaInterpreterPlatform(const std::string& name,
                                                const Platform::Id& id)
     : name_(name), id_(id) {}
 
@@ -40,7 +40,7 @@ Platform::Id XlaInterpreterPlatform::id() const { return id_; }
 
 int XlaInterpreterPlatform::VisibleDeviceCount() const { return 1; }
 
-const string& XlaInterpreterPlatform::Name() const { return name_; }
+const std::string& XlaInterpreterPlatform::Name() const { return name_; }
 
 port::StatusOr<std::unique_ptr<DeviceDescription>>
 XlaInterpreterPlatform::DescriptionForDevice(int ordinal) const {

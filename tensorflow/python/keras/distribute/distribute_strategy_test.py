@@ -545,6 +545,25 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertIsNotNone(grad_v1)
       self.assertIsNotNone(grad_v2)
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[strategy_combinations.one_device_strategy] +
+          tpu_strategies,
+          mode=['graph', 'eager']))
+  def test_optimizer_in_cross_replica_context_raises_error(self, distribution):
+
+    with self.cached_session(), distribution.scope():
+      model = keras.models.Sequential([keras.layers.Dense(1)])
+      x = np.array([[1.]])
+      with backprop.GradientTape() as tape:
+        y = model(x)
+      gradients = tape.gradient(y, model.trainable_variables)
+      optimizer = gradient_descent_keras.SGD()
+
+      with self.assertRaisesRegex(RuntimeError,
+                                  'cannot be called in cross-replica context'):
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
   @combinations.generate(all_strategy_combinations_plus_run_distributed())
   def test_calling_model_with_nested_numpy_arrays(self, distribution,
                                                   experimental_run_tf_function):

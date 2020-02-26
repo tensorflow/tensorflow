@@ -74,7 +74,7 @@ class MoveTransposesPass : public FunctionPass<MoveTransposesPass> {
           clEnumValN(Direction::kEnd, "end", "end of the block"))};
 };
 
-using Permutation = SmallVector<int64_t, 4>;
+using Permutation = SmallVector<int32_t, 4>;
 
 Permutation GetDataFormatPermutation(StringRef from_data_format,
                                      StringRef to_data_format) {
@@ -114,7 +114,7 @@ void LayoutAssignmentPass::runOnFunction() {
     OpBuilder builder(op->getBlock());
 
     auto perm_attr = [&](Permutation permutation) -> DenseIntElementsAttr {
-      auto perm_ty = RankedTensorType::get({4}, builder.getIntegerType(64));
+      auto perm_ty = RankedTensorType::get({4}, builder.getIntegerType(32));
       return DenseIntElementsAttr::get(perm_ty, permutation);
     };
 

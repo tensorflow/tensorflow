@@ -61,7 +61,8 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
 
         remote_platform_configure(
             name = "%s_config_platform" % name,
-            container_image = container_image,
+            platform = "linux",
+            platform_exec_properties = exec_properties,
         )
 
         remote_python_configure(
@@ -104,7 +105,8 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
 
         remote_platform_configure(
             name = "%s_config_platform" % name,
-            container_image = container_image,
+            platform = "linux",
+            platform_exec_properties = exec_properties,
         )
 
         remote_python_configure(
@@ -133,4 +135,28 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
     else:
         fail("Neither cuda_version, rocm_version nor python_version specified.")
 
+def _tensorflow_rbe_win_config(name, python_bin_path, container_name = "windows-1803"):
+    container_image = _container_image_uri(container_name)
+    exec_properties = {
+        "container-image": container_image,
+        "OSFamily": "Windows",
+    }
+
+    env = {
+        "PYTHON_BIN_PATH": python_bin_path,
+    }
+
+    remote_platform_configure(
+        name = "%s_config_platform" % name,
+        platform = "windows",
+        platform_exec_properties = exec_properties,
+    )
+
+    remote_python_configure(
+        name = "%s_config_python" % name,
+        environ = env,
+        exec_properties = exec_properties,
+    )
+
 tensorflow_rbe_config = _tensorflow_rbe_config
+tensorflow_rbe_win_config = _tensorflow_rbe_win_config

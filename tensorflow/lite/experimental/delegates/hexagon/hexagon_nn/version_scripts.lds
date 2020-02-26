@@ -19,6 +19,7 @@ VERS_1.0 {
     hexagon_nn_global_init;
     hexagon_nn_is_device_supported;
     hexagon_nn_version;
+    hexagon_nn_hexagon_interface_version;
 
   # Hide everything else.
   local:

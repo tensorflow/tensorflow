@@ -25,8 +25,7 @@ namespace tensorflow {
 class RemoteTensorHandleData : public TensorHandleData {
  public:
   RemoteTensorHandleData(int64 op_id, int output_num, const TensorShape& shape,
-                         const string& remote_task, uint64 context_id,
-                         EagerContext* ctx);
+                         const string& remote_task, EagerContext* ctx);
   ~RemoteTensorHandleData() override;
 
   // A remote tensor handle does not have a Tensor object, hence it can only
@@ -38,11 +37,14 @@ class RemoteTensorHandleData : public TensorHandleData {
   Status Dim(int dim_index, int64* dim) const override;
   Status NumElements(int64* num_elements) const override;
   Status Unprotect() override;
+  EagerContext& ctx() const { return ctx_; }
 
   string DebugString() const override;
 
   int64 op_id() const { return op_id_; }
   int32 output_num() const { return output_num_; }
+  uint64 context_id() const { return context_id_; }
+  uint64 context_view_id() const { return context_view_id_; }
 
  private:
   // IDs required when this class is representing a remote tensor handle.
@@ -51,7 +53,8 @@ class RemoteTensorHandleData : public TensorHandleData {
   const TensorShape shape_;
   string remote_task_;
   uint64 context_id_;
-  EagerContext* const ctx_;
+  uint64 context_view_id_;
+  EagerContext& ctx_;
 };
 
 // Async Remote Tensor Handle: A handle to a Tensor on a remote host. Once the
@@ -59,8 +62,7 @@ class RemoteTensorHandleData : public TensorHandleData {
 class UnshapedRemoteTensorHandleData : public TensorHandleData {
  public:
   UnshapedRemoteTensorHandleData(int64 op_id, int32 output_num,
-                                 const string& remote_task, uint64 context_id,
-                                 EagerContext* ctx);
+                                 const string& remote_task, EagerContext* ctx);
   ~UnshapedRemoteTensorHandleData() override;
 
   // Unshaped remote tensor handles are not ready and hence cannot satisfy any
@@ -79,7 +81,8 @@ class UnshapedRemoteTensorHandleData : public TensorHandleData {
   int32 output_num() const { return output_num_; }
   string remote_task() const { return remote_task_; }
   uint64 context_id() const { return context_id_; }
-  EagerContext* ctx() const { return ctx_; }
+  uint64 context_view_id() const { return context_view_id_; }
+  EagerContext& ctx() const { return ctx_; }
 
   // When constructed, UnshapedRemoteTensorHandleData owns the remote
   // TensorHandle and should delete it by issuing an RPC. Once the remote
@@ -97,7 +100,8 @@ class UnshapedRemoteTensorHandleData : public TensorHandleData {
   bool delete_remote_tensor_;
   string remote_task_;
   uint64 context_id_;
-  EagerContext* const ctx_;
+  uint64 context_view_id_;
+  EagerContext& ctx_;
 };
 
 }  // namespace tensorflow

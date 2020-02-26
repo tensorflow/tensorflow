@@ -224,12 +224,15 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
   EnqueueResponse* response = new EnqueueResponse;
   const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   Device* recv_device = recv_device_;
+  uint64 context_view_id = ctx_->GetContextViewId();
   eager_client->StreamingEnqueueAsync(
       &request, response,
-      [captured_state, response, recv_device, done](const Status& s) {
+      [captured_state, response, recv_device, context_view_id,
+       done](const Status& s) {
         if (s.ok()) {
           Status status = captured_state->dst()->SetRemoteShape(
-              response->queue_response(0).shape(0), recv_device);
+              response->queue_response(0).shape(0), recv_device,
+              context_view_id);
           if (!status.ok()) {
             LOG(ERROR) << "Ignoring an error encountered when setting remote "
                           "shape of tensor received by remote Recv op: "
@@ -319,12 +322,14 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   captured_state->SetSrcShape(tensor.shape());
   Device* recv_device = recv_device_;
+  uint64 context_view_id = ctx_->GetContextViewId();
   eager_client->StreamingEnqueueAsync(
       &request, response,
-      [captured_state, response, recv_device, done](const Status& s) {
+      [captured_state, response, recv_device, context_view_id,
+       done](const Status& s) {
         if (s.ok()) {
           Status status = captured_state->dst()->SetRemoteShape(
-              captured_state->GetSrcShape(), recv_device);
+              captured_state->GetSrcShape(), recv_device, context_view_id);
           if (!status.ok()) {
             LOG(ERROR) << "Ignoring an error encountered when setting remote "
                           "shape of tensor received by SendTensor rpc: "

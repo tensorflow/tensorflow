@@ -178,6 +178,7 @@ class Layer(base_layer.Layer):
     # Indicates whether `build` needs to be called upon layer call, to create
     # the layer's weights.
     self.built = False
+    self._build_input_shape = None
     # Provides information about which inputs are compatible with the layer.
     self._input_spec = None
     self.supports_masking = False
@@ -252,6 +253,8 @@ class Layer(base_layer.Layer):
     # might want to turn it off, like Sequential model.
     self._auto_track_sub_layers = True
 
+  @trackable.no_automatic_dependency_tracking
+  @base_layer_utils.default
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
 
@@ -266,6 +269,8 @@ class Layer(base_layer.Layer):
         `TensorShape` if the layer expects a list of inputs
         (one instance per input).
     """
+    if not hasattr(self.build, '_is_default'):
+      self._build_input_shape = input_shape
     self.built = True
 
   @doc_controls.for_subclass_implementers

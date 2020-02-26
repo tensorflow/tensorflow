@@ -723,10 +723,15 @@ class Network(base_layer.Layer):
 
     # Use the tuple of TensorShape as the cache key, since tuple is hashable
     # and can be used as hash key.
-    cache_key = tuple(tf_utils.convert_shapes(input_shape, to_tuples=True))
-    if cache_key in self._output_shape_cache:
-      # Cache hit. Return shapes as TensorShapes.
-      return self._output_shape_cache[cache_key]
+    try:
+      cache_key = tuple(tf_utils.convert_shapes(input_shape, to_tuples=True))
+      if cache_key in self._output_shape_cache:
+        # Cache hit. Return shapes as TensorShapes.
+        return self._output_shape_cache[cache_key]
+    except ValueError:
+      # In case there are unknown TensorShape, eg for sparse tensor input,
+      # We skip the caching since the shape is unknown.
+      pass
 
     layers_to_output_shapes = {}
     for layer, shape in zip(self._input_layers, nest.flatten(input_shape)):
@@ -908,9 +913,14 @@ class Network(base_layer.Layer):
 
     if output_shapes is not None:
       input_shapes = [x.shape for x in inputs]
-      cache_key = tuple(tf_utils.convert_shapes(input_shapes, to_tuples=True))
-      self._output_shape_cache[cache_key] = nest.pack_sequence_as(
-          self._nested_outputs, output_shapes)
+      try:
+        cache_key = tuple(tf_utils.convert_shapes(input_shapes, to_tuples=True))
+        self._output_shape_cache[cache_key] = nest.pack_sequence_as(
+            self._nested_outputs, output_shapes)
+      except ValueError:
+        # In case there are unknown TensorShape, eg for sparse tensor input,
+        # We skip the caching since the shape is unknown.
+        pass
 
     output_tensors = nest.pack_sequence_as(self._nested_outputs, output_tensors)
     return output_tensors

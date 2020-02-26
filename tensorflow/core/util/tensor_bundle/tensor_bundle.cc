@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
@@ -729,6 +730,7 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
       prefix_(prefix),
       metadata_(nullptr),
       table_(nullptr),
+      index_cache_(nullptr),
       iter_(nullptr),
       need_to_swap_bytes_(false) {
   const string filename = MetaFilename(prefix_);
@@ -741,7 +743,17 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
   status_ = env_->NewRandomAccessFile(filename, &wrapper);
   if (!status_.ok()) return;
   metadata_ = wrapper.release();
-  status_ = table::Table::Open(table::Options(), metadata_, file_size, &table_);
+
+  table::Options o;
+  int64 cache_size;
+  Status s =
+      ReadInt64FromEnvVar("TF_TABLE_INDEX_CACHE_SIZE_IN_MB", 0, &cache_size);
+  if (s.ok() && cache_size > 0) {
+    index_cache_ = table::NewLRUCache(cache_size << 20);
+    o.block_cache = index_cache_;
+  }
+
+  status_ = table::Table::Open(o, metadata_, file_size, &table_);
   if (!status_.ok()) return;
   iter_ = table_->NewIterator();
 
@@ -772,6 +784,9 @@ BundleReader::~BundleReader() {
   delete metadata_;
   delete iter_;
   delete table_;
+  if (index_cache_) {
+    delete index_cache_;
+  }
   // InputBuffer does not own the underlying RandomAccessFile.
   for (auto pair : data_) {
     if (pair.second != nullptr && pair.second->file() != nullptr) {

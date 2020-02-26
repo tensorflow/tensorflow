@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 
+#include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/monitoring.h"
 
 namespace tensorflow {
 
@@ -123,7 +123,6 @@ WorkerSession::WorkerSession(
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   worker_session_created->GetCell()->Set(true);
-  monitoring::StartExporter();
 }
 
 Status WorkerSession::UpdateWorkerCacheAndDevices(
@@ -170,7 +169,6 @@ WorkerSession::WorkerSession(
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   worker_session_created->GetCell()->Set(true);
-  monitoring::StartExporter();
 }
 
 WorkerSession::~WorkerSession() {

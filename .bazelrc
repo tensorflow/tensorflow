@@ -406,9 +406,7 @@ build:rbe_win --define=override_eigen_strong_inline=true
 build:rbe_win --jobs=500
 
 build:rbe_win_py37 --config=rbe
-build:rbe_win_py37 --repo_env=PYTHON_BIN_PATH=C:\\Python37\\python.exe
-build:rbe_win_py37 --repo_env=PYTHON_LIB_PATH=C:\\Python37\\lib\\site-packages
-build:rbe_win_py37 --repo_env=TF_PYTHON_CONFIG_REPO=@org_tensorflow//third_party/toolchains/preconfig/win_1803/py37
+build:rbe_win_py37 --repo_env=TF_PYTHON_CONFIG_REPO="@windows_py37_config_python"
 build:rbe_win_py37 --python_path=C:\\Python37\\python.exe
 
 build:rbe_win_py38 --config=rbe

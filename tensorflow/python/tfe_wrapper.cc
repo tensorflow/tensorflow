@@ -473,12 +473,18 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     return output;
   });
-  m.def("TFE_ContextClearRemoteExecutors", [](py::handle& ctx) {
+  m.def("TFE_ContextSyncExecutors", [](py::handle& ctx) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
-    TFE_ContextClearRemoteExecutors(tensorflow::InputTFE_Context(ctx),
-                                    status.get());
+    TFE_ContextAsyncWait(tensorflow::InputTFE_Context(ctx), status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+  });
+  m.def("TFE_ContextClearExecutors", [](py::handle& ctx) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextAsyncWait(tensorflow::InputTFE_Context(ctx), status.get());
+    // NOTE: different from TFE_ContextSyncExecutors that raises potential
+    // errors, deliberately ignore executor statuses in cleanup.
   });
 
   // TFE_Executor logic
