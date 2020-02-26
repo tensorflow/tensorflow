@@ -769,7 +769,11 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                 step_num=step,
                 batch_size=batch_size):
               callbacks.on_train_batch_begin(step)
-              logs = train_function(iterator)
+              tmp_logs = train_function(iterator)
+              # Catch possible OutOfRangeError here.
+              # TODO(b/150292341): Allow multiple async steps.
+              context.async_wait()
+              logs = tmp_logs
               callbacks.on_train_batch_end(step, logs)
         epoch_logs = {m.name: m.result() for m in self.metrics}
 
@@ -996,7 +1000,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                 graph_type='test',
                 step_num=step):
               callbacks.on_test_batch_begin(step)
-              logs = test_function(iterator)
+              tmp_logs = test_function(iterator)
+              context.async_wait()  # Possible OutOfRangeError here.
+              logs = tmp_logs
               callbacks.on_test_batch_end(step, logs)
       callbacks.on_test_end()
 
@@ -1176,7 +1182,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
             callbacks.on_predict_batch_begin(step)
-            batch_outputs = predict_function(iterator)
+            tmp_batch_outputs = predict_function(iterator)
+            context.async_wait()  # Possible OutOfRangeError here.
+            batch_outputs = tmp_batch_outputs
             if outputs is None:
               outputs = nest.map_structure(lambda batch_output: [batch_output],
                                            batch_outputs)
