@@ -19,7 +19,6 @@ limitations under the License.
 #include <unordered_map>
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::algorithm;
 using mkldnn::eltwise_forward;
@@ -164,7 +164,11 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     context_.src_md.reset(new memory::desc(fwdParams.src_md.data));
 
     context_.src_mpd.reset(
+#ifdef ENABLE_MKLDNN_V1
+        new MEMORY_PRIMITIVE_DESC(*context_.src_md));
+#else
         new MEMORY_PD_CONSTRUCTOR_2_PARAMS(*context_.src_md, cpu_engine_));
+#endif
 
     // Create an eltwise forward descriptor and primitive descriptor
     context_.fwd_desc.reset(new eltwise_forward::desc(
@@ -397,7 +401,6 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
     // Create memory descriptors for eltwise data w/ no specified format
     context_.src_md.reset(new memory::desc(bwdParams.common_md.data));
     context_.diff_dst_md.reset(new memory::desc(bwdParams.common_md.data));
-
     context_.src_mpd.reset(
         new MEMORY_PD_CONSTRUCTOR_2_PARAMS(*context_.src_md, cpu_engine_));
     context_.diff_dst_mpd.reset(

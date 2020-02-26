@@ -41,7 +41,8 @@ struct MklDnnMatMulFwdParams {
   memory::dims weight_dims;
   memory::dims bias_dims;
   memory::dims dst_dims;
-  MEMORY_FORMAT weight_fmt;
+  MEMORY_FORMAT src_format;
+  MEMORY_FORMAT weight_format;
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -51,12 +52,14 @@ struct MklDnnMatMulFwdParams {
 
   MklDnnMatMulFwdParams(memory::dims src_dims, memory::dims weight_dims,
                         memory::dims bias_dims, memory::dims dst_dims,
-                        MEMORY_FORMAT weight_fmt = MEMORY_FORMAT::any)
+                        MEMORY_FORMAT src_format = MEMORY_FORMAT::any,
+                        MEMORY_FORMAT weight_format = MEMORY_FORMAT::any)
       : src_dims(src_dims),
         weight_dims(weight_dims),
         bias_dims(bias_dims),
         dst_dims(dst_dims),
-        weight_fmt(weight_fmt) {}
+        src_format(src_format),
+        weight_format(weight_format) {}
 };
 
 // With quantization, input, weight, bias, and output can have different types.
@@ -182,15 +185,11 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
     // format.
     context_.src_md.reset(new memory::desc({matmul_fwd_params.src_dims},
                                            MklDnnType<Tinput>(),
-                                           MEMORY_FORMAT::any));
+                                           matmul_fwd_params.src_format));
 
     context_.weight_md.reset(new memory::desc({matmul_fwd_params.weight_dims},
                                               MklDnnType<Tweight>(),
-#ifdef ENABLE_MKLDNN_V1
-                                              MEMORY_FORMAT::any));
-#else
-                                              matmul_fwd_params.weight_fmt));
-#endif  // ENABLE_MKLDNN_V1
+                                              matmul_fwd_params.weight_format));
 
     context_.dst_md.reset(new memory::desc({matmul_fwd_params.dst_dims},
                                            MklDnnType<Toutput>(),
@@ -438,49 +437,61 @@ class MklDnnMatMulOpBase : public OpKernel {
 
     // reorder and cache the weight
     weight.SetUsrMem(weight_md, &weight_tensor);
-    weight.CheckReorderToOpMem(matmul_fwd_pd.get()->weights_primitive_desc());
+    weight.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
+        matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS, cpu_engine_));
     weight_data = static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
 
     Tensor* weight_tensor_ptr = nullptr;
 
+    size_t size = matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS.get_size();
     TensorShape weight_tf_shape;
-    weight_tf_shape.AddDim(
-        (matmul_fwd_pd.get()->weights_primitive_desc().get_size() /
-         sizeof(Tweight)));
+    weight_tf_shape.AddDim(size / sizeof(Tweight));
 
     OP_REQUIRES_OK(context, context->allocate_persistent(
                                 DataTypeToEnum<Tweight>::value, weight_tf_shape,
                                 &weight_oi_, &weight_tensor_ptr));
 
     void* weight_oi_t_data = weight.GetTensorBuffer(weight_tensor_ptr);
-    size_t weight_size = weight.GetOpMem().get_primitive_desc().get_size();
-    memcpy(weight_oi_t_data, weight_data, weight_size);
+    memcpy(weight_oi_t_data, weight_data, size);
 
-    // cache the memory descriptor
+// cache the memory descriptor
+#ifdef ENABLE_MKLDNN_V1
+    auto expected_md = GET_WEIGHTS_DESC_FROM_OP_PD(matmul_fwd_pd);
+#else
+    auto expected_md = GET_WEIGHTS_DESC_FROM_OP_PD(matmul_fwd_pd).desc();
+#endif
     Tensor* weight_md_tensor_ptr = nullptr;
     TensorShape weight_mkl_format;
-    weight_mkl_format.AddDim(1);
+    weight_mkl_format.AddDim(sizeof(expected_md) / sizeof(Tweight));
 
-    OP_REQUIRES_OK(context, context->allocate_persistent(
-                                DT_INT32, weight_mkl_format, &weight_oi_md_,
-                                &weight_md_tensor_ptr));
-    weight_md_tensor_ptr->scalar<int32>()() =
-        matmul_fwd_pd.get()->weights_primitive_desc().desc().data.format;
+    OP_REQUIRES_OK(
+        context, context->allocate_persistent(DataTypeToEnum<Tweight>::value,
+                                              weight_mkl_format, &weight_oi_md_,
+                                              &weight_md_tensor_ptr));
+    *reinterpret_cast<memory::desc*>(
+        weight_md_tensor_ptr->flat<Tweight>().data()) = expected_md;
   }
 
   Tweight* GetCachedWeight(OpKernelContext* context,
-                           const memory::format& weight_mf)
+                           const memory::desc& expected_md)
       LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
     const Tensor& weight_t = *weight_oi_.AccessTensor(context);
     const Tensor& weight_md_t = *weight_oi_md_.AccessTensor(context);
 
-    // Check if the  memory descriptor of the cached weight is same as
-    // weight_mf. if so use the cached memory, else return NULL
-    if (weight_md_t.scalar<int32>().size() &&
-        weight_md_t.scalar<int32>()() == weight_mf) {
-      return static_cast<Tweight*>(
-          const_cast<Tweight*>(weight_t.flat<Tweight>().data()));
+    // Check if the memory descriptor of the cached weight is same as
+    // expected_md. if so use the cached memory, else return NULL
+    if (weight_md_t.flat<Tweight>().size()) {
+      const memory::desc& stored_md =
+          *(static_cast<memory::desc*>(weight_md_t.data()));
+#ifdef ENABLE_MKLDNN_V1
+      if (stored_md == expected_md) {
+#else
+      if (stored_md.data.format == expected_md.data.format) {
+#endif
+        return static_cast<Tweight*>(
+            const_cast<Tweight*>(weight_t.flat<Tweight>().data()));
+      }
     }
     return nullptr;
   }
@@ -527,7 +538,8 @@ void dnnl_gemm_exec(const dnnl::desc& a_md, const dnnl::desc& b_md,
   dnnl::stream s(cpu_engine);
   matmul_prim.execute(s, {{DNNL_ARG_SRC, a_memory},
                           {DNNL_ARG_WEIGHTS, b_memory},
-                          {DNNL_ARG_DST, c_memory}});
+                          { DNNL_ARG_DST,
+                            c_memory }});
   s.wait();
 }
 

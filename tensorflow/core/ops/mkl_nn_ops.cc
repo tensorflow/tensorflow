@@ -1259,6 +1259,7 @@ REGISTER_OP("_MklFusedBatchNormV3")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("exponential_avg_factor: float = 1.0")
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormShape)
     .Doc(

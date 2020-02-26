@@ -18,7 +18,6 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::prop_kind;
 using mkldnn::softmax_forward;
@@ -65,7 +65,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
 
 #ifdef ENABLE_MKLDNN_V1
     execute_primitives(context_.fwd_primitives, context_.fwd_stream,
-                       context_.net_args);
+                       context_.fwd_net_args);
 #else
     context_.fwd_stream->submit(context_.fwd_primitives);
 #endif

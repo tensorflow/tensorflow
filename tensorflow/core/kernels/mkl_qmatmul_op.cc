@@ -269,11 +269,11 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
           }
 #ifdef ENABLE_MKLDNN_V1
           weight_data = this->GetCachedWeight(
-              context, static_cast<int32>(weight_mkl_shape.GetTfDataFormat()));
+              context, GET_WEIGHTS_DESC_FROM_OP_PD(matmul_fwd_pd));
 #else
           weight_data = this->GetCachedWeight(
-              context, matmul_fwd->GetWeightMemoryFormat());
-#endif  // ENABLE_MKLDNN_V1
+              context, GET_WEIGHTS_DESC_FROM_OP_PD(matmul_fwd_pd).desc());
+#endif
           is_weight_cached = (weight_data != nullptr);
         }
 

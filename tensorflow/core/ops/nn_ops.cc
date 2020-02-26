@@ -2524,6 +2524,7 @@ REGISTER_OP("_MklFusedBatchNorm")
     .Attr("T: numbertype")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
+    .Attr("exponential_avg_factor: float = 1.0")
     .Attr("is_training: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle x;
@@ -2673,6 +2674,7 @@ REGISTER_OP("_MklFusedBatchNormV2")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("exponential_avg_factor: float = 1.0")
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormShape);
 
