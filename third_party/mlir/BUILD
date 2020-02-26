@@ -1373,11 +1373,13 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AffineOps",
+        ":GPUDialect",
         ":LoopOps",
         ":LoopsToGPU",
         ":Pass",
         ":StandardOps",
         ":Support",
+        ":Transforms",
         "@llvm-project//llvm:support",
     ],
 )
