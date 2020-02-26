@@ -95,6 +95,14 @@ Value Transpose2D(OpBuilder* builder, Value value_to_transpose,
   return Transpose(builder, value_to_transpose, perm, type, location);
 }
 
+Value Reverse(OpBuilder* builder, Value value_to_reverse, int axis,
+              RankedTensorType type, mlir::Location location) {
+  auto axis_op = CreateI32SplatConst(builder, {1}, axis, location);
+  // The result type will be the same as the input.
+  return builder->create<TF::ReverseV2Op>(location, type, value_to_reverse,
+                                          axis_op);
+}
+
 ArrayRef<int64_t> GetRankedTensorShape(Value value) {
   return value.getType().cast<RankedTensorType>().getShape();
 }
@@ -613,6 +621,16 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
     final_inputs =
         Transpose(builder, final_inputs, perm, input_type, func_op.getLoc());
     final_input_type = final_inputs.getType().dyn_cast<RankedTensorType>();
+  }
+
+  // Handle go_backwards:
+  // LSTM in Keras semantic will reverse the input sequence if it's go_backwards
+  auto go_backwards_attr = func_op.getAttrOfType<BoolAttr>("tf.go_backwards");
+
+  if (go_backwards_attr != nullptr && go_backwards_attr.getValue()) {
+    // We assume input is already in {time, batch, size} layout.
+    final_inputs =
+        Reverse(builder, final_inputs, 0, final_input_type, func_op.getLoc());
   }
 
   int batch = final_input_type.getDimSize(1);
