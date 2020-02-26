@@ -482,6 +482,26 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_index(JNIEnv* env,
   return GetTensorIndexFromHandle(env, handle);
 }
 
+JNIEXPORT jobject JNICALL
+Java_org_tensorflow_lite_Tensor_quantizationParameters(JNIEnv* env,
+                                                       jclass clazz,
+                                                       jlong handle) {
+  const TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+
+  // For tensor that are not quantized, the values of scale and zero_point are
+  // both 0.
+  jfloat scale = static_cast<jfloat>(tensor->params.scale);
+  jlong zero_point = static_cast<jint>(tensor->params.zero_point);
+
+  jclass quantization_params_class =
+      env->FindClass("org/tensorflow/lite/Tensor$QuantizationParams");
+  jmethodID quantization_params_constructor =
+      env->GetMethodID(quantization_params_class, "<init>", "(FI)V");
+
+  return env->NewObject(quantization_params_class,
+                        quantization_params_constructor, scale, zero_point);
+}
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

@@ -675,8 +675,10 @@ class BatchNormalizationBase(Layer):
         training = bool(training)
       if base_layer_utils.is_in_keras_graph():
         training = math_ops.logical_and(training, self._get_trainable_var())
-      else:
-        training = math_ops.logical_and(training, self.trainable)
+      elif not self.trainable:
+        # When the layer is not trainable, it overrides the value passed from
+        # model.
+        training = self.trainable
     return training
 
   def call(self, inputs, training=None):

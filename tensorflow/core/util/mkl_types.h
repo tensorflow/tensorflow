@@ -48,6 +48,7 @@ namespace tensorflow {
 #define GET_WORKSPACE_DESC_FROM_OP_PD(op_pd) op_pd->workspace_desc()
 #define GET_TENSOR_FORMAT(fmt) MklTensorFormatToMklDnnDataFormat(fmt)
 #define GET_TF_DATA_FORMAT(shape, mem_desc) shape.GetTfDataFormat()
+#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemDesc()
 #define GET_WEIGHTS_DESC_FROM_OP_PD(op_pd) op_pd->weights_desc()
 #define GET_WEIGHTS_FORMAT_FROM_OP_PD(op_pd, op) \
   GET_WEIGHTS_DESC_FROM_OP_PD(op_pd)
@@ -114,14 +115,13 @@ namespace tensorflow {
 #define TENSOR_FORMAT MKL_TENSOR_FORMAT
 #define TENSOR_FORMAT_NHWC MKL_TENSOR_FORMAT_NHWC
 #define TENSOR_MAX_DIMS MKLDNN_MAX_NDIMS
-#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemDesc()
-#define BN_FLAGS mkldnn::normalization_flags
 
 #else
 
 #define ADD_MD add_pd
 #define ALGORITHM mkldnn
 #define ALGORITHM_UNDEF ALGORITHM::algorithm_undef
+#define BN_FLAGS mkldnn
 #define CPU_STREAM(engine) stream(stream::kind::eager_nostore)
 #define DATA_WITH_ENGINE(data, engine) data
 #define DST_MD dst_pd
@@ -148,6 +148,7 @@ namespace tensorflow {
   op_pd.get()->workspace_primitive_desc()
 #define GET_TENSOR_FORMAT(fmt) fmt
 #define GET_TF_DATA_FORMAT(shape, mem_desc) mem_desc.data.format
+#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemPrimDesc()
 #define GET_WEIGHTS_DESC_FROM_OP_PD(op_pd) op_pd.get()->weights_primitive_desc()
 #define GET_WEIGHTS_FORMAT_FROM_OP_PD(op_pd, op) op->GetFilterMemoryFormat()
 #define IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, op_pd, op) \
@@ -215,8 +216,6 @@ namespace tensorflow {
 #define SUMMAND_MD summand_pd
 #define TENSOR_FORMAT TensorFormat
 #define TENSOR_FORMAT_NHWC FORMAT_NHWC
-#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemPrimDesc()
-#define BN_FLAGS mkldnn
 #endif  // ENABLE_MKLDNN_V1
 
 }  // namespace tensorflow

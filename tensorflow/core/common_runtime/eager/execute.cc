@@ -769,9 +769,11 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         id, i, remote_task, output_dtypes[i], op_device, &ctx, &retvals[i]);
     if (!status.ok()) {
       for (int j = 0; j < i; ++j) {
-        retvals[j]->Poison(errors::Internal(
-            "Failed to construct unshaped remote tensor handle at index ", i,
-            " for op ", op->Name()));
+        retvals[j]->PoisonRemote(
+            errors::Internal(
+                "Failed to construct unshaped remote tensor handle at index ",
+                i, " for op ", op->Name()),
+            op_device, ctx.GetContextViewId());
       }
       return status;
     }
@@ -796,7 +798,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
            << " (is async?: " << executor.Async() << ").";
 
   std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
-      std::move(request), op_device, ctx.GetContextViewId(), eager_client.get(),
+      &op->EagerContext(), std::move(request), op_device,
+      ctx.GetContextViewId(), eager_client.get(),
       op->MutableAttrs()->BuildNodeDef(), op->EagerContext().FuncLibDef(),
       op->Inputs(), {retvals, num_outputs}));
   Status s = executor.AddOrExecute(std::move(node));
@@ -1057,11 +1060,15 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     return Status::OK();
   }
 
-  // TODO(gjn): Need to add support for async execution. Note if receiver
-  // is local, we need to first add support in TensorHandle to wait on local
-  // mirrors.
-  if (mirror && !executor->Async()) {
-    TF_RETURN_IF_ERROR(h->AddEmptyLocalMirror(d));
+  bool async = executor->Async();
+  if (mirror) {
+    // We don't bother adding an empty local mirror in sync mode since we'll be
+    // executing the operation directly and be calling AddLocalMirror. A
+    // reference count is still needed which will be removed if the operation
+    // fails.
+    if (async) {
+      TF_RETURN_IF_ERROR(h->AddEmptyLocalMirror(d));
+    }
     h->Ref();
     *result = h;
   } else {
@@ -1069,10 +1076,18 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
         true, d, dstd, h->resource_device(), h->dtype, ctx, result));
   }
 
-  // Note that `h` may not be currently ready. However execution order will
-  // make sure that `h` is ready before the copy is actually done.
-  std::unique_ptr<EagerNode> node(new CopyToDeviceNode(h, *result, dstd, *ctx));
-  Status s = executor->AddOrExecute(std::move(node));
+  Status s;
+  if (async) {
+    // Note that `h` may not be currently ready. However execution order will
+    // make sure that `h` is ready before the copy is actually done.
+    std::unique_ptr<EagerNode> node(
+        new CopyToDeviceNode(h, *result, d, *ctx, async, mirror));
+    s = executor->AddOrExecute(std::move(node));
+  } else {
+    CopyToDeviceNode node(h, *result, d, *ctx, async, mirror);
+    s = executor->SyncExecute(&node);
+  }
+
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.
   if (!s.ok()) {
@@ -1121,7 +1136,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
       // TODO(gjn): Need to add support for async execution. Note if receiver
       // is local, we need to first add support in TensorHandle to wait on local
       // mirrors.
-      if (mirror && !executor->Async()) {
+      if (mirror) {
         TF_RETURN_IF_ERROR(h->AddEmptyLocalMirror(d));
         h->Ref();
         *result = h;
@@ -1159,7 +1174,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
       }
     }
 
-    auto node = absl::make_unique<eager::RemoteCopyNode>(
+    auto node = std::make_unique<eager::RemoteCopyNode>(
         ctx, executor, h, result[0], device, recv_op_id);
     Status s = executor->AddOrExecute(std::move(node));
     if (!s.ok()) {

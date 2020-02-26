@@ -31,6 +31,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.tensorflow.lite.Tensor.QuantizationParams;
 
 /** Unit tests for {@link org.tensorflow.lite.Tensor}. */
 @RunWith(JUnit4.class)
@@ -44,6 +45,9 @@ public final class TensorTest {
 
   private static final String LONG_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/int64.bin";
+
+  private static final String QUANTIZED_MODEL_PATH =
+      "tensorflow/lite/java/src/testdata/quantized.bin";
 
   private NativeInterpreterWrapper wrapper;
   private Tensor tensor;
@@ -450,5 +454,28 @@ public final class TensorTest {
     } catch (IllegalArgumentException e) {
       // Expected failure.
     }
+  }
+
+  @Test
+  public void testQuantizationParameters_floatModel() {
+    QuantizationParams quantizationParams = tensor.quantizationParams();
+    float scale = quantizationParams.getScale();
+    long zeroPoint = quantizationParams.getZeroPoint();
+
+    assertThat(scale).isWithin(1e-6f).of(0.0f);
+    assertThat(zeroPoint).isEqualTo(0);
+  }
+
+  @Test
+  public void testQuantizationParameters_quantizedModel() {
+    wrapper = new NativeInterpreterWrapper(QUANTIZED_MODEL_PATH);
+    tensor = wrapper.getOutputTensor(0);
+
+    QuantizationParams quantizationParams = tensor.quantizationParams();
+    float scale = quantizationParams.getScale();
+    long zeroPoint = quantizationParams.getZeroPoint();
+
+    assertThat(scale).isWithin(1e-6f).of(0.25f);
+    assertThat(zeroPoint).isEqualTo(127);
   }
 }

@@ -49,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/monitoring.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
@@ -102,7 +101,6 @@ EagerContext::EagerContext(
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   eager_context_created->GetCell()->Set(true);
-  monitoring::StartExporter();
   InitPrioritizedDeviceTypeList();
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));
@@ -163,6 +161,16 @@ std::vector<string> DevicesToString(const PrioritizedDeviceVector& devices) {
   v.reserve(devices.size());
   for (const auto& p : devices) {
     v.push_back(p.first->name());
+  }
+  return v;
+}
+
+std::vector<string> DeviceTypesToString(
+    const PrioritizedDeviceTypeVector& types) {
+  std::vector<string> v;
+  v.reserve(types.size());
+  for (const auto& p : types) {
+    v.push_back(p.first.type_string());
   }
   return v;
 }
@@ -232,13 +240,17 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
     return errors::InvalidArgument(
         "Could not satisfy device specification '", preferred,
         "'. enable_soft_placement=", AllowSoftPlacement(),
-        ". All available devices [",
+        ". Supported device types [",
+        absl::StrJoin(DeviceTypesToString(supported), ", "),
+        "]. All available devices [",
         absl::StrJoin(DevicesToString(existing), ", "), "].");
   }
   return errors::InvalidArgument(
       "No supported device found in available devices [",
       absl::StrJoin(DevicesToString(existing), ", "),
-      "]. enable_soft_placement=", AllowSoftPlacement(), ".");
+      "]. enable_soft_placement=", AllowSoftPlacement(),
+      ". Supported devices types [",
+      absl::StrJoin(DeviceTypesToString(supported), ", "), "].");
 }
 
 void EagerContext::ResetClusterFLR(

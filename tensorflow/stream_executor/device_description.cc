@@ -55,10 +55,11 @@ DeviceDescription::DeviceDescription()
       core_count_(-1),
       ecc_enabled_(false) {}
 
-std::unique_ptr<std::map<string, string>> DeviceDescription::ToMap() const {
-  std::unique_ptr<std::map<string, string>> owned_result{
-      new std::map<string, string>};
-  std::map<string, string> &result = *owned_result;
+std::unique_ptr<std::map<std::string, std::string>> DeviceDescription::ToMap()
+    const {
+  std::unique_ptr<std::map<std::string, std::string>> owned_result{
+      new std::map<std::string, std::string>};
+  std::map<std::string, std::string> &result = *owned_result;
   result["Device Vendor"] = device_vendor();
   result["Platform Version"] = platform_version();
   result["Driver Version"] = driver_version();

@@ -68,6 +68,18 @@ def make_strided_slice_np_style_tests(options):
                    [slice(1, 11, 3), Ellipsis,
                     slice(3, 7, 2)]],
       },
+      # Ellipsis 5d.
+      {
+          "dtype": [tf.float32],
+          "shape": [[11, 21, 15, 7, 9]],
+          "spec": [[
+              slice(3, 7, 2),
+              slice(None),
+              slice(None),
+              slice(None),
+              slice(None)
+          ], [Ellipsis, slice(3, 7, 2)]],
+      },
       # All combinations.
       {
           "dtype": [tf.float32],

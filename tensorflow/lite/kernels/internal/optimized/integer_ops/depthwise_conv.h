@@ -1814,8 +1814,9 @@ inline void DepthwiseConvWithRounding(
   const auto ruy_paths = ruy_context != nullptr
                              ? ruy_context->GetRuntimeEnabledPaths()
                              : ruy::Path::kNone;
+  // TODO(b/150208140): Re-enable once erroneous activation in test is resolved.
   const bool has_dot_product_instructions =
-      (ruy_paths & ruy::Path::kNeonDotprod) != ruy::Path::kNone;
+      false && (ruy_paths & ruy::Path::kNeonDotprod) != ruy::Path::kNone;
 
   // Dispatch to dot-product 3x3 kernels when supported.
   if (has_dot_product_instructions) {

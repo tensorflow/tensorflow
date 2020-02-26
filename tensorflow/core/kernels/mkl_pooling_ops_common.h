@@ -48,12 +48,13 @@ struct MklPoolingParams {
   mkldnn::algorithm alg_kind;
   mkldnn::prop_kind prop_kind;
   MEMORY_FORMAT src_format;
+  memory::desc src_md;
 
   MklPoolingParams(memory::dims src_dims, memory::dims dst_dims,
                    memory::dims filter_dims, memory::dims strides,
                    memory::dims padding_left, memory::dims padding_right,
                    mkldnn::algorithm alg_kind, mkldnn::prop_kind prop_kind,
-                   MEMORY_FORMAT src_format)
+                   MEMORY_FORMAT src_format, memory::desc src_md)
       : src_dims(src_dims),
         dst_dims(dst_dims),
         filter_dims(filter_dims),
@@ -62,7 +63,8 @@ struct MklPoolingParams {
         padding_right(padding_right),
         alg_kind(alg_kind),
         prop_kind(prop_kind),
-        src_format(src_format) {}
+        src_format(src_format),
+        src_md(src_md) {}
 };
 
 template <typename T>

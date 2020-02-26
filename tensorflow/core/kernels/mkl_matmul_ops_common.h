@@ -443,16 +443,16 @@ class MklDnnMatMulOpBase : public OpKernel {
 
     Tensor* weight_tensor_ptr = nullptr;
 
-    size_t size = matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS.get_size();
+    size_t weight_size = matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS.get_size();
     TensorShape weight_tf_shape;
-    weight_tf_shape.AddDim(size / sizeof(Tweight));
+    weight_tf_shape.AddDim(weight_size / sizeof(Tweight));
 
     OP_REQUIRES_OK(context, context->allocate_persistent(
                                 DataTypeToEnum<Tweight>::value, weight_tf_shape,
                                 &weight_oi_, &weight_tensor_ptr));
 
     void* weight_oi_t_data = weight.GetTensorBuffer(weight_tensor_ptr);
-    memcpy(weight_oi_t_data, weight_data, size);
+    memcpy(weight_oi_t_data, weight_data, weight_size);
 
 // cache the memory descriptor
 #ifdef ENABLE_MKLDNN_V1

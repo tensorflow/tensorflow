@@ -69,6 +69,63 @@ std::string GenerateAsyncUpload(const std::string& local_ptr_name,
        offset + ", " + std::to_string(elements_to_upload) + ", 0);\n";
   return c;
 }
+
+std::string GenerateBlockCoords(const int3& block_size,
+                                const int3& work_group_launch_order,
+                                bool linear_hw) {
+  std::string c;
+  int3 launch_remap;
+  launch_remap[work_group_launch_order.x] = 0;
+  launch_remap[work_group_launch_order.y] = 1;
+  launch_remap[work_group_launch_order.z] = 2;
+  if (linear_hw) {
+    if (work_group_launch_order[0] == 0) {
+      c += "  int linear_hw = get_global_id(0);\n";
+    } else {
+      c += "  int linear_hw = get_group_id(" + std::to_string(launch_remap[0]) +
+           ") * get_local_size(0) + get_local_id(0);\n";
+    }
+    c += "  int Y = (linear_hw / task_size_x) * " +
+         std::to_string(block_size.y) + ";\n";
+    c += "  int X = (linear_hw % task_size_x) * " +
+         std::to_string(block_size.x) + ";\n";
+    if (work_group_launch_order[1] == 1) {
+      c += "  int Z = get_global_id(1) * " + std::to_string(block_size.z) +
+           ";\n";
+    } else {
+      c += "  int Z = (get_group_id(" + std::to_string(launch_remap[1]) +
+           ") * get_local_size(1) + get_local_id(1)) * " +
+           std::to_string(block_size.z) + ";\n";
+    }
+  } else {
+    if (work_group_launch_order[0] == 0) {
+      c += "  int X = get_global_id(0) * " + std::to_string(block_size.x) +
+           ";\n";
+    } else {
+      c += "  int X = (get_group_id(" + std::to_string(launch_remap[0]) +
+           ") * get_local_size(0) + get_local_id(0)) * " +
+           std::to_string(block_size.x) + ";\n";
+    }
+    if (work_group_launch_order[1] == 1) {
+      c += "  int Y = get_global_id(1) * " + std::to_string(block_size.y) +
+           ";\n";
+    } else {
+      c += "  int Y = (get_group_id(" + std::to_string(launch_remap[1]) +
+           ") * get_local_size(1) + get_local_id(1)) * " +
+           std::to_string(block_size.y) + ";\n";
+    }
+    if (work_group_launch_order[2] == 2) {
+      c += "  int Z = get_global_id(2) * " + std::to_string(block_size.z) +
+           ";\n";
+    } else {
+      c += "  int Z = (get_group_id(" + std::to_string(launch_remap[2]) +
+           ") * get_local_size(2) + get_local_id(2)) * " +
+           std::to_string(block_size.z) + ";\n";
+    }
+  }
+
+  return c;
+}
 }  // namespace
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition,
@@ -146,6 +203,11 @@ Status ConvPowerVR::BindArguments() {
         int4(kernel_dilation_.x, kernel_dilation_.y,
              kernel_dilation_.z * src_[0]->Batch(), kernel_dilation_.w)));
   }
+  if (conv_params_.linear_hw) {
+    const int grid_x = IntegralDivideRoundUp(
+        dst_[0]->Width() * dst_[0]->Batch(), conv_params_.block_size.x);
+    RETURN_IF_ERROR(kernel_.SetBytesAuto(grid_x));
+  }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
   return OkStatus();
@@ -159,15 +221,27 @@ int3 ConvPowerVR::GetGridSize() const {
   const int grid_z =
       IntegralDivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.z);
   int3 wg;
-  wg.x = IntegralDivideRoundUp(grid_x, conv_params_.work_group_size.x);
-  wg.y = IntegralDivideRoundUp(grid_y, conv_params_.work_group_size.y);
-  wg.z = IntegralDivideRoundUp(grid_z, conv_params_.work_group_size.z);
-  return int3(wg[conv_params_.work_group_launch_order[0]] *
-                  conv_params_.work_group_size.x,
-              wg[conv_params_.work_group_launch_order[1]] *
-                  conv_params_.work_group_size.y,
-              wg[conv_params_.work_group_launch_order[2]] *
-                  conv_params_.work_group_size.z);
+
+  if (conv_params_.linear_hw) {
+    wg.x =
+        IntegralDivideRoundUp(grid_x * grid_y, conv_params_.work_group_size.x);
+    wg.y = IntegralDivideRoundUp(grid_z, conv_params_.work_group_size.y);
+    return int3(wg[conv_params_.work_group_launch_order[0]] *
+                    conv_params_.work_group_size.x,
+                wg[conv_params_.work_group_launch_order[1]] *
+                    conv_params_.work_group_size.y,
+                1);
+  } else {
+    wg.x = IntegralDivideRoundUp(grid_x, conv_params_.work_group_size.x);
+    wg.y = IntegralDivideRoundUp(grid_y, conv_params_.work_group_size.y);
+    wg.z = IntegralDivideRoundUp(grid_z, conv_params_.work_group_size.z);
+    return int3(wg[conv_params_.work_group_launch_order[0]] *
+                    conv_params_.work_group_size.x,
+                wg[conv_params_.work_group_launch_order[1]] *
+                    conv_params_.work_group_size.y,
+                wg[conv_params_.work_group_launch_order[2]] *
+                    conv_params_.work_group_size.z);
+  }
 }
 
 Status ConvPowerVR::Tune(const TuningParameters& params) {
@@ -248,33 +322,22 @@ std::string GenerateConvPowerVR1x1(
     c += "    int4 stride_padding,           \n";
     c += "    int4 kernel_dilation,          \n";
   }
+  if (conv_params.linear_hw) {
+    c += "    int task_size_x,               \n";
+  }
   c += "    int4 src_size,                   \n";
   c += "    int4 dst_size                    \n";
   c += ") {\n";
-  int3 launch_remap;
-  launch_remap[conv_params.work_group_launch_order.x] = 0;
-  launch_remap[conv_params.work_group_launch_order.y] = 1;
-  launch_remap[conv_params.work_group_launch_order.z] = 2;
-  if (conv_params.work_group_launch_order[0] == 0) {
-    c += "  int X = get_global_id(0) * " + std::to_string(block_size.x) + ";\n";
-  } else {
-    c += "  int X = (get_group_id(" + std::to_string(launch_remap[0]) +
-         ") * get_local_size(0) + get_local_id(0)) * " +
-         std::to_string(block_size.x) + ";\n";
+  c += GenerateBlockCoords(conv_params.block_size,
+                           conv_params.work_group_launch_order,
+                           conv_params.linear_hw);
+  std::vector<std::string> dst_x(conv_params.block_size.x);
+  for (int x = 0; x < conv_params.block_size.x; ++x) {
+    dst_x[x] = "(X + " + std::to_string(x) + ")";
   }
-  if (conv_params.work_group_launch_order[1] == 1) {
-    c += "  int Y = get_global_id(1) * " + std::to_string(block_size.y) + ";\n";
-  } else {
-    c += "  int Y = (get_group_id(" + std::to_string(launch_remap[1]) +
-         ") * get_local_size(1) + get_local_id(1)) * " +
-         std::to_string(block_size.y) + ";\n";
-  }
-  if (conv_params.work_group_launch_order[2] == 2) {
-    c += "  int Z = get_global_id(2) * " + std::to_string(block_size.z) + ";\n";
-  } else {
-    c += "  int Z = (get_group_id(" + std::to_string(launch_remap[2]) +
-         ") * get_local_size(2) + get_local_id(2)) * " +
-         std::to_string(block_size.z) + ";\n";
+  std::vector<std::string> dst_y(conv_params.block_size.y);
+  for (int y = 0; y < conv_params.block_size.y; ++y) {
+    dst_y[y] = "(Y + " + std::to_string(y) + ")";
   }
   if (!need_local_mem) {
     c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) {\n";
@@ -283,8 +346,12 @@ std::string GenerateConvPowerVR1x1(
   }
   if (conv_params.weights_upload_type ==
       ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    c += "  int lid = get_local_id(1) * " + std::to_string(work_group_size.x) +
-         " + get_local_id(0);\n";
+    if (conv_params.linear_hw) {
+      c += "  int lid = get_local_id(0);\n";
+    } else {
+      c += "  int lid = get_local_id(1) * " +
+           std::to_string(work_group_size.x) + " + get_local_id(0);\n";
+    }
   }
   for (int z = 0; z < block_size.z; ++z) {
     for (int y = 0; y < block_size.y; ++y) {
@@ -296,20 +363,18 @@ std::string GenerateConvPowerVR1x1(
   }
   if (!is1x1) {
     for (int x = 0; x < block_size.x; ++x) {
-      const std::string xc = "(X + " + std::to_string(x) + ")";
       if (stride_correction) {
         c += "  int xc" + std::to_string(x) + " = " +
-             GetXStrideCorrected(xc, "src_size.w", "stride_padding.x",
+             GetXStrideCorrected(dst_x[x], "src_size.w", "stride_padding.x",
                                  "stride_padding.z") +
              ";\n";
       } else {
-        c += "  int xc" + std::to_string(x) + " = " + xc +
+        c += "  int xc" + std::to_string(x) + " = " + dst_x[x] +
              " * stride_padding.x + stride_padding.z;\n";
       }
     }
     for (int y = 0; y < block_size.y; ++y) {
-      const std::string yc = "(Y + " + std::to_string(y) + ")";
-      c += "  int yc" + std::to_string(y) + " = " + yc +
+      c += "  int yc" + std::to_string(y) + " = " + dst_y[y] +
            " * stride_padding.y + stride_padding.w;\n";
     }
   }
@@ -373,10 +438,8 @@ std::string GenerateConvPowerVR1x1(
       const std::string yck = "yck" + std::to_string(y);
       for (int x = 0; x < block_size.x; ++x) {
         const std::string xck = "xck" + std::to_string(x);
-        std::string xc =
-            is1x1 ? "min(X + " + std::to_string(x) + ", src_size.x - 1)" : xck;
-        std::string yc =
-            is1x1 ? "min(Y + " + std::to_string(y) + ", src_size.y - 1)" : yck;
+        std::string xc = is1x1 ? "min(" + dst_x[x] + ", src_size.x - 1)" : xck;
+        std::string yc = is1x1 ? "min(" + dst_y[y] + ", src_size.y - 1)" : yck;
         std::string id = std::to_string(y) + std::to_string(x);
         c += "  int src_a_" + id + " = " + yc + " * src_size.x + " + xc + ";\n";
       }
@@ -408,10 +471,8 @@ std::string GenerateConvPowerVR1x1(
           c += "    src_a_" + id + " += src_layer_offset;\n";
         } else {
           std::string id = std::to_string(y) + std::to_string(x);
-          const std::string xc =
-              is1x1 ? "X + " + std::to_string(x) : "xck" + std::to_string(x);
-          const std::string yc =
-              is1x1 ? "Y + " + std::to_string(y) : "yck" + std::to_string(y);
+          const std::string xc = is1x1 ? dst_x[x] : "xck" + std::to_string(x);
+          const std::string yc = is1x1 ? dst_y[y] : "yck" + std::to_string(y);
           c += "    src" + id + " = " +
                src_tensor.ReadAsTypeWHS(conv_params.weights_data_type, xc, yc,
                                         "s", mode) +
@@ -522,8 +583,8 @@ std::string GenerateConvPowerVR1x1(
     c += "    FLT4 bias_val = TO_FLT4(weights_cache[" + sz + "]);\n";
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
-        const std::string xs = "X + " + std::to_string(x);
-        const std::string ys = "Y + " + std::to_string(y);
+        const std::string xs = dst_x[x];
+        const std::string ys = dst_y[y];
         const std::string zs = "Z + " + sz;
         const std::string r_id = sz + std::to_string(y) + std::to_string(x);
         bool need_x_check = x != 0;
@@ -552,18 +613,27 @@ std::string GenerateConvPowerVR1x1(
 
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     const CLDevice& device, const OperationDef& definition, int src_depth,
-    int dst_depth, bool x_kernel_is_1, bool y_kernel_is_1) const {
+    int dst_depth, bool x_kernel_is_1, bool y_kernel_is_1,
+    bool different_weights_for_height) const {
   ConvParams conv_params;
+  conv_params.linear_hw = false;
   conv_params.weights_data_type =
       DeduceDataTypeFromPrecision(definition.precision);
   conv_params.x_kernel_is_1 = x_kernel_is_1;
   conv_params.y_kernel_is_1 = y_kernel_is_1;
-  conv_params.different_weights_for_height = false;
+  conv_params.different_weights_for_height = different_weights_for_height;
   if (device.IsNvidia()) {
+    if (different_weights_for_height) {
+      conv_params.work_group_size = int3(32, 1, 1);
+      conv_params.work_group_launch_order = int3(2, 0, 1);
+      conv_params.fixed_work_group_size = true;
+    } else {
+      conv_params.linear_hw = true;
+      conv_params.work_group_size = int3(32, 1, 1);
+      conv_params.work_group_launch_order = int3(1, 0, 2);
+      conv_params.fixed_work_group_size = true;
+    }
     conv_params.block_size = int3(1, 1, 4);
-    conv_params.work_group_size = int3(8, 4, 1);
-    conv_params.work_group_launch_order = int3(2, 0, 1);
-    conv_params.fixed_work_group_size = true;
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
     if (dst_depth % 4 == 0 || dst_depth >= 8) {
@@ -580,13 +650,20 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.src_depth_loop_size = 4;
     }
   } else if (device.IsPowerVR()) {
+    if (different_weights_for_height) {
+      conv_params.work_group_size = int3(32, 1, 1);
+      conv_params.work_group_launch_order = int3(2, 0, 1);
+      conv_params.fixed_work_group_size = true;
+    } else {
+      conv_params.linear_hw = true;
+      conv_params.work_group_size = int3(32, 1, 1);
+      conv_params.work_group_launch_order = int3(1, 0, 2);
+      conv_params.fixed_work_group_size = true;
+    }
     conv_params.weights_data_type =
         definition.precision == CalculationsPrecision::F16 ? DataType::FLOAT16
                                                            : DataType::FLOAT32;
     conv_params.block_size = int3(1, 1, 4);
-    conv_params.work_group_size = int3(8, 4, 1);
-    conv_params.work_group_launch_order = int3(2, 0, 1);
-    conv_params.fixed_work_group_size = true;
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type =
         WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP;
@@ -619,16 +696,22 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
         }
       }
       conv_params.block_size.x = 2;
-      conv_params.work_group_size = int3(4, 8, 1);
     }
   } else if (device.IsAMD()) {
+    if (different_weights_for_height) {
+      conv_params.work_group_size = int3(32, 1, 1);
+      conv_params.work_group_launch_order = int3(2, 0, 1);
+      conv_params.fixed_work_group_size = true;
+    } else {
+      conv_params.work_group_size = int3(8, 4, 1);
+      conv_params.work_group_launch_order = int3(2, 0, 1);
+      conv_params.fixed_work_group_size = true;
+    }
+
     conv_params.block_size = int3(2, 1, 1);
     if (x_kernel_is_1 && y_kernel_is_1) {
       conv_params.block_size.y = 2;
     }
-    conv_params.work_group_size = int3(8, 4, 1);
-    conv_params.work_group_launch_order = int3(2, 0, 1);
-    conv_params.fixed_work_group_size = true;
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::CONSTANT_MEM;
     if (dst_depth % 8 == 0 || dst_depth >= 32) {
@@ -694,7 +777,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
                              attr.padding.prepended.h == 0 &&
                              attr.padding.appended.h == 0;
   return GuessBestParams(device, definition, src_depth, dst_depth,
-                         x_kernel_is_1, y_kernel_is_1);
+                         x_kernel_is_1, y_kernel_is_1, false);
 }
 
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
@@ -702,8 +785,8 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     const FullyConnectedAttributes& attr) const {
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-  ConvPowerVR::ConvParams params =
-      GuessBestParams(device, definition, src_depth, dst_depth, true, true);
+  ConvPowerVR::ConvParams params = GuessBestParams(
+      device, definition, src_depth, dst_depth, true, true, false);
   params.work_group_size.x *= params.work_group_size.y;
   params.work_group_size.y = 1;
   params.block_size.x *= params.block_size.y;
@@ -716,13 +799,10 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParamsWinograd(
     const Convolution2DAttributes& attr) const {
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-  ConvPowerVR::ConvParams params =
-      GuessBestParams(device, definition, src_depth, dst_depth, true, true);
-  params.work_group_size.x *= params.work_group_size.y;
-  params.work_group_size.y = 1;
+  ConvPowerVR::ConvParams params = GuessBestParams(
+      device, definition, src_depth, dst_depth, true, true, true);
   params.block_size.x *= params.block_size.y;
   params.block_size.y = 1;
-  params.different_weights_for_height = true;
   return params;
 }
 

@@ -26,6 +26,9 @@ limitations under the License.
 #define GET_FLAG(bn_flag) static_cast<int>(BN_FLAGS::bn_flag)
 #define IS_SET(cflag) (context_.flags & GET_FLAG(cflag))
 
+#define GET_FLAG(bn_flag) static_cast<int>(BN_FLAGS::bn_flag)
+#define IS_SET(cflag) (context_.flags & GET_FLAG(cflag))
+
 using mkldnn::batch_normalization_backward;
 using mkldnn::batch_normalization_forward;
 using mkldnn::prop_kind;
@@ -51,18 +54,17 @@ struct MklBatchNormFwdParams {
   MklBatchNormFwdParams(const memory::dims& src_dims, int depth, float eps,
 #ifndef ENABLE_MKLDNN_V1
                         bool training, MEMORY_FORMAT src_format)
+#else
+                        bool training, memory::desc src_md)
+#endif  // !ENABLE_MKLDNN_V1
       : src_dims(src_dims),
         depth(depth),
         eps(eps),
         training(training),
+#ifndef ENABLE_MKLDNN_V1
         src_format(src_format) {
   }
 #else
-                        bool training, memory::desc src_md)
-      : src_dims(src_dims),
-        depth(depth),
-        eps(eps),
-        training(training),
         src_md(src_md) {
   }
 #endif  // !ENABLE_MKLDNN_V1
@@ -231,6 +233,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     }
 
     // BatchNorm forward primitive.
+    // TODO(intel-tf): Merge all the #ifdefs and simplify code
     if (!fwdParams.training && !(IS_SET(use_global_stats))) {
 #ifdef ENABLE_MKLDNN_V1
       if ((IS_SET(use_scale_shift)) && mkldnn_use_scaleshift) {
@@ -383,6 +386,7 @@ struct MklBatchNormBwdParams {
   int depth;
   float eps;
   bool training;
+
 #ifndef ENABLE_MKLDNN_V1
   MEMORY_FORMAT src_format;
 #else
@@ -466,10 +470,8 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
 #ifdef ENABLE_MKLDNN_V1
     // Execute backward batch-normalization primitives.
     DCHECK_EQ(context_.bwd_primitives.size(), context_.net_args.size());
-    for (size_t i = 0; i < context_.bwd_primitives.size(); ++i) {
-      context_.bwd_primitives.at(i).execute(*context_.bwd_stream,
-                                            context_.net_args.at(i));
-    }
+    execute_primitives(context_.bwd_primitives, context_.bwd_stream,
+                       context_.net_args);
 #else
     context_.bwd_stream->submit(context_.bwd_primitives);
 #endif  // ENABLE_MKLDNN_V1
@@ -841,7 +843,17 @@ class MklFusedBatchNormOp : public OpKernel {
       MklFusedBatchNormFwdPrimitive<T, U>* bn_fwd =
           MklFusedBatchNormFwdPrimitiveFactory<T, U>::Get(fwdParams);
 
-      const T* src_data = src_tensor.flat<T>().data();
+      // Check if reorder is needed for src.
+      const T* src_data = nullptr;
+      std::shared_ptr<BatchNormFwdPd> bn_fwd_pd = bn_fwd->GetBatchNormFwdPd();
+      if (IS_SRC_REORDER_NEEDED(src_md, bn_fwd_pd, bn_fwd)) {
+        src.SetUsrMem(src_md, &src_tensor);
+        src.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
+            GET_SRC_DESC_FROM_OP_PD(bn_fwd_pd), cpu_engine_));
+        src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
+      } else {
+        src_data = static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
+      }
 
       // Allocate output (dst) tensor; always set it as MKL-DNN layout
       MklDnnShape dnn_shape_dst;

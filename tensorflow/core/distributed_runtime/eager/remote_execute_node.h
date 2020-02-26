@@ -34,14 +34,16 @@ namespace eager {
 
 // RemoteExecuteNode is an implementation of EagerNode which enqueues
 // an operation via RPC in a remote EagerService.
-class RemoteExecuteNode : public AsyncEagerNode {
+class RemoteExecuteNode : public AsyncRemoteExecuteNode {
  public:
-  RemoteExecuteNode(std::unique_ptr<EnqueueRequest> request, Device* device,
+  RemoteExecuteNode(EagerContext* eager_context,
+                    std::unique_ptr<EnqueueRequest> request, Device* device,
                     uint64 context_view_id, EagerClient* eager_client,
                     const NodeDef& ndef, FunctionLibraryDefinition* lib_def,
                     const gtl::InlinedVector<TensorHandle*, 4>& inputs,
                     absl::Span<TensorHandle*> retvals)
-      : AsyncEagerNode(),
+      : AsyncRemoteExecuteNode(),
+        eager_context_(eager_context),
         request_(std::move(request)),
         device_(device),
         context_view_id_(context_view_id),
@@ -62,6 +64,16 @@ class RemoteExecuteNode : public AsyncEagerNode {
       handle->Ref();
     }
     eager_client_->Ref();
+
+    needs_remote_inputs_ = false;
+    for (const TensorHandle* input : inputs_) {
+      // TODO(bramandia): Should this be op_device() instead?
+      if (input->resource_device() != nullptr &&
+          input->resource_device() != device_) {
+        needs_remote_inputs_ = true;
+        break;
+      }
+    }
   }
 
   ~RemoteExecuteNode() override {
@@ -81,10 +93,22 @@ class RemoteExecuteNode : public AsyncEagerNode {
 
   void RunAsync(StatusCallback done) override;
 
+  Status SyncExecutors() override { return eager_context_->SyncExecutors(); }
+
   void Abort(Status status) override {
+    int i = 0;
     for (auto handle : retvals_) {
-      handle->Poison(status);
+      handle->PoisonRemote(status, device_, context_view_id_);
+      ++i;
     }
+  }
+
+  const EagerClient* eager_client() const override { return eager_client_; }
+
+  bool needs_remote_inputs() const override { return needs_remote_inputs_; }
+
+  bool allow_multiple_pending_requests() const override {
+    return eager_client_->allow_multiple_pending_requests();
   }
 
   string DebugString() const override {
@@ -95,9 +119,11 @@ class RemoteExecuteNode : public AsyncEagerNode {
   }
 
  private:
+  EagerContext* eager_context_;  // Not owned, and must outlive this node.
   std::unique_ptr<EnqueueRequest> request_;
   Device* device_;             // Not owned
   uint64 context_view_id_;
+  bool needs_remote_inputs_;
   EagerClient* eager_client_;  // Not owned, and must outlive this node.
   const NodeDef ndef_;
   const FunctionLibraryDefinition* lib_def_;
