@@ -51,22 +51,25 @@ TEST_F(ReductionVectorizationTest, Power2) {
   const char* hlo_text = R"(
 HloModule ReducePower2
 
-%max_ (x.5: f32[], y.6: f32[]) -> f32[] {
+%max_ {
   %x = f32[] parameter(0)
   %y = f32[] parameter(1)
   ROOT %maximum.7 = f32[] maximum(f32[] %x, f32[] %y)
 }
 
-ENTRY %cluster_0__XlaCompiledKernel_true__XlaNumConstantArgs_0__XlaNumResourceArgs_0_.25 (param_0: f32[5,131072]) -> f32[5]{0} {
-  %param_0 = f32[5,131072]{1,0} parameter(0), parameter_replication={false}
+ENTRY %main {
+  %param_0 = f32[5,131072] parameter(0)
   %constant.3 = f32[] constant(0)
-  ROOT %reduce.8 = f32[5]{0} reduce(f32[5,131072]{1,0} %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+  ROOT %reduce.8 = f32[5] reduce(f32[5,131072] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
                           ParseAndReturnVerifiedModule(hlo_text));
   CompileAndOptionallyVerifyPtx(std::move(optimized_module),
                                 R"(
+CHECK: ld.global.nc.v2.f32
+CHECK: ld.global.nc.v2.f32
+CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
 )");
 
@@ -77,23 +80,63 @@ TEST_F(ReductionVectorizationTest, TileFit) {
   const char* hlo_text = R"(
 HloModule ReduceTileFit
 
-%max_ (x.5: f32[], y.6: f32[]) -> f32[] {
+%max_ {
   %x = f32[] parameter(0)
   %y = f32[] parameter(1)
   ROOT %maximum.7 = f32[] maximum(f32[] %x, f32[] %y)
 }
 
-ENTRY %cluster_0__XlaCompiledKernel_true__XlaNumConstantArgs_0__XlaNumResourceArgs_0_.25 (param_0: f32[5,122880]) -> f32[5]{0} {
-  %param_0 = f32[5,122880]{1,0} parameter(0), parameter_replication={false}
+ENTRY %main {
+  %param_0 = f32[5,122880] parameter(0)
   %constant.3 = f32[] constant(0)
-  ROOT %reduce.8 = f32[5]{0} reduce(f32[5,122880]{1,0} %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+  ROOT %reduce.8 = f32[5] reduce(f32[5,122880] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
                           ParseAndReturnVerifiedModule(hlo_text));
   CompileAndOptionallyVerifyPtx(std::move(optimized_module),
                                 R"(
+// TODO: Make this a vectorized load
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
 CHECK: ld.global.nc.v2.f32
+CHECK: ld.global.nc.v2.f32
+CHECK: ld.global.nc.v2.f32
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(ReductionVectorizationTest, EvenColums) {
+  const char* hlo_text = R"(
+HloModule ReducePower2
+
+%max_ {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %maximum.7 = f32[] maximum(f32[] %x, f32[] %y)
+}
+
+ENTRY %main {
+  %param_0 = f32[5,131070] parameter(0)
+  %constant.3 = f32[] constant(0)
+  ROOT %reduce.8 = f32[5] reduce(f32[5,131070] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  CompileAndOptionallyVerifyPtx(std::move(optimized_module),
+                                R"(
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+// TODO: Make this a vectorized load
+CHECK-NOT: ld.global.nc.v2.f32
+CHECK: ld.global.nc.v2.f32
+CHECK: ld.global.nc.v2.f32
+CHECK-NOT: ld.global.nc.v2.f32
+// TODO: find how to modify LLVM/opt to get this merged? vectorize before some loop opt?
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
@@ -109,10 +152,10 @@ HloModule ReduceTileFit
   ROOT %maximum.7 = f32[] maximum(%x, %y)
 }
 
-ENTRY %cluster_0__XlaCompiledKernel_true__XlaNumConstantArgs_0__XlaNumResourceArgs_0_.25 (param_0: f32[5,131071]) -> f32[5]{0} {
-  %param_0 = f32[5,131071]{1,0} parameter(0), parameter_replication={false}
+ENTRY %main {
+  %param_0 = f32[5,131071] parameter(0)
   %constant.3 = f32[] constant(0)
-  ROOT %reduce.8 = f32[5]{0} reduce(f32[5,131071]{1,0} %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
+  ROOT %reduce.8 = f32[5] reduce(f32[5,131071] %param_0, f32[] %constant.3), dimensions={1}, to_apply=%max_
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
@@ -138,11 +181,11 @@ HloModule DisableSin
   ROOT %add.17 = f32[] add(f32[] %x, f32[] %y)
 }
 
-ENTRY %cluster_0 {
-  %arg0.1 = f32[5,131072]{1,0} parameter(0)
-  %sine = f32[5,131072]{1,0} exponential(f32[5,131072]{1,0} %arg0.1)
+ENTRY %main {
+  %arg0.1 = f32[5,131072] parameter(0)
+  %sine = f32[5,131072] exponential(f32[5,131072] %arg0.1)
   %constant.0 = f32[] constant(0)
-  ROOT %reduce.18 = f32[5]{0} reduce(f32[5,131072]{1,0} %sine, f32[] %constant.0), dimensions={1}, to_apply=%add_float
+  ROOT %reduce.18 = f32[5] reduce(f32[5,131072] %sine, f32[] %constant.0), dimensions={1}, to_apply=%add_float
 }
 )";
 
@@ -166,11 +209,11 @@ HloModule DisableSin
   ROOT %add.17 = f32[] add(f32[] %x, f32[] %y)
 }
 
-ENTRY %cluster_0 {
-  %arg0.1 = f32[5,131072]{1,0} parameter(0)
-  %sine = f32[5,131072]{1,0} sine(f32[5,131072]{1,0} %arg0.1)
+ENTRY %main {
+  %arg0.1 = f32[5,131072] parameter(0)
+  %sine = f32[5,131072] sine(f32[5,131072] %arg0.1)
   %constant.0 = f32[] constant(0)
-  ROOT %reduce.18 = f32[5]{0} reduce(f32[5,131072]{1,0} %sine, f32[] %constant.0), dimensions={1}, to_apply=%add_float
+  ROOT %reduce.18 = f32[5] reduce(f32[5,131072] %sine, f32[] %constant.0), dimensions={1}, to_apply=%add_float
 }
 )";
 
