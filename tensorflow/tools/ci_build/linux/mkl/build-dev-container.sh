@@ -121,7 +121,7 @@ function build_container()
     TF_DOCKER_BUILD_ARGS+=("--build-arg ENABLE_SECURE_BUILD=--secure-build")
   fi
 
-  #Add build arg for DNNL1
+  # Add build arg for DNNL1
   if [[ ${ENABLE_DNNL1} == "yes" ]]; then
     TF_DOCKER_BUILD_ARGS+=("--build-arg ENABLE_DNNL1=--enable-dnnl1")
   fi
@@ -315,4 +315,3 @@ do
       tag_container "${TEMP_IMAGE_NAME}" "${FINAL_IMAGE_NAME}:${FINAL_TAG}"
   done
 done
-
