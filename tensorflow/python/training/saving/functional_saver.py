@@ -234,8 +234,8 @@ class MultiDeviceSaver(object):
     with ops.device("cpu:0"):
       sharded_suffix = array_ops.where(
           string_ops.regex_full_match(file_prefix, '^s3://.*'),
-          lambda: ".part",
-          lambda: "_temp_%s/part" % uuid.uuid4().hex)
+          ".part",
+          "_temp_%s/part" % uuid.uuid4().hex)
       tmp_checkpoint_prefix = string_ops.string_join(
           [file_prefix, sharded_suffix])
 

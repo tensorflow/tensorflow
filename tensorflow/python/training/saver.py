@@ -253,8 +253,8 @@ class BaseSaverBuilder(object):
     # safely removed.)
     _SHARDED_SUFFIX = array_ops.where(
         string_ops.regex_full_match(checkpoint_prefix, '^s3://.*'),
-        lambda: ".part",
-        lambda: "_temp_%s/part" % uuid.uuid4().hex)
+        ".part",
+        "_temp_%s/part" % uuid.uuid4().hex)
     tmp_checkpoint_prefix = string_ops.string_join(
         [checkpoint_prefix, _SHARDED_SUFFIX])
 
