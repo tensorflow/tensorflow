@@ -1356,14 +1356,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def forward(x, w, b):
       return x * w + b
 
-    x = constant_op.constant([1.0], name="x_useless")
+    x = array_ops.identity([1.0], name="x_useless")
     concrete_forward = forward.get_concrete_function(x, w._primary, b._primary)
 
     with distribution.scope():
 
       def replica_fn():
         with backprop.GradientTape() as t:
-          x = constant_op.constant([1.0], name="x")
+          x = array_ops.identity([1.0], name="x")
           loss = concrete_forward(x, w._get(), b._get()) - [1.0]
           return t.gradient(loss, [w, b])
 

@@ -1507,6 +1507,29 @@ void LogicalNotOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// MatrixBandPartOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(MatrixBandPartOp op) {
+  if (!HasRankAtLeast(op.input(), 2)) {
+    return op.emitOpError()
+           << "requires `input` to have rank of at least 2, but found "
+           << op.input().getType();
+  }
+  if (!IsOfRankOrUnranked(op.num_lower(), 0)) {
+    return op.emitOpError()
+           << "requires `num_lower` to have 0 dimensions, but found "
+           << op.num_lower().getType();
+  }
+  if (!IsOfRankOrUnranked(op.num_upper(), 0)) {
+    return op.emitOpError()
+           << "requires `num_upper` to have 0 dimensions, but found "
+           << op.num_upper().getType();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MaxOp
 //===----------------------------------------------------------------------===//
 

@@ -19,8 +19,17 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
+namespace {
+bool IsAsyncWaitForRemoteFunctionEnabled() {
+  bool enabled = true;
+  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_ASYNC_WAIT_FOR_REMOTE_FUNCTION",
+                                 true, &enabled));
+  return enabled;
+}
+}  // namespace
 
 EagerExecutor::EagerExecutor(bool async)
     : next_node_id_(0),
@@ -28,7 +37,10 @@ EagerExecutor::EagerExecutor(bool async)
       thread_(async ? tensorflow::Env::Default()->StartThread(
                           tensorflow::ThreadOptions(), "eager_async_executor",
                           std::bind(&EagerExecutor::Run, this))
-                    : nullptr) {}
+                    : nullptr),
+      last_eager_client_(nullptr),
+      enable_async_wait_for_remote_function_(
+          IsAsyncWaitForRemoteFunctionEnabled()) {}
 
 EagerExecutor::~EagerExecutor() {
   tensorflow::mutex_lock l(node_queue_mutex_);
@@ -194,6 +206,7 @@ void EagerExecutor::ClearError() {
   DCHECK(node_queue_.empty());
   status_ = tensorflow::Status::OK();
   ok_ = true;
+  last_eager_client_ = nullptr;
   nodes_pending_.notify_all();
 }
 
@@ -327,6 +340,33 @@ Status EagerExecutor::RunItem(core::RefCountPtr<NodeItem> item,
                               bool from_queue) {
   DVLOG(3) << "Running Node: [id " << item->id << "] "
            << item->node->DebugString();
+  AsyncRemoteExecuteNode* async_remote_node =
+      item->node->AsAsyncRemoteExecuteNode();
+  if (enable_async_wait_for_remote_function_) {
+    if (async_remote_node != nullptr) {
+      if (last_eager_client_ != nullptr &&
+          async_remote_node->eager_client() != nullptr &&
+          last_eager_client_ != async_remote_node->eager_client()) {
+        // Running a remote function, need to sync if the function is going to
+        // different device than last time we run remote distributed function.
+        DVLOG(3) << "Executing Sync Executor for node" << item->id;
+        tensorflow::Status status = async_remote_node->SyncExecutors();
+        if (!status.ok()) {
+          NodeDone(item, status, from_queue);
+          return status;
+        }
+        last_eager_client_ = nullptr;
+      }
+      if (async_remote_node->eager_client() != nullptr &&
+          async_remote_node->needs_remote_inputs() &&
+          async_remote_node->allow_multiple_pending_requests()) {
+        // We are running remote distributed function, update
+        // last_remote_device_name_.
+        last_eager_client_ = async_remote_node->eager_client();
+      }
+    }
+  }
+
   AsyncEagerNode* async_node = item->node->AsAsync();
   if (async_node == nullptr) {
     tensorflow::Status status = item->node->Run();
