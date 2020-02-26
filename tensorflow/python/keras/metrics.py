@@ -1684,7 +1684,7 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
   model.compile(
       'sgd',
       loss='mse',
-      metrics=[tf.keras.metrics.PrecisionAtRecall()])
+      metrics=[tf.keras.metrics.PrecisionAtRecall(recall=0.8)])
   ```
   """
 
@@ -1727,6 +1727,89 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
   def get_config(self):
     config = {'num_thresholds': self.num_thresholds, 'recall': self.recall}
     base_config = super(PrecisionAtRecall, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+@keras_export('keras.metrics.RecallAtPrecision')
+class RecallAtPrecision(SensitivitySpecificityBase):
+  """Computes the maximally achievable recall at a required precision.
+
+  For a given score-label-distribution the required precision might not
+  be achievable, in this case 0.0 is returned as recall.
+
+  This metric creates four local variables, `true_positives`, `true_negatives`,
+  `false_positives` and `false_negatives` that are used to compute the
+  recall at the given precision. The threshold for the given precision
+  value is computed and used to evaluate the corresponding recall.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+
+  Usage:
+
+  >>> m = tf.keras.metrics.RecallAtPrecision(0.8, num_thresholds=1)
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  >>> m.result().numpy()
+  0.5
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
+  ...                    sample_weight=[1, 0, 0, 1])
+  >>> m.result().numpy()
+  1.0
+
+  Usage with tf.keras API:
+
+  ```python
+  model = tf.keras.Model(inputs, outputs)
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.keras.metrics.RecallAtPrecision(precision=0.8)])
+  ```
+  """
+
+  def __init__(self, precision, num_thresholds=200, name=None, dtype=None):
+    """Creates a `RecallAtPrecision` instance.
+
+    Args:
+      precision: A scalar value in range `[0, 1]`.
+      num_thresholds: (Optional) Defaults to 200. The number of thresholds to
+        use for matching the given precision.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    if precision < 0 or precision > 1:
+      raise ValueError('`precision` must be in the range [0, 1].')
+    self.precision = precision
+    self.num_thresholds = num_thresholds
+    super(RecallAtPrecision, self).__init__(
+        value=precision,
+        num_thresholds=num_thresholds,
+        name=name,
+        dtype=dtype)
+
+  def result(self):
+    # Calculate precision and recall at all the thresholds.
+    # All recalls are computed, because they are not a monotoneous function of
+    # precision and we want to search for the highest feasible recall.
+    precisions = math_ops.div_no_nan(
+        self.true_positives, self.true_positives + self.false_positives)
+    recalls = math_ops.div_no_nan(
+        self.true_positives, self.true_positives + self.false_negatives)
+    # Find best recall where the precision is as good as required.
+    feasible = array_ops.where(math_ops.greater_equal(precisions, self.value))
+    feasible_exists = math_ops.greater(array_ops.size(feasible), 0)
+    best_recall = control_flow_ops.cond(
+        feasible_exists,
+        lambda: math_ops.reduce_max(array_ops.gather(recalls, feasible)),
+        lambda: 0.0)
+    return best_recall
+
+  def get_config(self):
+    config = {'num_thresholds': self.num_thresholds,
+              'precision': self.precision}
+    base_config = super(RecallAtPrecision, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
