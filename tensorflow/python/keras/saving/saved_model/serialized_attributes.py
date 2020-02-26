@@ -34,6 +34,8 @@ base_layer = LazyLoader(
 training_lib = LazyLoader(
     "training_lib", globals(),
     "tensorflow.python.keras.engine.training")
+metrics = LazyLoader("metrics", globals(),
+                     "tensorflow.python.keras.metrics")
 # pylint:enable=g-inconsistent-quotes
 
 
@@ -138,6 +140,8 @@ class SerializedAttributes(object):
   def new(obj):
     if isinstance(obj, training_lib.Model):
       return ModelAttributes()
+    elif isinstance(obj, metrics.Metric):
+      return MetricAttributes()
     elif isinstance(obj, base_layer.Layer):
       return LayerAttributes()
     else:
@@ -203,7 +207,8 @@ class SerializedAttributes(object):
         self._object_dict[key] = object_dict[key]
         setattr(self._keras_trackable, key, object_dict[key])
       else:
-        raise ValueError('Object {} missing from serialized object dict.')
+        raise ValueError(
+            'Object {} missing from serialized object dict.'.format(key))
     return self.checkpointable_objects
 
 
@@ -233,7 +238,7 @@ class CommonEndpoints(SerializedAttributes.with_attributes(
 class LayerAttributes(SerializedAttributes.with_attributes(
     'LayerAttributes',
     checkpointable_objects=['non_trainable_variables', 'layers', 'metrics',
-                            'layer_regularization_losses'],
+                            'layer_regularization_losses', 'layer_metrics'],
     functions=['call_and_return_conditional_losses', 'activity_regularizer_fn'],
     copy_from=[CommonEndpoints]
     )):
@@ -252,6 +257,7 @@ class LayerAttributes(SerializedAttributes.with_attributes(
       activity regularizer.
     activity_regularizer_fn: Callable that returns the activity regularizer loss
     layer_regularization_losses: List of losses owned only by this layer.
+    layer_metrics: List of metrics owned by this layer.
   """
 
 
@@ -265,3 +271,17 @@ class ModelAttributes(SerializedAttributes.with_attributes(
   """
   # TODO(kathywu): Add attributes `compile_losses` and `compile_metrics`, which
   #  list all losses and metrics defined by `model.compile`.
+
+
+class MetricAttributes(
+    SerializedAttributes.with_attributes(
+        'MetricAttributes',
+        checkpointable_objects=['variables'],
+        functions=[],
+    )):
+  """Attributes that are added to Metric objects when saved to SavedModel.
+
+  List of all attributes:
+    variables: list of all variables
+  """
+  pass
