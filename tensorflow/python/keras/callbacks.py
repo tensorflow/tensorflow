@@ -1679,6 +1679,8 @@ class TensorBoard(Callback):
     self._writers = {}
     self._start_batch, self._stop_batch = self._init_profile_batch(
         profile_batch)
+    if self._start_batch > 0:
+      profiler.warmup()  # Improve the profiling accuracy.
     # True when a trace is running.
     self._is_tracing = False
 
