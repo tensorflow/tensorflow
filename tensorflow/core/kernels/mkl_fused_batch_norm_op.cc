@@ -215,7 +215,7 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     }
 
     // BatchNorm forward primitive.
-    //TODO : Merge all the #ifdefs and simplify code
+    // TODO(intel-tf): Merge all the #ifdefs and simplify code
     if (!fwdParams.training && !(IS_SET(use_global_stats))) {
 #ifdef ENABLE_MKLDNN_V1
       if ((IS_SET(use_scale_shift)) && mkldnn_use_scaleshift) {
@@ -432,7 +432,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
 
 #ifdef ENABLE_MKLDNN_V1
     // Execute backward batch-normalization primitives.
-    //TODO Use execute_primitive instead of the inlined code.
+    // TODO(intel-tf): Use execute_primitive instead of the inlined code.
     DCHECK_EQ(context_.bwd_primitives.size(), context_.net_args.size());
     for (size_t i = 0; i < context_.bwd_primitives.size(); ++i) {
       context_.bwd_primitives.at(i).execute(*context_.bwd_stream,
@@ -864,9 +864,9 @@ class MklFusedBatchNormOp : public OpKernel {
         std::memcpy(batch_variance_data, variance_data, depth_ * sizeof(U));
       }
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
-                         string(e.message) + ", in file " + string(__FILE__) +
-                         ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) +
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -1231,9 +1231,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
                   reinterpret_cast<char*>(diff_weights_data + depth_),
                   depth_ * sizeof(U));
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
-                         string(e.message) + ", in file " + string(__FILE__) +
-                         ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) +
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
