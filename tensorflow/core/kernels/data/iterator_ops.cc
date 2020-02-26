@@ -88,18 +88,14 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       s = captured_state->iterator->GetNext(IteratorContext(std::move(params)),
                                             out_tensors, end_of_sequence,
                                             out_index);
-      //LOG(INFO) << "1";
       if (!s.ok() || *end_of_sequence || !out_tensors->empty()) {
         break;
       }
-      //delete out_index;
     } while (s.ok() && !*end_of_sequence && out_tensors->empty());
     
-    //LOG(INFO) << "2";
     if (s.ok()) {
       index_manager_.NotifyFinished(out_index);
     }
-    //LOG(INFO) << "3";
     return s;
   }
   return errors::FailedPrecondition(

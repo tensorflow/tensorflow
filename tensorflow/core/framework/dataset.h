@@ -592,7 +592,6 @@ class IndexManager {
   MultiLevelIndexQueue processed_indices_ GUARDED_BY(mu_);
   MultiLevelIndexQueue issued_indices_ GUARDED_BY(mu_);
   MultiLevelIndexQueue infertile_indices_ GUARDED_BY(mu_);
-  //std::map<string, int64> local_index_map_ GUARDED_BY(mu_);
   std::map<string, EparallaxTensorIndex*> last_index_map_ GUARDED_BY(mu_);
   std::map<string, EparallaxTensorIndex*> current_index_map_ GUARDED_BY(mu_);
   std::map<string, int64> offset_map_ GUARDED_BY(mu_);
@@ -1127,8 +1126,6 @@ class DatasetBaseIterator : public IteratorBase {
 
   explicit DatasetBaseIterator(const BaseParams& params) : params_(params) {
     params_.dataset->Ref();
-    string username = "kyunggeun-lee";
-    ckpt_file_path_ = "/tmp/eparallax-" + username + "/checkpoint/index/" + prefix();
   }
 
   ~DatasetBaseIterator() override { params_.dataset->Unref(); }
@@ -1282,45 +1279,6 @@ class DatasetBaseIterator : public IteratorBase {
     }
   }
 
-  void RestoreValueFromCheckpoint(int64* value_ptr, string identifier) {
-    std::ifstream ckpt_file(ckpt_file_path_.data());
-    if (ckpt_file.is_open()) {
-      string line, key, val;
-      bool found = false;
-      while (getline(ckpt_file, line)) {
-        size_t delimiter_pos = line.find(":");
-        key = line.substr(0, delimiter_pos);
-        if (key == identifier) {
-          val = line.substr(delimiter_pos + 1);
-          *value_ptr = atoi(val.c_str());
-          found = true;
-        }
-      }
-      ckpt_file.close();
-      if (!found) {
-        // Handle error
-      }
-    } else {
-      *value_ptr = 0;
-    }
-  }
-
-  template <typename T>
-  void StoreValueToCheckpoint(T value, string identifier) {
-    std::ofstream ckpt_file;
-    ckpt_file.open(ckpt_file_path_.data(), std::ios_base::app);
-    if(ckpt_file.is_open()){
-      ckpt_file << identifier << ":" << value << "\n";
-      ckpt_file.close();
-    }
-  }
-
-  //virtual void UpdateLocalIndex();
-
-  //void InitializeOrIncrementLocalIndex();
-
-  //std::unique_ptr<IteratorBase> input_impl_;
-
  private:
   inline bool collect_resource_usage(IteratorContext* ctx) {
     auto model = ctx->model();
@@ -1328,11 +1286,6 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   BaseParams params_;
-  //int64 local_index_;
-  //std::vector<EparallaxTensorIndex*> accumulated_indices_;
-  //bool gai_called_;
-  string ckpt_file_path_;
-  std::vector<EparallaxTensorIndex*>* last_parent_indices_=nullptr;
 };
 
 // Represents an iterator that is associated with a particular dataset

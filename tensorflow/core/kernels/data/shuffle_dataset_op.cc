@@ -115,7 +115,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         : DatasetIterator<T>(params),
           seed_(seed),
           seed2_(seed2),
-          //input_impl_(nullptr),
+          input_impl_(nullptr),
           epoch_(0),
           num_elements_(0),
           parent_generator_(seed, seed2),
@@ -124,11 +124,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           params.dataset->buffer_size_);
       slices_.push_back(absl::make_unique<Slice>(0, 0));
     }
-
-    ~Iterator() {
-      //CheckpointBufferIndices();
-    }
-
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
@@ -141,16 +136,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         first_call = true;
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
             ctx, this->prefix(), &input_impl_));
-        /*std::vector<EparallaxTensorIndex*> buffered_indices;
-        DatasetBaseIterator::RestoreProcessedIndicesFromCheckpoint("buffered_index", &buffered_indices);
-        for (size_t i=0; i<buffered_indices.size(); i++) {
-          Status s = input_impl_->GetItem(
-              ctx, out_tensors, end_of_sequence, buffered_indices[i]);
-          if (!s.ok() || *end_of_sequence) return s;
-          buffer_[i] =
-              std::make_pair(std::move(*out_tensors), buffered_indices[i]);
-          out_tensors->clear();
-        }*/
       }
       while (input_impl_ && num_elements_ < this->dataset()->buffer_size_) {
         if (ctx->env()->NowMicros() >
@@ -369,20 +354,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       return Status::OK();
     }
 
-    /*
-    void CheckpointBufferIndices() {
-      std::ofstream ckpt_file;
-      ckpt_file.open(DatasetBaseIterator::ckpt_file_path().data(), std::ios_base::app);
-      if(ckpt_file.is_open()){
-        for (int i=0; i<num_elements_; i++) {
-          EparallaxTensorIndex* index = std::get<1>(buffer_[i]);
-          LOG(INFO) << "Saving " << *index;
-          ckpt_file << "buffered_index:" << *index << "\n";
-        }
-        ckpt_file.close();
-      }
-    }*/
-
     mutex mu_;
     int64 seed_ GUARDED_BY(mu_);
     int64 seed2_ GUARDED_BY(mu_);
@@ -406,7 +377,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       auto out = generator_();
       return out;
     }
-    
+
     std::unique_ptr<ShuffleBufferItem[]> buffer_ GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     int64 epoch_ GUARDED_BY(mu_);

@@ -572,14 +572,6 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   std::vector<EparallaxTensorIndex*>* parent_indices =
       new std::vector<EparallaxTensorIndex*> {};
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence, parent_indices);
-  LOG(INFO) << prefix();
-  if (parent_indices->empty() && last_parent_indices_ != nullptr &&
-      !last_parent_indices_->empty()) {
-    parent_indices = last_parent_indices_;
-  } else {
-    last_parent_indices_ = parent_indices;
-  }
-  //LOG(INFO) << "parent indices: " << *parent_indices;
   out_index = ctx->index_manager()->IssueNewIndex(prefix(), parent_indices);
   LOG(INFO) << "out index: " << *out_index;
 
@@ -587,15 +579,12 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
     return s;
   }
   if (out_tensors->empty()) {
-    //ctx->index_manager()->NotifyFinished(out_index);
     return s;
   }
   if (ctx->index_manager()->AlreadyProcessed(out_index)) {
     out_tensors->clear();
     return s;
   }
-
-  //LOG(INFO) << "Fetched tensor index: " << *global_index;
 
   if (s.ok() && !*end_of_sequence) RecordElement(ctx);
   RecordStop(ctx, /*start_output=*/true);
