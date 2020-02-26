@@ -71,7 +71,6 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   if (captured_state->iterator) {
     Status s;
     EparallaxTensorIndex* out_index;
-//again:
     do {
       IteratorContext::Params params(ctx);
       params.flr = captured_state->flr;
@@ -81,7 +80,6 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       params.thread_pool = &unbounded_thread_pool_;
       params.cancellation_manager = &captured_state->cancellation_manager;
       params.index_manager = &index_manager_;
-      //LOG(INFO) << "index_manager: " << params.index_manager;
       std::function<void()> deregister_fn;
       TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
                                                      params.cancellation_manager,
@@ -98,7 +96,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     } while (s.ok() && !*end_of_sequence && out_tensors->empty());
     
     //LOG(INFO) << "2";
-    if (s.ok() && !*end_of_sequence) {
+    if (s.ok()) {
       index_manager_.NotifyFinished(out_index);
     }
     //LOG(INFO) << "3";
@@ -141,6 +139,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
     params.thread_factory = unbounded_thread_pool_.get_thread_factory();
     params.thread_pool = &unbounded_thread_pool_;
     params.cancellation_manager = &captured_state->cancellation_manager;
+    params.index_manager = &index_manager_;
     std::function<void()> deregister_fn;
     TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
                                                    params.cancellation_manager,
@@ -173,6 +172,7 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
   params.cancellation_manager = &new_state->cancellation_manager;
+  params.index_manager = &index_manager_;
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
                                                  params.cancellation_manager,

@@ -460,7 +460,7 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
   mutex_lock l(mu_);
   EparallaxTensorIndex* out_index;
 
-  int64 last_local_index = -1;
+  int64 last_local_index = GetIndexOffset(prefix);
   for (auto issued_index : *issued_indices_.Get(prefix)) {
     if (*issued_index->parent_indices() == *parent_indices &&
         issued_index->local_index() > last_local_index) {
@@ -487,7 +487,8 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
   }
 
   // Mark infertile indices.
-  if (out_index->local_index() == 0 && !IsShuffled(out_index)) {
+  if (out_index->local_index() == GetIndexOffset(out_index->iterator_id())+1 &&
+      !IsShuffled(out_index)) {
     auto last_index = last_index_map_.find(out_index->iterator_id());
     if (last_index == last_index_map_.end()) return out_index;
     for (auto last_parent_index : *last_index->second->parent_indices()) {
@@ -511,6 +512,41 @@ bool IndexManager::AlreadyProcessed(EparallaxTensorIndex* index) {
 
 bool IndexManager::AlreadyProcessedInternal(EparallaxTensorIndex* index) {
   return processed_indices_.Contains(index);
+}
+
+void IndexManager::SetIndexOffset(string prefix, int64 offset) {
+  mutex_lock l(mu_);
+  offset_map_.insert(std::make_pair(prefix, offset));
+}
+
+void IndexManager::ResetParentIndex(string iterator_id) {
+  processed_indices_.ClearParent(iterator_id);
+  issued_indices_.ClearParent(iterator_id);
+  infertile_indices_.ClearParent(iterator_id);
+  LOG(INFO) << "Processed indices";
+  for (auto vec : processed_indices_.GetAll()) {
+    for (auto index : *vec) {
+      LOG(INFO) << *index;
+    }
+  }
+  LOG(INFO) << "Issued indices";
+  for (auto vec : issued_indices_.GetAll()) {
+    for (auto index : *vec) {
+      LOG(INFO) << *index;
+    }
+  }
+  LOG(INFO) << "Infertile indices";
+  for (auto vec : infertile_indices_.GetAll()) {
+    for (auto index : *vec) {
+      LOG(INFO) << *index;
+    }
+  }
+  std::ofstream ckpt_file;
+  ckpt_file.open(ckpt_file_path_.data());
+  if (ckpt_file.is_open()) {
+    ckpt_file << "\n";
+    ckpt_file.close();
+  }
 }
 
 Status DatasetBaseIterator::GetNextFromInput(

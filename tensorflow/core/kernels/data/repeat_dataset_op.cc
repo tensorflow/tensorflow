@@ -134,9 +134,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
   class FiniteIterator : public DatasetIterator<Dataset> {
    public:
     explicit FiniteIterator(const Params& params)
-        : DatasetIterator<Dataset>(params) {
-      RestoreValueFromCheckpoint(&i_, "i_");
-    }
+        : DatasetIterator<Dataset>(params), i_(0) {}
 
     Status Initialize(IteratorContext* ctx) override {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
@@ -150,30 +148,17 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         *end_of_sequence = true;
         return Status::OK();
       }
-      bool resume_from_ckpt = true;
       while (i_ < dataset()->count_) {
-        StoreValueToCheckpoint<int64>(i_, "i_");
-        Status s = this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+        TF_RETURN_IF_ERROR(this->GetNextFromInput(
+              input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
 
-        if (!s.ok()) {
-          if (errors::IsOutOfRange(s) && resume_from_ckpt) {
-            ++i_;
-            ctx->index_manager()->ResetIndex(prefix());
-            TF_RETURN_IF_ERROR(
-                dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-            resume_from_ckpt = false;
-          } else {
-            return s;
-          }
-        }
-        if (s.ok() && !*end_of_sequence) {
+        if (!*end_of_sequence) {
           return Status::OK();
         }
         ++i_;
-        ctx->index_manager()->ResetIndex(prefix());
+        ctx->index_manager()->ResetParentIndex(prefix());
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        resume_from_ckpt = false;
       }
       *end_of_sequence = true;
       input_impl_.reset();
@@ -209,11 +194,6 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       }
       return Status::OK();
     }
-    
-    //bool AlreadyProcessed(EparallaxTensorIndex* index) override {
-    //  return i_ == dataset()->count_ &&
-    //         DatasetIterator<Dataset>::AlreadyProcessed(index);
-    //};
 
    private:
     mutex mu_;
@@ -225,7 +205,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
    public:
     explicit ForeverIterator(const Params& params)
         : DatasetIterator<Dataset>(params),
-          //input_impl_(nullptr),
+          input_impl_(nullptr),
           first_call_(true) {}
 
     Status Initialize(IteratorContext* ctx) override {
@@ -237,7 +217,6 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
-      bool resume_from_ckpt = true;
       do {
         if (!input_impl_) {
           TF_RETURN_IF_ERROR(
@@ -250,25 +229,16 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           // of sequence has been reached, we terminate the
           // iteration immediately. (Otherwise, this iterator
           // would loop infinitely and never produce a value.)
-          if (resume_from_ckpt) {
-            ctx->index_manager()->ResetIndex(prefix());
-            input_impl_.reset();
-            TF_RETURN_IF_ERROR(
-                dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-            resume_from_ckpt = false;
-          } else {
-            input_impl_.reset();
-            return Status::OK();
-          }
+          input_impl_.reset();
+          return Status::OK();
         }
         first_call_ = false;
         if (!*end_of_sequence) {
           return s;
         } else {
-          ctx->index_manager()->ResetIndex(prefix());
+          ctx->index_manager()->ResetParentIndex(prefix());
           input_impl_.reset();
           first_call_ = true;
-          resume_from_ckpt = false;
         }
       } while (true);
     }
@@ -303,10 +273,6 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       }
       return Status::OK();
     }
-    
-    //bool AlreadyProcessed(EparallaxTensorIndex* index) override {
-    //  return false;
-    //};
 
    private:
     mutex mu_;
