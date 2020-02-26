@@ -18,7 +18,7 @@ namespace pooling {
     T unpack(const uint8_t *buffer) {
         T retval =0;
         for (int i=0; i<N; ++i)
-            retval |= buffer[i] << (i << 3*i);
+            retval |= buffer[i] << (8 * i);
         return retval;
     }
 
