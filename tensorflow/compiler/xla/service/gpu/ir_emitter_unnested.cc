@@ -2013,7 +2013,7 @@ void IrEmitterUnnested::EmitTile(
                 source_idx_x = source_idx_x_base.AddOffsetToDim(constant(i), kDimX, &b_);
               }
               auto emit_element = [&] {
-                return emit_elem_function(source_idx_x, y_loc, x_loc, j);
+                return emit_elem_function(source_idx_x, y_loc, x_loc, old_j);
               };
               if (add_if) {
                 ksl->If(loop_name + "_x_in_tile",
