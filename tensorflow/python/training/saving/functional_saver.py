@@ -232,7 +232,7 @@ class MultiDeviceSaver(object):
     # subsequent restore, an outdated and orphaned temporary directory can be
     # safely removed.)
     with ops.device("cpu:0"):
-      sharded_suffix = control_flow_ops.where(
+      sharded_suffix = array_ops.where(
           string_ops.regex_full_match(file_prefix, '^s3://.*'),
           lambda: ".part",
           lambda: "_temp_%s/part" % uuid.uuid4().hex)
