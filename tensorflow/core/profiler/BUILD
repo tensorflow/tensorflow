@@ -123,7 +123,7 @@ cc_library(
     name = "nvtx_utils",
     srcs = ["nvtx_utils.cc",],
     hdrs = ["nvtx_utils.h"],
-    # visibility = ["//visibility:public"],
+    visibility = ["//visibility:public"],
     deps = [
       "//tensorflow/core:bfc_allocator",
       "//tensorflow/core:graph",

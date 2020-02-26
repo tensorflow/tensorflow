@@ -58,9 +58,15 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   auto op_profiler =
       params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+
   auto nvtx_range = tensorflow::nvtx::MaybeNvtxDomainRangeStart(
-      hlo_instruction()->NvtxNodeOpString(),
-      hlo_instruction()->NvtxNodeNameString());
+      /* node_op = */ hlo_instruction()->metadata().op_type(),
+      /* node_name = */ tensorflow::nvtx::hlo::NvtxNodeNameString(
+        /* metadata = */ hlo_instruction()->GetModule()->name(),
+        /* cluster_name = */ hlo_instruction()->metadata().op_name()
+      )
+  );
+
   TF_RETURN_IF_ERROR(RunGpuConv(cudnn_call_, absl::MakeSpan(operand_se_buffers),
                                 result_buffer, scratch, params.stream));
   tensorflow::nvtx::MaybeNvtxDomainRangeEnd(nvtx_range);

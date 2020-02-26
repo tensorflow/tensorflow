@@ -73,6 +73,14 @@ nvtxRangeId_t MaybeNvtxDomainRangeStartMsg(string msg, string node_op);
 
 void MaybeNvtxDomainRangeEnd(nvtxRangeId_t nvtx_range);
 
+namespace hlo{
+
+// Returns the op name for the node associated with this HLO, for use with
+// NVTX range annotations.
+string NvtxNodeNameString(string cluster_name, string op_name);
+
+}  // namespace HLO
+
 }  // namespace nvtx
 }  // namespace tensorflow
 

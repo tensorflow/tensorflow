@@ -267,7 +267,12 @@ Status RunGemm(const HloInstruction *gemm,
   double beta = backend_config.beta();
 
   auto nvtx_range = tensorflow::nvtx::MaybeNvtxDomainRangeStart(
-      gemm->NvtxNodeOpString(), gemm->NvtxNodeNameString());
+      /* node_op = */ gemm->metadata().op_type(),
+      /* node_name = */ tensorflow::nvtx::hlo::NvtxNodeNameString(
+        /* metadata = */ gemm->GetModule()->name(),
+        /* cluster_name = */ gemm->metadata().op_name()
+      )
+  );
 
   bool launch_ok = [&]() {
     switch (output_shape.element_type()) {

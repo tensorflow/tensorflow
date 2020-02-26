@@ -2284,14 +2284,6 @@ string PrintName(const string& name, bool print_ids) {
   }
 }
 
-string HloInstruction::NvtxNodeOpString() const { return metadata().op_type(); }
-
-string HloInstruction::NvtxNodeNameString() const {
-  string cluster_name = GetModule()->name();
-  cluster_name = cluster_name.substr(0, cluster_name.find("__XlaCompile"));
-  return cluster_name + "_1/xla_run/" + metadata().op_name();
-}
-
 namespace {
 
 using DFSStack = absl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
