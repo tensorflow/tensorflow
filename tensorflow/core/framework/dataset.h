@@ -453,6 +453,8 @@ class IndexManager {
 
   void ResetParentIndex(string iterator_id);
 
+  void SetShardID(int64 index);
+
  protected:
   bool AlreadyProcessedInternal(EparallaxTensorIndex* index);
 
@@ -504,7 +506,8 @@ class IndexManager {
 
   void Save() {
     std::ofstream ckpt_file;
-    ckpt_file.open(ckpt_file_path_.data()/*, std::ios_base::app*/);
+    string ckpt_file_path = ckpt_file_path_ + "_" + std::to_string(shard_index_);
+    ckpt_file.open(ckpt_file_path.data());
     if(ckpt_file.is_open()){
       for (auto processed_indices : processed_indices_.GetAll()) {
         for (auto processed_index : *processed_indices) {
@@ -595,6 +598,7 @@ class IndexManager {
   std::map<string, EparallaxTensorIndex*> last_index_map_ GUARDED_BY(mu_);
   std::map<string, EparallaxTensorIndex*> current_index_map_ GUARDED_BY(mu_);
   std::map<string, int64> offset_map_ GUARDED_BY(mu_);
+  int64 shard_index_;
   string ckpt_file_path_;
 };
 

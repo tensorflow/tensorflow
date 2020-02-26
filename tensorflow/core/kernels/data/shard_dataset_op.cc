@@ -108,6 +108,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params), next_index_(0) {}
 
     Status Initialize(IteratorContext* ctx) override {
+      ctx->index_manager()->SetShardID(dataset()->index_);
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 

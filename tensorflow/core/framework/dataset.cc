@@ -549,6 +549,10 @@ void IndexManager::ResetParentIndex(string iterator_id) {
   }
 }
 
+void IndexManager::SetShardID(int64 index) {
+  shard_index_ = index;
+}
+
 Status DatasetBaseIterator::GetNextFromInput(
     IteratorBase* const input_impl, IteratorContext* ctx,
     std::vector<Tensor>* out_tensors,
