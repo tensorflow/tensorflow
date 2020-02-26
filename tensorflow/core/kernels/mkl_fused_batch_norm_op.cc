@@ -57,8 +57,10 @@ template <typename T, typename U>
 class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
  public:
   explicit MklFusedBatchNormFwdPrimitive(const MklBatchNormFwdParams& fwdParams)
-      : cpu_engine_(engine::cpu, 0) {
-#ifndef ENABLE_MKLDNN_V1
+      : cpu_engine_(ENGINE_CPU, 0) {
+#ifdef ENABLE_MKLDNN_V1
+    context_.fwd_stream.reset(new CPU_STREAM(cpu_engine_));
+#else
     context_.fwd_stream.reset(
         new mkldnn::stream(mkldnn::stream::kind::eager_nostore));
 #endif
@@ -213,23 +215,21 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     }
 
     // BatchNorm forward primitive.
-#ifdef ENABLE_MKLDNN_V1
-    std::unordered_map<int, memory> net_args_map = {
-        {MKLDNN_ARG_SRC, *context_.src_mem},
-        { MKLDNN_ARG_DST,
-          *context_.dst_mem }};
-    if (fwdParams.training || IS_SET(use_global_stats)) {
-      net_args_map.insert({{MKLDNN_ARG_MEAN, *context_.mean_mem},
-                           { MKLDNN_ARG_VARIANCE,
-                             *context_.variance_mem }});
-    }
-    if (IS_SET(use_scale_shift)) {
-      net_args_map.insert({{ MKLDNN_ARG_WEIGHTS, *context_.weights_mem }});
-    }
-    context_.net_args.emplace_back(net_args_map);
-    context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
-#else
     if (!fwdParams.training && !(IS_SET(use_global_stats))) {
+#ifdef ENABLE_MKLDNN_V1
+      if ((IS_SET(use_scale_shift)) && mkldnn_use_scaleshift) {
+        context_.net_args.push_back(
+            {{MKLDNN_ARG_SRC, *context_.src_mem},
+             {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
+             { MKLDNN_ARG_DST,
+               *context_.dst_mem }});
+      } else {
+        context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
+                                     { MKLDNN_ARG_DST,
+                                       *context_.dst_mem }});
+      }
+      context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
+#else
       if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
         context_.bn_fwd.reset(new batch_normalization_forward(
             *context_.fwd_pd, *context_.src_mem, *context_.weights_mem,
@@ -238,7 +238,27 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
         context_.bn_fwd.reset(new batch_normalization_forward(
             *context_.fwd_pd, *context_.src_mem, *context_.dst_mem));
       }
+#endif  // ENABLE_MKLDNN_V1
     } else if (IS_SET(use_global_stats)) {
+#ifdef ENABLE_MKLDNN_V1
+      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
+        context_.net_args.push_back(
+            {{MKLDNN_ARG_SRC, *context_.src_mem},
+             {MKLDNN_ARG_MEAN, *context_.mean_mem},
+             {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
+             {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
+             { MKLDNN_ARG_DST,
+               *context_.dst_mem }});
+      } else {
+        context_.net_args.push_back(
+            {{MKLDNN_ARG_SRC, *context_.src_mem},
+             {MKLDNN_ARG_MEAN, *context_.mean_mem},
+             {MKLDNN_ARG_VARIANCE, *context_.variance_mem},
+             { MKLDNN_ARG_DST,
+               *context_.dst_mem }});
+      }
+      context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
+#else
       if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
         context_.bn_fwd.reset(new batch_normalization_forward(
             *context_.fwd_pd, *context_.src_mem,
@@ -251,7 +271,26 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
             (const primitive::at)*context_.mean_mem,
             (const primitive::at)*context_.variance_mem, *context_.dst_mem));
       }
+#endif  // ENABLE_MKLDNN_V1
     } else {
+#ifdef ENABLE_MKLDNN_V1
+      if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
+        context_.net_args.push_back(
+            {{MKLDNN_ARG_SRC, *context_.src_mem},
+             {MKLDNN_ARG_WEIGHTS, *context_.weights_mem},
+             {MKLDNN_ARG_DST, *context_.dst_mem},
+             {MKLDNN_ARG_MEAN, *context_.mean_mem},
+             { MKLDNN_ARG_VARIANCE,
+               *context_.variance_mem }});
+      } else {
+        context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
+                                     {MKLDNN_ARG_DST, *context_.dst_mem},
+                                     {MKLDNN_ARG_MEAN, *context_.mean_mem},
+                                     { MKLDNN_ARG_VARIANCE,
+                                       *context_.variance_mem }});
+      }
+      context_.bn_fwd.reset(new batch_normalization_forward(*context_.fwd_pd));
+#else
       if ((IS_SET(use_scale_shift)) && GET_FLAG(use_scale_shift)) {
         context_.bn_fwd.reset(new batch_normalization_forward(
             *context_.fwd_pd, *context_.src_mem, *context_.weights_mem,
@@ -261,8 +300,9 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
             *context_.fwd_pd, *context_.src_mem, *context_.dst_mem,
             *context_.mean_mem, *context_.variance_mem));
       }
-    }
 #endif  // ENABLE_MKLDNN_V1
+    }
+
     context_.fwd_primitives.push_back(*context_.bn_fwd);
   }
 
@@ -344,8 +384,10 @@ template <typename T, typename U>
 class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
  public:
   explicit MklFusedBatchNormBwdPrimitive(const MklBatchNormBwdParams& bwdParams)
-      : cpu_engine_(engine::cpu, 0) {
-#ifndef ENABLE_MKLDNN_V1
+      : cpu_engine_(ENGINE_CPU, 0) {
+#ifdef ENABLE_MKLDNN_V1
+    context_.bwd_stream.reset(new CPU_STREAM(cpu_engine_));
+#else
     context_.bwd_stream.reset(
         new mkldnn::stream(mkldnn::stream::kind::eager_nostore));
 #endif
