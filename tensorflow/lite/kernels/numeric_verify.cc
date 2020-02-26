@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include <string.h>
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <numeric>
 #include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
@@ -47,7 +49,10 @@ struct OpContext {
 const int kTensorNotAllocated = -1;
 
 struct OpData {
+  // The percentage of the tensor value range. Must be a number less than 1.0.
   float tolerance;
+  // The abstract value allowed for the floating-point value difference.
+  float max_diff;
   // This boolean value is only used when the input tensor is constant.
   bool float_input_initialized;
   int cache_tensor_id = kTensorNotAllocated;
@@ -82,6 +87,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                               op_context.input->type == kTfLiteFloat16);
   TF_LITE_ENSURE(context, op_context.ref->type == kTfLiteFloat32);
 
+  op_data->max_diff = op_data->tolerance * op_context.input->params.scale;
+  switch (op_context.input->type) {
+    case kTfLiteUInt8:
+    case kTfLiteInt8:
+      op_data->max_diff *= (1 << 8);
+      break;
+    case kTfLiteInt16:
+      op_data->max_diff *= (1 << 16);
+      break;
+    default:
+      break;
+  }
+
   // Allocate tensor to store the dequantized inputs.
   if (op_data->cache_tensor_id == kTensorNotAllocated) {
     TF_LITE_ENSURE_OK(
@@ -101,6 +119,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                  TfLiteIntArrayCopy(op_context.input->dims)));
 
   return kTfLiteOk;
+}
+
+static int32_t GetQuantizedValue(const OpContext& op_context, int index) {
+  switch (op_context.input->type) {
+    case kTfLiteUInt8:
+      return GetTensorData<uint8_t>(op_context.input)[index];
+    case kTfLiteInt8:
+      return GetTensorData<int8_t>(op_context.input)[index];
+    case kTfLiteInt16:
+      return GetTensorData<int16_t>(op_context.input)[index];
+    default:
+      return 0;
+  }
 }
 
 template <builtin::dequantize::KernelType kernel_type>
@@ -123,36 +154,50 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     op_data->float_input_initialized = true;
   }
 
-  // Verify the dequantized output
-  for (int i = 0; i < NumElements(op_context.ref); ++i) {
-    int32_t value;
-    switch (op_context.input->type) {
-      case kTfLiteUInt8:
-        value = GetTensorData<uint8_t>(op_context.input)[i];
-        break;
-      case kTfLiteInt8:
-        value = GetTensorData<int8_t>(op_context.input)[i];
-
-        break;
-      case kTfLiteInt16:
-        value = GetTensorData<int16_t>(op_context.input)[i];
-        break;
-      default:
-        value = 0;
+  // If the tolerance is very small, we only display the stats of the diff.
+  if (op_data->tolerance < 0.1) {
+    std::vector<double> diffs, temp;
+    diffs.reserve(NumElements(dequantized));
+    temp.reserve(NumElements(dequantized));
+    for (int i = 0; i < NumElements(op_context.ref); ++i) {
+      float dequant = GetTensorData<float>(dequantized)[i];
+      float reference = GetTensorData<float>(op_context.ref)[i];
+      diffs.push_back(dequant - reference);
     }
+    double mean =
+        std::accumulate(diffs.begin(), diffs.end(), 0.0) / diffs.size();
+    double max_diff = 0.0;
+    std::transform(diffs.begin(), diffs.end(), temp.begin(),
+                   [mean, &max_diff](double x) {
+                     max_diff = std::max(max_diff, std::abs(x));
+                     return x - mean;
+                   });
+    double sq_sum =
+        std::inner_product(temp.begin(), temp.end(), temp.begin(), 0.0);
+    double std = std::sqrt(sq_sum / diffs.size());
+    TF_LITE_KERNEL_LOG(
+        context,
+        "std: %f, mean: %f, max_diff: %f (scale: %f, zero_point: %d).\n", std,
+        mean, max_diff, op_context.input->params.scale,
+        op_context.input->params.zero_point);
+    return kTfLiteOk;
+  }
+
+  // Verify the dequantized output.
+  auto max_diff = op_data->tolerance * op_context.input->params.scale;
+  for (int i = 0; i < NumElements(op_context.ref); ++i) {
+    int32_t value = GetQuantizedValue(op_context, i);
     float dequant = GetTensorData<float>(dequantized)[i];
     float reference = GetTensorData<float>(op_context.ref)[i];
     float diff = std::abs(reference - dequant);
-    float error = diff / (reference + 1e-8);
-    // It is fine if the error is introduced by rounding so the diff will be
-    // smaller than `scale`.
-    if (diff > op_context.input->params.scale && error > op_data->tolerance) {
-      context->ReportError(context,
-                           "Mismatch: %f is quantized to %d with (%f, %d). "
-                           "abs((%f - %f) / %f) = %f > %f (tolerance).\n",
-                           reference, value, op_context.input->params.scale,
-                           op_context.input->params.zero_point, reference,
-                           dequant, reference, error, op_data->tolerance);
+    if (diff > max_diff) {
+      TF_LITE_KERNEL_LOG(
+          context,
+          "Mismatch: %f is quantized to %d with (%f, %d). "
+          "abs(%f - %f) = %f > %f (tolerance) range percentage %f.\n",
+          reference, value, op_context.input->params.scale,
+          op_context.input->params.zero_point, reference, dequant, diff,
+          max_diff, op_data->tolerance);
       return kTfLiteError;
     }
   }
