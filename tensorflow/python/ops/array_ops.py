@@ -557,6 +557,14 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   >>> a.shape
   TensorShape([None, None, 10])
+  
+  However, when defining custom layers and models that will be run in graph mode
+  at some point, prefer `tf.shape(x)` over `x.shape`. `x.shape` is the static shape
+  of `x` and usually evaluates to `None` in the first dimension during graph
+  construction (to represent the as yet unknown batch size). This can cause problems in
+  function calls like `tf.zeros(x.shape[0])` which don't support `None` values.
+  `tf.shape(x)` on the other hand gives the dynamic shape of `x` which isn't
+  evaluated until training/predicting begins where the full shape of `x`  is known.
 
   `tf.shape` and `Tensor.shape` should be identical in eager mode.  Within
   `tf.function` or within a `compat.v1` context, not all dimensions may be
