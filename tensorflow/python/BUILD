@@ -190,6 +190,7 @@ py_library(
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/dlpack",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:profiler",

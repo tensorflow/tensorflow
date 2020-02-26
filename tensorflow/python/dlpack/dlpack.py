@@ -1,4 +1,4 @@
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,11 +23,11 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # tf.dlpack.to_dlpack/from_dlpack doesn't work. How to fix?
-@tf_export("dlpack.to_dlpack")
+@tf_export("experimental.dlpack.to_dlpack", v1=[])
 def to_dlpack(tf_tensor):
   return pywrap_tfe.TFE_ToDlpackCapsule(tf_tensor)
 
 
-@tf_export("dlpack.from_dlpack")
+@tf_export("experimental.dlpack.from_dlpack", v1=[])
 def from_dlpack(dlcapsule):
   return pywrap_tfe.TFE_FromDlpackCapsule(dlcapsule)

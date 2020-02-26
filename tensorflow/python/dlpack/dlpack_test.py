@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -81,7 +81,7 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
                            ".*a DLPack tensor may be consumed at most once.*",
                            ConsumeDLPackTensor)
 
-  def testUnsupportedType(self):
+  def testUnsupportedTypeToDLPack(self):
     def case1():
       tf_tensor = constant_op.constant(
           [[1, 4], [5, 2]], dtype=dtypes.qint16)

@@ -305,6 +305,9 @@ TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status) {
     return nullptr;
   }
   TF_DataType dtype = TfDataTypeFormDlDataType(dl_tensor->dtype, status);
+  if (!status->status.ok()) {
+    return nullptr;
+  }
   int num_dims = dl_tensor->ndim;
   const int64_t* dims = dl_tensor->shape;
   void* data = dl_tensor->data;
