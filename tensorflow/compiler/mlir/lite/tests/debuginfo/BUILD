@@ -10,7 +10,7 @@ glob_lit_tests(
     driver = "@llvm-project//mlir:run_lit.sh",
     test_file_exts = [
         "pbtxt",
-        "py",
+        #        "py", TODO(b/150304798)
     ],
 )
 
