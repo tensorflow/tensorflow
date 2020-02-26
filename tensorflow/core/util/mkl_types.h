@@ -122,7 +122,7 @@ namespace tensorflow {
 #define ALGORITHM mkldnn
 #define ALGORITHM_UNDEF ALGORITHM::algorithm_undef
 #define BN_FLAGS mkldnn
-#define CPU_STREAM(engine) stream(stream::kind::eager)
+#define CPU_STREAM(engine) stream(stream::kind::eager_nostore)
 #define DATA_WITH_ENGINE(data, engine) data
 #define DST_MD dst_pd
 #define ENGINE_CPU engine::cpu
