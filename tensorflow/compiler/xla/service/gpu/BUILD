@@ -620,6 +620,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:core",
     ],
