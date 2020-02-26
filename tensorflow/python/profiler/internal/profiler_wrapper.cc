@@ -40,6 +40,7 @@ tensorflow::ProfileRequest MakeProfileRequest() {
   tensorflow::ProfileRequest request;
   request.add_tools("overview_page");
   request.add_tools("input_pipeline");
+  request.add_tools("kernel_stats");
   request.add_tools("tensorflow_stats");
   return request;
 }
