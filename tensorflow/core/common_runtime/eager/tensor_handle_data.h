@@ -57,7 +57,9 @@ class LocalTensorHandleData : public TensorHandleData {
   Status NumElements(int64* num_elements) const override;
   Status Unprotect() override;
 
-  string DebugString() const override { return tensor_.DebugString(); }
+  string DebugString() const override {
+    return tensor_.DeviceSafeDebugString();
+  }
 
  private:
   tensorflow::Tensor tensor_;
@@ -87,7 +89,18 @@ class EmptyLocalTensorHandleData : public TensorHandleData {
   Status NumElements(int64* num_elements) const override;
   Status Unprotect() override;
 
+  bool IsReady() const;
+  void SetReady();
+  Status WaitReady(const char* caller) const;
+  void Poison(Status status);
+  Status IsPoisoned() const { return is_poisoned_; }
+
   string DebugString() const override;
+
+ private:
+  mutable mutex mu_;
+  bool is_ready_ GUARDED_BY(mu_);
+  Status is_poisoned_;
 };
 
 }  // namespace tensorflow
