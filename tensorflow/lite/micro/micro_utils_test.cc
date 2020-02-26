@@ -82,7 +82,7 @@ TF_LITE_MICRO_TEST(FloatToAsymmetricQuantizedInt32Test) {
 TF_LITE_MICRO_TEST(AsymmetricQuantizeInt8) {
   float values[] = {-10.3, -3.1, -2.1, -1.9, -0.9, 0.1, 0.9, 1.85, 2.9, 4.1};
   int8_t goldens[] = {-20, -5, -3, -3, -1, 1, 3, 5, 7, 9};
-  const int length = sizeof(values) / sizeof(float);
+  constexpr int length = sizeof(values) / sizeof(float);
   int8_t quantized[length];
   tflite::AsymmetricQuantize(values, quantized, length, 0.5, 1);
   for (int i = 0; i < length; i++) {
@@ -93,7 +93,7 @@ TF_LITE_MICRO_TEST(AsymmetricQuantizeInt8) {
 TF_LITE_MICRO_TEST(AsymmetricQuantizeUInt8) {
   float values[] = {-10.3, -3.1, -2.1, -1.9, -0.9, 0.1, 0.9, 1.85, 2.9, 4.1};
   uint8_t goldens[] = {106, 121, 123, 123, 125, 127, 129, 131, 133, 135};
-  const int length = sizeof(values) / sizeof(float);
+  constexpr int length = sizeof(values) / sizeof(float);
   uint8_t quantized[length];
   tflite::AsymmetricQuantize(values, quantized, length, 0.5, 127);
   for (int i = 0; i < length; i++) {
@@ -104,7 +104,7 @@ TF_LITE_MICRO_TEST(AsymmetricQuantizeUInt8) {
 TF_LITE_MICRO_TEST(SymmetricQuantizeInt32) {
   float values[] = {-10.3, -3.1, -2.1, -1.9, -0.9, 0.1, 0.9, 1.85, 2.9, 4.1};
   int32_t goldens[] = {-21, -6, -4, -4, -2, 0, 2, 4, 6, 8};
-  const int length = sizeof(values) / sizeof(float);
+  constexpr int length = sizeof(values) / sizeof(float);
   int32_t quantized[length];
   tflite::SymmetricQuantize(values, quantized, length, 0.5);
   for (int i = 0; i < length; i++) {

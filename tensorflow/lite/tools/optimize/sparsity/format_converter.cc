@@ -246,6 +246,7 @@ FormatConverter<T>::FormatConverter(const std::vector<int>& shape,
   int block_dim = 0;
 
   blocked_shape_.resize(original_rank);
+  block_size_.resize(block_map_.size());
   for (int i = 0; i < original_rank; i++) {
     if (block_dim < block_map_.size() && block_map_[block_dim] == i) {
       int orig_dim = traversal_order_[original_rank + block_dim];
@@ -274,7 +275,7 @@ void FormatConverter<T>::Populate(const T* src_data, std::vector<int> indices,
     for (; i < indices.size(); i++) {
       int orig_dim = block_map_[traversal_order_[i] - orig_rank];
       orig_idx[orig_dim] =
-          orig_idx[orig_dim] * blocked_shape_[orig_dim] + indices[i];
+          orig_idx[orig_dim] * block_size_[orig_dim] + indices[i];
     }
 
     data_[GetFlattenedIndex(orig_idx, dense_shape_)] = src_data[*src_data_ptr];

@@ -3,9 +3,8 @@
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
 // CHECK-LABEL: func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32>
   func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<*xi32> {
- // CHECK: %[[ARG0:.*]] = "tf.Cast"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
- // CHECK: %[[ARG1:.*]] = "tf.Cast"(%arg1) : (tensor<1xi32>) -> tensor<1xi32>
- // CHECK: %[[RESULT:.*]] = "tf.AddV2"(%[[ARG0]], %[[ARG1]]) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
+ // CHECK-NOT: tf.Cast
+ // CHECK: %[[RESULT:.*]] = "tf.AddV2"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
  // CHECK: return %[[RESULT]] : tensor<1xi32>
     %0 = "tf.Cast"(%arg0) : (tensor<1xi32>) -> tensor<*xi32>
     %1 = "tf.Cast"(%arg1) : (tensor<1xi32>) -> tensor<*xi32>
@@ -45,6 +44,17 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %1 = "tf.Unknown"(%0, %0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     return %1 : tensor<*xf32>
   }
+
+// CHECK-LABEL: func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<?xf32>
+func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
+  br ^bb1
+^bb1:
+// CHECK: %[[IDENTITY:.*]] = "tf.Identity"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+// CHECK: return %[[IDENTITY]] : tensor<?xf32>
+  %ret = "tf.Identity"(%arg0) : (tensor<?xf32>) -> tensor<*xf32>
+  return %ret : tensor<*xf32>
+}
+
 
 // Tests the case where an inference opportunity relies on folding.
 
@@ -213,5 +223,35 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: return
     // CHECK-SAME: tensor<4xf32>
     return %graph : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @next_iteration_user
+  func @next_iteration_user(%arg0: tensor<32x?x256x4xf32>) -> tensor<?x?x?xf32> {
+    %0 = tf_executor.graph {
+      // CHECK: tf_executor.NextIteration.Source
+      // CHECK-SAME: : tensor<32x?x4xf32>
+      %1:3 = tf_executor.NextIteration.Source : tensor<?x?x?xf32>
+      %out, %c_out = tf_executor.island {
+        %dims = "tf.Const"() {value = dense<[32, -1, 4]> : tensor<3xi32>} : () -> tensor<3xi32>
+        // CHECK: "tf.Reshape"
+        // CHECK-SAME: -> tensor<32x?x4xf32>
+        %reshape = "tf.Reshape"(%arg0, %dims) : (tensor<32x?x256x4xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+        // CHECK: tf_executor.yield
+        // CHECK-SAME: : tensor<32x?x4xf32>
+        tf_executor.yield %reshape : tensor<?x?x?xf32>
+      }
+      // CHECK: tf_executor.NextIteration.Sink
+      // CHECK-SAME: : tensor<32x?x4xf32>
+      tf_executor.NextIteration.Sink[%1#1] %out : tensor<?x?x?xf32>
+      tf_executor.fetch %1#0 : tensor<?x?x?xf32>
+    }
+    return %0 : tensor<?x?x?xf32>
+  }
+
+  // CHECK-LABEL: func @fold_cast
+  func @fold_cast(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+    // CHECK-NOT: Cast
+    %0 = "tf.Cast"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
+    return %0 : tensor<*xf32>
   }
 }

@@ -69,6 +69,12 @@ auto* tf_data_bytes_fetched_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/bytes_fetched",
     "The number of bytes fetched from tf.data Dataset iterator.");
 
+auto* tf_data_getnext_duration_counter = monitoring::Sampler<0>::New(
+    {"/tensorflow/data/getnext_duration",
+     "Microseconds spent fetching an element from tf.data Dataset iterator."},
+    // Power of 2 with bucket count 14 (256G)
+    {monitoring::Buckets::Exponential(1, 4, 20)});
+
 auto* tf_data_elements_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/elements", "tf.data elements", "name");
 
@@ -132,6 +138,12 @@ void RecordTFDataBytesRead(const string& name, int64 num_bytes) {
 
 void RecordTFDataBytesFetched(int64 num_bytes) {
   tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
+}
+
+void RecordTFDataGetNextDuration(uint64 duration_us) {
+  static auto* tfdata_getnext_duration_cell =
+      tf_data_getnext_duration_counter->GetCell();
+  tfdata_getnext_duration_cell->Add(duration_us);
 }
 
 void RecordTFDataElements(const string& name, int64 num_elements) {

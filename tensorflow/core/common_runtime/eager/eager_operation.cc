@@ -41,7 +41,6 @@ Status EagerOperation::Reset(
         "registered in the binary running in this process.");
   }
   attrs_.Reset(op);
-  device_ = nullptr;
   use_xla_ = false;
   is_function_ = is_function;
   cancellation_manager_ = nullptr;
@@ -53,8 +52,7 @@ Status EagerOperation::Reset(
   return SetDeviceName(raw_device_name, true);
 }
 
-tensorflow::Status EagerOperation::MaybeInferSingleInputAttrs(
-    TensorHandle* handle) {
+Status EagerOperation::MaybeInferSingleInputAttrs(TensorHandle* handle) {
   if (!op_def_) return Status::OK();
 
   const auto& input_def = op_def_->input_arg(inference_arg_idx_++);
@@ -78,8 +76,7 @@ tensorflow::Status EagerOperation::MaybeInferSingleInputAttrs(
 }
 
 void EagerOperation::InferSingleTypeInputListAttrs(
-    const tensorflow::OpDef::ArgDef& input_def,
-    const tensorflow::DataType dtype, int num_inputs) {
+    const OpDef::ArgDef& input_def, const DataType dtype, int num_inputs) {
   if (inference_attrs_.find(input_def.number_attr()) ==
       inference_attrs_.end()) {
     MutableAttrs()->Set(input_def.number_attr(), num_inputs);
@@ -92,24 +89,23 @@ void EagerOperation::InferSingleTypeInputListAttrs(
 }
 
 void EagerOperation::InferMixedTypeInputListAttrs(
-    const tensorflow::OpDef::ArgDef& input_def,
-    const std::vector<tensorflow::DataType>& dtypes) {
+    const OpDef::ArgDef& input_def, const std::vector<DataType>& dtypes) {
   if (inference_attrs_.find(input_def.type_list_attr()) ==
       inference_attrs_.end()) {
-    MutableAttrs()->Set(input_def.type_list_attr(),
-                        tensorflow::gtl::ArraySlice<const tensorflow::DataType>(
-                            dtypes.data(), dtypes.size()));
+    MutableAttrs()->Set(
+        input_def.type_list_attr(),
+        gtl::ArraySlice<const DataType>(dtypes.data(), dtypes.size()));
     inference_attrs_.insert(input_def.type_list_attr());
   }
 }
 
-tensorflow::Status EagerOperation::InferInputListAttrs(int num_inputs) {
+Status EagerOperation::InferInputListAttrs(int num_inputs) {
   if (!op_def_) return Status::OK();
 
   int start = inference_arg_idx_;
   const auto& input_def = op_def_->input_arg(inference_arg_idx_++);
   if (!input_def.type_list_attr().empty()) {
-    std::vector<tensorflow::DataType> dtypes(num_inputs);
+    std::vector<DataType> dtypes(num_inputs);
     for (int i = 0; i < num_inputs; ++i) {
       dtypes[i] = inputs_[start + i]->dtype;
     }
@@ -118,13 +114,12 @@ tensorflow::Status EagerOperation::InferInputListAttrs(int num_inputs) {
              !input_def.number_attr().empty()) {
     InferSingleTypeInputListAttrs(input_def, inputs_[start]->dtype, num_inputs);
   } else {
-    return tensorflow::errors::InvalidArgument("Invalid input list definition");
+    return errors::InvalidArgument("Invalid input list definition");
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status EagerOperation::SetDeviceName(const char* device,
-                                                 const bool reset) {
+Status EagerOperation::SetDeviceName(const char* device, const bool reset) {
   if (device != nullptr && strlen(device) > 0) {
     if (device != raw_device_name_) {
       if (!DeviceNameUtils::ParseFullName(device, &device_parsed_name_)) {
@@ -137,11 +132,20 @@ tensorflow::Status EagerOperation::SetDeviceName(const char* device,
           DeviceNameUtils::HasSomeDetails(device_parsed_name_)
               ? DeviceNameUtils::ParsedNameToString(device_parsed_name_)
               : "";
+      CustomDevice* custom_device;
+      if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device).ok()) {
+        device_ = custom_device;
+      } else {
+        // Device placement for physical devices happens lazily in
+        // EagerExecute/EagerRemoteExecute, and can depend on the inputs.
+        device_ = kVariantDeviceNull;
+      }
     }
   } else if (reset) {
     raw_device_name_.clear();
     device_name_.clear();
     device_parsed_name_.Clear();
+    device_ = kVariantDeviceNull;
   }
   return Status::OK();
 }
@@ -164,8 +168,8 @@ string EagerOperation::DebugString() const {
 
   strings::StrAppend(&out, "Name: ", Name(), "\n");
   strings::StrAppend(&out, "Device Name: [", device_name_, "]\n");
-  strings::StrAppend(
-      &out, "Device: ", Device() ? Device()->DebugString() : "[]", "\n");
+  strings::StrAppend(&out, "Device: ", VariantDeviceDebugString(Device()),
+                     "\n");
   for (const auto& input : inputs_) {
     VLOG(1) << "Input ptr: " << input;
     strings::StrAppend(&out, "Input: ", input->DebugString(), "\n");

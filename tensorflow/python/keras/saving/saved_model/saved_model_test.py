@@ -85,17 +85,23 @@ class LayerWithLoss(keras.layers.Layer):
 
   def call(self, inputs):
     self.add_loss(math_ops.reduce_sum(inputs), inputs)
-    return inputs
+    return inputs * 2
 
 
 class LayerWithUpdate(keras.layers.Layer):
 
   def build(self, _):
-    self.v = self.add_weight('v', shape=[], dtype=dtypes.int32)
+    self.v = self.add_weight(
+        'v',
+        shape=[],
+        initializer=keras.initializers.zeros,
+        trainable=False,
+        dtype=dtypes.float32)
 
-  def call(self, inputs):
-    self.add_update(self.v.assign_add(math_ops.reduce_sum(inputs)))
-    return inputs
+  def call(self, inputs, training=True):
+    if training:
+      self.add_update(self.v.assign_add(1.))
+    return inputs * 2.
 
 
 @keras_parameterized.run_all_keras_modes
@@ -227,7 +233,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     loaded = keras_load.load(saved_model_dir)
     input_arr = array_ops.ones((4, 3))
 
-    # Run the layer, and use the keras backend learing phase
+    # Run the layer, and use the keras backend learning phase
     keras.backend.set_learning_phase(0)
     self.assertAllEqual(input_arr, loaded(input_arr))
     keras.backend.set_learning_phase(1)
@@ -249,7 +255,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.add_loss(eager_loss)
 
     # Call predict to ensure that all layers are built and inputs are set.
-    model.predict(np.random.random((1, 3)))
+    model.predict(np.random.random((1, 3)).astype(np.float32))
     saved_model_dir = self._save_model_dir()
 
     tf_save.save(model, saved_model_dir)
@@ -425,8 +431,8 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
     self.assertAllClose(
         model.predict(input_arr),
-        loaded.signatures['predict'](
-            ops.convert_to_tensor(input_arr.astype('float32')))['predictions'])
+        loaded.signatures['predict'](ops.convert_to_tensor_v2(
+            input_arr.astype('float32')))['predictions'])
 
     feature = {
         'inputs': feature_pb2.Feature(
@@ -435,7 +441,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     example = example_pb2.Example(
         features=feature_pb2.Features(feature=feature))
     outputs = loaded.signatures['parse_and_predict'](
-        ops.convert_to_tensor([example.SerializeToString()]))
+        ops.convert_to_tensor_v2([example.SerializeToString()]))
     self.assertAllClose(model.predict(input_arr), outputs['predictions'])
     self.assertAllClose(model.layers[0](input_arr), outputs['layer_1_outputs'])
 
@@ -608,13 +614,13 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
   def _testAddUpdate(self, scope):
     with scope:
-      layer_with_update = LayerWithUpdate(dtype=dtypes.int32)
+      layer_with_update = LayerWithUpdate()
       model = testing_utils.get_model_from_layers([layer_with_update],
-                                                  input_shape=(3,),
-                                                  input_dtype=dtypes.int32)
+                                                  input_shape=(3,))
 
+      x = np.ones((10, 3))
       if testing_utils.get_model_type() == 'subclass':
-        model._set_inputs(constant_op.constant([[1, 2, 3]], dtype=dtypes.int32))
+        model.predict(x, batch_size=10)
       self.evaluate(variables.variables_initializer(model.variables))
       saved_model_dir = self._save_model_dir()
       model.save(saved_model_dir, save_format='tf')
@@ -622,11 +628,11 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     loaded = keras_load.load(saved_model_dir)
     loaded_layer = loaded.layers[-1]
     self.evaluate(variables.variables_initializer(loaded.variables))
-    self.assertEqual(self.evaluate(loaded_layer.v), 0)
+    self.assertEqual(self.evaluate(loaded_layer.v), 0.)
 
-    loaded.predict(constant_op.constant([[1, 2, 3]], dtype=dtypes.int32),
-                   steps=1)
-    self.assertEqual(self.evaluate(loaded_layer.v), 6)
+    loaded.compile('sgd', 'mse')
+    loaded.fit(x, x, batch_size=10)
+    self.assertEqual(self.evaluate(loaded_layer.v), 1.)
 
   @keras_parameterized.run_with_all_model_types
   def testSaveLayerWithUpdates(self):

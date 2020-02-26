@@ -412,8 +412,6 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
         isinstance(model.optimizer,
                    (keras.optimizers.RMSprop,
                     keras.optimizer_v2.rmsprop.RMSprop)))
-    self.assertEqual(['acc', metrics.categorical_accuracy],
-                     model._compile_metrics)
 
   def _clone_and_build_test_helper(self, model, model_type):
     inp = np.random.random((10, 4))
@@ -500,15 +498,13 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_replace_tf_optimizer_iterations_variable(self):
+    if context.executing_eagerly():
+      self.skipTest('v1 optimizers not supported with eager.')
     self.assert_optimizer_iterations_increases(adam.AdamOptimizer(0.01))
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_replace_keras_optimizer_iterations_variable(self):
-    if testing_utils.should_run_eagerly():
-      # This needs to be updated to run with v2 optimizers.
-      self.skipTest('b/120991591')
-
     self.assert_optimizer_iterations_increases('adam')
 
   def test_clone_optimizer_in_different_graph(self):

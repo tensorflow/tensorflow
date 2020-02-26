@@ -50,6 +50,27 @@ elif TARGET == 'aarch64':
   os.environ['CC'] = 'aarch64-linux-gnu-gcc'
 MAKE_CROSS_OPTIONS = ['TARGET=%s' % TARGET]  if TARGET else []
 
+TARGET_ARCH = (
+    os.environ['TENSORFLOW_TARGET_ARCH'] \
+    if 'TENSORFLOW_TARGET_ARCH' in os.environ
+    else None)
+MAKE_CROSS_OPTIONS += ['TARGET_ARCH=%s' % TARGET_ARCH] \
+        if TARGET_ARCH else []
+
+CC_PREFIX = (
+    os.environ['TENSORFLOW_CC_PREFIX'] \
+    if 'TENSORFLOW_CC_PREFIX' in os.environ
+    else None)
+MAKE_CROSS_OPTIONS += ['CC_PREFIX=%s' % CC_PREFIX] \
+        if CC_PREFIX else []
+
+EXTRA_CXXFLAGS = (
+    os.environ['TENSORFLOW_EXTRA_CXXFLAGS'] \
+    if 'TENSORFLOW_EXTRA_CXXFLAGS' in os.environ
+    else None)
+MAKE_CROSS_OPTIONS += ['EXTRA_CXXFLAGS=%s' % EXTRA_CXXFLAGS] \
+        if EXTRA_CXXFLAGS else []
+
 RELATIVE_MAKE_DIR = os.path.join('tensorflow', 'lite', 'tools', 'make')
 MAKE_DIR = os.path.join(TENSORFLOW_DIR, RELATIVE_MAKE_DIR)
 DOWNLOADS_DIR = os.path.join(MAKE_DIR, 'downloads')
@@ -139,7 +160,6 @@ ext = Extension(
                '-I%s' % TENSORFLOW_DIR,
                '-module', 'interpreter_wrapper',
                '-outdir', PACKAGE_NAME],
-    extra_compile_args=['-std=c++11'],
     include_dirs=[TENSORFLOW_DIR,
                   os.path.join(TENSORFLOW_DIR, 'tensorflow', 'lite', 'tools',
                                'pip_package'),
@@ -181,7 +201,7 @@ setup(
     packages=find_packages(exclude=[]),
     ext_modules=[ext],
     install_requires=[
-        'numpy >= 1.12.1',
+        'numpy >= 1.16.0',
     ],
     cmdclass={
         'build_ext': CustomBuildExt,

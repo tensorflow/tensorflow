@@ -14,19 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/arena_planner.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <limits>
+#include <set>
+#include <type_traits>
 #include <utility>
 
 namespace tflite {
+namespace {
 
-struct AllocationInfo {
-  // The node index requesting this allocation.
-  int node;
-  // The tensor index to be allocated or deallocated.
-  int tensor;
-  // Whether to allocate or deallocate
-  enum Type { ALLOC, DEALLOC } type;
-};
+constexpr int32_t kNodeNotAssigned = std::numeric_limits<int32_t>::max();
+
+}  // namespace
 
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
                            std::unique_ptr<GraphInfo> graph_info,
@@ -57,14 +57,12 @@ TfLiteStatus ArenaPlanner::ResetAllocations() {
   TF_LITE_ENSURE_STATUS(persistent_arena_.ClearPlan());
   allocs_.clear();
   allocs_.resize(graph_info_->num_tensors());
-  // Note that we only clear the alloc_queue_ when re-planning allocations, as
-  // it should only change when the graph topology itself changes.
   return kTfLiteOk;
 }
 
 TfLiteStatus ArenaPlanner::ResetAllocationsAfter(int node) {
   for (int i = 0; i < static_cast<int>(allocs_.size()); ++i) {
-    if (allocs_[i].node > node && allocs_[i].size > 0) {
+    if (allocs_[i].first_node > node && allocs_[i].size > 0) {
       TfLiteTensor& tensor = *graph_info_->tensor(i);
       if (tensor.allocation_type == kTfLiteArenaRw) {
         TF_LITE_ENSURE_STATUS(arena_.Deallocate(context_, allocs_[i]));
@@ -80,43 +78,33 @@ TfLiteStatus ArenaPlanner::ResetAllocationsAfter(int node) {
 TfLiteStatus ArenaPlanner::PlanAllocations() {
   // Invalidate any existing data.
   TF_LITE_ENSURE_STATUS(ResetAllocations());
-  // The alloc_queue_ is specific to the graph topology, and will be
-  // completely reconstructed from graph data here.
-  alloc_queue_.clear();
+  // Maybe other verb instead of 'Assigned'
+  alloc_node_.assign(graph_info_->num_tensors(), kNodeNotAssigned);
+  dealloc_node_.assign(graph_info_->num_tensors(), kNodeNotAssigned);
 
   // Keeps track of references to each tensor.
   std::vector<int> refcounts(graph_info_->num_tensors(), 0);
-  // `allocated` and `deallocated` are technically list of boolean values.
-  // We're saving the compiled binary size by using `vector<int>`.
-  std::vector<int> allocated(graph_info_->num_tensors(), false);
-  std::vector<int> deallocated(graph_info_->num_tensors(), false);
 
-  auto allocate = [this, &allocated, &deallocated](int node,
-                                                   int tensor) -> TfLiteStatus {
-    if (allocated[tensor]) {
+  auto allocate = [this](int node, int tensor) -> TfLiteStatus {
+    if (alloc_node_[tensor] != kNodeNotAssigned) {
+      // Tensor has already been allocated.
       return kTfLiteOk;
     }
-    TF_LITE_ENSURE(context_, !deallocated[tensor]);
-    alloc_queue_.push_back({node, tensor, AllocationInfo::ALLOC});
-    allocated[tensor] = true;
+    TF_LITE_ENSURE(context_, dealloc_node_[tensor] == kNodeNotAssigned);
+    alloc_node_[tensor] = node;
     return kTfLiteOk;
   };
 
-  auto deallocate = [this, &allocated, &deallocated](
-                        int node, int tensor) -> TfLiteStatus {
-    if (!allocated[tensor]) {
-      // Do not enqueue a DEALLOC if the tensor is never allocated.
+  auto deallocate = [this](int node, int tensor) -> TfLiteStatus {
+    if (alloc_node_[tensor] == kNodeNotAssigned) {
+      // We don't need to deallocate the tensor, that is never allocated.
       // This happened with the constant tensors.
       return kTfLiteOk;
     }
-    TF_LITE_ENSURE(context_, !deallocated[tensor]);
-    alloc_queue_.push_back({node, tensor, AllocationInfo::DEALLOC});
+    TF_LITE_ENSURE(context_, dealloc_node_[tensor] == kNodeNotAssigned);
+    dealloc_node_[tensor] = node;
     return kTfLiteOk;
   };
-
-  // There will be an entry in alloc_queue_ for the allocation of each tensor
-  // and another for their deallocation.
-  alloc_queue_.reserve(2 * graph_info_->num_tensors());
 
   // We must make sure the output tensors are never overwritten. We do that by
   // artificially adding one to their ref-counts so they are never selected
@@ -205,7 +193,20 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   // Grow the size of `allocs_` if necessary. This allows allocating temporary
   // tensors in op's `prepare` function.
   TF_LITE_ENSURE(context_, graph_info_->num_tensors() >= allocs_.size());
+  alloc_node_.resize(graph_info_->num_tensors(), kNodeNotAssigned);
+  dealloc_node_.resize(graph_info_->num_tensors(), kNodeNotAssigned);
   allocs_.resize(graph_info_->num_tensors());
+  // Set allocation and deallocation for temporary tensors.
+  for (size_t i = first_node; i <= last_node && i < graph_info_->num_nodes();
+       ++i) {
+    const TfLiteNode& node = graph_info_->node(i);
+    TfLiteIntArray* node_temporaries = node.temporaries;
+    for (int j = 0; j < node_temporaries->size; ++j) {
+      int tensor_index = node_temporaries->data[j];
+      alloc_node_[tensor_index] = i;
+      dealloc_node_[tensor_index] = i;
+    }
+  }
 
   TF_LITE_ENSURE_STATUS(CalculateAllocations(first_node, last_node));
   TF_LITE_ENSURE_STATUS(Commit());
@@ -257,43 +258,79 @@ TfLiteStatus ArenaPlanner::Commit() {
   return kTfLiteOk;
 }
 
-TfLiteStatus ArenaPlanner::CalculateAllocations(int first_node, int last_node) {
-  int active_node = first_node;
-  // When dynamic tensors are present this method is called multiple times.
-  // The items in the alloc_queue_ referring to nodes before first_node were
-  // processed previously and should be skipped. Entries after last_node are
-  // not yet ready to be handled.
-  for (const auto& alloc_info : alloc_queue_) {
-    if (alloc_info.node < first_node) continue;
-    if (alloc_info.node > last_node) break;
-    if (alloc_info.node == active_node) {
-      // This is the first allocation/deallocation for a given node.  It is
-      // time to deallocate the previous temporaries and allocate new ones.
-      if (active_node != first_node) {
-        TF_LITE_ENSURE_STATUS(
-            CalculateDeallocationOfInternalTensors(active_node - 1));
+std::vector<int32_t> ArenaPlanner::CreateTensorAllocationVector(int first_node,
+                                                                int last_node) {
+  auto tensor_compare = [this](int idx1, int idx2) {
+    // Tensors that have lifespan through the whole model inference time are
+    // allocated at the beginning of memory slice. Their respective order
+    // doesn't matter in fact, so here they are sorted by index.
+    if (this->alloc_node_[idx1] == 0 &&
+        this->dealloc_node_[idx1] == kNodeNotAssigned) {
+      if (this->alloc_node_[idx2] == 0 &&
+          this->dealloc_node_[idx2] == kNodeNotAssigned) {
+        return idx1 < idx2;
       }
-      TF_LITE_ENSURE_STATUS(CalculateAllocationOfInternalTensors(active_node));
-      ++active_node;
+      return true;
     }
-    // Handle the current item.
-    if (alloc_info.type == AllocationInfo::ALLOC) {
+    if (this->alloc_node_[idx2] == 0 &&
+        this->dealloc_node_[idx2] == kNodeNotAssigned) {
+      return false;
+    }
+
+    // All other tensors are sorted in non-increasing order of their size.
+    auto size1 = this->graph_info_->tensor(idx1)->bytes;
+    auto size2 = this->graph_info_->tensor(idx2)->bytes;
+    if (size1 != size2) {
+      return size1 > size2;
+    }
+    // Tensors with equal size are sorted in order of their allocation time.
+    return this->alloc_node_[idx1] < this->alloc_node_[idx2];
+  };
+
+  std::set<int32_t> tensors_set;
+  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
+    if (alloc_node_[i] >= first_node && alloc_node_[i] <= last_node) {
+      tensors_set.insert(i);
+    }
+  }
+  // Indices of tensors in order their allocation offsets will be calculated.
+  std::vector<int32_t> tensor_order(tensors_set.begin(), tensors_set.end());
+  std::sort(tensor_order.begin(), tensor_order.end(), tensor_compare);
+
+  return tensor_order;
+}
+
+TfLiteStatus ArenaPlanner::CalculateAllocations(int first_node, int last_node) {
+  // Indices of tensors in order their allocation offsets will be calculated.
+  const std::vector<int32_t> tensor_order =
+      CreateTensorAllocationVector(first_node, last_node);
+
+  // Deallocate if the tensor was already allocated.
+  for (const auto& tensor_index : tensor_order) {
+    TfLiteTensor& tensor = *graph_info_->tensor(tensor_index);
+    if (tensor.allocation_type == kTfLiteArenaRw &&
+        allocs_[tensor_index].size != 0) {
+      TF_LITE_ENSURE_STATUS(arena_.Deallocate(context_, allocs_[tensor_index]));
+    }
+  }
+
+  // Vector of ids of already allocated tensors, ordered by offset.
+  for (const auto& tensor_index : tensor_order) {
+    TfLiteTensor& tensor = *graph_info_->tensor(tensor_index);
+    if (tensor.allocation_type == kTfLiteArenaRw) {
       TF_LITE_ENSURE_STATUS(
-          CalculateTensorAllocation(alloc_info.tensor, alloc_info.node));
-    } else {
-      TF_LITE_ENSURE_STATUS(CalculateTensorDeallocation(alloc_info.tensor));
+          arena_.Allocate(context_, tensor_alignment_, tensor.bytes,
+                          tensor_index, alloc_node_[tensor_index],
+                          dealloc_node_[tensor_index], &allocs_[tensor_index]));
+    }
+    if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
+      TF_LITE_ENSURE_STATUS(persistent_arena_.Allocate(
+          context_, tensor_alignment_, tensor.bytes, tensor_index,
+          /*first_node=*/alloc_node_[tensor_index],
+          /*last_node=*/std::numeric_limits<int32_t>::max(),
+          &allocs_[tensor_index]));
     }
   }
-
-  // For the case if the graph is empty the node index can be negative since we
-  // substract from the active node, so the node_index can be zero for those
-  // cases
-  if (active_node > 0) {
-    // Don't forget to deallocate temporaries of last node.
-    TF_LITE_ENSURE_STATUS(
-        CalculateDeallocationOfInternalTensors(active_node - 1));
-  }
-
   return kTfLiteOk;
 }
 
@@ -310,57 +347,6 @@ TfLiteStatus ArenaPlanner::ResolveTensorAllocation(int tensor_index) {
   if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
     TF_LITE_ENSURE_STATUS(persistent_arena_.ResolveAlloc(
         context_, allocs_[tensor_index], &tensor.data.raw));
-  }
-  return kTfLiteOk;
-}
-
-TfLiteStatus ArenaPlanner::CalculateTensorAllocation(int tensor_index,
-                                                     int node_index) {
-  TfLiteTensor& tensor = *graph_info_->tensor(tensor_index);
-  if (tensor.allocation_type == kTfLiteArenaRw) {
-    TF_LITE_ENSURE_STATUS(arena_.Allocate(context_, tensor_alignment_,
-                                          tensor.bytes, tensor_index,
-                                          node_index, &allocs_[tensor_index]));
-  }
-  if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
-    TF_LITE_ENSURE_STATUS(persistent_arena_.Allocate(
-        context_, tensor_alignment_, tensor.bytes, tensor_index, node_index,
-        &allocs_[tensor_index]));
-  }
-  return kTfLiteOk;
-}
-
-TfLiteStatus ArenaPlanner::CalculateTensorDeallocation(int tensor_index) {
-  TfLiteTensor& tensor = *graph_info_->tensor(tensor_index);
-  if (tensor.allocation_type == kTfLiteArenaRw) {
-    TF_LITE_ENSURE_STATUS(arena_.Deallocate(context_, allocs_[tensor_index]));
-  }
-  return kTfLiteOk;
-}
-
-TfLiteStatus ArenaPlanner::CalculateAllocationOfInternalTensors(
-    int node_index) {
-  if (node_index < static_cast<int>(graph_info_->num_nodes())) {
-    const TfLiteNode& node = graph_info_->node(static_cast<size_t>(node_index));
-    TfLiteIntArray* node_temporaries = node.temporaries;
-    for (int i = 0; i < node_temporaries->size; ++i) {
-      int tensor_index = node_temporaries->data[i];
-      TF_LITE_ENSURE_STATUS(
-          CalculateTensorAllocation(tensor_index, node_index));
-    }
-  }
-  return kTfLiteOk;
-}
-
-TfLiteStatus ArenaPlanner::CalculateDeallocationOfInternalTensors(
-    int node_index) {
-  if (node_index < static_cast<int>(graph_info_->num_nodes())) {
-    const TfLiteNode& node = graph_info_->node(static_cast<size_t>(node_index));
-    TfLiteIntArray* node_temporaries = node.temporaries;
-    for (int i = 0; i < node_temporaries->size; ++i) {
-      int tensor_index = node_temporaries->data[i];
-      TF_LITE_ENSURE_STATUS(CalculateTensorDeallocation(tensor_index));
-    }
   }
   return kTfLiteOk;
 }

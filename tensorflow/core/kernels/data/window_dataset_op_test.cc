@@ -302,7 +302,8 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
                                                  &window_dataset));
         std::unique_ptr<IteratorBase> window_dataset_iterator;
         TF_ASSERT_OK(window_dataset->MakeIterator(
-            iterator_ctx_.get(), test_case.dataset_params.iterator_prefix(),
+            iterator_ctx_.get(), /*parent=*/nullptr,
+            test_case.dataset_params.iterator_prefix(),
             &window_dataset_iterator));
         bool end_of_window_dataset = false;
         std::vector<Tensor> window_elements;

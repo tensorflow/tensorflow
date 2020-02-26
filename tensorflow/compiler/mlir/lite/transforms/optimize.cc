@@ -31,7 +31,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Matchers.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
@@ -174,7 +174,7 @@ ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
 }
 
 TypeAttr RescaleQtype(Type input, Attribute factor) {
-  return TFL::RescaleQuantizedType(input, factor);
+  return quant::RescaleQuantizedType(input, factor);
 }
 
 // Returns shape of a ranked tensor.
@@ -202,34 +202,80 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
 
   PatternMatchResult matchAndRewrite(TFL::AddOp add_op,
                                      PatternRewriter &rewriter) const override {
-    // Add.
+    // Match Add.
     DenseElementsAttr added_value;
     Value constant_val = add_op.rhs();
     if (!matchPattern(constant_val, m_Constant(&added_value)))
       return matchFailure();
 
-    // Fully Connected.
+    // Match Fully Connected.
     auto fc_op =
         dyn_cast_or_null<TFL::FullyConnectedOp>(add_op.lhs().getDefiningOp());
     if (!fc_op) return matchFailure();
+
+    // Check if the constant RHS is either 0D (scalar), or a 1D with
+    // `{num_channels}` shape.
+    auto constant_val_type = constant_val.getType().cast<TensorType>();
+
+    // In TFLite FullyConnect definition, bias must be a 1D tensor where
+    // the number of elements is equal to the number of channels.
+    // If it's not 1D or 0D (which can be broadcasted to 1D), reject the
+    // matching.
+    bool is_scalar_rhs = false;
+    if (constant_val_type.getRank() == 0) {
+      is_scalar_rhs = true;
+    } else if (constant_val_type.getRank() != 1) {
+      return matchFailure();
+    }
 
     Value filter = fc_op.filter();
     Value bias = fc_op.bias();
     ElementsAttr bias_value;
     const bool is_none_bias = bias.getType().isa<NoneType>();
+    if (fc_op.fused_activation_function() != "NONE") return matchFailure();
+
     if (!is_none_bias && !matchPattern(bias, m_Constant(&bias_value)))
       return matchFailure();
-    if (fc_op.fused_activation_function() != "NONE") return matchFailure();
 
     // Rewrite
     Location loc = fc_op.getLoc();
-    // If bias isn't None, it needs to be added as well.
+
     if (is_none_bias) {
-      bias = constant_val;
+      if (is_scalar_rhs) {
+        // If the `constant_val` is scalar, we must the shape of filter
+        // to properly broadcast the scalar to `{num_channels}` shape.
+
+        // Get the number of channels if possible.
+        auto filter_type = filter.getType().cast<ShapedType>();
+        // Filter must be a `2D` tensor with `{num_channels, num_features}`
+        // shape. The following check is rejecting unknown rank (-1).
+        if (filter_type.getRank() != 2) {
+          return matchFailure();
+        }
+        int num_channels = filter_type.getShape()[0];
+
+        // Create a zero tensor with shape {num_channels}, and the type need to
+        // be the same as constant_val.
+        // This is a way to gracefully handle scalar tensor. The Add will always
+        // be constant-folded away regardless if `constant_val` is a scalar or
+        // not.
+        RankedTensorType type = RankedTensorType::get(
+            {num_channels}, constant_val_type.getElementType());
+        auto attr = rewriter.getZeroAttr(type);
+        bias = rewriter.create<ConstantOp>(loc, type, attr);
+        auto none_af = rewriter.getStringAttr("NONE");
+        bias =
+            rewriter.create<AddOp>(loc, bias, constant_val, none_af).output();
+      } else {
+        // If there no pre-existing bias and the `constant_val` is 1D, simply
+        // use `constant_val` as bias.
+        bias = constant_val;
+      }
     } else {
       auto none_af = rewriter.getStringAttr("NONE");
       bias = rewriter.create<AddOp>(loc, bias, constant_val, none_af).output();
     }
+
     rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
         add_op, add_op.getType(),
         /*input=*/fc_op.input(),
@@ -577,6 +623,69 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
   }
 };
 
+struct ConvertTrivialTransposeOpToReshapeOp
+    : public OpRewritePattern<TFL::TransposeOp> {
+  using OpRewritePattern<TFL::TransposeOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TFL::TransposeOp transpose_op,
+                                     PatternRewriter &rewriter) const override {
+    auto input_type = transpose_op.x().getType().cast<ShapedType>();
+    auto output_type = transpose_op.y().getType().cast<ShapedType>();
+    // It's possible to know if the transformation is safe only if the input
+    // & output shapes are fully known and permutation is a constant.
+    if (!input_type.hasStaticShape() || !output_type.hasStaticShape())
+      return matchFailure();
+    Value perm = transpose_op.perm();
+    DenseElementsAttr perm_values_attr;
+    if (!matchPattern(perm, m_Constant(&perm_values_attr)))
+      return matchFailure();
+
+    auto input_shape = input_type.getShape();
+    SmallVector<int64_t, 8> perm_values;
+    for (auto dim : perm_values_attr.getIntValues())
+      perm_values.push_back(dim.getSExtValue());
+
+    // This should never happen unless the input graph is malformed.
+    if (input_shape.size() != perm_values.size()) {
+      transpose_op.emitError(
+          "TransposeOP has inconsistent input and perm values.");
+    }
+
+    SmallVector<int, 8> old_major_index_ordering;
+    SmallVector<int, 8> new_major_index_ordering;
+    for (int i = 0; i < input_shape.size(); i++) {
+      if (input_shape[i] != 1) {
+        old_major_index_ordering.push_back(i);
+      }
+
+      if (input_shape[perm_values[i]] != 1) {
+        new_major_index_ordering.push_back(perm_values[i]);
+      }
+    }
+    if (old_major_index_ordering != new_major_index_ordering) {
+      return matchFailure();
+    }
+
+    // Rewrite.
+    Location loc = transpose_op.getLoc();
+
+    SmallVector<int32_t, 8> output_shape_values;
+    for (auto dim : output_type.getShape()) {
+      output_shape_values.push_back(dim);
+    }
+    auto type = mlir::RankedTensorType::get(output_shape_values.size(),
+                                            rewriter.getIntegerType(32));
+    auto new_shape_attr =
+        mlir::DenseIntElementsAttr::get(type, output_shape_values);
+    auto new_shape = rewriter.create<TF::ConstOp>(loc, new_shape_attr);
+
+    rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
+        transpose_op, transpose_op.y().getType(), transpose_op.x(), new_shape);
+
+    return matchSuccess();
+  }
+};
+
 using FuseBinaryOpToFollowingFullyConnected =
     FuseBinaryOpToFollowingAffineOp<FullyConnectedOp>;
 using FuseBinaryOpToFollowingDepthwiseConv2D =
@@ -597,10 +706,10 @@ void Optimize::runOnFunction() {
   applyPatternsGreedily(func, patterns);
 
   // Fuse the binary ops with the following ops.
-  patterns.insert<FuseBinaryOpToFollowingConv2D,
-                  FuseBinaryOpToFollowingDepthwiseConv2D,
-                  FuseBinaryOpToFollowingFullyConnected,
-                  FuseConv2DAndMulWithQDQs, FuseDepthwiseConv2DAndMulWithQDQs>(
+  patterns.insert<
+      FuseBinaryOpToFollowingConv2D, FuseBinaryOpToFollowingDepthwiseConv2D,
+      FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
+      FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp>(
       ctx);
   applyPatternsGreedily(func, patterns);
 }

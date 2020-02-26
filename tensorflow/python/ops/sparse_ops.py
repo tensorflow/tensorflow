@@ -611,7 +611,7 @@ def _sparse_cross_internal(inputs,
                            hash_key=None,
                            name=None):
   """See gen_sparse_ops.sparse_cross."""
-  if not isinstance(inputs, list):
+  if not isinstance(inputs, (tuple, list)):
     raise TypeError("Inputs must be a list")
   if not all(
       isinstance(i, sparse_tensor.SparseTensor) or isinstance(i, ops.Tensor)

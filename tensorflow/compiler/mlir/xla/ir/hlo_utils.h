@@ -40,7 +40,7 @@ static ElementsAttr getSplat(Builder* b, Value val, T constant) {
 
   // Handle integer elements.
   Attribute elementAttr;
-  if (valElementType.isa<IntegerType>())
+  if (valElementType.isSignlessInteger())
     elementAttr = b->getIntegerAttr(valElementType, constant);
   else if (valElementType.isa<FloatType>())
     elementAttr = b->getFloatAttr(valElementType, constant);

@@ -151,17 +151,6 @@ gentbl(
 )
 
 gentbl(
-    name = "attributes_compat_gen",
-    tbl_outs = [("-gen-attrs", "lib/IR/AttributesCompatFunc.inc")],
-    tblgen = ":llvm-tblgen",
-    td_file = "lib/IR/AttributesCompatFunc.td",
-    td_srcs = [
-        "lib/IR/AttributesCompatFunc.td",
-        "include/llvm/IR/Attributes.td",
-    ],
-)
-
-gentbl(
     name = "instcombine_transforms_gen",
     tbl_outs = [(
         "-gen-searchable-tables",
@@ -586,7 +575,8 @@ gentbl(
     name = "amdgpu_isel_target_gen",
     tbl_outs = [
         ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
-        ("-gen-global-isel-combiner -combiners=AMDGPUPreLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenGICombiner.inc"),
+        ("-gen-global-isel-combiner -combiners=AMDGPUPreLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenPreLegalizeGICombiner.inc"),
+        ("-gen-global-isel-combiner -combiners=AMDGPUPostLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenPostLegalizeGICombiner.inc"),
     ],
     tblgen = ":llvm-tblgen",
     td_file = "lib/Target/AMDGPU/AMDGPUGISel.td",
@@ -653,6 +643,18 @@ cc_binary(
     linkopts = llvm_linkopts,
     deps = [
         ":support",
+    ],
+)
+
+cc_library(
+    name = "all_targets",
+    deps = [
+        ":aarch64_code_gen",
+        ":amdgpu_code_gen",
+        ":arm_code_gen",
+        ":nvptx_code_gen",
+        ":powerpc_code_gen",
+        ":x86_code_gen",
     ],
 )
 
@@ -738,6 +740,7 @@ cc_library(
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
         ":mc",
+        ":object",
         ":support",
     ],
 )
@@ -1154,6 +1157,7 @@ cc_library(
         ":intrinsics_impl_gen",
         ":mc",
         ":mc_disassembler",
+        ":object",
         ":support",
     ],
 )
@@ -1733,7 +1737,6 @@ cc_library(
         ":aarch64_enums_gen",
         ":amdgcn_enums_gen",
         ":arm_enums_gen",
-        ":attributes_compat_gen",
         ":attributes_gen",
         ":binary_format",
         ":bpf_enums_gen",
@@ -1889,6 +1892,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":config",
+        ":debug_info_dwarf",
         ":mc",
         ":support",
     ],
@@ -2223,6 +2227,7 @@ cc_library(
         ":bit_writer",
         ":config",
         ":core",
+        ":frontend_open_mp",
         ":inst_combine",
         ":instrumentation",
         ":ir_reader",
@@ -3197,6 +3202,7 @@ cc_library(
         ":code_gen",
         ":config",
         ":core",
+        ":coroutines",
         ":inst_combine",
         ":instrumentation",
         ":ipo",
@@ -3283,6 +3289,7 @@ cc_library(
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
         ":mc",
+        ":object",
         ":powerpc_info",
         ":powerpc_target_gen",
         ":support",
@@ -3751,7 +3758,7 @@ cc_library(
     deps = [
         ":config",
         ":demangle",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
 )
 

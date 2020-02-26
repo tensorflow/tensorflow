@@ -258,8 +258,6 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly(),
         experimental_run_tf_function=testing_utils.should_run_tf_function())
     wide_deep_model.fit(x={'symbol': data}, y=y, batch_size=32, epochs=10)
-    self.assertEqual(3, linear_model.inputs[0].shape[1])
-    self.assertEqual(5, dnn_model.inputs[0].shape[1])
 
   def test_config(self):
     linear_model = linear.LinearModel(units=1)

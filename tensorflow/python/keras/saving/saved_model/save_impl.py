@@ -67,28 +67,13 @@ sequential_lib = LazyLoader(
 
 def should_skip_serialization(layer):
   """Skip serializing extra objects and functions if layer inputs aren't set."""
-  if isinstance(layer, training_lib.Model):
-    try:
-      # pylint:disable=pointless-statement
-      layer.inputs
-      layer.input_names
-      # pylint:enable=pointless-statement
-    except AttributeError:
-      # If the model does not have inputs set, because it was not called or its
-      # input shapes were not recorded, we won't have a signature so can't trace
-      # a function. But the user may still save an object with this Model
-      # attached; we won't fail the whole tf.saved_model.save.
-      logging.warning('Skipping full serialization of Keras model {}, because '
-                      'its inputs are not defined.'.format(layer))
-      return True
-    else:
-      return False
-  else:
-    if not layer.built:
-      logging.warning('Skipping full serialization of Keras layer {}, because '
-                      'it is not built.'.format(layer))
-      return True
-    return False
+  saved_model_input_spec_set = (isinstance(layer, training_lib.Model) and
+                                layer._saved_model_inputs_spec is not None)  # pylint: disable=protected-access
+  if not layer.built and not saved_model_input_spec_set:
+    logging.warning('Skipping full serialization of Keras layer {}, because '
+                    'it is not built.'.format(layer))
+    return True
+  return False
 
 
 def wrap_layer_objects(layer, serialization_cache):
@@ -582,7 +567,7 @@ def _create_call_fn_decorator(layer, wrapped_call):
 
 
 def _wrap_unconditional_loss(loss_fn, index):
-  """Wraps callable/unconditonal loss, returning a serializable function."""
+  """Wraps callable/unconditional loss, returning a serializable function."""
   # Extract original loss function from partial function
   fn = loss_fn.args[0] if isinstance(loss_fn, functools.partial) else loss_fn
   if isinstance(fn, def_function.Function):

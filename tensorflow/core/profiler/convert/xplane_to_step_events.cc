@@ -24,8 +24,7 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-// Returns true if the given event_name is a step marker.
-inline bool IsStepMarker(absl::string_view event_name) {
+inline bool IsExplicitHostStepMarker(absl::string_view event_name) {
   return (str_util::StartsWith(event_name, "train") ||
           str_util::StartsWith(event_name, "test") ||
           str_util::StartsWith(event_name, "TraceContext")) &&
@@ -39,7 +38,7 @@ inline bool IsRealCpuCompute(absl::string_view event_name) {
                   str_util::StartsWith(event_name, "EagerLocalExecute") ||
                   str_util::StartsWith(event_name, "EagerKernelExecute") ||
                   str_util::StartsWith(event_name, "FunctionRun") ||
-                  IsStepMarker(event_name);
+                  IsExplicitHostStepMarker(event_name);
   return !not_real;
 }
 
@@ -52,11 +51,14 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
   line.ForEachEvent([&](const XEventVisitor& event) {
     int64 correlation_id = -1;
     int64 group_id = -1;
+    absl::string_view step_name;
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kCorrelationId) {
         correlation_id = stat.IntValue();
       } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
+      } else if (stat.Type() == StatType::kStepName) {
+        step_name = stat.StrValue();
       }
     });
     if (group_id < 0) return;
@@ -68,9 +70,13 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
         device_step_events.find(group_id) == device_step_events.end())
       return;
     Timespan timespan = Timespan(event.TimestampPs(), event.DurationPs());
-    if (IsStepMarker(event.Name())) {
-      result[group_id].AddMarker(
-          StepMarker(/*device=*/false, event.Name(), timespan));
+    if (IsExplicitHostStepMarker(event.Name())) {
+      result[group_id].AddMarker(StepMarker(
+          StepMarkerType::kExplicitHostStepMarker, event.Name(), timespan));
+    } else if (!step_name.empty()) {
+      // Grouping adds a step_name stat to implicit host step markers.
+      result[group_id].AddMarker(StepMarker(
+          StepMarkerType::kImplicitHostStepMarker, event.Name(), timespan));
     } else if (IsRealCpuCompute(event.Name())) {
       EventTypeSpan event_type_span(
           ClassifyCpuEvent(event.Name(), correlation_id), timespan);
@@ -93,21 +99,40 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
   return result;
 }
 
+StepEvents ConvertDeviceStepInfoToStepMarkers(const XLineVisitor& line) {
+  StepEvents result;
+  line.ForEachEvent([&](const XEventVisitor& event) {
+    event.ForEachStat([&](const XStatVisitor& stat) {
+      if (stat.Type() == StatType::kGroupId) {
+        result[stat.IntValue()].AddMarker(
+            StepMarker(StepMarkerType::kDeviceStepMarker, event.Name(),
+                       Timespan(event.TimestampPs(), event.DurationPs())));
+        return;
+      }
+    });
+  });
+  return result;
+}
+
 StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
     int64 correlation_id = -1;
     int64 group_id = -1;
+    absl::string_view tensor_shapes = "";
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kCorrelationId) {
         correlation_id = stat.IntValue();
       } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
+      } else if (stat.Type() == StatType::kTensorShapes) {
+        tensor_shapes = stat.StrValue();
       }
     });
+
     if (correlation_id >= 0 && group_id >= 0) {
       EventTypeSpan event_type_span(
-          ClassifyGpuEvent(event.Name()),
+          ClassifyGpuEvent(event.Name(), tensor_shapes),
           Timespan(event.TimestampPs(), event.DurationPs()));
       result[group_id].AddEvent(event_type_span);
     }
@@ -119,8 +144,14 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
   StepEvents result;
   XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
-    if (IsDerivedThreadId(line.Id())) return;
-    CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(line), &result);
+    int64 line_id = line.Id();
+    if (line_id == kThreadIdStepInfo) {
+      CombineStepEvents(ConvertDeviceStepInfoToStepMarkers(line), &result);
+    } else if (IsDerivedThreadId(line_id)) {
+      return;
+    } else {
+      CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(line), &result);
+    }
   });
   return result;
 }

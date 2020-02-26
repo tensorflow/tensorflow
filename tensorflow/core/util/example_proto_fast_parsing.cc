@@ -44,6 +44,55 @@ namespace {
 template <typename T>
 using SmallVector = gtl::InlinedVector<T, 4>;
 
+template <typename T>
+class LimitedArraySlice {
+ public:
+  using value_type = T;
+
+  LimitedArraySlice(T* begin, size_t num_elements)
+      : current_(begin), begin_(begin), end_(begin + num_elements) {}
+
+  // May return negative if there were push_back calls after slice was filled.
+  int64 EndDistance() const { return end_ - current_; }
+
+  // Attempts to push value to the back of this. If the slice has
+  // already been filled, this method has no effect on the underlying data, but
+  // it changes the number returned by EndDistance into negative values.
+  void push_back(T&& value) {
+    if (EndDistance() > 0) *current_ = std::move(value);
+    ++current_;
+  }
+
+  // "Constructs" an element at the back of this by resizing the slice, and
+  // returns a mutable reference to the new last element.
+  // REQUIRES: EndDistance() > 0.
+  T& construct_at_end() {
+    DCHECK_GT(EndDistance(), 0);
+    return *(current_++);
+  }
+
+  // Returns a mutable reference to the last element in the slice.
+  // REQUIRES: size() > 0.
+  T& back() { return *(current_ - 1); }
+
+  // Returns the number of elements in the slice.
+  size_t size() const { return std::min(current_ - begin_, end_ - begin_); }
+
+  // Attempts to resize the vector to the given size. It does so by advancing
+  // the pointer to the current element, possibly beyond the end of the slice.
+  // As a consequence, calling `size()` after `resize(x)` was called might
+  // return a value less than `x`.
+  void resize(size_t size) { current_ = begin_ + size; }
+
+  // Returns the pointer to the underlying data buffer.
+  T* data() { return begin_; }
+
+ private:
+  T* current_;
+  T* begin_;
+  T* end_;
+};
+
 template <typename A>
 auto EnableAliasing(A* a) -> decltype(a->EnableAliasing(true), void()) {
   a->EnableAliasing(true);
@@ -117,6 +166,14 @@ class Feature {
     return true;
   }
 
+  // Helper methods
+  tstring& construct_at_end(LimitedArraySlice<tstring>* bytes_list) {
+    return bytes_list->construct_at_end();
+  }
+  tstring& construct_at_end(SmallVector<tstring>* bytes_list) {
+    return bytes_list->emplace_back();
+  }
+
   template <typename Result>
   bool ParseBytesList(Result* bytes_list) {
     DCHECK(bytes_list != nullptr);
@@ -135,8 +192,7 @@ class Feature {
       // parse string
       uint32 bytes_length;
       if (!stream.ReadVarint32(&bytes_length)) return false;
-      bytes_list->push_back({});
-      tstring& bytes = bytes_list->back();
+      tstring& bytes = construct_at_end(bytes_list);
       bytes.resize_uninitialized(bytes_length);
       if (!stream.ReadRaw(bytes.data(), bytes_length)) return false;
     }
@@ -484,47 +540,6 @@ struct SeededHasher {
     return Hash64(s.data(), s.size(), seed);
   }
   uint64 seed{0xDECAFCAFFE};
-};
-
-template <typename T>
-class LimitedArraySlice {
- public:
-  using value_type = T;
-
-  LimitedArraySlice(T* begin, size_t num_elements)
-      : current_(begin), begin_(begin), end_(begin + num_elements) {}
-
-  // May return negative if there were push_back calls after slice was filled.
-  int64 EndDistance() const { return end_ - current_; }
-
-  // Attempts to push value to the back of this. If the slice has
-  // already been filled, this method has no effect on the underlying data, but
-  // it changes the number returned by EndDistance into negative values.
-  void push_back(T&& value) {
-    if (EndDistance() > 0) *current_ = std::move(value);
-    ++current_;
-  }
-
-  // Returns a mutable reference to the last element in the slice.
-  // REQUIRES: size() > 0.
-  T& back() { return *(current_ - 1); }
-
-  // Returns the number of elements in the slice.
-  size_t size() const { return std::min(current_ - begin_, end_ - begin_); }
-
-  // Attempts to resize the vector to the given size. It does so by advancing
-  // the pointer to the current element, possibly beyond the end of the slice.
-  // As a consequence, calling `size()` after `resize(x)` was called might
-  // return a value less than `x`.
-  void resize(size_t size) { current_ = begin_ + size; }
-
-  // Returns the pointer to the underlying data buffer.
-  T* data() { return begin_; }
-
- private:
-  T* current_;
-  T* begin_;
-  T* end_;
 };
 
 void LogDenseFeatureDataLoss(StringPiece feature_name) {
@@ -1839,16 +1854,10 @@ inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
       if (out == nullptr) {
         stream->Skip(bytes_length);
       } else {
-#ifdef USE_TSTRING
         out->resize_uninitialized(bytes_length);
         if (!stream->ReadRaw(out->data(), bytes_length)) {
           return -1;
         }
-#else   // USE_TSTRING
-        if (!stream->ReadString(out, bytes_length)) {
-          return -1;
-        }
-#endif  // USE_TSTRING
         out++;
       }
       num_elements++;

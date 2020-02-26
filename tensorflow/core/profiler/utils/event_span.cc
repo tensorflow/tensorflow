@@ -19,6 +19,7 @@ limitations under the License.
 #include <thread>  // NOLINT
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
@@ -119,6 +120,7 @@ std::vector<EventTypeSpan> ToNonOverlappedEvents(
   std::vector<EventBoundary> event_boundaries =
       GenerateEventBoundaries(overlapped_events);
   std::vector<EventTypeSpan> result;
+  if (event_boundaries.empty()) return result;
   result.reserve(event_boundaries.size());
   PriorityTracker priority_tracker;
   for (int64 i = 0; i < (event_boundaries.size() - 1); i++) {
@@ -135,16 +137,35 @@ void CombineStepDetails(const StepDetails& src, StepDetails* dst) {
   dst->AppendEvents(src.Events());
 }
 
+EventType ClassifyDeviceCompute(absl::string_view event_name,
+                                absl::string_view tensor_shapes) {
+  if (tensor_shapes.empty()) {
+    // Deduces the precision from the name.
+    if (absl::StrContains(event_name, "half") ||
+        absl::StrContains(event_name, "fp16"))
+      return DEVICE_COMPUTE_16;
+    else
+      return DEVICE_COMPUTE_32;
+  } else {
+    // Deduces the precision from the shapes.
+    if (absl::StrContains(tensor_shapes, "half"))
+      return DEVICE_COMPUTE_16;
+    else
+      return DEVICE_COMPUTE_32;
+  }
+}
+
 }  // namespace
 
-EventType ClassifyGpuEvent(absl::string_view event_name) {
+EventType ClassifyGpuEvent(absl::string_view event_name,
+                           absl::string_view tensor_shapes) {
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoD"))
     return HOST_TO_DEVICE;
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYDtoH"))
     return DEVICE_TO_HOST;
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYDtoD"))
     return DEVICE_TO_DEVICE;
-  return DEVICE_COMPUTE;
+  return ClassifyDeviceCompute(event_name, tensor_shapes);
 }
 
 EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id) {
@@ -181,8 +202,10 @@ std::string PrintEventType(EventType event_type) {
       return "device_to_device";
     case DEVICE_TO_HOST:
       return "device_to_host";
-    case DEVICE_COMPUTE:
-      return "device_compute";
+    case DEVICE_COMPUTE_32:
+      return "device_compute_32";
+    case DEVICE_COMPUTE_16:
+      return "device_compute_16";
     case DEVICE_WAIT_DEVICE:
       return "device_wait_device";
     case DEVICE_WAIT_HOST:
@@ -197,9 +220,20 @@ std::string PrintEventTypeSpan(const EventTypeSpan& event_type_span) {
                       event_type_span.span.DebugString(), ")");
 }
 
+absl::string_view PrintStepMarkerType(StepMarkerType type) {
+  switch (type) {
+    case StepMarkerType::kExplicitHostStepMarker:
+      return "ExplicitHostStepMarker";
+    case StepMarkerType::kImplicitHostStepMarker:
+      return "ImplicitHostStepMarker";
+    case StepMarkerType::kDeviceStepMarker:
+      return "DeviceStepMarker";
+  }
+}
+
 std::string PrintStepMarker(const StepMarker& step_marker) {
-  std::string device_or_host = step_marker.on_device ? "device" : "host";
-  return absl::StrCat("(", device_or_host, ", ", step_marker.event_name, ", ",
+  return absl::StrCat("(", PrintStepMarkerType(step_marker.type), ", ",
+                      step_marker.event_name, ", ",
                       step_marker.span.DebugString(), ")");
 }
 
@@ -265,15 +299,24 @@ void StepDetails::AppendEvents(const std::vector<EventTypeSpan>& other_events) {
 }
 
 Timespan StepDetails::StepTime() const {
-  // If there are multiple step-markers, uses the one that has the maximum
-  // duration.
-  Timespan max_steptime;
+  Timespan max_host_step_time;
+  Timespan max_device_step_time;
   for (const auto& marker : markers_) {
-    const Timespan& timespan = marker.span;
-    if (timespan.duration_ps() > max_steptime.duration_ps())
-      max_steptime = timespan;
+    Timespan& cur_max_step_time =
+        marker.type == StepMarkerType::kDeviceStepMarker ? max_device_step_time
+                                                         : max_host_step_time;
+    const Timespan& new_step_time = marker.span;
+    if (new_step_time.duration_ps() > cur_max_step_time.duration_ps())
+      cur_max_step_time = new_step_time;
   }
-  return max_steptime;
+  // If the host step time includes the device step time, use the host step
+  // time. This covers two cases: (1) the device step marker is not available
+  // (e.g., CPU-only profiles) and (2) the device is synchronized at the end of
+  // each step.
+  if (max_host_step_time.Includes(max_device_step_time)) {
+    return max_host_step_time;
+  }
+  return max_device_step_time;
 }
 
 std::string StepDetails::DebugString() const {
@@ -314,6 +357,30 @@ bool operator==(const StepEvents& a, const StepEvents& b) {
     if (a_details != *b_details) return false;
   }
   return true;
+}
+
+PrecisionStats ComputePrecisionStats(
+    const StepEvents& nonoverlapped_step_events) {
+  int64 compute_32bit_ps = 0;
+  int64 compute_16bit_ps = 0;
+  for (const auto& id_details : nonoverlapped_step_events) {
+    for (const auto& event : id_details.second.Events()) {
+      switch (event.type) {
+        case DEVICE_COMPUTE_32:
+          compute_32bit_ps += event.span.duration_ps();
+          break;
+        case DEVICE_COMPUTE_16:
+          compute_16bit_ps += event.span.duration_ps();
+          break;
+        default:
+          break;
+      }
+    }
+  }
+  PrecisionStats precision_stats;
+  precision_stats.set_compute_32bit_ps(compute_32bit_ps);
+  precision_stats.set_compute_16bit_ps(compute_16bit_ps);
+  return precision_stats;
 }
 
 }  // namespace profiler

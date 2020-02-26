@@ -29,11 +29,16 @@ namespace profiler {
 ABSL_CONST_INIT extern const absl::string_view kHostThreads;
 // Name prefix of XPlane that contains GPU events.
 ABSL_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
+// Name of XPlane that contains CUPTI driver API generated events.
+ABSL_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
 
 // Id of XPlane that contains TraceMe events.
 ABSL_CONST_INIT extern const int32 kHostPlaneId;
 // Ids prefix of XPlane that contains GPU events.
 ABSL_CONST_INIT extern const int32 kGpuPlaneBaseId;
+// Id of XPlane that contains CUPTI driver API generated events which happens
+// on CPU host threads, e.g. Kernel launch.
+ABSL_CONST_INIT extern const int32 kCuptiDriverApiPlaneId;
 
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
@@ -69,6 +74,10 @@ enum HostEventType {
   kWhileOpStartBody,
   kForOp,
   kPartitionedCallOp,
+  // tf.data related.
+  kIteratorGetNextOp,
+  // Virtual events for grouping.
+  kHostTrainingLoopIteration,
   // GPU related.
   kKernelLaunch,
   kKernelExecute,
@@ -99,6 +108,8 @@ enum StatType {
   kBytesAvailable,
   kFragmentation,
   kPeakBytesInUse,
+  kRequestedBytes,
+  kTensorShapes,
   // Device trace arguments.
   kDeviceId,
   kContextId,

@@ -75,6 +75,4 @@ cc_library(
         "manual",
         "nobuilder",
     ],
-    deps = [
-    ],
 )

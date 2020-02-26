@@ -30,7 +30,10 @@ public enum DataType {
   INT64(4),
 
   /** Strings. */
-  STRING(5);
+  STRING(5),
+
+  /** 8-bit signed integer. */
+  INT8(9);
 
   private final int value;
 
@@ -45,6 +48,7 @@ public enum DataType {
         return 4;
       case INT32:
         return 4;
+      case INT8:
       case UINT8:
         return 1;
       case INT64:
@@ -83,6 +87,7 @@ public enum DataType {
         return "float";
       case INT32:
         return "int";
+      case INT8:
       case UINT8:
         return "byte";
       case INT64:

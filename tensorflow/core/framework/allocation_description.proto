@@ -1,11 +1,12 @@
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "AllocationDescriptionProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/allocation_description_go_proto";
 
 message AllocationDescription {
   // Total number of bytes requested
@@ -25,4 +26,4 @@ message AllocationDescription {
 
   // Address of the allocation.
   uint64 ptr = 6;
-};
+}

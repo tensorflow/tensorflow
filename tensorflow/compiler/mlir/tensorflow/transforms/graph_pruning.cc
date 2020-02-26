@@ -86,7 +86,15 @@ namespace {
 // This transformation pass prunes a TF graph eliminating dead-nodes.
 struct GraphPruning : public FunctionPass<GraphPruning> {
   void runOnFunction() override {
-    getFunction().walk([](tf_executor::GraphOp graph) { PruneGraph(graph); });
+    getFunction().walk([](tf_executor::GraphOp graph) {
+      // For TensorFlow V1.0 compatibility: when importing a graph without
+      // providing feeds/fetches we should not attempt to prune. The best
+      // approximation here is to check if the graph does not have any fetched
+      // values.
+      if (!graph.GetFetch().getNumOperands()) return;
+
+      PruneGraph(graph);
+    });
   }
 };
 

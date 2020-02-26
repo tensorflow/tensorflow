@@ -745,7 +745,7 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
     # only defined up a (k-dimensional) subspace. In practice, this can
     # lead to numerical instability when singular values are close but not
     # exactly equal.
-    # To avoid nan in cases with degenrate sigular values or zero sigular values
+    # To avoid nan in cases with degenerate sigular values or zero singular values
     # in calculating f and s_inv_mat, we introduce a Lorentz brodening.
 
     def _SafeReciprocal(x, epsilon=1E-20):

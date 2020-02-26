@@ -21,7 +21,6 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import tf2
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import losses
@@ -29,6 +28,7 @@ from tensorflow.python.keras import metrics
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.platform import test
+from tensorflow.python.util import nest
 
 
 def get_multi_io_model():
@@ -51,13 +51,6 @@ def custom_generator_multi_io(sample_weights=None):
   inputs = np.asarray([[1.], [2.], [3.], [4.]])
   targets_1 = np.asarray([[2.], [4.], [6.], [8.]])
   targets_2 = np.asarray([[1.], [2.], [3.], [4.]])
-  if sample_weights:
-    assert len(sample_weights) == 2
-    w1 = sample_weights[0]
-    w2 = sample_weights[1]
-  else:
-    w1 = None
-    w2 = None
   i = 0
   while True:
     batch_index = i * batch_size % num_samples
@@ -67,17 +60,14 @@ def custom_generator_multi_io(sample_weights=None):
     x = [inputs[start:end], inputs[start:end]]
     y = [targets_1[start:end], targets_2[start:end]]
     if sample_weights:
-      w = [
-          None if w1 is None else w1[start:end],
-          None if w2 is None else w2[start:end]
-      ]
+      sw = nest.map_structure(lambda w: w[start:end], sample_weights)
     else:
-      w = None
-    yield x, y, w
+      sw = None
+    yield x, y, sw
 
 
 @keras_parameterized.run_with_all_model_types(exclude_models=['sequential'])
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
 
   def _get_compiled_multi_io_model(self):
@@ -100,8 +90,6 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     self.y2 = np.asarray([[1.], [2.], [3.], [4.]])
     self.sample_weight_1 = np.asarray([2., 3., 4., 5.])
     self.sample_weight_2 = np.asarray([3.5, 2.5, 1.5, 0.5])
-    self.class_weight_1 = {2: 2, 4: 3, 6: 4, 8: 5}
-    self.class_weight_2 = {1: 3.5, 2: 2.5, 3: 1.5, 4: 0.5}
 
     # y_true_1 = [[2.], [4.], [6.], [8.]], y_pred = [[3.], [6.], [9.], [12.]]
     # y_true_2 = [[1.], [2.], [3.], [4.]], y_pred = [[3.], [6.], [9.], [12.]]
@@ -148,8 +136,6 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     # Total loss without weights = 7.5 + 30 = 37.5
 
     self.wmse = 'mean_squared_error_2'
-    if not tf2.enabled():
-      self.wmse = 'weighted_' + self.wmse
     self.expected_fit_result_with_weights = {
         'output_1_mean_squared_error': [7.5, 7.5],
         'output_2_mean_squared_error': [30, 30],
@@ -223,29 +209,6 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     for key, value in self.expected_fit_result_with_weights_output_2.items():
       self.assertAllClose(history.history[key], value, 1e-3)
 
-  def test_fit_with_class_weight(self):
-    model = self._get_compiled_multi_io_model()
-    history = model.fit([self.x, self.x], [self.y1, self.y2],
-                        class_weight={
-                            'output_1': self.class_weight_1,
-                            'output_2': self.class_weight_2,
-                        },
-                        batch_size=2,
-                        epochs=2,
-                        shuffle=False)
-    for key, value in self.expected_fit_result_with_weights.items():
-      self.assertAllClose(history.history[key], value, 1e-3)
-
-    # Set weights for one output.
-    history = model.fit([self.x, self.x], [self.y1, self.y2],
-                        class_weight={'output_2': self.class_weight_2},
-                        batch_size=2,
-                        epochs=2,
-                        shuffle=False)
-
-    for key, value in self.expected_fit_result_with_weights_output_2.items():
-      self.assertAllClose(history.history[key], value, 1e-3)
-
   def test_eval(self):
     model = self._get_compiled_multi_io_model()
     eval_result = model.evaluate([self.x, self.x], [self.y1, self.y2],
@@ -304,23 +267,6 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
     self.assertAllClose(result,
                         self.expected_batch_result_with_weights_output_2, 1e-3)
 
-  def test_train_on_batch_with_class_weight(self):
-    model = self._get_compiled_multi_io_model()
-    result = model.train_on_batch([self.x, self.x], [self.y1, self.y2],
-                                  class_weight={
-                                      'output_1': self.class_weight_1,
-                                      'output_2': self.class_weight_2,
-                                  })
-    self.assertAllClose(result, self.expected_batch_result_with_weights, 1e-3)
-
-    # Set weights for one output.
-    result = model.train_on_batch([self.x, self.x], [self.y1, self.y2],
-                                  class_weight={
-                                      'output_2': self.class_weight_2,
-                                  })
-    self.assertAllClose(result,
-                        self.expected_batch_result_with_weights_output_2, 1e-3)
-
   def test_test_on_batch(self):
     model = self._get_compiled_multi_io_model()
     result = model.test_on_batch([self.x, self.x], [self.y1, self.y2])
@@ -362,29 +308,8 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
 
     # Set weights for one output.
     history = model.fit_generator(
-        custom_generator_multi_io(sample_weights=[None, self.sample_weight_2]),
-        steps_per_epoch=2,
-        epochs=2)
-    for key, value in self.expected_fit_result_with_weights_output_2.items():
-      self.assertAllClose(history.history[key], value, 1e-3)
-
-  def test_fit_generator_with_class_weight(self):
-    model = self._get_compiled_multi_io_model()
-    history = model.fit_generator(
-        custom_generator_multi_io(),
-        class_weight={
-            'output_1': self.class_weight_1,
-            'output_2': self.class_weight_2,
-        },
-        steps_per_epoch=2,
-        epochs=2)
-    for key, value in self.expected_fit_result_with_weights.items():
-      self.assertAllClose(history.history[key], value, 1e-3)
-
-    # Set weights for one output.
-    history = model.fit_generator(
-        custom_generator_multi_io(),
-        class_weight={'output_2': self.class_weight_2},
+        custom_generator_multi_io(
+            sample_weights={'output_2': self.sample_weight_2}),
         steps_per_epoch=2,
         epochs=2)
     for key, value in self.expected_fit_result_with_weights_output_2.items():
@@ -406,14 +331,15 @@ class TestMetricsCorrectnessMultiIO(keras_parameterized.TestCase):
 
     # Set weights for one output.
     eval_result = model.evaluate_generator(
-        custom_generator_multi_io(sample_weights=[None, self.sample_weight_2]),
+        custom_generator_multi_io(
+            sample_weights={'output_2': self.sample_weight_2}),
         steps=2)
     self.assertAllClose(eval_result,
                         self.expected_batch_result_with_weights_output_2, 1e-3)
 
 
 @keras_parameterized.run_with_all_model_types
-@keras_parameterized.run_all_keras_modes
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TestMetricsCorrectnessSingleIO(keras_parameterized.TestCase):
 
   def _get_model(self):
@@ -452,7 +378,8 @@ class TestMetricsCorrectnessSingleIO(keras_parameterized.TestCase):
     self.x = np.asarray([[1.], [2.], [3.], [4.]])
     self.y = np.asarray([[2.], [4.], [6.], [8.]])
     self.sample_weight = np.asarray([2., 3., 4., 5.])
-    self.class_weight = {2: 2, 4: 3, 6: 4, 8: 5}
+    self.class_weight = {i: 1 for i in range(10)}
+    self.class_weight.update({2: 2, 4: 3, 6: 4, 8: 5})
 
     # y_true = [[2.], [4.], [6.], [8.]], y_pred = [[3.], [6.], [9.], [12.]]
 
@@ -483,8 +410,6 @@ class TestMetricsCorrectnessSingleIO(keras_parameterized.TestCase):
     #   Result = 7.5
 
     wmse = 'mean_squared_error_2'
-    if not tf2.enabled():
-      wmse = 'weighted_' + wmse
 
     self.expected_fit_result_with_weights = {
         'mean_squared_error': [7.5, 7.5],

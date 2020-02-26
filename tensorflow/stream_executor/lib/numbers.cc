@@ -32,7 +32,7 @@ bool safe_strto32(const char* str, int32* value) {
 // Convert strings to floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
-bool safe_strto32(const string& str, int32* value) {
+bool safe_strto32(const std::string& str, int32* value) {
   return port::safe_strto32(str.c_str(), value);
 }
 
