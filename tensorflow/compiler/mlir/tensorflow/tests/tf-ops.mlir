@@ -854,6 +854,78 @@ func @testInvalidIfOp(tensor<i1>, tensor<*xf32>) -> tensor<2xf32> {
 
 // -----
 
+// Test valid tf.MatrixBandPart
+// CHECK-LABEL: func @testValidMatrixBandPartOp
+func @testValidMatrixBandPartOp(%arg0: tensor<64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64xbf16>
+  return %0 : tensor<64x64xbf16>
+}
+
+// -----
+
+// Test valid tf.MatrixBandPart
+// CHECK-LABEL: func @testValidMatrixBandPartOp3D
+func @testValidMatrixBandPartOp3D(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64x64xbf16> {
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64x64xbf16>
+  return %0 : tensor<64x64x64xbf16>
+}
+
+// -----
+
+// Test valid tf.MatrixBandPart
+// CHECK-LABEL: func @testValidMatrixBandPartOpUnranked
+func @testValidMatrixBandPartOpUnranked(%arg0: tensor<*xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<*xbf16> {
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<*xbf16>, tensor<i64>, tensor<i64>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+// -----
+
+// Test invalid tf.MatrixBandPart
+func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
+  // expected-error @+1 {{op failed to verify that all of {input, band} have same type}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64xbf16>
+  return %0 : tensor<64x64xbf16>
+}
+
+// -----
+
+// Test invalid tf.MatrixBandPart
+func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<*xbf16> {
+  // expected-error @+1 {{op failed to verify that all of {input, band} have same type}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+// -----
+
+// Test invalid tf.MatrixBandPart
+func @testInvalidMatrixBandPartOp(%arg0: tensor<i64>, %arg1: tensor<64x64xi64>, %arg2: tensor<i64>) -> tensor<i64> {
+  // expected-error @+1 {{op requires `input` to have rank of at least 2, but found 'tensor<i64>'}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<i64>, tensor<64x64xi64>, tensor<i64>) -> tensor<i64>
+  return %0 : tensor<i64>
+}
+
+// -----
+
+// Test invalid tf.MatrixBandPart
+func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64xi64>, %arg1: tensor<32xi64>, %arg2: tensor<i64>) -> tensor<64x64xi64> {
+  // expected-error @+1 {{op requires `num_lower` to have 0 dimensions, but found 'tensor<32xi64>'}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64xi64>, tensor<32xi64>, tensor<i64>) -> tensor<64x64xi64>
+  return %0 : tensor<64x64xi64>
+}
+
+// -----
+
+// Test invalid tf.MatrixBandPart
+func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64xi64>, %arg1: tensor<i64>, %arg2: tensor<32xi64>) -> tensor<64x64xi64> {
+  // expected-error @+1 {{op requires `num_upper` to have 0 dimensions, but found 'tensor<32xi64>'}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64xi64>, tensor<i64>, tensor<32xi64>) -> tensor<64x64xi64>
+  return %0 : tensor<64x64xi64>
+}
+
+// -----
+
 //===--------------------------------------------------------------------===//
 //  tf.{|Stateful}PartitionedCall
 //===--------------------------------------------------------------------===//

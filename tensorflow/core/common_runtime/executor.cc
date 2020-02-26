@@ -714,10 +714,13 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
         used_outputs[e->src_output()] = true;
       }
     }
+    int i = 0;
     for (bool used_output : used_outputs) {
       if (!used_output) {
         metrics::RecordUnusedOutput(n->type_string());
+        item->kernel->set_output_required(i, false);
       }
+      ++i;
     }
   }
 
@@ -2093,9 +2096,9 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
   for (int i = 0; i < item.num_outputs; ++i) {
     const TensorValue val = ctx->release_output(i);
     if (val.tensor == nullptr) {
-      // Unless it's a Switch or a Recv, the node must produce a
-      // tensor value at i-th output.
-      if (!item.is_recv_or_switch) {
+      // Unless it's a Switch or a Recv, or the executor has marked the output
+      // as not required, the node must produce a tensor value at i-th output.
+      if (!(item.is_recv_or_switch || !item.kernel->output_required(i))) {
         s.Update(errors::Internal("Missing ", i, "-th output from ",
                                   FormatNodeDefForError(item.kernel->def())));
       }

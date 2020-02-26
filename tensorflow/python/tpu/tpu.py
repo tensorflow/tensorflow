@@ -208,13 +208,14 @@ def _enclosing_tpu_device_assignment():
 
 
 @auto_control_deps.register_acd_resource_resolver
-def tpu_replicated_input_resolver(op, resource_inputs):
+def tpu_replicated_input_resolver(op, resource_reads, resource_writes):
   """Replaces TPUReplicatedInput outputs with its inputs in resource_inputs."""
   # Ignore TPUReplicatedInput for ACD purposes since we will be directly adding
   # control deps on the replicated inputs.
   if op.type == "TPUReplicatedInput":
-    if resource_inputs:
-      resource_inputs.clear()
+    if resource_reads or resource_writes:
+      resource_reads.clear()
+      resource_writes.clear()
       return True
     else:
       return False
@@ -222,18 +223,21 @@ def tpu_replicated_input_resolver(op, resource_inputs):
   # with the actual replicated inputs. This allows ACD to correct add control
   # deps when there are multiple calls to `experimental_run_v2` in a
   # `tf.function`.
-  to_remove = []
-  to_add = []
-  for resource in resource_inputs:
-    if resource.op.type == "TPUReplicatedInput":
-      to_remove.append(resource)
-      to_add.extend(resource.op.inputs)
-  if not to_add and not to_remove:
-    return False
-  for t in to_remove:
-    resource_inputs.discard(t)
-  resource_inputs.update(to_add)
-  return True
+  def replace_with_unreplicated_resources(resource_inputs):
+    """Replaces handles in `resource_inputs` with their unreplicated inputs."""
+    to_remove = []
+    to_add = []
+    for resource in resource_inputs:
+      if resource.op.type == "TPUReplicatedInput":
+        to_remove.append(resource)
+        to_add.extend(resource.op.inputs)
+    for t in to_remove:
+      resource_inputs.discard(t)
+    resource_inputs.update(to_add)
+    return to_add or to_remove
+
+  return (replace_with_unreplicated_resources(resource_reads) or
+          replace_with_unreplicated_resources(resource_writes))
 
 
 class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):

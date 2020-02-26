@@ -96,6 +96,8 @@ class FakeEagerClient : public EagerClient {
     done(impl_->Enqueue(request, response));
   }
 
+  bool allow_multiple_pending_requests() const override { return false; }
+
  private:
   TestEagerServiceImpl* impl_;
 };

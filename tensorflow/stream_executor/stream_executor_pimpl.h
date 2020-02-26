@@ -50,7 +50,7 @@ struct AllocRecord {
   // Holds a representation of the stack at the time the associated buffer was
   // allocated. Produced in a form described in
   // //util/symbolize/symbolized_stacktrace.h.
-  string stack_trace;
+  std::string stack_trace;
 };
 
 // Forward declaration of private friend class.
@@ -175,12 +175,12 @@ class StreamExecutor {
   // If `module_handle` is set then searches only within the module
   // corresponding to `module_handle`.
   template <typename T>
-  port::StatusOr<DeviceMemory<T>> GetSymbol(const string &symbol_name,
+  port::StatusOr<DeviceMemory<T>> GetSymbol(const std::string &symbol_name,
                                             ModuleHandle module_handle = {});
 
   // An untyped version of GetSymbol.
   port::StatusOr<DeviceMemoryBase> GetUntypedSymbol(
-      const string &symbol_name, ModuleHandle module_handle = {});
+      const std::string &symbol_name, ModuleHandle module_handle = {});
 
   // Deallocate the DeviceMemory previously allocated via this interface.
   // Deallocation of a nullptr-representative value is permitted.
@@ -554,7 +554,7 @@ class StreamExecutor {
 
   // Finds and retrieves device memory for the symbol on the underlying
   // platform.
-  bool GetSymbol(const string &symbol_name, ModuleHandle module_handle,
+  bool GetSymbol(const std::string &symbol_name, ModuleHandle module_handle,
                  void **mem, size_t *bytes);
 
   // Entrains a memcpy operation onto stream, with a host destination location
@@ -805,7 +805,7 @@ inline DeviceMemory<T> StreamExecutor::AllocateArray(uint64 element_count,
 
 template <typename T>
 inline port::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
-    const string &symbol_name, ModuleHandle module_handle) {
+    const std::string &symbol_name, ModuleHandle module_handle) {
   port::StatusOr<DeviceMemoryBase> untyped_symbol =
       GetUntypedSymbol(symbol_name, module_handle);
   if (!untyped_symbol.ok()) {

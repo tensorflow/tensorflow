@@ -788,7 +788,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _get_cross_device_ops(self):
     return self._cross_device_ops or self._inferred_cross_device_ops
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.Mirrored) and
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
@@ -801,11 +801,16 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
     return self._get_cross_device_ops().reduce(
-        reduce_op, value, destinations=destinations)
+        reduce_op,
+        value,
+        destinations=destinations,
+        experimental_hints=experimental_hints)
 
-  def _batch_reduce_to(self, reduce_op, value_destination_pairs):
+  def _batch_reduce_to(self, reduce_op, value_destination_pairs,
+                       experimental_hints):
     return self._get_cross_device_ops().batch_reduce(reduce_op,
-                                                     value_destination_pairs)
+                                                     value_destination_pairs,
+                                                     experimental_hints)
 
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.
