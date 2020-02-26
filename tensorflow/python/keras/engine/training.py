@@ -174,6 +174,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     # Fault-tolerance handler. Set in `ModelCheckpoint`.
     self._training_state = None
+    self.history = None
 
   def get_weights(self):
     """Retrieves the weights of the model.
