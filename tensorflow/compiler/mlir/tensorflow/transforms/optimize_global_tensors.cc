@@ -64,21 +64,6 @@ static bool IsResourceType(Type type) {
 
 static bool IsResource(Value value) { return IsResourceType(value.getType()); }
 
-static bool DoesOpUseResources(Operation* op) {
-  for (auto operand : op->getOperands()) {
-    if (IsResource(operand)) {
-      return true;
-    }
-  }
-  bool uses_resources = false;
-  visitUsedValuesDefinedAbove(op->getRegions(), [&](OpOperand* operand) {
-    if (IsResource(operand->get())) {
-      uses_resources = true;
-    }
-  });
-  return uses_resources;
-}
-
 class ResourceAnalyzer {
  public:
   explicit ResourceAnalyzer(ModuleOp module) {
@@ -145,15 +130,34 @@ class ResourceAnalyzer {
         }
         return;
       }
-      // TODO(ashwinm): This should not error but refactor DoesOpUseResources
-      // to tell us which resource, so that it can be set as potentially written
-      // to.
-      if (DoesOpUseResources(op)) {
-        op->emitError() << "unknown op that uses resources";
+      // For all other ops, we assume it mutates all resources it uses, so
+      // this errs on the side of being conservative. We should improve
+      // this by using either a property or a trait that clearly
+      // identifies ops with resource mutating behavior.
+      if (PropagatePotentiallyWrittenWithinUnhandledOp(op)) {
         return;
       }
     });
     return success();
+  }
+
+  // If an op is not one of the handled ones, we assume all resource usages
+  // within its purview are mutating in nature.
+  bool PropagatePotentiallyWrittenWithinUnhandledOp(Operation* op) {
+    for (auto operand : op->getOperands()) {
+      if (IsResource(operand)) {
+        SetPotentiallyWritten(operand);
+        return true;
+      }
+    }
+    bool uses_resources = false;
+    visitUsedValuesDefinedAbove(op->getRegions(), [&](OpOperand* operand) {
+      if (IsResource(operand->get())) {
+        SetPotentiallyWritten(operand->get());
+        uses_resources = true;
+      }
+    });
+    return uses_resources;
   }
 
   // Given a funcOp associated with the callee and operands from the
