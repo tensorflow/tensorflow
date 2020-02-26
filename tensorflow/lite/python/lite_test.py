@@ -2203,6 +2203,37 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     self.assertEqual('Placeholder', input_details[0]['name'])
     self.assertEqual('Const', input_details[1]['name'])
 
+  def testGrapplerConstFolding(self):
+    # Constant folding converts the following add operation to tf.broadcast_to
+    # operation which was not supported by the TFLite at the time this test was
+    # added.
+    @def_function.function
+    def plus_placeholder(x, placeholder):
+      return x + placeholder
+
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(shape=[2, 2], dtype=dtypes.float32)
+      out_tensor = plus_placeholder(
+          array_ops.zeros([2, 2, 2]),
+          array_ops.reshape(in_tensor, shape=[2, 2]))
+      sess = session.Session()
+
+    # Convert model.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    # Only disable this path in MLIR conversion for toco compatibility.
+    converter.experimental_new_converter = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual('Placeholder', input_details[0]['name'])
+
+
 class ImportOpsUtilTest(LiteTest):
 
   def testGetPotentiallySupportedOps(self):

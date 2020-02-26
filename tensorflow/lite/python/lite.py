@@ -190,7 +190,9 @@ class TFLiteConverterBase(object):
     """
     if not optimizers:
       optimizers = []
-    optimizers.append("constfold")
+    # MLIR converter will take care of constant folding instead of grappler.
+    if not self.experimental_new_converter:
+      optimizers.append("constfold")
 
     is_only_flex_enabled = (
         set([OpsSet.SELECT_TF_OPS]) == set(self.target_spec.supported_ops))
@@ -460,12 +462,17 @@ class TFLiteConverterV2(TFLiteConverterBase):
     output_tensors = frozen_func.outputs
 
     # Run a Grappler pass.
-    graph_def = _run_graph_optimizations(
-        graph_def,
-        input_tensors,
-        output_tensors,
-        config=self._grappler_config(),
-        graph=frozen_func.graph)
+    grappler_config = self._grappler_config()
+    # Skip running grappler when there are no optimizers to run. If not,
+    # grappler will run with the default optimizer set and it will lead to
+    # causing an unexpected behavior.
+    if grappler_config.graph_options.rewrite_options.optimizers:
+      graph_def = _run_graph_optimizations(
+          graph_def,
+          input_tensors,
+          output_tensors,
+          config=grappler_config,
+          graph=frozen_func.graph)
 
     if not self._is_unknown_shapes_allowed():
       # Checks dimensions in input tensor.
