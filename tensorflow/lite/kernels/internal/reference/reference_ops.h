@@ -2171,7 +2171,7 @@ inline void BatchToSpaceND(
 }
 
 template <typename T>
-inline void Slice(tflite::SliceParams& op_params,
+inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape,
                   const RuntimeShape& output_shape,
                   SequentialTensorWriter<T>* writer) {
@@ -2200,7 +2200,7 @@ inline void Slice(tflite::SliceParams& op_params,
 }
 
 template <typename T>
-inline void Slice(tflite::SliceParams& op_params,
+inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
   SequentialTensorWriter<T> writer(input_data, output_data);
@@ -2208,7 +2208,7 @@ inline void Slice(tflite::SliceParams& op_params,
 }
 
 template <typename T>
-inline void Slice(tflite::SliceParams& op_params,
+inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape, const TfLiteTensor* input,
                   const RuntimeShape& output_shape, TfLiteTensor* output) {
   SequentialTensorWriter<T> writer(input, output);
