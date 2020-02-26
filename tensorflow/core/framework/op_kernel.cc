@@ -105,7 +105,8 @@ OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
       type_string_view_(props_->node_def.op()),
       graph_def_version_(context->graph_def_version()),
       is_deferred_(is_deferred),
-      cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
+      cost_estimate_(OpKernel::kInitialCostEstimateCycles),
+      outputs_required_(context->num_outputs(), true) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(props_->node_def, *props_->op_def,
                                    &input_name_map_, &output_name_map_));
@@ -133,7 +134,8 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
       type_string_view_(props_->node_def.op()),
       graph_def_version_(context->graph_def_version()),
       is_deferred_(is_deferred),
-      cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
+      cost_estimate_(OpKernel::kInitialCostEstimateCycles),
+      outputs_required_(context->num_outputs(), true) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(props_->node_def, *props_->op_def,
                                    &input_name_map_, &output_name_map_));
