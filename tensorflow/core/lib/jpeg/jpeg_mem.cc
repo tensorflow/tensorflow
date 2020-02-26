@@ -593,7 +593,7 @@ bool GetImageInfo(const void* srcdata, int datasize, int* width, int* height,
 namespace {
 bool CompressInternal(const uint8* srcdata, int width, int height,
                       const CompressFlags& flags, tstring* output) {
-  if (output == nullptr)
+  if (output == nullptr) {
     LOG(ERROR) << "Output buffer is null: ";
     return false;
   }
