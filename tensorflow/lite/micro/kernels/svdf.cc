@@ -137,8 +137,7 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];
 
-  // Left shift the activation_state, and clear the latest activation (the
-  // rightmost column).
+  // Left shift the activation_state.
   for (int b = 0; b < batch_size; ++b) {
     float* state_ptr_batch =
         GetTensorData<float>(activation_state) + b * memory_size * num_filters;
@@ -150,10 +149,10 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
       while (batch_start != batch_end) {
         *batch_ptr++ = *batch_start++;
       }
-      state_ptr_batch[memory_size - 1] = 0.0f;
       state_ptr_batch += memory_size;
     }
   }
+  // Note: no need to clear the latest activation, matmul is not accumulative.
 
   // Compute conv1d(inputs, weights_feature).
   // The activation_state's rightmost column is used to save current cycle
@@ -161,7 +160,7 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   // GetTensorData<float>(activation_state)[memory_size - 1] and having the
   // stride equal to memory_size.
 
-  // Perform batched matrix vector multiply accumulate operation:
+  // Perform batched matrix vector multiply operation:
   const float* matrix = GetTensorData<float>(weights_feature);
   const float* vector = GetTensorData<float>(input);
   float* result = &GetTensorData<float>(activation_state)[memory_size - 1];
@@ -174,7 +173,7 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
       for (int k = 0; k < input_size; ++k) {
         dot_prod += *matrix_ptr++ * *vector_in_batch++;
       }
-      *result_in_batch += dot_prod;
+      *result_in_batch = dot_prod;
       result_in_batch += memory_size;
     }
   }
