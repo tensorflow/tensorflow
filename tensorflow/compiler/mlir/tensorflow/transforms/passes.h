@@ -186,6 +186,10 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateParallelExecuteToIslandsPass();
 // same data across replicas.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateAnnotateParameterReplicationPass();
 
+// Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
+// attribute to each TensorFlow dialect op in the body based on the `device`
+// attribute on the `tf_device.launch`.
+std::unique_ptr<OpPassBase<FuncOp>> CreateLaunchToDeviceAttributePass();
 }  // namespace TFDevice
 
 namespace TFTPU {
