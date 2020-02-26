@@ -20,6 +20,7 @@ limitations under the License.
 #include <set>
 
 #include "llvm/ADT/DenseMap.h"
+#include "mlir/Analysis/CallInterfaces.h"  // TF:llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -102,16 +103,10 @@ class ResourceAnalyzer {
         SetPotentiallyWritten(assign_variable.resource());
         return;
       }
-      // TODO(ashwinm): Combine these two using CallOpInterface
-      if (auto call = dyn_cast<TF::StatefulPartitionedCallOp>(op)) {
-        PropagatePotentiallyWrittenUpFromCallee(call.f(), call.getOperands(),
-                                                symbol_table);
-        return;
-      }
-      if (auto call = dyn_cast<TF::PartitionedCallOp>(op)) {
+      if (auto call = dyn_cast<CallOpInterface>(op)) {
         if (auto sym = op->getAttrOfType<SymbolRefAttr>("f")) {
           PropagatePotentiallyWrittenUpFromCallee(
-              sym.cast<FlatSymbolRefAttr>().getValue(), call.getOperands(),
+              sym.cast<FlatSymbolRefAttr>().getValue(), call.getArgOperands(),
               symbol_table);
         }
         return;

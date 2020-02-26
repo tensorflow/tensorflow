@@ -130,6 +130,40 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-LABEL: module attributes {tf_saved_model.semantics}
 module attributes {tf_saved_model.semantics} {
 
+  // Test case: The inter-procedural analysis with different types of
+  // TF call ops
+
+  // CHECK: "tf_saved_model.global_tensor"() {
+  // CHECK-SAME: is_mutable
+  // CHECK-SAME: } : () -> ()
+  "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.> : tensor<f32> } : () -> ()
+
+  // CHECK: func @f(%arg0: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @v})
+  func @f(%arg0: tensor<!tf.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}) -> (tensor<f32> {tf_saved_model.index_path = []})
+  attributes {tf_saved_model.exported_names = ["f"]} {
+    %val = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @f_callee} : (tensor<!tf.resource<tensor<f32>>>) -> (tensor<f32>)
+    return %val : tensor<f32>
+  }
+
+  // CHECK: func @f_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
+  func @f_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32> {
+    %val = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @f_callee_callee} : (tensor<*x!tf.resource>) -> (tensor<f32>)
+    return %val : tensor<f32>
+  }
+
+  // CHECK: func @f_callee_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32>
+  func @f_callee_callee(%arg0: tensor<*x!tf.resource>) -> tensor<f32> {
+    %c0 = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+    "tf.AssignVariableOp"(%arg0, %c0) : (tensor<*x!tf.resource>, tensor<f32>) -> ()
+    return %c0 : tensor<f32>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: module attributes {tf_saved_model.semantics}
+module attributes {tf_saved_model.semantics} {
+
   // Test case: The inter-procedural analysis does not recurse infinitely
 
   // CHECK: "tf_saved_model.global_tensor"() {
