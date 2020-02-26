@@ -241,8 +241,8 @@ cc_library(
     hdrs = ["tf_datatype.h"],
     visibility = ["//visibility:public"],
     deps = select({
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+        "//tensorflow:mobile": [
+            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
