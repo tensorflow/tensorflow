@@ -33,6 +33,7 @@ from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
+from tensorflow.python.platform import tf_logging as logging
 
 
 OP_INSTANCE_KEY_START_NUMBER = 100
@@ -894,6 +895,67 @@ def stitch_values(values_and_indices_list):
         assert result[i] is None
         result[i] = v
   return result
+
+
+def per_replica_num_elements(per_replica):
+  """Returns the static number of elements of one replica.
+
+  Args:
+    per_replica: A PerReplica of Tensor or IndexedSlices.
+
+  Returns:
+    Number of elements. None if some replica has a different or unknown shape.
+  """
+
+  values = per_replica._values  # pylint: disable=protected-access
+  s0 = values[0].shape
+  for v in values:
+    assert not isinstance(v, ops.IndexedSlices)
+    if v.shape != s0:
+      return None
+  return s0.num_elements()
+
+
+def pack_by_size(per_replica_list, bytes_per_pack):
+  """Packs `per_replica_list` into chunks of `bytes_per_pack`.
+
+  The method preserves the original order of `per_replica_list`. The packing is
+  best effort, each pack could have more or less bytes than `bytes_per_pack`.
+  It only packs values with known shape. Note that, the usage is different from
+  `cross_device_ops._pack_tensors`, this function is intended to work with the
+  ScopeAllocator style batching used in `CollectiveAllReduce`.
+
+  Args:
+    per_replica_list: A list of PerReplica.
+    bytes_per_pack: Bytes per pack.
+
+  Returns:
+    A list of packs of PerReplica. All values are packed into one pack if
+      `bytes_per_pack` is zero or any of the value has unknown shape.
+  """
+
+  if bytes_per_pack == 0:
+    return [per_replica_list]
+  packs = []
+  last_pack_size = 0
+  for value in per_replica_list:
+    num_elements = per_replica_num_elements(value)
+    if num_elements is None:
+      # Can't pack values with unknown shape.
+      logging.warning(
+          'not packing values due to the unknown or inconsistent shape of %s',
+          value)
+      return [per_replica_list]
+    size = num_elements * value._primary.dtype.size  # pylint: disable=protected-access
+    # Try to keep each pack as close to bytes_per_pack as possible, while each
+    # pack is at least bytes_per_pack large. I.E. we err on the side of having
+    # few but large packs.
+    if not packs or last_pack_size > bytes_per_pack:
+      packs.append([])
+      last_pack_size = 0
+    packs[-1].append(value)
+    last_pack_size += size
+  return packs
 
 
 def _control_input(inputs, control_inputs, idx):

@@ -63,6 +63,7 @@ py_library(
     srcs = ["cross_device_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":collective_util",
         ":cross_device_utils",
         ":device_util",
         ":reduce_util",
@@ -97,6 +98,7 @@ py_library(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -145,6 +147,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":collective_util",
         ":device_util",
         ":numpy_dataset",
         ":reduce_util",
@@ -581,6 +584,15 @@ py_library(
 )
 
 py_library(
+    name = "collective_util",
+    srcs = ["collective_util.py"],
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_library(
     name = "shared_variable_creator",
     srcs = ["shared_variable_creator.py"],
 )
@@ -795,7 +807,9 @@ cuda_py_test(
     name = "cross_device_utils_test",
     srcs = ["cross_device_utils_test.py"],
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/distribute:combinations",
@@ -815,6 +829,7 @@ cuda_py_test(
     ],
     deps = [
         ":collective_all_reduce_strategy",
+        ":collective_util",
         ":mirrored_strategy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
