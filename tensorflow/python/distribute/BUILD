@@ -985,6 +985,9 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    tpu_tags = [
+        "no_oss",  # Target too big to run serially reliably.
+    ],
     deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python:variables",
