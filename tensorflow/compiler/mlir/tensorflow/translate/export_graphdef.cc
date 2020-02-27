@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -544,19 +545,9 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
 
   // Extract version info.
-  auto version_attr = function.getParentOfType<mlir::ModuleOp>()
-                          .getAttrOfType<mlir::DictionaryAttr>("tf.versions");
-  if (version_attr) {
-    VersionDef versions;
-    versions.set_producer(
-        version_attr.get("producer").cast<mlir::IntegerAttr>().getInt());
-    versions.set_min_consumer(
-        version_attr.get("min_consumer").cast<mlir::IntegerAttr>().getInt());
-    for (auto bad_consumer :
-         version_attr.get("bad_consumers").cast<mlir::ArrayAttr>()) {
-      versions.mutable_bad_consumers()->Add(
-          bad_consumer.cast<mlir::IntegerAttr>().getInt());
-    }
+  VersionDef versions;
+  auto module = function.getParentOfType<mlir::ModuleOp>();
+  if (mlir::succeeded(ExtractTfVersions(module, &versions))) {
     graph->set_versions(versions);
   }
 

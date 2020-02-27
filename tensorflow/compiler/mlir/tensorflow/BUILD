@@ -331,6 +331,7 @@ cc_library(
         ":tensorflow_optimize_inc_gen",
         ":tensorflow_types",
         ":tpu_rewrite_device_util",
+        ":translate_utils",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -402,6 +403,7 @@ cc_library(
         ":tensorflow",
         ":tensorflow_passes",
         ":tensorflow_types",
+        ":translate_utils",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:loader_lite",
         "//tensorflow/compiler/jit:shape_inference_helpers",
@@ -486,6 +488,23 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "translate_utils",
+    srcs = [
+        "utils/translate_utils.cc",
+    ],
+    hdrs = [
+        "utils/translate_utils.h",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor/lib",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -904,6 +923,7 @@ cc_library(
         ":tensorflow_dialect_registration",
         ":tensorflow_passes",
         ":tf_dialect_passes",
+        ":translate_utils",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
         "//tensorflow/compiler/mlir/xla:type_to_shape",
