@@ -4,16 +4,16 @@ $(eval $(call add_third_party_download,$(CIFAR10_DATASET_URL),$(CIFAR10_DATASET_
 IMAGE_RECOGNITION_HDRS := \
 tensorflow/lite/micro/examples/experimental/image_recognition/image_recognition_model.h \
 tensorflow/lite/micro/examples/experimental/image_recognition/image_provider.h \
-tensorflow/lite/micro/examples/experimental/image_recognition/disco/image_util.h \
-tensorflow/lite/micro/examples/experimental/image_recognition/disco/display_util.h \
+tensorflow/lite/micro/examples/experimental/image_recognition/stm32f746_discovery/image_util.h \
+tensorflow/lite/micro/examples/experimental/image_recognition/stm32f746_discovery/display_util.h \
 tensorflow/lite/micro/examples/experimental/image_recognition/util.h
 
 IMAGE_RECOGNITION_SRCS := \
 $(MAKEFILE_DIR)/downloads/image_recognition_model/image_recognition_model.cc \
 tensorflow/lite/micro/examples/experimental/image_recognition/main.cc \
-tensorflow/lite/micro/examples/experimental/image_recognition/disco/image_provider.cc \
-tensorflow/lite/micro/examples/experimental/image_recognition/disco/image_util.cc \
-tensorflow/lite/micro/examples/experimental/image_recognition/disco/display_util.cc
+tensorflow/lite/micro/examples/experimental/image_recognition/stm32f746_discovery/image_provider.cc \
+tensorflow/lite/micro/examples/experimental/image_recognition/stm32f746_discovery/image_util.cc \
+tensorflow/lite/micro/examples/experimental/image_recognition/stm32f746_discovery/display_util.cc
 
 IMAGE_RECOGNITION_TEST_SRCS := \
 tensorflow/lite/micro/examples/experimental/image_recognition/image_recognition_test.cc \
