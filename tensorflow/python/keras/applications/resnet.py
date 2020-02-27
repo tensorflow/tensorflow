@@ -46,8 +46,8 @@ WEIGHTS_HASHES = {
                     'ed17cf2e0169df9d443503ef94b23b33'),
     'resnext50': ('67a5b30d522ed92f75a1f16eef299d1a',
                   '62527c363bdd9ec598bed41947b379fc'),
-    'resnext101':
-        ('34fb605428fcc7aa4d62f44404c11509', '0f678c91647380debd923963594981b3')
+    'resnext101': ('34fb605428fcc7aa4d62f44404c11509',
+                  '0f678c91647380debd923963594981b3')
 }
 
 
@@ -502,6 +502,50 @@ def ResNet152(include_top=True,
     return stack1(x, 512, 3, name='conv5')
 
   return ResNet(stack_fn, False, True, 'resnet152', include_top, weights,
+                input_tensor, input_shape, pooling, classes, **kwargs)
+
+
+@keras_export('keras.applications.resnet.ResNeXt50',
+              'keras.applications.ResNeXt50')
+def ResNeXt50(include_top=True,
+              weights='imagenet',
+              input_tensor=None,
+              input_shape=None,
+              pooling=None,
+              classes=1000,
+              **kwargs):
+
+  """Instantiates the ResNeXt50 architecture."""
+
+  def stack_fn(x):
+    x = stack3(x, 128, 3, stride1=1, name='conv2')
+    x = stack3(x, 256, 4, name='conv3')
+    x = stack3(x, 512, 6, name='conv4')
+    return stack3(x, 1024, 3, name='conv5')
+
+  return ResNet(stack_fn, False, False, 'resnext50', include_top, weights,
+                input_tensor, input_shape, pooling, classes, **kwargs)
+
+
+@keras_export('keras.applications.resnet.ResNeXt101',
+              'keras.applications.ResNeXt101')
+def ResNeXt101(include_top=True,
+               weights='imagenet',
+               input_tensor=None,
+               input_shape=None,
+               pooling=None,
+               classes=1000,
+               **kwargs):
+
+  """Instantiates the ResNeXt101 architecture."""
+
+  def stack_fn(x):
+    x = stack3(x, 128, 3, stride1=1, name='conv2')
+    x = stack3(x, 256, 4, name='conv3')
+    x = stack3(x, 512, 23, name='conv4')
+    return stack3(x, 1024, 3, name='conv5')
+      
+  return ResNet(stack_fn, False, False, 'resnext101', include_top, weights,
                 input_tensor, input_shape, pooling, classes, **kwargs)
 
 
