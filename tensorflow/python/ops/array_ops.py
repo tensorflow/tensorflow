@@ -1959,7 +1959,7 @@ def transpose_v2(a, perm=None, conjugate=False, name="transpose"):
   Permutes the dimensions according to the value of `perm`.
 
   The returned tensor's dimension `i` will correspond to the input dimension
-  `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is the rank
+  `perm[i]`. If `perm` is not given, it is set to `(n-1, ..., 0)`, where `n` is the rank
   of the input tensor. Hence by default, this operation performs a regular
   matrix transpose on 2-D input Tensors.
 
