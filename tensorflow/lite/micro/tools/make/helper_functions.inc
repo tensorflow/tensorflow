@@ -293,6 +293,10 @@ $(PRJDIR)$(2)/esp-idf/LICENSE: LICENSE
 	@mkdir -p $$(dir $$@)
 	@cp $$< $$@
 
+$(PRJDIR)$(2)/esp-idf/%: tensorflow/lite/micro/examples/$(2)/esp/%
+	@mkdir -p $$(dir $$@)
+	@cp $$< $$@
+
 $(PRJDIR)$(2)/esp-idf/main/%.cc: tensorflow/lite/micro/examples/$(2)/%.cc
 	@mkdir -p $$(dir $$@)
 	@python tensorflow/lite/micro/tools/make/transform_source.py \
