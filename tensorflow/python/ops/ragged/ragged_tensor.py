@@ -1337,7 +1337,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       return self._cached_row_lengths
 
     with ops.name_scope(name, "RaggedRowLengths", [self]):
-      axis = ragged_util.get_positive_axis(axis, self.shape.ndims)
+      axis = array_ops.get_positive_axis(
+          axis, self.shape.rank, ndims_name="rank(self)")
       if axis == 0:
         return self.nrows()
       elif axis == 1:
@@ -1557,8 +1558,16 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       `self.shape[:outer_axis] + [N] + self.shape[inner_axis + 1:]`, where `N`
       is the total number of slices in the merged dimensions.
     """
-    outer_axis = ragged_util.get_positive_axis(outer_axis, self.shape.ndims)
-    inner_axis = ragged_util.get_positive_axis(inner_axis, self.shape.ndims)
+    outer_axis = array_ops.get_positive_axis(
+        outer_axis,
+        self.shape.rank,
+        axis_name="outer_axis",
+        ndims_name="rank(self)")
+    inner_axis = array_ops.get_positive_axis(
+        inner_axis,
+        self.shape.rank,
+        axis_name="inner_axis",
+        ndims_name="rank(self)")
     if not outer_axis < inner_axis:
       raise ValueError("Expected outer_axis (%d) to be less than "
                        "inner_axis (%d)" % (outer_axis, inner_axis))

@@ -5396,7 +5396,7 @@ def convert_to_int_tensor(tensor, name, dtype=dtypes.int32):
   return tensor
 
 
-def get_positive_axis(axis, ndims):
+def get_positive_axis(axis, ndims, axis_name="axis", ndims_name="ndims"):
   """Validate an `axis` parameter, and normalize it to be positive.
 
   If `ndims` is known (i.e., not `None`), then check that `axis` is in the
@@ -5408,6 +5408,8 @@ def get_positive_axis(axis, ndims):
   Args:
     axis: An integer constant
     ndims: An integer constant, or `None`
+    axis_name: The name of `axis` (for error messages).
+    ndims_name: The name of `ndims` (for error messages).
 
   Returns:
     The normalized `axis` value.
@@ -5417,17 +5419,19 @@ def get_positive_axis(axis, ndims):
       `ndims is None`.
   """
   if not isinstance(axis, int):
-    raise TypeError("axis must be an int; got %s" % type(axis).__name__)
+    raise TypeError("%s must be an int; got %s" %
+                    (axis_name, type(axis).__name__))
   if ndims is not None:
     if 0 <= axis < ndims:
       return axis
     elif -ndims <= axis < 0:
       return axis + ndims
     else:
-      raise ValueError("axis=%s out of bounds: expected %s<=axis<%s" %
-                       (axis, -ndims, ndims))
+      raise ValueError("%s=%s out of bounds: expected %s<=%s<%s" %
+                       (axis_name, axis, -ndims, axis_name, ndims))
   elif axis < 0:
-    raise ValueError("axis may only be negative if ndims is statically known.")
+    raise ValueError("%s may only be negative if %s is statically known." %
+                     (axis_name, ndims_name))
   return axis
 
 
@@ -5485,7 +5489,7 @@ def repeat_with_axis(data, repeats, axis, name=None):
     data_shape = shape(data)
 
     # If `axis` is negative, then convert it to a positive value.
-    axis = get_positive_axis(axis, data.shape.ndims)
+    axis = get_positive_axis(axis, data.shape.rank, ndims_name="rank(data)")
 
     # Check data Tensor shapes.
     if repeats.shape.ndims == 1:
