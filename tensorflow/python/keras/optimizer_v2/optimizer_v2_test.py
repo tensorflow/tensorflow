@@ -807,6 +807,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
       self.assertAllClose(hist_k_v1.history['loss'], hist_k_v2.history['loss'])
 
   def testNumericEquivalenceForAmsgrad(self):
+    self.skipTest('b/150382655')
     if testing_utils.should_run_tf_function() or context.executing_eagerly():
       self.skipTest(
           'v1 optimizer does not run in experimental_run_tf_function mode or '

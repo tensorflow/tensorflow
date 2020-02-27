@@ -735,7 +735,7 @@ class KerasModelTest(keras_parameterized.TestCase):
         # Layer does not have weight regularizer
         self.assertEqual(backend.eval(layer.v), 1 - learning_rate)
 
-  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   @parameterized.named_parameters(
       {
           'testcase_name': 'base',
