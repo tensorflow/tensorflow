@@ -301,6 +301,8 @@ struct BufferIntervalTreeNode {
   BufferIntervalTreeNode* left;
   // Right child.
   BufferIntervalTreeNode* right;
+  // parent
+  BufferIntervalTreeNode* parent;
 };
 
 // An interval tree that can query buffers overlapping in time.
@@ -311,11 +313,17 @@ class BufferIntervalTree {
   // chunk specified.
   void Add(int64 start, int64 end, const Chunk& chunk);
 
+  // Remove the interval from the tree. Returns true if the chunk is removed.
+  bool Remove(int64 start, int64 end, const Chunk& chunk);
+
   // Returns vector of allocated chunks that overlap with the given time
   // interval.
   std::vector<Chunk> ChunksOverlappingInTime(int64 start, int64 end) const;
 
+  BufferIntervalTreeNode* GetRoot() { return root_; }
+
  private:
+  BufferIntervalTreeNode* root_ = nullptr;
   std::list<BufferIntervalTreeNode> node_storage_;
 };
 
