@@ -59,7 +59,6 @@
 #     rbe:        General RBE options shared by all flavors.
 #     rbe_linux:  General RBE options used on all linux builds.
 #     rbe_win:    General RBE options used on all windows builds.
-#     rbe_win2019:    General RBE options used on all windows server 2019 builds.
 #
 #     rbe_cpu_linux:        RBE options to build with only CPU support.
 #     rbe_linux_cuda_nvcc:  RBE options to build with GPU support using nvcc.
@@ -394,32 +393,18 @@ build:rbe_linux_py3 --python_path="/usr/bin/python3"
 build:rbe_linux_py3 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-manylinux2010-py3_config_python"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win_1803/bazel_121:toolchain"
-build:rbe_win --extra_execution_platforms="@org_tensorflow//third_party/toolchains/preconfig/win_1803:rbe_windows_1803"
-build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win_1803/bazel_121:cc-toolchain-x64_windows"
-build:rbe_win --host_javabase="@org_tensorflow//third_party/toolchains/preconfig/win_1803:windows_jdk8"
-build:rbe_win --host_platform="@org_tensorflow//third_party/toolchains/preconfig/win_1803:rbe_windows_1803"
-build:rbe_win --javabase="@org_tensorflow//third_party/toolchains/preconfig/win_1803:windows_jdk8"
-build:rbe_win --platforms="@org_tensorflow//third_party/toolchains/preconfig/win_1803:rbe_windows_1803"
+build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win/bazel_211:toolchain"
+build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win/bazel_211:cc-toolchain-x64_windows"
+build:rbe_win --host_javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
+build:rbe_win --javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
+build:rbe_win --extra_execution_platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
+build:rbe_win --host_platform="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
+build:rbe_win --platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
 build:rbe_win --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 
 # TODO(gunan): Remove once we use MSVC 2019 with latest patches.
 build:rbe_win --define=override_eigen_strong_inline=true
 build:rbe_win --jobs=500
-
-build:rbe_win2019 --config=rbe
-build:rbe_win2019 --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win/bazel_211:toolchain"
-build:rbe_win2019 --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win/bazel_211:cc-toolchain-x64_windows"
-build:rbe_win2019 --host_javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
-build:rbe_win2019 --javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
-build:rbe_win2019 --extra_execution_platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
-build:rbe_win2019 --host_platform="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
-build:rbe_win2019 --platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
-build:rbe_win2019 --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
-
-# TODO(gunan): Remove once we use MSVC 2019 with latest patches.
-build:rbe_win2019 --define=override_eigen_strong_inline=true
-build:rbe_win2019 --jobs=100
 
 build:rbe_win_py37 --config=rbe
 build:rbe_win_py37 --repo_env=TF_PYTHON_CONFIG_REPO="@windows_py37_config_python"
