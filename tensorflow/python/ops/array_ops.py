@@ -2739,6 +2739,8 @@ def zeros(shape, dtype=dtypes.float32, name=None):
 @dispatch.add_dispatch_support
 def zeros_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to zero.
+  
+  See also `tf.zeros`.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
   same type and shape as `tensor` with all elements set to zero. Optionally,
@@ -2779,6 +2781,8 @@ def zeros_like_v2(
     dtype=None,
     name=None):
   """Creates a tensor with all elements set to zero.
+  
+  See also `tf.zeros`.
 
   Given a single tensor or array-like object (`input`), this operation returns
   a tensor of the same type and shape as `input` with all elements set to zero.
@@ -2850,6 +2854,8 @@ def zeros_like_impl(tensor, dtype, name, optimize=True):
 @dispatch.add_dispatch_support
 def ones_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to 1.
+  
+  See also `tf.ones`.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the same
   type and shape as `tensor` with all elements set to 1. Optionally, you can
@@ -2884,6 +2890,8 @@ def ones_like_v2(
     dtype=None,
     name=None):
   """Creates a tensor of all ones that has the same shape as the input.
+  
+  See also `tf.ones`.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
   same type and shape as `tensor` with all elements set to 1. Optionally,
@@ -2926,6 +2934,8 @@ def ones_like_impl(tensor, dtype, name, optimize=True):
 @tf_export("ones")
 def ones(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to one (1).
+  
+  See also `tf.ones_like`.
 
   This operation returns a tensor of type `dtype` with shape `shape` and
   all elements set to one.
