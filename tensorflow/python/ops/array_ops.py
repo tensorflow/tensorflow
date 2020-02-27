@@ -534,6 +534,8 @@ def broadcast_static_shape(shape_x, shape_y):
 def shape_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
+  
+  See also `tf.size`.
 
   This operation returns a 1-D integer tensor representing the shape of `input`.
   This represents the minimal set of known information at definition time.
@@ -652,6 +654,8 @@ def shape_n(input, out_type=dtypes.int32, name=None):
 def size_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
+  
+  See also `tf.shape`.
 
   Returns a 0-D `Tensor` representing the number of elements in `input`
   of type `out_type`. Defaults to tf.int32.
@@ -1278,6 +1282,8 @@ def parallel_stack(values, name="parallel_stack"):
 @dispatch.add_dispatch_support
 def stack(values, axis=0, name="stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
+  
+  See also `tf.concat`, `tf.tile`, `tf.repeat`.
 
   Packs the list of tensors in `values` into a tensor with rank one higher than
   each tensor in `values`, by packing them along the `axis` dimension.
@@ -1509,6 +1515,8 @@ def unstack(value, num=None, axis=0, name="unstack"):
 @dispatch.add_dispatch_support
 def concat(values, axis, name="concat"):
   """Concatenates tensors along one dimension.
+  
+  See also `tf.tile`, `tf.stack`, `tf.repeat`.
 
   Concatenates the list of tensors `values` along dimension `axis`.  If
   `values[i].shape = [D0, D1, ... Daxis(i), ...Dn]`, the concatenated
@@ -1880,6 +1888,8 @@ unique_with_counts.__doc__ = gen_array_ops.unique_with_counts.__doc__
 @tf_export("split")
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """Splits a tensor `value` into a list of sub tensors.
+  
+  See also `tf.unstack`.
 
   If `num_or_size_splits` is an integer, then `value` is split along the
   dimension `axis` into `num_split` smaller tensors. This requires that
@@ -5570,6 +5580,8 @@ def _with_nonzero_rank(data):
 @tf_export("repeat")
 def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-builtin
   """Repeat elements of `input`.
+  
+  See also `tf.concat`, `tf.stack`, `tf.tile`.
 
   Args:
     input: An `N`-dimensional Tensor.
