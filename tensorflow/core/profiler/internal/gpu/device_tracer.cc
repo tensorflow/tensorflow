@@ -65,6 +65,9 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
     return;
   }
   std::string kernel_name = port::MaybeAbiDemangle(event.name.c_str());
+  if (kernel_name.empty()) {
+    kernel_name = GetTraceEventTypeName(event.type);
+  }
   XEventMetadata* event_metadata = plane->GetOrCreateEventMetadata(kernel_name);
   XEventBuilder xevent = line->AddEvent(*event_metadata);
   xevent.SetTimestampNs(event.start_time_ns);
@@ -95,12 +98,11 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kKernelDetails)),
                         kernel_details);
-  }
-  if (event.type == CuptiTracerEventType::MemcpyH2D ||
-      event.type == CuptiTracerEventType::MemcpyD2H ||
-      event.type == CuptiTracerEventType::MemcpyD2D ||
-      event.type == CuptiTracerEventType::MemcpyP2P ||
-      event.type == CuptiTracerEventType::MemcpyOther) {
+  } else if (event.type == CuptiTracerEventType::MemcpyH2D ||
+             event.type == CuptiTracerEventType::MemcpyD2H ||
+             event.type == CuptiTracerEventType::MemcpyD2D ||
+             event.type == CuptiTracerEventType::MemcpyP2P ||
+             event.type == CuptiTracerEventType::MemcpyOther) {
     const auto& memcpy_info = event.memcpy_info;
     std::string memcpy_details =
         absl::StrFormat("size:%u dest:%u async:%u", memcpy_info.num_bytes,
