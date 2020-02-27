@@ -79,6 +79,5 @@ class ModuleTest(test.TestCase):
       tf.compat.v1.summary.FileWriter
     # pylint: enable=pointless-statement
 
-
 if __name__ == '__main__':
   test.main()
