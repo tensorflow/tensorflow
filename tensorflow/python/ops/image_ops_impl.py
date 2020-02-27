@@ -1201,9 +1201,6 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
     if not size.get_shape().is_compatible_with([2]):
       raise ValueError('\'size\' must be a 1-D Tensor of 2 elements: '
                        'new_height, new_width')
-    size_const_as_shape = tensor_util.constant_value_as_shape(size)
-    new_height_const = size_const_as_shape.dims[0].value
-    new_width_const = size_const_as_shape.dims[1].value
 
     if preserve_aspect_ratio:
       # Get the current shapes of the image, even if dynamic.
@@ -1211,10 +1208,10 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
 
       # do the computation to find the right scale and height/width.
       scale_factor_height = (
-          math_ops.cast(new_height_const, dtypes.float32) /
+          math_ops.cast(size[0], dtypes.float32) /
           math_ops.cast(current_height, dtypes.float32))
       scale_factor_width = (
-          math_ops.cast(new_width_const, dtypes.float32) /
+          math_ops.cast(size[1], dtypes.float32) /
           math_ops.cast(current_width, dtypes.float32))
       scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
       scaled_height_const = math_ops.cast(
@@ -1230,9 +1227,10 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
       size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
                                    dtypes.int32,
                                    name='size')
-      size_const_as_shape = tensor_util.constant_value_as_shape(size)
-      new_height_const = size_const_as_shape.dims[0].value
-      new_width_const = size_const_as_shape.dims[1].value
+
+    size_const_as_shape = tensor_util.constant_value_as_shape(size)
+    new_height_const = size_const_as_shape.dims[0].value
+    new_width_const = size_const_as_shape.dims[1].value
 
     # If we can determine that the height and width will be unmodified by this
     # transformation, we avoid performing the resize.
