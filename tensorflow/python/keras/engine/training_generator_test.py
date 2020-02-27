@@ -454,6 +454,31 @@ class TestGeneratorMethodsWithSequences(keras_parameterized.TestCase):
     model.evaluate(CustomSequenceChangingBatchSize())
     model.predict(CustomSequenceChangingBatchSize())
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_sequence_on_epoch_end(self):
+
+    class MySequence(data_utils.Sequence):
+
+      def __init__(self):
+        self.epochs = 0
+
+      def __getitem__(self, idx):
+        return np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
+
+      def __len__(self):
+        return 2
+
+      def on_epoch_end(self):
+        self.epochs += 1
+
+    inputs = keras.Input(10)
+    outputs = keras.layers.Dense(1)(inputs)
+    model = keras.Model(inputs, outputs)
+    model.compile('sgd', 'mse')
+    my_seq = MySequence()
+    model.fit(my_seq, epochs=2)
+    self.assertEqual(my_seq.epochs, 2)
+
 
 @tf_test_util.run_all_in_graph_and_eager_modes
 class TestConvertToGeneratorLike(test.TestCase, parameterized.TestCase):
