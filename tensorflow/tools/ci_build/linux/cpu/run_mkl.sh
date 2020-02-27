@@ -48,7 +48,7 @@ if [[ $# -ge 1 ]]; then
   if [[ "$1" == "eigen" ]]; then
     CONFIG=""
     OMPTHREADS=""
-  elif [[ "$1" =~ ${RE_DIGITS_ONLY} && $1 -ge MIN_OMP_THREADS ]]; then
+  elif [[ "$1" =~ ${RE_DIGITS_ONLY} && $1 -ge ${MIN_OMP_THREADS} ]]; then
     CONFIG="${DEFAULT_CONFIG}"
     OMPTHREADS="--action_env=OMP_NUM_THREADS=${1}"
   else

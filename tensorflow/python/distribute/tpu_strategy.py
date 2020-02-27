@@ -659,7 +659,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
                                            tpu_values.TPUSyncOnReadVariable,
                                            **kwargs)
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.DistributedValues) or
         tensor_util.is_tensor(value)
        ) and tpu_values.enclosing_tpu_context() is not None:

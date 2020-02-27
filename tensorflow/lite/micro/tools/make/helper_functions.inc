@@ -293,6 +293,10 @@ $(PRJDIR)$(2)/esp-idf/LICENSE: LICENSE
 	@mkdir -p $$(dir $$@)
 	@cp $$< $$@
 
+$(PRJDIR)$(2)/esp-idf/%: tensorflow/lite/micro/examples/$(2)/esp/%
+	@mkdir -p $$(dir $$@)
+	@cp $$< $$@
+
 $(PRJDIR)$(2)/esp-idf/main/%.cc: tensorflow/lite/micro/examples/$(2)/%.cc
 	@mkdir -p $$(dir $$@)
 	@python tensorflow/lite/micro/tools/make/transform_source.py \
@@ -326,11 +330,11 @@ $(PRJDIR)$(2)/esp-idf/sdkconfig.defaults: tensorflow/lite/micro/examples/$(2)/es
 	@cp $$< $$@
 
 $(PRJDIR)$(2)/esp-idf/%: tensorflow/lite/micro/tools/make/templates/esp/%.tpl
-  # Split the sources into 2 components:
-  # - Main component contains only the example's sources, relative from its dir.
+# Split the sources into 2 components:
+# - Main component contains only the example's sources, relative from its dir.
+# - TFL Micro component contains everything but the example sources.
   $(eval MAIN_SRCS := $(filter tensorflow/lite/micro/examples/%,$(5)))
   $(eval MAIN_SRCS_RELATIVE := $(patsubst tensorflow/lite/micro/examples/$(2)/%,%,$(MAIN_SRCS)))
-  # - TFL Micro component contains everything but the example sources.
   $(eval TFLM_SRCS := $(filter-out tensorflow/lite/micro/examples/%,$(5)) $(3))
 
 	@mkdir -p $$(dir $$@)

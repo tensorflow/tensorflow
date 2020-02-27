@@ -966,7 +966,7 @@ table Operator {
   // complicate map lookups.
   opcode_index:uint;
 
-  // Optional input and output tensors are indicated by -1.
+  // Optional input are indicated by -1.
   inputs:[int];
   outputs:[int];
 

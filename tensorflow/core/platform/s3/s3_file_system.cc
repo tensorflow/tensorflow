@@ -1020,6 +1020,11 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
   return Status::OK();
 }
 
+Status S3FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
+  *has_atomic_move = false;
+  return Status::OK();
+}
+
 REGISTER_FILE_SYSTEM("s3", RetryingS3FileSystem);
 
 }  // namespace tensorflow

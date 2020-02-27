@@ -281,6 +281,7 @@ cc_library(
         "transforms/generated_canonicalize.inc",
         "transforms/generated_optimize.inc",
         "transforms/graph_pruning.cc",
+        "transforms/launch_to_device_attribute.cc",
         "transforms/layout_optimization.cc",
         "transforms/mark_function_visibility.cc",
         "transforms/materialize_mlir_passthrough_op.cc",

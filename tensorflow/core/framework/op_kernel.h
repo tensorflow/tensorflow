@@ -156,6 +156,18 @@ class OpKernel {
   // Returns a pointer to the tensor stored inside constant ops.
   virtual const Tensor* const_tensor() const { return nullptr; }
 
+  // Returns true if this kernel must produce its ith output.
+  // REQUIRES: 0 <= i < num_inputs().
+  bool output_required(int i) const { return outputs_required_[i]; }
+
+  // Hints whether or not the ith output must be produced when running the
+  // kernel. By default, all outputs are required. The kernel implementation
+  // may ignore the hint.
+  // REQUIRES: 0 <= i < num_inputs().
+  void set_output_required(int i, bool is_required) {
+    outputs_required_[i] = is_required;
+  }
+
   // Updates the dynamic cost estimate, which is used to determine whether this
   // op is expensive. The new cost estimate is a weighted average of the old
   // cost estimate and the latest cost.
@@ -223,6 +235,7 @@ class OpKernel {
   const bool is_deferred_;
   bool expensive_;
   std::atomic_uint_fast64_t cost_estimate_;
+  std::vector<bool> outputs_required_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
 };
@@ -732,6 +745,10 @@ class OpKernelContext {
     // For tracking actively running deferred ops.
     std::function<void()> inc_num_deferred_ops_function;
     std::function<void()> dec_num_deferred_ops_function;
+
+    // For implementing `OpKernelContext::output_required()`. If null, all
+    // outputs are required.
+    bool* outputs_required_array = nullptr;
   };
 
   // params must outlive the OpKernelContext.
@@ -941,10 +958,9 @@ class OpKernelContext {
   // should call allocate_output(index, ...), set_output(index, ...),
   // set_output_ref(index, ...), or set the status to a non-ok value.
   // If it returns false, it may output, but is not required to do so.
-  // TODO(mrry): Convert this to return Status, and implement a string
-  // name version.
   bool output_required(int index) const {
-    return true;  // TODO(josh11b): implement
+    return !params_->outputs_required_array ||
+           params_->outputs_required_array[index];
   }
 
   // Allocation of tensors during kernel execution inside the Compute

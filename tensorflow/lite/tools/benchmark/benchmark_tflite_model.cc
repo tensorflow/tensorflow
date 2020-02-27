@@ -215,6 +215,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<int32_t>(1024));
   default_params.AddParam("profiling_output_csv_file",
                           BenchmarkParam::Create<std::string>(""));
+  default_params.AddParam("max_delegated_partitions",
+                          BenchmarkParam::Create<int32_t>(0));
 
   for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
     delegate_util->AddParams(&default_params);
@@ -257,7 +259,9 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<std::string>(
           "profiling_output_csv_file", &params_,
           "File path to export profile data as CSV, if not set "
-          "prints to stdout.")};
+          "prints to stdout."),
+      CreateFlag<int>("max_delegated_partitions", &params_,
+                      "Max partitions to be delegated.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -295,6 +299,8 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "CSV File to export profiling data to: ["
                    << params_.Get<std::string>("profiling_output_csv_file")
                    << "]";
+  TFLITE_LOG(INFO) << "Max number of delegated partitions : ["
+                   << params_.Get<int32_t>("max_delegated_partitions") << "]";
 
   for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
     delegate_util->LogParams(params_);

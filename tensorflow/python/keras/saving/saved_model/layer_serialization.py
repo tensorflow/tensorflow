@@ -52,13 +52,7 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
         dtype=policy.serialize(self.obj._dtype_policy),  # pylint: disable=protected-access
         batch_input_shape=getattr(self.obj, '_batch_input_shape', None))
 
-    with generic_utils.skip_failed_serialization():
-      # Store the config dictionary, which may be used when reviving the object.
-      # When loading, the program will attempt to revive the object from config,
-      # and if that fails, the object will be revived from the SavedModel.
-      config = generic_utils.serialize_keras_object(self.obj)['config']
-      if config is not None:
-        metadata['config'] = config
+    metadata.update(get_config(self.obj))
     if self.obj.input_spec is not None:
       # Layer's input_spec has already been type-checked in the property setter.
       metadata['input_spec'] = nest.map_structure(
@@ -107,6 +101,20 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
     # function dict, even if the value is None.
     functions['_default_save_signature'] = None
     return objects, functions
+
+
+# TODO(kathywu): Move serialization utils (and related utils from
+# generic_utils.py) to a separate file.
+def get_config(obj):
+  with generic_utils.skip_failed_serialization():
+    # Store the config dictionary, which may be used when reviving the object.
+    # When loading, the program will attempt to revive the object from config,
+    # and if that fails, the object will be revived from the SavedModel.
+    config = generic_utils.serialize_keras_object(obj)['config']
+
+  if config is not None:
+    return {'config': config}
+  return {}
 
 
 class InputLayerSavedModelSaver(base_serialization.SavedModelSaver):

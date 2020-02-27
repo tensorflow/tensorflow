@@ -1373,11 +1373,13 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AffineOps",
+        ":GPUDialect",
         ":LoopOps",
         ":LoopsToGPU",
         ":Pass",
         ":StandardOps",
         ":Support",
+        ":Transforms",
         "@llvm-project//llvm:support",
     ],
 )
@@ -2118,7 +2120,6 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
         "include/mlir/Dialect/Linalg/IR/LinalgOps.td",
-        "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
         ":AffineOpsTdFiles",
         ":OpBaseTdFiles",
     ],
@@ -2147,9 +2148,10 @@ gentbl(
 filegroup(
     name = "LinalgStructuredOpsTdFiles",
     srcs = [
-        "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
         "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
+        "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterface.td",
         ":AffineOpsTdFiles",
+        ":LinalgOpsTdFiles",
         ":OpBaseTdFiles",
     ],
 )
@@ -2187,6 +2189,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Linalg/IR/LinalgDoc.td",
         ":LinalgOpsTdFiles",
+        ":LinalgStructuredOpsTdFiles",
     ],
 )
 

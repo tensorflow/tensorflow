@@ -1879,6 +1879,24 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     for i in range(999, 1024):
       self.assertEqual(network.compute_output_shape((1, i, 32)), (1, i, 2))
 
+  def test_2d_inputs_squeezed_to_1d(self):
+    input_1d = input_layer_lib.Input(shape=())
+    outputs = input_1d * 2.
+    net = network_lib.Network(input_1d, outputs)
+
+    x = np.ones((10, 1))
+    y = net(x)
+    self.assertEqual(y.shape.rank, 1)
+
+  def test_1d_inputs_expanded_to_2d(self):
+    input_1d = input_layer_lib.Input(shape=(1,))
+    outputs = input_1d * 2.
+    net = network_lib.Network(input_1d, outputs)
+
+    x = np.ones((10,))
+    y = net(x)
+    self.assertEqual(y.shape.rank, 2)
+
 
 if __name__ == '__main__':
   test.main()

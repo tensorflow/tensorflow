@@ -96,8 +96,10 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
   Status SyncExecutors() override { return eager_context_->SyncExecutors(); }
 
   void Abort(Status status) override {
+    int i = 0;
     for (auto handle : retvals_) {
-      handle->Poison(status);
+      handle->PoisonRemote(status, device_, context_view_id_);
+      ++i;
     }
   }
 

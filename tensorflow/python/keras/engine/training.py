@@ -74,12 +74,9 @@ def disable_multi_worker(method):
   """Decorator that disallows multi-worker use of `method`."""
 
   def _method_wrapper(self, *args, **kwargs):
-    strategy = self.distribute_strategy
-    if (self._in_multi_worker_mode() or dist_utils.is_tpu_strategy(strategy) and  # pylint: disable=protected-access
-        strategy.extended.num_hosts > 1):
+    if self._in_multi_worker_mode():  # pylint: disable=protected-access
       raise ValueError('{} is not supported in multi-worker mode.'.format(
           method.__name__))
-
     return method(self, *args, **kwargs)
 
   return tf_decorator.make_decorator(
@@ -174,6 +171,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     # Fault-tolerance handler. Set in `ModelCheckpoint`.
     self._training_state = None
+    self.history = None
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -768,7 +766,11 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                 step_num=step,
                 batch_size=batch_size):
               callbacks.on_train_batch_begin(step)
-              logs = train_function(iterator)
+              tmp_logs = train_function(iterator)
+              # Catch possible OutOfRangeError here.
+              # TODO(b/150292341): Allow multiple async steps.
+              context.async_wait()
+              logs = tmp_logs
               callbacks.on_train_batch_end(step, logs)
         epoch_logs = {m.name: m.result() for m in self.metrics}
 
@@ -995,7 +997,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                 graph_type='test',
                 step_num=step):
               callbacks.on_test_batch_begin(step)
-              logs = test_function(iterator)
+              tmp_logs = test_function(iterator)
+              context.async_wait()  # Possible OutOfRangeError here.
+              logs = tmp_logs
               callbacks.on_test_batch_end(step, logs)
       callbacks.on_test_end()
 
@@ -1175,7 +1179,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
             callbacks.on_predict_batch_begin(step)
-            batch_outputs = predict_function(iterator)
+            tmp_batch_outputs = predict_function(iterator)
+            context.async_wait()  # Possible OutOfRangeError here.
+            batch_outputs = tmp_batch_outputs
             if outputs is None:
               outputs = nest.map_structure(lambda batch_output: [batch_output],
                                            batch_outputs)
@@ -1623,9 +1629,12 @@ def reduce_per_replica(values, strategy, reduction='first'):
     if not isinstance(v, ds_values.PerReplica):
       return v
     elif reduction == 'first':
-      return strategy.unwrap(v)[0]  # pylint: disable=protected-access
+      return strategy.unwrap(v)[0]
     elif reduction == 'concat':
-      return concat(strategy.unwrap(v))  # pylint: disable=protected-access
+      if _is_tpu_multi_host(strategy):
+        return _tpu_multi_host_concat(v, strategy)
+      else:
+        return concat(strategy.unwrap(v))
     else:
       raise ValueError('`reduction` must be "first" or "concat".')
 
@@ -1650,3 +1659,23 @@ def to_numpy(tensors):
     return t  # Don't turn ragged or sparse tensors to NumPy.
 
   return nest.map_structure(_to_single_numpy, tensors)
+
+
+def _is_tpu_multi_host(strategy):
+  return (dist_utils.is_tpu_strategy(strategy) and
+          strategy.extended.num_hosts > 1)
+
+
+def _tpu_multi_host_concat(v, strategy):
+  """Correctly order TPU PerReplica objects."""
+  replicas = strategy.unwrap(v)
+  # When distributed datasets are created from Tensors / NumPy,
+  # TPUStrategy.experimental_distribute_dataset shards data in
+  # (Replica, Host) order, and TPUStrategy.unwrap returns it in
+  # (Host, Replica) order.
+  # TODO(b/150317897): Figure out long-term plan here.
+  num_replicas_per_host = strategy.extended.num_replicas_per_host
+  ordered_replicas = []
+  for replica_id in range(num_replicas_per_host):
+    ordered_replicas += replicas[replica_id::num_replicas_per_host]
+  return concat(ordered_replicas)

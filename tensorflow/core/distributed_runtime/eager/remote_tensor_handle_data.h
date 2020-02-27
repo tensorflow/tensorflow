@@ -75,6 +75,9 @@ class UnshapedRemoteTensorHandleData : public TensorHandleData {
   Status NumElements(int64* num_elements) const override;
   Status Unprotect() override;
 
+  void Poison(Status status) { is_poisoned_ = status; }
+  Status IsPoisoned() const { return is_poisoned_; }
+
   string DebugString() const override;
 
   int64 op_id() const { return op_id_; }
@@ -94,6 +97,7 @@ class UnshapedRemoteTensorHandleData : public TensorHandleData {
   void ReleaseRemoteTensorHandle() { delete_remote_tensor_ = false; }
 
  private:
+  Status is_poisoned_;
   // IDs required when this class is representing a remote tensor handle.
   const int64 op_id_;
   const int32 output_num_;
