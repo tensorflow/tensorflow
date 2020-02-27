@@ -240,7 +240,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               loss=None,
               metrics=None,
               loss_weights=None,
-              sample_weight_mode=None,
               weighted_metrics=None,
               **kwargs):
     """Configures the model for training.
@@ -291,12 +290,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             If a list, it is expected to have a 1:1 mapping
             to the model's outputs. If a dict, it is expected to map
             output names (strings) to scalar coefficients.
-        sample_weight_mode: If you need to do timestep-wise
-            sample weighting (2D weights), set this to `"temporal"`.
-            `None` defaults to sample-wise weights (1D).
-            If the model has multiple outputs, you can use a different
-            `sample_weight_mode` on each output by passing a
-            dictionary or a list of modes.
         weighted_metrics: List of metrics to be evaluated and weighted
             by sample_weight or class_weight during training and testing.
         **kwargs: Any additional arguments. For eager execution, pass
@@ -304,7 +297,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Raises:
         ValueError: In case of invalid arguments for
-            `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
+            `optimizer`, `loss` or `metrics`.
     """
     _keras_api_gauge.get_cell('compile').set(True)
     with self.distribute_strategy.scope():
@@ -610,8 +603,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             you can pass a 2D array with shape
             `(samples, sequence_length)`,
             to apply a different weight to every timestep of every sample.
-            In this case you should make sure to specify
-            `sample_weight_mode="temporal"` in `compile()`. This argument is not
+            This argument is not
             supported when `x` is a dataset, generator, or
            `keras.utils.Sequence` instance, instead provide the sample_weights
             as the third element of `x`.
@@ -914,8 +906,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             (1:1 mapping between weights and samples), or in the case of
               temporal data, you can pass a 2D array with shape `(samples,
               sequence_length)`, to apply a different weight to every timestep
-              of every sample. In this case you should make sure to specify
-              `sample_weight_mode="temporal"` in `compile()`. This argument is
+              of every sample. This argument is
               not supported when `x` is a dataset, instead pass sample weights
               as the third element of `x`.
         steps: Integer or `None`. Total number of steps (batches of samples)
@@ -1224,8 +1215,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           weights to apply to the model's loss for each sample. In the case of
           temporal data, you can pass a 2D array with shape (samples,
           sequence_length), to apply a different weight to every timestep of
-          every sample. In this case you should make sure to specify
-          sample_weight_mode="temporal" in compile().
+          every sample. 
         class_weight: Optional dictionary mapping class indices (integers) to a
           weight (float) to apply to the model's loss for the samples from this
           class during training. This can be useful to tell the model to "pay
@@ -1289,8 +1279,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           weights to apply to the model's loss for each sample. In the case of
           temporal data, you can pass a 2D array with shape (samples,
           sequence_length), to apply a different weight to every timestep of
-          every sample. In this case you should make sure to specify
-          sample_weight_mode="temporal" in compile().
+          every sample.
         reset_metrics: If `True`, the metrics returned will be only for this
           batch. If `False`, the metrics will be statefully accumulated across
           batches.
@@ -1592,7 +1581,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         'metrics': self.compiled_metrics._user_metrics,
         'weighted_metrics': self.compiled_metrics._user_weighted_metrics,
         'loss_weights': self.compiled_loss._user_loss_weights,
-        'sample_weight_mode': None,
     }
     # pylint: enable=protected-access
     return compile_args
