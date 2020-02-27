@@ -223,8 +223,7 @@ class ConvLSTMTest(keras_parameterized.TestCase):
 
     model.compile(
         optimizer='sgd', loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     x_1 = np.random.rand(num_samples, sequence_len, 32, 32, 3)
     x_2 = np.random.rand(num_samples, sequence_len, 32, 32, 4)
     y = np.random.rand(num_samples, 32, 32, 1)

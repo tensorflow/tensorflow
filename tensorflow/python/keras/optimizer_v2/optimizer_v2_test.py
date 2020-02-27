@@ -655,13 +655,10 @@ class OptimizerTest(test.TestCase):
 @keras_parameterized.run_all_keras_modes
 class OptimizersCompatibilityTest(keras_parameterized.TestCase):
 
-  # After experimental_run_tf_function is turned on, optimizer v1 can no longer
-  # work in eager mode, skipping the test if so.
   def _testOptimizersCompatibility(self, opt_v1, opt_v2, test_weights=True):
-    if testing_utils.should_run_tf_function() or context.executing_eagerly():
+    if context.executing_eagerly():
       self.skipTest(
-          'v1 optimizer does not run in experimental_run_tf_function mode or '
-          'eager mode')
+          'v1 optimizer does not run in eager mode')
     np.random.seed(1331)
     with test_util.use_gpu():
       train_samples = 20
@@ -681,8 +678,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           opt_v1,
           loss='categorical_crossentropy',
           metrics=[],
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       model_v1.fit(x, y, batch_size=5, epochs=1)
 
       model_v2 = testing_utils.get_small_sequential_mlp(
@@ -692,8 +688,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           opt_v2,
           loss='categorical_crossentropy',
           metrics=[],
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       model_v2._make_train_function()
       if test_weights:
         opt_v2.set_weights(opt_v1.get_weights())
@@ -746,10 +741,9 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
     self._testOptimizersCompatibility(opt_v1, opt_v2, False)
 
   def testNumericEquivalenceForNesterovMomentum(self):
-    if testing_utils.should_run_tf_function() or context.executing_eagerly():
+    if context.executing_eagerly():
       self.skipTest(
-          'v1 optimizer does not run in experimental_run_tf_function mode or '
-          'eager mode')
+          'v1 optimizer does not run in eager mode')
     np.random.seed(1331)
     with test_util.use_gpu():
       train_samples = 20
@@ -781,20 +775,17 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           opt_k_v1,
           loss='categorical_crossentropy',
           metrics=[],
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       model_k_v2.compile(
           opt_k_v2,
           loss='categorical_crossentropy',
           metrics=[],
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       model_tf.compile(
           opt_tf,
           loss='categorical_crossentropy',
           metrics=[],
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
 
       hist_k_v1 = model_k_v1.fit(x, y, batch_size=5, epochs=10, shuffle=False)
       hist_k_v2 = model_k_v2.fit(x, y, batch_size=5, epochs=10, shuffle=False)
@@ -808,10 +799,9 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
 
   def testNumericEquivalenceForAmsgrad(self):
     self.skipTest('b/150382655')
-    if testing_utils.should_run_tf_function() or context.executing_eagerly():
+    if context.executing_eagerly():
       self.skipTest(
-          'v1 optimizer does not run in experimental_run_tf_function mode or '
-          'eager mode')
+          'v1 optimizer does not run in eager mode')
     np.random.seed(1331)
     with test_util.use_gpu():
       train_samples = 20
@@ -838,14 +828,12 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           opt_k_v1,
           loss='categorical_crossentropy',
           metrics=[],
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       model_k_v2.compile(
           opt_k_v2,
           loss='categorical_crossentropy',
           metrics=[],
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
 
       hist_k_v1 = model_k_v1.fit(x, y, batch_size=5, epochs=10, shuffle=False)
       hist_k_v2 = model_k_v2.fit(x, y, batch_size=5, epochs=10, shuffle=False)

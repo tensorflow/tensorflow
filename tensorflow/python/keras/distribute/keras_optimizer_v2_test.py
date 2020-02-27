@@ -107,10 +107,8 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
-          mode=['graph', 'eager'],
-          experimental_run_tf_function=[True, False]))
-  def testOptimizerWithKerasModelAndNumpyArrays(self, distribution,
-                                                experimental_run_tf_function):
+          mode=['graph', 'eager']))
+  def testOptimizerWithKerasModelAndNumpyArrays(self, distribution):
     self.skipTest('b/130309197')
     with self.cached_session():
       with distribution.scope():
@@ -121,8 +119,7 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
         model.compile(
             optimizer,
             loss,
-            metrics=metrics,
-            experimental_run_tf_function=experimental_run_tf_function)
+            metrics=metrics)
 
       inputs = np.zeros((64, 3), dtype=np.float32)
       targets = np.zeros((64, 4), dtype=np.float32)
