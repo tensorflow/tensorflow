@@ -47,10 +47,6 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "overflow.h",
-        "padding.cc",
-        "padding.h",
-        "tensor_format.cc",
-        "tensor_format.h",
     ],
 )
 
@@ -85,6 +81,8 @@ filegroup(
         "matmul_bcast.h",
         "mirror_pad_mode.cc",
         "mirror_pad_mode.h",
+        "padding.cc",
+        "padding.h",
         "port.cc",
         "port.h",
         "presized_cuckoo_map.h",
@@ -96,6 +94,8 @@ filegroup(
         "stat_summarizer.h",
         "strided_slice_op.cc",
         "strided_slice_op.h",
+        "tensor_format.cc",
+        "tensor_format.h",
         "tensor_ops_util.h",
         "tensor_slice_reader.cc",
         "tensor_slice_reader.h",
@@ -465,6 +465,7 @@ cc_library(
     deps = [
         ":tensor_format",
         "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:node_def_util",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
     ],

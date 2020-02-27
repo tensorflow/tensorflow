@@ -3953,15 +3953,10 @@ cc_library(
         "aggregate_ops.h",
         "aggregate_ops_cpu.h",
     ],
-    deps = select({
-        "//tensorflow:mobile": [
-            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
-        ],
-        "//conditions:default": [
-            "//third_party/eigen3",
-            "//tensorflow/core:framework",
-        ],
-    }),
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_kernel_library(

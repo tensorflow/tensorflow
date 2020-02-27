@@ -419,13 +419,6 @@ bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   return true;
 }
 
-Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                   Padding* value) {
-  string str_value;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, attr_name, &str_value));
-  return GetPaddingFromString(str_value, value);
-}
-
 namespace {  // Helper for InOutTypesForNode().
 
 template <class NodeDefOrAttrSlice>
