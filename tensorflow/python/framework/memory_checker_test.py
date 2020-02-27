@@ -111,6 +111,7 @@ class MemoryCheckerTest(test.TestCase):
       memory_checker.assert_no_leak_if_all_possibly_except_one()
 
   def testNoNewPythonObjectsEmpty(self):
+    self.skipTest('TODO(b/150324603): Flaky test.')
     with MemoryChecker() as memory_checker:
       memory_checker.record_snapshot()
       memory_checker.record_snapshot()
