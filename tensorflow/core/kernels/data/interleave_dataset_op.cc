@@ -143,12 +143,13 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
                            bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       while (!end_of_input_ || num_open_ > 0) {
-        if (current_elements_[cycle_index_]) {
+        if (current_elements_[cycle_index_].iterator) {
           // We are currently processing a mapped element, so try to get the
           // next subelement.
           bool end_of_element;
           TF_RETURN_IF_ERROR(this->GetNextFromInput(
-              current_elements_[cycle_index_], ctx, out_tensors, &end_of_element));
+              current_elements_[cycle_index_].iterator, ctx, out_tensors, &end_of_element));
+          parent_indices->push_back(current_elements_[cycle_index_].index);
           if (!end_of_element) {
             // Produce the subelement as output.
             AdvancePosition();
@@ -157,20 +158,24 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           }
           // We have reached the end of the current element, so move
           // on to the next element in the cycle.
-          current_elements_[cycle_index_].reset();
+          current_elements_[cycle_index_].iterator.reset();
           args_list_[cycle_index_].clear();
           --num_open_;
           AdvanceToNextInCycle();
         } else if (!end_of_input_) {
           // Get the next element from the input dataset, and create
           // an iterator from it.
-          TF_RETURN_IF_ERROR(this->GetNextFromInput(input_impl_, 
-              ctx, &args_list_[cycle_index_], &end_of_input_, parent_indices));
+          EparallaxTensorIndex* out_index;
+          do {
+            TF_RETURN_IF_ERROR(input_impl_->GetNext(
+                ctx, &args_list_[cycle_index_], &end_of_input_, out_index));
+          } while (args_list_[cycle_index_].empty() && !end_of_input_);
           if (!end_of_input_) {
             TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-                ctx, args_list_[cycle_index_], cycle_index_,
+                ctx, args_list_[cycle_index_], /*cycle_index_,*/out_index->iterator_id(),
                 *instantiated_captured_func_, prefix(),
-                &current_elements_[cycle_index_]));
+                &current_elements_[cycle_index_].iterator));
+            current_elements_[cycle_index_].index = out_index;
             ++num_open_;
           }
         } else {
@@ -225,8 +230,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     Status SaveCurrentElements(IteratorStateWriter* writer)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       for (int idx = 0; idx < current_elements_.size(); idx++) {
-        if (current_elements_[idx]) {
-          TF_RETURN_IF_ERROR(SaveInput(writer, current_elements_[idx]));
+        if (current_elements_[idx].iterator) {
+          TF_RETURN_IF_ERROR(SaveInput(writer, current_elements_[idx].iterator));
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               full_name(strings::StrCat(kArgsSize, "[", idx, "]")),
               args_list_[idx].size()));
@@ -258,18 +263,22 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           }
           TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
               ctx, args_list_[idx], idx, *instantiated_captured_func_, prefix(),
-              &current_elements_[idx]));
-          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, current_elements_[idx]));
+              &current_elements_[idx].iterator));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, current_elements_[idx].iterator));
         } else {
-          current_elements_[idx].reset();
+          current_elements_[idx].iterator.reset();
         }
       }
       return Status::OK();
     }
 
+    struct IndexedInput {
+      std::unique_ptr<IteratorBase> iterator;
+      EparallaxTensorIndex* index;
+    };
     mutex mu_;
     std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-    std::vector<std::unique_ptr<IteratorBase>> current_elements_
+    std::vector<IndexedInput> current_elements_
         GUARDED_BY(mu_);
     std::vector<std::vector<Tensor>> args_list_ GUARDED_BY(mu_);
     size_t cycle_index_ GUARDED_BY(mu_) = 0;
