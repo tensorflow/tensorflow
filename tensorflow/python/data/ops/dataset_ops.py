@@ -3830,22 +3830,27 @@ def _padding_value_to_tensor(value, output_type):
 
 def _padding_values_or_default(padding_values, input_dataset):
   """Returns padding values with None elements replaced with default values."""
+
   def make_zero(t):
     if t.base_dtype == dtypes.string:
       return ""
     elif t.base_dtype == dtypes.variant:
       error_msg = ("Unable to create padding for field of type 'variant' "
                    "because t.base_type == dtypes.variant == "
-                   "{}.".format(
-                       t.base_dtype))
+                   "{}.".format(t.base_dtype))
       raise TypeError(error_msg)
+    elif t.base_dtype == dtypes.bfloat16:
+      # Special case `bfloat16` because it is not supported by NumPy.
+      return constant_op.constant(0, dtype=dtypes.bfloat16)
     else:
       return np.zeros_like(t.as_numpy_dtype())
+
   def value_or_default(value, default):
     return default if value is None else value
 
-  default_padding = nest.map_structure(make_zero,
-                                       get_legacy_output_types(input_dataset))
+  default_padding = nest.map_structure(
+      make_zero,
+      get_legacy_output_types(input_dataset))
   return nest.map_structure_up_to(padding_values, value_or_default,
                                   padding_values, default_padding)
 
