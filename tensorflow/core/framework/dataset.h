@@ -156,6 +156,11 @@ inline std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
+struct IndexedTensors {
+  std::vector<Tensor>* tensors;
+  EparallaxTensorIndex* index;
+};
+
 namespace data {
 
 constexpr int kInfiniteCardinality = -1;
@@ -400,7 +405,7 @@ class MultiLevelIndexQueue {
           key.length() > iterator_id.length()) {
         queue = it.second;
         for (EparallaxTensorIndex* index : *queue) {
-          LOG(INFO) << "Clearing " << *index;
+          //LOG(INFO) << "Clearing " << *index;
           //delete index;
         }
         queue->clear();
@@ -412,7 +417,7 @@ class MultiLevelIndexQueue {
     auto it = queues_.find(iterator_id);
     if (it == queues_.end()) {
       std::vector<EparallaxTensorIndex*>* queue =
-          new std::vector<EparallaxTensorIndex*> {};
+          new std::vector<EparallaxTensorIndex*>;
       queues_.insert(std::make_pair(iterator_id, queue));
       return queue;
     } else {
@@ -473,12 +478,12 @@ class IndexManager {
       string optype = parent_index->iterator_id().substr(pos+1);
       if (optype.find("Shuffle") != std::string::npos ||
           optype.find("Interleave") != std::string::npos) {
-        LOG(INFO) << "Shuffled";
+        //LOG(INFO) << "Shuffled";
         return true;
       } else if (parent_index->parent_indices() != nullptr) {
         for (auto grand_parent_index : *parent_index->parent_indices()) {
           if (IsShuffled(grand_parent_index)) {
-            LOG(INFO) << "Shuffled";
+            //LOG(INFO) << "Shuffled";
             return true;
           }
         }
@@ -524,7 +529,7 @@ class IndexManager {
     size_t pos = 0;
     int level = 0;
     bool found = false;
-    std::vector<EparallaxTensorIndex*>* v = new std::vector<EparallaxTensorIndex*> {};
+    std::vector<EparallaxTensorIndex*>* v = new std::vector<EparallaxTensorIndex*>;
     while (true) {
       if (line[pos] == '(') {
         level++;
@@ -580,7 +585,7 @@ class IndexManager {
     // TODO: Connect parent and children
     if (parent_indices == "<>") {
       index = new EparallaxTensorIndex(iterator_id,
-                                       new std::vector<EparallaxTensorIndex*> {},
+                                       new std::vector<EparallaxTensorIndex*>,
                                        atoi(local_index.c_str()));
     } else {
       index = new EparallaxTensorIndex(iterator_id,

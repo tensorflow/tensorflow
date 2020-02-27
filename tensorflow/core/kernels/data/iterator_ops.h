@@ -86,9 +86,9 @@ class IteratorResource : public ResourceBase {
   mutex mu_;
   const std::unique_ptr<DeviceMgr> device_mgr_ GUARDED_BY(mu_);
   std::shared_ptr<State> iterator_state_ GUARDED_BY(mu_);
+  IndexManager index_manager_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
-  IndexManager index_manager_;
 };
 
 class IteratorHandleOp : public OpKernel {

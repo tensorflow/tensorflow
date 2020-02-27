@@ -92,7 +92,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
         break;
       }
     } while (s.ok() && !*end_of_sequence && out_tensors->empty());
-    
+
     if (s.ok()) {
       index_manager_.NotifyFinished(out_index);
     }
