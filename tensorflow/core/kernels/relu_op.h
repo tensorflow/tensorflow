@@ -63,20 +63,31 @@ class ReluGradOp : public BinaryElementWiseOp<T, ReluGradOp<Device, T>> {
  public:
   using BinaryElementWiseOp<T, ReluGradOp<Device, T>>::BinaryElementWiseOp;
 
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, Tensor* output);
+
   // INPUTS:
   //   g (gradients): backpropagated gradients
   //   a (inputs): either the inputs that were passed to ReluOp(), or its
   //               outputs (using either one yields the same result here).
   // OUTPUT:
   //   gradients to backprop
+  template <int NDIMS>
   void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
                Tensor* output) {
-    if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
-    functor::ReluGrad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-            output->flat<T>());
+    OperateNoTemplate(context, g, a, output);
   }
 };
+
+template <typename Device, typename T>
+void ReluGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                              const Tensor& g, const Tensor& a,
+                                              Tensor* output) {
+  if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
+  functor::ReluGrad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+          output->flat<T>());
+}
 
 template <typename Device, typename T>
 class Relu6Op : public UnaryElementWiseOp<T, Relu6Op<Device, T>> {
@@ -95,19 +106,30 @@ class Relu6GradOp : public BinaryElementWiseOp<T, Relu6GradOp<Device, T>> {
  public:
   using BinaryElementWiseOp<T, Relu6GradOp<Device, T>>::BinaryElementWiseOp;
 
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, Tensor* output);
+
   // INPUTS:
   //   g (gradients): backpropagated gradients
   //   a (inputs): inputs that were passed to Relu6Op()
   // OUTPUT:
   //   gradients to backprop
+  template <int NDIMS>
   void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
                Tensor* output) {
-    if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
-    functor::Relu6Grad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-            output->flat<T>());
+    OperateNoTemplate(context, g, a, output);
   }
 };
+
+template <typename Device, typename T>
+void Relu6GradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                               const Tensor& g, const Tensor& a,
+                                               Tensor* output) {
+  if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
+  functor::Relu6Grad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+          output->flat<T>());
+}
 
 template <typename Device, typename T>
 class LeakyReluOp : public UnaryElementWiseOp<T, LeakyReluOp<Device, T>> {
@@ -140,22 +162,34 @@ class LeakyReluGradOp
     alpha_ = T(alpha_tmp);
   }
 
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, T alpha, Tensor* output);
+
   // INPUTS:
   //   g (gradients): backpropagated gradients
   //   a (inputs): either the inputs that were passed to LeakyReluOp(), or its
   //               outputs (using either one yields the same result here).
   // OUTPUT:
   //   gradients to backprop
+  template <int NDIMS>
   void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
                Tensor* output) {
-    if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
-    functor::LeakyReluGrad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(), alpha_,
-            output->flat<T>());
+    OperateNoTemplate(context, g, a, alpha_, output);
   }
 
  private:
   T alpha_;
+};
+
+template <typename Device, typename T>
+void LeakyReluGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                                   const Tensor& g,
+                                                   const Tensor& a, T alpha,
+                                                   Tensor* output) {
+  if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
+  functor::LeakyReluGrad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(), alpha,
+          output->flat<T>());
 };
 
 template <typename Device, typename T>
@@ -175,19 +209,30 @@ class EluGradOp : public BinaryElementWiseOp<T, EluGradOp<Device, T>> {
  public:
   using BinaryElementWiseOp<T, EluGradOp<Device, T>>::BinaryElementWiseOp;
 
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, Tensor* output);
+
   // INPUTS:
   //   g (gradients): backpropagated gradients
   //   a (outputs): outputs of the EluOp()
   // OUTPUT:
   //   gradients to backprop
+  template <int NDIMS>
   void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
                Tensor* output) {
-    if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
-    functor::EluGrad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-            output->flat<T>());
+    OperateNoTemplate(context, g, a, output);
   }
 };
+
+template <typename Device, typename T>
+void EluGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                             const Tensor& g, const Tensor& a,
+                                             Tensor* output) {
+  if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
+  functor::EluGrad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+          output->flat<T>());
+}
 
 template <typename Device, typename T>
 class SeluOp : public UnaryElementWiseOp<T, SeluOp<Device, T>> {
@@ -206,19 +251,30 @@ class SeluGradOp : public BinaryElementWiseOp<T, SeluGradOp<Device, T>> {
  public:
   using BinaryElementWiseOp<T, SeluGradOp<Device, T>>::BinaryElementWiseOp;
 
+  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
+                         const Tensor& a, Tensor* output);
+
   // INPUTS:
   //   g (gradients): backpropagated gradients
   //   a (outputs): outputs of the SeluOp()
   // OUTPUT:
   //   gradients to backprop
+  template <int NDIMS>
   void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
                Tensor* output) {
-    if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
-    functor::SeluGrad<Device, T> functor;
-    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-            output->flat<T>());
+    OperateNoTemplate(context, g, a, output);
   }
 };
+
+template <typename Device, typename T>
+void SeluGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
+                                              const Tensor& g, const Tensor& a,
+                                              Tensor* output) {
+  if (!ReluHelpers::ValidateSameSize(context, g, a)) return;
+  functor::SeluGrad<Device, T> functor;
+  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+          output->flat<T>());
+}
 
 }  // namespace tensorflow
 
