@@ -3173,24 +3173,11 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       GetReductionTiling(reduction_dimensions, smallest_input_dtype_bits,
                          &ir_emitter_context_->device_description());
 
-  int64 num_threads_y = reduction_dimensions.is_row_reduction ? 1 : kWarpSize;
-  int64 num_threads_x = [&] {
-    if (reduction_dimensions.is_row_reduction) {
-      int cc_major = 0, cc_minor = 0;
-      ir_emitter_context_->device_description().cuda_compute_capability(
-          &cc_major, &cc_minor);
-      int64 num_threads_x = kWarpSize * kWarpSize;
-      if (cc_major >= 6 && smallest_input_dtype_bits <= 16) {
-        num_threads_x = kWarpSize * 8;
-      }
-      return std::min(
-          num_threads_x,
-          RoundUpToNearest(CeilOfRatio(reduction_dimensions.dimensions[2],
-                                       reduction_tiling[2]),
-                           kWarpSize));
-    }
-    return kWarpSize;
-  }();
+  auto bloc_size = GetReductionBlockSize(
+      reduction_dimensions, smallest_input_dtype_bits, reduction_tiling,
+      &ir_emitter_context_->device_description());
+  int64 num_threads_y = bloc_size[0];
+  int64 num_threads_x = bloc_size[1];
 
   bool tile_fit = reduction_dimensions.dimensions[kDimX] %
                       (reduction_tiling[2] * num_threads_x) ==
@@ -3234,6 +3221,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       indexing_order = kStridedIndexingX;
     }
   }
+
   KernelMappingScheme mapping_scheme(
       reduction_dimensions.dimensions,
       {reduction_tiling[0], reduction_tiling[1] * num_threads_y,

@@ -40,7 +40,6 @@ namespace gpu {
 
 // TODO(cheshire): duplication w/ GetReductionTiling, but we need to get a
 // minimum possible tiling, regardless of the input.
-static constexpr int64 kRowAtomicFreeBound = kWarpSize * kWarpSize * 8;
 static constexpr int64 kColumnAtomicFreeBound = kWarpSize * 128;
 // TODO(cheshire): This is very small, we could increase it at the cost of
 // decreased column/row tiling.
@@ -53,7 +52,8 @@ static int64 SqrtOfRoundUpToNearestSquare(int64 input) {
 
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit ReductionRewriterVisitor() {}
+  explicit ReductionRewriterVisitor(const se::DeviceDescription* device_desc)
+      : device_desc_(device_desc) {}
 
   Status HandleReduce(HloInstruction *hlo) override {
     if (!hlo->shape().IsArray()) {
@@ -97,9 +97,27 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
                                                  input_shape, input);
     }
     bool is_row_reduction = reduction_dimensions.is_row_reduction;
+    int64 atomic_free_bound = 0;
+    if (is_row_reduction) {
+      auto get_dtype_bits = [](const HloInstruction *i) {
+        return primitive_util::BitWidth(i->shape().element_type());};
+      int smallest_input_dtype_bits = get_dtype_bits(hlo->operand(0));
+      for (xla::HloInstruction* input: hlo->operands()) {
+        smallest_input_dtype_bits = std::min(get_dtype_bits(input),
+                                             smallest_input_dtype_bits);
+      }
+      std::array<int64, 3> reduction_tiling = GetReductionTiling(
+          reduction_dimensions, smallest_input_dtype_bits,
+          device_desc_);
+      auto bloc_size = GetReductionBlockSize(reduction_dimensions,
+                                             smallest_input_dtype_bits,
+                                             reduction_tiling,
+                                             device_desc_);
 
-    int64 atomic_free_bound =
-        is_row_reduction ? kRowAtomicFreeBound : kColumnAtomicFreeBound;
+      atomic_free_bound = bloc_size[0] * bloc_size[1] * reduction_tiling[2];
+    } else {
+      atomic_free_bound = kColumnAtomicFreeBound;
+    }
     VLOG(3) << "atomic_free_bound: " << atomic_free_bound;
 
     // Base case: everything fits.
@@ -220,12 +238,14 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     VLOG(1) << "Generated: " << out->ToString();
     return ReplaceWithNewInstruction(hlo, std::move(out));
   }
+
+  const se::DeviceDescription* device_desc_;
 };
 
 StatusOr<bool> GpuTreeReductionRewriter::Run(HloModule *module) {
   VLOG(5) << "Rewriter input: " << module->ToString();
   TF_ASSIGN_OR_RETURN(bool changed,
-                      ReductionRewriterVisitor().RunOnModule(module));
+                      ReductionRewriterVisitor(device_desc_).RunOnModule(module));
   VLOG(5) << "Rewriter output: " << module->ToString();
   return changed;
 }

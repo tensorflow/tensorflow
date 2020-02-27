@@ -406,7 +406,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   if (RequireDeterminism() ||
       hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
-    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>();
+    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(
+        &stream_exec->GetDeviceDescription());
   }
 
   // Rewrite GEMMs into custom calls.

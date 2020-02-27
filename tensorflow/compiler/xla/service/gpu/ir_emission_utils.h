@@ -192,6 +192,13 @@ struct ReductionDimensions {
 ReductionDimensions GetReductionKindAndContiguousComponents(
     const HloInstruction& reduce);
 
+std::array<int64, 2> GetReductionBlockSize(
+    const ReductionDimensions& reduction_dimensions,
+    int smallest_input_dtype_bits,
+    std::array<int64, 3> reduction_tiling,
+    const se::DeviceDescription* device_description);
+
+
 // Get tiling per thread for the given reduction in dimensions [D, H, W] per
 // thread.
 // If the device isn't known pass null for device_description and you will get

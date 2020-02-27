@@ -75,13 +75,16 @@ namespace gpu {
 //
 class GpuTreeReductionRewriter : public HloModulePass {
  public:
-  GpuTreeReductionRewriter() {}
+  GpuTreeReductionRewriter(const se::DeviceDescription* device_desc)
+      : device_desc_(device_desc) {}
   ~GpuTreeReductionRewriter() override = default;
   absl::string_view name() const override {
     return "gpu-tree-reduction-rewriter";
   }
 
   StatusOr<bool> Run(HloModule* module) override;
+ private:
+  const se::DeviceDescription* device_desc_;
 };
 
 }  // end namespace gpu
