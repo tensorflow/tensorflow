@@ -106,7 +106,7 @@ TEST_F(NonMaxSuppressionOpTest, TestSelectWithNegativeScores) {
 TEST_F(NonMaxSuppressionOpTest, TestFirstBoxDegenerate) {
   MakeOp(.5);
   AddInputFromArray<float>(TensorShape({3, 4}),
-                           {0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3});
+                           {0, 0, 0, 0, 1, 1, 2, 2, 2, 2, 3, 3});
   AddInputFromArray<float>(TensorShape({3}), {.9f, .75f, .6f});
   AddInputFromArray<int>(TensorShape({}), {3});
   TF_ASSERT_OK(RunOpKernel());
