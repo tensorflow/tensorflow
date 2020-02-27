@@ -114,6 +114,7 @@ py_test(
         "//tensorflow/python/autograph/core",
         # TODO(b/145618471): Remove this transitive dependency.
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
     ],
 )
 

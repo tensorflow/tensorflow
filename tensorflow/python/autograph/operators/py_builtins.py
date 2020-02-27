@@ -51,7 +51,7 @@ input_lib = lazy_loader.LazyLoader(
     'tensorflow.python.distribute.input_lib')
 parallel_ops = lazy_loader.LazyLoader(
     'parallel_ops', globals(),
-     'tensorflow.python.ops.parallel_for.control_flow_ops'
+    'tensorflow.python.ops.parallel_for.control_flow_ops'
 )
 
 
