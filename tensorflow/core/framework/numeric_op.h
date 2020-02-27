@@ -82,29 +82,7 @@ class BinaryElementWiseOp : public BinaryOp<T> {
                                 {0, 1}, 0, a.shape(), &output));
 
     // Dispatch to the descendant's Operate() function.
-    switch (a.dims()) {
-#define NDIM_CASE(NDIMS)                                                       \
-  case NDIMS: {                                                                \
-    static_cast<CHILD*>(this)->template Operate<NDIMS>(context, a, b, output); \
-    break;                                                                     \
-  }
-
-      NDIM_CASE(0);
-      NDIM_CASE(1);
-      NDIM_CASE(2);
-      NDIM_CASE(3);
-      NDIM_CASE(4);
-      NDIM_CASE(5);
-      NDIM_CASE(6);
-      NDIM_CASE(7);
-      NDIM_CASE(8);
-#undef NDIM_CASE
-
-      default:
-        context->SetStatus(errors::InvalidArgument(
-            "We only handle up to Tensor::dims() up to 8, not ", a.dims()));
-        break;
-    }
+    static_cast<CHILD*>(this)->Operate(context, a, b, output);
   }
 };
 

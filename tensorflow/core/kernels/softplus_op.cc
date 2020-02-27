@@ -50,31 +50,20 @@ class SoftplusGradOp
   explicit SoftplusGradOp(OpKernelConstruction* context)
       : BinaryElementWiseOp<T, SoftplusGradOp<Device, T>>(context) {}
 
-  void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
-                         const Tensor& a, Tensor* output);
-
   // INPUTS:
   //   g (gradients): backpropagated gradients
   //   a (inputs): inputs that were passed to SoftplusOp()
   // OUTPUT:
   //   gradients to backprop
-  template <int NDIMS>
   void Operate(OpKernelContext* context, const Tensor& g, const Tensor& a,
                Tensor* output) {
-    OperateNoTemplate(context, g, a, output);
+    OP_REQUIRES(context, a.IsSameSize(g),
+                errors::InvalidArgument("g and a must be the same size"));
+    functor::SoftplusGrad<Device, T> functor;
+    functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
+            output->flat<T>());
   }
 };
-template <typename Device, typename T>
-void SoftplusGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
-                                                  const Tensor& g,
-                                                  const Tensor& a,
-                                                  Tensor* output) {
-  OP_REQUIRES(context, a.IsSameSize(g),
-              errors::InvalidArgument("g and a must be the same size"));
-  functor::SoftplusGrad<Device, T> functor;
-  functor(context->eigen_device<Device>(), g.flat<T>(), a.flat<T>(),
-          output->flat<T>());
-}
 
 #define REGISTER_KERNELS(type)                                           \
   REGISTER_KERNEL_BUILDER(                                               \
