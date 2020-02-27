@@ -39,7 +39,6 @@ from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sort_ops
-from tensorflow.python.ops.parallel_for import control_flow_ops as parallel_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
@@ -50,6 +49,10 @@ from tensorflow.python.util import nest
 input_lib = lazy_loader.LazyLoader(
     'input_lib', globals(),
     'tensorflow.python.distribute.input_lib')
+parallel_ops = lazy_loader.LazyLoader(
+    'parallel_ops', globals(),
+     'tensorflow.python.ops.parallel_for.control_flow_ops'
+)
 
 
 UNSPECIFIED = object()
