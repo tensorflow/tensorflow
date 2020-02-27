@@ -509,9 +509,7 @@ cc_library(
 cc_library(
     name = "resource",
     textual_hdrs = ["resource.h"],
-    deps = [
-        ":stringpiece",
-    ] + tf_resource_deps(),
+    deps = tf_resource_deps(),
 )
 
 cc_library(
