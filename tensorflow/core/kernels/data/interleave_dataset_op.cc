@@ -172,7 +172,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           } while (args_list_[cycle_index_].empty() && !end_of_input_);
           if (!end_of_input_) {
             TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-                ctx, args_list_[cycle_index_], /*cycle_index_,*/out_index->iterator_id(),
+                ctx, args_list_[cycle_index_], out_index->iterator_id(),
                 *instantiated_captured_func_, prefix(),
                 &current_elements_[cycle_index_].iterator));
             current_elements_[cycle_index_].index = out_index;

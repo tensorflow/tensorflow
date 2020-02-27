@@ -212,7 +212,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             (slices_.front()->start + offset) % this->dataset()->buffer_size_;
         *out_tensors = std::move(std::get<0>(buffer_[index]));
         EparallaxTensorIndex* parent_index = std::get<1>(buffer_[index]);
-        LOG(INFO) << *parent_index;
         parent_indices->push_back(parent_index);
         this->RecordBufferDequeue(ctx, *out_tensors);
         std::swap(

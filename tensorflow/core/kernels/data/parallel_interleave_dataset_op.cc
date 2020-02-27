@@ -255,7 +255,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       std::shared_ptr<Result> result;
       {
         mutex_lock l(*mu_);
-        EnsureThreadsStarted(ctx, parent_indices);
+        EnsureThreadsStarted(ctx);
         while (!Consume(&result)) {
           RecordStop(ctx);
           cond_var_->wait(l);
@@ -268,6 +268,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
       if (result->status.ok()) {
         *out_tensors = std::move(result->return_values);
+        parent_indices->push_back(result->index);
         RecordBufferDequeue(ctx, *out_tensors);
       }
       *end_of_sequence = false;
@@ -329,6 +330,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     struct Result {
       Status status;
       std::vector<Tensor> return_values;
+      EparallaxTensorIndex* index;
       // Indicates whether the result is ready to be consumed.
       bool is_ready = false;
     };
@@ -343,6 +345,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       int64 id;
       // The actual input element.
       std::vector<Tensor> inputs;
+
+      EparallaxTensorIndex* index;
       // Iterator created from the input element.
       std::unique_ptr<IteratorBase> iterator;
       mutex mu;
@@ -396,6 +400,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             if (element->results.front()->is_ready) {
               // We found a result.
               std::swap(*result, element->results.front());
+              (*result)->index = element->index;
               element->results.pop_front();
               AdvancePosition();
               cond_var_->notify_all();
@@ -441,7 +446,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // asynchronously fetching results from existing iterators.
     //
     // This method runs in the `current_elements_manager_` background thread.
-    void CurrentElementsManager(const std::shared_ptr<IteratorContext>& ctx, std::vector<EparallaxTensorIndex*>* parent_indices) {
+    void CurrentElementsManager(const std::shared_ptr<IteratorContext>& ctx) {
       RecordStart(ctx.get());
       auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
       auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
@@ -494,7 +499,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                current_elements_[idx]->iterator.get());
               }
             } else {
-              current_elements_[idx] = MakeElement(ctx, parent_indices);
+              current_elements_[idx] = MakeElement(ctx);
               if (!current_elements_[idx]) {
                 continue;
               }
@@ -540,19 +545,19 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void EnsureThreadsStarted(IteratorContext* ctx, std::vector<EparallaxTensorIndex*>* parent_indices)
+    void EnsureThreadsStarted(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!current_elements_manager_) {
         auto new_ctx = std::make_shared<IteratorContext>(*ctx);
         current_elements_manager_ = ctx->StartThread(
             kTFDataParallelInterleaveCurrent,
-            [this, new_ctx, parent_indices]() { CurrentElementsManager(new_ctx, parent_indices); });
+            [this, new_ctx]() { CurrentElementsManager(new_ctx); });
       }
       if (!future_elements_manager_) {
         auto new_ctx = std::make_shared<IteratorContext>(*ctx);
         future_elements_manager_ = ctx->StartThread(
             kTFDataParallelInterleaveFuture,
-            [this, new_ctx, parent_indices]() { FutureElementsManager(new_ctx, parent_indices); });
+            [this, new_ctx]() { FutureElementsManager(new_ctx); });
       }
     }
 
@@ -596,7 +601,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // asynchronously fetching results from existing iterators.
     //
     // This method runs in the `future_elements_manager_` background thread.
-    void FutureElementsManager(const std::shared_ptr<IteratorContext>& ctx, std::vector<EparallaxTensorIndex*>* parent_indices) {
+    void FutureElementsManager(const std::shared_ptr<IteratorContext>& ctx) {
       RecordStart(ctx.get());
       auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
       auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
@@ -621,7 +626,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         }
 
         while (!end_of_input_ && !busy()) {
-          std::shared_ptr<Element> element = MakeElement(ctx, parent_indices);
+          std::shared_ptr<Element> element = MakeElement(ctx);
           if (!element) {
             break;
           }
@@ -644,12 +649,15 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // Creates a new element.
     std::shared_ptr<Element> MakeElement(
-        const std::shared_ptr<IteratorContext>& ctx, std::vector<EparallaxTensorIndex*>* parent_indices)
+        const std::shared_ptr<IteratorContext>& ctx)
         EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       auto element = std::make_shared<Element>();
       element->id = element_id_counter_++;
-      Status status =
-          this->GetNextFromInput(input_impl_, ctx.get(), &element->inputs, &end_of_input_, parent_indices);
+      Status status;
+      do {
+        status = input_impl_->GetNext(
+            ctx.get(), &element->inputs, &end_of_input_, element->index);
+      } while (status.ok() && !end_of_input_ && element->inputs.empty());
       if (!status.ok()) {
         auto result = std::make_shared<Result>();
         result->is_ready = true;
@@ -660,7 +668,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       }
       if (!end_of_input_) {
         Status status = MakeIteratorFromInputElement(
-            ctx.get(), element->inputs, element->id,
+            ctx.get(), element->inputs, element->index->ToString(),
             *instantiated_captured_func_, prefix(), &element->iterator);
         if (!status.ok()) {
           auto result = std::make_shared<Result>();
