@@ -620,6 +620,7 @@ class Timeline(object):
   def _preprocess_op_time(self, op_time):
     """Modified the start and end of ops in step stats"""
     if op_time == "schedule":
+      self._step_stats = self._origin_step_stats
       return
     self._step_stats = copy.deepcopy(self._origin_step_stats)
     # Separate job task and gpu tracer stream
