@@ -805,17 +805,20 @@ int64 MinSystemMemory(int64 available_memory) {
   // We use the following heuristic for now:
   //
   // If the available_memory is < 2GiB, we allocate 225MiB to system memory.
-  // Otherwise, allocate max(300MiB, 0.05 * available_memory) to system memory.
+  // Otherwise, allocate max(300MiB, kMinSystemMemoryFraction *
+  // available_memory) to system memory.
   //
   // In the future we could be more sophisticated by using a table of devices.
   int64 min_system_memory;
+  constexpr float kMinSystemMemoryFraction = 0.06;
   if (available_memory < (1LL << 31)) {
     // 225MiB
     min_system_memory = 225 * 1024 * 1024;
   } else {
-    // max(300 MiB, 0.05 * available_memory)
-    min_system_memory =
-        std::max(int64{314572800}, static_cast<int64>(available_memory * 0.05));
+    // max(300 MiB, kMinSystemMemoryFraction * available_memory)
+    min_system_memory = std::max(
+        int64{314572800},
+        static_cast<int64>(available_memory * kMinSystemMemoryFraction));
   }
 #if defined(__GNUC__) && defined(__OPTIMIZE__)
 // Do nothing
