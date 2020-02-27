@@ -5224,6 +5224,15 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(list(image0.shape), [40, 20, 3])
       self.assertAllEqual(image0, image1)
 
+  def testResizeImageWithRatio(self):
+    with self.cached_session(use_gpu=True) as sess:
+      base = "tensorflow/core/lib/jpeg/testdata"
+      jpeg = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
+      image = image_ops.decode_image(jpeg, dtype=dtypes.float32)
+      shape = ops.convert_to_tensor([80, 80])
+      resized_image = image_ops.resize_images_v2(image, shape, preserve_aspect_ratio=True)
+      resized_image = sess.run(resized_image)
+      self.assertAllEqual(list(resized_image.shape), [80, 80, 3])
 
 if __name__ == "__main__":
   googletest.main()
