@@ -23,6 +23,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.Arrays;
+import org.tensorflow.lite.annotations.UsedByReflection;
 
 /**
  * A typed multi-dimensional array used in Tensorflow Lite.
@@ -69,6 +70,7 @@ public final class Tensor {
      * @param scale The scale value used in quantization.
      * @param zeroPoint The zero point value used in quantization.
      */
+    @UsedByReflection("tensor_jni.cc")
     public QuantizationParams(final float scale, final int zeroPoint) {
       this.scale = scale;
       this.zeroPoint = zeroPoint;
