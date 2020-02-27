@@ -183,3 +183,47 @@ func @iota.const.6() -> tensor<2x3x4xi32> {
   // CHECK-NEXT: return %[[CST]] : tensor<2x3x4xi32>
   return %0 : tensor<2x3x4xi32>
 }
+
+// CHECK-LABEL: func @iota.const.f32
+func @iota.const.f32() -> tensor<4xf32> {
+  // CHECK-NEXT: %[[CST:.*]] = constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf32>
+  %0 = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xf32>
+  // CHECK-NEXT: return %[[CST]] : tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @iota.const.f64
+func @iota.const.f64() -> tensor<4xf64> {
+  // CHECK-NEXT: %[[CST:.*]] = constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf64>
+  %0 = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xf64>
+  // CHECK-NEXT: return %[[CST]] : tensor<4xf64>
+  return %0 : tensor<4xf64>
+}
+
+// CHECK-LABEL: func @iota.const.bf16
+func @iota.const.bf16() -> tensor<4xbf16> {
+  // CHECK-NEXT: %[[CST:.*]] = constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xbf16>
+  %0 = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xbf16>
+  // CHECK-NEXT: return %[[CST]] : tensor<4xbf16>
+  return %0 : tensor<4xbf16>
+}
+
+// CHECK-LABEL: func @iota.const.complex.f32
+func @iota.const.complex.f32() -> tensor<4xcomplex<f32>> {
+  // CHECK-NEXT: [[REAL:%.*]] = constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf32>
+  // CHECK-NEXT: [[IMAG:%.*]] = constant dense<0.000000e+00> : tensor<4xf32>
+  // CHECK-NEXT: [[COMPLEX:%.*]] = "xla_hlo.complex"([[REAL]], [[IMAG]])
+  %0 = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xcomplex<f32>>
+  // CHECK-NEXT: return [[COMPLEX]] : tensor<4xcomplex<f32>>
+  return %0 : tensor<4xcomplex<f32>>
+}
+
+// CHECK-LABEL: func @iota.const.complex.f64
+func @iota.const.complex.f64() -> tensor<4xcomplex<f64>> {
+  // CHECK-NEXT: [[REAL:%.*]] = constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf64>
+  // CHECK-NEXT: [[IMAG:%.*]] = constant dense<0.000000e+00> : tensor<4xf64>
+  // CHECK-NEXT: [[COMPLEX:%.*]] = "xla_hlo.complex"([[REAL]], [[IMAG]])
+  %0 = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xcomplex<f64>>
+  // CHECK-NEXT: return [[COMPLEX]] : tensor<4xcomplex<f64>>
+  return %0 : tensor<4xcomplex<f64>>
+}

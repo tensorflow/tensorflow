@@ -105,6 +105,10 @@ class CompareFConvert : public OpRewritePattern<xla_hlo::CompareOp> {
   }
 };
 
+// Replace IotaOp with an integer constant. A ConvertOp is added to
+// convert the integer constant to iota result type. For complex types, the real
+// part is replaced with the generated constant and the imaginary part is
+// replaced with zero tensor.
 class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -112,14 +116,18 @@ class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
   PatternMatchResult matchAndRewrite(xla_hlo::IotaOp op,
                                      PatternRewriter &rewriter) const override {
     auto output_type = op.getType().cast<ShapedType>();
-    // TODO(prakalps): Handle FP and ComplexType iota ops.
-    if (!output_type.getElementType().isSignlessInteger())
-      return matchFailure();
     auto output_size = output_type.getNumElements();
     auto dimension = op.iota_dimension().getSExtValue();
     auto max_dim_size = output_type.getDimSize(dimension);
-    int bitwidth = output_type.getElementType().getIntOrFloatBitWidth();
 
+    auto element_type = output_type.getElementType();
+    int bitwidth;
+
+    auto complex_ty = element_type.dyn_cast<ComplexType>();
+    Type int_or_float_ty = element_type;
+    if (complex_ty) int_or_float_ty = complex_ty.getElementType();
+
+    bitwidth = int_or_float_ty.getIntOrFloatBitWidth();
     llvm::SmallVector<APInt, 10> values;
     values.reserve(output_size);
 
@@ -135,8 +143,33 @@ class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
       ++current_value;
     }
 
-    rewriter.replaceOpWithNewOp<mlir::ConstantOp>(
-        op, DenseIntElementsAttr::get(output_type, values));
+    auto int_shape_type = RankedTensorType::get(
+        output_type.getShape(),
+        IntegerType::get(bitwidth, rewriter.getContext()));
+    auto loc = op.getLoc();
+    auto integer_const = rewriter.create<mlir::ConstantOp>(
+        loc, DenseIntElementsAttr::get(int_shape_type, values));
+
+    auto int_or_float_shape_ty =
+        RankedTensorType::get(output_type.getShape(), int_or_float_ty);
+
+    auto iota_const =
+        rewriter.create<ConvertOp>(loc, int_or_float_shape_ty, integer_const);
+
+    // For int/float types we are done, replace op and return.
+    if (!complex_ty) {
+      rewriter.replaceOp(op, iota_const.getResult());
+      return matchSuccess();
+    }
+
+    // For complex types, generate a constant tensor of zeroes for the imaginary
+    // part and use iota_const for real part.
+    auto zeroes = rewriter.create<mlir::ConstantOp>(
+        loc, DenseIntElementsAttr::get(int_shape_type, APInt(bitwidth, 0)));
+    auto imag_zeroes =
+        rewriter.create<ConvertOp>(loc, int_or_float_shape_ty, zeroes);
+    rewriter.replaceOpWithNewOp<xla_hlo::ComplexOp>(op, iota_const,
+                                                    imag_zeroes);
     return matchSuccess();
   }
 };
