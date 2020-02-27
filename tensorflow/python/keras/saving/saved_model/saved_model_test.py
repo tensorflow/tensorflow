@@ -27,7 +27,6 @@ from __future__ import print_function
 import os
 import shutil
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.example import example_pb2
@@ -50,7 +49,6 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import save_impl as keras_save
-from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -746,129 +744,6 @@ class TestLayerCallTracing(test.TestCase):
     fn(np.ones((2, 3)))
 
     self.assertAllEqual(previous_losses, layer.losses)
-
-
-@test_util.run_all_in_graph_and_eager_modes
-class MetricTest(test.TestCase, parameterized.TestCase):
-
-  def _save_model_dir(self, dirname='saved_model'):
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
-    return os.path.join(temp_dir, dirname)
-
-  def generate_inputs(self, num_tensor_args, shape=(1, 5)):
-    return [
-        np.random.uniform(0, 1, shape).astype('float32')
-        for _ in range(num_tensor_args)
-    ]
-
-  def _test_metric_save_and_load(self,
-                                 metric,
-                                 save_dir,
-                                 num_tensor_args,
-                                 shape=(1, 5),
-                                 test_sample_weight=True):
-    tf_save.save(metric, save_dir)
-    loaded = keras_load.load(save_dir)
-    self.evaluate([v.initializer for v in loaded.variables])
-    self.assertEqual(metric.name, loaded.name)
-    self.assertEqual(metric.dtype, loaded.dtype)
-
-    inputs = self.generate_inputs(num_tensor_args, shape)
-    actual = self.evaluate(metric(*inputs))
-    self.assertAllClose(actual, loaded(*inputs))
-    self.assertAllClose(metric.variables, loaded.variables)
-
-    # Test with separate calls to update state and result.
-    inputs = self.generate_inputs(num_tensor_args, shape)
-    self.evaluate(metric.update_state(*inputs))
-    self.evaluate(loaded.update_state(*inputs))
-    actual = self.evaluate(metric.result())
-    self.assertAllClose(actual, loaded.result())
-
-    if test_sample_weight:
-      # Test with sample weights input.
-      inputs = self.generate_inputs(num_tensor_args, shape)
-      sample_weight = self.generate_inputs(1, [])[0]
-      inputs.append(sample_weight)
-
-      actual = self.evaluate(metric(*inputs))
-      self.assertAllClose(actual, loaded(*inputs))
-    return loaded
-
-  @parameterized.named_parameters([
-      ('mean', keras.metrics.Mean, 1, (1, 5)),
-      ('false_positives', keras.metrics.FalsePositives, 2, (1, 5)),
-      ('precision_at_top_k', keras.metrics.Precision, 2, (2, 3, 4), {
-          'top_k': 2,
-          'class_id': 1
-      }),
-      ('precision_at_recall', keras.metrics.PrecisionAtRecall, 2, (1, 5), {
-          'recall': .8
-      }), ('auc', keras.metrics.AUC, 2, (1, 5), {
-          'multi_label': True
-      }), ('cosine_similarity', keras.metrics.CosineSimilarity, 2, (2, 3, 1))
-  ])
-  def test_metric(self, metric_cls, num_tensor_args, shape, init_kwargs=None):
-    init_kwargs = init_kwargs or {}
-    metric = metric_cls(**init_kwargs)
-    metric(*self.generate_inputs(num_tensor_args, shape))
-    self.evaluate([v.initializer for v in metric.variables])
-    loaded = self._test_metric_save_and_load(metric, self._save_model_dir(),
-                                             num_tensor_args, shape)
-    self.assertEqual(type(loaded), type(metric))
-
-  @parameterized.named_parameters([
-      ('mean', keras.metrics.Mean, 1, False),
-      ('auc', keras.metrics.AUC, 2, False),
-      ('mean_tensor', keras.metrics.MeanTensor, 1, True)])
-  def test_custom_metric(self, base_cls, num_tensor_args, requires_build):
-
-    class CustomMetric(base_cls):
-
-      def update_state(self, *args):  # pylint: disable=useless-super-delegation
-        # Sometimes built-in metrics return an op in update_state. Custom
-        # metrics don't support returning ops, so wrap the update_state method
-        # while returning nothing.
-        super(CustomMetric, self).update_state(*args)
-
-    metric = CustomMetric()
-    save_dir = self._save_model_dir('first_save')
-
-    if requires_build:
-      metric(*self.generate_inputs(num_tensor_args))  # pylint: disable=not-callable
-
-    self.evaluate([v.initializer for v in metric.variables])
-
-    with self.assertRaisesRegexp(ValueError, 'Unable to restore custom object'):
-      self._test_metric_save_and_load(metric, save_dir, num_tensor_args)
-    with generic_utils.CustomObjectScope({'CustomMetric': CustomMetric}):
-      loaded = self._test_metric_save_and_load(
-          metric,
-          save_dir,
-          num_tensor_args,
-          test_sample_weight=False)
-
-      self._test_metric_save_and_load(
-          loaded,
-          self._save_model_dir('second_save'),
-          num_tensor_args,
-          test_sample_weight=False)
-
-  def test_custom_metric_wrapped_call(self):
-
-    class NegativeMean(keras.metrics.Mean):
-
-      @def_function.function(
-          input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
-      def update_state(self, value):
-        super(NegativeMean, self).update_state(-value)
-
-    metric = NegativeMean()
-    self.evaluate([v.initializer for v in metric.variables])
-    with generic_utils.CustomObjectScope({'NegativeMean': NegativeMean}):
-      self._test_metric_save_and_load(
-          metric, self._save_model_dir(), 1, test_sample_weight=False)
 
 
 if __name__ == '__main__':

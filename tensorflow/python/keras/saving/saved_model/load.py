@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-import types
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as defun
@@ -33,7 +32,6 @@ from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.keras.saving.saved_model.serialized_attributes import CommonEndpoints
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import nested_structure_coder
@@ -71,8 +69,6 @@ training_lib = LazyLoader(
 training_lib_v1 = LazyLoader(
     "training_lib_v1", globals(),
     "tensorflow.python.keras.engine.training_v1")
-metrics = LazyLoader("metrics", globals(),
-                     "tensorflow.python.keras.metrics")
 # pylint:enable=g-inconsistent-quotes
 
 
@@ -81,9 +77,9 @@ PUBLIC_ATTRIBUTES = CommonEndpoints.all_functions.union(
 PUBLIC_ATTRIBUTES.add(constants.KERAS_ATTR)
 
 
-KERAS_OBJECT_IDENTIFIERS = ('_tf_keras_layer', '_tf_keras_input_layer',
-                            '_tf_keras_network', '_tf_keras_model',
-                            '_tf_keras_sequential', '_tf_keras_metric')
+KERAS_OBJECT_IDENTIFIERS = (
+    '_tf_keras_layer', '_tf_keras_input_layer', '_tf_keras_network',
+    '_tf_keras_model', '_tf_keras_sequential')
 
 
 def load(path, compile=True):  # pylint: disable=redefined-builtin
@@ -183,20 +179,6 @@ class KerasObjectLoader(tf_load.Loader):
 
     super(KerasObjectLoader, self).__init__(*args, **kwargs)
 
-    # Now that the node object has been fully loaded, and the checkpoint has
-    # been restored, the object no longer needs to track objects added from
-    # SerializedAttributes. (Note that saving a training checkpoint still
-    # functions correctly, because layers and variables are tracked separately
-    # by the Layer object.)
-    # TODO(kathywu): Instead of outright deleting these nodes (which would
-    # make restoring from a different checkpoint tricky), mark them as extra
-    # dependencies that are OK to overwrite.
-    for node in self._nodes:
-      if not isinstance(node, base_layer.Layer):
-        continue
-      for name in PUBLIC_ATTRIBUTES:
-        delete_tracking(node, name)
-
   def _load_all(self):
     """Reconstruct the object graph from the SavedModel."""
     # Load layer and model objects from either config or SavedModel. The objects
@@ -209,6 +191,19 @@ class KerasObjectLoader(tf_load.Loader):
 
     # Finish setting up layers and models. See function docstring for more info.
     self._finalize_objects()
+
+    # Now that the node object has been fully loaded, the object no longer needs
+    # to track objects added from SerializedAttributes. (Note that saving a
+    # training checkpoint still functions correctly, because layers and
+    # variables are tracked separately by the Layer object.)
+    # TODO(kathywu): Instead of outright deleting these nodes (which would
+    # make restoring from a different checkpoint tricky), mark them as extra
+    # dependencies that are OK to overwrite.
+    for node in self._nodes:
+      if not isinstance(node, base_layer.Layer):
+        continue
+      for name in PUBLIC_ATTRIBUTES:
+        delete_tracking(node, name)
 
   @property
   def _expect_partial_checkpoint(self):
@@ -235,30 +230,10 @@ class KerasObjectLoader(tf_load.Loader):
       return
     self._traversed_nodes_from_config.append(node_id)
     obj._maybe_initialize_trackable()
-    if isinstance(obj, base_layer.Layer) and not obj.built:
-      metadata = json_utils.decode(proto.user_object.metadata)
-      self._try_build_layer(obj, node_id, metadata.get('build_input_shape'))
 
-    # Create list of all possible children
-    children = []
-    # Look for direct children
     for reference in proto.children:
       obj_child = obj._lookup_dependency(reference.local_name)
-      children.append((obj_child, reference.node_id))
-
-    # Add metrics that may have been added to the layer._metrics list.
-    # This is stored in the SavedModel as layer.keras_api.layer_metrics in
-    # SavedModels created after Tf 2.2.
-    metric_list_node_id = self._search_for_child_node(
-        node_id, [constants.KERAS_ATTR, 'layer_metrics'], raise_error=False)
-    if metric_list_node_id is not None and hasattr(obj, '_metrics'):
-      obj_metrics = {m.name: m for m in obj._metrics}
-      for reference in self._proto.nodes[metric_list_node_id].children:
-        metric = obj_metrics.get(reference.local_name)
-        if metric is not None:
-          children.append((metric, reference.node_id))
-
-    for (obj_child, child_id) in children:
+      child_id = reference.node_id
       child_proto = self._proto.nodes[child_id]
 
       if not isinstance(obj_child, trackable.Trackable):
@@ -288,23 +263,10 @@ class KerasObjectLoader(tf_load.Loader):
 
   def _load_layers(self):
     layers = {}
-
-    # Load metrics after models and layers, since it's likely that models
-    # and layers will create the metric when initialized (this avoids wasting
-    # time by creating objects multiple times).
-    metric_list = []
     for node_id, proto in enumerate(self._proto.nodes):
-      if (proto.WhichOneof('kind') != 'user_object' or
-          proto.user_object.identifier not in KERAS_OBJECT_IDENTIFIERS):
-        continue
-      if proto.user_object.identifier == '_tf_keras_metric':
-        metric_list.append((node_id, proto))
-        continue
-
-      layers[node_id] = self._load_layer(proto.user_object, node_id)
-
-    for node_id, proto in metric_list:
-      layers[node_id] = self._load_layer(proto.user_object, node_id)
+      if (proto.WhichOneof('kind') == 'user_object' and
+          proto.user_object.identifier in KERAS_OBJECT_IDENTIFIERS):
+        layers[node_id] = self._load_layer(proto.user_object, node_id)
     return layers
 
   def _load_layer(self, proto, node_id):
@@ -314,6 +276,8 @@ class KerasObjectLoader(tf_load.Loader):
     # If node was already created
     if node_id in self._nodes_recreated_from_config:
       node, setter = self._nodes_recreated_from_config[node_id]
+
+      self._try_build_layer(node, node_id, metadata.get('build_input_shape'))
 
       # Revive setter requires the object to have a `_serialized_attributes`
       # property. Add it here.
@@ -327,7 +291,7 @@ class KerasObjectLoader(tf_load.Loader):
 
     # Detect whether this object can be revived from the config. If not, then
     # revive from the SavedModel instead.
-    obj, setter = self._revive_from_config(proto.identifier, metadata, node_id)
+    obj, setter = self._revive_from_config(metadata, node_id)
     if obj is None:
       obj, setter = revive_custom_object(proto.identifier, metadata)
 
@@ -338,15 +302,10 @@ class KerasObjectLoader(tf_load.Loader):
     _maybe_add_serialized_attributes(obj, metadata)
     return obj, setter
 
-  def _revive_from_config(self, identifier, metadata, node_id):
+  def _revive_from_config(self, metadata, node_id):
     """Revives a layer/model from config, or returns None."""
-    if identifier == '_tf_keras_metric':
-      obj = self._revive_metric_from_config(metadata, node_id)
-    else:
-      obj = (
-          self._revive_graph_network(metadata, node_id) or
-          self._revive_layer_from_config(metadata, node_id))
-
+    obj = (self._revive_graph_network(metadata, node_id) or
+           self._revive_layer_from_config(metadata, node_id))
     if obj is None:
       return None, None
 
@@ -423,25 +382,6 @@ class KerasObjectLoader(tf_load.Loader):
 
     return obj
 
-  def _revive_metric_from_config(self, metadata, node_id):
-    class_name = compat.as_str(metadata['class_name'])
-    config = metadata.get('config')
-
-    if not generic_utils.validate_config(config):
-      return None
-
-    try:
-      obj = metrics.deserialize(
-          generic_utils.serialize_keras_class_and_config(class_name, config))
-    except ValueError:
-      return None
-
-    build_input_shape = metadata.get('build_input_shape')
-    if build_input_shape is not None and hasattr(obj, '_build'):
-      obj._build(build_input_shape)  # pylint: disable=protected-access
-
-    return obj
-
   def _try_build_layer(self, obj, node_id, build_input_shape):
     """Attempts to build the layer."""
     if obj.built or hasattr(obj.build, '_is_default'):
@@ -484,18 +424,16 @@ class KerasObjectLoader(tf_load.Loader):
           node_id in self.model_layer_dependencies):
         continue
 
-      self._unblock_model_reconstruction(node_id, node)
-
+      # No need to apply the finalizing steps to input layers.
       if isinstance(node, input_layer.InputLayer):
-        continue
-      elif isinstance(node, metrics.Metric):
+        self._unblock_model_reconstruction(node_id, node)
         continue
 
       if node_id in self._nodes_recreated_from_config:
         layers_revived_from_config.append(node)
       else:
         layers_revived_from_saved_model.append(node)
-
+      self._unblock_model_reconstruction(node_id, node)
     _finalize_saved_model_layers(layers_revived_from_saved_model)
     _finalize_config_layers(layers_revived_from_config)
 
@@ -565,63 +503,29 @@ class KerasObjectLoader(tf_load.Loader):
     self._unblock_model_reconstruction(model_id, model)
 
   def _get_child_layer_node_ids(self, node_id, name):
-    """Returns the node ids of the children layers of a node."""
-    # Retrieve the node id of layer.keras_api.layers.
-    layer_list = self._search_for_child_node(
-        node_id, [constants.KERAS_ATTR, 'layers'], name)
-    return [node.node_id for node in self._proto.nodes[layer_list].children]
+    # First, retrieve the node.keras_api.layers attribute, which is a list of
+    # all the layers in the node.
+    keras_attr = self._search_for_child_node(node_id, constants.KERAS_ATTR,
+                                             name)
+    layers_node = self._search_for_child_node(keras_attr, 'layers', name)
+    return [node.node_id for node in self._proto.nodes[layers_node].children]
 
-  def _search_for_child_node(
-      self, parent_id, path_to_child, debugging_name=None, raise_error=True):
-    """Returns node id of child node.
-
-    A helper method for traversing the object graph proto.
-
-    As an example, say that the object graph proto in the SavedModel contains an
-    object with the following child and grandchild attributes:
-
-    `parent.child_a.child_b`
-
-    This method can be used to retrieve the node id of `child_b` using the
-    parent's node id by calling:
-
-    `_search_for_child_node(parent_id, ['child_a', 'child_b'])`.
-
-    Args:
-      parent_id: node id of parent node
-      path_to_child: list of children names.
-      debugging_name: the name to print out when raising an error.
-      raise_error: Whether to raise an error if the child isn't found.
-
-    Returns:
-      node_id of child, or None if child isn't found.
-
-    Raises:
-      ValueError: if child isn't found and raise_error is True.
-    """
-    if not path_to_child:
-      return parent_id
-
-    for child in self._proto.nodes[parent_id].children:
-      if child.local_name == path_to_child[0]:
-        return self._search_for_child_node(child.node_id, path_to_child[1:],
-                                           debugging_name, raise_error)
-
-    if raise_error:
-      raise ValueError(
-          'Error when loading {}: could not find attribute {}.\n'
-          'Most likely this object was serialized incorrectly.'
-          .format(debugging_name or path_to_child[0], path_to_child[0]))
-    else:
-      return None
+  def _search_for_child_node(self, node_id, child_name, debugging_name):
+    for child in self._proto.nodes[node_id].children:
+      if child.local_name == child_name:
+        return child.node_id
+    raise ValueError(
+        'Error when loading {}: could not find attribute {}.\n'
+        'Most likely this object was serialized incorrectly.'
+        .format(debugging_name, child_name))
 
   def _infer_inputs(self, layer_node_id, convert_to_shapes=False):
     """Infers input shape of layer from SavedModel functions."""
     coder = nested_structure_coder.StructureCoder()
-    call_fn_id = self._search_for_child_node(
-        layer_node_id, ['call_and_return_all_conditional_losses'], None,
-        raise_error=False)
-    if call_fn_id is None:
+    try:
+      call_fn_id = self._search_for_child_node(
+          layer_node_id, 'call_and_return_all_conditional_losses', None)
+    except ValueError:
       return None
 
     concrete_functions = (
@@ -675,10 +579,6 @@ def _finalize_saved_model_layers(layers):
     # 3. Add losses that aren't generated by the layer.call function.
     _restore_layer_unconditional_losses(layer)
     _restore_layer_activation_loss(layer)
-
-    # 4. Restore metrics list
-    _restore_layer_metrics(layer)
-
   # pylint: enable=protected-access
 
 
@@ -699,15 +599,6 @@ def _finalize_config_layers(layers):
     # TODO(kathywu): Investigate ways to improve the config to ensure consistent
     # loading behavior between HDF5 and SavedModel.
     _restore_layer_activation_loss(layer)
-
-    # Restore metrics list.
-    _restore_layer_metrics(layer)
-
-
-def _finalize_metric(metric):
-  metric.update_state = types.MethodType(metrics_utils.update_state_wrapper(
-      metric.keras_api.update_state), metric)
-  metric.result = metric.keras_api.result
 
 
 def _restore_layer_unconditional_losses(layer):
@@ -750,7 +641,7 @@ def revive_custom_object(identifier, metadata):
       '_tf_keras_input_layer': (RevivedInputLayer, input_layer.InputLayer),
       '_tf_keras_network': (RevivedNetwork, network_lib.Network),
       '_tf_keras_model': (RevivedNetwork, model_class),
-      '_tf_keras_sequential': (RevivedNetwork, models_lib.Sequential),
+      '_tf_keras_sequential': (RevivedNetwork, models_lib.Sequential)
   }
 
   parent_classes = revived_classes.get(identifier, None)
@@ -760,21 +651,6 @@ def revive_custom_object(identifier, metadata):
     revived_cls = type(
         compat.as_str(metadata['class_name']), parent_classes, {})
     return revived_cls._init_from_metadata(metadata)  # pylint: disable=protected-access
-  else:
-    raise ValueError('Unable to restore custom object of type {} currently. '
-                     'Please make sure that the layer implements `get_config`'
-                     'and `from_config` when saving. In addition, please use '
-                     'the `custom_objects` arg when calling `load_model()`.'
-                     .format(identifier))
-
-
-def _restore_layer_metrics(layer):
-  metrics_list = getattr(_get_keras_attr(layer), 'layer_metrics', {})
-  layer_metrics = {m.name: m for m in layer._metrics}  # pylint: disable=protected-access
-  for name, metric in metrics_list.items():
-    if name not in layer_metrics:
-      # Metrics may be added during initialization/building of custom layers.
-      layer._metrics.append(metric)  # pylint: disable=protected-access
 
 
 # TODO(kathywu): Centrally define keys and functions for both  serialization and

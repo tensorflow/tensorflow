@@ -90,8 +90,6 @@ class CustomLayerNoConfig(keras.layers.Layer):
     def a_regularizer():
       return self.a * 2
     self.add_loss(a_regularizer)
-    self.sum_metric = keras.metrics.Sum(name='inputs_sum')
-    self.unused_metric = keras.metrics.Sum(name='not_added_to_metrics')
 
   def build(self, input_shape):
     self.c = variables.Variable(
@@ -99,9 +97,6 @@ class CustomLayerNoConfig(keras.layers.Layer):
 
   def call(self, inputs):
     self.add_loss(math_ops.reduce_sum(inputs), inputs)
-    self.add_metric(self.sum_metric(inputs))
-    self.add_metric(inputs, aggregation='mean', name='mean')
-
     return inputs + self.c
 
 
@@ -148,9 +143,6 @@ class TestModelRevive(keras_parameterized.TestCase):
     self.assertAllClose(model(input_arr), revived(input_arr))
     self.assertAllClose(sum(model.losses), sum(revived.losses))
     self.assertAllClose(len(model.losses), len(revived.losses))
-    self.assertEqual(len(model.metrics), len(revived.metrics))
-    self.assertAllClose([m.result() for m in model.metrics],
-                        [m.result() for m in revived.metrics])
     model_layers = {layer.name: layer for layer in model.layers}
     revived_layers = {layer.name: layer for layer in revived.layers}
     self.assertAllEqual(model_layers.keys(), revived_layers.keys())
