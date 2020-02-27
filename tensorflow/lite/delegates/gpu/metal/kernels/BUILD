@@ -750,6 +750,7 @@ ios_unit_test(
     name = "space_to_depth_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
