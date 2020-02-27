@@ -1851,6 +1851,24 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mlir_runner_utils_header",
+    hdrs = [
+        "include/mlir/ExecutionEngine/RunnerUtils.h",
+    ],
+    includes = ["include"],
+)
+
+cc_library(
+    name = "mlir_runner_utils",
+    srcs = [
+        "lib/ExecutionEngine/RunnerUtils.cpp",
+    ],
+    deps = [
+        ":mlir_runner_utils_header",
+    ],
+)
+
 cc_binary(
     name = "mlir-cpu-runner",
     srcs = ["tools/mlir-cpu-runner/mlir-cpu-runner.cpp"],
