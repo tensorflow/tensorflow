@@ -121,6 +121,15 @@ void MatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ per_channel_scale,
     const int32_t* __restrict__ input_offset);
 
+// Same as the function above except that can make use of cached row sums.
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset,
+    int32_t* scratch, int32_t* row_sums, bool* compute_row_sums,
+    CpuBackendContext* context);
+
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
 //   1. A matrix array stores non-zero blocks of the matrix in row major.
@@ -200,6 +209,27 @@ void MatrixBatchVectorMultiplyAccumulate(
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
     int32_t* scratch, int8_t* output, CpuBackendContext* context);
 
+// Same as the above 8, 8, 8 integer matmul except for the presence of zero
+// point and non-accumulative.
+// TODO(b/148688698): remove this function by folding zero point calculation in
+// prepare() function.
+void MatrixBatchVectorMultiply(const int8_t* input, int32_t input_zeropoint,
+                               const int8_t* input_to_gate_weights,
+                               int32_t input_to_gate_effective_scale_a,
+                               int32_t input_to_gate_effective_scale_b,
+                               int32_t n_batch, int32_t n_input, int32_t n_cell,
+                               int8_t* gate_output, int8_t gate_output_zp);
+
+// Same as above but has 16 bit and 8 bit input and 8 bit output.
+// Used in projection when hidden is 16bit.
+void MatrixBatchVectorMultiply(const int16_t* hidden,
+                               const int8_t* hidden_to_output_weights,
+                               int32_t proj_effective_scale_a,
+                               int32_t proj_effective_scale_b,
+                               const int32_t* gate_bias, int32_t n_batch,
+                               int32_t n_hidden, int32_t n_output,
+                               int32_t output_zp, int8_t* proj_output);
+
 // Multiplies a matrix with a scalar and reduce the result on each row to a
 // scalar.
 // Parameters:
@@ -232,6 +262,13 @@ void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
                     int32_t layer_norm_scale_b, int32_t variance_limit,
                     int n_batch, int n_input, int16_t* output);
 
+// Same as above but the internal calculation is done in float.
+void ApplyLayerNormFloat(const int16_t* input,
+                         const int16_t* layer_norm_weights,
+                         int32_t layer_norm_scale_a, int32_t layer_norm_scale_b,
+                         const int32_t* bias, int n_batch, int n_input,
+                         int16_t* output);
+
 // Apply Sigmoid to a quantized vector.
 // Parameters:
 //     - input: batch vector of size n_batch * n_input; 16 bit.
@@ -241,6 +278,10 @@ void ApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
 // The input is in Q3.12 format and the output is in Q0.15 format.
 void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                   int16_t* output);
+
+// Same as above but the internal calcualtion is float.
+void ApplySigmoidFloat(const int16_t* input, int32_t n_batch, int32_t n_input,
+                       int16_t* output);
 
 // Apply Tanh to a quantized vector.
 // Parameters:
@@ -253,6 +294,12 @@ void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
 // The input is in Qm.15-m format and the output is in Q0.15 format.
 void ApplyTanh(int32_t integer_bits, const int16_t* input, int32_t n_batch,
                int32_t n_input, int16_t* output);
+
+// Apply Tanh to a quantized vector. Tbe internal calculation is in float.
+//    - Input has 2^(integer_bits) as scale.
+//    - Output has Q0.15 as scale.
+void ApplyTanhFloat(const int16_t* input, int32_t n_batch, int32_t n_input,
+                    int32_t integer_bits, int16_t* output);
 
 // Element-wise multiplication of two quantized vectors.
 // Parameters:
@@ -537,9 +584,23 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
 void ReductionSumVector(const int32_t* input_vector, int32_t* output_vector,
                         int output_size, int reduction_size);
 
+// Same as above but input is 8 bit integer.
+void ReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
+                        int output_size, int reduction_size);
+
 // Layer norm for each batch.
 void MeanStddevNormalization(const float* input_vector, float* output_vector,
                              int v_size, int n_batch);
+
+// Saturate Add with rescale on both inputs.
+void TwoGateSaturationgAdd(const int8_t* input, int8_t input_zp,
+                           const int8_t* recurrent, int8_t recurrent_zp,
+                           int32_t input_effective_scale_a,
+                           int32_t input_effective_scale_b,
+                           int32_t recurrent_effective_scale_a,
+                           int32_t recurrent_effective_scale_b, int32_t n_batch,
+                           int32_t n_cell, int16_t* output);
+
 }  // namespace tensor_utils
 }  // namespace tflite
 

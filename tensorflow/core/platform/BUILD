@@ -899,7 +899,7 @@ tf_cc_tests(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
 )
 
@@ -914,6 +914,7 @@ tf_cc_test(
         "//tensorflow/core/platform/testdata:test_stderr",
     ],
     deps = [
+        ":path",
         ":resource_loader",
         ":strcat",
         ":subprocess",

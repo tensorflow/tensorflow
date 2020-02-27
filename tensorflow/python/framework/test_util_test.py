@@ -33,6 +33,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -748,6 +749,11 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                        arg=True))
   @test_util.run_in_graph_and_eager_modes
   def test_run_in_graph_and_eager_works_with_parameterized_keyword(self, arg):
+    self.assertEqual(arg, True)
+
+  @combinations.generate(combinations.combine(arg=True))
+  @test_util.run_in_graph_and_eager_modes
+  def test_run_in_graph_and_eager_works_with_combinations(self, arg):
     self.assertEqual(arg, True)
 
   def test_build_as_function_and_v1_graph(self):

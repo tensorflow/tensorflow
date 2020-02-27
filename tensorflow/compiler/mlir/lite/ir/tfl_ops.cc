@@ -723,12 +723,11 @@ static LogicalResult Verify(PackOp op) {
   }
 
   // Make sure all inputs have the same shape and element type.
-  // TODO(rahulsp): Simplify once b/135032064 is fixed.
-  for (Value operand : op.getOperands()) {
-    auto other_type = operand.getType().cast<ShapedType>();
-    if (input_type != other_type)
+  // TODO(b/135032063): Simplify once fixed.
+  for (Type operand_type : op.getOperandTypes()) {
+    if (failed(mlir::verifyCompatibleShape(input_type, operand_type)))
       return op.emitOpError("operands should be of the same type. got ")
-             << input_type << ", " << other_type;
+             << input_type << ", " << operand_type;
   }
 
   return success();
@@ -1872,6 +1871,7 @@ LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.cc.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+#include "tensorflow/compiler/mlir/lite/runtime_verifiers.inc"
 
 Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
                                                       Attribute value,

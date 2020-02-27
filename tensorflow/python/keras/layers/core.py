@@ -1126,8 +1126,7 @@ class Dense(Layer):
       raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
     last_dim = tensor_shape.dimension_value(input_shape[-1])
-    self.input_spec = InputSpec(min_ndim=2,
-                                axes={-1: last_dim})
+    self.input_spec = InputSpec(min_ndim=2, axes={-1: last_dim})
     self.kernel = self.add_weight(
         'kernel',
         shape=[last_dim, self.units],

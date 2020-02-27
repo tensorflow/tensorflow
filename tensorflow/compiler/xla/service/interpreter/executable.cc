@@ -59,9 +59,10 @@ StatusOr<ExecutionOutput> InterpreterExecutable::ExecuteAsyncOnStream(
   std::vector<ShapedBuffer> argument_buffers;
   argument_buffers.reserve(arguments.size());
   for (const ShapeTree<MaybeOwningDeviceMemory>& arg : arguments) {
-    argument_buffers.push_back(ShapedBuffer(arg.shape(), arg.shape(),
-                                            /*platform=*/nullptr,
-                                            /*device_ordinal=*/0));
+    argument_buffers.push_back(
+        ShapedBuffer(arg.shape(), arg.shape(),
+                     /*platform=*/platform,
+                     /*device_ordinal=*/executor->device_ordinal()));
     auto in_it = arg.begin();
     auto out_it = argument_buffers.back().buffers().begin();
     for (; in_it != arg.end(); ++in_it, ++out_it) {

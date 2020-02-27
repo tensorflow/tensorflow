@@ -172,7 +172,7 @@ else_branch: A function that takes 'inputs' and returns a list of
   }];
 }
 
-def TF_MeanOp : TF_Op<"Mean", [NoSideEffect]> {
+def TF_MeanOp : TF_Op<"Mean", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
   let summary = "Computes the mean of elements across dimensions of a tensor.";
 
   let description = [{
@@ -195,6 +195,13 @@ retained with length 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let extraClassDeclaration = [{
+    // TF_FoldOperandsTransposeInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {}; }
+    LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
+  }];
 }
 
 def TF_LegacyCallOp : TF_Op<"LegacyCall",

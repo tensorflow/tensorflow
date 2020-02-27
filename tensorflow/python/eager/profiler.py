@@ -76,7 +76,7 @@ def start():
       context.ensure_initialized()
     _profiler = _pywrap_profiler.ProfilerSession()
     try:
-      _profiler.start()
+      _profiler.start('')
     except errors.AlreadyExistsError:
       logging.warning('Another profiler session is running which is probably '
                       'created by profiler server. Please avoid using profiler '
@@ -157,7 +157,7 @@ def start_profiler_server(port):
   """
   if context.default_execution_mode == context.EAGER_MODE:
     context.ensure_initialized()
-  _pywrap_profiler.start_profiler_server(port)
+  _pywrap_profiler.start_server(port)
 
 
 class Profiler(object):

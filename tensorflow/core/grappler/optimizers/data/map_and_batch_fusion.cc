@@ -71,6 +71,8 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
     NodeDef* tmp = graph_utils::AddScalarConstNode<int64>(
         v->attr().at("value").tensor().int_val(0), graph);
     new_node.add_input(tmp->name());
+  } else if (map_node.op() == kParallelMapV2) {
+    new_node.add_input(map_node.input(map_node.input_size() - 1));
   } else {
     NodeDef* tmp = graph_utils::AddScalarConstNode<int64>(1, graph);
     new_node.add_input(tmp->name());

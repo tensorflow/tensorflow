@@ -68,6 +68,10 @@ ifeq ($(HOST_OS),windows)
 CXXFLAGS += -fext-numeric-literals -D__LITTLE_ENDIAN__
 endif
 
+ifeq ($(TARGET),ios)
+CXXFLAGS += --std=c++11
+endif
+
 # Auto-detect optimization opportunity if building natively.
 ifeq ($(HOST_OS),$(TARGET))
 ifeq ($(HOST_ARCH),$(TARGET_ARCH))
@@ -105,6 +109,7 @@ PROFILER_SRCS := \
 
 PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/lite/profiling/profile_summarizer.cc \
+	tensorflow/lite/profiling/profile_summary_formatter.cc \
 	tensorflow/core/util/stats_calculator.cc
 
 CMD_LINE_TOOLS_SRCS := \

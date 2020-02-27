@@ -61,6 +61,7 @@ def ResNet(stack_fn,
            input_shape=None,
            pooling=None,
            classes=1000,
+           classifier_activation='softmax',
            **kwargs):
   """Instantiates the ResNet, ResNetV2, and ResNeXt architecture.
 
@@ -103,14 +104,18 @@ def ResNet(stack_fn,
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
     **kwargs: For backwards compatibility only.
-
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
   if 'layers' in kwargs:
     global layers
@@ -167,7 +172,9 @@ def ResNet(stack_fn,
 
   if include_top:
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
-    x = layers.Dense(classes, activation='softmax', name='probs')(x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D(name='avg_pool')(x)

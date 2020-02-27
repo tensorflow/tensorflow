@@ -368,6 +368,9 @@ def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
 // Relu op patterns.
 //===----------------------------------------------------------------------===//
 
+// TODO(hinsu): Make these patterns to TF to TF lowering. Relu6 lowering will
+// require HLO canonicalization of min and max on a tensor to ClampOp.
+
 // TODO(hinsu): Lower unsinged and quantized types after supporting
 // them in GetScalarOfType.
 def : Pat<(TF_ReluOp AnyRankedTensor:$input),

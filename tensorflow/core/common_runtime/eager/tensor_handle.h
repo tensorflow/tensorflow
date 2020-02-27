@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
 #include "tensorflow/core/platform/fingerprint.h"
@@ -147,31 +146,29 @@ class TensorHandle : public core::RefCounted {
   Status Dim(int dim_index, int64* dim) const;
   Status NumElements(int64* num_elements) const;
 
+  Status Unprotect(const Device* d);
+
   // Checks if a mirror tensor exists for the specified device. Mirrors are only
   // maintained for local devices, like CPUs & GPUs. Note a mirror may be empty,
   // as it is still to be set by an async operation.
-  bool HasLocalMirror(Device* d);
+  bool HasLocalMirror(const Device* d) const;
   // Add an empty mirror placeholder for the specified device. The expectation
   // is this will be populated by a call to SetTensor.
-  Status AddEmptyLocalMirror(Device* d);
+  Status AddEmptyLocalMirror(const Device* d);
 
 #if !defined(IS_MOBILE_PLATFORM)
-  bool HasRemoteMirror(Device* d);
-  bool HasResourceShapeMirror(Device* d);
+  bool HasRemoteMirror(const Device* d) const;
+  bool HasResourceShapeMirror(const Device* d) const;
 
   Status AddUnshapedRemoteMirror(
-      std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d);
-  Status AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t, Device* d);
+      std::unique_ptr<UnshapedRemoteTensorHandleData> t, const Device* d);
+  Status AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t,
+                         const Device* d);
   Status AddResourceShapeMirror(
-      std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d);
+      std::unique_ptr<UnshapedRemoteTensorHandleData> t, const Device* d);
 
   // Return the op_id and output num if the handle refers to a remote tensor.
-  Status RemoteAddress(Device* d, int64* op_id, int32* output_num) const;
-
-  // Set remote_op_id_ and remote_output_num_ if the handle refers to a local
-  // tensor that needs to be copied to remote workers.
-  void SetRemoteOpIdAndOutputNumToLocalTensorHandle(const int64 op_id,
-                                                    const int32 output_num);
+  Status RemoteAddress(const Device* d, int64* op_id, int32* output_num) const;
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
@@ -179,7 +176,7 @@ class TensorHandle : public core::RefCounted {
   // queried.
   // This method or Poison must be called exactly once for remote tensors that
   // were created without a known shape.
-  Status SetRemoteShape(const TensorShape& shape, tensorflow::Device* d);
+  Status SetRemoteShape(const TensorShape& shape, const Device* d);
 #endif
 
   // Sets the `tensor` for this async non-ready handle making it ready.
@@ -276,17 +273,17 @@ class TensorHandle : public core::RefCounted {
   // TODO(yujingzhang): Remove resource_shape_mirrors_ once scalable per-replica
   // variable is ready, since we could get the shape locally without remote copy
   // then.
-  std::map<tensorflow::Device*, std::unique_ptr<UnshapedRemoteTensorHandleData>>
+  std::map<uint64, std::unique_ptr<UnshapedRemoteTensorHandleData>>
       resource_shape_mirrors_ GUARDED_BY(mu_);
-  // TODO(gjn): Unshaped remote mirrors are long expected to be long-lived.
+  // TODO(gjn): Unshaped remote mirrors are not expected to be long-lived.
   // Consider replacing the unshaped_remote_mirrors_ map with something more
   // efficient.
-  std::map<tensorflow::Device*, std::unique_ptr<UnshapedRemoteTensorHandleData>>
+  std::map<uint64, std::unique_ptr<UnshapedRemoteTensorHandleData>>
       unshaped_remote_mirrors_ GUARDED_BY(mu_);
   // TODO(gjn): Is std::map the most optimal choice here? Perhaps this should be
   // a fixed size map.
-  std::map<tensorflow::Device*, std::unique_ptr<RemoteTensorHandleData>>
-      remote_mirrors_ GUARDED_BY(mu_);
+  std::map<uint64, std::unique_ptr<RemoteTensorHandleData>> remote_mirrors_
+      GUARDED_BY(mu_);
 
   // IDs required when this class is representing a remote tensor handle.
   int64 remote_op_id_;
@@ -323,8 +320,16 @@ class TensorHandle : public core::RefCounted {
 // Checks whether a VariantDevice contains a custom device.
 bool VariantDeviceIsCustom(absl::variant<Device*, CustomDevice*> device);
 
+// Wraps device->name() or CustomDevice->name().
+string VariantDeviceName(absl::variant<Device*, CustomDevice*> device);
+
 // Wraps device->DebugString() or CustomDevice->name().
 string VariantDeviceDebugString(absl::variant<Device*, CustomDevice*> device);
+
+// Indicates either HostCPU or an unset physical device. We never set a null
+// CustomDevice*.
+const absl::variant<Device*, CustomDevice*> kVariantDeviceNull =
+    static_cast<Device*>(nullptr);
 
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);

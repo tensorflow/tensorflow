@@ -739,6 +739,7 @@ cc_library(
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
         ":mc",
+        ":object",
         ":support",
     ],
 )
@@ -1155,6 +1156,7 @@ cc_library(
         ":intrinsics_impl_gen",
         ":mc",
         ":mc_disassembler",
+        ":object",
         ":support",
     ],
 )
@@ -1889,6 +1891,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":config",
+        ":debug_info_dwarf",
         ":mc",
         ":support",
     ],
@@ -3198,6 +3201,7 @@ cc_library(
         ":code_gen",
         ":config",
         ":core",
+        ":coroutines",
         ":inst_combine",
         ":instrumentation",
         ":ipo",
@@ -3284,6 +3288,7 @@ cc_library(
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
         ":mc",
+        ":object",
         ":powerpc_info",
         ":powerpc_target_gen",
         ":support",
@@ -3752,7 +3757,7 @@ cc_library(
     deps = [
         ":config",
         ":demangle",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
 )
 

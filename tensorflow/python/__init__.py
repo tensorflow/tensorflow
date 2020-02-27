@@ -111,6 +111,8 @@ from tensorflow.python.ops.linalg.sparse import sparse
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops.signal import signal
 from tensorflow.python.profiler import profiler
+from tensorflow.python.profiler import profiler_client
+from tensorflow.python.profiler import profiler_v2
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
 from tensorflow.python.tpu import api

@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 
 #include <cmath>
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
 namespace tflite {
@@ -223,6 +225,37 @@ std::string TensorCodeGenerator::ReadAsFloatWHDSB(
     TextureAddressMode address_mode) const {
   return ReadAsFloat(GetGlobalAddressNoDeclarationWHDSB(x, y, z, s, b),
                      address_mode);
+}
+
+std::string TensorCodeGenerator::ReadAsTypeWHS(
+    DataType type, const std::string& x, const std::string& y,
+    const std::string& s, TextureAddressMode address_mode) const {
+  return ReadAsType(type, GetGlobalAddressNoDeclarationWHS(x, y, s),
+                    address_mode);
+}
+
+std::string TensorCodeGenerator::ReadAsTypeWHSB(
+    DataType type, const std::string& x, const std::string& y,
+    const std::string& s, const std::string& b,
+    TextureAddressMode address_mode) const {
+  return ReadAsType(type, GetGlobalAddressNoDeclarationWHSB(x, y, s, b),
+                    address_mode);
+}
+
+std::string TensorCodeGenerator::ReadAsTypeWHDS(
+    DataType type, const std::string& x, const std::string& y,
+    const std::string& z, const std::string& s,
+    TextureAddressMode address_mode) const {
+  return ReadAsType(type, GetGlobalAddressNoDeclarationWHDS(x, y, z, s),
+                    address_mode);
+}
+
+std::string TensorCodeGenerator::ReadAsTypeWHDSB(
+    DataType type, const std::string& x, const std::string& y,
+    const std::string& z, const std::string& s, const std::string& b,
+    TextureAddressMode address_mode) const {
+  return ReadAsType(type, GetGlobalAddressNoDeclarationWHDSB(x, y, z, s, b),
+                    address_mode);
 }
 
 std::string TensorCodeGenerator::GetAddressWHS(const std::string& var_name,
@@ -449,6 +482,39 @@ std::string TensorCodeGenerator::ReadAsFloat(
   }
 }
 
+std::string TensorCodeGenerator::ReadAsType(
+    DataType type, const std::string& global_address,
+    TextureAddressMode address_mode) const {
+  const std::string read_as =
+      type == DataType::FLOAT16 ? "read_imageh" : "read_imagef";
+  switch (descriptor_.storage_type) {
+    case TensorStorageType::BUFFER: {
+      const std::string reading =
+          absl::StrCat(tensor_name_, "[", global_address, "]");
+      if (type == descriptor_.data_type) {
+        return reading;
+      } else {
+        const std::string conversion =
+            type == DataType::FLOAT16 ? "convert_half4" : "convert_float4";
+        return absl::StrCat(conversion, "(", reading, ")");
+      }
+    }
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+    case TensorStorageType::TEXTURE_ARRAY:
+      return absl::StrCat(
+          read_as, "(", tensor_name_,
+          ", " + TextureAddressModeToString(address_mode) + ", ",
+          global_address, ")");
+    case TensorStorageType::IMAGE_BUFFER:
+      return absl::StrCat(read_as, "(", tensor_name_, ", ", global_address,
+                          ")");
+    case TensorStorageType::UNKNOWN:
+      return "";
+  }
+}
+
 std::string TensorCodeGenerator::Write(
     const std::string& var_name, const std::string& global_address) const {
   switch (descriptor_.storage_type) {
@@ -518,6 +584,131 @@ float4 GetMaskForLastPlane(int channels) {
     mask[i] = 1.0f;
   }
   return mask;
+}
+
+namespace {
+// Matrices for Winograd trasformations received with method described here
+// https://openreview.net/pdf?id=H1ZaRZVKg
+std::vector<float> GetTransposedMatrixForWinograd(int width, int height) {
+  const float kDelta = std::sqrt(2.0f) / 2.0f;
+  std::vector<float> px(width);
+
+  px[0] = 0.0f;
+  const int points_count = (width - 1) / 2;
+  for (int i = 0; i < points_count; ++i) {
+    px[i * 2 + 1] = kDelta * (i + 1.0f);
+    px[i * 2 + 2] = -kDelta * (i + 1.0f);
+  }
+  px[width - 1] = 1.0f;
+
+  std::vector<float> py(width, 1.0f);
+  py[width - 1] = 0.0f;
+
+  std::vector<float> result(height * width);
+  for (int y = 0; y < width; ++y) {
+    for (int x = 0; x < height; ++x) {
+      result[x * width + y] =
+          std::pow(px[y], 1.0f * x) * std::pow(py[y], (height - 1.0f) - x);
+    }
+  }
+  return result;
+}
+
+std::vector<float> GetInversedMatrixForWinograd(int rank) {
+  auto matrix = GetTransposedMatrixForWinograd(rank, rank);
+  std::vector<float> inverted(rank * rank, 0.0f);
+  for (int i = 0; i < rank; ++i) {
+    inverted[i * rank + i] = 1.0f;
+  }
+
+  for (int i = 1; i < rank - 1; ++i) {
+    float inv_t = 1.0f / matrix[i * rank + i];
+    for (int x = i; x < rank; ++x) {
+      matrix[i * rank + x] *= inv_t;
+    }
+    for (int x = 0; x < rank; ++x) {
+      inverted[i * rank + x] *= inv_t;
+    }
+
+    for (int y = 0; y < rank; ++y) {
+      if (y == i) continue;
+      float t = matrix[y * rank + i];
+      for (int x = i; x < rank; ++x) {
+        matrix[y * rank + x] -= t * matrix[i * rank + x];
+      }
+      for (int x = 0; x < rank; ++x) {
+        inverted[y * rank + x] -= t * inverted[i * rank + x];
+      }
+    }
+  }
+
+  return inverted;
+}
+
+std::vector<float> Multiply(const std::vector<float>& a_mat,
+                            const std::vector<float>& b_mat, int m, int n,
+                            int k) {
+  std::vector<float> result(m * k);
+  for (int y = 0; y < m; ++y) {
+    for (int x = 0; x < k; ++x) {
+      float sum = 0.0f;
+      for (int i = 0; i < n; ++i) {
+        sum += a_mat[y * n + i] * b_mat[i * k + x];
+      }
+      result[y * k + x] = sum;
+    }
+  }
+  return result;
+}
+}  // namespace
+
+std::vector<float> AtMatrixForWinograd4x4To6x6() {
+  return GetTransposedMatrixForWinograd(6, 4);
+}
+
+std::vector<float> BtMatrixForWinograd4x4To6x6() {
+  return GetInversedMatrixForWinograd(6);
+}
+
+void RearrangeWeightsToWinograd4x4To6x6Weights(
+    const ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& src_weights,
+    ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32>* dst_weights) {
+  OHWI dst_shape;
+  dst_shape.o = src_weights.shape.o;
+  dst_shape.h = 6;
+  dst_shape.w = 6;
+  dst_shape.i = src_weights.shape.i;
+  dst_weights->shape = dst_shape;
+  dst_weights->data.resize(dst_shape.DimensionsProduct());
+
+  auto gt_mat = GetTransposedMatrixForWinograd(6, 3);
+  std::vector<float> g_mat(gt_mat.size());
+  for (int y = 0; y < 3; ++y) {
+    for (int x = 0; x < 6; ++x) {
+      g_mat[x * 3 + y] = gt_mat[y * 6 + x];
+    }
+  }
+
+  for (int d = 0; d < src_weights.shape.o; ++d) {
+    for (int s = 0; s < src_weights.shape.i; ++s) {
+      std::vector<float> in_vals(9);
+      for (int y = 0; y < 3; ++y) {
+        for (int x = 0; x < 3; ++x) {
+          const int f_index = src_weights.shape.LinearIndex({d, y, x, s});
+          in_vals[y * 3 + x] = src_weights.data[f_index];
+        }
+      }
+
+      auto temp_vals = Multiply(g_mat, in_vals, 6, 3, 3);
+      auto out_vals = Multiply(temp_vals, gt_mat, 6, 3, 6);
+      for (int y = 0; y < 6; ++y) {
+        for (int x = 0; x < 6; ++x) {
+          const int f_index = dst_shape.LinearIndex({d, y, x, s});
+          dst_weights->data[f_index] = out_vals[y * 6 + x];
+        }
+      }
+    }
+  }
 }
 
 }  // namespace cl

@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer_1x1.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_powervr.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_texture.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/fully_connected_texture.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/fully_connected.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -36,10 +36,10 @@ Status SelectFullyConnectedAdreno(const FullyConnectedAttributes& attr,
     RETURN_IF_ERROR(CreateConvTexture(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvTexture>(std::move(conv));
   } else {
-    FullyConnectedTexture fc;
+    FullyConnected fc;
     RETURN_IF_ERROR(
-        CreateFullyConnectedTexture(creation_context, op_def, attr, &fc));
-    *ptr = absl::make_unique<FullyConnectedTexture>(std::move(fc));
+        CreateFullyConnected(creation_context, op_def, attr, &fc));
+    *ptr = absl::make_unique<FullyConnected>(std::move(fc));
   }
   return OkStatus();
 }
@@ -53,10 +53,10 @@ Status SelectFullyConnectedPowerVR(const FullyConnectedAttributes& attr,
     RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
   } else {
-    FullyConnectedTexture fc;
+    FullyConnected fc;
     RETURN_IF_ERROR(
-        CreateFullyConnectedTexture(creation_context, op_def, attr, &fc));
-    *ptr = absl::make_unique<FullyConnectedTexture>(std::move(fc));
+        CreateFullyConnected(creation_context, op_def, attr, &fc));
+    *ptr = absl::make_unique<FullyConnected>(std::move(fc));
   }
   return OkStatus();
 }
@@ -77,10 +77,10 @@ Status SelectFullyConnectedMali(const FullyConnectedAttributes& attr,
       *ptr = absl::make_unique<ConvTexture>(std::move(conv));
     }
   } else {
-    FullyConnectedTexture fc;
+    FullyConnected fc;
     RETURN_IF_ERROR(
-        CreateFullyConnectedTexture(creation_context, op_def, attr, &fc));
-    *ptr = absl::make_unique<FullyConnectedTexture>(std::move(fc));
+        CreateFullyConnected(creation_context, op_def, attr, &fc));
+    *ptr = absl::make_unique<FullyConnected>(std::move(fc));
   }
   return OkStatus();
 }

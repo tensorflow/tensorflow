@@ -165,6 +165,18 @@ function prepare_src() {
 
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so
   rm -f ${TMPDIR}/tensorflow/libtensorflow_framework.so.[0-9].*
+
+  # Create a keras/__init__.pyi file so that autocomplete for imports
+  # such as `from tensorflow.keras import losses` works.
+  # TODO(annarev): copy over API files from tensorflow/api/_vN to tensorflow/
+  #   except tensorflow/api/_vN/lite/.
+  mkdir ${TMPDIR}/tensorflow/keras/
+  if [ -d "${TMPDIR}/tensorflow/_api/v1/" ]
+  then
+    echo "from tensorflow.python.keras.api._v1.keras import *" > ${TMPDIR}/tensorflow/keras/__init__.pyi
+  else
+    echo "from tensorflow.python.keras.api._v2.keras import *" > ${TMPDIR}/tensorflow/keras/__init__.pyi
+  fi
 }
 
 function build_wheel() {

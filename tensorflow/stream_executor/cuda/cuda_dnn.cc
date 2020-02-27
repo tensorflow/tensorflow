@@ -677,6 +677,18 @@ bool RequireCudnnDeterminism() {
   return require_cudnn_determinism;
 }
 
+// A helper function to decide whether to force the default conv algorithm.
+bool ConvUseDefaultAlgorithm() {
+  static bool use_default = [] {
+    bool use_default = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_USE_DEFAULT_CONV_ALGO",
+                                               /*default_val=*/false,
+                                               &use_default));
+    return use_default;
+  }();
+  return use_default;
+}
+
 std::tuple<int, int> GetCcMajorMinor(Stream* stream) {
   int cc_major, cc_minor;
   stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
@@ -3337,21 +3349,27 @@ bool CudnnSupport::GetConvolveAlgorithms(
   bool tensor_op_math_available = TensorOpMathAvailable(cc_major);
   out_algorithms->clear();
 
-  std::vector<dnn::AlgorithmDesc::Index> algo_types = {
-      // clang-format off
+  std::vector<dnn::AlgorithmDesc::Index> algo_types;
+  if (ConvUseDefaultAlgorithm()) {
+    // Force a fallback algorithm.
+    algo_types = {CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM};
+  } else {
+    algo_types = {
+        // clang-format off
     CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_GEMM,
     CUDNN_CONVOLUTION_FWD_ALGO_DIRECT,
     CUDNN_CONVOLUTION_FWD_ALGO_FFT,
     CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD,
-      // clang-format on
-  };
-  if (CudnnEnvVar<FftTilingForward>::IsEnabled()) {
-    algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
-  }
-  if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
-    algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
+        // clang-format on
+    };
+    if (CudnnEnvVar<FftTilingForward>::IsEnabled()) {
+      algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING);
+    }
+    if (CudnnEnvVar<WinogradNonfused>::IsEnabled() && with_winograd_nonfused) {
+      algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
+    }
   }
 
   // The algorithms are intentionally ordered for deterministic operation

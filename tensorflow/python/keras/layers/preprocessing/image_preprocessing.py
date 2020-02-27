@@ -215,10 +215,8 @@ class RandomCrop(Layer):
       crop_size = array_ops.stack(
           [input_shape[0], self.height, self.width, input_shape[3]])
       check = control_flow_ops.Assert(
-          math_ops.reduce_all(input_shape >= crop_size), [
-              'Need value.shape >= size, got input shape', input_shape,
-              ' but height is ', self.height, ' and weight is ', self.width
-          ])
+          math_ops.reduce_all(input_shape >= crop_size),
+          [self.height, self.width])
       input_shape = control_flow_ops.with_dependencies([check], input_shape)
       limit = input_shape - crop_size + 1
       offset = stateless_random_ops.stateless_random_uniform(

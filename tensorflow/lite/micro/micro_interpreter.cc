@@ -52,8 +52,7 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       error_reporter_(error_reporter),
       allocator_(&context_, model_, tensor_arena, tensor_arena_size,
                  error_reporter_),
-      tensors_allocated_(false),
-      tensors_prepared_(false) {
+      tensors_allocated_(false) {
   const flatbuffers::Vector<flatbuffers::Offset<SubGraph>>* subgraphs =
       model->subgraphs();
   if (subgraphs->size() != 1) {
@@ -84,6 +83,21 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   }
 
   initialization_status_ = kTfLiteOk;
+}
+
+MicroInterpreter::~MicroInterpreter() {
+  if (node_and_registrations_ != nullptr) {
+    for (size_t i = 0; i < operators_->size(); ++i) {
+      TfLiteNode* node = &(node_and_registrations_[i].node);
+      const TfLiteRegistration* registration =
+          node_and_registrations_[i].registration;
+      // registration is allocated outside the interpreter, so double check to
+      // make sure it's not nullptr;
+      if (registration != nullptr && registration->free != nullptr) {
+        registration->free(&context_, node->user_data);
+      }
+    }
+  }
 }
 
 void MicroInterpreter::CorrectTensorEndianness(TfLiteTensor* tensorCorr) {
@@ -128,22 +142,6 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
                                    op_resolver_, &node_and_registrations_));
   TF_LITE_ENSURE_OK(&context_, allocator_.FinishTensorAllocation());
 
-  tensors_allocated_ = true;
-  return kTfLiteOk;
-}
-
-TfLiteStatus MicroInterpreter::Invoke() {
-  if (initialization_status_ != kTfLiteOk) {
-    error_reporter_->Report("Invoke() called after initialization failed\n");
-    return kTfLiteError;
-  }
-
-  // Ensure tensors are allocated before the interpreter is invoked to avoid
-  // difficult to debug segfaults.
-  if (!tensors_allocated_) {
-    AllocateTensors();
-  }
-
   // Init method is not yet implemented.
   for (size_t i = 0; i < operators_->size(); ++i) {
     auto* node = &(node_and_registrations_[i].node);
@@ -157,30 +155,42 @@ TfLiteStatus MicroInterpreter::Invoke() {
       init_data = reinterpret_cast<const char*>(node->builtin_data);
       init_data_size = 0;
     }
-    if (!tensors_prepared_ && registration->init) {
+    if (registration->init) {
       node->user_data =
           registration->init(&context_, init_data, init_data_size);
     }
   }
 
-  if (!tensors_prepared_) {
-    for (size_t i = 0; i < operators_->size(); ++i) {
-      auto* node = &(node_and_registrations_[i].node);
-      auto* registration = node_and_registrations_[i].registration;
-      if (registration->prepare) {
-        TfLiteStatus prepare_status = registration->prepare(&context_, node);
-        if (prepare_status != kTfLiteOk) {
-          error_reporter_->Report(
-              "Node %s (number %d) failed to prepare with status %d",
-              OpNameFromRegistration(registration), i, prepare_status);
-          return kTfLiteError;
-        }
+  for (size_t i = 0; i < operators_->size(); ++i) {
+    auto* node = &(node_and_registrations_[i].node);
+    auto* registration = node_and_registrations_[i].registration;
+    if (registration->prepare) {
+      TfLiteStatus prepare_status = registration->prepare(&context_, node);
+      if (prepare_status != kTfLiteOk) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "Node %s (number %d) failed to prepare with status %d",
+            OpNameFromRegistration(registration), i, prepare_status);
+        return kTfLiteError;
       }
     }
-#ifdef TF_LITE_MICRO_TENSORS_PREPARED
-    // TODO(b/148085107): Turn this value on by default.
-    tensors_prepared_ = true;
-#endif
+  }
+
+  tensors_allocated_ = true;
+  return kTfLiteOk;
+}
+
+TfLiteStatus MicroInterpreter::Invoke() {
+  if (initialization_status_ != kTfLiteOk) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Invoke() called after initialization failed\n");
+    return kTfLiteError;
+  }
+
+  // Ensure tensors are allocated before the interpreter is invoked to avoid
+  // difficult to debug segfaults.
+  if (!tensors_allocated_) {
+    AllocateTensors();
   }
 
   for (size_t i = 0; i < operators_->size(); ++i) {
@@ -189,22 +199,15 @@ TfLiteStatus MicroInterpreter::Invoke() {
 
     if (registration->invoke) {
       TfLiteStatus invoke_status = registration->invoke(&context_, node);
-      if (invoke_status != kTfLiteOk) {
-        error_reporter_->Report(
+      if (invoke_status == kTfLiteError) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
             "Node %s (number %d) failed to invoke with status %d",
             OpNameFromRegistration(registration), i, invoke_status);
         return kTfLiteError;
+      } else if (invoke_status != kTfLiteOk) {
+        return invoke_status;
       }
-    }
-  }
-
-  // This is actually a no-op.
-  // TODO(wangtz): Consider removing this code to slightly reduce binary size.
-  for (size_t i = 0; i < operators_->size(); ++i) {
-    auto* node = &(node_and_registrations_[i].node);
-    auto* registration = node_and_registrations_[i].registration;
-    if (registration->free) {
-      registration->free(&context_, node->user_data);
     }
   }
   return kTfLiteOk;
@@ -214,8 +217,9 @@ TfLiteTensor* MicroInterpreter::input(size_t index) {
   const flatbuffers::Vector<int32_t>* inputs = subgraph_->inputs();
   const size_t length = inputs->size();
   if ((index < 0) || (index >= length)) {
-    error_reporter_->Report("Input index %d out of range (length is %d)", index,
-                            length);
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Input index %d out of range (length is %d)", index,
+                         length);
     return nullptr;
   }
   return &(context_.tensors[inputs->Get(index)]);
@@ -225,8 +229,9 @@ TfLiteTensor* MicroInterpreter::output(size_t index) {
   const flatbuffers::Vector<int32_t>* outputs = subgraph_->outputs();
   const size_t length = outputs->size();
   if ((index < 0) || (index >= outputs->size())) {
-    error_reporter_->Report("Output index %d out of range (length is %d)",
-                            index, length);
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Output index %d out of range (length is %d)", index,
+                         length);
     return nullptr;
   }
   return &(context_.tensors[outputs->Get(index)]);
@@ -235,8 +240,9 @@ TfLiteTensor* MicroInterpreter::output(size_t index) {
 TfLiteTensor* MicroInterpreter::tensor(size_t index) {
   const size_t length = tensors_size();
   if ((index < 0) || (index >= tensors_size())) {
-    error_reporter_->Report("Tensor index %d out of range (length is %d)",
-                            index, length);
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Tensor index %d out of range (length is %d)", index,
+                         length);
     return nullptr;
   }
   return &context_.tensors[index];
@@ -249,8 +255,8 @@ TfLiteStatus MicroInterpreter::ResetVariableTensors() {
     if (cur_tensor->is_variable) {
       TfLiteStatus status = tflite::ResetVariableTensor(cur_tensor);
       if (status != kTfLiteOk) {
-        error_reporter_->Report("Failed to reset variable tensor at index: %d",
-                                i);
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Failed to reset variable tensor at index: %d", i);
         return status;
       }
     }

@@ -73,6 +73,7 @@ public final class TensorTest {
     assertThat(tensor).isNotNull();
     int[] expectedShape = {2, 8, 8, 3};
     assertThat(tensor.shape()).isEqualTo(expectedShape);
+    assertThat(tensor.shapeSignature()).isEqualTo(expectedShape);
     assertThat(tensor.dataType()).isEqualTo(DataType.FLOAT32);
     assertThat(tensor.numBytes()).isEqualTo(2 * 8 * 8 * 3 * 4);
     assertThat(tensor.numElements()).isEqualTo(2 * 8 * 8 * 3);

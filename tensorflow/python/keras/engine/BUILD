@@ -29,8 +29,6 @@ py_library(
         "training_generator.py",
         "training_utils.py",
         "training_v1.py",
-        "training_v2.py",
-        "training_v2_utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -422,24 +420,6 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "training_v2_utils_test",
-    size = "medium",
-    srcs = ["training_v2_utils_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_oss",  # TODO(b/135021748) reenable
-        "notsan",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

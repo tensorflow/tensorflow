@@ -751,6 +751,7 @@ class DatasetBase : public core::RefCounted {
 
   // TODO(jsimsa): Remove this overlead once all callers are migrated to the API
   // that passes in the parent iterator pointer.
+  ABSL_DEPRECATED("Use the overload that passes the parent iterator pointer.")
   Status MakeIterator(IteratorContext* ctx, const string& output_prefix,
                       std::unique_ptr<IteratorBase>* iterator) const {
     return MakeIterator(ctx, /*parent=*/nullptr, output_prefix, iterator);
@@ -758,6 +759,7 @@ class DatasetBase : public core::RefCounted {
 
   // TODO(jsimsa): Remove this overlead once all callers are migrated to the API
   // that passes in the parent iterator pointer.
+  ABSL_DEPRECATED("Use the overload that passes the parent iterator pointer.")
   Status MakeIterator(IteratorContext&& ctx, const string& output_prefix,
                       std::unique_ptr<IteratorBase>* iterator) const {
     return MakeIterator(&ctx, output_prefix, iterator);
@@ -769,7 +771,8 @@ class DatasetBase : public core::RefCounted {
       IteratorStateReader* reader,
       std::unique_ptr<IteratorBase>* iterator) const {
     std::unique_ptr<IteratorBase> it;
-    TF_RETURN_IF_ERROR(MakeIterator(ctx, output_prefix, &it));
+    TF_RETURN_IF_ERROR(
+        MakeIterator(ctx, /*parent=*/nullptr, output_prefix, &it));
     TF_RETURN_IF_ERROR(it->Restore(ctx, reader));
     *iterator = std::move(it);
     return Status::OK();
@@ -809,6 +812,7 @@ class DatasetBase : public core::RefCounted {
   //
   // TODO(jsimsa): Remove this method once all `DatasetBase` implementations are
   // migrated over to `CheckExternalState`.
+  ABSL_DEPRECATED("Use CheckExternalState instead.")
   virtual bool IsStateful() const { return false; }
 
   // Indicates whether the dataset depends on any external state. If so, the

@@ -49,7 +49,7 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '1.2.1'
+_TF_MIN_BAZEL_VERSION = '2.0.0'
 _TF_MAX_BAZEL_VERSION = '2.0.0'
 
 NCCL_LIB_PATHS = [
@@ -1389,10 +1389,6 @@ def main():
     environ_cp['TF_NEED_TENSORRT'] = '0'
   else:
     environ_cp['TF_CONFIGURE_IOS'] = '0'
-
-  xla_enabled_by_default = is_linux() or is_macos()
-  set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
-                xla_enabled_by_default, 'xla')
 
   set_action_env_var(
       environ_cp,

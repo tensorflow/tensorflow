@@ -41,6 +41,7 @@ load("//third_party/psimd:workspace.bzl", psimd = "repo")
 load("//third_party/pthreadpool:workspace.bzl", pthreadpool = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
+load("//third_party/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 
 def initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -80,6 +81,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 # Define all external repositories required by TensorFlow
 def tf_repositories(path_prefix = "", tf_repo_name = ""):
     """All external dependencies for TF builds."""
+
+    # Loads all external repos to configure RBE builds.
+    initialize_rbe_configs()
 
     # Note that we check the minimum bazel version in WORKSPACE.
     clang6_configure(name = "local_config_clang6")
@@ -476,8 +480,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     PROTOBUF_SHA256 = "b9e92f9af8819bbbc514e2902aec860415b70209f31dfc8c4fa72515a5df9d59"
     PROTOBUF_STRIP_PREFIX = "protobuf-310ba5ee72661c081129eb878c1bbcec936b20f0"
 
-    # protobuf depends on @zlib, it has to be renamed to @zlib_archive because "zlib" is already
-    # defined using bind for grpc.
     PROTOBUF_PATCH = "//third_party/protobuf:protobuf.patch"
 
     tf_http_archive(
@@ -562,20 +564,20 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
-        name = "grpc",
-        sha256 = "67a6c26db56f345f7cee846e681db2c23f919eba46dd639b09462d1b6203d28c",
-        strip_prefix = "grpc-4566c2a29ebec0835643b972eb99f4306c4234a3",
+        name = "com_github_grpc_grpc",
+        sha256 = "b956598d8cbe168b5ee717b5dafa56563eb5201a947856a6688bbeac9cac4e1f",
+        strip_prefix = "grpc-b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd",
         system_build_file = clean_dep("//third_party/systemlibs:grpc.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/grpc/grpc/archive/4566c2a29ebec0835643b972eb99f4306c4234a3.tar.gz",
-            "https://github.com/grpc/grpc/archive/4566c2a29ebec0835643b972eb99f4306c4234a3.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/grpc/grpc/archive/b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd.tar.gz",
+            "https://github.com/grpc/grpc/archive/b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "com_github_nanopb_nanopb",
         sha256 = "8bbbb1e78d4ddb0a1919276924ab10d11b631df48b657d960e0c795a25515735",
-        build_file = "@grpc//third_party:nanopb.BUILD",
+        build_file = "@com_github_grpc_grpc//third_party:nanopb.BUILD",
         strip_prefix = "nanopb-f8ac463766281625ad710900479130c7fcb4d63b",
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nanopb/nanopb/archive/f8ac463766281625ad710900479130c7fcb4d63b.tar.gz",
@@ -595,8 +597,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "fe36127982e0a5889cc0653718e62ba6acccf7c4"
-    LLVM_SHA256 = "d103d295c4825de37ea5adedd4ce28cbbca3ced59e445e4ab979219f83a0bd89"
+    LLVM_COMMIT = "78be61871704a451a5d9462d7e96ed6c982746d4"
+    LLVM_SHA256 = "35ce5950da1c83c91ab10ea5ac6e88c46fca160044cfd9dc6e50c83879d963ef"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -649,7 +651,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
-        name = "zlib_archive",
+        name = "zlib",
         build_file = clean_dep("//third_party:zlib.BUILD"),
         sha256 = "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1",
         strip_prefix = "zlib-1.2.11",
@@ -1061,62 +1063,24 @@ def tf_bind():
     # If that ends up being the case, please leave a comment explaining
     # why we can't depend on the canonical build target.
 
-    # gRPC wants a cares dependency but its contents is not actually
-    # important since we have set GRPC_ARES=0 in .bazelrc
-    native.bind(
-        name = "cares",
-        actual = "@com_github_nanopb_nanopb//:nanopb",
-    )
-
     # Needed by Protobuf
     native.bind(
         name = "grpc_cpp_plugin",
-        actual = "@grpc//:grpc_cpp_plugin",
+        actual = "@com_github_grpc_grpc//src/compiler:grpc_cpp_plugin",
     )
     native.bind(
         name = "grpc_python_plugin",
-        actual = "@grpc//:grpc_python_plugin",
+        actual = "@com_github_grpc_grpc//src/compiler:grpc_python_plugin",
     )
 
     native.bind(
         name = "grpc_lib",
-        actual = "@grpc//:grpc++",
+        actual = "@com_github_grpc_grpc//:grpc++",
     )
 
     native.bind(
         name = "grpc_lib_unsecure",
-        actual = "@grpc//:grpc++_unsecure",
-    )
-
-    # Needed by gRPC
-    native.bind(
-        name = "libssl",
-        actual = "@boringssl//:ssl",
-    )
-
-    # Needed by gRPC
-    native.bind(
-        name = "nanopb",
-        actual = "@com_github_nanopb_nanopb//:nanopb",
-    )
-
-    # Needed by gRPC
-    native.bind(
-        name = "protobuf",
-        actual = "@com_google_protobuf//:protobuf",
-    )
-
-    # gRPC expects //external:protobuf_clib and //external:protobuf_compiler
-    # to point to Protobuf's compiler library.
-    native.bind(
-        name = "protobuf_clib",
-        actual = "@com_google_protobuf//:protoc_lib",
-    )
-
-    # Needed by gRPC
-    native.bind(
-        name = "protobuf_headers",
-        actual = "@com_google_protobuf//:protobuf_headers",
+        actual = "@com_github_grpc_grpc//:grpc++_unsecure",
     )
 
     # Needed by Protobuf
@@ -1129,10 +1093,4 @@ def tf_bind():
     native.bind(
         name = "six",
         actual = "@six_archive//:six",
-    )
-
-    # Needed by gRPC
-    native.bind(
-        name = "zlib",
-        actual = "@zlib_archive//:zlib",
     )
