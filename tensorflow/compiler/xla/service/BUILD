@@ -1371,6 +1371,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_proto_cc",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
