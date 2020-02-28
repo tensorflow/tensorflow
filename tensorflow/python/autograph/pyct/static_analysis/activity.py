@@ -539,6 +539,8 @@ class ActivityAnalyzer(transformer.Base):
 
     self._enter_scope(False)
     self.visit(node.target)
+    if anno.hasanno(node, anno.Basic.EXTRA_LOOP_TEST):
+      self._process_statement(anno.getanno(node, anno.Basic.EXTRA_LOOP_TEST))
     self._exit_and_record_scope(node, tag=NodeAnno.ITERATE_SCOPE)
 
     node = self._process_parallel_blocks(node,
