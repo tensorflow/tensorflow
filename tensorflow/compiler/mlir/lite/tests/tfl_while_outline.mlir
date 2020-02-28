@@ -1,22 +1,28 @@
 // Test to verify loop outlining.
 
 // RUN: tf-opt --split-input-file --tfl-while-loop-outline %s | FileCheck %s --dump-input-on-failure
+// Check that while loop outlining is nop if re-ran.
+// RUN: tf-opt --tfl-while-loop-outline %s -o %t1
+// RUN: tf-opt --tfl-while-loop-outline %t1 -o %t2
+// RUN: diff %t1 %t2
 
 // CHECK-LABEL: func @while
 func @while() -> tensor<1xf32>
     attributes {tf.entry_function = {outputs = "result"}} {
   %cst = constant dense<1> : tensor<i32> loc("dec")
-  %arg0 = constant dense<5> : tensor<i32> loc("N")
-  %arg1 = constant dense<3.0> : tensor<1xf32> loc("val")
-  %0:2 = "tfl.while"(%arg0, %arg1) ( {
+  %cst0 = constant dense<5> : tensor<i32> loc("N")
+  %cst1 = constant dense<3.0> : tensor<1xf32> loc("val")
+  %0:2 = "tfl.while"(%cst0, %cst1) ( {
     ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
       // CHECK: call @WhileOp_cond
+      // CHECK-SAME: (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
       %cst_0 = constant dense<0> : tensor<i32>
       %1 = "tfl.greater"(%arg2, %cst_0) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
       "tfl.yield"(%1) : (tensor<i1>) -> ()
   },  {
     ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
       // CHECK: call @WhileOp_body
+      // CHECK-SAME: (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
       %1 = "tfl.sub"(%arg2, %cst) {fused_activation_function = "NONE"} :
         (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
       %2 = tfl.add %arg3, %arg3 {fused_activation_function = "NONE"} : tensor<*xf32>
@@ -24,6 +30,52 @@ func @while() -> tensor<1xf32>
   }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>) loc("WhileOp")
   return %0#1 : tensor<1xf32>
 }
+// CHECK-LABEL: func @WhileOp_cond(
+// CHECK: tfl.greater
+// CHECK-LABEL: func @WhileOp_body(
+// CHECK: tfl.sub
+// CHECK: tfl.add
+
+// -----
+
+// CHECK-LABEL: func @while2
+// Verify that while body//cond with implicitly captured values result in changing while operands/results.
+func @while2() -> tensor<1xf32> attributes {tf.entry_function = {outputs = "result"}} {
+  %cst = constant dense<1> : tensor<i32>
+  %cst_0 = constant dense<5> : tensor<i32>
+  %cst_1 = constant dense<3.000000e+00> : tensor<1xf32>
+  // Verifies 3 operands post outlining.
+  // CHECK: "tfl.while"({{.*}}, {{.*}}, {{.*}}) (
+  %0:2 = "tfl.while"(%cst_0, %cst_1) ( {
+  ^bb0(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>):   // no predecessors
+    // CHECK: call @WhileOp_cond
+    // CHECK-SAME: (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
+    %1 = call @WhileOp_cond(%arg0, %arg1, %cst) : (tensor<*xi32>, tensor<*xf32>, tensor<i32>) -> tensor<i1>
+    "tfl.yield"(%1) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>):   // no predecessors
+    // CHECK: call @WhileOp_body
+    // CHECK-SAME: (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
+    %1:3 = call @WhileOp_body(%arg0, %arg1, %cst) : (tensor<*xi32>, tensor<*xf32>, tensor<i32>) -> (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
+    "tfl.yield"(%1#0, %1#1) : (tensor<*xi32>, tensor<*xf32>) -> ()
+  }) : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>) loc("WhileOp")
+  // CHECK: (tensor<i32>, tensor<1xf32>, tensor<i32>) ->
+  // CHECK-SAME: (tensor<i32>, tensor<1xf32>, tensor<i32>)
+  return %0#1 : tensor<1xf32>
+}
+
+func @WhileOp_cond(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>, %arg2: tensor<i32>) -> tensor<i1> attributes {sym_visibility = "private"} {
+  %cst = constant dense<0> : tensor<i32>
+  %0 = "tfl.greater"(%arg0, %cst) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+func @WhileOp_body(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>, %arg2: tensor<i32>) -> (tensor<*xi32>, tensor<*xf32>, tensor<i32>) attributes {sym_visibility = "private"} {
+  %0 = "tfl.sub"(%arg0, %arg2) {fused_activation_function = "NONE"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+  %1 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<*xf32>
+  return %0, %1, %arg2 : tensor<*xi32>, tensor<*xf32>, tensor<i32>
+}
+
 // CHECK-LABEL: func @WhileOp_cond(
 // CHECK: tfl.greater
 // CHECK-LABEL: func @WhileOp_body(

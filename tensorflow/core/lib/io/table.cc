@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/block.h"
+#include "tensorflow/core/lib/io/cache.h"
 #include "tensorflow/core/lib/io/format.h"
 #include "tensorflow/core/lib/io/table_options.h"
 #include "tensorflow/core/lib/io/two_level_iterator.h"
@@ -32,7 +33,7 @@ struct Table::Rep {
   Options options;
   Status status;
   RandomAccessFile* file;
-  // XXX  uint64 cache_id;
+  uint64 cache_id;
 
   BlockHandle metaindex_handle;  // Handle to metaindex_block: saved from footer
   Block* index_block;
@@ -60,21 +61,18 @@ Status Table::Open(const Options& options, RandomAccessFile* file, uint64 size,
   Block* index_block = nullptr;
   if (s.ok()) {
     s = ReadBlock(file, footer.index_handle(), &contents);
-    if (s.ok()) {
-      index_block = new Block(contents);
-    }
   }
 
   if (s.ok()) {
     // We've successfully read the footer and the index block: we're
     // ready to serve requests.
+    index_block = new Block(contents);
     Rep* rep = new Table::Rep;
     rep->options = options;
     rep->file = file;
     rep->metaindex_handle = footer.metaindex_handle();
     rep->index_block = index_block;
-    // XXX    rep->cache_id = (options.block_cache ?
-    // options.block_cache->NewId() : 0);
+    rep->cache_id = (options.block_cache ? options.block_cache->NewId() : 0);
     *table = new Table(rep);
   } else {
     if (index_block) delete index_block;
@@ -89,13 +87,24 @@ static void DeleteBlock(void* arg, void* ignored) {
   delete reinterpret_cast<Block*>(arg);
 }
 
+static void DeleteCachedBlock(const absl::string_view&, void* value) {
+  Block* block = reinterpret_cast<Block*>(value);
+  delete block;
+}
+
+static void ReleaseBlock(void* arg, void* h) {
+  Cache* cache = reinterpret_cast<Cache*>(arg);
+  Cache::Handle* handle = reinterpret_cast<Cache::Handle*>(h);
+  cache->Release(handle);
+}
+
 // Convert an index iterator value (i.e., an encoded BlockHandle)
 // into an iterator over the contents of the corresponding block.
 Iterator* Table::BlockReader(void* arg, const StringPiece& index_value) {
   Table* table = reinterpret_cast<Table*>(arg);
-  //  Cache* block_cache = table->rep_->options.block_cache;
+  Cache* block_cache = table->rep_->options.block_cache;
   Block* block = nullptr;
-  //  Cache::Handle* cache_handle = NULL;
+  Cache::Handle* cache_handle = NULL;
 
   BlockHandle handle;
   StringPiece input = index_value;
@@ -105,16 +114,38 @@ Iterator* Table::BlockReader(void* arg, const StringPiece& index_value) {
 
   if (s.ok()) {
     BlockContents contents;
-    s = ReadBlock(table->rep_->file, handle, &contents);
-    if (s.ok()) {
-      block = new Block(contents);
+    if (block_cache != nullptr) {
+      char cache_key_buffer[16];
+      core::EncodeFixed64(cache_key_buffer, table->rep_->cache_id);
+      core::EncodeFixed64(cache_key_buffer + 8, handle.offset());
+      absl::string_view key(cache_key_buffer, sizeof(cache_key_buffer));
+      cache_handle = block_cache->Lookup(key);
+      if (cache_handle != nullptr) {
+        block = reinterpret_cast<Block*>(block_cache->Value(cache_handle));
+      } else {
+        s = ReadBlock(table->rep_->file, handle, &contents);
+        if (s.ok()) {
+          block = new Block(contents);
+          cache_handle = block_cache->Insert(key, block, block->size(),
+                                             &DeleteCachedBlock);
+        }
+      }
+    } else {
+      s = ReadBlock(table->rep_->file, handle, &contents);
+      if (s.ok()) {
+        block = new Block(contents);
+      }
     }
   }
 
   Iterator* iter;
   if (block != nullptr) {
     iter = block->NewIterator();
-    iter->RegisterCleanup(&DeleteBlock, block, nullptr);
+    if (cache_handle == nullptr) {
+      iter->RegisterCleanup(&DeleteBlock, block, nullptr);
+    } else {
+      iter->RegisterCleanup(&ReleaseBlock, block_cache, cache_handle);
+    }
   } else {
     iter = NewErrorIterator(s);
   }

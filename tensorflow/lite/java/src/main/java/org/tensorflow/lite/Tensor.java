@@ -23,6 +23,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.Arrays;
+import org.tensorflow.lite.annotations.UsedByReflection;
 
 /**
  * A typed multi-dimensional array used in Tensorflow Lite.
@@ -36,11 +37,54 @@ public final class Tensor {
   /**
    * Creates a Tensor wrapper from the provided interpreter instance and tensor index.
    *
-   * <p>The caller is responsible for closing the created wrapper, and ensuring the provided
-   * native interpreter is valid until the tensor is closed.
+   * <p>The caller is responsible for closing the created wrapper, and ensuring the provided native
+   * interpreter is valid until the tensor is closed.
    */
   static Tensor fromIndex(long nativeInterpreterHandle, int tensorIndex) {
     return new Tensor(create(nativeInterpreterHandle, tensorIndex));
+  }
+
+  /**
+   * Quantization parameters that corresponds to the table, {@code QuantizationParameters}, in the
+   * <a
+   * href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema.fbs">TFLite
+   * Model schema file.</a>
+   *
+   * <p>Since per-channel quantization does not apply to input and output tensors, {@code scale} and
+   * {@code zero_point} are both single values instead of arrays.
+   *
+   * <p>For tensor that are not quantized, the values of scale and zero_point are both 0.
+   *
+   * <p>Given a quantized value q, the corresponding float value f should be: <br>
+   * f = scale * (q - zero_point) <br>
+   */
+  public static class QuantizationParams {
+    /** The scale value used in quantization. */
+    private final float scale;
+    /** The zero point value used in quantization. */
+    private final int zeroPoint;
+
+    /**
+     * Creates a {@link QuantizationParams} with {@code scale} and {@code zero_point}.
+     *
+     * @param scale The scale value used in quantization.
+     * @param zeroPoint The zero point value used in quantization.
+     */
+    @UsedByReflection("tensor_jni.cc")
+    public QuantizationParams(final float scale, final int zeroPoint) {
+      this.scale = scale;
+      this.zeroPoint = zeroPoint;
+    }
+
+    /** Returns the scale value. */
+    public float getScale() {
+      return scale;
+    }
+
+    /** Returns the zero point value. */
+    public int getZeroPoint() {
+      return zeroPoint;
+    }
   }
 
   /** Disposes of any resources used by the Tensor wrapper. */
@@ -112,6 +156,16 @@ public final class Tensor {
    */
   public String name() {
     return name(nativeHandle);
+  }
+
+  /**
+   * Returns the quantization parameters of the tensor within the owning {@link Interpreter}.
+   *
+   * <p>Only quantized tensors have valid {@code QuantizationParameters}. For tensor that are not
+   * quantized, the values of scale and zero_point are both 0.
+   */
+  public QuantizationParams quantizationParams() {
+    return quantizationParamsCopy;
   }
 
   /**
@@ -376,12 +430,14 @@ public final class Tensor {
   private final DataType dtype;
   private int[] shapeCopy;
   private final int[] shapeSignatureCopy;
+  private final QuantizationParams quantizationParamsCopy;
 
   private Tensor(long nativeHandle) {
     this.nativeHandle = nativeHandle;
     this.dtype = DataType.fromC(dtype(nativeHandle));
     this.shapeCopy = shape(nativeHandle);
     this.shapeSignatureCopy = shapeSignature(nativeHandle);
+    this.quantizationParamsCopy = quantizationParameters(nativeHandle);
   }
 
   private ByteBuffer buffer() {
@@ -413,4 +469,6 @@ public final class Tensor {
   private static native int index(long handle);
 
   private static native String name(long handle);
+
+  private static native QuantizationParams quantizationParameters(long handle);
 }

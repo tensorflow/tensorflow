@@ -182,7 +182,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       // LogSoftmax requires output with 16/256 as scale and 127 as zero point.
       TensorProperty tensor_property;
       tensor_property.restriction = true;
-      tensor_property.restricted_value_int8 = {16.0 / 256.0, 127};
+      tensor_property.restricted_value_int8 = {16.0f / 256.0f, 127};
       property.outputs = {{0, tensor_property}};
       property.version = 2;
       property.quantizable_int16 = false;
@@ -193,8 +193,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       // Logistic requires output with 1/256 as scale and -128 as zero point.
       TensorProperty tensor_property;
       tensor_property.restriction = true;
-      tensor_property.restricted_value_int8 = {1 / 256.0, -128};
-      tensor_property.restricted_value_int16 = {1 / 32768.0, 0};
+      tensor_property.restricted_value_int8 = {1 / 256.0f, -128};
+      tensor_property.restricted_value_int16 = {1 / 32768.0f, 0};
       property.outputs = {{0, tensor_property}};
       property.version = 2;
       break;
@@ -750,7 +750,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       // L2 Norm requires output with 1/128 as scale and 0 as zero point.
       TensorProperty tensor_property;
       tensor_property.restriction = true;
-      tensor_property.restricted_value_int8 = {1 / 128.0, 0};
+      tensor_property.restricted_value_int8 = {1 / 128.0f, 0};
       property.outputs = {{0, tensor_property}};
       property.version = 2;
       property.quantizable_int16 = false;
@@ -859,8 +859,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       // Softmax requires output with 1/256 as scale and -128 as zero point.
       TensorProperty tensor_property;
       tensor_property.restriction = true;
-      tensor_property.restricted_value_int8 = {1 / 256.0, -128};
-      tensor_property.restricted_value_int16 = {1 / 32768.0, 0};
+      tensor_property.restricted_value_int8 = {1 / 256.0f, -128};
+      tensor_property.restricted_value_int16 = {1 / 32768.0f, 0};
       property.outputs = {{0, tensor_property}};
       property.version = 2;
       break;
@@ -887,8 +887,8 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       // Tanh requires output with 1/128 as scale and 0 as zero point.
       TensorProperty tensor_property;
       tensor_property.restriction = true;
-      tensor_property.restricted_value_int8 = {1 / 128.0, 0};
-      tensor_property.restricted_value_int16 = {1 / 32768.0, 0};
+      tensor_property.restricted_value_int8 = {1 / 128.0f, 0};
+      tensor_property.restricted_value_int16 = {1 / 32768.0f, 0};
       property.outputs = {{0, tensor_property}};
       property.version = 2;
       break;

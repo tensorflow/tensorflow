@@ -109,6 +109,8 @@ cuda_py_test(
     name = "control_flow_ops_test",
     srcs = ["control_flow_ops_test.py"],
     tags = ["no_rocm"],
+    # TODO(b/149957923): The test is flaky
+    xla_enable_strict_auto_jit = False,
     deps = [
         ":control_flow_ops",
         ":test_util",

@@ -510,6 +510,7 @@ Broadcasting is supported, so `value` may have any number of dimensions.
     // TF_LayoutSensitiveInterface:
     SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
     SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    LogicalResult UpdateDataFormat(StringRef data_format);
   }];
 }
 
@@ -980,7 +981,7 @@ tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
   let hasCanonicalizer = 1;
 }
 
-def TF_Conv2DOp : TF_Op<"Conv2D", [NoSideEffect]> {
+def TF_Conv2DOp : TF_Op<"Conv2D", [NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = [{
 Computes a 2-D convolution given 4-D `input` and `filter` tensors.
   }];
@@ -1029,6 +1030,13 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 
   let verifier = [{
     return Verify(*this);
+  }];
+
+  let extraClassDeclaration = [{
+    // TF_LayoutSensitiveInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    LogicalResult UpdateDataFormat(StringRef data_format);
   }];
 }
 
@@ -2091,7 +2099,7 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
   TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<3>;
 }
 
-def TF_FusedBatchNormV3Op : TF_Op<"FusedBatchNormV3", [NoSideEffect]> {
+def TF_FusedBatchNormV3Op : TF_Op<"FusedBatchNormV3", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
   let summary = "Batch normalization.";
 
   let description = [{
@@ -2122,6 +2130,13 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
+
+  let extraClassDeclaration = [{
+    // TF_FoldOperandsTransposeInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
+  }];
 }
 
 def TF_GatherOp : TF_Op<"Gather", [NoSideEffect]> {
@@ -3094,6 +3109,70 @@ cublas.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MatrixBandPartOp : TF_Op<"MatrixBandPart", [NoSideEffect, AllTypesMatch<["input", "band"]>]> {
+  let summary = [{
+Copy a tensor setting everything outside a central band in each innermost matrix
+to zero.
+  }];
+
+  let description = [{
+The `band` part is computed as follows:
+Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+tensor with the same shape where
+
+`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
+
+The indicator function
+
+`in_band(m, n) = (num_lower < 0 || (m-n) <= num_lower)) &&
+                 (num_upper < 0 || (n-m) <= num_upper)`.
+
+For example:
+
+```
+# if 'input' is [[ 0,  1,  2, 3]
+                 [-1,  0,  1, 2]
+                 [-2, -1,  0, 1]
+                 [-3, -2, -1, 0]],
+
+tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+                                       [-1,  0,  1, 2]
+                                       [ 0, -1,  0, 1]
+                                       [ 0,  0, -1, 0]],
+
+tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+                                      [-1,  0,  1, 0]
+                                      [-2, -1,  0, 1]
+                                      [ 0, -2, -1, 0]]
+```
+
+Useful special cases:
+
+```
+ tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
+ tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
+ tf.matrix_band_part(input, 0, 0) ==> Diagonal.
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$num_lower,
+    TF_I32OrI64Tensor:$num_upper
+  );
+
+  let results = (outs
+    TF_Tensor:$band
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tindex = TF_DerivedOperandTypeAttr<1>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_MatrixDiagOp : TF_Op<"MatrixDiag", [NoSideEffect]> {
@@ -4278,7 +4357,7 @@ This is the opposite of `unpack`.
   }];
 }
 
-def TF_PadOp : TF_Op<"Pad", [NoSideEffect]> {
+def TF_PadOp : TF_Op<"Pad", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
   let summary = "Pads a tensor with zeros.";
 
   let description = [{
@@ -4317,6 +4396,13 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
+
+  let extraClassDeclaration = [{
+    // TF_FoldOperandsTransposeInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
+  }];
 }
 
 def TF_PadV2Op : TF_Op<"PadV2", [NoSideEffect]> {
@@ -4845,7 +4931,7 @@ I.e., \\(y = 1 / x\\).
   let hasCanonicalizer = 1;
 }
 
-def TF_ReluOp : TF_Op<"Relu", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_ReluOp : TF_Op<"Relu", [NoSideEffect, SameOperandsAndResultType, TF_LayoutAgnostic]> {
   let summary = "Computes rectified linear: `max(features, 0)`.";
 
   let description = [{

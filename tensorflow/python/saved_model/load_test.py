@@ -1859,8 +1859,7 @@ class KerasLoadTest(test.TestCase, parameterized.TestCase):
         [feature_column_lib.DenseFeatures(columns),
          core.Dense(1)])
     model_input = {"x": constant_op.constant([[1.]])}
-    model.compile(optimizer="adam", loss="mse", run_eagerly=True,
-                  experimental_run_tf_function=True)
+    model.compile(optimizer="adam", loss="mse", run_eagerly=True)
     model.fit(model_input, constant_op.constant([[3.]]))
     loaded = cycle(model, cycles)
     loaded._default_save_signature(model_input)

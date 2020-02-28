@@ -91,6 +91,21 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
+- (void)testExp {
+  OperationType op_type = OperationType::EXP;
+  const BHWC shape(1, 1, 1, 5);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {0.0f, 1.0f, -1.0f, 100.0f, -100.0f, 0.01f, -0.01f}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = CompareVectors({std::exp(0.0f), std::exp(1.0f), std::exp(-1.0f), std::exp(100.0f),
+                           std::exp(-100.0f), std::exp(0.01f), std::exp(-0.01f)},
+                          model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
 - (void)testHardSwish {
   OperationType op_type = OperationType::HARD_SWISH;
   const BHWC shape(1, 1, 1, 7);

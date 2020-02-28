@@ -188,9 +188,6 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       if (!InputsWithCorrectTypes(node, context,
                                   {kTfLiteUInt8, kTfLiteUInt8, kTfLiteInt32}))
         return false;
-      // Hexagon only supports width of 3 for Depthwise Conv.
-      const auto& tensor = context->tensors[node->inputs->data[1]];
-      if (tensor.dims->data[2] != 3) return false;
       const TfLiteDepthwiseConvParams* conv_params =
           reinterpret_cast<const TfLiteDepthwiseConvParams*>(
               node->builtin_data);

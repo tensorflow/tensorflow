@@ -570,6 +570,35 @@ cc_test(
 )
 
 cc_library(
+    name = "space_to_depth",
+    srcs = ["space_to_depth.cc"],
+    hdrs = ["space_to_depth.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:any",
+    ],
+)
+
+cc_test(
+    name = "space_to_depth_test",
+    srcs = ["space_to_depth_test.cc"],
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":space_to_depth",
+        ":test_util",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "test_util",
     testonly = 1,
     srcs = ["test_util.cc"],
@@ -676,6 +705,7 @@ TFLITE_GPU_BINARY_RELEASE_OPERATORS = [
     "resize",
     "slice",
     "softmax",
+    "space_to_depth",
     "transpose_conv",
 ]
 

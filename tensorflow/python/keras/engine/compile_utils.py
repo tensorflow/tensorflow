@@ -172,14 +172,19 @@ class LossesContainer(object):
       loss_metric_values.append(loss_metric_value)
 
     if regularization_losses:
+      regularization_losses = losses_utils.cast_losses_to_common_dtype(
+          regularization_losses)
       reg_loss = math_ops.add_n(regularization_losses)
       loss_metric_values.append(reg_loss)
       loss_values.append(losses_utils.scale_loss_for_distribution(reg_loss))
 
     if loss_values:
+      loss_metric_values = losses_utils.cast_losses_to_common_dtype(
+          loss_metric_values)
       total_loss_metric_value = math_ops.add_n(loss_metric_values)
       self._loss_metric.update_state(total_loss_metric_value)
 
+      loss_values = losses_utils.cast_losses_to_common_dtype(loss_values)
       total_loss = math_ops.add_n(loss_values)
       return total_loss
     else:
@@ -557,14 +562,10 @@ def map_to_output_names(y_pred, output_names, struct):
 
 def match_dtype_and_rank(y_t, y_p, sw):
   """Match dtype and rank of predictions."""
-  # Rank.
-  y_t_rank = len(y_t.shape)
-  y_p_rank = len(y_p.shape)
-  if y_t_rank == 1 and y_p_rank == 2:
+  if y_t.shape.rank == 1 and y_p.shape.rank == 2:
     y_t = array_ops.expand_dims_v2(y_t, axis=-1)
   if sw is not None:
-    sw_rank = len(sw.shape)
-    if sw_rank == 1 and y_p_rank == 2:
+    if sw.shape.rank == 1 and y_p.shape.rank == 2:
       sw = array_ops.expand_dims_v2(sw, axis=-1)
 
   # Dtype.

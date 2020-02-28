@@ -166,3 +166,16 @@ cc_library(
         "@llvm-project//mlir:VectorToLoops",
     ],
 )
+
+cc_library(
+    name = "TestSPIRV",
+    srcs = glob([
+        "lib/Dialect/SPIRV/*.cpp",
+    ]),
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SPIRVDialect",
+        "@llvm-project//mlir:SPIRVLowering",
+    ],
+)

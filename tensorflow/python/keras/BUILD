@@ -141,6 +141,7 @@ py_library(
         "//tensorflow/python/keras/distribute:multi_worker_training_state",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
+        "//tensorflow/python/profiler:profiler_v2",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -153,8 +154,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
-        "//tensorflow/python/eager:profiler",
         "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/profiler:profiler_v2",
     ],
 )
 

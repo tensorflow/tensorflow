@@ -48,6 +48,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import profiler_v2 as profiler
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
@@ -893,15 +894,22 @@ class History(Callback):
   gets returned by the `fit` method of models.
   """
 
+  def __init__(self):
+    super(History, self).__init__()
+    self.history = {}
+
   def on_train_begin(self, logs=None):
     self.epoch = []
-    self.history = {}
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
     self.epoch.append(epoch)
     for k, v in logs.items():
       self.history.setdefault(k, []).append(v)
+
+    # Set the history attribute on the model after the epoch ends. This will
+    # make sure that the state which is set is the latest one.
+    self.model.history = self
 
 
 @keras_export('keras.callbacks.ModelCheckpoint')
@@ -1575,11 +1583,25 @@ class TensorBoard(Callback):
   You can find more information about TensorBoard
   [here](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
 
-  Example:
+  Example (Basic):
   ```python
   tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs")
   model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
-  #run the tensorboard command to view the visualizations
+  # run the tensorboard command to view the visualizations.
+  ```
+  Example (Profile):
+  ```python
+  # profile a single batch, e.g. the 5th batch.
+  tensorboard_callback =
+      tf.keras.callbacks.TensorBoard(log_dir='./logs', profile_batch=5)
+  model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
+  # run the tensorboard command to view the visualizations in profile plugin.
+
+  # profile a range of batches, e.g. from 10 to 20.
+  tensorboard_callback =
+      tf.keras.callbacks.TensorBoard(log_dir='./logs', profile_batch='10,20')
+  model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
+  # run the tensorboard command to view the visualizations in profile plugin.
   ```
 
   Arguments:
@@ -1599,11 +1621,14 @@ class TensorBoard(Callback):
         callback will write the metrics and losses to TensorBoard every 1000
         batches. Note that writing too frequently to TensorBoard can slow down
         your training.
-      profile_batch: Profile the batch to sample compute characteristics. By
-        default, it will profile the second batch. Set profile_batch=0 to
-        disable profiling. Must run in TensorFlow eager mode.
-      embeddings_freq: frequency (in epochs) at which embedding layers will
-        be visualized. If set to 0, embeddings won't be visualized.
+      profile_batch: Profile the batch(es) to sample compute characteristics.
+        profile_batch must be a non-negative integer or a comma separated string
+        of pair of positive integers. A pair of positive integers signify a
+        range of batches to profile. By default, it will profile the second
+        batch. Set profile_batch=0 to disable profiling. Must run in TensorFlow
+        eager mode.
+      embeddings_freq: frequency (in epochs) at which embedding layers will be
+        visualized. If set to 0, embeddings won't be visualized.
       embeddings_metadata: a dictionary which maps layer name to a file name in
         which metadata for this embedding layer is saved. See the
         [details](
@@ -1652,8 +1677,10 @@ class TensorBoard(Callback):
     self._train_run_name = 'train'
     self._validation_run_name = 'validation'
     self._writers = {}
-
-    self._profile_batch = profile_batch
+    self._start_batch, self._stop_batch = self._init_profile_batch(
+        profile_batch)
+    if self._start_batch > 0:
+      profiler.warmup()  # Improve the profiling accuracy.
     # True when a trace is running.
     self._is_tracing = False
 
@@ -1827,10 +1854,49 @@ class TensorBoard(Callback):
     else:
       self._total_batches_seen[writer_name] += 1
 
+  def _init_profile_batch(self, profile_batch):
+    """Validate profile_batch value and set the range of batches to profile.
+
+    Arguments:
+      profile_batch: The range of batches to profile. Should be a non-negative
+        integer or a comma separated string of pair of positive integers. A pair
+        of positive integers signify a range of batches to profile.
+
+    Returns:
+      A pair of non-negative integers specifying the start and stop batch to
+      profile.
+
+    Raises:
+      ValueError: If profile_batch is not an integer or a comma seperated pair
+                  of positive integers.
+
+    """
+    profile_batch_error_message = (
+        'profile_batch must be a non-negative integer or a comma separated '
+        'string of pair of positive integers. A pair of positive integers '
+        'signify a range of batches to profile.')
+    try:
+      profile_range = [int(i) for i in str(profile_batch).split(',')]
+    except ValueError:
+      raise ValueError(profile_batch_error_message)
+    if len(profile_range) == 1:  # single batch
+      start_batch, stop_batch = profile_range[0], profile_range[0]
+      if start_batch < 0:
+        raise ValueError(profile_batch_error_message)
+    elif len(profile_range) == 2:  # (start_batch, stop_batch)
+      start_batch, stop_batch = profile_range
+      # [0, 0], [-1, 100], [6, 5] are illegal.
+      if start_batch <= 0 or start_batch > stop_batch:
+        raise ValueError(profile_batch_error_message)
+    else:
+      raise ValueError(profile_batch_error_message)
+    return start_batch, stop_batch
+
   def on_train_begin(self, logs=None):
     self._init_batch_steps()
-    if self._profile_batch == 1:
-      summary_ops_v2.trace_on(graph=True, profiler=True)
+    if self._start_batch == 1:
+      summary_ops_v2.trace_on(graph=True, profiler=False)
+      profiler.start(logdir=os.path.join(self._log_write_dir, 'train'))
       self._is_tracing = True
 
   def on_test_begin(self, logs=None):
@@ -1845,7 +1911,7 @@ class TensorBoard(Callback):
       batch: Integer, index of batch within the current epoch.
       logs: Dict. Metric results for this batch.
     """
-    if self.update_freq == 'epoch' and self._profile_batch is None:
+    if self.update_freq == 'epoch' and self._start_batch is None:
       return
 
     # Don't output batch_size and batch number as TensorBoard summaries
@@ -1857,10 +1923,11 @@ class TensorBoard(Callback):
     self._increment_step(self._train_run_name)
 
     if context.executing_eagerly():
-      if self._is_tracing:
+      if self._is_tracing and math_ops.greater_equal(train_batches,
+                                                     self._stop_batch):
         self._log_trace()
       elif (not self._is_tracing and
-            math_ops.equal(train_batches, self._profile_batch - 1)):
+            math_ops.equal(train_batches, self._start_batch - 1)):
         self._enable_trace()
 
   def on_test_batch_end(self, batch, logs=None):
@@ -1899,7 +1966,8 @@ class TensorBoard(Callback):
 
   def _enable_trace(self):
     if context.executing_eagerly():
-      summary_ops_v2.trace_on(graph=True, profiler=True)
+      summary_ops_v2.trace_on(graph=True, profiler=False)
+      profiler.start(logdir=os.path.join(self._log_write_dir, 'train'))
       self._is_tracing = True
 
   def _log_trace(self):
@@ -1909,10 +1977,8 @@ class TensorBoard(Callback):
           summary_ops_v2.always_record_summaries():
         # TODO(b/126388999): Remove step info in the summary name.
         step = K.get_value(self._total_batches_seen[self._train_run_name])
-        summary_ops_v2.trace_export(
-            name='batch_%d' % step,
-            step=step,
-            profiler_outdir=os.path.join(self._log_write_dir, 'train'))
+        summary_ops_v2.trace_export(name='batch_%d' % step, step=step)
+        profiler.stop()
       self._is_tracing = False
 
   def _log_metrics(self, logs, prefix, step):

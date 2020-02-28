@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // TF:llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // TF:llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/IR/Location.h"  // TF:llvm-project

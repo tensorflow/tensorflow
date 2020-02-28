@@ -269,11 +269,11 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
           }
 #ifdef ENABLE_MKLDNN_V1
           weight_data = this->GetCachedWeight(
-              context, static_cast<int32>(weight_mkl_shape.GetTfDataFormat()));
+              context, GET_WEIGHTS_DESC_FROM_OP_PD(matmul_fwd_pd));
 #else
           weight_data = this->GetCachedWeight(
-              context, matmul_fwd->GetWeightMemoryFormat());
-#endif  // ENABLE_MKLDNN_V1
+              context, GET_WEIGHTS_DESC_FROM_OP_PD(matmul_fwd_pd).desc());
+#endif
           is_weight_cached = (weight_data != nullptr);
         }
 
@@ -315,17 +315,21 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       ComputeOutputRangeForInt32(context, &min_output_value, &max_output_value);
     }
 
-    Tensor* output_min = nullptr;
-    Tensor* output_max = nullptr;
-    MklDnnShape output_min_mkl_shape, output_max_mkl_shape;
-    output_min_mkl_shape.SetMklTensor(false);
-    output_max_mkl_shape.SetMklTensor(false);
-    AllocateOutputSetMklShape(context, 1, &output_min, {},
-                              output_min_mkl_shape);
-    AllocateOutputSetMklShape(context, 2, &output_max, {},
-                              output_max_mkl_shape);
-    output_min->flat<float>()(0) = min_output_value;
-    output_max->flat<float>()(0) = max_output_value;
+    if (std::is_same<Toutput, quint8>::value ||
+        std::is_same<Toutput, qint8>::value ||
+        std::is_same<Toutput, qint32>::value) {
+      Tensor* output_min = nullptr;
+      Tensor* output_max = nullptr;
+      MklDnnShape output_min_mkl_shape, output_max_mkl_shape;
+      output_min_mkl_shape.SetMklTensor(false);
+      output_max_mkl_shape.SetMklTensor(false);
+      AllocateOutputSetMklShape(context, 1, &output_min, {},
+                                output_min_mkl_shape);
+      AllocateOutputSetMklShape(context, 2, &output_max, {},
+                                output_max_mkl_shape);
+      output_min->flat<float>()(0) = min_output_value;
+      output_max->flat<float>()(0) = max_output_value;
+    }
   }
 
  protected:
@@ -352,7 +356,8 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
     // When the output type is quint8, the output data is requantized into
     // quint8. A post_op "output_scale" is added to do the conversion.
     if (std::is_same<Toutput, quint8>::value ||
-        std::is_same<Toutput, qint8>::value) {
+        std::is_same<Toutput, qint8>::value ||
+        std::is_same<Toutput, float>::value) {
       float min_output_value;
       float max_output_value;
       ComputeOutputRangeForInt32(context, &min_output_value, &max_output_value);
@@ -363,11 +368,16 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       float scale_eightbit =
           std::max(std::abs(min_freezed_output), std::abs(max_freezed_output));
       float scale = 1.0;
-      if (std::is_same<Toutput, quint8>::value)
-        scale = scale_int32 / scale_eightbit / static_cast<float>(1 << 23);
-      else
-        scale = scale_int32 / scale_eightbit / static_cast<float>(1 << 24);
-
+      if (std::is_same<Toutput, quint8>::value) {
+        scale = scale_int32 / scale_eightbit / static_cast<float>(1u << 23);
+      } else if (std::is_same<Toutput, qint8>::value) {
+        scale = scale_int32 / scale_eightbit / static_cast<float>(1u << 24);
+      } else if (std::is_same<Toutput, float>::value) {
+        scale = scale_int32 / static_cast<float>(1u << 31);
+      } else {
+        // @TODO:keeping the default qint8 as before. Change to error later.
+        scale = scale_int32 / scale_eightbit / static_cast<float>(1u << 24);
+      }
       std::vector<float> output_scale;
       output_scale.push_back(scale);
       params.post_op_params.push_back({"output_scale", output_scale});
@@ -569,6 +579,17 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndRequantize")
                             .TypeConstraint<quint8>("Toutput"),
                         NoOp);
 
+// Register NoOp kernel for QuantizedMatMulWithBiasAndDequantize
+// to get a python interface. This kernel will be replaced by an MKL kernel
+// during graph-optimization pass.
+REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndDequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("T1")
+                            .TypeConstraint<qint8>("T2")
+                            .TypeConstraint("Tbias", {DT_QINT32, DT_FLOAT})
+                            .TypeConstraint<float>("Toutput"),
+                        NoOp);
+
 // Register a templatized implementation of _MklQuantizedMatMulWithBiasAndRelu.
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedMatMulWithBiasAndRelu")
@@ -619,6 +640,27 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<quint8>("Toutput")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
     MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, float, quint8>);
+
+// Register a templatized implementation of
+// _MklQuantizedMatMulWithBiasAndDequantize.
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedMatMulWithBiasAndDequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("T1")
+        .TypeConstraint<qint8>("T2")
+        .TypeConstraint<qint32>("Tbias")
+        .TypeConstraint<float>("Toutput")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, qint32, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedMatMulWithBiasAndDequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("T1")
+        .TypeConstraint<qint8>("T2")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<float>("Toutput")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, float, float>);
 
 }  // namespace tensorflow
 

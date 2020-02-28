@@ -11472,6 +11472,87 @@ func ShardDataset(scope *Scope, input_dataset tf.Output, num_shards tf.Output, i
 	return op.Output(0)
 }
 
+// NonMaxSuppressionV5Attr is an optional argument to NonMaxSuppressionV5.
+type NonMaxSuppressionV5Attr func(optionalAttr)
+
+// NonMaxSuppressionV5PadToMaxOutputSize sets the optional pad_to_max_output_size attribute to value.
+//
+// value: If true, the output `selected_indices` is padded to be of length
+// `max_output_size`. Defaults to false.
+// If not specified, defaults to false
+func NonMaxSuppressionV5PadToMaxOutputSize(value bool) NonMaxSuppressionV5Attr {
+	return func(m optionalAttr) {
+		m["pad_to_max_output_size"] = value
+	}
+}
+
+// Greedily selects a subset of bounding boxes in descending order of score,
+//
+// pruning away boxes that have high intersection-over-union (IOU) overlap
+// with previously selected boxes.  Bounding boxes with score less than
+// `score_threshold` are removed.  Bounding boxes are supplied as
+// [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+// diagonal pair of box corners and the coordinates can be provided as normalized
+// (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+// is agnostic to where the origin is in the coordinate system and more
+// generally is invariant to orthogonal transformations and translations
+// of the coordinate system; thus translating or reflections of the coordinate
+// system result in the same boxes being selected by the algorithm.
+// The output of this operation is a set of integers indexing into the input
+// collection of bounding boxes representing the selected boxes.  The bounding
+// box coordinates corresponding to the selected indices can then be obtained
+// using the `tf.gather operation`.  For example:
+//   selected_indices = tf.image.non_max_suppression_v2(
+//       boxes, scores, max_output_size, iou_threshold, score_threshold)
+//   selected_boxes = tf.gather(boxes, selected_indices)
+// This op also supports a Soft-NMS (with Gaussian weighting) mode (c.f.
+// Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
+// of other overlapping boxes instead of directly causing them to be pruned.
+// To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
+// larger than 0.
+//
+// Arguments:
+//	boxes: A 2-D float tensor of shape `[num_boxes, 4]`.
+//	scores: A 1-D float tensor of shape `[num_boxes]` representing a single
+// score corresponding to each box (each row of boxes).
+//	max_output_size: A scalar integer tensor representing the maximum number of
+// boxes to be selected by non max suppression.
+//	iou_threshold: A 0-D float tensor representing the threshold for deciding whether
+// boxes overlap too much with respect to IOU.
+//	score_threshold: A 0-D float tensor representing the threshold for deciding when to remove
+// boxes based on score.
+//	soft_nms_sigma: A 0-D float tensor representing the sigma parameter for Soft NMS; see Bodla et
+// al (c.f. https://arxiv.org/abs/1704.04503).  When `soft_nms_sigma=0.0` (which
+// is default), we fall back to standard (hard) NMS.
+//
+// Returns:
+//	selected_indices: A 1-D integer tensor of shape `[M]` representing the selected
+// indices from the boxes tensor, where `M <= max_output_size`.
+//	selected_scores: A 1-D float tensor of shape `[M]` representing the corresponding
+// scores for each selected box, where `M <= max_output_size`.  Scores only differ
+// from corresponding input scores when using Soft NMS (i.e. when
+// `soft_nms_sigma>0`)
+//	valid_outputs: A 0-D integer tensor representing the number of valid elements in
+// `selected_indices`, with the valid elements appearing first.
+func NonMaxSuppressionV5(scope *Scope, boxes tf.Output, scores tf.Output, max_output_size tf.Output, iou_threshold tf.Output, score_threshold tf.Output, soft_nms_sigma tf.Output, optional ...NonMaxSuppressionV5Attr) (selected_indices tf.Output, selected_scores tf.Output, valid_outputs tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "NonMaxSuppressionV5",
+		Input: []tf.Input{
+			boxes, scores, max_output_size, iou_threshold, score_threshold, soft_nms_sigma,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // NonMaxSuppressionV4Attr is an optional argument to NonMaxSuppressionV4.
 type NonMaxSuppressionV4Attr func(optionalAttr)
 
@@ -11611,7 +11692,7 @@ func DepthwiseConv2dNativeBackpropFilterDataFormat(value string) DepthwiseConv2d
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func DepthwiseConv2dNativeBackpropFilterDilations(value []int64) DepthwiseConv2dNativeBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -11868,7 +11949,7 @@ func SampleDistortedBoundingBoxV2Seed2(value int64) SampleDistortedBoundingBoxV2
 //
 // value: The cropped area of the image must have an aspect ratio =
 // width / height within this range.
-// If not specified, defaults to {f:0.75 f:1.33}
+// If not specified, defaults to {f:0.75  f:1.33}
 func SampleDistortedBoundingBoxV2AspectRatioRange(value []float32) SampleDistortedBoundingBoxV2Attr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -11879,7 +11960,7 @@ func SampleDistortedBoundingBoxV2AspectRatioRange(value []float32) SampleDistort
 //
 // value: The cropped area of the image must contain a fraction of the
 // supplied image within this range.
-// If not specified, defaults to {f:0.05 f:1}
+// If not specified, defaults to {f:0.05  f:1}
 func SampleDistortedBoundingBoxV2AreaRange(value []float32) SampleDistortedBoundingBoxV2Attr {
 	return func(m optionalAttr) {
 		m["area_range"] = value
@@ -12085,7 +12166,7 @@ func SampleDistortedBoundingBoxMinObjectCovered(value float32) SampleDistortedBo
 //
 // value: The cropped area of the image must have an aspect ratio =
 // width / height within this range.
-// If not specified, defaults to {f:0.75 f:1.33}
+// If not specified, defaults to {f:0.75  f:1.33}
 func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -12096,7 +12177,7 @@ func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistorted
 //
 // value: The cropped area of the image must contain a fraction of the
 // supplied image within this range.
-// If not specified, defaults to {f:0.05 f:1}
+// If not specified, defaults to {f:0.05  f:1}
 func SampleDistortedBoundingBoxAreaRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["area_range"] = value
@@ -18937,7 +19018,7 @@ func ImageSummaryMaxImages(value int64) ImageSummaryAttr {
 // ImageSummaryBadColor sets the optional bad_color attribute to value.
 //
 // value: Color to use for pixels with non-finite values.
-// If not specified, defaults to {dtype:DT_UINT8 tensor_shape:{dim:{size:4}} int_val:255 int_val:0 int_val:0 int_val:255}
+// If not specified, defaults to {dtype:DT_UINT8  tensor_shape:{dim:{size:4}}  int_val:255  int_val:0  int_val:0  int_val:255}
 func ImageSummaryBadColor(value tf.Tensor) ImageSummaryAttr {
 	return func(m optionalAttr) {
 		m["bad_color"] = value
@@ -19254,75 +19335,6 @@ func Greater(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	}
 	opspec := tf.OpSpec{
 		Type: "Greater",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// A container for a multi device iterator resource.
-//
-// Returns:
-//	handle: A handle to a multi device iterator that can be passed to a
-// "MultiDeviceIteratorGetNextFromShard" op. In contrast to MultiDeviceIterator,
-// AnonymousIterator prevents resource sharing by name, and does not keep a
-// reference to the resource container.
-//	deleter: A variant deleter that should be passed into the op that deletes the iterator.
-func AnonymousMultiDeviceIterator(scope *Scope, devices []string, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output, deleter tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"devices": devices, "output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "AnonymousMultiDeviceIterator",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
-// Provides the time since epoch in seconds.
-//
-// Returns the timestamp as a `float64` for seconds since the Unix epoch.
-//
-// Note: the timestamp is computed when the op is executed, not when it is added
-// to the graph.
-func Timestamp(scope *Scope) (ts tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Timestamp",
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the truth value of (x <= y) element-wise.
-//
-// *NOTE*: `LessEqual` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-//
-// Example:
-//
-// ```python
-// x = tf.constant([5, 4, 6])
-// y = tf.constant([5])
-// tf.math.less_equal(x, y) ==> [True, True, False]
-//
-// x = tf.constant([5, 4, 6])
-// y = tf.constant([5, 6, 6])
-// tf.math.less_equal(x, y) ==> [True, True, True]
-// ```
-func LessEqual(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LessEqual",
 		Input: []tf.Input{
 			x, y,
 		},
@@ -20077,7 +20089,7 @@ func Conv3DBackpropFilterV2DataFormat(value string) Conv3DBackpropFilterV2Attr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropFilterV2Dilations(value []int64) Conv3DBackpropFilterV2Attr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -21345,7 +21357,7 @@ func Conv2DBackpropInputDataFormat(value string) Conv2DBackpropInputAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func Conv2DBackpropInputDilations(value []int64) Conv2DBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22053,7 +22065,7 @@ func Conv2DDataFormat(value string) Conv2DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func Conv2DDilations(value []int64) Conv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22249,7 +22261,7 @@ func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeOutType(value tf.DataTy
 // QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22318,7 +22330,7 @@ func QuantizedDepthwiseConv2DWithBiasAndReluOutType(value tf.DataType) Quantized
 // QuantizedDepthwiseConv2DWithBiasAndReluDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DWithBiasAndReluDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAndReluAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22433,7 +22445,7 @@ func QuantizedDepthwiseConv2DWithBiasOutType(value tf.DataType) QuantizedDepthwi
 // QuantizedDepthwiseConv2DWithBiasDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DWithBiasDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22492,7 +22504,7 @@ func QuantizedDepthwiseConv2DOutType(value tf.DataType) QuantizedDepthwiseConv2D
 // QuantizedDepthwiseConv2DDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DDilations(value []int64) QuantizedDepthwiseConv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22666,7 +22678,7 @@ func QuantizedConv2DPerChannelOutType(value tf.DataType) QuantizedConv2DPerChann
 // QuantizedConv2DPerChannelDilations sets the optional dilations attribute to value.
 //
 // value: list of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedConv2DPerChannelDilations(value []int64) QuantizedConv2DPerChannelAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22833,6 +22845,196 @@ func MatrixDiagPartV2(scope *Scope, input tf.Output, k tf.Output, padding_value 
 	return op.Output(0)
 }
 
+// A container for a multi device iterator resource.
+//
+// Returns:
+//	handle: A handle to a multi device iterator that can be passed to a
+// "MultiDeviceIteratorGetNextFromShard" op. In contrast to MultiDeviceIterator,
+// AnonymousIterator prevents resource sharing by name, and does not keep a
+// reference to the resource container.
+//	deleter: A variant deleter that should be passed into the op that deletes the iterator.
+func AnonymousMultiDeviceIterator(scope *Scope, devices []string, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output, deleter tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"devices": devices, "output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "AnonymousMultiDeviceIterator",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// Provides the time since epoch in seconds.
+//
+// Returns the timestamp as a `float64` for seconds since the Unix epoch.
+//
+// Note: the timestamp is computed when the op is executed, not when it is added
+// to the graph.
+func Timestamp(scope *Scope) (ts tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Timestamp",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the truth value of (x <= y) element-wise.
+//
+// *NOTE*: `LessEqual` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+//
+// Example:
+//
+// ```python
+// x = tf.constant([5, 4, 6])
+// y = tf.constant([5])
+// tf.math.less_equal(x, y) ==> [True, True, False]
+//
+// x = tf.constant([5, 4, 6])
+// y = tf.constant([5, 6, 6])
+// tf.math.less_equal(x, y) ==> [True, True, True]
+// ```
+func LessEqual(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LessEqual",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// LoadTPUEmbeddingADAMParametersGradAccumDebugAttr is an optional argument to LoadTPUEmbeddingADAMParametersGradAccumDebug.
+type LoadTPUEmbeddingADAMParametersGradAccumDebugAttr func(optionalAttr)
+
+// LoadTPUEmbeddingADAMParametersGradAccumDebugTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func LoadTPUEmbeddingADAMParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingADAMParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// LoadTPUEmbeddingADAMParametersGradAccumDebugTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func LoadTPUEmbeddingADAMParametersGradAccumDebugTableName(value string) LoadTPUEmbeddingADAMParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// LoadTPUEmbeddingADAMParametersGradAccumDebugConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func LoadTPUEmbeddingADAMParametersGradAccumDebugConfig(value string) LoadTPUEmbeddingADAMParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Load ADAM embedding parameters with debug support.
+//
+// An op that loads optimization parameters into HBM for embedding. Must be
+// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+// embedding table configuration. For example, this op is used to install
+// parameters that are loaded from a checkpoint before a training loop is
+// executed.
+//
+// Arguments:
+//	parameters: Value of parameters used in the ADAM optimization algorithm.
+//	momenta: Value of momenta used in the ADAM optimization algorithm.
+//	velocities: Value of velocities used in the ADAM optimization algorithm.
+//	gradient_accumulators: Value of gradient_accumulators used in the ADAM optimization algorithm.
+//
+//
+//
+// Returns the created operation.
+func LoadTPUEmbeddingADAMParametersGradAccumDebug(scope *Scope, parameters tf.Output, momenta tf.Output, velocities tf.Output, gradient_accumulators tf.Output, num_shards int64, shard_id int64, optional ...LoadTPUEmbeddingADAMParametersGradAccumDebugAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LoadTPUEmbeddingADAMParametersGradAccumDebug",
+		Input: []tf.Input{
+			parameters, momenta, velocities, gradient_accumulators,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// RetrieveTPUEmbeddingRMSPropParametersAttr is an optional argument to RetrieveTPUEmbeddingRMSPropParameters.
+type RetrieveTPUEmbeddingRMSPropParametersAttr func(optionalAttr)
+
+// RetrieveTPUEmbeddingRMSPropParametersTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+//
+// REQUIRES: value >= -1
+func RetrieveTPUEmbeddingRMSPropParametersTableId(value int64) RetrieveTPUEmbeddingRMSPropParametersAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingRMSPropParametersTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingRMSPropParametersTableName(value string) RetrieveTPUEmbeddingRMSPropParametersAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingRMSPropParametersConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingRMSPropParametersConfig(value string) RetrieveTPUEmbeddingRMSPropParametersAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Retrieve RMSProp embedding parameters.
+//
+// An op that retrieves optimization parameters from embedding to host
+// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+// the correct embedding table configuration. For example, this op is
+// used to retrieve updated parameters before saving a checkpoint.
+//
+// Returns:
+//	parameters: Parameter parameters updated by the RMSProp optimization algorithm.
+//	ms: Parameter ms updated by the RMSProp optimization algorithm.
+//	mom: Parameter mom updated by the RMSProp optimization algorithm.
+func RetrieveTPUEmbeddingRMSPropParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingRMSPropParametersAttr) (parameters tf.Output, ms tf.Output, mom tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RetrieveTPUEmbeddingRMSPropParameters",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // Conv3DBackpropInputV2Attr is an optional argument to Conv3DBackpropInputV2.
 type Conv3DBackpropInputV2Attr func(optionalAttr)
 
@@ -22857,7 +23059,7 @@ func Conv3DBackpropInputV2DataFormat(value string) Conv3DBackpropInputV2Attr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropInputV2Dilations(value []int64) Conv3DBackpropInputV2Attr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25297,7 +25499,7 @@ func AvgPool3DGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksi
 type Conv3DBackpropFilterAttr func(optionalAttr)
 
 // Conv3DBackpropFilterDilations sets the optional dilations attribute to value.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropFilterDilations(value []int64) Conv3DBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25629,7 +25831,7 @@ func DepthwiseConv2dNativeBackpropInputDataFormat(value string) DepthwiseConv2dN
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func DepthwiseConv2dNativeBackpropInputDilations(value []int64) DepthwiseConv2dNativeBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25679,7 +25881,7 @@ func DepthwiseConv2dNativeBackpropInput(scope *Scope, input_sizes tf.Output, fil
 type Conv3DBackpropInputAttr func(optionalAttr)
 
 // Conv3DBackpropInputDilations sets the optional dilations attribute to value.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropInputDilations(value []int64) Conv3DBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25929,7 +26131,7 @@ func DepthwiseConv2dNativeDataFormat(value string) DepthwiseConv2dNativeAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func DepthwiseConv2dNativeDilations(value []int64) DepthwiseConv2dNativeAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -26559,7 +26761,7 @@ func QuantizedConv2DOutType(value tf.DataType) QuantizedConv2DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedConv2DDilations(value []int64) QuantizedConv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -27624,7 +27826,7 @@ func Conv3DDataFormat(value string) Conv3DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DDilations(value []int64) Conv3DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -41212,127 +41414,6 @@ func BesselI1e(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// LoadTPUEmbeddingADAMParametersGradAccumDebugAttr is an optional argument to LoadTPUEmbeddingADAMParametersGradAccumDebug.
-type LoadTPUEmbeddingADAMParametersGradAccumDebugAttr func(optionalAttr)
-
-// LoadTPUEmbeddingADAMParametersGradAccumDebugTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func LoadTPUEmbeddingADAMParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingADAMParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// LoadTPUEmbeddingADAMParametersGradAccumDebugTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func LoadTPUEmbeddingADAMParametersGradAccumDebugTableName(value string) LoadTPUEmbeddingADAMParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// LoadTPUEmbeddingADAMParametersGradAccumDebugConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func LoadTPUEmbeddingADAMParametersGradAccumDebugConfig(value string) LoadTPUEmbeddingADAMParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Load ADAM embedding parameters with debug support.
-//
-// An op that loads optimization parameters into HBM for embedding. Must be
-// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
-// embedding table configuration. For example, this op is used to install
-// parameters that are loaded from a checkpoint before a training loop is
-// executed.
-//
-// Arguments:
-//	parameters: Value of parameters used in the ADAM optimization algorithm.
-//	momenta: Value of momenta used in the ADAM optimization algorithm.
-//	velocities: Value of velocities used in the ADAM optimization algorithm.
-//	gradient_accumulators: Value of gradient_accumulators used in the ADAM optimization algorithm.
-//
-//
-//
-// Returns the created operation.
-func LoadTPUEmbeddingADAMParametersGradAccumDebug(scope *Scope, parameters tf.Output, momenta tf.Output, velocities tf.Output, gradient_accumulators tf.Output, num_shards int64, shard_id int64, optional ...LoadTPUEmbeddingADAMParametersGradAccumDebugAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "LoadTPUEmbeddingADAMParametersGradAccumDebug",
-		Input: []tf.Input{
-			parameters, momenta, velocities, gradient_accumulators,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// RetrieveTPUEmbeddingRMSPropParametersAttr is an optional argument to RetrieveTPUEmbeddingRMSPropParameters.
-type RetrieveTPUEmbeddingRMSPropParametersAttr func(optionalAttr)
-
-// RetrieveTPUEmbeddingRMSPropParametersTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func RetrieveTPUEmbeddingRMSPropParametersTableId(value int64) RetrieveTPUEmbeddingRMSPropParametersAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingRMSPropParametersTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingRMSPropParametersTableName(value string) RetrieveTPUEmbeddingRMSPropParametersAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingRMSPropParametersConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingRMSPropParametersConfig(value string) RetrieveTPUEmbeddingRMSPropParametersAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Retrieve RMSProp embedding parameters.
-//
-// An op that retrieves optimization parameters from embedding to host
-// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
-// the correct embedding table configuration. For example, this op is
-// used to retrieve updated parameters before saving a checkpoint.
-//
-// Returns:
-//	parameters: Parameter parameters updated by the RMSProp optimization algorithm.
-//	ms: Parameter ms updated by the RMSProp optimization algorithm.
-//	mom: Parameter mom updated by the RMSProp optimization algorithm.
-func RetrieveTPUEmbeddingRMSPropParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingRMSPropParametersAttr) (parameters tf.Output, ms tf.Output, mom tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RetrieveTPUEmbeddingRMSPropParameters",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
 // Returns a batched diagonal tensor with a given batched diagonal values.
 //
 // Given a `diagonal`, this operation returns a tensor with the `diagonal` and
@@ -42265,87 +42346,6 @@ func SerializeManySparse(scope *Scope, sparse_indices tf.Output, sparse_values t
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// NonMaxSuppressionV5Attr is an optional argument to NonMaxSuppressionV5.
-type NonMaxSuppressionV5Attr func(optionalAttr)
-
-// NonMaxSuppressionV5PadToMaxOutputSize sets the optional pad_to_max_output_size attribute to value.
-//
-// value: If true, the output `selected_indices` is padded to be of length
-// `max_output_size`. Defaults to false.
-// If not specified, defaults to false
-func NonMaxSuppressionV5PadToMaxOutputSize(value bool) NonMaxSuppressionV5Attr {
-	return func(m optionalAttr) {
-		m["pad_to_max_output_size"] = value
-	}
-}
-
-// Greedily selects a subset of bounding boxes in descending order of score,
-//
-// pruning away boxes that have high intersection-over-union (IOU) overlap
-// with previously selected boxes.  Bounding boxes with score less than
-// `score_threshold` are removed.  Bounding boxes are supplied as
-// [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
-// diagonal pair of box corners and the coordinates can be provided as normalized
-// (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
-// is agnostic to where the origin is in the coordinate system and more
-// generally is invariant to orthogonal transformations and translations
-// of the coordinate system; thus translating or reflections of the coordinate
-// system result in the same boxes being selected by the algorithm.
-// The output of this operation is a set of integers indexing into the input
-// collection of bounding boxes representing the selected boxes.  The bounding
-// box coordinates corresponding to the selected indices can then be obtained
-// using the `tf.gather operation`.  For example:
-//   selected_indices = tf.image.non_max_suppression_v2(
-//       boxes, scores, max_output_size, iou_threshold, score_threshold)
-//   selected_boxes = tf.gather(boxes, selected_indices)
-// This op also supports a Soft-NMS (with Gaussian weighting) mode (c.f.
-// Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
-// of other overlapping boxes instead of directly causing them to be pruned.
-// To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
-// larger than 0.
-//
-// Arguments:
-//	boxes: A 2-D float tensor of shape `[num_boxes, 4]`.
-//	scores: A 1-D float tensor of shape `[num_boxes]` representing a single
-// score corresponding to each box (each row of boxes).
-//	max_output_size: A scalar integer tensor representing the maximum number of
-// boxes to be selected by non max suppression.
-//	iou_threshold: A 0-D float tensor representing the threshold for deciding whether
-// boxes overlap too much with respect to IOU.
-//	score_threshold: A 0-D float tensor representing the threshold for deciding when to remove
-// boxes based on score.
-//	soft_nms_sigma: A 0-D float tensor representing the sigma parameter for Soft NMS; see Bodla et
-// al (c.f. https://arxiv.org/abs/1704.04503).  When `soft_nms_sigma=0.0` (which
-// is default), we fall back to standard (hard) NMS.
-//
-// Returns:
-//	selected_indices: A 1-D integer tensor of shape `[M]` representing the selected
-// indices from the boxes tensor, where `M <= max_output_size`.
-//	selected_scores: A 1-D float tensor of shape `[M]` representing the corresponding
-// scores for each selected box, where `M <= max_output_size`.  Scores only differ
-// from corresponding input scores when using Soft NMS (i.e. when
-// `soft_nms_sigma>0`)
-//	valid_outputs: A 0-D integer tensor representing the number of valid elements in
-// `selected_indices`, with the valid elements appearing first.
-func NonMaxSuppressionV5(scope *Scope, boxes tf.Output, scores tf.Output, max_output_size tf.Output, iou_threshold tf.Output, score_threshold tf.Output, soft_nms_sigma tf.Output, optional ...NonMaxSuppressionV5Attr) (selected_indices tf.Output, selected_scores tf.Output, valid_outputs tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "NonMaxSuppressionV5",
-		Input: []tf.Input{
-			boxes, scores, max_output_size, iou_threshold, score_threshold, soft_nms_sigma,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // Says whether the targets are in the top `K` predictions.
@@ -45536,7 +45536,7 @@ func Conv2DBackpropFilterDataFormat(value string) Conv2DBackpropFilterAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func Conv2DBackpropFilterDilations(value []int64) Conv2DBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value

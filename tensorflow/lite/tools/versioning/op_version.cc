@@ -266,6 +266,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_STRIDED_SLICE:
+      if (op_sig.options.strided_slice.num_dims > 4) {
+        return 4;
+      }
       // If the op takes bool input, it is version 3.
       if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 3;
@@ -283,6 +286,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.options.resize_bilinear.half_pixel_centers) {
         return 3;
       } else if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
+    case BuiltinOperator_TILE:
+      if (op_sig.input_types.at(0) == TensorType_STRING) {
         return 2;
       }
       return 1;
@@ -424,6 +433,11 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.options.resize_bilinear.half_pixel_centers =
             resize_bilinear_option->half_pixel_centers();
       }
+    } break;
+    // TODO(b/150176627): Add tests for GetOpSignature.
+    case BuiltinOperator_STRIDED_SLICE: {
+      op_sig.options.strided_slice.num_dims =
+          subgraph->tensors()->Get(op->inputs()->Get(0))->shape()->size();
     } break;
 
     default:

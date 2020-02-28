@@ -65,20 +65,32 @@ struct MklConvBwdInputParams {
   memory::dims dilations;
   memory::dims padding_left;
   memory::dims padding_right;
+#ifndef ENABLE_MKLDNN_V1
   padding_kind padding;
+#endif  // !ENABLE_MKLDNN_V1
 
   MklConvBwdInputParams(memory::dims diff_src_dims, memory::dims filter_dims,
                         memory::dims diff_dst_dims, memory::dims strides,
                         memory::dims dilations, memory::dims padding_left,
+#ifndef ENABLE_MKLDNN_V1
                         memory::dims padding_right, padding_kind padding)
+#else
+                        memory::dims padding_right)
+#endif  // !ENABLE_MKLDNN_V1
       : diff_src_dims(diff_src_dims),
         filter_dims(filter_dims),
         diff_dst_dims(diff_dst_dims),
         strides(strides),
         dilations(dilations),
         padding_left(padding_left),
+#ifndef ENABLE_MKLDNN_V1
         padding_right(padding_right),
-        padding(padding) {}
+        padding(padding) {
+  }
+#else
+        padding_right(padding_right) {
+  }
+#endif  // !ENABLE_MKLDNN_V1
 };
 
 template <typename T>
@@ -211,14 +223,22 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
         ALGORITHM::convolution_direct, *context_.diff_src_md,
         *context_.filter_md, *context_.diff_dst_md, convBwdInputDims.strides,
         convBwdInputDims.dilations, convBwdInputDims.padding_left,
+#ifndef ENABLE_MKLDNN_V1
         convBwdInputDims.padding_right, convBwdInputDims.padding));
+#else
+        convBwdInputDims.padding_right));
+#endif  // !ENABLE_MKLDNN_V1
 
     context_.fwd_desc.reset(new ConvFwdDesc(
         prop_kind::forward, ALGORITHM::convolution_direct,
         *context_.diff_src_md, *context_.filter_md, *context_.diff_dst_md,
         convBwdInputDims.strides, convBwdInputDims.dilations,
+#ifndef ENABLE_MKLDNN_V1
         convBwdInputDims.padding_left, convBwdInputDims.padding_right,
         convBwdInputDims.padding));
+#else
+        convBwdInputDims.padding_left, convBwdInputDims.padding_right));
+#endif  // !ENABLE_MKLDNN_V1
 
     // Create primitive descriptors for conv fwd and conv bwd input.
     context_.fwd_pd.reset(new ConvFwdPd(*context_.fwd_desc, cpu_engine_));
@@ -440,11 +460,14 @@ class MklConvCustomBackpropInputOp
       // The default dilation factor for each dimension is 1 in TF and
       // 0 in MKL-DNN.
       for (int i = 0; i < dilations.size(); ++i) --dilations[i];
-
       MklConvBwdInputParams convBwdInputDims(
           fwd_src_dims, fwd_filter_dims, diff_dst_dims, strides, dilations,
+#ifndef ENABLE_MKLDNN_V1
           padding_left, padding_right,
           TFPaddingToMklDnnPadding(this->padding_));
+#else
+          padding_left, padding_right);
+#endif  // !ENABLE_MKLDNN_V1
 
       // We don't cache those primitives if the environment variable
       // TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE is true and if primitve descriptor

@@ -2160,6 +2160,14 @@ def _convert_squeeze(pfor_input):
   return wrap(array_ops.squeeze(t, axis=squeeze_dims), True)
 
 
+@RegisterPFor("ReverseV2")
+def _convert_reverse(pfor_input):
+  value = pfor_input.stacked_input(0)
+  axis = pfor_input.unstacked_input(1)
+  new_axis = array_ops.where_v2(axis >= 0, axis + 1, axis)
+  return wrap(gen_array_ops.reverse_v2(value, axis=new_axis), True)
+
+
 @RegisterPFor("Transpose")
 def _convert_transpose(pfor_input):
   t = pfor_input.stacked_input(0)

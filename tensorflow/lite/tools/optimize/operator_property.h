@@ -43,8 +43,8 @@ struct TensorProperty {
   // Constraints.
   bool restriction = false;
   // scale/zero_point hardcoded.
-  std::pair<float, int> restricted_value_int8 = {0.0, 0};
-  std::pair<float, int> restricted_value_int16 = {0.0, 0};
+  std::pair<float, int> restricted_value_int8 = {0.0f, 0};
+  std::pair<float, int> restricted_value_int16 = {0.0f, 0};
 
   // Use derived scale.
   bool use_derived_scale = false;

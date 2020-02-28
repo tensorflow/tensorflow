@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -37,9 +38,9 @@ absl::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
 // Figures out which devices (named by their replica-ids) are participating in
-// the all-reduce subgroup that contains device_ordinal.
+// the all-reduce subgroup that contains device_id.
 StatusOr<std::vector<int64>> GetParticipatingReplicas(
-    int64 device_ordinal, absl::Span<const ReplicaGroup> replica_groups,
+    GlobalDeviceId device_id, absl::Span<const ReplicaGroup> replica_groups,
     int64 total_replica_count, const DeviceAssignment& device_assn);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
@@ -72,16 +73,18 @@ struct RendezvousKey {
   };
 
   explicit RendezvousKey(const RunId& run_id,
-                         std::vector<int64> participating_replicas,
+                         std::vector<GlobalDeviceId> global_devices,
+                         int num_local_participants,
                          CollectiveOpKind collective_op_kind, int64 op_id)
       : run_id(run_id),
-        participating_replicas(participating_replicas),
+        global_devices(std::move(global_devices)),
+        num_local_participants(num_local_participants),
         collective_op_kind(collective_op_kind),
         op_id(op_id) {}
 
   static RendezvousKey FromInstruction(
-      const RunId& run_id, std::vector<int64> participating_replicas,
-      const HloInstruction* instr) {
+      const RunId& run_id, std::vector<GlobalDeviceId> global_devices,
+      int num_local_participants, const HloInstruction* instr) {
     CollectiveOpKind collective_op_kind;
     int64 op_id;
 
@@ -91,20 +94,19 @@ struct RendezvousKey {
             : std::make_pair(
                   kCrossReplica,
                   static_cast<int64>(instr->GetModule()->unique_id()));
-    return RendezvousKey(run_id, participating_replicas, collective_op_kind,
-                         op_id);
+    return RendezvousKey(run_id, std::move(global_devices),
+                         num_local_participants, collective_op_kind, op_id);
   }
-
-  int num_participants() const { return participating_replicas.size(); }
 
   template <typename H>
   friend H AbslHashValue(H h, const RendezvousKey& k) {
-    return H::combine(std::move(h), k.run_id, k.participating_replicas,
+    return H::combine(std::move(h), k.run_id, k.global_devices,
+                      k.num_local_participants,
                       static_cast<int>(k.collective_op_kind), k.op_id);
   }
   friend bool operator==(const RendezvousKey& a, const RendezvousKey& b) {
-    return a.run_id == b.run_id &&
-           a.participating_replicas == b.participating_replicas &&
+    return a.run_id == b.run_id && a.global_devices == b.global_devices &&
+           a.num_local_participants == b.num_local_participants &&
            a.collective_op_kind == b.collective_op_kind &&  //
            a.op_id == b.op_id;
   }
@@ -114,14 +116,15 @@ struct RendezvousKey {
 
   string ToString() const {
     return absl::StrFormat(
-        "RendezvousKey{run_id=%s, participating_replicas=[%s], "
-        "collective_op_kind=%d, op_id=%d}",
-        run_id.ToString(), absl::StrJoin(participating_replicas, ","),
-        static_cast<int>(collective_op_kind), op_id);
+        "RendezvousKey{run_id=%s, global_devices=[%s], "
+        "num_local_participants=%d, collective_op_kind=%d, op_id=%d}",
+        run_id.ToString(), GlobalDeviceIdsToString(global_devices),
+        num_local_participants, static_cast<int>(collective_op_kind), op_id);
   }
 
   RunId run_id;
-  std::vector<int64> participating_replicas;
+  std::vector<GlobalDeviceId> global_devices;
+  int num_local_participants;
   CollectiveOpKind collective_op_kind;
   int64 op_id;
 };
@@ -164,10 +167,13 @@ struct AllReduceParticipantData {
   };
   std::vector<Buffer> buffers;
   se::Stream* stream;
+  const NcclUniqueIdCallback* nccl_unique_id_callback = nullptr;
 
   ReductionKind reduction_kind;
 
-  int num_participants() const { return rendezvous_key.num_participants(); }
+  // For each local all-reduce participant a (global ID, local device ordinal)
+  // pair for the participant. Participants are in no particular order.
+  std::vector<std::pair<GlobalDeviceId, int64>> local_devices;
 
   string ToString() const {
     std::vector<std::string> buffer_strs;
@@ -303,12 +309,13 @@ class Rendezvous {
   const RendezvousKey key_;
 
   tensorflow::BlockingCounter all_participants_present_{
-      key_.num_participants()};
-  tensorflow::BlockingCounter done_{key_.num_participants()};
+      key_.num_local_participants};
+  tensorflow::BlockingCounter done_{key_.num_local_participants};
 
   // tensorflow::BlockingCounter returned by SubmitParticipant.
   std::shared_ptr<tensorflow::BlockingCounter> returned_blocking_counter_{
-      std::make_shared<tensorflow::BlockingCounter>(key_.num_participants())};
+      std::make_shared<tensorflow::BlockingCounter>(
+          key_.num_local_participants)};
 };
 
 }  // end namespace xla

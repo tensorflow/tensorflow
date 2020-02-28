@@ -135,6 +135,7 @@ tf_cuda_library(
         "//conditions:default": [
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
+            "//tensorflow/core/profiler/lib:traceme",
         ],
     }),
 )

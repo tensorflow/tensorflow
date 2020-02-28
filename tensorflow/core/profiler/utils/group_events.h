@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_GROUP_EVENTS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_GROUP_EVENTS_H_
 
+#include <memory>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -57,6 +59,8 @@ class EventNode {
 
   // Sets group_id for this node and its descendants.
   void PropagateGroupId(int64 group_id);
+
+  const XPlaneVisitor& GetPlaneVisitor() const { return *visitor_; }
 
   const XEvent& GetEvent() const { return *event_; }
 

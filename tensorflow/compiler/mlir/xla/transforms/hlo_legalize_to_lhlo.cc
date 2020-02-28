@@ -16,7 +16,7 @@ limitations under the License.
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
 #include "absl/memory/memory.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/hlo_shape_derivation.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
@@ -127,9 +128,24 @@ class HloToLhloOpConverter : public ConversionPattern {
       ConversionPatternRewriter& rewriter) const final {
     const auto& original_results = op->getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
-    for (auto result : original_results) {
-      buffer_args.push_back(
-          InsertAllocAndDealloc(op->getLoc(), result, &rewriter));
+    for (auto result : llvm::enumerate(original_results)) {
+      RankedTensorType resultType =
+          result.value().getType().dyn_cast<RankedTensorType>();
+      if (!resultType) {
+        return matchFailure();
+      }
+      if (resultType.hasStaticShape()) {
+        buffer_args.push_back(
+            InsertAllocAndDealloc(op->getLoc(), result.value(), &rewriter));
+      } else {
+        Value shape_value = ShapeDerivation<HloOpTy>::impl::deriveShapeFromOp(
+            op, result.index(), &rewriter);
+        if (!shape_value) {
+          return matchFailure();
+        }
+        buffer_args.push_back(InsertDynamicAllocAndDealloc(
+            op->getLoc(), result.value(), shape_value, &rewriter));
+      }
     }
     rewriter.create<LhloOpTy>(op->getLoc(), llvm::None, buffer_args,
                               op->getAttrs());
@@ -320,6 +336,7 @@ struct HloLegalizeToLhlo : public ModulePass<HloLegalizeToLhlo> {
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
     target.addLegalOp<ModuleTerminatorOp>();
+    target.addLegalOp<ScalarsToDimensionTensorOp>();
     target.addIllegalDialect<xla_hlo::XlaHloDialect>();
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();

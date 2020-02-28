@@ -46,6 +46,19 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
+struct LayoutOptimizationPipelineOptions
+    : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
+  Option<std::string> force_data_format{
+      *this, "force-data-format",
+      llvm::cl::desc("Force data format for all layout sensitive ops")};
+};
+
+// Layout optimization assigns optimal data layout for layout sensitive
+// operations, and cancels all redundant transposes.
+void CreateLayoutOptimizationPipeline(
+    OpPassManager& pm,  // NOLINT - MLIR contract is pass by mutable reference.
+    const LayoutOptimizationPipelineOptions& options);
+
 struct StandardPipelineOptions
     : public PassPipelineOptions<StandardPipelineOptions> {
   Option<bool> enable_inliner{*this, "enable-inliner",
@@ -165,10 +178,18 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass();
 // `tf_device.replicate` island.
 std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateToIslandPass();
 
+// Creates a pass that creates `tf_executor.island` from a single
+// `tf_device.parallel_execute` island.
+std::unique_ptr<OpPassBase<FuncOp>> CreateParallelExecuteToIslandsPass();
+
 // Creates a pass that annotates whether a LaunchFuncOp's parameters have the
 // same data across replicas.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateAnnotateParameterReplicationPass();
 
+// Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
+// attribute to each TensorFlow dialect op in the body based on the `device`
+// attribute on the `tf_device.launch`.
+std::unique_ptr<OpPassBase<FuncOp>> CreateLaunchToDeviceAttributePass();
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -210,10 +231,6 @@ namespace tf_saved_model {
 
 // Creates a pass that optimizes tf_saved_model.global_tensor ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass();
-
-// Creates a pass that inlines global tensors as tf.Const ops in the function
-// body.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateInlineGlobalTensorsPass();
 
 // Creates a pass that uses tf_saved_model dialect linkage information
 // to mark function visibility. That is, exported functions are marked with

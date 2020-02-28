@@ -14,8 +14,17 @@ platform(
         "@bazel_tools//platforms:x86_64",
         "@bazel_tools//platforms:windows",
     ],
-    exec_properties = {
-        "container-image": "docker://gcr.io/tensorflow-testing/tf-win2019-rbe@sha256:5e91ddd99345204cd8da2e687d312eb64b3916f257023fd1b651b3dabefd9286",
-        "OSFamily": "Windows",
-    },
+    remote_execution_properties = """
+        properties:{
+          name: "container-image"
+          value: "docker://gcr.io/tensorflow-testing/tf-win2019-rbe@sha256:e0db5fde707b8b2b19c752c541612d137de17c9a8cf4c0ffacaeb892f9cb41e9"
+        }
+        properties:{
+          name: "OSFamily"
+          value: "Windows"
+        }
+        properties:{
+          name: "Pool" value: "default"
+        }
+        """,
 )

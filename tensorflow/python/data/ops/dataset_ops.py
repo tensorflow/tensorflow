@@ -39,12 +39,12 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.data.util import random_seed
-from tensorflow.python.data.util import sparse
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import auto_control_deps
+from tensorflow.python.framework import auto_control_deps_utils as acd_utils
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -888,9 +888,9 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Args:
       *args: follows the same semantics as python's xrange.
-        len(args) == 1 -> start = 0, stop = args[0], step = 1
-        len(args) == 2 -> start = args[0], stop = args[1], step = 1
-        len(args) == 3 -> start = args[0], stop = args[1, stop = args[2]
+        len(args) == 1 -> start = 0, stop = args[0], step = 1.
+        len(args) == 2 -> start = args[0], stop = args[1], step = 1.
+        len(args) == 3 -> start = args[0], stop = args[1], step = args[2].
       **kwargs:
         - output_type: Its expected dtype. (Optional, default: `tf.int64`).
 
@@ -1478,8 +1478,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       # bool(tf.TensorShape(None)) is False
       if not all(nest.flatten(padded_shapes)):
         raise ValueError("You must set the `padded_shapes` argument to "
-                         "`Dataset.padded_batch` if any component of its input"
-                         "has an unknown rank")
+                         "`Dataset.padded_batch` if any component of its "
+                         "input has an unknown rank")
     return PaddedBatchDataset(self, batch_size, padded_shapes, padding_values,
                               drop_remainder)
 
@@ -3830,22 +3830,27 @@ def _padding_value_to_tensor(value, output_type):
 
 def _padding_values_or_default(padding_values, input_dataset):
   """Returns padding values with None elements replaced with default values."""
+
   def make_zero(t):
     if t.base_dtype == dtypes.string:
       return ""
     elif t.base_dtype == dtypes.variant:
       error_msg = ("Unable to create padding for field of type 'variant' "
                    "because t.base_type == dtypes.variant == "
-                   "{}.".format(
-                       t.base_dtype))
+                   "{}.".format(t.base_dtype))
       raise TypeError(error_msg)
+    elif t.base_dtype == dtypes.bfloat16:
+      # Special case `bfloat16` because it is not supported by NumPy.
+      return constant_op.constant(0, dtype=dtypes.bfloat16)
     else:
       return np.zeros_like(t.as_numpy_dtype())
+
   def value_or_default(value, default):
     return default if value is None else value
 
-  default_padding = nest.map_structure(make_zero,
-                                       get_legacy_output_types(input_dataset))
+  default_padding = nest.map_structure(
+      make_zero,
+      get_legacy_output_types(input_dataset))
   return nest.map_structure_up_to(padding_values, value_or_default,
                                   padding_values, default_padding)
 
@@ -3857,10 +3862,13 @@ class PaddedBatchDataset(UnaryDataset):
                drop_remainder):
     """See `Dataset.batch()` for details."""
     self._input_dataset = input_dataset
-    if sparse.any_sparse(get_legacy_output_classes(input_dataset)):
-      # TODO(b/63669786): support batching of sparse tensors
-      raise TypeError(
-          "Batching of padded sparse tensors is not currently supported")
+
+    def check_types(component_spec):
+      if not isinstance(component_spec, tensor_spec.TensorSpec):
+        raise TypeError("Padded batching of components of type ",
+                        type(component_spec), " is not supported.")
+
+    nest.map_structure(check_types, input_dataset.element_spec)
     self._input_dataset = input_dataset
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
@@ -4467,43 +4475,67 @@ def _collect_resource_inputs(op):
   """Collects resource inputs for the given ops (and its variant inputs)."""
 
   def _process(op_queue, seen_ops):
-    """Processes the next element of the op queue."""
+    """Processes the next element of the op queue.
 
-    result = []
+    Args:
+      op_queue: Queue of Dataset operations to process.
+      seen_ops: Already processed set of Operations.
+
+    Returns:
+      A 2-tuple containing sets of resource handles. The first tuple entry
+      contains read-only handles and the second entry contains read-write
+      handles.
+    """
+
+    reads = []
+    writes = []
     op = op_queue.pop()
     if op in seen_ops:
-      return result
+      return reads, writes
     seen_ops.add(op)
     for t in op.inputs:
       if t.dtype == dtypes.variant:
         # Conservatively assume that any variant inputs are datasets.
         op_queue.append(t.op)
       elif t.dtype == dtypes.resource:
-        result.append(t)
-    return result
+        # TODO(b/150139257): This always returns True right now since we have
+        # not updated the functional ops to set the special attribute that ACD
+        # uses to figure out which of the op's inputs are read-only.
+        if acd_utils.op_writes_to_resource(t, op):
+          writes.append(t)
+        else:
+          reads.append(t)
+    return reads, writes
 
   op_queue = [op]
   seen_ops = set()
-  resource_inputs = []
+  all_reads = []
+  all_writes = []
   while op_queue:
-    resource_inputs.extend(_process(op_queue, seen_ops))
+    reads, writes = _process(op_queue, seen_ops)
+    all_reads.extend(reads)
+    all_writes.extend(writes)
 
-  return resource_inputs
+  return all_reads, all_writes
 
 
 @auto_control_deps.register_acd_resource_resolver
-def _resource_resolver(op, resource_inputs):
+def _resource_resolver(op, resource_reads, resource_writes):
   """Updates resource inputs for tf.data ops with indirect dependencies."""
 
   updated = False
   if op.type in [
       "DatasetToSingleElement", "DatasetToTFRecord", "ReduceDataset"
   ]:
-    indirect_resource_inputs = _collect_resource_inputs(op)
-    for inp in indirect_resource_inputs:
-      if inp not in resource_inputs:
+    reads, writes = _collect_resource_inputs(op)
+    for inp in reads:
+      if inp not in resource_reads:
         updated = True
-        resource_inputs.add(inp)
+        resource_reads.add(inp)
+    for inp in writes:
+      if inp not in resource_writes:
+        updated = True
+        resource_writes.add(inp)
 
   if op.type in [
       "IteratorGetNext", "IteratorGetNextSync", "IteratorGetNextAsOptional"
@@ -4514,10 +4546,14 @@ def _resource_resolver(op, resource_inputs):
     ]
 
     if len(make_iterator_ops) == 1:
-      indirect_resource_inputs = _collect_resource_inputs(make_iterator_ops[0])
-      for inp in indirect_resource_inputs:
-        if inp not in resource_inputs:
+      reads, writes = _collect_resource_inputs(make_iterator_ops[0])
+      for inp in reads:
+        if inp not in resource_reads:
           updated = True
-          resource_inputs.add(inp)
+          resource_reads.add(inp)
+      for inp in writes:
+        if inp not in resource_writes:
+          updated = True
+          resource_writes.add(inp)
 
   return updated

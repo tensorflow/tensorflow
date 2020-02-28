@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
@@ -301,6 +302,11 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
 
   @combinations.generate(reduction_to_one_combinations + allreduce_combinations)
   def testReductionAndBroadcast(self, cross_device_ops, devices):
+    if isinstance(
+        cross_device_ops._obj,  # pylint: disable=protected-access
+        cross_device_ops_lib.AllReduceCrossDeviceOps
+    ) and context.executing_eagerly():
+      self.skipTest("b/149881884")
     self._testReductionAndBroadcast(cross_device_ops, devices)
 
   def testChooseAlgorithm(self):
@@ -432,6 +438,8 @@ class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
 
 NUM_WORKERS = 3
 
+CollectiveCommunication = cross_device_ops_lib.CollectiveCommunication
+
 
 class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                               CrossDeviceOpsTestBase):
@@ -454,9 +462,9 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                         task_type,
                         task_id,
                         num_gpus=0,
+                        communication=CollectiveCommunication.AUTO,
                         use_strategy_object=False,
-                        local_mode=False,
-                        num_packs=1):
+                        local_mode=False):
     collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=10 + CollectiveAllReduceTest.collective_key_base,
         op_instance_key_start=100 + CollectiveAllReduceTest.collective_key_base,
@@ -469,15 +477,22 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         devices = ["/device:CPU:0"]
 
       if use_strategy_object:
-        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
+        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+            communication=communication)
         strategy.extended._collective_keys = collective_keys
         strategy.extended._cross_device_ops._collective_keys = collective_keys
         return strategy, devices, ""
       else:
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
-            1, num_gpus, collective_keys=collective_keys, num_packs=num_packs)
+            1,
+            num_gpus,
+            collective_keys=collective_keys,
+            communication=communication)
         return collective_all_reduce_ops, devices, ""
     else:
+      # NCCL requires physical GPUs for every replica, which we can't do with
+      # simulated multi host set up now.
+      assert communication != CollectiveCommunication.NCCL
       if num_gpus:
         devices = [
             "/job:%s/task:%d/replica:0/device:GPU:%d" % (task_type, task_id, i)
@@ -489,7 +504,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         ]
 
       if use_strategy_object:
-        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
+        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+            communication=communication)
         strategy.configure(
             cluster_spec=self._cluster_spec,
             task_type=task_type,
@@ -500,8 +516,10 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                 "grpc://" + self._cluster_spec[task_type][task_id])
       else:
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
-            NUM_WORKERS, num_gpus, collective_keys=collective_keys,
-            num_packs=num_packs)
+            NUM_WORKERS,
+            num_gpus,
+            collective_keys=collective_keys,
+            communication=communication)
         return (collective_all_reduce_ops, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])
 
@@ -509,16 +527,17 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                       task_type,
                       task_id,
                       num_gpus,
+                      communication,
                       use_strategy_object=False,
                       local_mode=False,
-                      num_packs=1):
+                      hints=None):
     collective_all_reduce, devices, master_target = self._get_test_objects(
         task_type,
         task_id,
         num_gpus,
+        communication=communication,
         use_strategy_object=use_strategy_object,
-        local_mode=local_mode,
-        num_packs=num_packs)
+        local_mode=local_mode)
     if local_mode:
       num_workers = 1
       worker_device = None
@@ -531,17 +550,19 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
       if use_strategy_object:
         with test_object.scope():
           return test_object.extended.reduce_to(reduce_op, per_replica,
-                                                destinations)
+                                                destinations, hints)
       else:
-        return test_object.reduce(reduce_op, per_replica, destinations)
+        return test_object.reduce(reduce_op, per_replica, destinations, hints)
 
     def _batch_reduce(test_object, reduce_op, value_destination_pairs):
       if use_strategy_object:
         with test_object.scope():
           return test_object.extended.batch_reduce_to(reduce_op,
-                                                      value_destination_pairs)
+                                                      value_destination_pairs,
+                                                      hints)
       else:
-        return test_object.batch_reduce(reduce_op, value_destination_pairs)
+        return test_object.batch_reduce(reduce_op, value_destination_pairs,
+                                        hints)
 
     with ops.Graph().as_default(), \
          ops.device(worker_device), \
@@ -645,11 +666,16 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
                                   task_type,
                                   task_id,
                                   num_gpus,
+                                  communication,
                                   batch_reduce,
                                   variable_length,
                                   local_mode=False):
     collective_all_reduce, devices, master_target = self._get_test_objects(
-        task_type, task_id, num_gpus, local_mode=local_mode)
+        task_type,
+        task_id,
+        num_gpus,
+        communication=communication,
+        local_mode=local_mode)
     if local_mode:
       num_workers = 1
       worker_device = None
@@ -697,39 +723,48 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
           mode=["graph"],
           required_gpus=[0, 1, 2],
           use_strategy_object=[True, False],
-          num_packs=[1, 2]))
+          bytes_per_pack=[0, 1, 4]))
   def testReductionDistributed(self, required_gpus, use_strategy_object,
-                               num_packs):
+                               bytes_per_pack):
+    hints = collective_util.Hints(bytes_per_pack=bytes_per_pack)
     self._run_between_graph_clients(
         self._test_reduction,
         self._cluster_spec,
         required_gpus,
+        communication=CollectiveCommunication.RING,
         use_strategy_object=use_strategy_object,
-        num_packs=num_packs)
+        hints=hints)
 
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
           required_gpus=[0, 1, 2],
-          batch_reduce=[True],
           variable_length=[True, False]))
-  def testReduceIndexedSlicesDistributed(self, required_gpus, batch_reduce,
-                                         variable_length):
-    self._run_between_graph_clients(self._test_reduce_indexed_slices,
-                                    self._cluster_spec, required_gpus,
-                                    batch_reduce, variable_length)
+  def testReduceIndexedSlicesDistributed(self, required_gpus, variable_length):
+    self._run_between_graph_clients(
+        self._test_reduce_indexed_slices,
+        self._cluster_spec,
+        required_gpus,
+        communication=CollectiveCommunication.RING,
+        batch_reduce=True,
+        variable_length=variable_length)
 
   # Collective ops doesn't support strategy with one device.
   @combinations.generate(
       combinations.combine(
           mode=["graph"],
           required_gpus=2,
+          communication=[
+              CollectiveCommunication.NCCL, CollectiveCommunication.RING
+          ],
           use_strategy_object=[True, False]))
-  def testReductionLocal(self, required_gpus, use_strategy_object):
+  def testReductionLocal(self, required_gpus, communication,
+                         use_strategy_object):
     self._test_reduction(
         None,
         None,
         required_gpus,
+        communication=communication,
         use_strategy_object=use_strategy_object,
         local_mode=True)
 
@@ -738,15 +773,19 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
           mode=["graph"],
           required_gpus=2,
           batch_reduce=[True, False],
-          variable_length=[True, False]))
+          variable_length=[True, False],
+          communication=[
+              CollectiveCommunication.NCCL, CollectiveCommunication.RING
+          ]))
   def testReduceIndexedSlicesLocal(self, required_gpus, batch_reduce,
-                                   variable_length):
+                                   variable_length, communication):
     self._test_reduce_indexed_slices(
         None,
         None,
         required_gpus,
-        batch_reduce,
-        variable_length,
+        communication=communication,
+        batch_reduce=batch_reduce,
+        variable_length=variable_length,
         local_mode=True)
 
 

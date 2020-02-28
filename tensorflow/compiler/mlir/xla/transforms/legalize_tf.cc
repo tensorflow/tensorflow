@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/Dialect/Traits.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Diagnostics.h"  // TF:llvm-project
@@ -119,7 +119,7 @@ static DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int32_t> values,
 Type GetSumAccumulationType(Type input_type) {
   MLIRContext *ctx = input_type.getContext();
   if (input_type.isBF16() || input_type.isF16()) return FloatType::getF32(ctx);
-  if (input_type.isInteger(8) || input_type.isInteger(16))
+  if (input_type.isSignlessInteger(8) || input_type.isSignlessInteger(16))
     return IntegerType::get(32, ctx);
   return input_type;
 }
@@ -1274,7 +1274,7 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
                                      PatternRewriter &rewriter) const override {
     Type element_type =
         op.input().getType().cast<TensorType>().getElementType();
-    if (!element_type.isIntOrFloat()) return matchFailure();
+    if (!element_type.isSignlessIntOrFloat()) return matchFailure();
     Location loc = op.getLoc();
     ConstOp init = GetMinValueForType(element_type, loc, &rewriter);
 
@@ -2248,7 +2248,7 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
     Type input_element_type = input_type.getElementType();
     // TODO(bixia): Clarify whether tf.ArgMax supports complex data types. If
     // tf.ArgMax doesn't support complex data types, this check can be removed.
-    if (!input_element_type.isIntOrFloat()) return this->matchFailure();
+    if (!input_element_type.isSignlessIntOrFloat()) return this->matchFailure();
 
     Location loc = op.getLoc();
     Value init_value =

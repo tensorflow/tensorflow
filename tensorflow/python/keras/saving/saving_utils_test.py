@@ -91,8 +91,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='sgd',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit(
         x=np.random.random((8, 5)).astype(np.float32),
         y=np.random.random((8, 3)).astype(np.float32),
@@ -137,8 +136,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='sgd',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x=[np.random.random((8, input_dim)).astype(np.float32),
                  np.random.random((8, input_dim)).astype(np.float32)],
               y=[np.random.random((8, num_classes)).astype(np.float32),

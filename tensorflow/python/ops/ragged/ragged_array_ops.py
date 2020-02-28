@@ -436,7 +436,7 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
       return array_ops.expand_dims(input, axis)
 
     ndims = None if input.shape.ndims is None else input.shape.ndims + 1
-    axis = ragged_util.get_positive_axis(axis, ndims)
+    axis = array_ops.get_positive_axis(axis, ndims, ndims_name='rank(input)')
 
     if axis == 0:
       return ragged_tensor.RaggedTensor.from_uniform_row_length(
@@ -521,7 +521,8 @@ def ragged_one_hot(indices,
     indices = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         indices, name='indices')
     if axis is not None:
-      axis = ragged_util.get_positive_axis(axis, indices.shape.ndims)
+      axis = array_ops.get_positive_axis(
+          axis, indices.shape.ndims, ndims_name='rank(indices)')
       if axis < indices.ragged_rank:
         raise ValueError('axis may not be less than indices.ragged_rank.')
     return indices.with_flat_values(
@@ -672,8 +673,11 @@ def reverse(tensor, axis, name=None):
         tensor, name='tensor')
 
     # Allow usage of negative values to specify innermost axes.
-    axis = [ragged_util.get_positive_axis(dim, tensor.shape.rank)
-            for dim in axis]
+    axis = [
+        array_ops.get_positive_axis(dim, tensor.shape.rank, 'axis[%d]' % i,
+                                    'rank(tensor)')
+        for i, dim in enumerate(axis)
+    ]
 
     # We only need to slice up to the max axis. If the axis list
     # is empty, it should be 0.

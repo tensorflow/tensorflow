@@ -24,6 +24,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -46,10 +47,28 @@ public class FileUtil {
   @NonNull
   public static List<String> loadLabels(@NonNull Context context, @NonNull String filePath)
       throws IOException {
+    return loadLabels(context, filePath, Charset.defaultCharset());
+  }
+
+  /**
+   * Loads labels from the label file into a list of strings.
+   *
+   * <p>A legal label file is the plain text file whose contents are split into lines, and each line
+   * is an individual value. The file should be in assets of the context.
+   *
+   * @param context The context holds assets.
+   * @param filePath The path of the label file, relative with assets directory.
+   * @param cs {@code Charset} to use when decoding content of label file.
+   * @return a list of labels.
+   * @throws IOException if error occurs to open or read the file.
+   */
+  @NonNull
+  public static List<String> loadLabels(
+      @NonNull Context context, @NonNull String filePath, Charset cs) throws IOException {
     SupportPreconditions.checkNotNull(context, "Context cannot be null.");
     SupportPreconditions.checkNotNull(filePath, "File path cannot be null.");
     InputStream inputStream = context.getAssets().open(filePath);
-    return loadLabels(inputStream);
+    return loadLabels(inputStream, cs);
   }
 
   /**
@@ -62,14 +81,61 @@ public class FileUtil {
    */
   @NonNull
   public static List<String> loadLabels(@NonNull InputStream inputStream) throws IOException {
+    return loadLabels(inputStream, Charset.defaultCharset());
+  }
+
+  /**
+   * Loads labels from an input stream of an opened label file. See details for label files in
+   * {@link FileUtil#loadLabels(Context, String)}.
+   *
+   * @param inputStream the input stream of an opened label file.
+   * @param cs {@code Charset} to use when decoding content of label file.
+   * @return a list of labels.
+   * @throws IOException if error occurs to open or read the file.
+   */
+  @NonNull
+  public static List<String> loadLabels(@NonNull InputStream inputStream, Charset cs)
+      throws IOException {
     List<String> labels = new ArrayList<>();
-    BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+    BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, cs));
     String line;
     while ((line = reader.readLine()) != null) {
       labels.add(line);
     }
     reader.close();
     return labels;
+  }
+
+  /**
+   * Loads a vocabulary file (a single-column text file) into a list of strings.
+   *
+   * <p>A vocabulary file is a single-column plain text file whose contents are split into lines,
+   * and each line is an individual value. The file should be in assets of the context.
+   *
+   * @param context The context holds assets.
+   * @param filePath The path of the vocabulary file, relative with assets directory.
+   * @return a list of vocabulary words.
+   * @throws IOException if error occurs to open or read the file.
+   */
+  @NonNull
+  public static List<String> loadSingleColumnTextFile(
+      @NonNull Context context, @NonNull String filePath, Charset cs) throws IOException {
+    return loadLabels(context, filePath, cs);
+  }
+
+  /**
+   * Loads vocabulary from an input stream of an opened vocabulary file (which is a single-column
+   * text file). See details for vocabulary files in {@link FileUtil#loadVocabularyFile(Context,
+   * String)}.
+   *
+   * @param inputStream the input stream of an opened vocabulary file.
+   * @return a list of vocabulary words.
+   * @throws IOException if error occurs to open or read the file.
+   */
+  @NonNull
+  public static List<String> loadSingleColumnTextFile(@NonNull InputStream inputStream, Charset cs)
+      throws IOException {
+    return loadLabels(inputStream, cs);
   }
 
   /**

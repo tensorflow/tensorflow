@@ -28,6 +28,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:tpu_values",
         "@absl_py//absl/testing:parameterized",
     ],
 )

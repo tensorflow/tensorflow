@@ -445,8 +445,8 @@ class OptimizerV2(trackable.Trackable):
 
     Args:
       grads_and_vars: List of (gradient, variable) pairs.
-      name: Optional name for the returned operation.  Default to the name
-        passed to the `Optimizer` constructor.
+      name: Optional name for the returned operation. Default to the name passed
+        to the `Optimizer` constructor.
       all_reduce_sum_gradients: Whether to sum gradients from different
         replicas in the presense of `tf.distribute.Strategy`. If False, it's
         user responsibility to aggregate the gradients. Default to True.
@@ -473,6 +473,13 @@ class OptimizerV2(trackable.Trackable):
         # Distribution strategy does not support reducing an empty list of
         # gradients
         return control_flow_ops.no_op()
+
+      if distribute_ctx.in_cross_replica_context():
+        raise RuntimeError(
+            "`apply_gradients() cannot be called in cross-replica context. "
+            "Use `tf.distribute.Strategy.experimental_run_v2` to enter replica "
+            "context.")
+
       apply_state = self._prepare(var_list)
       return distribute_ctx.get_replica_context().merge_call(
           functools.partial(self._distributed_apply, apply_state=apply_state),

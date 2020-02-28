@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
@@ -47,6 +46,10 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
     bool has_value_range;
     int low;
     int high;
+
+    // The input value will be loaded from 'input_file_path' INSTEAD OF being
+    // randomly generated. Note the input file will be opened in binary mode.
+    std::string input_file_path;
   };
 
   explicit BenchmarkTfLiteModel(BenchmarkParams params = DefaultParams());
@@ -109,6 +112,12 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
         [](void* ptr) { delete[] static_cast<T*>(ptr); });
     return tmp;
   }
+
+  InputTensorData CreateRandomTensorData(const TfLiteTensor& t,
+                                         const InputLayerInfo* layer_info);
+
+  InputTensorData LoadInputTensorData(const TfLiteTensor& t,
+                                      const std::string& input_file_path);
 
   std::vector<InputLayerInfo> inputs_;
   std::vector<InputTensorData> inputs_data_;
