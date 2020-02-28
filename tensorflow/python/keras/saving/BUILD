@@ -22,6 +22,7 @@ py_library(
         "saved_model/json_utils.py",
         "saved_model/layer_serialization.py",
         "saved_model/load.py",
+        "saved_model/metric_serialization.py",
         "saved_model/model_serialization.py",
         "saved_model/network_serialization.py",
         "saved_model/save.py",
