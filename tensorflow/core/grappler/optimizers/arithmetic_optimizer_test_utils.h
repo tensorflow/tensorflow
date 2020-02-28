@@ -202,9 +202,10 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.unary_ops_composition = true;
   }
 
-  void EnableOnlyRemoveStackSliceSameAxis(ArithmeticOptimizer* optimizer) {
+  void EnableOnlyRemoveStackStridedSliceSameAxis(
+      ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
-    optimizer->options_.remove_stack_slice_same_axis = true;
+    optimizer->options_.remove_stack_strided_slice_same_axis = true;
   }
 
  private:
