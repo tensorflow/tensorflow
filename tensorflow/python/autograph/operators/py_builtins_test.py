@@ -383,7 +383,7 @@ class PyBuiltinsTest(test.TestCase):
     self.assertListEqual(
         py_builtins.sorted_([2, 3, 1], key=lambda x: -x, reverse=True),
         [1, 2, 3])
-    self.assertListEqual(
+    self.assertAllEqual(
         py_builtins.sorted_([[4, 3], [2, 1]], key=lambda x: sum(x)),
         [[2, 1], [4, 3]])
 
@@ -404,9 +404,9 @@ class PyBuiltinsTest(test.TestCase):
       py_builtins.sorted_(iterable_2)
     with self.assertRaises(ValueError):
       py_builtins.sorted_(iterable_2, key=lambda x: -x)
-    self.assertListEqual(list(self.evaluate(
+    self.assertAllEqual(list(self.evaluate(
         py_builtins.sorted_(iterable_2, key=lambda x: math_ops.reduce_sum(x)))),
-                         [[2, 1], [4, 3]])
+                        [[2, 1], [4, 3]])
 
 
 if __name__ == '__main__':
