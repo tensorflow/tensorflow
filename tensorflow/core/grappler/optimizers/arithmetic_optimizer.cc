@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
@@ -3095,6 +3096,7 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
 //    x = stack((a_0, a_1, ..., a_{n-1}), axis=k)[:,...,i:i+1,...]
 // with
 //    expand_dims(a_i, axis=k)
+// where the slice operator can be StridedSlice or Slice.
 //
 // TODO(ebrevdo): Extend to also replace operations of the form
 //    concat((a_0, a_1, ..., ), axis=k)[:, ..., s_i:s_{i+1}, ...]
@@ -3103,17 +3105,16 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
 // when
 //    s_i = cumsum(shape(a)[k] for a in (a_0, ...,))[i]
 // and slicing is in the k'th axis.
-class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
+class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
  public:
-  explicit RemoveStackStridedSliceSameAxis(
-      const GraphOptimizerContext& ctx,
-      const ArithmeticOptimizerContext& ctx_ext)
+  explicit RemoveStackSliceSameAxis(const GraphOptimizerContext& ctx,
+                                    const ArithmeticOptimizerContext& ctx_ext)
       : ArithmeticOptimizerStage("RemoveStackStridedSliceSameAxis", ctx,
                                  ctx_ext) {}
-  ~RemoveStackStridedSliceSameAxis() override = default;
+  ~RemoveStackSliceSameAxis() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsStridedSlice(*node);
+    return IsStridedSlice(*node) || IsSlice(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -3131,7 +3132,7 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
         CheckInputs(node, pack, &pack_output_shape, &pack_axis, &return_early));
     if (return_early) return Status::OK();
 
-    int slice_start_value;
+    int64 slice_start_value;
     bool found;
     TF_RETURN_IF_ERROR(GetSliceAxis(node, pack, pack_output_shape, pack_axis,
                                     &slice_start_value, &found));
@@ -3171,8 +3172,111 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
 
   Status GetSliceAxis(const NodeDef* node, const NodeDef* pack,
                       const PartialTensorShape& pack_output_shape,
-                      int pack_axis, int* slice_start_value, bool* found) {
+                      int pack_axis, int64* slice_start_value, bool* found) {
     *found = false;
+    if (IsSlice(*node)) {
+      return GetSimpleSliceAxis(node, pack, pack_output_shape, pack_axis,
+                                slice_start_value, found);
+    } else {
+      return GetStridedSliceAxis(node, pack, pack_output_shape, pack_axis,
+                                 slice_start_value, found);
+    }
+  }
+
+  Status GetSimpleSliceAxis(const NodeDef* node, const NodeDef* pack,
+                            const PartialTensorShape& pack_output_shape,
+                            int pack_axis, int64* slice_start_value,
+                            bool* found) {
+    NodeDef* slice_begin;
+    NodeDef* slice_size;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &slice_begin));
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(2), &slice_size));
+    for (const auto* n : {slice_begin, slice_size}) {
+      if (!IsReallyConstant(*n)) return Status::OK();
+    }
+
+    Tensor slice_begin_t;
+    Tensor slice_size_t;
+    TF_RETURN_IF_ERROR(CheckAttrExists(*slice_begin, "value"));
+    if (!slice_begin_t.FromProto(slice_begin->attr().at("value").tensor())) {
+      return Status::OK();
+    }
+    TF_RETURN_IF_ERROR(CheckAttrExists(*slice_size, "value"));
+    if (!slice_size_t.FromProto(slice_size->attr().at("value").tensor())) {
+      return Status::OK();
+    }
+
+    auto copy_tensor_values_to_vector =
+        [node](const Tensor& t, gtl::InlinedVector<int64, 4>* vec) {
+          if (t.dtype() == DT_INT32) {
+            auto t_flat = t.flat<int32>();
+            vec->assign(&t_flat(0), &t_flat(t.NumElements()));
+          } else if (t.dtype() == DT_INT64) {
+            auto t_flat = t.flat<int64>();
+            vec->assign(&t_flat(0), &t_flat(t.NumElements()));
+          } else {
+            return errors::InvalidArgument("Node ", node->name(),
+                                           " has invalid type for Index attr: ",
+                                           DataTypeString(t.dtype()));
+          }
+          return Status::OK();
+        };
+
+    gtl::InlinedVector<int64, 4> slice_begin_vec;
+    gtl::InlinedVector<int64, 4> slice_size_vec;
+    TF_RETURN_IF_ERROR(
+        copy_tensor_values_to_vector(slice_begin_t, &slice_begin_vec));
+    TF_RETURN_IF_ERROR(
+        copy_tensor_values_to_vector(slice_size_t, &slice_size_vec));
+
+    if (slice_begin_vec.size() != slice_size_vec.size()) {
+      return errors::InvalidArgument("Node ", node->name(),
+                                     " has mismatched lengths for begin (",
+                                     slice_begin_vec.size(), ") and size (",
+                                     slice_size_vec.size(), ") vectors.");
+    }
+    if (!pack_output_shape.unknown_rank() &&
+        slice_begin_vec.size() != pack_output_shape.dims()) {
+      return Status::OK();
+    }
+    if (pack_axis >= slice_begin_vec.size()) {
+      return errors::InvalidArgument(
+          "Input to node ", node->name(), " had pack_axis ", pack_axis,
+          " but rank was ", slice_begin_vec.size(), ".");
+    }
+
+    *slice_start_value = slice_begin_vec[pack_axis];
+    if (slice_size_vec[pack_axis] != 1) {
+      // Not slicing a single value out.
+      return Status::OK();
+    }
+
+    for (size_t i = 0; i < slice_begin_vec.size(); ++i) {
+      if (i != pack_axis) {
+        if (slice_begin_vec[i] != 0 ||
+            !(slice_size_vec[i] == -1 ||
+              slice_size_vec[i] == pack_output_shape.dim_size(i))) {
+          // Not slicing on the same axis as the Pack op.
+          return Status::OK();
+        }
+      }
+    }
+
+    if (*slice_start_value < 0 || *slice_start_value >= pack->input_size()) {
+      return errors::InvalidArgument(
+          "Node ", node->name(), " requested invalid slice index ",
+          *slice_start_value, " on axis ", pack_axis,
+          " from tensor of shape: ", pack_output_shape.DebugString());
+    }
+
+    *found = true;  // slice_start_value is valid.
+    return Status::OK();
+  }
+
+  Status GetStridedSliceAxis(const NodeDef* node, const NodeDef* pack,
+                             const PartialTensorShape& pack_output_shape,
+                             int pack_axis, int64* slice_start_value,
+                             bool* found) {
     TF_RETURN_IF_ERROR(
         CheckAttrsExist(*node, {"begin_mask", "end_mask", "ellipsis_mask",
                                 "new_axis_mask", "shrink_axis_mask"}));
@@ -3291,7 +3395,7 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
   }
 
   Status RewriteGraph(const NodeDef* node, const NodeDef* pack,
-                      int slice_start_value, int pack_axis,
+                      int64 slice_start_value, int pack_axis,
                       string* simplified_node_name) {
     const string& input_slice = pack->input(slice_start_value);
 
@@ -3449,7 +3553,6 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (node.device().find("SPU") != string::npos) {
     return false;
   }
-  // Workaround for Assert and Print mistakenly being labeled as stateful.
   if (IsAssert(node) || IsPrint(node)) {
     return true;
   }
@@ -3621,8 +3724,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<ConvertExpm1Stage>(ctx, ctx_ext);
   if (options_.unary_ops_composition)
     pipeline.AddStage<UnaryOpsComposition>(ctx, ctx_ext);
-  if (options_.remove_stack_strided_slice_same_axis)
-    pipeline.AddStage<RemoveStackStridedSliceSameAxis>(ctx, ctx_ext);
+  if (options_.remove_stack_slice_same_axis)
+    pipeline.AddStage<RemoveStackSliceSameAxis>(ctx, ctx_ext);
   if (options_.fuse_squared_diff)
     pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
 
