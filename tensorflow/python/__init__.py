@@ -159,6 +159,10 @@ from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.debug.lib import dumping_callback
 from tensorflow.python.ops import gen_debug_ops
 
+# DLPack
+from tensorflow.python.dlpack.dlpack import from_dlpack
+from tensorflow.python.dlpack.dlpack import to_dlpack
+
 # XLA JIT compiler APIs.
 from tensorflow.python.compiler.xla import jit
 from tensorflow.python.compiler.xla import xla

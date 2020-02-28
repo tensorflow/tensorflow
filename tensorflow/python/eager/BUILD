@@ -35,6 +35,7 @@ cc_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/c/eager:dlpack",
         "//tensorflow/c/eager:tape",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -93,6 +94,7 @@ py_library(
         ":test",
         ":wrap_function",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/dlpack",
         "//tensorflow/python/eager/memory_tests:memory_test_util",
     ],
 )
