@@ -209,6 +209,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
 // ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass();
 
+// Creates a pass that identifies XLASharding ops in launch op for TPU
+// computation.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUShardingIdentificationPass();
+
 // Creates a pass that merges device variable reads/updates into the surrounded
 // TPUExecute node. This allows the execute node to perform in-place variable
 // updates.
