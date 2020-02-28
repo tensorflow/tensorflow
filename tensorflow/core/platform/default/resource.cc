@@ -14,11 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/resource.h"
-
 #include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 
+class ResourceTagger::ResourceTaggerImpl {
+ public:
+  ResourceTaggerImpl(StringPiece key, StringPiece value) {}
+};
+
 ResourceTagger::ResourceTagger(StringPiece key, StringPiece value) {}
+
+ResourceTagger::~ResourceTagger() {}
 
 }  // namespace tensorflow
