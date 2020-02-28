@@ -541,7 +541,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> # the same example many times.
     >>> example = tf.constant([1,2,3])
     >>> dataset = tf.data.Dataset.from_tensors(example).repeat(2)
-    >>> list(dataset1.as_numpy_iterator())
+    >>> list(dataset.as_numpy_iterator())
     [array([1, 2, 3], dtype=int32), array([1, 2, 3], dtype=int32)]
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
