@@ -297,6 +297,7 @@ cc_library(
         "transforms/shape_inference.cc",
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
+        "transforms/stack_ops_decomposition.cc",
         "transforms/test_side_effect_analysis.cc",
         "transforms/tf_device_assignment.cc",
         "transforms/tpu_cluster_formation.cc",
@@ -963,6 +964,18 @@ tf_cc_test(
 cc_library(
     name = "mlir_passthrough_op",
     srcs = ["ops/mlir_passthrough_op.cc"],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "mlir_local_var_op",
+    srcs = ["ops/mlir_local_var_op.cc"],
     visibility = [
         "//visibility:public",
     ],

@@ -210,6 +210,7 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    bool use_tuple_args, bool return_tuple) {
   mlir::PassManager tf2xla(module_op.getContext());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  tf2xla.addPass(mlir::TF::CreateStackOpsDecompositionPass());
   tf2xla.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
   tf2xla.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
   // LegalizeTFControlFlow encapsulates arguments for control flow operations

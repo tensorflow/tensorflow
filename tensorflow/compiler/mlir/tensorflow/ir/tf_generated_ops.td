@@ -3926,6 +3926,21 @@ pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_MlirLocalVarOp : TF_Op<"MlirLocalVarOp", []> {
+  let summary = "Creates a handle to a in-scope variable.";
+
+  let description = [{
+Used by internal passes for temporary representation of local state, which will
+be eventually removed.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_ResourceTensor:$resource
+  );
+}
+
 def TF_MlirPassthroughOp : TF_Op<"MlirPassthroughOp", [NoSideEffect]> {
   let summary = [{
 Wraps an arbitrary MLIR computation expressed as a module with a main() function.
