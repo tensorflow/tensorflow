@@ -25,7 +25,6 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import callbacks as callbacks_module
 from tensorflow.python.keras import optimizers
@@ -36,6 +35,7 @@ from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer as lso
 from tensorflow.python.keras.saving.saved_model import model_serialization
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
@@ -1012,7 +1012,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               callbacks.on_test_batch_end(step, logs)
       callbacks.on_test_end()
 
-      logs = to_numpy(logs)
+      logs = tf_utils.to_numpy_or_python_type(logs)
       if return_dict:
         return logs
       else:
@@ -1202,7 +1202,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             callbacks.on_predict_batch_end(step, {'outputs': batch_outputs})
       callbacks.on_predict_end()
     all_outputs = nest.map_structure_up_to(batch_outputs, concat, outputs)
-    return to_numpy(all_outputs)
+    return tf_utils.to_numpy_or_python_type(all_outputs)
 
   def reset_metrics(self):
     """Resets the state of metrics."""
@@ -1268,7 +1268,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     if reset_metrics:
       self.reset_metrics()
-    logs = to_numpy(logs)
+    logs = tf_utils.to_numpy_or_python_type(logs)
     if return_dict:
       return logs
     else:
@@ -1326,7 +1326,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     if reset_metrics:
       self.reset_metrics()
-    logs = to_numpy(logs)
+    logs = tf_utils.to_numpy_or_python_type(logs)
     if return_dict:
       return logs
     else:
@@ -1355,7 +1355,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x)
       predict_function = self.make_predict_function()
       outputs = predict_function(iterator)
-    return to_numpy(outputs)
+    return tf_utils.to_numpy_or_python_type(outputs)
 
   @deprecation.deprecated(
       None, 'Please use Model.fit, which supports generators.')
@@ -1657,17 +1657,6 @@ def concat(tensors, axis=0):
   if isinstance(tensors[0], ragged_tensor.RaggedTensor):
     return ragged_concat_ops.concat(tensors, axis=axis)
   return array_ops.concat(tensors, axis=axis)
-
-
-def to_numpy(tensors):
-  """Converts a structure of `Tensor`s to `NumPy` arrays."""
-
-  def _to_single_numpy(t):
-    if isinstance(t, ops.Tensor):
-      return t.numpy()
-    return t  # Don't turn ragged or sparse tensors to NumPy.
-
-  return nest.map_structure(_to_single_numpy, tensors)
 
 
 def _is_tpu_multi_host(strategy):

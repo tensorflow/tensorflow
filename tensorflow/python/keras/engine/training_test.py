@@ -1276,6 +1276,47 @@ class TrainingTest(keras_parameterized.TestCase):
     x, y = np.ones((10, 2)), np.ones((10, 2))
     model.fit(x, y)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_outputs_are_floats(self):
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse', metrics=['accuracy'],
+                  run_eagerly=testing_utils.should_run_eagerly())
+
+    history = model.fit(x, y, epochs=2)
+    self.assertIsInstance(history.history['loss'][0], float)
+    self.assertIsInstance(history.history['accuracy'][0], float)
+
+    loss, accuracy = model.train_on_batch(x, y)
+    self.assertIsInstance(loss, float)
+    self.assertIsInstance(accuracy, float)
+
+    loss, accuracy = model.evaluate(x, y)
+    self.assertIsInstance(loss, float)
+    self.assertIsInstance(accuracy, float)
+
+    loss, accuracy = model.test_on_batch(x, y)
+    self.assertIsInstance(loss, float)
+    self.assertIsInstance(accuracy, float)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_int_output(self):
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+    model = keras.Sequential([keras.layers.Dense(1)])
+
+    class MyMetric(metrics_module.Metric):
+
+      def update_state(self, y_true, y_pred, sample_weight=None):
+        del y_true, y_pred, sample_weight
+
+      def result(self):
+        return array_ops.constant(1, dtype='int64')
+
+    model.compile('sgd', 'mse', metrics=[MyMetric()],
+                  run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(x, y, epochs=2)
+    self.assertIsInstance(history.history['my_metric'][0], int)
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 

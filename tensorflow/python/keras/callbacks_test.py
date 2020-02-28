@@ -1418,6 +1418,30 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     model.fit(data, epochs=2, callbacks=[progbar])
     self.assertEqual(progbar.target, 5)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_callback_passed_floats(self):
+
+    class MyCallback(keras.callbacks.Callback):
+
+      def on_batch_end(self, batch, logs=None):
+        assert isinstance(batch, int)
+        assert isinstance(logs['loss'], float)
+        self.on_batch_end_called = True
+
+      def on_epoch_end(self, batch, logs=None):
+        assert isinstance(batch, int)
+        assert isinstance(logs['loss'], float)
+        self.on_epoch_end_called = True
+
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    callback = MyCallback()
+    model.fit(x, y, epochs=2, callbacks=[callback])
+    self.assertTrue(callback.on_batch_end_called)
+    self.assertTrue(callback.on_batch_end_called)
+
 
 # A summary that was emitted during a test. Fields:
 #   logdir: str. The logdir of the FileWriter to which the summary was
