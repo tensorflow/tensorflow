@@ -78,10 +78,10 @@ class SerializationTests(test.TestCase):
       class DummySparseCategoricalCrossentropyLoss(losses.LossFunctionWrapper):
         # This loss is identical equal to tf.keras.losses.SparseCategoricalCrossentropy
         def __init__(
-          self,
-          from_logits=False,
-          reduction=losses_utils.ReductionV2.AUTO,
-          name="dummy_sparse_categorical_crossentropy_loss",
+            self,
+            from_logits=False,
+            reduction=losses_utils.ReductionV2.AUTO,
+            name="dummy_sparse_categorical_crossentropy_loss",
         ):
           super(DummySparseCategoricalCrossentropyLoss, self).__init__(
               losses.sparse_categorical_crossentropy,
@@ -94,23 +94,23 @@ class SerializationTests(test.TestCase):
       y = core.Dense(10)(x)
       model = training.Model(x, y)
       model.compile(
-           loss=DummySparseCategoricalCrossentropyLoss(from_logits=True)
-       )
+          loss=DummySparseCategoricalCrossentropyLoss(from_logits=True)
+      )
       model_round_trip = json.loads(
           json.dumps(model.loss, default=serialization.get_json_type)
-       )
+      )
 
       # check if class name with package scope
       self.assertEqual(
           "dummy-package>DummySparseCategoricalCrossentropyLoss",
           model_round_trip["class_name"]
-       )
+      )
 
       # check if configure is correctly
       self.assertEqual(
           True,
           model_round_trip["config"]["from_logits"]
-       )
+      )
 
 
 if __name__ == "__main__":
