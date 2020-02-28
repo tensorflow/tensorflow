@@ -1801,6 +1801,7 @@ cc_library(
     deps = [
         ":AllPassesAndDialectsNoRegistration",
         ":Analysis",
+        ":IR",
         ":MlirOptLib",
         ":Pass",
         ":Support",
@@ -1852,11 +1853,30 @@ cc_library(
 )
 
 cc_library(
+    name = "mlir_runner_c_utils_header",
+    hdrs = [
+        "include/mlir/ExecutionEngine/CRunnerUtils.h",
+    ],
+    includes = ["include"],
+)
+
+cc_library(
     name = "mlir_runner_utils_header",
     hdrs = [
+        "include/mlir/ExecutionEngine/CRunnerUtils.h",
         "include/mlir/ExecutionEngine/RunnerUtils.h",
     ],
     includes = ["include"],
+)
+
+cc_library(
+    name = "mlir_c_runner_utils",
+    srcs = [
+        "lib/ExecutionEngine/CRunnerUtils.cpp",
+    ],
+    deps = [
+        ":mlir_runner_c_utils_header",
+    ],
 )
 
 cc_library(
@@ -1865,6 +1885,7 @@ cc_library(
         "lib/ExecutionEngine/RunnerUtils.cpp",
     ],
     deps = [
+        ":mlir_c_runner_utils",
         ":mlir_runner_utils_header",
     ],
 )
