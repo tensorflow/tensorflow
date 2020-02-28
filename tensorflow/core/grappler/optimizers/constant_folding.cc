@@ -3766,7 +3766,8 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   has_fetch_ = !item.fetch.empty();
   GrapplerItem item_to_optimize = item;
-  *optimized_graph = item.graph;
+  *optimized_graph = GraphDef();
+  item_to_optimize.graph.Swap(optimized_graph);
   int64 node_count;
   do {
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
