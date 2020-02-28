@@ -3712,6 +3712,21 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
           TF_LITE_ENSURE_STATUS(builder.AddTensorInput(input_index, hybrid_op,
                                                        input_tensor_flags));
         }
+      } else if ((reg->builtin_code == kTfLiteBuiltinReduceAny ||
+                  reg->builtin_code == kTfLiteBuiltinReduceMax ||
+                  reg->builtin_code == kTfLiteBuiltinReduceMin ||
+                  reg->builtin_code == kTfLiteBuiltinReduceProd ||
+                  reg->builtin_code == kTfLiteBuiltinSum) &&
+                 (input_pos == 1)) {
+        // The axis needs, be converted to a tensor if specified as scalar
+        const TfLiteTensor& axis_tensor = context->tensors[1];
+        if (axis_tensor.dims->size == 0) {
+          TF_LITE_ENSURE_STATUS(
+              builder.AddVectorInt32Operand(axis_tensor.data.i32, 1));
+        } else {
+          TF_LITE_ENSURE_STATUS(builder.AddTensorInput(input_index, hybrid_op,
+                                                       input_tensor_flags));
+        }
       } else {
         TF_LITE_ENSURE_STATUS(
             builder.AddTensorInput(input_index, hybrid_op, input_tensor_flags));

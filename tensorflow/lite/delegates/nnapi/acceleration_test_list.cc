@@ -287,6 +287,7 @@ ConstFloat(Sum|Prod|Max|Min)OpTest/NotKeepDims,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/KeepDims,29
 ConstFloat(Mean|Any)OpTest/NotKeepDims
 ConstFloat(Mean|Any)OpTest/KeepDims
+ConstFloat(Sum|Prod|Max|Min)OpTest/ScalarAxis,29
 
 # reshape_test
 # Acceleration would be only for the test with shape being a constant tensor
