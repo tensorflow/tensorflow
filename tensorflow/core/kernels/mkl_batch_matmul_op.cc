@@ -29,7 +29,6 @@ limitations under the License.
 #include <vector>
 
 #include "mkl_cblas.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -174,11 +174,9 @@ class BatchMatMulMkl : public OpKernel {
       }
     }
 
-    MklCblasGemmBatch<Scalar>(
-        CblasRowMajor, adj_x_, adj_y_, m_array, n_array, k_array,
-        reinterpret_cast<const void**>(&a_array[0]), lda_array,
-        reinterpret_cast<const void**>(&b_array[0]), ldb_array,
-        reinterpret_cast<void**>(&c_array[0]), ldc_array, 1, group_size);
+    MklCblasGemmBatch(CblasRowMajor, adj_x_, adj_y_, m_array, n_array, k_array,
+                      &a_array[0], lda_array, &b_array[0], ldb_array,
+                      &c_array[0], ldc_array, 1, group_size);
   }
 
  private:
@@ -189,14 +187,16 @@ class BatchMatMulMkl : public OpKernel {
             typename std::enable_if<(std::is_same<T, float>::value ||
                                      std::is_same<T, double>::value),
                                     int>::type = 0>
-  void MklCblasGemmBatch(
-      const CBLAS_LAYOUT Layout, const bool TransA, const bool TransB,
-      const std::vector<MKL_INT>& M_Array, const std::vector<MKL_INT>& N_Array,
-      const std::vector<MKL_INT>& K_Array, const void** A_Array,
-      const std::vector<MKL_INT>& lda_Array, const void** B_Array,
-      const std::vector<MKL_INT>& ldb_Array, void** C_Array,
-      const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
-      const std::vector<MKL_INT>& group_size) {
+  void MklCblasGemmBatch(const CBLAS_LAYOUT Layout, const bool TransA,
+                         const bool TransB, const std::vector<MKL_INT>& M_Array,
+                         const std::vector<MKL_INT>& N_Array,
+                         const std::vector<MKL_INT>& K_Array, const T** A_Array,
+                         const std::vector<MKL_INT>& lda_Array,
+                         const T** B_Array,
+                         const std::vector<MKL_INT>& ldb_Array, T** C_Array,
+                         const std::vector<MKL_INT>& ldc_Array,
+                         const MKL_INT group_count,
+                         const std::vector<MKL_INT>& group_size) {
     std::vector<CBLAS_TRANSPOSE> TransA_Array(
         group_size[0], TransA ? CblasTrans : CblasNoTrans);
     std::vector<CBLAS_TRANSPOSE> TransB_Array(
@@ -227,14 +227,16 @@ class BatchMatMulMkl : public OpKernel {
             typename std::enable_if<(std::is_same<T, complex64>::value ||
                                      std::is_same<T, complex128>::value),
                                     int>::type = 0>
-  void MklCblasGemmBatch(
-      const CBLAS_LAYOUT Layout, const bool TransA, const bool TransB,
-      const std::vector<MKL_INT>& M_Array, const std::vector<MKL_INT>& N_Array,
-      const std::vector<MKL_INT>& K_Array, const void** A_Array,
-      const std::vector<MKL_INT>& lda_Array, const void** B_Array,
-      const std::vector<MKL_INT>& ldb_Array, void** C_Array,
-      const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
-      const std::vector<MKL_INT>& group_size) {
+  void MklCblasGemmBatch(const CBLAS_LAYOUT Layout, const bool TransA,
+                         const bool TransB, const std::vector<MKL_INT>& M_Array,
+                         const std::vector<MKL_INT>& N_Array,
+                         const std::vector<MKL_INT>& K_Array, const T** A_Array,
+                         const std::vector<MKL_INT>& lda_Array,
+                         const T** B_Array,
+                         const std::vector<MKL_INT>& ldb_Array, T** C_Array,
+                         const std::vector<MKL_INT>& ldc_Array,
+                         const MKL_INT group_count,
+                         const std::vector<MKL_INT>& group_size) {
     std::vector<CBLAS_TRANSPOSE> TransA_array(
         group_size[0], TransA ? CblasConjTrans : CblasNoTrans);
     std::vector<CBLAS_TRANSPOSE> TransB_array(
@@ -252,27 +254,27 @@ class BatchMatMulMkl : public OpKernel {
             &group_size[0]);
   }
 
-#ifdef ENABLE_MKLDNN_V1_2
-  void MklCblasGemmBatch<bfloat16>(
+  // BatchMatMul BFloat16 support only exists in DNNL 1.2 onwards.
+#if defined(ENABLE_MKLDNN_V1) && defined(ENABLE_INTEL_MKL_BFLOAT16)
+  void MklCblasGemmBatch(
       const CBLAS_LAYOUT Layout, const bool TransA, const bool TransB,
       const std::vector<MKL_INT>& M_Array, const std::vector<MKL_INT>& N_Array,
-      const std::vector<MKL_INT>& K_Array, const void** A_Array,
-      const std::vector<MKL_INT>& lda_Array, const void** B_Array,
-      const std::vector<MKL_INT>& ldb_Array, void** C_Array,
+      const std::vector<MKL_INT>& K_Array, const bfloat16** A_Array,
+      const std::vector<MKL_INT>& lda_Array, const bfloat16** B_Array,
+      const std::vector<MKL_INT>& ldb_Array, bfloat16** C_Array,
       const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
       const std::vector<MKL_INT>& group_size) {
-    std::vector<CBLAS_TRANSPOSE> TransA_Array(group_size[0], TransA);
-    std::vector<CBLAS_TRANSPOSE> TransB_Array(group_size[0], TransB);
+    DCHECK(Layout == CblasRowMajor);
+    std::vector<bool> TransA_Array(group_size[0], TransA);
+    std::vector<bool> TransB_Array(group_size[0], TransB);
     std::vector<float> alpha_Array(group_size[0], 1.0);
     std::vector<float> beta_Array(group_size[0], 0.0);
-    dnnl_gemm_batch<bfloat16>(
-        Layout, TransA_Array, TransB_Array, M_Array, N_Array, K_Array,
-        alpha_Array, reinterpret_cast<const bfloat16**>(A_Array), lda_Array,
-        reinterpret_cast<const bfloat16**>(B_Array), ldb_Array, beta_Array,
-        reinterpret_cast<bfloat16**>(C_Array), ldc_Array, group_count,
-        group_size);
+    dnnl_gemm_batch<bfloat16>(TransA_Array, TransB_Array, M_Array, N_Array,
+                              K_Array, alpha_Array, A_Array, lda_Array, B_Array,
+                              ldb_Array, beta_Array, C_Array, ldc_Array,
+                              group_count, group_size);
   }
-#endif  // ENABLE_MKLDNN_V1_2
+#endif  // ENABLE_INTEL_MKL_BFLOAT16 && ENABLE_INTEL_MKL_BFLOAT16
 };
 
 #define REGISTER_BATCH_MATMUL_MKL(TYPE)                                       \
@@ -300,10 +302,10 @@ TF_CALL_double(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_complex64(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_complex128(REGISTER_BATCH_MATMUL_MKL_V2);
 
-#ifdef ENABLE_MKLDNN_V1_2
+#if defined(ENABLE_INTEL_MKLDNN_V1) && defined(ENABLE_INTEL_MKL_BFLOAT16)
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
-#endif  // ENABLE_MKLDNN_V1_2
+#endif  // ENABLE_INTEL_MKLDNN_V1 && ENABLE_INTEL_MKL_BFLOAT16
 #endif  // ENABLE_MKL
 
 }  // end namespace tensorflow
