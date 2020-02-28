@@ -234,8 +234,7 @@ CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest/NonLayerNormLstmBlackBo
 
 # maximum_minimum_test
 MaxMinOpTest/.+nt8Test,29
-MaximumOpTest/+.
-MaxMinOpTest/.+
+MaximumOpTest/.+,29
 
 # mul_test
 FloatMulOpTest/.+
