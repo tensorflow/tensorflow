@@ -4503,18 +4503,12 @@ def _collect_resource_inputs(op):
     if op in seen_ops:
       return reads, writes
     seen_ops.add(op)
-    for t in op.inputs:
-      if t.dtype == dtypes.variant:
-        # Conservatively assume that any variant inputs are datasets.
-        op_queue.append(t.op)
-      elif t.dtype == dtypes.resource:
-        # TODO(b/150139257): This always returns True right now since we have
-        # not updated the functional ops to set the special attribute that ACD
-        # uses to figure out which of the op's inputs are read-only.
-        if acd_utils.op_writes_to_resource(t, op):
-          writes.append(t)
-        else:
-          reads.append(t)
+    # TODO(b/150139257): All resource inputs are in writes right now since we
+    # have not updated the functional ops to set the special attribute that ACD
+    # uses to figure out which of the op's inputs are read-only.
+    reads, writes = acd_utils.get_read_write_resource_inputs(op)
+    # Conservatively assume that any variant inputs are datasets.
+    op_queue.extend(t.op for t in op.inputs if t.dtype == dtypes.variant)
     return reads, writes
 
   op_queue = [op]

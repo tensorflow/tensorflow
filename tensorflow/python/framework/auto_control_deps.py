@@ -451,14 +451,7 @@ def register_acd_resource_resolver(f):
 
 def _get_resource_inputs(op):
   """Returns an iterable of resources touched by this `op`."""
-  reads = object_identity.ObjectIdentitySet()
-  writes = object_identity.ObjectIdentitySet()
-  for t in op.inputs:
-    if t.dtype == dtypes_module.resource:
-      if utils.op_writes_to_resource(t, op):
-        writes.add(t)
-      else:
-        reads.add(t)
+  reads, writes = utils.get_read_write_resource_inputs(op)
   saturated = False
   while not saturated:
     saturated = True
