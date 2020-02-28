@@ -37,20 +37,16 @@ Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
 }  // namespace
 
 void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
-  VLOG(1) << "ConvertXSpaceToTraceEvents";
   auto* trace_devices = trace->mutable_devices();
 
   for (const auto& raw_plane : xspace.planes()) {
     XPlaneVisitor xplane(&raw_plane);
-    VLOG(1) << "  XPlane id=" << xplane.Id() << " name=" << xplane.Name();
     // Convert devices and resources.
     int64 device_id = xplane.Id();
     (*trace_devices)[device_id] = BuildDeviceAndResource(xplane);
 
     // Convert events.
     xplane.ForEachLine([&](const XLineVisitor& xline) {
-      VLOG(1) << "    XLine id=" << xline.Id() << " name=" << xline.Name()
-              << " display_id=" << xline.DisplayId();
       int64 resource_id = xline.Id();  // Either thread id or CUDA stream id.
       xline.ForEachEvent([&](const XEventVisitor& xevent) {
         auto* event = trace->add_trace_events();
