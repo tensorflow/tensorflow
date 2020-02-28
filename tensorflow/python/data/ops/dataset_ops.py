@@ -528,12 +528,22 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def from_tensors(tensors):
     """Creates a `Dataset` with a single element, comprising the given tensors.
 
+    `from_tensors` produces a dataset containing only a single element. To slice
+    the input tensor into multiple elements, use `from_tensor_slices` instead.
+
     >>> dataset = tf.data.Dataset.from_tensors([1, 2, 3])
     >>> list(dataset.as_numpy_iterator())
     [array([1, 2, 3], dtype=int32)]
     >>> dataset = tf.data.Dataset.from_tensors(([1, 2, 3], 'A'))
     >>> list(dataset.as_numpy_iterator())
     [(array([1, 2, 3], dtype=int32), b'A')]
+
+    >>> # You can use `from_tensors` to produce a dataset which repeats
+    >>> # the same example many times.
+    >>> example = tf.constant([1,2,3])
+    >>> dataset = tf.data.Dataset.from_tensors(example).repeat(2)
+    >>> list(dataset.as_numpy_iterator())
+    [array([1, 2, 3], dtype=int32), array([1, 2, 3], dtype=int32)]
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
