@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
+
 import numpy as np
 
 from tensorflow.python.framework import errors

@@ -20,7 +20,9 @@ from __future__ import print_function
 
 from tensorflow.python.keras.engine.base_preprocessing_layer_v1 import CombinerPreprocessingLayer
 from tensorflow.python.keras.layers.preprocessing import normalization
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export(v1=['keras.layers.experimental.preprocessing.Normalization'])
 class Normalization(normalization.Normalization, CombinerPreprocessingLayer):
   pass

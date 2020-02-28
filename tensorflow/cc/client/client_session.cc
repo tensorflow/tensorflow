@@ -127,6 +127,33 @@ Status ClientSession::Run(const RunOptions& run_options, const FeedType& inputs,
                                target_node_names, outputs, run_metadata);
 }
 
+Status ClientSession::Run(
+    const RunOptions& run_options, const FeedType& inputs,
+    const std::vector<Output>& fetch_outputs,
+    const std::vector<Operation>& run_outputs, std::vector<Tensor>* outputs,
+    RunMetadata* run_metadata,
+    const thread::ThreadPoolOptions& threadpool_options) const {
+  std::vector<std::pair<string, Tensor>> feeds;
+  for (auto const& feed : inputs) {
+    TF_RETURN_IF_ERROR(feed.second.status);
+    feeds.emplace_back(feed.first.name(), feed.second.tensor);
+  }
+  std::vector<string> output_tensor_names;
+  output_tensor_names.reserve(fetch_outputs.size());
+  for (auto const& output : fetch_outputs) {
+    output_tensor_names.push_back(output.name());
+  }
+  std::vector<string> target_node_names;
+  target_node_names.reserve(run_outputs.size());
+  for (auto const& output : run_outputs) {
+    target_node_names.push_back(output.node()->name());
+  }
+  TF_RETURN_IF_ERROR(impl()->MaybeExtendGraph());
+  return impl()->session_->Run(run_options, feeds, output_tensor_names,
+                               target_node_names, outputs, run_metadata,
+                               threadpool_options);
+}
+
 Status ClientSession::MakeCallable(const CallableOptions& callable_options,
                                    CallableHandle* out_handle) {
   TF_RETURN_IF_ERROR(impl()->MaybeExtendGraph());

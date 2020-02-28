@@ -137,6 +137,19 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(fn(constant_op.constant(1.0)), 2.0)
 
+  def testFunctionMultipleVariableInitializer(self):
+
+    state = []
+
+    @def_function.function
+    def fn(x):
+      if not state:
+        state.append(variables.Variable(lambda: 2.0))
+        state.append(variables.Variable(lambda: 5.0))
+      return state[0] * x, state[1] * x
+
+    self.assertAllEqual(fn(constant_op.constant(1.0)), [2.0, 5.0])
+
   def testFunctionInitializationFunction(self):
 
     state = []
@@ -341,7 +354,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
       def make_z(self):
         if self.z is None:
-          with ops.name_scope('z_scope'):
+          with ops.name_scope('z_scope', skip_on_eager=False):
             self.z = variables.Variable(1., name='z')
 
     root = HasVars()
@@ -668,7 +681,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(autograph, cloned._autograph)
     self.assertEqual(implements, cloned._implements)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
-    self.assertEqual(relax_shapes, cloned.experimental_relax_shapes)
+    self.assertEqual(relax_shapes, cloned._experimental_relax_shapes)
     self.assertEqual(compile_, cloned._experimental_compile)
 
     # This test does not run with XLA JIT support linked in so we can only check
@@ -702,6 +715,18 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     msg = 'Functions cannot be decorated after they have been traced.'
     with self.assertRaisesRegexp(ValueError, msg):
       func._decorate(lambda f: f)
+
+  def testGetConcreteFunctionGraphLifetime(self):
+
+    @def_function.function
+    def func():
+      pass
+
+    graph = func.get_concrete_function().graph
+    del func
+
+    # If the graph is deleted, then an exception is raised on reading `captures`
+    self.assertEmpty(graph.captures)
 
 
 if __name__ == '__main__':

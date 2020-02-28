@@ -181,7 +181,8 @@ void TF_GetInput(TF_OpKernelContext* ctx, int i, TF_Tensor** tensor,
     return;
   }
   const ::tensorflow::Tensor& cc_tensor(cc_ctx->input(i));
-  TF_Tensor* result = ::tensorflow::TF_TensorFromTensor(cc_tensor, status);
+  TF_Tensor* result =
+      ::tensorflow::TF_TensorFromTensor(cc_tensor, &status->status);
   if (TF_GetCode(status) == TF_OK) {
     *tensor = result;
   }

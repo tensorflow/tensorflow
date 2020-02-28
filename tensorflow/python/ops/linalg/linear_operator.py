@@ -148,6 +148,7 @@ class LinearOperator(module.Module):
     way.
   """
 
+  # TODO(b/143910018) Remove graph_parents in V3.
   @deprecation.deprecated_args(None, "Do not pass `graph_parents`.  They will "
                                " no longer be used.", "graph_parents")
   def __init__(self,
@@ -201,13 +202,11 @@ class LinearOperator(module.Module):
 
     self._is_square_set_or_implied_by_hints = is_square
 
-    graph_parents = [] if graph_parents is None else graph_parents
-    for i, t in enumerate(graph_parents):
-      if t is None or not (linear_operator_util.is_ref(t) or
-                           tensor_util.is_tensor(t)):
-        raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+    if graph_parents is not None:
+      self._set_graph_parents(graph_parents)
+    else:
+      self._graph_parents = []
     self._dtype = dtypes.as_dtype(dtype).base_dtype if dtype else dtype
-    self._graph_parents = graph_parents
     self._is_non_singular = is_non_singular
     self._is_self_adjoint = is_self_adjoint
     self._is_positive_definite = is_positive_definite
@@ -653,6 +652,9 @@ class LinearOperator(module.Module):
 
       return self._matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
+  def __matmul__(self, other):
+    return self.matmul(other)
+
   def _matvec(self, x, adjoint=False):
     x_mat = array_ops.expand_dims(x, axis=-1)
     y_mat = self.matmul(x_mat, adjoint=adjoint)
@@ -749,20 +751,24 @@ class LinearOperator(module.Module):
     with self._name_scope(name):
       return self._log_abs_determinant()
 
-  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
-    """Default implementation of _solve."""
-    if self.is_square is False:
+  def _dense_solve(self, rhs, adjoint=False, adjoint_arg=False):
+    """Solve by conversion to a dense matrix."""
+    if self.is_square is False:  # pylint: disable=g-bool-id-comparison
       raise NotImplementedError(
           "Solve is not yet implemented for non-square operators.")
-    logging.warn(
-        "Using (possibly slow) default implementation of solve."
-        "  Requires conversion to a dense matrix and O(N^3) operations.")
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
     if self._can_use_cholesky():
-      return linear_operator_util.cholesky_solve_with_broadcast(
+      return linalg_ops.cholesky_solve(
           linalg_ops.cholesky(self.to_dense()), rhs)
     return linear_operator_util.matrix_solve_with_broadcast(
         self.to_dense(), rhs, adjoint=adjoint)
+
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    """Default implementation of _solve."""
+    logging.warn(
+        "Using (possibly slow) default implementation of solve."
+        "  Requires conversion to a dense matrix and O(N^3) operations.")
+    return self._dense_solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
   def solve(self, rhs, adjoint=False, adjoint_arg=False, name="solve"):
     """Solve (exact or approx) `R` (batch) systems of equations: `A X = rhs`.
@@ -1074,8 +1080,51 @@ class LinearOperator(module.Module):
     with self._name_scope(name):
       return self._eigvals()
 
+  def _cond(self):
+    if not self.is_self_adjoint:
+      # In general the condition number is the ratio of the
+      # absolute value of the largest and smallest singular values.
+      vals = linalg_ops.svd(self.to_dense(), compute_uv=False)
+    else:
+      # For self-adjoint matrices, and in general normal matrices,
+      # we can use eigenvalues.
+      vals = math_ops.abs(self._eigvals())
+
+    return (math_ops.reduce_max(vals, axis=-1) /
+            math_ops.reduce_min(vals, axis=-1))
+
+  def cond(self, name="cond"):
+    """Returns the condition number of this linear operator.
+
+    Args:
+      name:  A name for this `Op`.
+
+    Returns:
+      Shape `[B1,...,Bb]` `Tensor` of same `dtype` as `self`.
+    """
+    with self._name_scope(name):
+      return self._cond()
+
   def _can_use_cholesky(self):
     return self.is_self_adjoint and self.is_positive_definite
+
+  def _set_graph_parents(self, graph_parents):
+    """Set self._graph_parents.  Called during derived class init.
+
+    This method allows derived classes to set graph_parents, without triggering
+    a deprecation warning (which is invoked if `graph_parents` is passed during
+    `__init__`.
+
+    Args:
+      graph_parents: Iterable over Tensors.
+    """
+    # TODO(b/143910018) Remove this function in V3.
+    graph_parents = [] if graph_parents is None else graph_parents
+    for i, t in enumerate(graph_parents):
+      if t is None or not (linear_operator_util.is_ref(t) or
+                           tensor_util.is_tensor(t)):
+        raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+    self._graph_parents = graph_parents
 
 
 # Overrides for tf.linalg functions. This allows a LinearOperator to be used in
@@ -1094,10 +1143,17 @@ def _cholesky(input, name=None):   # pylint:disable=redefined-builtin
 
 
 # The signature has to match with the one in python/op/array_ops.py,
-# so we have k and padding_value even though we don't use them here.
+# so we have k, padding_value, and align even though we don't use them here.
+# pylint:disable=unused-argument
 @dispatch.dispatch_for_types(linalg.diag_part, LinearOperator)
-def _diag_part(input, name="diag_part", k=0, padding_value=0):  # pylint:disable=redefined-builtin, unused-argument
+def _diag_part(
+    input,  # pylint:disable=redefined-builtin
+    name="diag_part",
+    k=0,
+    padding_value=0,
+    align="RIGHT_LEFT"):
   return input.diag_part(name)
+# pylint:enable=unused-argument
 
 
 @dispatch.dispatch_for_types(linalg.det, LinearOperator)

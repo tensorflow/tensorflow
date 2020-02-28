@@ -21,8 +21,8 @@ UBUNTU16_GPU_IMAGE="tensorflow/tensorflow:nightly-custom-op-gpu-ubuntu16"
 
 # Build the docker image
 cd tensorflow/tools/ci_build
-docker build --no-cache -t "${UBUNTU16_CPU_IMAGE}" -f Dockerfile.custom_op_ubuntu_16 .
-docker build --no-cache -t "${UBUNTU16_GPU_IMAGE}" -f Dockerfile.custom_op_ubuntu_16_gpu .
+docker build --build-arg TF_PACKAGE=tf-nightly --no-cache -t "${UBUNTU16_CPU_IMAGE}" -f Dockerfile.custom_op_ubuntu_16 .
+docker build --build-arg TF_PACKAGE=tf-nightly --no-cache -t "${UBUNTU16_GPU_IMAGE}" -f Dockerfile.custom_op_ubuntu_16_cuda10.1 .
 
 # Log into docker hub, push the image and log out
 docker login -u "${TF_DOCKER_USERNAME}" -p "${TF_DOCKER_PASSWORD}"

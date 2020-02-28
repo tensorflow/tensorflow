@@ -22,7 +22,7 @@ namespace {
 
 constexpr char kNodeName[] = "map_dataset";
 
-class MapDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class MapDatasetOpTest : public DatasetOpsTestBase {};
 
 MapDatasetParams MapDatasetParams1() {
   auto map_dataset_params_0 = MapDatasetParams(

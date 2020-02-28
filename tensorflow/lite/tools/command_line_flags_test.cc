@@ -24,21 +24,26 @@ namespace {
 
 TEST(CommandLineFlagsTest, BasicUsage) {
   int some_int32 = 10;
+  int some_int1 = 8;  // Not provided via arguments, the value should remain.
+  int some_int2 = 9;  // Required flag.
   int64_t some_int64 = 21474836470;  // max int32 is 2147483647
   bool some_switch = false;
   std::string some_name = "something_a";
   float some_float = -23.23f;
+  float float_1 = -23.23f;  // positional flag.
   bool some_bool = false;
   bool some_numeric_bool = true;
   const char* argv_strings[] = {"program_name",
+                                "12.2",
                                 "--some_int32=20",
+                                "--some_int2=5",
                                 "--some_int64=214748364700",
                                 "--some_switch=true",
                                 "--some_name=somethingelse",
                                 "--some_float=42.0",
                                 "--some_bool=true",
                                 "--some_numeric_bool=0"};
-  int argc = 8;
+  int argc = 10;
   bool parsed_ok = Flags::Parse(
       &argc, reinterpret_cast<const char**>(argv_strings),
       {
@@ -50,14 +55,20 @@ TEST(CommandLineFlagsTest, BasicUsage) {
           Flag::CreateFlag("some_bool", &some_bool, "some bool"),
           Flag::CreateFlag("some_numeric_bool", &some_numeric_bool,
                            "some numeric bool"),
+          Flag::CreateFlag("some_int1", &some_int1, "some int"),
+          Flag::CreateFlag("some_int2", &some_int2, "some int", Flag::REQUIRED),
+          Flag::CreateFlag("float_1", &float_1, "some float", Flag::POSITIONAL),
       });
 
   EXPECT_EQ(true, parsed_ok);
   EXPECT_EQ(20, some_int32);
+  EXPECT_EQ(8, some_int1);
+  EXPECT_EQ(5, some_int2);
   EXPECT_EQ(214748364700, some_int64);
   EXPECT_EQ(true, some_switch);
   EXPECT_EQ("somethingelse", some_name);
   EXPECT_NEAR(42.0f, some_float, 1e-5f);
+  EXPECT_NEAR(12.2f, float_1, 1e-5f);
   EXPECT_TRUE(some_bool);
   EXPECT_FALSE(some_numeric_bool);
   EXPECT_EQ(argc, 1);
@@ -115,6 +126,58 @@ TEST(CommandLineFlagsTest, BadFloatValue) {
   EXPECT_EQ(argc, 1);
 }
 
+TEST(CommandLineFlagsTest, RequiredFlagNotFound) {
+  float some_float = -23.23f;
+  int argc = 2;
+  const char* argv_strings[] = {"program_name", "--flag=12"};
+  bool parsed_ok = Flags::Parse(
+      &argc, reinterpret_cast<const char**>(argv_strings),
+      {Flag::CreateFlag("some_flag", &some_float, "", Flag::REQUIRED)});
+
+  EXPECT_EQ(false, parsed_ok);
+  EXPECT_NEAR(-23.23f, some_float, 1e-5f);
+  EXPECT_EQ(argc, 2);
+}
+
+TEST(CommandLineFlagsTest, NoArguments) {
+  float some_float = -23.23f;
+  int argc = 1;
+  const char* argv_strings[] = {"program_name"};
+  bool parsed_ok = Flags::Parse(
+      &argc, reinterpret_cast<const char**>(argv_strings),
+      {Flag::CreateFlag("some_flag", &some_float, "", Flag::REQUIRED)});
+
+  EXPECT_EQ(false, parsed_ok);
+  EXPECT_NEAR(-23.23f, some_float, 1e-5f);
+  EXPECT_EQ(argc, 1);
+}
+
+TEST(CommandLineFlagsTest, NotEnoughArguments) {
+  float some_float = -23.23f;
+  int argc = 1;
+  const char* argv_strings[] = {"program_name"};
+  bool parsed_ok = Flags::Parse(
+      &argc, reinterpret_cast<const char**>(argv_strings),
+      {Flag::CreateFlag("some_flag", &some_float, "", Flag::POSITIONAL)});
+
+  EXPECT_EQ(false, parsed_ok);
+  EXPECT_NEAR(-23.23f, some_float, 1e-5f);
+  EXPECT_EQ(argc, 1);
+}
+
+TEST(CommandLineFlagsTest, PositionalFlagFailed) {
+  float some_float = -23.23f;
+  int argc = 2;
+  const char* argv_strings[] = {"program_name", "string"};
+  bool parsed_ok = Flags::Parse(
+      &argc, reinterpret_cast<const char**>(argv_strings),
+      {Flag::CreateFlag("some_flag", &some_float, "", Flag::POSITIONAL)});
+
+  EXPECT_EQ(false, parsed_ok);
+  EXPECT_NEAR(-23.23f, some_float, 1e-5f);
+  EXPECT_EQ(argc, 2);
+}
+
 // Return whether str==pat, but allowing any whitespace in pat
 // to match zero or more whitespace characters in str.
 static bool MatchWithAnyWhitespace(const std::string& str,
@@ -142,23 +205,28 @@ TEST(CommandLineFlagsTest, UsageString) {
   int64_t some_int64 = 21474836470;  // max int32 is 2147483647
   bool some_switch = false;
   std::string some_name = "something";
+  int some_int2 = 4;
   // Don't test float in this case, because precision is hard to predict and
   // match against, and we don't want a flakey test.
   const std::string tool_name = "some_tool_name";
   std::string usage = Flags::Usage(
-      tool_name + " <flags>",
+      tool_name,
       {Flag::CreateFlag("some_int", &some_int, "some int"),
        Flag::CreateFlag("some_int64", &some_int64, "some int64"),
        Flag::CreateFlag("some_switch", &some_switch, "some switch"),
-       Flag::CreateFlag("some_name", &some_name, "some name")});
+       Flag::CreateFlag("some_name", &some_name, "some name", Flag::REQUIRED),
+       Flag::CreateFlag("some_int2", &some_int2, "some int",
+                        Flag::POSITIONAL)});
   // Match the usage message, being sloppy about whitespace.
   const char* expected_usage =
-      " usage: some_tool_name <flags>\n"
+      " usage: some_tool_name <some_int2> <flags>\n"
+      "Where:\n"
+      "some_int2\tint32\trequired\tsome int\n"
       "Flags:\n"
-      "--some_int=10\tint32\tsome int\n"
-      "--some_int64=21474836470\tint64\tsome int64\n"
-      "--some_switch=false\tbool\tsome switch\n"
-      "--some_name=something\tstring\tsome name\n";
+      "--some_name=something\tstring\trequired\tsome name\n"
+      "--some_int=10\tint32\toptional\tsome int\n"
+      "--some_int64=21474836470\tint64\toptional\tsome int64\n"
+      "--some_switch=false\tbool\toptional\tsome switch\n";
   ASSERT_EQ(MatchWithAnyWhitespace(usage, expected_usage), true) << usage;
 
   // Again but with no flags.

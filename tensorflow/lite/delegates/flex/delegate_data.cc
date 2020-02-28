@@ -47,8 +47,8 @@ tensorflow::Status DelegateData::Prepare(
       session_options,
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       tensorflow::ContextMirroringPolicy::MIRRORING_NONE,
-      /*async=*/false, device_mgr.release(), /*device_mgr_owned*/ true,
-      rendezvous, nullptr);
+      /*async=*/false, /*lazy_copy_function_remote_inputs=*/false,
+      device_mgr.release(), /*device_mgr_owned*/ true, rendezvous, nullptr);
   return tensorflow::Status();
 }
 

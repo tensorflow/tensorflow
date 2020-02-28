@@ -17,14 +17,24 @@
 
 # Keep in sync with tensorflow_estimator and configure.py.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=0.29.1
+LATEST_BAZEL_VERSION=2.0.0
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/configure.py,
 #   //tensorflow_estimator/google/kokoro/common.sh,
 #   //tensorflow/tools/ci_build/install/install_bazel.sh,
 #   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh)
 
-# LINT.IfChange
+# Run flaky functions with retries.
+# run_with_retry cmd
+function run_with_retry {
+  eval "$1"
+  # If the command fails retry again in 60 seconds.
+  if [[ $? -ne 0 ]]; then
+    sleep 60
+    eval "$1"
+  fi
+}
+
 function die() {
   echo "$@" 1>&2 ; exit 1;
 }
@@ -39,8 +49,6 @@ function readable_run {
   echo "Command completed successfully at $(date)"
   set -x
 }
-# LINT.ThenChange(
-# ) # common_.sh
 
 # LINT.IfChange
 # Redirect bazel output dir b/73748835
@@ -49,15 +57,25 @@ function set_bazel_outdir {
   export TEST_TMPDIR=/tmpfs/bazel_output
 }
 
-# Run flaky functions with retries.
-# run_with_retry cmd
-function run_with_retry {
-  eval "$1"
-  # If the command fails retry again in 60 seconds.
-  if [[ $? -ne 0 ]]; then
-    sleep 60
-    eval "$1"
+# Downloads bazelisk to ~/bin as `bazel`.
+function install_bazelisk {
+  date
+  case "$(uname -s)" in
+    Darwin) local name=bazelisk-darwin-amd64 ;;
+    Linux)  local name=bazelisk-linux-amd64  ;;
+    *) die "Unknown OS: $(uname -s)" ;;
+  esac
+  mkdir -p "$HOME/bin"
+  wget --no-verbose -O "$HOME/bin/bazel" \
+      "https://github.com/bazelbuild/bazelisk/releases/download/v1.3.0/$name"
+  chmod u+x "$HOME/bin/bazel"
+  if [[ ! ":$PATH:" =~ :"$HOME"/bin/?: ]]; then
+    PATH="$HOME/bin:$PATH"
   fi
+  set_bazel_outdir
+  which bazel
+  bazel version
+  date
 }
 
 # Install the given bazel version on linux
@@ -85,7 +103,6 @@ function update_bazel_linux {
 # LINT.ThenChange(
 #   //tensorflow_estimator/google/kokoro/common.sh)
 
-# LINT.IfChange
 # Install the given bazel version on macos
 function update_bazel_macos {
   if [[ -z "$1" ]]; then
@@ -131,25 +148,23 @@ function install_pip_deps {
     shift
   done
 
+  # LINT.IfChange(ubuntu_pip_installations)
   # TODO(aselle): Change all these to be --user instead of sudo.
-  # TODO(hyey): Add back IfChange lint check (b/143530103).
-  # ===================================================================
-  # Please change dependencies in `install_ubuntu_16_pip_deps` as well.
-  # ===================================================================
-  ${SUDO_CMD} ${PIP_CMD} install keras_applications==1.0.8 --no-deps
+  ${SUDO_CMD} ${PIP_CMD} install astunparse==1.6.3
   ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
-  ${SUDO_CMD} ${PIP_CMD} install gast==0.2.2
-  ${SUDO_CMD} ${PIP_CMD} install h5py==2.8.0
+  "${PIP_CMD}" install numpy==1.16.0 --user
+  ${SUDO_CMD} ${PIP_CMD} install gast==0.3.3
+  ${SUDO_CMD} ${PIP_CMD} install h5py==2.10.0
   ${SUDO_CMD} ${PIP_CMD} install six==1.12.0
   ${SUDO_CMD} ${PIP_CMD} install grpcio
   ${SUDO_CMD} ${PIP_CMD} install portpicker
   ${SUDO_CMD} ${PIP_CMD} install scipy
-  ${SUDO_CMD} ${PIP_CMD} install scikit-learn==0.20.3
+  ${SUDO_CMD} ${PIP_CMD} install scikit-learn
   ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
   ${PIP_CMD} install --user --upgrade attrs
   ${PIP_CMD} install --user --upgrade tf-estimator-nightly
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
-  # ===================================================================
+  # LINT.ThenChange(:ubuntu_16_pip_installations)
 }
 
 function install_ubuntu_16_pip_deps {
@@ -165,17 +180,14 @@ function install_ubuntu_16_pip_deps {
     shift
   done
 
-  # TODO(hyey): Add back IfChange lint check (b/143530103).
-  # ===================================================================
-  # Please change dependencies in `install_pip_deps` as well.
-  # ===================================================================
+  # LINT.IfChange(ubuntu_16_pip_installations)
+  "${PIP_CMD}" install astunparse==1.6.3 --user
   "${PIP_CMD}" install --user --upgrade attrs
-  "${PIP_CMD}" install keras_applications==1.0.8 --no-deps --user
   "${PIP_CMD}" install keras_preprocessing==1.1.0 --no-deps --user
-  "${PIP_CMD}" install numpy==1.14.5 --user
+  "${PIP_CMD}" install numpy==1.16.0 --user
   "${PIP_CMD}" install --user --upgrade "future>=0.17.1"
-  "${PIP_CMD}" install gast==0.2.2 --user
-  "${PIP_CMD}" install h5py==2.8.0 --user
+  "${PIP_CMD}" install gast==0.3.3 --user
+  "${PIP_CMD}" install h5py==2.10.0 --user
   "${PIP_CMD}" install six==1.12.0 --user
   "${PIP_CMD}" install grpcio --user
   "${PIP_CMD}" install portpicker --user
@@ -183,7 +195,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install scikit-learn --user
   "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
   "${PIP_CMD}" install --user --upgrade tb-nightly
-  # ===================================================================
+  # LINT.ThenChange(:ubuntu_pip_installations)
 }
 
 function install_macos_pip_deps {
@@ -213,14 +225,13 @@ function install_macos_pip_deps {
 
   # TODO(aselle): Change all these to be --user instead of sudo.
   ${SUDO_CMD} ${PIP_CMD} install --upgrade setuptools==39.1.0
-  ${SUDO_CMD} ${PIP_CMD} install keras_applications==1.0.8 --no-deps
   ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
   ${SUDO_CMD} ${PIP_CMD} install --upgrade mock portpicker scipy grpcio
   ${SUDO_CMD} ${PIP_CMD} install six==1.12.0
-  ${SUDO_CMD} ${PIP_CMD} install scikit-learn==0.20.3
-  ${SUDO_CMD} ${PIP_CMD} install numpy==1.14.5
-  ${SUDO_CMD} ${PIP_CMD} install gast==0.2.2
-  ${SUDO_CMD} ${PIP_CMD} install h5py==2.8.0
+  ${SUDO_CMD} ${PIP_CMD} install scikit-learn
+  ${SUDO_CMD} ${PIP_CMD} install numpy==1.16.0
+  ${SUDO_CMD} ${PIP_CMD} install gast==0.3.3
+  ${SUDO_CMD} ${PIP_CMD} install h5py==2.10.0
   ${SUDO_CMD} ${PIP_CMD} install --upgrade grpcio
   ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
   ${PIP_CMD} install --user --upgrade attrs
@@ -274,5 +285,3 @@ function copy_to_new_project_name {
   popd
   rm -rf "${TMP_DIR}"
 }
-# LINT.ThenChange(
-# ) # common.sh

@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -50,10 +50,8 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   // Allocate 32MiB + 1 byte (to make things misaligned)
   constexpr int64 kAllocSize = (1 << 25) + 1;
 
-  // XXX FIXME devise a way to cope with multiple platforms
   Platform* platform =
-      MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
-          .ValueOrDie();
+      MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
   GpuAsmOpts opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
@@ -128,8 +126,7 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   // Make sure the redzone size would require grid dimension > 65535.
   constexpr int64 kRedzoneSize = 65535 * 1024 + 1;
   Platform* platform =
-      MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
-          .ValueOrDie();
+      MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
   GpuAsmOpts opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});

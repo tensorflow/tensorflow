@@ -233,23 +233,25 @@ Status GraphMgr::InitItem(
     // Construct the root executor for the subgraph.
     params.device = unit->device;
     params.function_library = lib;
-    params.create_kernel = [handle, lib, opseg](const NodeDef& ndef,
-                                                OpKernel** kernel) {
-      // NOTE(mrry): We must not share function kernels (implemented
-      // using `CallOp`) between subgraphs, because `CallOp::handle_`
-      // is tied to a particular subgraph. Even if the function itself
-      // is stateful, the `CallOp` that invokes it is not.
-      if (!OpSegment::ShouldOwnKernel(lib, ndef.op())) {
-        return lib->CreateKernel(ndef, kernel);
-      }
-      auto create_fn = [lib, &ndef](OpKernel** kernel) {
-        return lib->CreateKernel(ndef, kernel);
-      };
-      // Kernels created for subgraph nodes need to be cached.  On
-      // cache miss, create_fn() is invoked to create a kernel based
-      // on the function library here + global op registry.
-      return opseg->FindOrCreate(handle, ndef.name(), kernel, create_fn);
-    };
+    params.create_kernel =
+        [handle, lib, opseg](const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+          // NOTE(mrry): We must not share function kernels (implemented
+          // using `CallOp`) between subgraphs, because `CallOp::handle_`
+          // is tied to a particular subgraph. Even if the function itself
+          // is stateful, the `CallOp` that invokes it is not.
+          if (!OpSegment::ShouldOwnKernel(lib, props->node_def.op())) {
+            return lib->CreateKernel(props, kernel);
+          }
+          auto create_fn = [lib, &props](OpKernel** kernel) {
+            return lib->CreateKernel(props, kernel);
+          };
+          // Kernels created for subgraph nodes need to be cached.  On
+          // cache miss, create_fn() is invoked to create a kernel based
+          // on the function library here + global op registry.
+          return opseg->FindOrCreate(handle, props->node_def.name(), kernel,
+                                     create_fn);
+        };
     params.delete_kernel = [lib](OpKernel* kernel) {
       if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string())) {
         delete kernel;
@@ -412,9 +414,9 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   const uint64 start_time_usecs = Env::Default()->NowMicros();
-  string session_id_meta = strings::StrCat("RunGraph#id=", step_id, "#");
-  auto* activity = new profiler::TraceMe(absl::string_view(session_id_meta),
-                                         profiler::TraceMeLevel::kInfo);
+  profiler::TraceMe activity(
+      [step_id] { return absl::StrCat("RunGraph#id=", step_id, "#"); },
+      profiler::TraceMeLevel::kInfo);
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -428,7 +430,6 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   if (item == nullptr) {
     done(errors::Aborted("Graph handle is not found: ", handle));
-    delete activity;
     return;
   }
 
@@ -469,26 +470,30 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   if (!s.ok()) {
     done(s);
-    delete activity;
     delete ce_handle;
     item->Unref();
     rendezvous->Unref();
     return;
   }
 
-  StartParallelExecutors(handle, step_id, item, rendezvous, ce_handle,
-                         collector, cost_graph, cancellation_manager, session,
-                         [item, rendezvous, ce_handle, done, start_time_usecs,
-                          input_size, activity](const Status& s) {
-                           done(s);
-                           metrics::RecordGraphInputTensors(input_size);
-                           metrics::UpdateGraphExecTime(
-                               Env::Default()->NowMicros() - start_time_usecs);
-                           rendezvous->Unref();
-                           item->Unref();
-                           delete activity;
-                           delete ce_handle;
-                         });
+  StartParallelExecutors(
+      handle, step_id, item, rendezvous, ce_handle, collector, cost_graph,
+      cancellation_manager, session,
+      [item, rendezvous, ce_handle, done, start_time_usecs, input_size,
+       step_id](const Status& s) {
+        profiler::TraceMe activity(
+            [step_id] {
+              return absl::StrCat("RunGraphDone#id=", step_id, "#");
+            },
+            profiler::TraceMeLevel::kInfo);
+        done(s);
+        metrics::RecordGraphInputTensors(input_size);
+        metrics::UpdateGraphExecTime(Env::Default()->NowMicros() -
+                                     start_time_usecs);
+        rendezvous->Unref();
+        item->Unref();
+        delete ce_handle;
+      });
 }
 
 void GraphMgr::StartParallelExecutors(

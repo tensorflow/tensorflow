@@ -3,7 +3,7 @@
 FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/2.8.0/
+ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/3.0/
 ARG ROCM_PATH=/opt/rocm
 
 ENV DEBIAN_FRONTEND noninteractive
@@ -62,25 +62,6 @@ RUN apt-get update --allow-insecure-repositories && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Build HCC from source, cleanup the default HCC to avoid issue
-#RUN rm -rf /opt/rocm/hcc-1.0 && rm -rf /opt/rocm/lib/*.bc
-#RUN cd $HOME && git clone --recursive -b <> https://github.com/RadeonOpenCompute/hcc.git
-#RUN cd $HOME && mkdir -p build.hcc && cd build.hcc && cmake -DCMAKE_BUILD_TYPE=Release ../hcc
-#RUN cd $HOME/build.hcc && make -j $(nproc) && make package && dpkg -i hcc*.deb
-#RUN ln -s /opt/rocm/hcc-1.0 /opt/rocm/hcc
-
-# Build HIP from source
-# RUN cd $HOME && git clone https://github.com/ROCm-Developer-Tools/HIP.git
-# RUN cd $HOME/HIP && mkdir -p build && cd build && cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
-#
-# Temporary workaround for HIP runtime: https://github.com/ROCm-Developer-Tools/HIP/pull/1464
-# The debian packages are based on rocm2.8. Need to manually update when we bump ROCm
-RUN wget https://www.dropbox.com/s/i9vro42u59h1768/hip_base-2.8.19386.4040-35e68f-amd64.deb && dpkg -i hip_base*.deb
-RUN wget https://www.dropbox.com/s/b2uh80ng6ahsej5/hip_hcc-2.8.19386.4040-35e68f-amd64.deb && dpkg -i hip_hcc*.deb
-RUN wget https://www.dropbox.com/s/ti2clu8lc8vyxcj/hip_doc-2.8.19386.4040-35e68f-amd64.deb && dpkg -i hip_doc*.deb
-RUN wget https://www.dropbox.com/s/z64fscz4kwc5jjh/hip_samples-2.8.19386.4040-35e68f-amd64.deb && dpkg -i hip_samples*.deb
-RUN rm hip_*.deb
-
 # Set up paths
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
@@ -92,25 +73,7 @@ ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 # Add target file to help determine which device(s) to build for
 RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
 
-# Build rocBLAS from source
-#RUN cd $HOME && git clone -b <> https://github.com/ROCmSoftwarePlatform/rocBLAS.git && cd rocBLAS && ./install.sh -id
-#RUN cd $HOME && git clone -b <>https://github.com/ROCmSoftwarePlatform/hipBLAS.git && cd hipBLAS && ./install.sh -id
-
-# Build rocFFT from source
-#RUN cd $HOME && git clone -b <> https://github.com/ROCmSoftwarePlatform/rocFFT.git && cd rocFFT && ./install.sh -id
-
-# Build rocRAND from source
-#RUN cd $HOME && git clone -b <> https://github.com/ROCmSoftwarePlatform/rocRAND.git && mkdir rocRAND/build && cd rocRAND/build && CXX=hcc cmake .. && make package -j $(nproc) && dpkg -i ./rocrand*.deb
-
-# Build MIOpen from source
-#RUN cd $HOME && git clone -b <> https://github.com/RadeonOpenCompute/rocm-cmake.git && cd $HOME/rocm-cmake && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./rocm-cmake*.deb
-#RUN cd $HOME && git clone -b <> https://github.com/RadeonOpenCompute/clang-ocl.git && cd $HOME/clang-ocl && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./rocm-clang-ocl*.deb
-#RUN cd $HOME && git clone -b <> https://github.com/ROCmSoftwarePlatform/MIOpenGEMM.git && cd $HOME/MIOpenGEMM && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./miopengemm*.deb
-#RUN cd $HOME && git clone -b <> https://github.com/ROCmSoftwarePlatform/MIOpen.git
-#RUN cd $HOME/MIOpen && cmake -P install_deps.cmake && \
-#    mkdir -p build && cd build && \
-#    CXX=/opt/rocm/hcc/bin/hcc cmake -DMIOPEN_BACKEND=HIP -DCMAKE_PREFIX_PATH="/opt/rocm/hcc;/opt/rocm/hip" -D#CMAKE_CXX_FLAGS="-isystem /usr/include/x86_64-linux-gnu/" .. -DMIOPEN_MAKE_BOOST_PUBLIC=ON && \
-#    make -j $(nproc) && make package && dpkg -i ./MIOpen*.deb
+RUN wget https://www.dropbox.com/s/jixaw2y20vhw4uf/MIOpen-HIP-2.2.0.7630-f38e87a-ubuntu-16.04_amd64.deb && dpkg -i MIOpen*.deb && rm MIOpen*.deb
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/

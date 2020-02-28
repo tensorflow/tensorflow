@@ -176,7 +176,8 @@ GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   CHECK_GE(block_size_limit, 0);
   uint32_t block_size_limit_uint = static_cast<uint32_t>(block_size_limit);
   hipOccupancyMaxPotentialBlockSize(&block_count_uint, &thread_per_block_uint,
-      func, dynamic_shared_memory_size, block_size_limit_uint);
+                                    func, dynamic_shared_memory_size,
+                                    block_size_limit_uint);
   block_count = static_cast<int>(block_count_uint);
   thread_per_block = static_cast<int>(thread_per_block_uint);
 #endif

@@ -16,7 +16,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "third_party/gpus/cuda/includes/cuda_headers/third_party/gpus/cuda/include/driver_types.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 #define PLATFORM "CUDA"
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/include/hip/hip_runtime.h"
@@ -71,7 +71,8 @@ TEST_F(CustomCallTest, IsInvoked) {
 
 TEST_F(CustomCallTest, UnknownTarget) {
   XlaBuilder b(TestName());
-  CustomCall(&b, "UknownTarget", /*operands=*/{}, ShapeUtil::MakeShape(F32, {}),
+  CustomCall(&b, "UnknownTarget", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}),
              /*opaque=*/"");
   ASSERT_FALSE(Execute(&b, {}).ok());
 }

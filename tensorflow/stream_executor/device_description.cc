@@ -137,7 +137,7 @@ bool ThreadDimOk(const DeviceDescription &device_description,
             thread_dim.z <= limit.z;
   if (!ok) {
     VLOG(2) << "thread dim " << thread_dim.ToString()
-            << " exceeds limit contraints of " << limit.ToString();
+            << " exceeds limit constraints of " << limit.ToString();
   }
   return ok;
 }
@@ -146,9 +146,9 @@ uint64 DivideCeil(uint64 x, uint64 y) {
   return port::MathUtil::CeilOfRatio(x, y);
 }
 
-void CalculateDimensionality(const DeviceDescription& device_description,
-                             int64 element_count, int64* threads_per_block,
-                             int64* block_count) {
+void CalculateDimensionality(const DeviceDescription &device_description,
+                             int64 element_count, int64 *threads_per_block,
+                             int64 *block_count) {
   *threads_per_block = device_description.threads_per_block_limit();
   *block_count = port::MathUtil::CeilOfRatio(element_count, *threads_per_block);
   if (*block_count == 1) {

@@ -617,8 +617,12 @@ def _make_output_composite_tensors_match(op_type, branch_graphs):
 def _make_indexed_slices_indices_types_match(op_type, branch_graphs):
   """Match dtype of IndexedSlices.indices in outputs of branch_graphs."""
   assert branch_graphs
+  # Indices of `IndexedSlices.indices` tensors in `branch_graphs[i].outputs`.
   indexed_slice_indices = []
   current_index = 0
+  # Note that this still contains Nones. We leave those in so that error
+  # messages contain the correct indices. We handle the Nones later when
+  # updating `current_index`.
   branch_outputs_flat_with_composites = [
       nest.flatten(branch_graph.structured_outputs, expand_composites=False)
       for branch_graph in branch_graphs
@@ -639,12 +643,16 @@ def _make_indexed_slices_indices_types_match(op_type, branch_graphs):
       indexed_slice_indices.append(current_index + 1)
     if nest.is_sequence_or_composite(branch_outs[0]):
       current_index += len(nest.flatten(branch_outs[0], expand_composites=True))
-    else:
+    elif branch_outs[0] is not None:
+      # `FuncGraph.outputs` does not contain Nones so no need to update the
+      # counter in that case.
       current_index += 1
 
   if not indexed_slice_indices:
     return
 
+  # `FuncGraph.outputs` is the flattened `FuncGraph.structured_outputs` minus
+  # the Nones.
   if current_index != len(branch_graphs[0].outputs):
     raise ValueError("Insufficient elements in branch_graphs[0].outputs.\n"
                      "Expected: %i\n"

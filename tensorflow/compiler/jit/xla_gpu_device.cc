@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
@@ -63,6 +64,12 @@ class XlaGpuDeviceFactory : public DeviceFactory {
 };
 
 Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
+  XlaDeviceFlags* flags = GetXlaDeviceFlags();
+  if (!flags->tf_xla_enable_xla_devices) {
+    LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
+    return Status::OK();
+  }
+
   auto platform =
       se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName());
   if (!platform.ok()) {
@@ -87,6 +94,12 @@ Status XlaGpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
 Status XlaGpuDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
+  XlaDeviceFlags* flags = GetXlaDeviceFlags();
+  if (!flags->tf_xla_enable_xla_devices) {
+    LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
+    return Status::OK();
+  }
+
   XlaOpRegistry::DeviceRegistration registration;
   registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
   registration.autoclustering_policy =
@@ -113,6 +126,14 @@ Status XlaGpuDeviceFactory::CreateDevices(
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
     return Status::OK();
   }
+
+  auto iter = session_options.config.device_count().find("GPU");
+  if (iter != session_options.config.device_count().end() &&
+      iter->second == 0) {
+    // Device count for GPU is 0.
+    return Status::OK();
+  }
+
   string allowed_gpus =
       session_options.config.gpu_options().visible_device_list();
   absl::optional<std::set<int>> gpu_ids =
@@ -137,9 +158,9 @@ Status XlaGpuDeviceFactory::CreateDevices(
 
     Status status = device->UseGpuDeviceInfo();
     if (!status.ok()) {
-      errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
-                              " device number ", i);
-      return status;
+      LOG(INFO) << "Ignoring visible " << DEVICE_GPU_XLA_JIT
+                << " device. Device number is " << i << ", reason: " << status;
+      continue;
     }
 
     devices->push_back(std::move(device));

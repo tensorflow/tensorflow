@@ -277,7 +277,6 @@ void UpdateInt8OperatorVersions(ModelT* model) {
         op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM ||
         op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN) {
       model->operator_codes[i]->version = 2;
-
     } else if (op_code == BuiltinOperator_FULLY_CONNECTED ||
                op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM ||
                op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
@@ -483,6 +482,10 @@ TfLiteStatus QuantizeWeightsFloat16(flatbuffers::FlatBufferBuilder* builder,
   for (int i = 0; i < subgraph->operators.size(); ++i) {
     OperatorT* op = subgraph->operators[i].get();
     for (auto tensor_idx : op->inputs) {
+      // Skip optional tensors.
+      if (tensor_idx == kTfLiteOptionalTensor) {
+        continue;
+      }
       TensorT* tensor = subgraph->tensors[tensor_idx].get();
       BufferT* buffer = model->buffers[tensor->buffer].get();
       if (buffer == nullptr) {

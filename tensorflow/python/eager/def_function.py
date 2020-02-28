@@ -23,6 +23,7 @@ import functools
 import threading
 import weakref
 
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
@@ -30,6 +31,7 @@ from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -64,7 +66,7 @@ class _CallCounter(object):
         break
 
   def called_without_tracing(self):
-    # We don't count tracing when users load a concrete function dicretly or
+    # We don't count tracing when users load a concrete function directly or
     # call get_concrete_function, so the first call can be not a tracing call.
     if not self._calls_per_tracings:
       self._calls_per_tracings = [0]
@@ -379,21 +381,21 @@ class Function(object):
         tensorflow.autograph.Feature values. Allows enabling additional
         conversion options when autograph is set to True.
       experimental_relax_shapes: When true, argument shapes may be relaxed to
-        avoid unecessary retracing.
-      experimental_compile: If false, execute the function in a regular way. The
-        function is optimized by some graph rewrite passes (some ops might be
-        clustered into a single op) and interpreted by the standard TensorFlow
-        executor, which dispatches op kernels one by one as they become
-        executable. Set it to false when directly running a multi-device
-        function on TPUs (e.g. two TPU cores, one TPU core and its
-        host CPU). If True, the function is compiled directly by XLA. XLA would
-        fuse all the ops and emit more efficient code to run for some devices
-        (e.g. TPU, XLA_GPU) and some use cases (e.g. dense tensor computation).
-        It requires that the whole function is compilable by XLA. If None
-        (default), compile the function with XLA when running on TPU and go
-        through the regular function execution path when running on other
-        devices.
-
+        avoid unnecessary retracing.
+      experimental_compile: If `True`, compiles the function using XLA
+        (see https://tensorflow.org/xla). XLA performs compiler optimizations,
+        such as fusion, and attempts to emit more efficient code. This may
+        drastically improve the performance. If set to `True`,
+        the whole function needs to be compilable by XLA, or an
+        `errors.InvalidArgumentError` is thrown.
+        If `None` (default), compiles the function with XLA when running on TPU
+        and goes through the regular function execution path when running on
+        other devices.
+        If `False`, executes the function in a regular way (graph rewrite
+        passes are applied, kernels are dispatched one-by-one by the TensorFlow
+        executor). Set this value to `False` when directly running a
+        multi-device function on TPUs (e.g. two TPU cores, one TPU core and its
+        host CPU).
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
@@ -405,7 +407,7 @@ class Function(object):
     self._implements = experimental_implements
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
-    self.experimental_relax_shapes = experimental_relax_shapes
+    self._experimental_relax_shapes = experimental_relax_shapes
     self._experimental_compile = experimental_compile
     self._created_variables = None  # GUARDED_BY(self._lock)
     self._stateful_fn = None  # GUARDED_BY(self._lock)
@@ -449,7 +451,13 @@ class Function(object):
     if self._implements is not None:
       attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
     if self._experimental_compile is not None:
-      attributes.update(_XlaCompile=bool(self._experimental_compile))
+      attributes.update(_XlaMustCompile=bool(self._experimental_compile))
+      if self._experimental_compile:
+        attributes.update(_noinline=True)
+        if not pywrap_tfe.TF_IsXlaEnabled():
+          raise ValueError("Attempting to use experimental_compile, "
+                           "but XLA support is not linked in. "
+                           "Rebuild with --define=with_xla_support=true.")
     if not attributes:
       attributes = None
     return function_lib.defun_with_attributes(
@@ -458,7 +466,8 @@ class Function(object):
         attributes=attributes,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_relax_shapes=self.experimental_relax_shapes)
+        experimental_compile=self._experimental_compile,
+        experimental_relax_shapes=self._experimental_relax_shapes)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
@@ -514,7 +523,7 @@ class Function(object):
         autograph=self._autograph,
         experimental_implements=self._implements,
         experimental_autograph_options=self._experimental_autograph_options,
-        experimental_relax_shapes=self.experimental_relax_shapes,
+        experimental_relax_shapes=self._experimental_relax_shapes,
         experimental_compile=self._experimental_compile)
 
   def _decorate(self, decorator):
@@ -555,9 +564,12 @@ class Function(object):
       return self._python_function(*args, **kwds)
 
     tracing_count = self._get_tracing_count()
-    if self._experimental_compile:
+    if self._experimental_compile and (
+        not control_flow_util.GraphOrParentsInXlaContext(
+            ops.get_default_graph())):
       # V2 control flow relies on XLAControlFlowContext to generate a
-      # XLA-compatible function graph.
+      # XLA-compatible function graph. If the function is already called inside
+      # an XLA context, we don't create nested XLA context.
       xla_context = control_flow_ops.XLAControlFlowContext()
       try:
         xla_context.Enter()
@@ -715,10 +727,12 @@ class Function(object):
       return
 
     # Note: using defun here avoids an infinite recursion.
-    @function_lib.defun
+    # Most of the code in this function runs eagerly with init_scope, where
+    # autograph is not necessary.
+    @function_lib.defun(autograph=False)
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
-      # Stack all the var_is_initialized values into one tensor and intepret the
+      # Stack all the var_is_initialized values into one tensor and interpret the
       # numpy value. This will reduce the number of RPCs between client and
       # worker in the remote case.
       with ops.init_scope():
@@ -728,13 +742,20 @@ class Function(object):
               resource_variable_ops.var_is_initialized_op(v.handle))
         var_is_initialized = array_ops.stack(var_is_initialized).numpy()
 
+      inits = []
       for (v, init), is_initialized in zip(initializers, var_is_initialized):
         with ops.init_scope():
           if is_initialized:
             continue
+        inits.append(init)
 
+      if inits:
         op_map = lift_to_graph.lift_to_graph(
-            [init], ops.get_default_graph(), op_map=op_map)
+            inits, ops.get_default_graph(), op_map=op_map)
+      for (v, init), is_initialized in zip(initializers, var_is_initialized):
+        with ops.init_scope():
+          if is_initialized:
+            continue
         v.assign(op_map[init], read_value=False)
 
     with ops.init_scope():
@@ -786,7 +807,7 @@ class Function(object):
     """Returns all concrete functions for serialization.
 
     Returns:
-      A list of instances of `Function`.
+      A list of instances of `ConcreteFunction`.
     """
     if self.input_signature is not None:
       self.get_concrete_function()
@@ -819,6 +840,45 @@ class Function(object):
     for args, kwargs in seen_signatures:
       concrete_functions.append(self.get_concrete_function(*args, **kwargs))
     return concrete_functions
+
+  def _get_concrete_function_garbage_collected(self, *args, **kwargs):
+    """Returns a `ConcreteFunction` specialized to inputs and execution context.
+
+    Unlike `get_concrete_function(...)`, the graph will be deleted when the
+    returned function is deleted.  It's useful to avoid creating a reference
+    cycle when you know for sure that the graph will be no longer used without
+    the returned function.
+
+    Args:
+      *args: inputs to specialize on.
+      **kwargs: inputs to specialize on.
+
+    Returns:
+      A TensorFlow function which takes exactly one `tf.Tensor` per argument.
+
+    Raises:
+      ValueError: if this object has not yet been called on concrete values.
+    """
+    with self._lock:
+      if self._stateful_fn is None:
+        initializers = []
+        self._initialize(args, kwargs, add_initializers_to=initializers)
+        self._initialize_uninitialized_variables(initializers)
+
+    if self._created_variables:
+      # In this case we have created variables on the first call, so we run the
+      # defunned version which is guaranteed to never create variables.
+      return self._stateless_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
+          *args, **kwargs)
+    elif self._stateful_fn is not None:
+      # In this case we have not created variables on the first call. So we can
+      # run the first trace but we should fail if variables are created.
+      concrete = self._stateful_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
+          *args, **kwargs)
+      if self._created_variables:
+        raise ValueError("Creating variables on a non-first call to a function"
+                         " decorated with tf.function.")
+      return concrete
 
   def get_concrete_function(self, *args, **kwargs):
     """Returns a `ConcreteFunction` specialized to inputs and execution context.
@@ -896,24 +956,9 @@ class Function(object):
     Raises:
       ValueError: if this object has not yet been called on concrete values.
     """
-    with self._lock:
-      if self._stateful_fn is None:
-        initializers = []
-        self._initialize(args, kwargs, add_initializers_to=initializers)
-        self._initialize_uninitialized_variables(initializers)
-
-    if self._created_variables:
-      # In this case we have created variables on the first call, so we run the
-      # defunned version which is guaranteed to never create variables.
-      return self._stateless_fn.get_concrete_function(*args, **kwargs)
-    elif self._stateful_fn is not None:
-      # In this case we have not created variables on the first call. So we can
-      # run the first trace but we should fail if variables are created.
-      concrete = self._stateful_fn.get_concrete_function(*args, **kwargs)
-      if self._created_variables:
-        raise ValueError("Creating variables on a non-first call to a function"
-                         " decorated with tf.function.")
-      return concrete
+    concrete = self._get_concrete_function_garbage_collected(*args, **kwargs)
+    concrete._garbage_collector.release()  # pylint: disable=protected-access
+    return concrete
 
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
@@ -1083,7 +1128,7 @@ def function(func=None,
   the graphs traced. The input signature specifies the shape and type of each
   Tensor argument to the function using a `tf.TensorSpec` object. More general
   shapes can be used. This is useful to avoid creating multiple graphs when
-  Tensors have dynamic shapes. It also restricts the dhape and datatype of
+  Tensors have dynamic shapes. It also restricts the shape and datatype of
   Tensors that can be used:
 
   >>> @tf.function(
@@ -1132,23 +1177,16 @@ def function(func=None,
       this implements. For example "mycompany.my_recurrent_cell".
       This is stored as an attribute in inference function,
       which can then be detected when processing serialized function.
-      See
-      https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md
-      for details.  For an example of utilizing this attribute see:
-      https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc
+      See [standardizing composite ops](https://github.com/tensorflow/community/blob/master/rfcs/20190610-standardizing-composite_ops.md)  # pylint: disable=line-too-long
+      for details.  For an example of utilizing this attribute see this
+      [example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc)
       The code above automatically detects and substitutes function that
       implements "embedded_matmul" and allows TFLite to substitute its own
       implementations. For instance, a tensorflow user can use this
        attribute to mark that their function also implements
-      `embedded_matmul``` (perhaps more efficiently!)
-      by specifying it using this flag.
-
-        ```python
-        @tf.function(experimental_implements="embedded_matmul"):
-        def embedding_matmul(a, b):
-           # custom implementation here
-        ```
-
+      `embedded_matmul` (perhaps more efficiently!)
+      by specifying it using this parameter:
+      `@tf.function(experimental_implements="embedded_matmul")`
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
     experimental_relax_shapes: When True, `tf.function` may generate fewer,
@@ -1162,6 +1200,10 @@ def function(func=None,
      function (and return zero or more `tf.Tensor` objects).
      If `func` is None, returns a decorator that, when invoked with a single
      `func` argument, returns a callable equivalent to the case above.
+
+  Raises:
+     ValueError when attempting to use experimental_compile, but XLA support is
+     not enabled.
   """
   if input_signature is not None:
     function_lib.validate_signature(input_signature)
@@ -1173,7 +1215,8 @@ def function(func=None,
       name = "function"
     return tf_decorator.make_decorator(
         inner_function,
-        Function(
+        decorator_name="tf.function",
+        decorator_func=Function(
             inner_function,
             name,
             input_signature=input_signature,

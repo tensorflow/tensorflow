@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 from absl.testing import parameterized
 import numpy as np
 from six.moves import range
@@ -46,18 +47,35 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.tracking import tracking
 
 
 class TestModels(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  def _evaluateTFLiteModel(self, tflite_model, input_data):
-    """Evaluates the model on the `input_data`."""
+  def _evaluateTFLiteModel(self, tflite_model, input_data, input_shapes=None):
+    """Evaluates the model on the `input_data`.
+
+    Args:
+      tflite_model: TensorFlow Lite model.
+      input_data: List of EagerTensor const ops containing the input data for
+        each input tensor.
+      input_shapes: List of tuples representing the `shape_signature` and the
+        new shape of each input tensor that has unknown dimensions.
+
+    Returns:
+      [np.ndarray]
+    """
     interpreter = Interpreter(model_content=tflite_model)
+    input_details = interpreter.get_input_details()
+    if input_shapes:
+      for idx, (shape_signature, final_shape) in enumerate(input_shapes):
+        self.assertTrue(
+            (input_details[idx]['shape_signature'] == shape_signature).all())
+        interpreter.resize_tensor_input(idx, final_shape)
     interpreter.allocate_tensors()
 
-    input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
 
     for input_tensor, tensor_data in zip(input_details, input_data):
@@ -266,6 +284,32 @@ class FromConcreteFunctionTest(TestModels):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
+  @test_util.run_v2_only
+  def testNewQuantizer(self):
+    """Test the model quantized by the new converter."""
+    func, calibration_gen = self._getCalibrationQuantizeModel()
+
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
+    quantized_converter.representative_dataset = calibration_gen
+
+    # default quantizer
+    quantized_converter.experimental_new_quantizer = False
+    old_tflite = quantized_converter.convert()
+
+    # new quantizer
+    quantized_converter.experimental_new_quantizer = True
+    new_tflite = quantized_converter.convert()
+
+    for _ in range(5):
+      input_data = constant_op.constant(
+          np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32))
+      old_value = self._evaluateTFLiteModel(old_tflite, [input_data])
+      new_value = self._evaluateTFLiteModel(new_tflite, [input_data])
+      np.testing.assert_almost_equal(old_value, new_value, 1)
+
   @parameterized.named_parameters(
       ('EnableMlirConverter', True),  # enable mlir
       ('DisableMlirConverter', False))  # disable mlir
@@ -443,9 +487,9 @@ class FromSavedModelTest(TestModels):
     root = tracking.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data)
-
+    options = save_options.SaveOptions(save_debug_info=True)
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
-    save(root, save_dir, to_save)
+    save(root, save_dir, to_save, options)
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
@@ -758,6 +802,69 @@ class GrapplerTest(TestModels):
     # Check values from converted model.
     expected_value = root.f(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
+
+    # Enable hybrid quantization, same result
+    converter.experimental_new_converter = True
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    hybrid_tflite_model = converter.convert()
+    actual_value = self._evaluateTFLiteModel(hybrid_tflite_model, [input_data])
+    np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
+
+
+class UnknownShapes(TestModels):
+
+  @test_util.run_v2_only
+  def testMatMul(self):
+    input_data = constant_op.constant(
+        np.array(np.random.random_sample((10, 4)), dtype=np.float32))
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[None, 4], dtype=dtypes.float32)
+    ])
+    def model(in_tensor):
+      shape = array_ops.shape_v2(in_tensor)
+      fill = array_ops.transpose_v2(array_ops.fill(shape, 1.))
+      return math_ops.matmul(fill, in_tensor)
+
+    concrete_func = model.get_concrete_function()
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.experimental_new_converter = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = concrete_func(input_data)
+    actual_value = self._evaluateTFLiteModel(
+        tflite_model, [input_data], input_shapes=[([-1, 4], [10, 4])])
+    np.testing.assert_almost_equal(
+        expected_value.numpy(), actual_value[0], decimal=6)
+
+  def testBatchMatMul(self):
+    self.skipTest('BatchMatMulV2 does not support unknown batch size.')
+    input_data_1 = constant_op.constant(
+        np.array(np.random.random_sample((1, 256, 256)), dtype=np.float32))
+    input_data_2 = constant_op.constant(
+        np.array(np.random.random_sample((1, 256, 256)), dtype=np.float32))
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(shape=[None, 256, 256], dtype=dtypes.float32),
+        tensor_spec.TensorSpec(shape=[None, 256, 256], dtype=dtypes.float32)
+    ])
+    def model(in_tensor_1, in_tensor_2):
+      return math_ops.matmul(in_tensor_1, in_tensor_2)
+
+    concrete_func = model.get_concrete_function()
+
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
+    converter.experimental_new_converter = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = concrete_func(input_data_1, input_data_2)
+    actual_value = self._evaluateTFLiteModel(
+        tflite_model, [input_data_1, input_data_2],
+        input_shapes=[([-1, 256, 256], [1, 256, 256])])
     np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
 
 

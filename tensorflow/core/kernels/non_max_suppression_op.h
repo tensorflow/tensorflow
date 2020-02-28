@@ -35,7 +35,7 @@ struct NonMaxSuppression {
 
 }  // namespace functor
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 extern const int kNmsBoxesPerTread;
 
 // Given descending sorted box list, apply non-maximal-suppression with given

@@ -92,7 +92,7 @@ class ProcessFunctionLibraryRuntime {
                             gtl::ArraySlice<Tensor> tensors_to_send,
                             DeviceContext* device_context,
                             const std::vector<AllocatorAttributes>& alloc_attrs,
-                            Rendezvous* rendezvous);
+                            RendezvousInterface* rendezvous);
 
   // Receives `received_tensors` from `target_device` (originally sent from
   // `source_device`) using `rendezvous`. Uses `key_prefix` to construct the
@@ -105,7 +105,7 @@ class ProcessFunctionLibraryRuntime {
       const string& key_prefix, int64 src_incarnation, int64 num_tensors,
       DeviceContext* device_context,
       const std::vector<AllocatorAttributes>& alloc_attrs,
-      Rendezvous* rendezvous, std::vector<Tensor>* received_tensors,
+      RendezvousInterface* rendezvous, std::vector<Tensor>* received_tensors,
       StatusCallback done);
 
   static const char kDefaultFLRDevice[];

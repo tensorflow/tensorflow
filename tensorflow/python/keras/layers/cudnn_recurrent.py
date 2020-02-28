@@ -31,6 +31,7 @@ from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.platform import build_info
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -274,24 +275,51 @@ class CuDNNGRU(_CuDNNRNN):
     input_h = initial_state[0]
     input_h = array_ops.expand_dims(input_h, axis=0)
 
-    params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
-        weights=[
-            self.kernel[:, self.units:self.units * 2],
-            self.kernel[:, :self.units],
-            self.kernel[:, self.units * 2:],
-            self.recurrent_kernel[:, self.units:self.units * 2],
-            self.recurrent_kernel[:, :self.units],
-            self.recurrent_kernel[:, self.units * 2:],
-        ],
-        biases=[
-            self.bias[self.units:self.units * 2],
-            self.bias[:self.units],
-            self.bias[self.units * 2:self.units * 3],
-            self.bias[self.units * 4:self.units * 5],
-            self.bias[self.units * 3:self.units * 4],
-            self.bias[self.units * 5:],
-        ],
-        shape=self._vector_shape)
+    params = []
+    if build_info.is_rocm_build:
+      # ROCm MIOpen's weight sequence for GRU is same with the canonical format
+      # but different from that of Cudnn
+      # MIOpen/Canonical: [z, r, h] Cudnn: [r, z, h]
+      # z is update gate weights.
+      # r is reset gate weights.
+      # h is output gate weights.
+      params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
+          weights=[
+              self.kernel[:, :self.units],
+              self.kernel[:, self.units:self.units * 2],
+              self.kernel[:, self.units * 2:],
+              self.recurrent_kernel[:, :self.units],
+              self.recurrent_kernel[:, self.units:self.units * 2],
+              self.recurrent_kernel[:, self.units * 2:],
+          ],
+          biases=[
+              self.bias[:self.units],
+              self.bias[self.units:self.units * 2],
+              self.bias[self.units * 2:self.units * 3],
+              self.bias[self.units * 3:self.units * 4],
+              self.bias[self.units * 4:self.units * 5],
+              self.bias[self.units * 5:],
+          ],
+          shape=self._vector_shape)
+    else:
+      params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
+          weights=[
+              self.kernel[:, self.units:self.units * 2],
+              self.kernel[:, :self.units],
+              self.kernel[:, self.units * 2:],
+              self.recurrent_kernel[:, self.units:self.units * 2],
+              self.recurrent_kernel[:, :self.units],
+              self.recurrent_kernel[:, self.units * 2:],
+          ],
+          biases=[
+              self.bias[self.units:self.units * 2],
+              self.bias[:self.units],
+              self.bias[self.units * 2:self.units * 3],
+              self.bias[self.units * 4:self.units * 5],
+              self.bias[self.units * 3:self.units * 4],
+              self.bias[self.units * 5:],
+          ],
+          shape=self._vector_shape)
 
     args = {
         'input': inputs,
@@ -472,28 +500,60 @@ class CuDNNLSTM(_CuDNNRNN):
     input_h = array_ops.expand_dims(input_h, axis=0)
     input_c = array_ops.expand_dims(input_c, axis=0)
 
-    params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
-        weights=[
-            self.kernel[:, :self.units],
-            self.kernel[:, self.units:self.units * 2],
-            self.kernel[:, self.units * 2:self.units * 3],
-            self.kernel[:, self.units * 3:],
-            self.recurrent_kernel[:, :self.units],
-            self.recurrent_kernel[:, self.units:self.units * 2],
-            self.recurrent_kernel[:, self.units * 2:self.units * 3],
-            self.recurrent_kernel[:, self.units * 3:],
-        ],
-        biases=[
-            self.bias[:self.units],
-            self.bias[self.units:self.units * 2],
-            self.bias[self.units * 2:self.units * 3],
-            self.bias[self.units * 3:self.units * 4],
-            self.bias[self.units * 4:self.units * 5],
-            self.bias[self.units * 5:self.units * 6],
-            self.bias[self.units * 6:self.units * 7],
-            self.bias[self.units * 7:],
-        ],
-        shape=self._vector_shape)
+    params = []
+    if build_info.is_rocm_build:
+      # ROCm MIOpen's weight sequence for LSTM is different from both canonical
+      # and Cudnn format
+      # MIOpen: [i, f, o, c] Cudnn/Canonical: [i, f, c, o]
+      # i is input gate weights.
+      # f is forget gate weights.
+      # o is output gate weights.
+      # c is cell gate weights.
+      params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
+          weights=[
+              self.kernel[:, :self.units],
+              self.kernel[:, self.units:self.units * 2],
+              self.kernel[:, self.units * 3:],
+              self.kernel[:, self.units * 2:self.units * 3],
+              self.recurrent_kernel[:, :self.units],
+              self.recurrent_kernel[:, self.units:self.units * 2],
+              self.recurrent_kernel[:, self.units * 3:],
+              self.recurrent_kernel[:, self.units * 2:self.units * 3],
+          ],
+          biases=[
+              self.bias[:self.units],
+              self.bias[self.units:self.units * 2],
+              self.bias[self.units * 3:self.units * 4],
+              self.bias[self.units * 2:self.units * 3],
+              self.bias[self.units * 4:self.units * 5],
+              self.bias[self.units * 5:self.units * 6],
+              self.bias[self.units * 7:],
+              self.bias[self.units * 6:self.units * 7],
+          ],
+          shape=self._vector_shape)
+    else:
+      params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
+          weights=[
+              self.kernel[:, :self.units],
+              self.kernel[:, self.units:self.units * 2],
+              self.kernel[:, self.units * 2:self.units * 3],
+              self.kernel[:, self.units * 3:],
+              self.recurrent_kernel[:, :self.units],
+              self.recurrent_kernel[:, self.units:self.units * 2],
+              self.recurrent_kernel[:, self.units * 2:self.units * 3],
+              self.recurrent_kernel[:, self.units * 3:],
+          ],
+          biases=[
+              self.bias[:self.units],
+              self.bias[self.units:self.units * 2],
+              self.bias[self.units * 2:self.units * 3],
+              self.bias[self.units * 3:self.units * 4],
+              self.bias[self.units * 4:self.units * 5],
+              self.bias[self.units * 5:self.units * 6],
+              self.bias[self.units * 6:self.units * 7],
+              self.bias[self.units * 7:],
+          ],
+          shape=self._vector_shape)
 
     args = {
         'input': inputs,

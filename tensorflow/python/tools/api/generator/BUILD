@@ -45,7 +45,7 @@ py_test(
         "create_python_api.py",
         "create_python_api_test.py",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":doc_srcs",
@@ -62,7 +62,7 @@ py_test(
         "--api_name=tensorflow",
     ] + KERAS_API_INIT_FILES + KERAS_API_INIT_FILES_V1 + TENSORFLOW_API_INIT_FILES + TENSORFLOW_API_INIT_FILES_V1,
     main = "doc_srcs_test.py",
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":doc_srcs",
@@ -78,7 +78,7 @@ py_test(
         "api_init_files.bzl",
         "api_init_files_v1.bzl",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",

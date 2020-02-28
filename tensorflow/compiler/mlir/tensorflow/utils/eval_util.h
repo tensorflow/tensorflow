@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "tensorflow/c/eager/c_api.h"
 
 namespace tensorflow {

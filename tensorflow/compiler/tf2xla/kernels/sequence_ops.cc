@@ -160,9 +160,10 @@ class LinSpaceOp : public XlaOpKernel {
                 errors::InvalidArgument("Requires num > 0: ", num));
     xla::XlaOp start = ctx->Input("start");
     xla::XlaOp stop = ctx->Input("stop");
-    xla::XlaOp iota = xla::Iota(ctx->builder(), ctx->output_xla_type(0), num) /
-                      xla::ScalarLike(start, (num > 1 ? num - 1 : num));
-    xla::XlaOp result = iota * stop - (iota * start - start);
+    xla::XlaOp iota = xla::Iota(ctx->builder(), ctx->output_xla_type(0), num);
+    xla::XlaOp step =
+        (stop - start) / xla::ScalarLike(start, (num > 1 ? num - 1 : num));
+    xla::XlaOp result = iota * step + start;
     if (num > 1) {
       // According to linspace spec, start has to be the first element and end
       // has to be last element.

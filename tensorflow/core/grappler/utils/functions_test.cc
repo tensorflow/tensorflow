@@ -500,7 +500,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithControlOutputs) {
   EXPECT_EQ("update", item.keep_ops[0]);
 
   ASSERT_EQ(1, item.control_output_size());
-  const ControlOutput& ctrl = item.control_outputs()[0];
+  const ControlOutput &ctrl = item.control_outputs()[0];
   EXPECT_EQ("side_effects", ctrl.output_name);
   EXPECT_EQ("update", ctrl.node_name);
 }

@@ -40,11 +40,12 @@ struct GraphImportConfig {
       llvm::MapVector<string, ArrayInfo, llvm::StringMap<unsigned>>;
   // Maps input node names to node data types and shapes.
   InputArrays inputs;
-  // Output node names.
-  absl::flat_hash_set<string> output_arrays;
-  // nodes:index strings for the output as specified on the command line.
-  std::vector<string> output_arrays_order;
-  // setting prune_unused_nodes to true, would prune unreachable nodes if
+  // name:index strings for the data outputs.
+  std::vector<string> outputs;
+  // name strings for the control outputs. This is currently only used when
+  // `graph_as_function` is set.
+  std::vector<string> control_outputs;
+  // Setting prune_unused_nodes to true, would prune unreachable nodes if
   // output_arrays is specified.
   bool prune_unused_nodes = false;
   // If true, inputs of type LegacyFedInput are replaced with Placeholder ops.
@@ -57,9 +58,6 @@ struct GraphImportConfig {
   // If true, upgrade legacy features of the graph (for instance, functionalize
   // control-flow).
   bool upgrade_legacy = false;
-  // If true, add pseudo input nodes (nodes with ".input" appended consuming a
-  // hoisted arg).
-  bool add_pseudo_input_nodes = true;
 };
 
 struct GraphExportConfig {
@@ -76,12 +74,10 @@ struct GraphExportConfig {
 // Parses the command line flag strings to the specification of nodes in
 // the Graph.
 Status ParseOutputArrayInfo(absl::string_view array_names,
-                            absl::flat_hash_set<string>* array,
-                            std::vector<string>* order);
+                            std::vector<string>* outputs);
 
 Status ParseOutputArrayInfo(const std::vector<string>& output_names,
-                            absl::flat_hash_set<string>* array,
-                            std::vector<string>* order);
+                            std::vector<string>* outputs);
 
 // Parses the command line flag strings to the specification of nodes in
 // the Graph. `data_types` input string can be empty since the flag is optional.

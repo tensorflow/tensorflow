@@ -3,12 +3,23 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # Platform specific build config
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
 
 package(
     licenses = ["notice"],  # Apache 2.0
+)
+
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "graph_optimizer.h",
+        "meta_optimizer.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
 )
 
 cc_library(
@@ -114,9 +125,7 @@ tf_cc_test(
     shard_count = 5,
     # Running cuda on cpu will trigger tests guarded by GOOGLE_CUDA but NCHW
     # won't be available, which result in test failures. So disable that.
-    tags = [
-        "no_cuda_on_cpu_tap",
-    ],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":constant_folding",
         ":dependency_optimizer",
@@ -148,6 +157,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
+        "//tensorflow/compiler/jit:common",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -364,6 +374,8 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
         "//tensorflow/core/grappler/utils:grappler_test",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "//tensorflow/core/platform:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -923,6 +935,7 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "//tensorflow/core/grappler/utils:topological_sort",
     ],
 )
 

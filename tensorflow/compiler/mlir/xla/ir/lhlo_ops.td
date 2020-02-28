@@ -18,13 +18,8 @@ limitations under the License.
 #ifndef LHLO_OPS
 #define LHLO_OPS
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifndef HLO_OPS_BASE
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
-#endif
 
 def LHLO_Dialect : Dialect {
   let name = "xla_lhlo";
@@ -36,18 +31,18 @@ def LHLO_Dialect : Dialect {
 //===----------------------------------------------------------------------===//
 
 // Any integer tensor types
-def LHLO_IntBuffer : StaticShapeMemRefOf<[HLO_Int]>;
+def LHLO_IntBuffer : MemRefOf<[HLO_Int]>;
 
 // Any floating-point tensor types
-def LHLO_FpBuffer : StaticShapeMemRefOf<[AnyFloat]>;
+def LHLO_FpBuffer : MemRefOf<[AnyFloat]>;
 
 
-def LHLO_PredBuffer : StaticShapeMemRefOf<[HLO_Pred]>;
+def LHLO_PredBuffer : MemRefOf<[HLO_Pred]>;
 
 // Any integer or floating-point tensor types
-def LHLO_IntOrFpBuffer : StaticShapeMemRefOf<[HLO_Int, AnyFloat]>;
+def LHLO_IntOrFpBuffer : MemRefOf<[HLO_Int, AnyFloat]>;
 
-def LHLO_Buffer : StaticShapeMemRefOf<[AnyFloat, AnyInteger]>;
+def LHLO_Buffer : MemRefOf<[AnyFloat, AnyInteger]>;
 
 def LHLO_TupleBuffer : NestedTupleOf<[LHLO_Buffer]>;
 
@@ -60,14 +55,14 @@ def LHLO_BufferOrTuple : AnyTypeOf<[LHLO_Buffer, LHLO_TupleBuffer]>;
 class LHLO_Op<string mnemonic, list<OpTrait> traits> : Op<LHLO_Dialect,
                                                           mnemonic, traits>;
 
-def LHLO_ConstOp : BASE_HLO_ConstOp, LHLO_Op<"constant", []> {
+def LHLO_ConstOp : LHLO_Op<"constant", []>, BASE_HLO_ConstOp {
   let arguments = (ins
     ElementsAttr:$value,
     LHLO_Buffer:$output
   );
 }
 
-def LHLO_IotaOp : BASE_HLO_IotaOp, LHLO_Op<"iota", []> {
+def LHLO_IotaOp : LHLO_Op<"iota", []>, BASE_HLO_IotaOp {
   let arguments = (ins I64Attr:$iota_dimension,
                    LHLO_Buffer:$output);
 }
@@ -87,13 +82,20 @@ def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs">, BASE_HLO_AbsOp;
 
 def LHLO_CeilOp: LHLO_UnaryElementwiseOp<"ceil">, BASE_HLO_CeilOp;
 
-def LHLO_ConvertOp : LHLO_UnaryElementwiseOp<"convert">, BASE_HLO_ConvertOp;
+def LHLO_ConvertOp :  LHLO_Op<"convert", [SameOperandsShape]>, BASE_HLO_ConvertOp {
+  let arguments = (ins LHLO_Buffer:$input,
+                       LHLO_Buffer:$output);
+}
 
 def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cos">, BASE_HLO_CosOp;
 
 def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exp">, BASE_HLO_ExpOp;
 
+def LHLO_LogOp: LHLO_UnaryElementwiseOp<"log">, BASE_HLO_LogOp;
+
 def LHLO_NegOp: LHLO_UnaryElementwiseOp<"neg">, BASE_HLO_NegOp;
+
+def LHLO_RsqrtOp: LHLO_UnaryElementwiseOp<"rsqrt">, BASE_HLO_RsqrtOp;
 
 def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign">, BASE_HLO_SignOp;
 
@@ -261,6 +263,13 @@ def LHLO_ConvOp : LHLO_Op<"conv", []>, BASE_HLO_ConvOp {
   let arguments = (ins
     LHLO_Buffer:$lhs,
     LHLO_Buffer:$rhs,
+    LHLO_Buffer:$output
+  );
+}
+
+def LHLO_CopyOp: LHLO_Op<"copy", []>, BASE_HLO_CopyOp {
+  let arguments = (ins
+    LHLO_Buffer:$operand,
     LHLO_Buffer:$output
   );
 }

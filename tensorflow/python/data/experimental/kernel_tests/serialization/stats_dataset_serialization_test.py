@@ -25,7 +25,6 @@ from tensorflow.python.data.experimental.ops import stats_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -104,9 +103,7 @@ class StatsDatasetSerializationTest(
 
   @combinations.generate(test_base.default_test_combinations())
   def test_set_stats_aggregator_not_support_checkpointing(self):
-    with self.assertRaisesRegexp(errors.UnimplementedError,
-                                 "does not support checkpointing"):
-      self.run_core_tests(self._build_dataset_stats_aggregator, 10)
+    self.run_core_tests(self._build_dataset_stats_aggregator, 10)
 
 
 if __name__ == "__main__":

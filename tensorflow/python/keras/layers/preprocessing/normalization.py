@@ -30,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import keras_export
 
 _COUNT_NAME = 'count'
 _MEAN_NAME = 'mean'
@@ -37,6 +38,7 @@ _VARIANCE_NAME = 'variance'
 
 
 # TODO(momernick): Find a good example of normalization?
+@keras_export('keras.layers.experimental.preprocessing.Normalization', v1=[])
 class Normalization(CombinerPreprocessingLayer):
   """Feature-wise normalization of the data.
 
@@ -94,7 +96,7 @@ class Normalization(CombinerPreprocessingLayer):
         name=_VARIANCE_NAME,
         shape=mean_and_var_shape,
         dtype=K.floatx(),
-        initializer=init_ops.zeros_initializer)
+        initializer=init_ops.ones_initializer)
     self.count = self._add_state_variable(
         name=_COUNT_NAME,
         shape=(),

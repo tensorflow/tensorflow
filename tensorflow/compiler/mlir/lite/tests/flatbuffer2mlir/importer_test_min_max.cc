@@ -57,13 +57,13 @@ Optional<std::unique_ptr<tflite::ModelT>> InjectStatsToFullyConnected(
   }
   std::unique_ptr<tflite::ModelT> model(model_ptr->GetModel()->UnPack());
 
-  // FB-LABEL:     name: "Input",
+  // FB-LABEL:     name: "arg0",
   // FB-NEXT:      quantization: {
   // FB-NEXT:              min: [ -1.0 ],
   // FB-NEXT:              max: [ 1.0 ]
   // FB-NEXT:      }
 
-  // FB-LABEL:     name: "Input1",
+  // FB-LABEL:     name: "arg1",
   // FB-NEXT:            quantization: {
   // FB-EMPTY:
   // FB-NEXT:            }
@@ -88,7 +88,7 @@ Optional<std::unique_ptr<tflite::ModelT>> InjectStatsToFullyConnected(
   // FB-NEXT:      }
 
   // FB-LABEL:      operators: [ {
-  // FB-NEXT:             inputs: [ 1, 2, 0 ],
+  // FB-NEXT:             inputs: [ 0, 1, 2 ],
   // FB-NEXT:             outputs: [ 3, 4 ],
   // FB-NEXT:             builtin_options_type: FullyConnectedOptions,
   // FB-NEXT:             builtin_options: {
@@ -97,23 +97,18 @@ Optional<std::unique_ptr<tflite::ModelT>> InjectStatsToFullyConnected(
   // FB-NEXT:       } ],
 
   // CHECK-LABEL: func @main(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>)
-  // CHECK-SAME:      -> tensor<40x40xf32> {
-  // CHECK-NEXT:    %[[in:.*]] = "tfl.pseudo_input"(%arg0) : (tensor<40x37xf32>)
-  // CHECK-SAME:      -> tensor<40x37xf32>
-  // CHECK-NEXT:    %[[stat:.*]] = "quant.stats"(%[[in]]) {layerStats = dense<
+  // CHECK-SAME:      -> tensor<40x40xf32>
+  // CHECK:         %[[stat:.*]] = "quant.stats"(%arg0) {layerStats = dense<
   // CHECK-SAME:      [-1.000000e+00, 1.000000e+00]> : tensor<2xf32>}
   // CHECK-SAME:      : (tensor<40x37xf32>) -> tensor<40x37xf32>
-  // CHECK-NEXT:    %[[in1:.*]] = "tfl.pseudo_input"(%arg1) :
-  // CHECK-SAME:      (tensor<40x37xf32>) -> tensor<40x37xf32>
   // CHECK-NEXT:    %[[cst:.*]] = "tfl.pseudo_const"() {value = dense<
   // CHECK-SAME:      1.000000e+00> : tensor<40xf32>} : () -> tensor<40xf32>
-  // CHECK-NEXT:    %[[fc:.*]]:2 = "tfl.fully_connected"(%[[stat]], %[[in1]],
+  // CHECK-NEXT:    %[[fc:.*]]:2 = "tfl.fully_connected"(%[[stat]], %arg1,
   // CHECK-NEXT:    %[[stat1:.*]] = "quant.stats"(%[[fc]]#0) {axis = 1 : i64,
   // CHECK-SAME:      axisStats = dense<{{\[}}[-0.000000e+00, 0.000000e+00],
   // CHECK-SAME:      [-1.000000e+00, 1.000000e+00],
   // CHECK-SAME:      [-2.000000e+00, 2.000000e+00]
-  // CHECK-NEXT:    return %[[stat1]] :
-  // CHECK-SAME:      tensor<40x40xf32>
+  // CHECK-NEXT:    return %[[stat1]] : tensor<40x40xf32>
   // CHECK-NEXT:  }
 
   // Find the tensors and inject the min and max to the input and output

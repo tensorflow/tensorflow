@@ -18,7 +18,9 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 
 namespace tensorflow {
 namespace {

@@ -17,13 +17,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
-#if !TENSORFLOW_USE_ROCM
-  #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
-#endif
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
@@ -32,6 +28,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -239,7 +240,12 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     return Status::OK();
   }
 
-#if !TENSORFLOW_USE_ROCM
+  if (IsCublasGemm(*custom_call)) {
+    AddThunkToThunkSequence(BuildGemmThunk(custom_call));
+    return Status::OK();
+  }
+
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
   if (custom_call->custom_call_target() == kCusolverCholeskyCallTarget) {
     TF_ASSIGN_OR_RETURN(CholeskyOptions options,
                         custom_call->backend_config<CholeskyOptions>());
@@ -283,12 +289,6 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
 
     return Status::OK();
   }
-#endif
-
-  if (IsCublasGemm(*custom_call)) {
-    AddThunkToThunkSequence(BuildGemmThunk(custom_call));
-    return Status::OK();
-  }
 
   if (void* call_target = CustomCallTargetRegistry::Global()->Lookup(
           custom_call->custom_call_target(), platform()->Name())) {
@@ -315,6 +315,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
         Cast<HloCustomCallInstruction>(custom_call)->opaque(), custom_call));
     return Status::OK();
   }
+#endif
 
   return Unimplemented("No registered implementation for custom call to \"%s\"",
                        custom_call->custom_call_target());

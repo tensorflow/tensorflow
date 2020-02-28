@@ -4887,7 +4887,7 @@ cusparseStatus_t CUSPARSEAPI cusparseDcsr2csr_compress(
     int m,  // number of rows
     int n, const cusparseMatDescr_t descra,
     const double *csrValA,  // csr values array-the elements which are below a
-                            // certain tolerance will be remvoed
+                            // certain tolerance will be removed
     const int *csrColIndA,
     const int *csrRowPtrA,  // corresponding input noncompressed row pointer
     int nnzA, const int *nnzPerRow, double *csrValC, int *csrColIndC,
@@ -4907,7 +4907,7 @@ cusparseStatus_t CUSPARSEAPI cusparseCcsr2csr_compress(
     int m,  // number of rows
     int n, const cusparseMatDescr_t descra,
     const cuComplex *csrValA,  // csr values array-the elements which are below
-                               // a certain tolerance will be remvoed
+                               // a certain tolerance will be removed
     const int *csrColIndA,
     const int *csrRowPtrA,  // corresponding input noncompressed row pointer
     int nnzA, const int *nnzPerRow, cuComplex *csrValC, int *csrColIndC,
@@ -4927,7 +4927,7 @@ cusparseStatus_t CUSPARSEAPI cusparseZcsr2csr_compress(
     int m,  // number of rows
     int n, const cusparseMatDescr_t descra,
     const cuDoubleComplex *csrValA,  // csr values array-the elements which are
-                                     // below a certain tolerance will be remvoed
+                                     // below a certain tolerance will be removed
     const int *csrColIndA,
     const int *csrRowPtrA,  // corresponding input noncompressed row pointer
     int nnzA, const int *nnzPerRow, cuDoubleComplex *csrValC, int *csrColIndC,

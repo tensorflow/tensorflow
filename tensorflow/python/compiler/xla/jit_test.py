@@ -71,7 +71,7 @@ class JITTest(test.TestCase, parameterized.TestCase):
           "root",
           initializer=init_ops.random_uniform_initializer(
               -0.1, 0.1, seed=2)):
-        inputs = random_ops.random_uniform((1,), seed=1)
+        inputs = random_ops.random_uniform((1,), minval=-10, maxval=10, seed=1)
         return inputs
     v_false_1_t, v_false_1 = self.compute(False, create_ops)
     _, v_false_2 = self.compute(False, create_ops)

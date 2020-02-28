@@ -101,7 +101,6 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
   @parameterized.parameters(*PARAMS)
   def testQR(self, rows, cols, dtype):
-
     # TODO(b/111317468): Test other types.
     for full_matrices in [True, False]:
       # Only tests the (3, 2) case for small numbers of rows/columns.

@@ -5119,6 +5119,7 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
       self.assertAllClose(expected_batch, actual_sobel)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class DecodeImageTest(test_util.TensorFlowTestCase):
 
   def testJpegUint16(self):
@@ -5140,6 +5141,13 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
           image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.uint16)
       image0, image1 = self.evaluate([image0, image1])
       self.assertAllEqual(image0, image1)
+
+      # NumPy conversions should happen before
+      x = np.random.randint(256, size=(4, 4, 3), dtype=np.uint16)
+      x_str = image_ops_impl.encode_png(x)
+      x_dec = image_ops_impl.decode_image(
+          x_str, channels=3, dtype=dtypes.uint16)
+      self.assertAllEqual(x, x_dec)
 
   def testGifUint16(self):
     with self.cached_session(use_gpu=True) as sess:

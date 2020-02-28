@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import re
 
+import six
+
 from tensorflow.python import tf2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
@@ -37,35 +39,32 @@ class Module(tracking.AutoTrackable):
   functions which apply to user input. For example a dense layer in a neural
   network might be implemented as a `tf.Module`:
 
-  ```python
-   class Dense(tf.Module):
-     def __init__(self, in_features, output_features, name=None):
-       super(Dense, self).__init__(name=name)
-       self.w = tf.Variable(
-           tf.random.normal([input_features, output_features]), name='w')
-       self.b = tf.Variable(tf.zeros([output_features]), name='b')
-
-     def __call__(self, x):
-       y = tf.matmul(x, self.w) + self.b
-       return tf.nn.relu(y)
-  ```
+   >>> class Dense(tf.Module):
+   ...   def __init__(self, in_features, out_features, name=None):
+   ...     super(Dense, self).__init__(name=name)
+   ...     self.w = tf.Variable(
+   ...       tf.random.normal([in_features, out_features]), name='w')
+   ...     self.b = tf.Variable(tf.zeros([out_features]), name='b')
+   ...   def __call__(self, x):
+   ...     y = tf.matmul(x, self.w) + self.b
+   ...     return tf.nn.relu(y)
 
   You can use the Dense layer as you would expect:
 
-  ```python
-  d = Dense(input_features=64, output_features=10)
-  d(tf.ones([100, 64]))
-  #==> <tf.Tensor: ...>
-  ```
+  >>> d = Dense(in_features=3, out_features=2)
+  >>> d(tf.ones([1, 3]))
+  <tf.Tensor: shape=(1, 2), dtype=float32, numpy=..., dtype=float32)>
+
 
   By subclassing `tf.Module` instead of `object` any `tf.Variable` or
   `tf.Module` instances assigned to object properties can be collected using
   the `variables`, `trainable_variables` or `submodules` property:
 
-  ```python
-  d.variables
-  #==> (<tf.Variable 'b:0' ...>, <tf.Variable 'w:0' ...>)
-  ```
+  >>> d.variables
+      (<tf.Variable 'b:0' shape=(2,) dtype=float32, numpy=...,
+      dtype=float32)>,
+      <tf.Variable 'w:0' shape=(3, 2) dtype=float32, numpy=..., dtype=float32)>)
+
 
   Subclasses of `tf.Module` can also take advantage of the `_flatten` method
   which can be used to implement tracking of any other types.
@@ -118,7 +117,7 @@ class Module(tracking.AutoTrackable):
       with ops.name_scope_v2(name) as scope_name:
         self._name_scope = ops.name_scope_v2(scope_name)
     else:
-      with ops.name_scope(name) as scope_name:
+      with ops.name_scope(name, skip_on_eager=False) as scope_name:
         self._scope_name = scope_name
 
   @property
@@ -137,7 +136,7 @@ class Module(tracking.AutoTrackable):
       return self._name_scope
     else:
       # In TF1 name_scope is not re-entrant in eager so we cannot memoize it.
-      return ops.name_scope(self._scope_name)
+      return ops.name_scope(self._scope_name, skip_on_eager=False)
 
   @property
   def variables(self):
@@ -176,16 +175,17 @@ class Module(tracking.AutoTrackable):
     Submodules are modules which are properties of this module, or found as
     properties of modules which are properties of this module (and so on).
 
-    ```
-    a = tf.Module()
-    b = tf.Module()
-    c = tf.Module()
-    a.b = b
-    b.c = c
-    assert list(a.submodules) == [b, c]
-    assert list(b.submodules) == [c]
-    assert list(c.submodules) == []
-    ```
+    >>> a = tf.Module()
+    >>> b = tf.Module()
+    >>> c = tf.Module()
+    >>> a.b = b
+    >>> b.c = c
+    >>> list(a.submodules) == [b, c]
+    True
+    >>> list(b.submodules) == [c]
+    True
+    >>> list(c.submodules) == []
+    True
 
     Returns:
       A sequence of all submodules.
@@ -201,7 +201,7 @@ class Module(tracking.AutoTrackable):
 
     Modules are flattened by first walking their attributes in name order.
     Each attribute value is then flattened to find leaf values. If flatten is
-    to be applied `recursive`ly then if the leaf is a `Module` it will also be
+    applied `recursive`ly and if the leaf is a `Module` it will also be
     flattened to find leaves. Finally every leaf value is optionally tested
     against the given `predicate` and finally yielded.
 
@@ -261,25 +261,22 @@ class Module(tracking.AutoTrackable):
   def with_name_scope(cls, method):
     """Decorator to automatically enter the module name scope.
 
-    ```
-    class MyModule(tf.Module):
-      @tf.Module.with_name_scope
-      def __call__(self, x):
-        if not hasattr(self, 'w'):
-          self.w = tf.Variable(tf.random.normal([x.shape[1], 64]))
-        return tf.matmul(x, self.w)
-    ```
+    >>> class MyModule(tf.Module):
+    ...   @tf.Module.with_name_scope
+    ...   def __call__(self, x):
+    ...     if not hasattr(self, 'w'):
+    ...       self.w = tf.Variable(tf.random.normal([x.shape[1], 3]))
+    ...     return tf.matmul(x, self.w)
 
     Using the above module would produce `tf.Variable`s and `tf.Tensor`s whose
     names included the module name:
 
-    ```
-    mod = MyModule()
-    mod(tf.ones([8, 32]))
-    # ==> <tf.Tensor: ...>
-    mod.w
-    # ==> <tf.Variable ...'my_module/w:0'>
-    ```
+    >>> mod = MyModule()
+    >>> mod(tf.ones([1, 2]))
+    <tf.Tensor: shape=(1, 3), dtype=float32, numpy=..., dtype=float32)>
+    >>> mod.w
+    <tf.Variable 'my_module/Variable:0' shape=(2, 3) dtype=float32,
+    numpy=..., dtype=float32)>
 
     Args:
       method: The method to wrap.
@@ -336,7 +333,16 @@ def _flatten_module(module,
     if key in attributes_to_ignore:
       continue
 
-    for leaf_path, leaf in nest.flatten_with_tuple_paths(module_dict[key]):
+    prop = module_dict[key]
+    try:
+      leaves = nest.flatten_with_tuple_paths(prop)
+    except Exception as cause:  # pylint: disable=broad-except
+      six.raise_from(
+          ValueError(
+              "Error processing property {!r} of {!r}".format(key, prop)),
+          cause)
+
+    for leaf_path, leaf in leaves:
       leaf_path = (key,) + leaf_path
 
       # TODO(tomhennigan) Handle cycles for `with_path=True` (e.g. `a.a = a`).
@@ -362,7 +368,7 @@ def _flatten_module(module,
         recursive=recursive,
         predicate=predicate,
         attribute_traversal_key=attribute_traversal_key,
-        attributes_to_ignore=submodule._TF_MODULE_IGNORED_PROPERTIES,
+        attributes_to_ignore=submodule._TF_MODULE_IGNORED_PROPERTIES,  # pylint: disable=protected-access
         with_path=with_path,
         module_path=submodule_path,
         seen=seen)

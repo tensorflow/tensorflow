@@ -43,9 +43,11 @@ constexpr char kNumWorkersAttrName[] = "num_workers";
 constexpr char kIndexAttrName[] = "index";
 constexpr char kAutoShardPolicyAttrName[] = "auto_shard_policy";
 
-constexpr std::array<const char*, 4> kReaderDatasetOps = {
+constexpr std::array<const char*, 6> kReaderDatasetOps = {
     "FixedLengthRecordDataset",
     "FixedLengthRecordDatasetV2",
+    "RecordIODataset",
+    "SSTableDataset",
     "TextLineDataset",
     "TFRecordDataset"
 };
@@ -55,7 +57,7 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 28> kPassThroughOps = {
+constexpr std::array<const char*, 29> kPassThroughOps = {
     "_Retval",
     "AssertNextDataset",
     "BatchDataset",
@@ -73,6 +75,7 @@ constexpr std::array<const char*, 28> kPassThroughOps = {
     "ModelDataset",
     "OptimizeDataset",
     "ParallelMapDataset",
+    "ParallelMapDatasetV2",
     "PrefetchDataset",
     "ReduceDataset",
     "RebatchDataset",
@@ -87,12 +90,15 @@ constexpr std::array<const char*, 28> kPassThroughOps = {
 };
 
 // TODO(frankchn): Process functions within kFuncDatasetOps as well.
-constexpr std::array<const char*, 5> kFuncDatasetOps = {
+constexpr std::array<const char*, 8> kFuncDatasetOps = {
     "ExperimentalParallelInterleaveDataset",
     "FlatMapDataset",
     "InterleaveDataset",
+    "LegacyParallelInterleaveDatasetV2",
     "ParallelInterleaveDataset",
-    "ParallelInterleaveDatasetV2"
+    "ParallelInterleaveDatasetV2",
+    "ParallelInterleaveDatasetV3",
+    "ParallelInterleaveDatasetV4"
 };
 
 constexpr std::array<const char*, 5> kUnshardableSourceDatasetOps = {
@@ -394,7 +400,6 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   MutableGraphView graph(output);
   FunctionLibraryDefinition flib(OpRegistry::Global(), item.graph.library());
 
-  NodeDef target_node;
   absl::flat_hash_set<string> nodes_to_delete;
 
   NodeDef* sink_node;
@@ -404,8 +409,9 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   // the latest occurrence of a ReaderDataset (e.g. CSVDataset, TFRecordDataset,
   // etc...). We then add a shard after that dataset to shard the outputs of
   // that dataset, in effect giving a piece to each worker. Finally, we remove
-  // occurences from randomness from before that point in the graph (e.g. things
-  // like ShuffleDataset) to ensure that `shard` returns a sensible result.
+  // occurrences from randomness from before that point in the graph (e.g.
+  // things like ShuffleDataset) to ensure that `shard` returns a sensible
+  // result.
   switch (policy) {
     case AutoShardPolicy::OFF:
       return Status::OK();

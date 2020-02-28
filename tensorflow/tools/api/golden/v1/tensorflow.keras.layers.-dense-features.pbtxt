@@ -6,6 +6,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.version_utils.LayerVersionSelector\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -113,7 +114,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'feature_columns\', \'trainable\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'self\', \'feature_columns\', \'trainable\', \'name\', \'partitioner\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"

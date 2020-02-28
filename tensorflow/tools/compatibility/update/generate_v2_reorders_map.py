@@ -20,6 +20,7 @@ To update reorders_v2.py, run:
   bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 """
 # pylint: enable=line-too-long
+
 import tensorflow as tf
 
 # This import is needed so that TensorFlow python modules are in sys.modules.

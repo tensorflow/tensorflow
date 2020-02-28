@@ -29,6 +29,8 @@ std::string ToString(TensorStorageType type) {
       return "TensorStorageType::TEXTURE_ARRAY";
     case TensorStorageType::TEXTURE_2D:
       return "TensorStorageType::TEXTURE_2D";
+    case TensorStorageType::TEXTURE_3D:
+      return "TensorStorageType::TEXTURE_3D";
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return "TensorStorageType::SINGLE_TEXTURE_2D";
     case TensorStorageType::IMAGE_BUFFER:

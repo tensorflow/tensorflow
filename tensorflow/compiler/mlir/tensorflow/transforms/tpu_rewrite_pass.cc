@@ -18,6 +18,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -25,15 +26,15 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -109,13 +110,13 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     return parent_module.emitError(CreateMissingAttributeMsg(kVersionsAttr));
 
   module_for_func.get().getOperation()->setAttr(kVersionsAttr, versions_attr);
-  ModuleManager module_manager(module_for_func.get());
+  SymbolTable symbol_table(module_for_func.get());
 
   while (!referenced.empty()) {
     auto func = referenced.pop_back_val();
 
     // Skip functions that have already been cloned into new module.
-    if (module_manager.lookupSymbol<FuncOp>(func.getName())) continue;
+    if (symbol_table.lookup<FuncOp>(func.getName())) continue;
 
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
@@ -123,8 +124,8 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
-      FuncOp referenced_func =
-          entry_module_table.lookup<FuncOp>(use.getSymbolRef().getValue());
+      FuncOp referenced_func = entry_module_table.lookup<FuncOp>(
+          use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
 
       // Skip Symbols that do not map to a function.
       if (!referenced_func) continue;
@@ -138,7 +139,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
       // should be no other reference to it.
       clone.setName("main");
     }
-    module_manager.insert(clone);
+    symbol_table.insert(clone);
   }
 
   // Serialize module and return.
@@ -155,6 +156,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
 // TODO(lyandy): Support session handle and guaranteed consts.
 LogicalResult SetMetadataProtoFromLaunchFuncOp(
     tf_device::LaunchFuncOp op, int num_replicas, int num_cores_per_replica,
+    llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   metadata->set_num_replicas(num_replicas);
   metadata->set_num_cores_per_replica(num_cores_per_replica);
@@ -170,7 +172,7 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
       xla::DebugOptions::STEP_MARK_AT_ENTRY;
   if (!step_marker_location.getValue().empty() &&
       !xla::DebugOptions::StepMarkerLocation_Parse(
-          step_marker_location.getValue(), &location))
+          std::string(step_marker_location.getValue()), &location))
     return op.emitOpError(llvm::formatv("bad '{0}' attribute with value '{1}'",
                                         kStepMarkerLocationAttr,
                                         step_marker_location.getValue()));
@@ -191,11 +193,15 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
 
     tensorflow::tpu::PaddingMap* padding =
         metadata->mutable_padding_maps()->Add();
-    if (!padding->ParseFromString(padding_attr_str.getValue()))
+    if (!padding->ParseFromString(std::string(padding_attr_str.getValue())))
       return op.emitOpError(llvm::formatv(
           "bad '{0}' attribute at index {1} with value '{2}'", kPaddingMapAttr,
           padding_and_idx.index(), padding_attr_str.getValue()));
   }
+
+  if (xla_device_assignment.hasValue())
+    *metadata->mutable_device_assignment() =
+        std::move(xla_device_assignment.getValue());
 
   // Set args metadata in proto.
   for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
@@ -251,17 +257,19 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
 
 // Create a `tf._TPUCompileMlir` that contains a MLIR module that is
 // functionally equivalent to the function referenced by launch_func.
-Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func, int num_replicas,
-                          int num_cores_per_replica,
-                          llvm::StringRef compilation_device,
-                          OpBuilder* builder) {
+Operation* BuildCompileOp(
+    tf_device::LaunchFuncOp launch_func, int num_replicas,
+    int num_cores_per_replica, llvm::StringRef compilation_device,
+    llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
+    OpBuilder* builder) {
   // TODO(b/139377366): Use tf_tpu.compile build method when it is defined.
   OperationState compile_op_state(launch_func.getLoc(), "tf._TPUCompileMlir");
 
   // Set metadata from attributes.
   tensorflow::tpu::TPUCompileMetadataProto metadata;
   if (failed(SetMetadataProtoFromLaunchFuncOp(
-          launch_func, num_replicas, num_cores_per_replica, &metadata)))
+          launch_func, num_replicas, num_cores_per_replica,
+          std::move(xla_device_assignment), &metadata)))
     return nullptr;
 
   std::string txt_metadata;
@@ -277,7 +285,7 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func, int num_replicas,
   // TODO(b/139377366): When shape inference is ready, we can use compile time
   // shape inference to get inputs that have static shapes and only use shape
   // ops for the rest.
-  llvm::SmallVector<Value*, 4> compile_op_operands;
+  llvm::SmallVector<Value, 4> compile_op_operands;
   compile_op_operands.reserve(launch_func.getNumOperands());
 
   for (auto operand_and_idx : llvm::enumerate(launch_func.getOperands())) {
@@ -297,7 +305,8 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func, int num_replicas,
       "NumDynamicShapes",
       builder->getI64IntegerAttr(compile_op_operands.size()));
 
-  SymbolRefAttr func_attr = launch_func.getAttrOfType<SymbolRefAttr>("func");
+  FlatSymbolRefAttr func_attr =
+      launch_func.getAttrOfType<FlatSymbolRefAttr>("func");
   if (!func_attr) {
     launch_func.emitOpError("does not have `func` attribute");
     return nullptr;
@@ -329,42 +338,115 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func, int num_replicas,
 Operation* BuildExecuteOp(Operation* compile_op,
                           tf_device::LaunchFuncOp launch_func,
                           OpBuilder* builder) {
-  // TODO(b/139377366): Use tf.TPUExecute build method when it is defined.
-  OperationState execute_op_state(launch_func.getLoc(), "tf.TPUExecute");
-
-  // TPUExecute inherits all launch_func inputs.
-  llvm::SmallVector<Value*, 4> tensor_inputs(launch_func.getOperands());
-  execute_op_state.addOperands(tensor_inputs);
+  // TPUExecute inherits all launch_func inputs, and takes an additional input
+  // for compilation cache key.
+  llvm::SmallVector<Value, 4> tensor_inputs(launch_func.getOperands());
+  tensor_inputs.push_back(compile_op->getResult(1));
 
   // TODO(b/139377366): Need to snapshot all resource variable inputs in
   // follow-up CLs.
 
-  // Set Targs of TPUExecute according to launch_func input types.
-  llvm::SmallVector<Attribute, 4> tensor_input_types_attrs;
-  tensor_input_types_attrs.reserve(tensor_inputs.size());
-  for (Value* v : tensor_inputs) {
-    tensor_input_types_attrs.emplace_back(TypeAttr::get(v->getType()));
-  }
-  execute_op_state.addAttribute(
-      "Targs", builder->getArrayAttr(tensor_input_types_attrs));
-
-  // TPUExecute takes an additional input for compilation cache key.
-  execute_op_state.addOperands(compile_op->getResult(1));
-
-  // Set Tresults of TPUExecute according to launch_func results types.
-  llvm::SmallVector<Attribute, 4> output_types_attrs;
-  output_types_attrs.reserve(launch_func.getNumResults());
-  for (Value* v : launch_func.getResults()) {
-    output_types_attrs.emplace_back(TypeAttr::get(v->getType()));
-  }
-  execute_op_state.addAttribute("Tresults",
-                                builder->getArrayAttr(output_types_attrs));
-
   // TPUExecute has same output types as launch_func.
-  llvm::SmallVector<Type, 4> output_types(launch_func.getResultTypes());
-  execute_op_state.addTypes(output_types);
+  return builder->create<TF::TPUExecuteOp>(
+      launch_func.getLoc(), launch_func.getResultTypes(), tensor_inputs,
+      llvm::ArrayRef<NamedAttribute>{});
+}
 
-  return builder->createOperation(execute_op_state);
+// Creates a tf_device.parallel_execute op that wraps TPUExecute op to
+// represent execution of TPU program in multiple logical cores.
+Operation* BuildParallelExecuteOp(int num_logical_cores, Operation* compile_op,
+                                  tf_device::LaunchFuncOp launch_func,
+                                  OpBuilder* builder) {
+  // parallel_execute op returns concatenated list of return values of
+  // all its regions.
+  //
+  // TODO(b/149102702): Correctly map inputs to parallel_execute op via
+  // identifying xla_sharding op in the launch_func function.
+  const auto& launch_result_types = launch_func.getResultTypes();
+  llvm::SmallVector<Type, 8> concatenated_output_types;
+  concatenated_output_types.reserve(launch_result_types.size() *
+                                    num_logical_cores);
+
+  for (int core_id = 0; core_id < num_logical_cores; ++core_id)
+    for (Type t : launch_result_types)
+      concatenated_output_types.emplace_back(t);
+
+  auto parallel_execute_op = builder->create<tf_device::ParallelExecuteOp>(
+      launch_func.getLoc(), num_logical_cores, concatenated_output_types);
+
+  // For each logical core, create a region with TPUExecute op.
+  for (int core_id = 0; core_id < num_logical_cores; ++core_id) {
+    auto& region = parallel_execute_op.GetRegionBlockWithIndex(core_id);
+
+    // Create Execute op.
+    //
+    // TODO(b/148913294): Identify inputs/return values specific to each
+    // logical core TPU execution by parsing xla_sharding op in
+    // launch_func.
+    auto execute = BuildExecuteOp(compile_op, launch_func, builder);
+
+    // Create a launch op for each region of parallel_execute.
+    //
+    // TODO(b/149102679): Add device attribute to launch op once device
+    // topology for multiple logical cores can be correctly parsed.
+    builder->setInsertionPointToStart(&region);
+    auto region_launch_op = builder->create<tf_device::LaunchOp>(
+        region.getParent()->getLoc(), builder->getStringAttr(""),
+        launch_func.results().getTypes());
+    region_launch_op.body().push_back(new Block);
+
+    builder->setInsertionPointToEnd(&region_launch_op.GetBody());
+    builder->create<tf_device::ReturnOp>(region_launch_op.getLoc(),
+                                         execute->getResults());
+
+    // Move execute inside the launch op.
+    execute->moveBefore(&region_launch_op.GetBody().back());
+
+    builder->setInsertionPointToEnd(&region);
+    builder->create<tf_device::ReturnOp>(region.getParent()->getLoc(),
+                                         region_launch_op.getResults());
+  }
+
+  return parallel_execute_op;
+}
+
+// As tf_device.parallel_execute wraps # logical cores number of TPUExecute
+// ops, the number of return values of parallel_execute op exceeds that of
+// launch_func op. As so, each return value of parallel_execute op must be
+// mapped with corresponding return value usages of launch_func.
+//
+// TODO(b/148913294): Once argument and return value sharding of tpu computation
+// is determined, correctly map outputs of parallel_execute op.
+void RemapOutputsOfParallelExecute(tf_device::LaunchFuncOp launch_func,
+                                   Operation* op) {
+  for (auto outputs : llvm::zip(launch_func.getResults(), op->getResults()))
+    std::get<0>(outputs).replaceAllUsesWith(std::get<1>(outputs));
+}
+
+void AssignDevicesToReplicatedExecute(
+    llvm::ArrayRef<llvm::SmallVector<std::string, 8>> execution_devices,
+    tf_device::ReplicateOp replicate, Operation* execute_op,
+    OpBuilder* builder) {
+  // If computation is replicated, execution devices are assigned to the
+  // replicate. Otherwise there is only one execution device and the device is
+  // assigned to the execute op.
+  if (replicate) {
+    // Model parallelism is not support for now. Therefore, assign all ops
+    // in replicate op with virtual device alias specifying that ops will be
+    // executed on the zeroth core.
+    llvm::SmallVector<llvm::StringRef, 4> replicate_execution_devices;
+    replicate_execution_devices.reserve(execution_devices.size());
+    for (const auto& replica_execution_devices : execution_devices)
+      replicate_execution_devices.push_back(replica_execution_devices.front());
+
+    auto device_attr = builder->getNamedAttr(
+        tensorflow::GetDeviceAliasForLogicalCore(0),
+        builder->getStrArrayAttr(replicate_execution_devices));
+    replicate.setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attr));
+  } else {
+    execute_op->setAttr(
+        kDeviceAttr, builder->getStringAttr(execution_devices.front().front()));
+  }
 }
 
 // Creates a `tf.TPUCompileSucceededAssert` operation that parses compilation
@@ -456,21 +538,22 @@ LogicalResult Rewrite(
   int num_cores_per_replica = num_cores_per_replica_attr.getInt();
 
   // Determine compilation and execution devices.
-  std::string compilation_device;
-  llvm::SmallVector<std::string, 8> execution_devices;
-  auto status = tensorflow::GetTPUCompilationAndExecutionDevices(
-      devices, num_replicas, num_cores_per_replica, &compilation_device,
-      &execution_devices);
-  if (!status.ok())
+  auto status_or_tpu_device_assignment =
+      tensorflow::GetTPUCompilationAndExecutionDevices(
+          devices, num_replicas, num_cores_per_replica, /*topology_attr=*/"",
+          /*device_assignment_attr=*/{});
+  if (!status_or_tpu_device_assignment.ok())
     return launch_func.emitError()
            << "error in fetching TPU compilation/execution devices: "
-           << status.error_message();
+           << status_or_tpu_device_assignment.status().error_message();
 
   // Create compile op;
+  auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
   builder->setInsertionPoint(launch_func);
-  Operation* compile_op =
-      BuildCompileOp(launch_func, num_replicas, num_cores_per_replica,
-                     compilation_device, builder);
+  Operation* compile_op = BuildCompileOp(
+      launch_func, num_replicas, num_cores_per_replica,
+      tpu_device_assignment.compilation_device,
+      std::move(tpu_device_assignment.xla_device_assignment), builder);
   if (!compile_op) return failure();
 
   // After rewrite, find if there is a TPUCompilationResultOp in the block with
@@ -479,27 +562,29 @@ LogicalResult Rewrite(
   // the other ops that are intended to consume the compile result.
   Block* block = launch_func.getOperation()->getBlock();
   for (auto compile_result_op : block->getOps<TF::TPUCompilationResultOp>())
-    compile_result_op.output()->replaceAllUsesWith(compile_op->getResult(0));
+    compile_result_op.output().replaceAllUsesWith(compile_op->getResult(0));
 
   BuildTPUCompileSucceededAssertOp(compile_op, builder);
 
-  // Create execute op.
-  Operation* execute_op = BuildExecuteOp(compile_op, launch_func, builder);
-  launch_func.replaceAllUsesWith(execute_op);
-  launch_func.erase();
+  Operation* execute_op;
+  if (num_cores_per_replica > 1) {
+    // For model parallelism, tf_device.parallel_execute is used to express
+    // concurrent device execution across multiple logical devices.
+    execute_op = BuildParallelExecuteOp(num_cores_per_replica, compile_op,
+                                        launch_func, builder);
 
-  // If computation is replicated, execution devices are assigned to the
-  // replicate. Otherwise there is only one execution device and the device is
-  // assigned to the execute op.
-  if (replicate) {
-    llvm::SmallVector<llvm::StringRef, 8> execution_device_refs(
-        execution_devices.begin(), execution_devices.end());
-    replicate.setAttr(kDevicesAttr,
-                      builder->getStrArrayAttr(execution_device_refs));
+    RemapOutputsOfParallelExecute(launch_func, execute_op);
+
+    // TODO(hongjunchoi): Correctly parse TPU topology and assign logical device
+    // attributes to launch_op's within parallel_execute op.
   } else {
-    execute_op->setAttr(kDeviceAttr,
-                        builder->getStringAttr(execution_devices.front()));
+    execute_op = BuildExecuteOp(compile_op, launch_func, builder);
+    AssignDevicesToReplicatedExecute(tpu_device_assignment.execution_devices,
+                                     replicate, execute_op, builder);
+    launch_func.replaceAllUsesWith(execute_op);
   }
+
+  launch_func.erase();
 
   return success();
 }

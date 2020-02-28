@@ -77,6 +77,10 @@ class Shape {
     return dynamic_dimensions_;
   }
 
+  absl::Span<bool> mutable_dynamic_dimensions() {
+    return absl::MakeSpan(dynamic_dimensions_);
+  }
+
   // Add dimension_upper_bound().
 
   // Removes the given dimension form the shape. Layout, if it exists, is
@@ -127,6 +131,19 @@ class Shape {
   Layout* mutable_layout() { return &layout_; }
   void clear_layout() { layout_.Clear(); }
 
+  // Recursively clear dynamic dimension of a shape.
+  void clear_dynamic_dimensions() {
+    if (!IsTuple()) {
+      for (int64 i = 0; i < dynamic_dimensions_.size(); ++i) {
+        dynamic_dimensions_[i] = false;
+      }
+      return;
+    }
+    for (auto& subshape : tuple_shapes_) {
+      subshape.clear_dynamic_dimensions();
+    }
+  }
+
   void Swap(Shape* other) {
     using std::swap;
     swap(*this, *other);
@@ -134,7 +151,7 @@ class Shape {
 
   void Clear() {
     element_type_ = PRIMITIVE_TYPE_INVALID;
-    dimensions_.clear();
+    clear_dimensions();
     tuple_shapes_.clear();
     clear_layout();
   }

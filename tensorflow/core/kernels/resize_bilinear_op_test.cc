@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 enum class TestDevice { CPU, GPU };
@@ -140,7 +143,7 @@ class ResizeBilinearOpTestBase
         TensorShape({batch_size, output_width, output_height, channels})));
     ResizeBilinearBaseline(input->tensor<float, 4>(),
                            expected->tensor<float, 4>());
-    test::ExpectClose(*expected, *GetOutput(0), /*atol=*/1e-5);
+    test::ExpectClose(*expected, *GetOutput(0), /*atol=*/3e-5);
   }
 
   void RunManyRandomTests(int channels) {
@@ -529,7 +532,7 @@ INSTANTIATE_TEST_SUITE_P(ResizeBilinearHalfPixelCentersOpTestCpu,
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpAlignCornersTestCpu,
                          ResizeBilinearOpAlignCornersTest,
                          ::testing::Values(TestDevice::CPU));
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Instantiate tests for GPU.
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpTestGpu, ResizeBilinearOpTest,
                          ::testing::Values(TestDevice::GPU));
@@ -539,5 +542,5 @@ INSTANTIATE_TEST_SUITE_P(ResizeBilinearHalfPixelCentersOpTestGpu,
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpAlignCornersTestGpu,
                          ResizeBilinearOpAlignCornersTest,
                          ::testing::Values(TestDevice::GPU));
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA  || TENSORFLOW_USE_ROCM
 }  // namespace tensorflow

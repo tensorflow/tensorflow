@@ -24,6 +24,7 @@ import six
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.mixed_precision.experimental import device_compatibility_check
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale as keras_loss_scale_module
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.platform import tf_logging
@@ -280,6 +281,9 @@ class Policy(object):
                       '%s. Consider not passing any loss_scale instead.' %
                       (loss_scale, name))
     self._loss_scale = keras_loss_scale_module.get(loss_scale)
+
+    if name in ('mixed_float16', 'mixed_bloat16'):
+      device_compatibility_check.log_device_compatibility_check(name)
 
   def _parse_name(self, name):
     """Parses a Policy name into a compute and variable dtype.

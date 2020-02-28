@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <random>
 #include <string>
 #include <thread>  // NOLINT
 #include <unordered_map>
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -1385,6 +1387,66 @@ TEST(DirectSessionTest, SessionSyncRun) {
             static_cast<int64>(outputs[0].scalar<int64>()()));
 }
 
+REGISTER_OP("ExpensiveNoop").SetIsStateful();
+
+class ExpensiveNoopOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+  bool IsExpensive() override { return true; }
+  void Compute(OpKernelContext* ctx) override {
+    const string& stack_trace = tensorflow::CurrentStackTrace();
+    const string process_method = "ExecutorState::Process()";
+    size_t pos = 0;
+    int frame_count = 0;
+    while ((pos = stack_trace.find("ExecutorState::Process()", pos)) !=
+           string::npos) {
+      ++frame_count;
+      ++pos;
+    }
+    OP_REQUIRES(ctx, frame_count <= 1,
+                errors::Internal(
+                    "Recursive call to ExecutorState::Process() detected."));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("ExpensiveNoop").Device(DEVICE_CPU),
+                        ExpensiveNoopOp);
+
+TEST(DirectSessionTest, SessionSyncRun_DeepGraph) {
+  Graph g(OpRegistry::Global());
+
+  std::vector<Node*> nodes;
+  nodes.reserve(1024);
+
+  auto make_expensive_noop = [&g](gtl::ArraySlice<Node*> control_deps) {
+    Node* ret;
+    auto builder = NodeBuilder(g.NewName("N"), "ExpensiveNoop");
+    for (Node* control_dep : control_deps) {
+      builder = builder.ControlInput(control_dep);
+    }
+    TF_CHECK_OK(builder.Finalize(&g, &ret));
+    return ret;
+  };
+
+  Node* base = make_expensive_noop({});
+
+  Node* child_1 = make_expensive_noop({base});
+  Node* child_2 = make_expensive_noop({base});
+
+  GraphDef def;
+  g.ToGraphDef(&def);
+
+  auto sess = CreateSession();
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
+  run_opts.set_inter_op_thread_pool(-1);
+
+  EXPECT_TRUE(sess->Run(run_opts, {}, {}, {child_1->name(), child_2->name()},
+                        &outputs, nullptr)
+                  .ok());
+}
+
 TEST(DirectSessionTest, SyncSession) {
   Graph g(OpRegistry::Global());
   Tensor vx(DT_INT64, TensorShape({}));
@@ -2267,7 +2329,7 @@ bool IsCUDATensor(const Tensor& t) {
       cudaPointerGetAttributes(&attributes, t.tensor_data().data());
   if (err == cudaErrorInvalidValue) return false;
   CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
-  return (attributes.memoryType == cudaMemoryTypeDevice);
+  return (attributes.type == cudaMemoryTypeDevice);
 #elif TENSORFLOW_USE_ROCM
   hipPointerAttribute_t attributes;
   hipError_t err = hipPointerGetAttributes(&attributes, t.tensor_data().data());
@@ -2526,8 +2588,9 @@ TEST(DirectSessionTest,
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
-void FeedFetchBenchmarkHelper(int iters, int num_feeds,
-                              bool use_make_callable) {
+void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
+                              int inter_op_threads,
+                              bool use_single_threaded_executor) {
   testing::StopTiming();
 
   Tensor value(DT_FLOAT, TensorShape());
@@ -2561,6 +2624,11 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds,
   GraphDef gd;
   g.ToGraphDef(&gd);
   SessionOptions opts;
+  opts.config.set_inter_op_parallelism_threads(inter_op_threads);
+  if (use_single_threaded_executor) {
+    opts.config.mutable_experimental()->set_executor_type(
+        "SINGLE_THREADED_EXECUTOR");
+  }
   std::unique_ptr<Session> session(NewSession(opts));
   TF_CHECK_OK(session->Create(gd));
   if (use_make_callable) {
@@ -2604,14 +2672,34 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds,
 }
 
 void BM_FeedFetch(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false);
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false,
+                           /* inter_op_threads */ 0,
+                           /* use_single_threaded_executor */ false);
 }
 void BM_FeedFetchCallable(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true);
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ 0,
+                           /* use_single_threaded_executor */ false);
+}
+void BM_FeedFetchCallableSingleThread(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ -1,
+                           /* use_single_threaded_executor */ false);
+}
+void BM_FeedFetchCallableSingleThreadExecutor(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ -1,
+                           /* use_single_threaded_executor */ true);
 }
 
 BENCHMARK(BM_FeedFetch)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 BENCHMARK(BM_FeedFetchCallable)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
+BENCHMARK(BM_FeedFetchCallableSingleThread)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
+BENCHMARK(BM_FeedFetchCallableSingleThreadExecutor)
+    ->Arg(1)
+    ->Arg(2)
+    ->Arg(5)
+    ->Arg(10);
 
 }  // namespace
 

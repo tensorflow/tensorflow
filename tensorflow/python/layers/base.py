@@ -439,7 +439,7 @@ class Layer(base_layer.Layer):
     with vs.variable_scope(
         self._scope, reuse=reuse, auxiliary_name_scope=False) as scope:
       self._current_scope = scope
-      with ops.name_scope(self._name_scope()):
+      with ops.name_scope(self._name_scope(), skip_on_eager=False):
         use_resource = (use_resource or
                         self._use_resource_variables or
                         scope.use_resource)
@@ -552,7 +552,7 @@ class Layer(base_layer.Layer):
     return outputs
 
   def __deepcopy__(self, memo):
-    no_copy = set(['_graph', '_thread_local'])
+    no_copy = set(['_graph', '_thread_local', '_metrics_lock'])
     shallow_copy = set(['_scope', '_always_reuse_variable_scope'])
     cls = self.__class__
     result = cls.__new__(cls)

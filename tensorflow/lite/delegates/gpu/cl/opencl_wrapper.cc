@@ -297,6 +297,22 @@ cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
                            image_desc->image_row_pitch, host_ptr, errcode_ret);
   }
 }
+
+cl_mem CreateImage3DLegacy(cl_context context, cl_mem_flags flags,
+                           const cl_image_format* image_format,
+                           const cl_image_desc* image_desc, void* host_ptr,
+                           cl_int* errcode_ret) {
+  if (clCreateImage) {  // clCreateImage available since OpenCL 1.2
+    return clCreateImage(context, flags, image_format, image_desc, host_ptr,
+                         errcode_ret);
+  } else {
+    return clCreateImage3D(context, flags, image_format,
+                           image_desc->image_width, image_desc->image_height,
+                           image_desc->image_depth, image_desc->image_row_pitch,
+                           image_desc->image_slice_pitch, host_ptr,
+                           errcode_ret);
+  }
+}
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

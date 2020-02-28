@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+#include "tensorflow/python/lib/core/numpy.h"
 
 namespace tensorflow {
 namespace {
@@ -527,19 +528,18 @@ Status PyArrayToTF_Tensor(PyObject* ndarray, Safe_TF_TensorPtr* out_tensor) {
     size_t size = 0;
     void* encoded = nullptr;
     TF_RETURN_IF_ERROR(EncodePyBytesArray(array, nelems, &size, &encoded));
-    *out_tensor =
-        make_safe(TF_NewTensor(dtype, dims.data(), dims.size(), encoded, size,
-                               [](void* data, size_t len, void* arg) {
-                                 delete[] reinterpret_cast<char*>(data);
-                               },
-                               nullptr));
+    *out_tensor = make_safe(TF_NewTensor(
+        dtype, dims.data(), dims.size(), encoded, size,
+        [](void* data, size_t len, void* arg) {
+          delete[] reinterpret_cast<char*>(data);
+        },
+        nullptr));
   }
   return Status::OK();
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
-TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
-                               TF_Status* status);
+TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status);
 
 Status NdarrayToTensor(PyObject* obj, Tensor* ret) {
   Safe_TF_TensorPtr tf_tensor = make_safe(static_cast<TF_Tensor*>(nullptr));
@@ -551,12 +551,10 @@ Status NdarrayToTensor(PyObject* obj, Tensor* ret) {
 }
 
 Status TensorToNdarray(const Tensor& t, PyObject** ret) {
-  TF_Status* status = TF_NewStatus();
-  Safe_TF_TensorPtr tf_tensor = make_safe(TF_TensorFromTensor(t, status));
-  Status tf_status = StatusFromTF_Status(status);
-  TF_DeleteStatus(status);
-  if (!tf_status.ok()) {
-    return tf_status;
+  Status status;
+  Safe_TF_TensorPtr tf_tensor = make_safe(TF_TensorFromTensor(t, &status));
+  if (!status.ok()) {
+    return status;
   }
   return TF_TensorToPyArray(std::move(tf_tensor), ret);
 }

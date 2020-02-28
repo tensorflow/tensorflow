@@ -14,7 +14,6 @@
 # ==============================================================================
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 
 package(
     default_visibility = ["//tensorflow/lite:__subpackages__"],
@@ -35,7 +34,7 @@ cc_library(
 cc_test(
     name = "image_metrics_test",
     srcs = ["image_metrics_test.cc"],
-    linkopts = tflite_linkopts() + if_rocm(["-lm"]),
+    linkopts = tflite_linkopts(),
     linkstatic = 1,
     deps = [
         ":image_metrics",

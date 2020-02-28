@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/core/platform/hadoop/hadoop_file_system.h"
 
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -235,6 +235,44 @@ TEST_F(HadoopFileSystemTest, WriteWhileReading) {
   TF_EXPECT_OK(writer->Close());
 }
 
+TEST_F(HadoopFileSystemTest, HarSplit) {
+  string har_path =
+      "har://hdfs-root/user/j.doe/my_archive.har/dir0/dir1/file.txt";
+  StringPiece scheme, namenode, path;
+  io::ParseURI(har_path, &scheme, &namenode, &path);
+  EXPECT_EQ("har", scheme);
+  EXPECT_EQ("hdfs-root", namenode);
+  EXPECT_EQ("/user/j.doe/my_archive.har/dir0/dir1/file.txt", path);
+  string nn(namenode);
+  TF_EXPECT_OK(SplitArchiveNameAndPath(path, nn));
+  EXPECT_EQ("har://hdfs-root/user/j.doe/my_archive.har", nn);
+  EXPECT_EQ("/dir0/dir1/file.txt", path);
+}
+
+TEST_F(HadoopFileSystemTest, NoHarExtension) {
+  string har_path = "har://hdfs-root/user/j.doe/my_archive/dir0/dir1/file.txt";
+  StringPiece scheme, namenode, path;
+  io::ParseURI(har_path, &scheme, &namenode, &path);
+  EXPECT_EQ("har", scheme);
+  EXPECT_EQ("hdfs-root", namenode);
+  EXPECT_EQ("/user/j.doe/my_archive/dir0/dir1/file.txt", path);
+  string nn(namenode);
+  EXPECT_EQ(errors::InvalidArgument("").code(),
+            SplitArchiveNameAndPath(path, nn).code());
+}
+
+TEST_F(HadoopFileSystemTest, HarRootPath) {
+  string har_path = "har://hdfs-root/user/j.doe/my_archive.har";
+  StringPiece scheme, namenode, path;
+  io::ParseURI(har_path, &scheme, &namenode, &path);
+  EXPECT_EQ("har", scheme);
+  EXPECT_EQ("hdfs-root", namenode);
+  EXPECT_EQ("/user/j.doe/my_archive.har", path);
+  string nn(namenode);
+  TF_EXPECT_OK(SplitArchiveNameAndPath(path, nn));
+  EXPECT_EQ("har://hdfs-root/user/j.doe/my_archive.har", nn);
+  EXPECT_EQ("/", path);
+}
 // NewAppendableFile() is not testable. Local filesystem maps to
 // ChecksumFileSystem in Hadoop, where appending is an unsupported operation.
 

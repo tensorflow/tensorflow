@@ -21,14 +21,78 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
-from tensorflow.python.compat import compat
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
 
+default_v2_alignment = "LEFT_LEFT"
+alignment_list = ["RIGHT_LEFT", "LEFT_RIGHT"]
+
+
+def zip_to_first_list_length(a, b):
+  if len(b) > len(a):
+    return zip(a, b[:len(a)])
+  return zip(a, b + [None] * (len(a) - len(b)))
+
+
+# Routines to convert test cases to have diagonals in a specified alignment.
+# Copied from //third_party/tensorflow/python/kernel_tests/diag_op_test.py
+def repack_diagonals(packed_diagonals,
+                     diag_index,
+                     num_rows,
+                     num_cols,
+                     align=None):
+  # The original test cases are LEFT_LEFT aligned.
+  if align == default_v2_alignment or align is None:
+    return packed_diagonals
+
+  align = align.split("_")
+  d_lower, d_upper = diag_index
+  batch_dims = packed_diagonals.ndim - (2 if d_lower < d_upper else 1)
+  max_diag_len = packed_diagonals.shape[-1]
+  index = (slice(None),) * batch_dims
+  repacked_diagonals = np.zeros_like(packed_diagonals)
+
+  # Aligns each diagonal row-by-row.
+  for diag_index in range(d_lower, d_upper + 1):
+    diag_len = min(num_rows + min(0, diag_index), num_cols - max(0, diag_index))
+    row_index = d_upper - diag_index
+    padding_len = max_diag_len - diag_len
+    left_align = (diag_index >= 0 and
+                  align[0] == "LEFT") or (diag_index <= 0 and
+                                          align[1] == "LEFT")
+    # Prepares index tuples.
+    extra_dim = tuple() if d_lower == d_upper else (row_index,)
+    packed_last_dim = (slice(None),) if left_align else (slice(0, diag_len, 1),)
+    repacked_last_dim = (slice(None),) if left_align else (slice(
+        padding_len, max_diag_len, 1),)
+    packed_index = index + extra_dim + packed_last_dim
+    repacked_index = index + extra_dim + repacked_last_dim
+
+    # Repacks the diagonal.
+    repacked_diagonals[repacked_index] = packed_diagonals[packed_index]
+  return repacked_diagonals
+
+
+def repack_diagonals_in_tests(tests, align=None):
+  # The original test cases are LEFT_LEFT aligned.
+  if align == default_v2_alignment or align is None:
+    return tests
+
+  new_tests = dict()
+  # Loops through each case.
+  for diag_index, (packed_diagonals, padded_diagonals) in tests.items():
+    num_rows, num_cols = padded_diagonals.shape[-2:]
+    repacked_diagonals = repack_diagonals(
+        packed_diagonals, diag_index, num_rows, num_cols, align=align)
+    new_tests[diag_index] = (repacked_diagonals, padded_diagonals)
+
+  return new_tests
+
+
 # Test cases shared by MatrixDiagV2, MatrixDiagPartV2, and MatrixSetDiagV2.
 # Copied from //third_party/tensorflow/python/kernel_tests/diag_op_test.py
-def square_cases():
+def square_cases(align=None):
   # pyformat: disable
   mat = np.array([[[1, 2, 3, 4, 5],
                    [6, 7, 8, 9, 1],
@@ -41,7 +105,7 @@ def square_cases():
                    [6, 7, 8, 9, 1],
                    [2, 3, 4, 5, 6]]])
   tests = dict()
-  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagnals)
+  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagonals)
   tests[-1, -1] = (np.array([[6, 4, 1, 7],
                              [5, 2, 8, 5]]),
                    np.array([[[0, 0, 0, 0, 0],
@@ -103,10 +167,10 @@ def square_cases():
                             [0, 0, 0, 0, 0],
                             [0, 0, 0, 0, 0]]]))
   # pyformat: enable
-  return (mat, tests)
+  return (mat, repack_diagonals_in_tests(tests, align))
 
 
-def tall_cases():
+def tall_cases(align=None):
   # pyformat: disable
   mat = np.array([[[1, 2, 3],
                    [4, 5, 6],
@@ -119,7 +183,7 @@ def tall_cases():
                    [7, 8, 9],
                    [9, 8, 7]]])
   tests = dict()
-  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagnals)
+  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagonals)
   tests[0, 0] = (np.array([[1, 5, 9],
                            [3, 2, 6]]),
                  np.array([[[1, 0, 0],
@@ -191,10 +255,10 @@ def tall_cases():
                             [0, 0, 0],
                             [0, 0, 0]]]))
   # pyformat: enable
-  return (mat, tests)
+  return (mat, repack_diagonals_in_tests(tests, align))
 
 
-def fat_cases():
+def fat_cases(align=None):
   # pyformat: disable
   mat = np.array([[[1, 2, 3, 4],
                    [5, 6, 7, 8],
@@ -203,7 +267,7 @@ def fat_cases():
                    [8, 9, 1, 2],
                    [3, 4, 5, 6]]])
   tests = dict()
-  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagnals)
+  # tests[d_lower, d_upper] = (compact_diagonals, padded_diagonals)
   tests[0, 0] = (np.array([[1, 6, 2],
                            [4, 9, 5]]),
                  np.array([[[1, 0, 0, 0],
@@ -259,7 +323,11 @@ def fat_cases():
                             [0, 9, 1, 2],
                             [0, 0, 5, 6]]]))
   # pyformat: enable
-  return (mat, tests)
+  return (mat, repack_diagonals_in_tests(tests, align))
+
+
+def all_tests(align=None):
+  return [square_cases(align), tall_cases(align), fat_cases(align)]
 
 
 class MatrixDiagTest(xla_test.XLATestCase):
@@ -327,39 +395,26 @@ class MatrixDiagTest(xla_test.XLATestCase):
 
   # From here onwards are v2-only tests.
   def testSquare(self):
-    # LINT.IfChange
-    if compat.forward_compatible(2019, 11, 30):
-    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
-      for _, tests in [square_cases()]:
+    for align in alignment_list:
+      for _, tests in [square_cases(align)]:
         for diag_index, (vecs, solution) in tests.items():
-          self._assertOpOutputMatchesExpected(
-              {
-                  "diagonal": vecs[0],
-                  "k": diag_index
-              }, solution[0])
+          params = {"diagonal": vecs[0], "k": diag_index, "align": align}
+          self._assertOpOutputMatchesExpected(params, solution[0])
 
   def testSquareBatch(self):
-    # LINT.IfChange
-    if compat.forward_compatible(2019, 11, 30):
-    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
-      for _, tests in [square_cases()]:
+    for align in alignment_list:
+      for _, tests in [square_cases(align)]:
         for diag_index, (vecs, solution) in tests.items():
-          self._assertOpOutputMatchesExpected(
-              {
-                  "diagonal": vecs,
-                  "k": diag_index
-              }, solution)
+          params = {"diagonal": vecs, "k": diag_index, "align": align}
+          self._assertOpOutputMatchesExpected(params, solution)
 
   def testRectangularBatch(self):
-    # LINT.IfChange
-    if not compat.forward_compatible(2019, 11, 30):
-    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
-      return
-
     # Stores expected num_rows and num_cols (when the other is given).
     # expected[(d_lower, d_upper)] = (expected_num_rows, expected_num_cols)
     test_list = list()
 
+    # Do not align the test cases here. Re-alignment needs to happen after the
+    # solution shape is updated.
     # Square cases:
     expected = {
         (-1, -1): (5, 4),
@@ -389,54 +444,76 @@ class MatrixDiagTest(xla_test.XLATestCase):
     test_list.append((expected, fat_cases()))
 
     # Giving both num_rows and num_cols
-    for _, tests in [tall_cases(), fat_cases()]:
+    align = alignment_list[0]
+    for _, tests in [tall_cases(align), fat_cases(align)]:
       for diag_index, (vecs, solution) in tests.items():
         self._assertOpOutputMatchesExpected(
             {
                 "diagonal": vecs,
                 "k": diag_index,
                 "num_rows": solution.shape[-2],
-                "num_cols": solution.shape[-1]
+                "num_cols": solution.shape[-1],
+                "align": align
             }, solution)
+
+    # We go through each alignment in a round-robin manner.
+    align_index = 0
 
     # Giving just num_rows or num_cols.
     for expected, (_, tests) in test_list:
       for diag_index, (new_num_rows, new_num_cols) in expected.items():
+        align = alignment_list[align_index]
+        align_index = (align_index + 1) % len(alignment_list)
         vecs, solution = tests[diag_index]
         solution_given_num_rows = solution.take(
             indices=range(new_num_cols), axis=-1)
+        # Repacks the diagonal input according to the new solution shape.
+        vecs_given_num_rows = repack_diagonals(
+            vecs,
+            diag_index,
+            solution_given_num_rows.shape[-2],
+            new_num_cols,
+            align=align)
         self._assertOpOutputMatchesExpected(
             {
-                "diagonal": vecs,
+                "diagonal": vecs_given_num_rows,
                 "k": diag_index,
-                "num_rows": solution_given_num_rows.shape[-2]
+                "num_rows": solution_given_num_rows.shape[-2],
+                "align": align
             }, solution_given_num_rows)
         solution_given_num_cols = solution.take(
             indices=range(new_num_rows), axis=-2)
+        # Repacks the diagonal input according to the new solution shape.
+        vecs_given_num_cols = repack_diagonals(
+            vecs,
+            diag_index,
+            new_num_rows,
+            solution_given_num_cols.shape[-1],
+            align=align)
         self._assertOpOutputMatchesExpected(
             {
-                "diagonal": vecs,
+                "diagonal": vecs_given_num_cols,
                 "k": diag_index,
-                "num_cols": solution_given_num_cols.shape[-1]
+                "num_cols": solution_given_num_cols.shape[-1],
+                "align": align
             }, solution_given_num_cols)
 
   def testPadding(self):
-    # LINT.IfChange
-    if compat.forward_compatible(2019, 11, 30):
-    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
-      for padding_value in [555, -11]:
-        for _, tests in [square_cases(), tall_cases(), fat_cases()]:
-          for diag_index, (vecs, solution) in tests.items():
-            mask = (solution == 0)
-            solution = solution + (mask * padding_value)
-            self._assertOpOutputMatchesExpected(
-                {
-                    "diagonal": vecs,
-                    "k": diag_index,
-                    "num_rows": solution.shape[-2],
-                    "num_cols": solution.shape[-1],
-                    "padding_value": padding_value
-                }, solution)
+    for padding_value, align in zip_to_first_list_length([555, -11],
+                                                         alignment_list):
+      for _, tests in all_tests(align):
+        for diag_index, (vecs, solution) in tests.items():
+          mask = (solution == 0)
+          solution = solution + (mask * padding_value)
+          self._assertOpOutputMatchesExpected(
+              {
+                  "diagonal": vecs,
+                  "k": diag_index,
+                  "num_rows": solution.shape[-2],
+                  "num_cols": solution.shape[-1],
+                  "padding_value": padding_value,
+                  "align": align
+              }, solution)
 
 
 class MatrixSetDiagTest(xla_test.XLATestCase):
@@ -542,10 +619,8 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
 
   # From here onwards are v2-only tests.
   def testSingleMatrix(self):
-    # LINT.IfChange
-    if compat.forward_compatible(2019, 11, 30):
-    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
-      for _, tests in [square_cases(), tall_cases(), fat_cases()]:
+    for align in alignment_list:
+      for _, tests in all_tests(align):
         for diag_index, (vecs, banded_mat) in tests.items():
           mask = (banded_mat[0] == 0)
           input_mat = np.random.randint(10, size=mask.shape)
@@ -554,14 +629,13 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
               {
                   "input": input_mat,
                   "diagonal": vecs[0],
-                  "k": diag_index
+                  "k": diag_index,
+                  "align": align
               }, solution)
 
   def testBatch(self):
-    # LINT.IfChange
-    if compat.forward_compatible(2019, 11, 30):
-    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
-      for _, tests in [square_cases(), tall_cases(), fat_cases()]:
+    for align in alignment_list:
+      for _, tests in all_tests(align):
         for diag_index, (vecs, banded_mat) in tests.items():
           mask = (banded_mat == 0)
           input_mat = np.random.randint(10, size=mask.shape)
@@ -570,7 +644,8 @@ class MatrixSetDiagTest(xla_test.XLATestCase):
               {
                   "input": input_mat,
                   "diagonal": vecs,
-                  "k": diag_index
+                  "k": diag_index,
+                  "align": align
               }, solution)
 
 
@@ -613,42 +688,42 @@ class MatrixDiagPartTest(xla_test.XLATestCase):
 
   # From here onwards are v2-only tests.
   def testSingleMatrix(self):
-    # LINT.IfChange
-    if compat.forward_compatible(2019, 11, 30):
-    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
-      for mat, tests in [square_cases(), tall_cases(), fat_cases()]:
+    for align in alignment_list:
+      test_list = [square_cases(align), tall_cases(align), fat_cases(align)]
+      for mat, tests in test_list:
         for diag_index, (solution, _) in tests.items():
-          self._assertOpOutputMatchesExpected({
-              "input": mat[0],
-              "k": diag_index
-          }, solution[0])
+          self._assertOpOutputMatchesExpected(
+              {
+                  "input": mat[0],
+                  "k": diag_index,
+                  "align": align
+              }, solution[0])
 
   def testBatch(self):
-    # LINT.IfChange
-    if compat.forward_compatible(2019, 11, 30):
-    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
-      for mat, tests in [square_cases(), tall_cases(), fat_cases()]:
+    for align in alignment_list:
+      for mat, tests in all_tests(align):
         for diag_index, (solution, _) in tests.items():
-          self._assertOpOutputMatchesExpected({
-              "input": mat,
-              "k": diag_index
-          }, solution)
+          self._assertOpOutputMatchesExpected(
+              {
+                  "input": mat,
+                  "k": diag_index,
+                  "align": align
+              }, solution)
 
   def testPadding(self):
-    # LINT.IfChange
-    if compat.forward_compatible(2019, 11, 30):
-    # LINT.ThenChange(//tensorflow/python/ops/array_ops.py)
-      for padding_value in [555, -11]:
-        for mat, tests in [square_cases(), tall_cases(), fat_cases()]:
-          for diag_index, (solution, _) in tests.items():
-            mask = (solution == 0)
-            solution = solution + (mask * padding_value)
-            self._assertOpOutputMatchesExpected(
-                {
-                    "input": mat,
-                    "k": diag_index,
-                    "padding_value": padding_value
-                }, solution)
+    for padding_value, align in zip_to_first_list_length([555, -11],
+                                                         alignment_list):
+      for mat, tests in all_tests(align):
+        for diag_index, (solution, _) in tests.items():
+          mask = (solution == 0)
+          solution = solution + (mask * padding_value)
+          self._assertOpOutputMatchesExpected(
+              {
+                  "input": mat,
+                  "k": diag_index,
+                  "padding_value": padding_value,
+                  "align": align
+              }, solution)
 
 
 if __name__ == "__main__":

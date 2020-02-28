@@ -29,7 +29,7 @@ namespace cl {
 class CLContext {
  public:
   CLContext() {}
-  explicit CLContext(cl_context context);
+  CLContext(cl_context context, bool has_ownership);
 
   // Move only
   CLContext(CLContext&& context);
@@ -48,6 +48,7 @@ class CLContext {
   void Release();
 
   cl_context context_ = nullptr;
+  bool has_ownership_ = false;
 };
 
 Status CreateCLContext(const CLDevice& device, CLContext* result);

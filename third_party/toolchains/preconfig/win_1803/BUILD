@@ -16,11 +16,40 @@ platform(
     ],
     remote_execution_properties = """
         properties:{
-          name:"container-image"
-          value:"docker://gcr.io/tensorflow-testing/tf-win-rbe@sha256:f954613b8773930142ac101b6731283bc3a3bc0ef811b7cfe6ae159f412762e7"
+          name: "container-image"
+          value: "docker://gcr.io/tensorflow-testing/tf-win-rbe@sha256:f109576c7c0c8a1783ff22b666e8923b52dbbe7933f69a1c7a7275202c304a12"
         }
         properties:{
-          name: "OSFamily" value: "Windows"
+          name: "OSFamily"
+          value: "Windows"
+        }
+        properties:{
+          name: "Pool" value: "default"
+        }
+        """,
+)
+
+platform(
+    name = "rbe_windows_1803_gpu",
+    constraint_values = [
+        "@bazel_tools//platforms:x86_64",
+        "@bazel_tools//platforms:windows",
+    ],
+    remote_execution_properties = """
+        properties:{
+          name: "container-image"
+          value: ""
+        }
+        properties:{
+          name: "sandbox"
+          value: "none"
+        }
+        properties:{
+          name: "OSFamily"
+          value: "Windows"
+        }
+        properties:{
+          name: "Pool" value: "default"
         }
         """,
 )

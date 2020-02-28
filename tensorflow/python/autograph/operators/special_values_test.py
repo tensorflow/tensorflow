@@ -34,5 +34,12 @@ class SpecialValuesTest(test.TestCase):
     self.assertTrue(special_values.is_undefined(undefined_symbol))
     self.assertTrue(special_values.is_undefined(undefined_symbol2))
 
+  def test_undefined_operations(self):
+    undefined_symbol = special_values.Undefined('name')
+
+    self.assertTrue(special_values.is_undefined(undefined_symbol.foo))
+    self.assertTrue(special_values.is_undefined(undefined_symbol[0]))
+    self.assertFalse(special_values.is_undefined(undefined_symbol.__class__))
+
 if __name__ == '__main__':
   test.main()

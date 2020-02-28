@@ -168,7 +168,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         IteratorContext iter_ctx = ContextWithAggregator(ctx);
-        return dataset()->input_->MakeIterator(&iter_ctx, prefix(),
+        return dataset()->input_->MakeIterator(&iter_ctx, this, prefix(),
                                                &input_impl_);
       }
 
@@ -200,14 +200,14 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {
-        return errors::Unimplemented(dataset()->DebugString(),
-                                     " does not support checkpointing");
+        mutex_lock l(mu_);
+        return SaveInput(writer, input_impl_);
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
-        return errors::Unimplemented(dataset()->DebugString(),
-                                     " does not support checkpointing");
+        mutex_lock l(mu_);
+        return RestoreInput(ctx, reader, input_impl_);
       }
 
      private:

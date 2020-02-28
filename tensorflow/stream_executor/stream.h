@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
 
 namespace stream_executor {
@@ -237,12 +237,11 @@ class Stream {
       const DeviceMemory<float> &estimated_variance,
       const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<float> *y,
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
       bool is_training,
-      std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var,
       ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
@@ -263,12 +262,11 @@ class Stream {
       const DeviceMemory<float> &estimated_variance,
       const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
       bool is_training,
-      std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var,
       ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
@@ -595,6 +593,38 @@ class Stream {
                       const DeviceMemory<float> &biases,
                       const dnn::BatchDescriptor &dimensions,
                       DeviceMemory<float> *output_data);
+
+  Stream& ThenDropoutForward(const dnn::DropoutDescriptor& dropout_params,
+                             const dnn::BatchDescriptor& noise_dimensions,
+                             const dnn::BatchDescriptor& input_dimensions,
+                             const DeviceMemory<float>& input_data,
+                             const dnn::BatchDescriptor& output_dimensions,
+                             DeviceMemory<float>* output_data,
+                             ScratchAllocator* workspace_allocator = nullptr);
+
+  Stream& ThenDropoutForward(const dnn::DropoutDescriptor& dropout_params,
+                             const dnn::BatchDescriptor& noise_dimensions,
+                             const dnn::BatchDescriptor& input_dimensions,
+                             const DeviceMemory<Eigen::half>& input_data,
+                             const dnn::BatchDescriptor& output_dimensions,
+                             DeviceMemory<Eigen::half>* output_data,
+                             ScratchAllocator* workspace_allocator = nullptr);
+
+  Stream& ThenDropoutBackward(const dnn::DropoutDescriptor& dropout_params,
+                              const dnn::BatchDescriptor& noise_dimensions,
+                              const dnn::BatchDescriptor& input_diff_dimensions,
+                              const DeviceMemory<float>& input_diff_data,
+                              const dnn::BatchDescriptor& output_dimensions,
+                              DeviceMemory<float>* output_data,
+                              ScratchAllocator* workspace_allocator = nullptr);
+
+  Stream& ThenDropoutBackward(const dnn::DropoutDescriptor& dropout_params,
+                              const dnn::BatchDescriptor& noise_dimensions,
+                              const dnn::BatchDescriptor& input_diff_dimensions,
+                              const DeviceMemory<Eigen::half>& input_diff_data,
+                              const dnn::BatchDescriptor& output_dimensions,
+                              DeviceMemory<Eigen::half>* output_data,
+                              ScratchAllocator* workspace_allocator = nullptr);
 
   Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
                           const dnn::BatchDescriptor &input_dimensions,
@@ -1948,6 +1978,18 @@ class Stream {
                           DeviceMemory<uint8> *reserve_space_data,
                           ScratchAllocator *workspace_allocator,
                           dnn::ProfileResult *output_profile_result);
+
+  // Enqueue a CTCLoss operation onto the stream.
+  // See DnnSupport::DoCtcLoss for more details.
+  Stream &ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
+                      const DeviceMemory<float> &probs_data,
+                      absl::Span<const int> labels_data,
+                      absl::Span<const int> labels_lengths_data,
+                      absl::Span<const int> input_lengths_data,
+                      DeviceMemory<float> *costs_data,
+                      const dnn::RnnStateTensorDescriptor &grads_desc,
+                      DeviceMemory<float> *grads_data,
+                      ScratchAllocator *workspace_allocator);
 
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.

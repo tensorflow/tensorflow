@@ -1803,6 +1803,35 @@ TEST(XlaCompilationTest, StagePipelinePreservedByClusterScopingPass) {
     EXPECT_NE(clusters["relu0"], clusters["relu1"]);
   }
 }
+TEST(XlaCompilationTest, XLALiteWhitelist) {
+  auto* whitelist_table = tensorflow::GetWhitelistTable();
+  absl::flat_hash_set<string> hwhitelist;
+  std::vector<string> vall_ops = XlaOpRegistry::GetAllRegisteredOps();
+  absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
 
+  // Check that all the operations in the table are existing TF operations
+  for (auto pair : *whitelist_table) {
+    hwhitelist.insert(pair.second.begin(), pair.second.end());
+    for (auto op : pair.second) {
+      ASSERT_TRUE(all_ops.contains(op));
+    }
+  }
+
+  // Check that all registered XLA operation are in the whitelist
+  // table or are known to not be in it.
+
+  absl::flat_hash_set<string> known_not_in_list =
+      tensorflow::testing::GetKnownXLAWhitelistOp();
+  std::vector<string> unknow_op;
+  for (string op : vall_ops) {
+    if (!hwhitelist.contains(op) && !known_not_in_list.contains(op)) {
+      unknow_op.push_back(op);
+    }
+  }
+  EXPECT_TRUE(unknow_op.empty())
+      << "Someone added support for a new TF opeations inside XLA. They must "
+         "be included in the XLALite whitelist or blacklist:\n"
+      << absl::StrJoin(unknow_op, "\n");
+}
 }  // namespace
 }  // namespace tensorflow

@@ -20,7 +20,9 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/base/call_once.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/match.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
@@ -233,7 +235,7 @@ XlaDevice::~XlaDevice() {
   }
 }
 
-xla::LocalClient* XlaDevice::client() const {
+xla::StatusOr<xla::LocalClient*> XlaDevice::GetOrCreateClient() const {
   // We lazily create the client because the platform commits to the
   // details of the host hardware when the client is created, so we
   // don't want to do it until we get a chance to hook the platform up
@@ -243,9 +245,7 @@ xla::LocalClient* XlaDevice::client() const {
   options.set_platform(platform_)
       .set_allowed_devices(allowed_devices_)
       .set_intra_op_parallelism_threads(intra_op_parallelism_threads_);
-  // TODO(b/78468222): This can fail, at least when the backend is GPU and
-  // there is no GPU on the host.
-  return xla::ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
+  return xla::ClientLibrary::GetOrCreateLocalClient(options);
 }
 
 Allocator* XlaDevice::GetAllocator(AllocatorAttributes attr) {
@@ -259,7 +259,9 @@ Allocator* XlaDevice::GetAllocatorLocked(AllocatorAttributes attr) {
   }
 
   if (xla_allocator_ == nullptr) {
-    xla::Backend* backend = client()->mutable_backend();
+    // TODO(b/78468222): This can fail, at least when the backend is GPU and
+    // there is no GPU on the host.
+    xla::Backend* backend = GetOrCreateClient().ValueOrDie()->mutable_backend();
     xla_allocator_ = XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
         backend, device_ordinal_);
   }
@@ -288,7 +290,8 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
 
 xla::StatusOr<std::pair<XlaDeviceContext*, XlaDeviceContext*>>
 XlaDevice::GetDeviceContextLocked() {
-  xla::Backend* backend = client()->mutable_backend();
+  TF_ASSIGN_OR_RETURN(xla::LocalClient * client, GetOrCreateClient());
+  xla::Backend* backend = client->mutable_backend();
 
   // Ensure all our streams are valid, borrowing new streams if necessary.
   bool need_new_device_context = !device_context_;
@@ -338,7 +341,7 @@ XlaDevice::GetDeviceContextLocked() {
   // an error is encountered and the streams are replaced with new ones.
   device_context_ = new XlaDeviceContext(
       stream_, host_to_device_stream, device_to_host_stream,
-      device_to_device_streams, client(), shape_representation_fn_,
+      device_to_device_streams, client, shape_representation_fn_,
       thread_pool_.get(), false);
   VLOG(1) << "XlaDevice " << this << " new XlaDeviceContext(fast_mem=false) "
           << device_context_;
@@ -346,7 +349,7 @@ XlaDevice::GetDeviceContextLocked() {
   fast_mem_device_context_ = new XlaDeviceContext(
       stream_, std::move(host_to_device_stream),
       std::move(device_to_host_stream), std::move(device_to_device_streams),
-      client(), shape_representation_fn_, thread_pool_.get(), true);
+      client, shape_representation_fn_, thread_pool_.get(), true);
   VLOG(1) << "XlaDevice " << this << " new XlaDeviceContext(fast_mem=true) "
           << fast_mem_device_context_;
 
@@ -385,14 +388,33 @@ Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
   return Status::OK();
 }
 
+// Warn about XLA_CPU/XLA_GPU exactly once.
+static void ShowXlaDeviceDeprecationWarning(
+    absl::string_view compilation_device_name) {
+  static absl::once_flag once;
+  if (absl::StrContains(compilation_device_name, "CPU") ||
+      absl::StrContains(compilation_device_name, "GPU")) {
+    absl::call_once(once, [] {
+      LOG(WARNING)
+          << "XLA_GPU and XLA_CPU devices are deprecated and will be "
+             "removed in subsequent releases. Instead, use either "
+             "@tf.function(experimental_compile=True) for must-compile "
+             "semantics, or run with TF_XLA_FLAGS=--tf_xla_auto_jit=2 "
+             "for auto-clustering best-effort compilation.";
+    });
+  }
+}
+
 void XlaDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   VLOG(2) << "XlaDevice::Compute " << op_kernel->name() << ":"
           << op_kernel->type_string();
+  ShowXlaDeviceDeprecationWarning(jit_device_name_.type_string());
   op_kernel->Compute(context);
 }
 
 void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                              AsyncOpKernel::DoneCallback done) {
+  ShowXlaDeviceDeprecationWarning(jit_device_name_.type_string());
   VLOG(2) << "XlaDevice::ComputeAsync " << op_kernel->name() << ":"
           << op_kernel->type_string();
   op_kernel->ComputeAsync(context, done);

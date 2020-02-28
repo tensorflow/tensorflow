@@ -26,6 +26,7 @@ func TestSavedModel(t *testing.T) {
 	if op := bundle.Graph.Operation("y"); op == nil {
 		t.Fatalf("\"y\" not found in graph")
 	}
+	t.Logf("SavedModel: %+v", bundle)
 	// TODO(jhseu): half_plus_two has a tf.Example proto dependency to run. Add a
 	// more thorough test when the generated protobufs are available.
 }

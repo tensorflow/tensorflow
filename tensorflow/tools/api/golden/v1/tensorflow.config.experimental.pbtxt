@@ -1,6 +1,10 @@
 path: "tensorflow.config.experimental"
 tf_module {
   member {
+    name: "ClusterDeviceFilters"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "VirtualDeviceConfiguration"
     mtype: "<type \'type\'>"
   }
@@ -54,7 +58,7 @@ tf_module {
   }
   member_method {
     name: "set_virtual_device_configuration"
-    argspec: "args=[\'device\', \'virtual_devices\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'device\', \'logical_devices\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "set_visible_devices"

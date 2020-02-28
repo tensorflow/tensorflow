@@ -52,7 +52,7 @@ mkdir -p ${DIR}
 cp bazel-bin/tensorflow/java/tensorflow_jni.dll ${DIR}/tensorflow_jni.dll
 zip -j ${DIR}/libtensorflow_jni-gpu-windows-$(uname -m).zip \
   ${DIR}/tensorflow_jni.dll \
-  bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/THIRD_PARTY_TF_JNI_LICENSES \
+  bazel-bin/tensorflow/tools/lib_package/include/tensorflow/THIRD_PARTY_TF_JNI_LICENSES \
   LICENSE
 rm -f ${DIR}/tensorflow_jni.dll
 
@@ -61,7 +61,7 @@ mkdir -p ${DIR}/include/tensorflow/c
 mkdir -p ${DIR}/include/tensorflow/c/eager
 mkdir -p ${DIR}/lib
 cp bazel-bin/tensorflow/tensorflow.dll ${DIR}/lib/tensorflow.dll
-cp bazel-genfiles/tensorflow/tensorflow.lib ${DIR}/lib/tensorflow.lib
+cp bazel-bin/tensorflow/tensorflow.lib ${DIR}/lib/tensorflow.lib
 cp tensorflow/c/c_api.h \
   tensorflow/c/tf_attrtype.h \
   tensorflow/c/tf_datatype.h \
@@ -70,7 +70,7 @@ cp tensorflow/c/c_api.h \
   ${DIR}/include/tensorflow/c
 cp tensorflow/c/eager/c_api.h ${DIR}/include/tensorflow/c/eager
 cp LICENSE ${DIR}/LICENSE
-cp bazel-genfiles/tensorflow/tools/lib_package/THIRD_PARTY_TF_C_LICENSES ${DIR}/
+cp bazel-bin/tensorflow/tools/lib_package/THIRD_PARTY_TF_C_LICENSES ${DIR}/
 cd ${DIR}
 zip libtensorflow-gpu-windows-$(uname -m).zip \
   lib/tensorflow.dll \

@@ -8,7 +8,7 @@ glob_lit_tests(
         ":extra_files",
         ":test_utilities",
     ],
-    driver = "@local_config_mlir//:run_lit.sh",
+    driver = "@llvm-project//mlir:run_lit.sh",
     test_file_exts = [
         "mlir",
         "cc",
@@ -24,7 +24,7 @@ filegroup(
         ":importer_test_min_max",
         "//tensorflow/compiler/mlir/lite:flatbuffer_to_string",
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate",
-        "@llvm//:FileCheck",
+        "@llvm-project//llvm:FileCheck",
     ],
 )
 
@@ -51,7 +51,7 @@ tf_native_cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -67,6 +67,6 @@ tf_native_cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
-        "@llvm//:support",
+        "@llvm-project//llvm:support",
     ],
 )

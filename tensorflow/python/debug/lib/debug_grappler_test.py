@@ -88,7 +88,7 @@ class SessionDebugGrapplerInteractionTest(test_util.TensorFlowTestCase):
           self._dump_root, partition_graphs=run_metadata.partition_graphs,
           validate=True)
 
-      original_node_names = set([op.name for op in sess.graph.get_operations()])
+      original_node_names = set(op.name for op in sess.graph.get_operations())
       dumped_node_names = set(dump_data.nodes())
       grappler_created_node_names = dumped_node_names - original_node_names
       grappler_removed_node_names = original_node_names - dumped_node_names

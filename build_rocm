@@ -21,7 +21,6 @@ TF_PKG_LOC=/tmp/tensorflow_pkg
 rm -f $TF_PKG_LOC/tensorflow*.whl
 
 yes "" | TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python ./configure
-pip uninstall -y tensorflow || true
 bazel build --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
 bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC &&
-pip install $TF_PKG_LOC/tensorflow*.whl
+pip install --upgrade $TF_PKG_LOC/tensorflow*.whl

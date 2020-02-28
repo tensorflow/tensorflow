@@ -15,17 +15,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_TOPK_OP_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_TOPK_OP_GPU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include <cmath>
 #include <vector>
+#include <string>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/cub/device/device_segmented_radix_sort.cuh"
-#include "third_party/cub/iterator/counting_input_iterator.cuh"
-#include "third_party/cub/iterator/transform_input_iterator.cuh"
+#include "gpu_prim.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -35,14 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-
-// Required for sorting Eigen::half
-namespace cub {
-template <>
-struct NumericTraits<Eigen::half>
-    : BaseTraits<FLOATING_POINT, true, false, unsigned short int, Eigen::half> {
-};
-}  // namespace cub
 
 namespace tensorflow {
 
@@ -94,7 +85,7 @@ struct IndirectLinearData {
   Entry* const backing_data;
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>
 struct StridedData {
   typedef impl::Entry<T> Entry;
@@ -116,6 +107,7 @@ template <HeapType heapType, PreferIndices preferIndices,
 struct IndexedHeap {
   typedef typename Data<T>::Entry Entry;
   const Data<T> data;
+  __device__ IndexedHeap(const Data<T>& d) : data(d) {}
 
   __device__ bool is_above(int left, int right) {
     T left_value = data.get_value(left);
@@ -338,12 +330,19 @@ __device__ void mergeShards(int num_shards, int k,
   }
 }
 
-extern __shared__ char shared_memory[];
+#if GOOGLE_CUDA
+__shared__ char shared_memory[];
+#endif
 
 template <typename T>
+__attribute__((amdgpu_flat_work_group_size(1, 256)))
 __global__ void TopKKernel(const T* __restrict__ input, int length, int k,
                            bool sorted, T* __restrict__ output,
                            int* __restrict__ indices) {
+#if TENSORFLOW_USE_ROCM
+  HIP_DYNAMIC_SHARED(char, shared_memory);
+#endif
+
   const int batch_index = blockIdx.x;
   const T* batch_input = input + batch_index * length;
 
@@ -371,7 +370,7 @@ __global__ void TopKKernel(const T* __restrict__ input, int length, int k,
 }
 
 template <typename T>
-cudaError LaunchTopKKernel(const cudaStream_t& stream, int num_shards,
+cudaError LaunchTopKKernel(const gpuStream_t& stream, int num_shards,
                            const T* input, int batch_size, int length, int k,
                            bool sorted, T* output, int* indices) {
   // This code assumes that k is small enough that the computation
@@ -396,9 +395,17 @@ cudaError LaunchTopKKernel(const cudaStream_t& stream, int num_shards,
     }
     if (num_shards <= 0) {
       num_shards = 1;
+#if GOOGLE_CUDA      
     } else if (num_shards > 1024) {
       num_shards = 1024;
     }
+#else
+    // ROCm can't execute with 1024 and requires an explicit 
+    // amdgpu_flat_work_group_size attribute with >256
+    } else if (num_shards > 256) {
+      num_shards = 256;
+    }
+#endif    
   }
   // We are limited by the amount of shared memory we have per block.
   auto shared_memory_size = (num_shards + 1) * k * sizeof(Entry<T>);
@@ -449,9 +456,9 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   input_indices_t.device(d) =
       input_indices_t.generate(ColumnIndexCreator(num_cols));
 
-  cub::CountingInputIterator<int> counting_iter(0);
-  cub::TransformInputIterator<int, SegmentOffsetCreator,
-                              cub::CountingInputIterator<int>>
+  gpuprim::CountingInputIterator<int> counting_iter(0);
+  gpuprim::TransformInputIterator<int, SegmentOffsetCreator,
+                              gpuprim::CountingInputIterator<int>>
       segment_offsets_t(counting_iter, SegmentOffsetCreator(num_cols));
 
   Tensor temp_values;
@@ -473,7 +480,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
     sorted_values_ptr = temp_values.flat<T>().data();
   }
 
-  auto err = cub::DeviceSegmentedRadixSort::SortPairsDescending(
+  auto err = gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
       /* d_temp_storage */ nullptr,
       /* temp_storage_bytes */ temp_storage_bytes,
       /* d_keys_in */ input,
@@ -490,7 +497,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   if (err != cudaSuccess) {
     return errors::Internal(
         "TopKOp: Could not launch "
-        "cub::DeviceSegmentedRadixSort::SortPairsDescending to calculate "
+        "cub::gpuprim::DeviceSegmentedRadixSort::SortPairsDescending to calculate "
         "temp_storage_bytes, status: ",
         cudaGetErrorString(err));
   }
@@ -498,7 +505,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   TF_RETURN_IF_ERROR(ctx->allocate_temp(
       DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
       &temp_storage));
-  err = cub::DeviceSegmentedRadixSort::SortPairsDescending(
+  err = gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
       /* d_temp_storage */ temp_storage.flat<int8>().data(),
       /* temp_storage_bytes */ temp_storage_bytes,
       /* d_keys_in */ input,
@@ -515,7 +522,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   if (err != cudaSuccess) {
     return errors::Internal(
         "TopKOp: Could not launch "
-        "cub::DeviceSegmentedRadixSort::SortPairsDescending to sort input, "
+        "cub::gpuprim::DeviceSegmentedRadixSort::SortPairsDescending to sort input, "
         "temp_storage_bytes: ",
         temp_storage_bytes, ", status: ", cudaGetErrorString(err));
   }
@@ -568,6 +575,6 @@ struct TopKFunctor<GPUDevice, T> {
 }  // end namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_TOPK_OP_GPU_H_

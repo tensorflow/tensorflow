@@ -26,7 +26,7 @@ import threading
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
@@ -63,15 +63,15 @@ def truncated_normal(shape):
 
 
 def current_device():
-  return constant_op.constant(1.).device
+  return array_ops.identity(1.).device
 
 
 def configure_virtual_cpus():
   cpus = config.list_physical_devices('CPU')
   # Set 2 virtual CPUs
-  config.set_virtual_device_configuration(cpus[0], [
-      context.VirtualDeviceConfiguration(),
-      context.VirtualDeviceConfiguration()
+  config.set_logical_device_configuration(cpus[0], [
+      context.LogicalDeviceConfiguration(),
+      context.LogicalDeviceConfiguration()
   ])
 
 
@@ -394,20 +394,22 @@ class TFETest(test_util.TensorFlowTestCase):
   def testMultiCpuPlacement(self):
     with ops.device('cpu:1'):
       x = constant_op.constant(1.0)
-    y = array_ops.identity(x)
+    with ops.device('cpu:0'):
+      y = array_ops.identity(x)
     self.assertEqual(x.device, '/job:localhost/replica:0/task:0/device:CPU:1')
     self.assertEqual(y.device, '/job:localhost/replica:0/task:0/device:CPU:0')
 
   @test_util.run_gpu_only
   def testShouldCopy(self):
-    with ops.device('gpu:0'):
-      x = constant_op.constant(1.0)
+    with ops.device('GPU:0'):
+      x = array_ops.identity(1.0)
+      self.assertEqual(x.device, '/job:localhost/replica:0/task:0/device:GPU:0')
     y = array_ops.identity(x)
     # The value we're testing y.device against will depend on what the behavior
     # of not explicitly specifying a device in the context is.  This behavior is
     # subject to change (for example, in the future we may want to use GPUs, if
     # available, when no device is explicitly provided)
-    self.assertEqual(y.device, '/job:localhost/replica:0/task:0/device:CPU:0')
+    self.assertEqual(y.device, current_device())
 
   def testContextSwitchStackContainsEagerMode(self):
     # Eager execution has been enabled, and no other context switch has
@@ -488,6 +490,7 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertEndsWith(current_device(), 'GPU:0')
     gpu.__exit__()
     self.assertEndsWith(current_device(), 'CPU:0')
+    cpu.__exit__()
 
   @test_util.run_gpu_only
   def testReEntrant(self):
@@ -563,12 +566,14 @@ class TFETest(test_util.TensorFlowTestCase):
     def simple_fn(unused_handle):
       return 1.
 
+    with ops.device('CPU:0'):
+      test_var = variables.Variable([2., 3.])
+
     @def_function.function
     def test_fn(v):
       script_ops.eager_py_func(simple_fn, [v.handle], dtypes.float32)
       return 1.
 
-    test_var = variables.Variable([2., 3.])
     self.assertAllEqual(test_fn(test_var), 1.0)
 
   def testPyFunctionAsync(self):
@@ -602,8 +607,8 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def testRegisterExceptionClass(self):
     with self.assertRaises(TypeError):
-      pywrap_tensorflow.TFE_Py_RegisterExceptionClass(str)
-    pywrap_tensorflow.TFE_Py_RegisterExceptionClass(core._NotOkStatusException)  # pylint: disable=protected-access
+      pywrap_tfe.TFE_Py_RegisterExceptionClass(str)
+    pywrap_tfe.TFE_Py_RegisterExceptionClass(core._NotOkStatusException)  # pylint: disable=protected-access
 
   # TODO(agarwal): add tests passing incorrect typed values to attrs.
   def testExecuteBasic(self):
@@ -1012,6 +1017,15 @@ class TFETest(test_util.TensorFlowTestCase):
 
     for t in threads:
       t.join()
+
+  def testEmptyResourceReturned(self):
+    with ops.device('CPU:0'):
+      v = variables.Variable(1.)
+    empty_handle = array_ops.gather(
+        v.handle[array_ops.newaxis], array_ops.zeros([0], dtype=dtypes.int32))
+    self.assertEqual(
+        [0],
+        empty_handle.shape.as_list())
 
 
 class SendRecvTest(test_util.TensorFlowTestCase):

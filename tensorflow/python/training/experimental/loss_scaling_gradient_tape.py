@@ -18,17 +18,35 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph.impl import api
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("mixed_precision.experimental.LossScaleGradientTape", v1=[])
+def _convert_to_per_replicas(distribution, values):
+  """Converts tensors and DistributedVariables to PerReplica values.
+
+  Args:
+    distribution: The distribution strategy in effect.
+    values: A list of tensors, variables, DistributedValues, or anything else
+      that can be converted to a PerReplcia value
+
+  Returns:
+    `values`, but each element has been converted to a PerReplica value.
+  """
+  return distribution.experimental_run_v2(
+      lambda values: [array_ops.identity(v) for v in values],
+      args=(values,)
+  )
+
+
+# TODO(reedwm): Expose this after testing it on several models.
 class LossScaleGradientTape(backprop.GradientTape):
   """A gradient tape that scales losses and unscales resulting gradients.
 
@@ -95,7 +113,10 @@ class LossScaleGradientTape(backprop.GradientTape):
         request gradients from.
     """
     if not isinstance(loss_scale, loss_scale_module.LossScale):
-      raise ValueError("`loss_scale` must be an instance of LossScale.")
+      raise ValueError("`loss_scale` must be an instance of LossScale, "
+                       "but got: %s" % (loss_scale,))
+    if not ops.executing_eagerly_outside_functions():
+      raise ValueError("LossScaleGradientTape is only supported in Eager mode.")
 
     # always make a persistent tape to loop over loss scaling
     super(LossScaleGradientTape, self).__init__(True,
@@ -146,23 +167,38 @@ class LossScaleGradientTape(backprop.GradientTape):
       raise ValueError("LossScaleGradientTape.gradient() must be called in a "
                        "replica context.")
 
-    if context.executing_eagerly():
-      compute_gradients_until_finite = _compute_gradients_until_finite
-    else:
-      compute_gradients_until_finite = _compute_gradients_until_finite_autograph
-
     # Note: DistributionStrategy does not support running a while loop in a
-    # replica context. So, we call `compute_gradients_until_finite` in a cross-
+    # replica context. So, we call `_compute_gradients_until_finite` in a cross-
     # replica context.
     replica_context = distribution_strategy_context.get_replica_context()
     grads = replica_context.merge_call(
-        compute_gradients_until_finite,
+        _compute_gradients_until_finite,
         args=(self, self._loss_scale, target, sources, output_gradients,
               unconnected_gradients))
 
     if not self._outer_persistent:
       self._tape = None  # free up resources if a persistent tape was not needed
     return grads
+
+  def jacobian(self,
+               target,
+               sources,
+               unconnected_gradients=UnconnectedGradients.NONE,
+               parallel_iterations=None,
+               experimental_use_pfor=True):
+    # TODO(reedwm): Implement this
+    raise NotImplementedError("LossScaleGradientTape.jacobian is not "
+                              "yet implemented")
+
+  def batch_jacobian(self,
+                     target,
+                     source,
+                     unconnected_gradients=UnconnectedGradients.NONE,
+                     parallel_iterations=None,
+                     experimental_use_pfor=True):
+    # TODO(reedwm): Implement this
+    raise NotImplementedError("LossScaleGradientTape.batch_jacobian is not "
+                              "yet implemented")
 
 
 def _compute_gradients_until_finite(
@@ -193,34 +229,91 @@ def _compute_gradients_until_finite(
   Returns:
     The gradients of `target` with respect to `sources`.
   """
+  # Autograph cannot convert this function, so we must use an explicit
+  # tf.while_loop.
+  # TODO(b/143572314): Fix Autograph so that it can convert this function, then
+  # replace the tf.while_loop with a Python while loop.
 
-  ready_to_update = False
-  grads = sources  # Dummy assignment to make AutoGraph happy. `grads` is always
-                   # overwritten.
-  while not ready_to_update and loss_scale() > 1:
-    def replica_fn(gradient_tape, target, sources, output_gradients):
+  # For convenience, we only deal with flattened sources
+  flattened_sources = nest.flatten(sources)
+
+  # Define the initial loop variables of the while loop.
+
+  # Dummy value for initial_grads. The first iteration of the loop will
+  # overwrite `grads` to the actual gradients.
+  initial_grads = flattened_sources
+  if distribution_strategy_context.has_strategy():
+    # A while_loop requires the initial values to have the same types as the
+    # return values from the body. However, 'initial_grads' may have type
+    # 'DistributionVariable', while body returns a 'PerReplica'. While both
+    # types subclass 'DistributedValues', while_loop will still throw an error.
+    # So we convert 'initial_grads' to be PerReplica values.
+    # TODO(b/146084534): Once the bug is fixed, remove this special case.
+    initial_grads = _convert_to_per_replicas(distribution, initial_grads)
+  initial_ready_to_update = False
+  initial_is_first_iteration = True
+
+  def cond(grads, ready_to_update, is_first_iteration):
+    """The condition of the while loop."""
+    del grads
+    # Equivalent to:
+    # `is_first_iteration or (not ready_to_update and loss_scale() > 1)`
+    return math_ops.logical_or(
+        is_first_iteration,
+        math_ops.logical_and(
+            math_ops.logical_not(ready_to_update),
+            math_ops.greater(loss_scale(), 1)))
+
+  # Boolean list specifying whether each gradient is None or not. Set by body().
+  is_nones = []
+
+  def body(grads, ready_to_update, is_first_iteration):
+    """The body of the while loop."""
+    del grads, ready_to_update, is_first_iteration
+    def replica_fn(gradient_tape, target, flattened_sources, output_gradients,
+                   initial_grads):
       """Scales the loss, computes the gradients, and unscales the gradients."""
       loss_scale_val = loss_scale()
       with gradient_tape:  # re-enter gradient tape so it sees the loss scaling
-        scaled_target = nest.map_structure(lambda t: t * loss_scale_val, target)
-      old_grads = super(LossScaleGradientTape, gradient_tape).gradient(
-          scaled_target, sources, output_gradients, unconnected_gradients)
+        scaled_target = nest.map_structure(
+            lambda t: t * math_ops.cast(loss_scale_val, t.dtype), target)
+      scaled_grads = super(LossScaleGradientTape, gradient_tape).gradient(
+          scaled_target, flattened_sources, output_gradients,
+          unconnected_gradients)
+
+      is_nones[:] = [g is None for g in scaled_grads]
       inv_loss_scale = 1.0 / loss_scale_val
-      grads = nest.map_structure(lambda g: inv_loss_scale * g, old_grads)
+      grads = []  # The unscaled gradients
+      for g, initial_grad in zip(scaled_grads, initial_grads):
+        if g is not None:
+          # We call ensure_shape as shape information can be lost for certain
+          # ops, such as tf.transpose, if the op is called in a tf.function and
+          # has inputs created outside the tf.function.
+          # TODO(b/132092188): Remove ensure_shape call after this has been
+          # fixed.
+          g = array_ops.ensure_shape(g, initial_grad.shape)
+          grads.append(g * math_ops.cast(inv_loss_scale, g.dtype))
+        else:
+          # We cannot return None from a tf.while_loop, so we pass a dummy
+          # tensor instead. We use initial_grad as a dummy tensor as it has the
+          # correct shape and dtype. We replace it with None outside the while
+          # loop.
+          grads.append(initial_grad)
       return grads
 
     # Switch to a replica-context to compute gradients once per replica.
     grads = distribution.experimental_run_v2(
-        replica_fn, args=(loss_scale_gradient_tapes, target, sources,
-                          output_gradients))
-    # Check for non-finite gradients possibly resulting from scaling
+        replica_fn, args=(loss_scale_gradient_tapes, target, flattened_sources,
+                          output_gradients, initial_grads))
+    # Check for non-finite gradients possibly resulting from scaling.
     _, ready_to_update = loss_scale.update(grads)
+    is_first_iteration = False
+    return grads, ready_to_update, is_first_iteration
 
+  grads, _, _ = control_flow_ops.while_loop(
+      cond, body, [initial_grads, initial_ready_to_update,
+                   initial_is_first_iteration],
+      )
+  grads = [None if is_none else g for g, is_none in zip(grads, is_nones)]
+  grads = nest.pack_sequence_as(sources, grads)
   return grads
-
-# For some reason, AutoGraph does not convert _compute_gradients_until_finite
-# automatically inside a tf.function, so we convert it manually.
-# TODO(b/143572314): Determine why AutoGraph does not do the conversion
-# automatically
-_compute_gradients_until_finite_autograph = api.to_graph(
-    _compute_gradients_until_finite)

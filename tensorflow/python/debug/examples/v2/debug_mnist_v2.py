@@ -28,10 +28,6 @@ import sys
 import absl
 import tensorflow.compat.v2 as tf
 
-# TODO(cais): Use public API `tf.debugging.enable_dumping()` once it's
-# available.
-from tensorflow.python.debug.lib import dumping_callback
-
 IMAGE_SIZE = 28
 HIDDEN_SIZE = 500
 NUM_LABELS = 10
@@ -103,8 +99,9 @@ def parse_args():
       "--dump_tensor_debug_mode",
       type=str,
       default="NO_TENSOR",
-      help="Mode for dumping tensor values. Options: NO_TENSOR, FULL_TENSOR. "
-      "This is relevant only when --dump_dir is set.")
+      help="Mode for dumping tensor values. Options: NO_TENSOR, CURT_HEALTH, "
+      "CONCISE_HEALTH, SHAPE, FULL_TENSOR. This is relevant only when "
+      "--dump_dir is set.")
   # TODO(cais): Add more tensor debug mode strings once they are supported.
   parser.add_argument(
       "--dump_circular_buffer_size",
@@ -131,7 +128,7 @@ def main(_):
   if FLAGS.check_numerics:
     tf.debugging.enable_check_numerics()
   elif FLAGS.dump_dir:
-    dumping_callback.enable_dumping(
+    tf.debugging.experimental.enable_dump_debug_info(
         FLAGS.dump_dir,
         tensor_debug_mode=FLAGS.dump_tensor_debug_mode,
         circular_buffer_size=FLAGS.dump_circular_buffer_size)

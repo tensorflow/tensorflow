@@ -117,18 +117,23 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     if not isinstance(optimizer, optimizer_v2.OptimizerV2):
       raise ValueError('"optimizer" must be an instance of OptimizerV2, but '
                        'got: %s' % optimizer)
-    if hasattr(optimizer, 'clipnorm'):
+    if optimizer.clipnorm is not None:
       raise ValueError('LossScaleOptimizer does not support wrapping '
                        'optimizers with a clipnorm. Optimizer %s has clipnorm '
                        '%s' % (optimizer, optimizer.clipnorm))
 
-    if hasattr(optimizer, 'clipvalue'):
+    if optimizer.clipvalue is not None:
       raise ValueError('LossScaleOptimizer does not support wrapping '
                        'optimizers with a clipvalue. Optimizer %s has '
                        'clipvalue %s' % (optimizer, optimizer.clipvalue))
 
+    self.clipnorm = None
+    self.clipvalue = None
+
     self._optimizer = optimizer
     self._loss_scale = keras_loss_scale_module.get(loss_scale)
+    if self._loss_scale is None:
+      raise ValueError('loss_scale cannot be None.')
     for weight in loss_scale_module.get_loss_scale_weights(self._loss_scale):
       # We cannot call `track_variable` in the LossScale class itself, because a
       # file outside of Keras cannot depend on a Keras file. Calling it here
@@ -216,14 +221,17 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     grads = self._optimizer.get_gradients(loss, params)
     return self.get_unscaled_gradients(grads)
 
-  def apply_gradients(self, grads_and_vars, name=None):
+  def apply_gradients(self, grads_and_vars, name=None,
+                      all_reduce_sum_gradients=True):
     if distribution_strategy_context.in_cross_replica_context():
       raise ValueError('apply_gradients() must be called in a replica context.')
     grads_and_vars = tuple(grads_and_vars)
     return distribution_strategy_context.get_replica_context().merge_call(
-        self._apply_gradients_cross_replica, args=(grads_and_vars, name))
+        self._apply_gradients_cross_replica,
+        args=(grads_and_vars, name, all_reduce_sum_gradients))
 
-  def _apply_gradients_cross_replica(self, distribution, grads_and_vars, name):
+  def _apply_gradients_cross_replica(self, distribution, grads_and_vars, name,
+                                     all_reduce_sum_gradients):
     grads = [g for g, _ in grads_and_vars]
     loss_scale_update_op, should_apply_grads = self._loss_scale.update(grads)
 
@@ -235,7 +243,8 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
       # MirroredVariables.
       wrapped_vars = _UnwrapPreventer([v for _, v in grads_and_vars])
       return distribution.extended.call_for_each_replica(
-          self._apply_gradients, args=(grads, wrapped_vars, name))
+          self._apply_gradients, args=(grads, wrapped_vars, name,
+                                       all_reduce_sum_gradients))
 
     # Note: We must call this cond() in a cross-replica context.
     # DistributionStrategy does not support having a cond in a replica context
@@ -246,9 +255,10 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
                                            control_flow_ops.no_op)
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 
-  def _apply_gradients(self, grads, wrapped_vars, name):
+  def _apply_gradients(self, grads, wrapped_vars, name,
+                       all_reduce_sum_gradients):
     return self._optimizer.apply_gradients(list(zip(grads, wrapped_vars.value)),
-                                           name)
+                                           name, all_reduce_sum_gradients)
 
   def get_config(self):
     serialized_optimizer = optimizers.serialize(self._optimizer)

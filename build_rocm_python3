@@ -17,12 +17,10 @@
 # that was just built by this script. Since this error is not apparent, it
 # can lead to a lot of frustation and lost time trying to figure why the
 # changes made in the current build are not working!
-TF_PKG_LOC=/tmp/tensorflow_pkg
-rm -f $TF_PKG_LOC/tensorflow*.whl
-
+#TF_PKG_LOC=/tmp/tensorflow_pkg
+#rm -f $TF_PKG_LOC/tensorflow*.whl
 
 yes "" | TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure
-pip3 uninstall -y tensorflow || true
 bazel build --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
 bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC &&
-pip3 install $TF_PKG_LOC/tensorflow*.whl
+pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl

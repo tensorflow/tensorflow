@@ -33,6 +33,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -467,6 +468,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     k = math_ops.add(i, j, name="k")
 
     self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual([100] * 3, i)
     self.assertAllEqual([120] * 3, k)
     self.assertAllEqual([20] * 3, j)
 
@@ -628,7 +630,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testRandomSeed(self):
-    # Call setUp again for WithCApi case (since it makes a new defeault graph
+    # Call setUp again for WithCApi case (since it makes a new default graph
     # after setup).
     # TODO(skyewm): remove this when C API is permanently enabled.
     self.setUp()
@@ -749,12 +751,17 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def test_run_in_graph_and_eager_works_with_parameterized_keyword(self, arg):
     self.assertEqual(arg, True)
 
+  @combinations.generate(combinations.combine(arg=True))
+  @test_util.run_in_graph_and_eager_modes
+  def test_run_in_graph_and_eager_works_with_combinations(self, arg):
+    self.assertEqual(arg, True)
+
   def test_build_as_function_and_v1_graph(self):
 
-    class GraphModeAndFuncionTest(parameterized.TestCase):
+    class GraphModeAndFunctionTest(parameterized.TestCase):
 
       def __init__(inner_self):  # pylint: disable=no-self-argument
-        super(GraphModeAndFuncionTest, inner_self).__init__()
+        super(GraphModeAndFunctionTest, inner_self).__init__()
         inner_self.graph_mode_tested = False
         inner_self.inside_function_tested = False
 
@@ -763,15 +770,14 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
       @test_util.build_as_function_and_v1_graph
       def test_modes(inner_self):  # pylint: disable=no-self-argument
-        is_building_function = ops.get_default_graph().building_function
-        if is_building_function:
+        if ops.inside_function():
           self.assertFalse(inner_self.inside_function_tested)
           inner_self.inside_function_tested = True
         else:
           self.assertFalse(inner_self.graph_mode_tested)
           inner_self.graph_mode_tested = True
 
-    test_object = GraphModeAndFuncionTest()
+    test_object = GraphModeAndFunctionTest()
     test_object.test_modes_v1_graph()
     test_object.test_modes_function()
     self.assertTrue(test_object.graph_mode_tested)

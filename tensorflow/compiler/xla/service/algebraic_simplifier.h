@@ -99,7 +99,27 @@ class AlgebraicSimplifierOptions {
 
   int64 very_small_gather_size() const { return very_small_gather_size_; }
 
+  void set_cudnn_batchnorm_forward_training_metadata(const string& c) {
+    metadata_.cudnn_batchnorm_forward_training_metadata = c;
+  }
+
+  const string& get_cudnn_batchnorm_forward_training_metadata() const {
+    return metadata_.cudnn_batchnorm_forward_training_metadata;
+  }
+
  private:
+  // Metadata struct can be used to store any metadata information encapsulated
+  // with the AlgebraicSimplierOptions that can be later used in an
+  // AlgebraicSimplifier pass. For example,
+  // cudnn_batchnorm_forward_training_metadata can be used to store the name of
+  // a custom call. If the custom call is
+  // __cudnn$batchNormalizationForwardTraining, the output with index 2 is
+  // guaranteed to be postive. This property has been used to recursively
+  // determine if the operand of an instruction is always positive.
+  struct Metadata {
+    string cudnn_batchnorm_forward_training_metadata{""};
+    Metadata() {}
+  };
   ReshapeIsBitcastCallback reshape_is_bitcast_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
@@ -107,6 +127,7 @@ class AlgebraicSimplifierOptions {
   bool enable_conv_simplification_{true};
   bool enable_window_reduce_to_reduce_replacement_{true};
   int64 very_small_gather_size_{4};
+  Metadata metadata_;
 };
 
 // A pass which performs algebraic simplifications.

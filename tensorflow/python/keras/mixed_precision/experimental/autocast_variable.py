@@ -120,8 +120,8 @@ class AutoCastVariable(variables.Variable):
       raise ValueError(
           'Incompatible type conversion requested to type {!r} for variable '
           'of type {!r}'.format(dtype.name, self.dtype.name))
-    val = ops.convert_to_tensor(
-        self._variable, self._variable.dtype, name, as_ref=False)
+    val = ops.convert_to_tensor_v2(
+        self._variable, dtype=self._variable.dtype, name=name)
     return math_ops.cast(val, self.dtype)
 
   def _should_act_as_resource_variable(self):
@@ -149,100 +149,130 @@ class AutoCastVariable(variables.Variable):
   # reasons:
   #   * 'count_up_to': This method only applies to int variables, which cannot
   #     be wrapped with an AutoCastVariable.
-  #   * 'experimental_ref': Instead we inherit the definition from Variable.
+  #   * 'ref': Instead we inherit the definition from Variable.
   #     If we defined and delegated to Variable, the ref of an AutoCastVariable
   #     would be the same as the ref of the underlying variable, which would be
   #     strange as they are different Python objects.
 
   # pylint: disable=multiple-statements
-  def set_shape(self, shape): return self._variable.set_shape(self, shape)
+  def set_shape(self, shape):
+    return self._variable.set_shape(self, shape)
 
   @property
-  def trainable(self): return self._variable.trainable
+  def trainable(self):
+    return self._variable.trainable
 
   @property
-  def synchronization(self): return self._variable.synchronization
+  def synchronization(self):
+    return self._variable.synchronization
 
   @property
-  def aggregation(self): return self._variable.aggregation
+  def aggregation(self):
+    return self._variable.aggregation
 
-  def eval(self, session=None): return self._variable.eval(session)
+  def eval(self, session=None):
+    return self._variable.eval(session)
 
-  def initialized_value(self): return self._variable.initialized_value()
+  def initialized_value(self):
+    return self._variable.initialized_value()
 
   @property
-  def initial_value(self): return self._variable.initial_value
+  def initial_value(self):
+    return self._variable.initial_value
 
   @property
-  def constraint(self): return self._variable.constraint
+  def constraint(self):
+    return self._variable.constraint
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
-    return self._variable.assign(value, use_locking, name, read_value)
+    assign_op = self._variable.assign(value, use_locking, name, read_value)
+    return _maybe_wrap(assign_op, wrap=read_value)
 
   def assign_add(self, delta, use_locking=None, name=None, read_value=True):
-    return self._variable.assign_add(delta, use_locking, name, read_value)
+    assign_op = self._variable.assign_add(delta, use_locking, name, read_value)
+    return _maybe_wrap(assign_op, wrap=read_value)
 
   def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
-    return self._variable.assign_sub(delta, use_locking, name, read_value)
+    assign_op = self._variable.assign_sub(delta, use_locking, name, read_value)
+    return _maybe_wrap(assign_op, wrap=read_value)
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_sub(sparse_delta, use_locking, name)
+    var = self._variable.scatter_sub(sparse_delta, use_locking, name)
+    return _maybe_wrap(var)
 
   def scatter_add(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_add(sparse_delta, use_locking, name)
+    var = self._variable.scatter_add(sparse_delta, use_locking, name)
+    return _maybe_wrap(var)
 
   def scatter_max(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_max(sparse_delta, use_locking, name)
+    var = self._variable.scatter_max(sparse_delta, use_locking, name)
+    return _maybe_wrap(var)
 
   def scatter_min(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_min(sparse_delta, use_locking, name)
+    var = self._variable.scatter_min(sparse_delta, use_locking, name)
+    return _maybe_wrap(var)
 
   def scatter_mul(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_mul(sparse_delta, use_locking, name)
+    var = self._variable.scatter_mul(sparse_delta, use_locking, name)
+    return _maybe_wrap(var)
 
   def scatter_div(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_div(sparse_delta, use_locking, name)
+    var = self._variable.scatter_div(sparse_delta, use_locking, name)
+    return _maybe_wrap(var)
 
   def scatter_update(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_update(sparse_delta, use_locking, name)
+    var = self._variable.scatter_update(sparse_delta, use_locking, name)
+    return _maybe_wrap(var)
 
   def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.batch_scatter_update(sparse_delta, use_locking, name)
+    var = self._variable.batch_scatter_update(sparse_delta, use_locking, name)
+    return _maybe_wrap(var)
 
   def scatter_nd_sub(self, indices, updates, name=None):
-    return self._variable.scatter_nd_sub(indices, updates, name)
+    var = self._variable.scatter_nd_sub(indices, updates, name)
+    return _maybe_wrap(var)
 
   def scatter_nd_add(self, indices, updates, name=None):
-    return self._variable.scatter_nd_add(indices, updates, name)
+    var = self._variable.scatter_nd_add(indices, updates, name)
+    return _maybe_wrap(var)
 
   def scatter_nd_update(self, indices, updates, name=None):
-    return self._variable.scatter_nd_update(indices, updates, name)
+    var = self._variable.scatter_nd_update(indices, updates, name)
+    return _maybe_wrap(var)
 
   def load(self, value, session=None):
     return self._variable.load(value, session)
 
   @property
-  def name(self): return self._variable.name
+  def name(self):
+    return self._variable.name
 
   @property
-  def _shared_name(self): return self._variable._shared_name  # pylint:disable=protected-access
+  def _shared_name(self):
+    return self._variable._shared_name  # pylint:disable=protected-access
 
   @property
-  def initializer(self): return self._variable.initializer
+  def initializer(self):
+    return self._variable.initializer
 
   @property
-  def device(self): return self._variable.device
+  def device(self):
+    return self._variable.device
 
   @property
-  def op(self): return self._variable.op
+  def op(self):
+    return self._variable.op
 
   @property
-  def graph(self): return self._variable.graph
+  def graph(self):
+    return self._variable.graph
 
   @property
-  def shape(self): return self._variable.shape
+  def shape(self):
+    return self._variable.shape
 
-  def get_shape(self): return self._variable.get_shape()
+  def get_shape(self):
+    return self._variable.get_shape()
 
   def _gather_saveables_for_checkpoint(self):
     # By delegating this method to the wrapped variable, checkpoints with
@@ -259,34 +289,98 @@ class AutoCastVariable(variables.Variable):
   def from_proto(self, variable_def, import_scope=None):
     return self._variable.from_proto(variable_def, import_scope)
 
+  # Delegate the private attributes _handle_name and _initializer_op to
+  # self._variable. SavedModel sets these attributes when loading a model. For
+  # example, it sets _handle_name here:
+  # https://github.com/tensorflow/tensorflow/blob/db26bd574fa95b5bdd53c08463dd19407cc0297e/tensorflow/python/keras/saving/saved_model/load.py#L211
+  # We need to expose these attributes on AutoCastVariable as well for
+  # SavedModel to work properly.
+  # TODO(reedwm/kathywu): Find a better way to support SavedModel. Exposing
+  # private attributes is hacky and difficult to maintain.
+  @property
+  def _handle_name(self):
+    return self._variable._handle_name  # pylint: disable=protected-access
+
+  @_handle_name.setter
+  def _handle_name(self, handle_name):
+    self._variable._handle_name = handle_name  # pylint: disable=protected-access
+
+  @property
+  def _initializer_op(self):
+    return self._variable._initializer_op  # pylint: disable=protected-access
+
+  @_initializer_op.setter
+  def _initializer_op(self, initializer_op):
+    self._variable._initializer_op = initializer_op  # pylint: disable=protected-access
+
   # Operator overloads:
   # Note we only overload operators that support floating-point types, as
   # non-float variables cannot be wrapped with an AutoCastVariable.
   # Also note: We call read_value() instead of value(), because value() causes
   # gradients not to work properly when TPUStrategy is used: b/143380936
 
-  def __add__(self, o): return self.read_value() + o
-  def __radd__(self, o): return o + self.read_value()
-  def __sub__(self, o): return self.read_value() - o
-  def __rsub__(self, o): return o - self.read_value()
-  def __mul__(self, o): return self.read_value() * o
-  def __rmul__(self, o): return o * self.read_value()
-  def __truediv__(self, o): return self.read_value() / o
-  def __rtruediv__(self, o): return o / self.read_value()
-  def __floordiv__(self, o): return self.read_value() // o
+  def __add__(self, o):
+    return self.read_value() + o
 
-  def __rfloordiv__(self, o): return o // self.read_value()
-  def __mod__(self, o): return self.read_value() % o
-  def __rmod__(self, o): return o % self.read_value()
-  def __lt__(self, o): return self.read_value() < o
-  def __le__(self, o): return self.read_value() <= o
-  def __gt__(self, o): return self.read_value() > o
-  def __ge__(self, o): return self.read_value() >= o
-  def __getitem__(self, o): return self.read_value()[o]
-  def __pow__(self, o, modulo=None): return pow(self.read_value(), o, modulo)
-  def __rpow__(self, o): return pow(o, self.read_value())
-  def __neg__(self): return -self.read_value()
-  def __abs__(self): return abs(self.read_value())
+  def __radd__(self, o):
+    return o + self.read_value()
+
+  def __sub__(self, o):
+    return self.read_value() - o
+
+  def __rsub__(self, o):
+    return o - self.read_value()
+
+  def __mul__(self, o):
+    return self.read_value() * o
+
+  def __rmul__(self, o):
+    return o * self.read_value()
+
+  def __truediv__(self, o):
+    return self.read_value() / o
+
+  def __rtruediv__(self, o):
+    return o / self.read_value()
+
+  def __floordiv__(self, o):
+    return self.read_value() // o
+
+  def __rfloordiv__(self, o):
+    return o // self.read_value()
+
+  def __mod__(self, o):
+    return self.read_value() % o
+
+  def __rmod__(self, o):
+    return o % self.read_value()
+
+  def __lt__(self, o):
+    return self.read_value() < o
+
+  def __le__(self, o):
+    return self.read_value() <= o
+
+  def __gt__(self, o):
+    return self.read_value() > o
+
+  def __ge__(self, o):
+    return self.read_value() >= o
+
+  def __getitem__(self, o):
+    return self.read_value()[o]
+
+  def __pow__(self, o, modulo=None):
+    return pow(self.read_value(), o, modulo)
+
+  def __rpow__(self, o):
+    return pow(o, self.read_value())
+
+  def __neg__(self):
+    return -self.read_value()
+
+  def __abs__(self):
+    return abs(self.read_value())
 
   def __div__(self, o):
     try:
@@ -318,8 +412,9 @@ class AutoCastVariable(variables.Variable):
 
   # pylint: enable=multiple-statements
 
-ops.register_tensor_conversion_function(
-    AutoCastVariable, AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
+
+ops.register_tensor_conversion_function(AutoCastVariable,
+                                        AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
 ops.register_dense_tensor_like_type(AutoCastVariable)
 
 
@@ -339,30 +434,23 @@ def create_autocast_variable(variable):
   Returns:
     An AutoCastVariable that wraps the variable.
   """
-  if not isinstance(variable, distribute_values.DistributedVariable):
+  if not isinstance(variable, (distribute_values.DistributedVariable,
+                               distribute_values.AggregatingVariable)):
     return AutoCastVariable(variable)
 
   class AutoCastDistributedVariable(AutoCastVariable, variable.__class__):
-    """An AutoCastVariable that also subclasses from DistributedVariable."""
+    """An AutoCastVariable that also subclasses from variable.__class__.
 
-    def __init__(self, maybe_variable, *args, **kwargs):
-      if not args and not kwargs:
-        # The common case: We call the super constructor with a single argument,
-        # which is a variable.
-        super(AutoCastDistributedVariable, self).__init__(maybe_variable)
-      else:
-        # This 'else' branch is needed, as distribution strategies sometimes
-        # clone a distributed variable by doing the following:
-        #
-        #    var = type(var)(var._distribute_strategy, var._device_map, ...)
-        #
-        # In this case, `maybe_variable` will instead be a distribution
-        # strategy. We create the DistributedVariable before wrapping it.
-        distribution_strategy = maybe_variable
-        inner_var = variable.__class__(distribution_strategy, *args, **kwargs)
-        super(AutoCastDistributedVariable, self).__init__(inner_var)
+    variable.__class__ is either a DistributedVariable or an
+    AggregatingVariable.
+    """
 
     def __repr__(self):
+      if issubclass(distribute_values.AggregatingVariable, variable.__class__):
+        # AggregatingVariable's __repr__ simply calls super.__repr__. So we do
+        # the same here for consistency, which calls AutoCastVariable.__repr__.
+        return super(AutoCastDistributedVariable, self).__repr__()
+
       # pylint: disable=missing-format-attribute
       return ('<AutoCastDistributedVariable dtype={v.dtype.name} '
               'true_dtype={v.true_dtype.name} inner_variable={v._variable}>'
@@ -370,3 +458,24 @@ def create_autocast_variable(variable):
       # pylint: enable=missing-format-attribute
 
   return AutoCastDistributedVariable(variable)
+
+
+def _maybe_wrap(variable, wrap=True):
+  """Creates an AutoCastVariable that wraps another variable if applicable.
+
+  This function is used to wrap the return value of AutoCastVariable.assign.
+  Unfortunately MirroredVariable.assign will (incorrectly) return a Mirrored
+  value instead of a MirroredVariable. So we cannot properly wrap it in an
+  AutoCastVariable. We return the original variable in that case.
+
+  Args:
+    variable: A tf.Variable or op.
+    wrap: A boolean to define whether to wrap the variable in an
+      AutoCastVariable or not.
+
+  Returns:
+    An AutoCastVariable if wrap is True and variable is a resource variable.
+  """
+  if wrap and resource_variable_ops.is_resource_variable(variable):
+    return create_autocast_variable(variable)
+  return variable

@@ -1,0 +1,54 @@
+book_path: /mlir/_book.yaml
+project_path: /mlir/_project.yaml
+description: <!--no description-->
+landing_page:
+  custom_css_path: /site-assets/css/style.css
+  rows:
+  - heading: MLIR unifies the infrastructure for high-performance ML models in TensorFlow.
+    items:
+    - description: >
+        The <a href="https://mlir.llvm.org/" class="external">MLIR</a> project defines a common
+        intermediate representation (IR) that unifies the infrastructure required to execute high
+        performance machine learning models in TensorFlow and similar ML frameworks. This project
+        will include the application of HPC techniques, along with integration of
+        search algorithms like reinforcement learning. MLIR aims to reduce the
+        cost to bring up new hardware, and improve usability for existing
+        TensorFlow users.
+
+    - code_block: |
+        <pre class = "prettyprint">
+        // Syntactically similar to LLVM:
+        func @testFunction(%arg0: i32) {
+          %x = call @thingToCall(%arg0) : (i32) -> i32
+          br ^bb1
+        ^bb1:
+          %y = addi %x, %x : i32
+          return %y : i32
+        }
+        </pre>
+
+  - classname: devsite-landing-row-cards
+    items:
+    - heading: "Multi-Level Intermediate Representation for Compiler Infrastructure"
+      youtube_id: qzljG6DKgic
+      buttons:
+      - label: Watch the video
+        path: https://www.youtube.com/watch?v=qzljG6DKgic
+    - heading: "A new intermediate representation and compiler framework"
+      image_path: /resources/images/tf-logo-card-16x9.png
+      path: https://blog.tensorflow.org/2019/04/mlir-new-intermediate-representation.html
+      buttons:
+      - label: Read on TensorFlow blog
+        path: https://blog.tensorflow.org/2019/04/mlir-new-intermediate-representation.html
+    - heading: MLIR on GitHub
+      image_path: /resources/images/github-card-16x9.png
+      path: https://github.com/llvm/llvm-project/tree/master/mlir
+      buttons:
+      - label: View on GitHub
+        path: https://github.com/llvm/llvm-project/tree/master/mlir
+    - heading: TensorFlow MLIR on GitHub
+      image_path: /resources/images/github-card-16x9.png
+      path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/mlir
+      buttons:
+      - label: View on GitHub
+        path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/mlir

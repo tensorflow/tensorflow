@@ -23,6 +23,10 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_complex.h"
+#endif
+
 namespace tensorflow {
 namespace functor {
 
@@ -71,6 +75,34 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
                     static_cast<Scalar>(in.size() / out.size());
   }
 };
+
+// Specialization for which we do the reduction in IntermediateType to
+// avoid integer overflow.
+#define CASTING_SPECIALIZATION(ScalarType, IntermediateType)                  \
+  template <typename Device, typename OUT_T, typename IN_T,                   \
+            typename ReductionAxes>                                           \
+  struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,                  \
+                         functor::MeanReducer<ScalarType>> {                  \
+    void operator()(const Device& d, OUT_T out, IN_T in,                      \
+                    const ReductionAxes& reduction_axes,                      \
+                    const functor::MeanReducer<ScalarType>& reducer) {        \
+      static_assert(std::is_same<ScalarType, typename OUT_T::Scalar>::value,  \
+                    "");                                                      \
+      Eigen::internal::SumReducer<IntermediateType> sum_reducer;              \
+      out.device(d) = (in.template cast<IntermediateType>().reduce(           \
+                           reduction_axes, sum_reducer) /                     \
+                       static_cast<IntermediateType>(in.size() / out.size())) \
+                          .template cast<ScalarType>();                       \
+    }                                                                         \
+  }
+
+CASTING_SPECIALIZATION(uint8, uint64);
+CASTING_SPECIALIZATION(uint16, uint64);
+CASTING_SPECIALIZATION(uint32, uint64);
+CASTING_SPECIALIZATION(int8, int64);
+CASTING_SPECIALIZATION(int16, int64);
+CASTING_SPECIALIZATION(int32, int64);
+#undef CASTING_SPECIALIZATION
 
 // TODO(rmlarsen): Refactor this such that taking the sqrt can be optional
 // controlled by an attribute.
@@ -127,7 +159,20 @@ struct Identity {
 FIX_MEAN_IDENTITY(Eigen::half)
 FIX_MEAN_IDENTITY(float)
 FIX_MEAN_IDENTITY(double)
-#if GOOGLE_CUDA
+#if TENSORFLOW_USE_ROCM
+template <>
+struct Identity<functor::MeanReducer<hipFloatComplex> > {
+  static hipFloatComplex identity(const functor::MeanReducer<hipFloatComplex>&) { 
+    return hipFloatComplex(Eigen::NumTraits<float>::quiet_NaN(), Eigen::NumTraits<float>::quiet_NaN());
+  }
+};
+template <>
+struct Identity<functor::MeanReducer<hipDoubleComplex> > {
+  static hipDoubleComplex identity(const functor::MeanReducer<hipDoubleComplex>&) { 
+    return hipDoubleComplex(Eigen::NumTraits<double>::quiet_NaN(), Eigen::NumTraits<double>::quiet_NaN());
+  }
+};
+#else
 FIX_MEAN_IDENTITY(complex64)
 FIX_MEAN_IDENTITY(complex128)
 #endif
@@ -136,6 +181,19 @@ FIX_MEAN_IDENTITY(complex128)
 template <typename Device, typename OUT_T, typename Reducer>
 void FillIdentityEigenImpl(const Device& d, OUT_T out, const Reducer& reducer) {
   out.device(d) = out.constant(Identity<Reducer>::identity(reducer));
+}
+
+//on ROCm with complex input, reducer produces hipFloatComplex/hipDoubleComplex
+//and this function bitcasts them to std::complex.
+//In all other cases, it is identical to FillIdentityEigenImpl.
+template <typename T, typename Device, typename OUT_T, typename Reducer>
+void FillIdentityEigenImplWithCast(const Device& d, OUT_T out, const Reducer& reducer) {
+  auto id = Identity<Reducer>::identity(reducer);
+  T cast_id;
+  static_assert(sizeof(id)==sizeof(cast_id), 
+      "Error: FillIdentityEigenImplWithCast with incompatible types?");
+  memcpy(&cast_id, &id, sizeof(cast_id)); // to avoid strict-aliasing warnings
+  out.device(d) = out.constant(cast_id);
 }
 
 template <typename Device, typename Reducer>

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 
 import numpy as np
 
@@ -34,6 +35,8 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl
 
+if sys.version_info >= (3, 4):
+  import pathlib  # pylint:disable=g-import-not-at-top
 try:
   import h5py  # pylint:disable=g-import-not-at-top
 except ImportError:
@@ -82,6 +85,19 @@ class TestSaveModel(test.TestCase):
     self.subclassed_model.predict(np.random.random((3, 5)))
     save.save_model(self.subclassed_model, path, save_format='tf')
     self.assert_saved_model(path)
+
+  @test_util.run_v2_only
+  def test_save_load_tf_string(self):
+    path = os.path.join(self.get_temp_dir(), 'model')
+    save.save_model(self.model, path, save_format='tf')
+    save.load_model(path)
+
+  @test_util.run_v2_only
+  def test_save_load_tf_pathlib(self):
+    if sys.version_info >= (3, 4):
+      path = pathlib.Path(self.get_temp_dir()) / 'model'
+      save.save_model(self.model, path, save_format='tf')
+      save.load_model(path)
 
   @test_util.run_in_graph_and_eager_modes
   def test_saving_with_dense_features(self):
@@ -175,6 +191,60 @@ class TestSaveModel(test.TestCase):
             'a': inputs_a,
             'b': inputs_b
         }, steps=1), batch_size)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_saving_h5_for_rnn_layers(self):
+    # See https://github.com/tensorflow/tensorflow/issues/35731 for details.
+    inputs = keras.Input([10, 91], name='train_input')
+    rnn_layers = [
+        keras.layers.LSTMCell(size, recurrent_dropout=0, name='rnn_cell%d' % i)
+        for i, size in enumerate([512, 512])
+    ]
+    rnn_output = keras.layers.RNN(
+        rnn_layers, return_sequences=True, name='rnn_layer')(inputs)
+    pred_feat = keras.layers.Dense(91, name='prediction_features')(rnn_output)
+    pred = keras.layers.Softmax()(pred_feat)
+    model = keras.Model(inputs=[inputs], outputs=[pred, pred_feat])
+    path = os.path.join(self.get_temp_dir(), 'model_path.h5')
+    model.save(path)
+
+    # Make sure the variable name is unique.
+    self.assertNotEqual(rnn_layers[0].kernel.name,
+                        rnn_layers[1].kernel.name)
+    self.assertIn('rnn_cell1', rnn_layers[1].kernel.name)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_saving_optimizer_weights(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.layer = keras.layers.Dense(1)
+
+      def call(self, x):
+        return self.layer(x)
+
+    path = os.path.join(self.get_temp_dir(), 'weights_path')
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+
+    model = MyModel()
+    model.compile('rmsprop', loss='bce')
+    model.train_on_batch(x, y)
+    model.reset_metrics()
+    model.save_weights(path, save_format='tf')
+
+    batch_loss = model.train_on_batch(x, y)
+
+    new_model = MyModel()
+    new_model.compile('rmsprop', loss='bce')
+    new_model.train_on_batch(x, y)
+    new_model.reset_metrics()
+
+    new_model.load_weights(path)
+    new_batch_loss = new_model.train_on_batch(x, y)
+
+    self.assertAllClose(batch_loss, new_batch_loss)
 
 
 if __name__ == '__main__':

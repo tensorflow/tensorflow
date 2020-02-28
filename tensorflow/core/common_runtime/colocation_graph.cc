@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/inspecting_placer.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -380,6 +382,7 @@ bool Member::MergeSupportedDevices(
   // The priorities are taken from the corresponding source vector.
   PrioritizedDeviceTypeVector target_intersection;
   PrioritizedDeviceTypeVector other_intersection;
+
   for (const auto& prioritized_device_type : supported_device_types_) {
     bool found = false;
     for (const auto& other_prioritized_device_type : other_devices) {
@@ -395,26 +398,8 @@ bool Member::MergeSupportedDevices(
     }
   }
 
-  // Sort the devices by priority order.
-  auto device_sort = [](const std::pair<DeviceType, int32>& a,
-                        const std::pair<DeviceType, int32>& b) {
-    // First look at set priorities.
-    if (a.second != b.second) {
-      return a.second > b.second;
-    }
-    // Then fallback to default priorities.
-    auto a_priority = DeviceSet::DeviceTypeOrder(a.first);
-    auto b_priority = DeviceSet::DeviceTypeOrder(b.first);
-    if (a_priority != b_priority) {
-      return a_priority > b_priority;
-    }
-    // Finally just look at the Device type strings.
-    return a.first.type_string() < b.first.type_string();
-  };
-
-  std::sort(target_intersection.begin(), target_intersection.end(),
-            device_sort);
-  std::sort(other_intersection.begin(), other_intersection.end(), device_sort);
+  DeviceSet::SortPrioritizedDeviceTypeVector(&target_intersection);
+  DeviceSet::SortPrioritizedDeviceTypeVector(&other_intersection);
 
   PrioritizedDeviceTypeVector result;
 
@@ -441,7 +426,7 @@ bool Member::MergeSupportedDevices(
       for (const auto& prioritized_device : target_intersection) {
         result.push_back(std::make_pair(prioritized_device.first, 0));
       }
-      std::sort(result.begin(), result.end(), device_sort);
+      DeviceSet::SortPrioritizedDeviceTypeVector(&result);
     }
   }
 
@@ -641,29 +626,27 @@ Status ColocationGraph::ColocateAllNodes() {
     // backing store of the std::vector<string> as well as the copies of the
     // strings within it).  Instead, we combine the query of the colocation
     // attribute with the calls to ColocateNodeToGroup.
-    bool found_spec = false;
     const AttrValue* attr_value =
         node->attrs().Find(kColocationAttrNameStringPiece);
-    if (attr_value != nullptr && attr_value->has_list()) {
-      for (const string& class_spec : attr_value->list().s()) {
-        StringPiece spec(class_spec);
-        if (absl::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
-          found_spec = true;
-          TF_RETURN_IF_ERROR(
-              ColocateNodeToGroup(&colocation_group_root, node, spec));
+    if (attr_value != nullptr) {
+      if (attr_value->has_list()) {
+        for (const string& class_spec : attr_value->list().s()) {
+          StringPiece spec(class_spec);
+          if (absl::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
+            TF_RETURN_IF_ERROR(
+                ColocateNodeToGroup(&colocation_group_root, node, spec));
+          }
         }
+      } else if (!attr_value->s().empty()) {
+        LOG(ERROR) << "The value for colocation attribute '_class' must be a "
+                      "list of strings, not a single string: "
+                   << node->DebugString();
       }
     }
 
-    // TODO(iga): Even when the node has a spec, we need to colocate the
-    // node to its "name group" because other nodes can still use
-    // "loc:@<this_node_name>" in their colocation specs.
-    if (!found_spec) {
-      // If the node does not specify a colocation group, then use the
-      // name of this node as the colocation group.
-      TF_RETURN_IF_ERROR(
-          ColocateNodeToGroup(&colocation_group_root, node, node->name()));
-    }
+    // Each node belongs to a colocation group with the node's name.
+    TF_RETURN_IF_ERROR(
+        ColocateNodeToGroup(&colocation_group_root, node, node->name()));
   }
 
   return Status::OK();
@@ -1297,8 +1280,7 @@ Status ColocationGraph::InitializeMemberWithAssignedDevice(
         "available on this machine: [",
         absl::StrJoin(DevicesToString(device_set_.devices()), ", "), "].",
         "If you are seeing this error when running using a tf.Session, set "
-        "experimental.share_cluster_devices_in_session to true in the "
-        "tf.ConfigProto.");
+        "share_cluster_devices_in_session to true in the tf.ConfigProto.");
   }
 
   for (const auto& d : member->supported_device_types()) {
@@ -1335,7 +1317,7 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
       return errors::InvalidArgument(
           "No OpKernel was registered to support Op '", node.type_string(),
           "' used by ", errors::FormatNodeNameForError(node.name()),
-          "with these attrs: [", node.attrs().DebugString(),
+          " with these attrs: [", node.attrs().DebugString(),
           "]\n"
           "Registered devices: [",
           absl::StrJoin(registered_device_types, ", "), "]\n",
@@ -1369,7 +1351,7 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
     const PrioritizedDeviceTypeVector& supported_device_types,
     const Device* default_local_device) {
   Device* filtered_default_device = nullptr;
-  std::vector<std::pair<Device*, int32>> prioritized_filtered_devices;
+  PrioritizedDeviceVector prioritized_filtered_devices;
   for (const auto& supported_device_type : supported_device_types) {
     for (Device* device : devices) {
       if (DeviceType(device->attributes().device_type()) ==
@@ -1388,26 +1370,7 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
       }
     }
   }
-
-  auto device_sort = [](const std::pair<Device*, int32>& a,
-                        const std::pair<Device*, int32>& b) {
-    if (a.second != b.second) {
-      return a.second > b.second;
-    }
-
-    auto a_priority =
-        DeviceSet::DeviceTypeOrder(DeviceType(a.first->device_type()));
-    auto b_priority =
-        DeviceSet::DeviceTypeOrder(DeviceType(b.first->device_type()));
-    // First sort by prioritized device type (higher is preferred) and
-    // then by device name (lexicographically).
-    if (a_priority != b_priority) {
-      return a_priority > b_priority;
-    }
-    return StringPiece(a.first->name()) < StringPiece(b.first->name());
-  };
-  std::sort(prioritized_filtered_devices.begin(),
-            prioritized_filtered_devices.end(), device_sort);
+  DeviceSet::SortPrioritizedDeviceVector(&prioritized_filtered_devices);
 
   std::vector<Device*> filtered_devices;
   if (filtered_default_device != nullptr) {

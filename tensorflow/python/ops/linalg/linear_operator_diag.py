@@ -158,12 +158,14 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
 
       super(LinearOperatorDiag, self).__init__(
           dtype=self._diag.dtype,
-          graph_parents=[self._diag],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      # TODO(b/143910018) Remove graph_parents in V3.
+      self._set_graph_parents([self._diag])
 
   def _check_diag(self, diag):
     """Static check of diag."""
@@ -180,6 +182,10 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     d_shape = array_ops.shape(self._diag)
     k = d_shape[-1]
     return array_ops.concat((d_shape, [k]), 0)
+
+  @property
+  def diag(self):
+    return self._diag
 
   def _assert_non_singular(self):
     return linear_operator_util.assert_no_entries_with_modulus_zero(
@@ -247,6 +253,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   def _eigvals(self):
     return ops.convert_to_tensor(self.diag)
 
-  @property
-  def diag(self):
-    return self._diag
+  def _cond(self):
+    abs_diag = math_ops.abs(self.diag)
+    return (math_ops.reduce_max(abs_diag, axis=-1) /
+            math_ops.reduce_min(abs_diag, axis=-1))

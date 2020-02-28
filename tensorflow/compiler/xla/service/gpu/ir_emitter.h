@@ -172,13 +172,12 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Mapping from HLO to its underlying LLVM value.
   HloToIrBindings bindings_;
 
-
   // Hlo configuration data used during code generation.
   const HloModuleConfig& hlo_module_config_;
 
  protected:
   GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
-      HloInstruction* fusion) {
+      const HloInstruction* fusion) {
     return [=]() {
       std::vector<llvm_ir::IrArray> ir_arrays;
       ir_arrays.reserve(fusion->operand_count());

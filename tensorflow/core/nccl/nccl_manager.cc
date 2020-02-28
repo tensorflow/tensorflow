@@ -18,11 +18,14 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "absl/base/call_once.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #if GOOGLE_CUDA
-#include "tensorflow/core/platform/cuda.h"
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -43,20 +46,21 @@ using se::rocm::ScopedActivateExecutorContext;
 int NcclManager::instance_count = 0;
 #endif
 
-#define NCCL_RETURN_IF_ERROR(...)                               \
-  do {                                                          \
-    ncclResult_t nccl_status = (__VA_ARGS__);                   \
-    if (nccl_status != ncclSuccess) {                           \
-      return errors::Internal(ncclGetErrorString(nccl_status)); \
-    }                                                           \
+#define NCCL_RETURN_IF_ERROR(...)                                        \
+  do {                                                                   \
+    ncclResult_t nccl_status = (__VA_ARGS__);                            \
+    if (nccl_status != ncclSuccess) {                                    \
+      return errors::Internal("NCCL: ", ncclGetErrorString(nccl_status), \
+                              ". Set NCCL_DEBUG=WARN for detail.");      \
+    }                                                                    \
   } while (0)
 
-#define CUDA_RETURN_IF_ERROR(...)                               \
-  do {                                                          \
-    cudaError_t cuda_status = (__VA_ARGS__);                    \
-    if (cuda_status != cudaSuccess) {                           \
-      return errors::Internal(cudaGetErrorString(cuda_status)); \
-    }                                                           \
+#define CUDA_RETURN_IF_ERROR(...)                                         \
+  do {                                                                    \
+    cudaError_t cuda_status = (__VA_ARGS__);                              \
+    if (cuda_status != cudaSuccess) {                                     \
+      return errors::Internal("CUDA: ", cudaGetErrorString(cuda_status)); \
+    }                                                                     \
   } while (0)
 
 // Contains data for a single stream used for nccl communication; this includes
@@ -113,6 +117,10 @@ struct NcclManager::Communicator {
 
 namespace {
 
+static constexpr DataTypeSet kValidDataTypes =
+    ToSet(DT_HALF) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) |
+    ToSet(DT_INT64);
+
 ncclDataType_t ToNcclType(DataType t) {
   switch (t) {
     case DT_HALF:
@@ -167,8 +175,8 @@ struct NcclManager::Collective : public core::RefCounted {
     // For example, the nccl_manager_test will use both paradigms in the same
     // executable, but not running concurrently (which would hang otherwise).
     if (NcclManager::instance_count > 1) {
-        status = errors::Internal(
-            "ROCm cannot use multi-node NCCL collectives on a single node");
+      status = errors::Internal(
+          "ROCm cannot use multi-node NCCL collectives on a single node");
     }
 #endif
   }
@@ -210,15 +218,15 @@ struct NcclManager::Collective : public core::RefCounted {
 };
 
 NcclManager::NcclManager() {
-    VLOG(2) << "New NcclManager " << this;
+  VLOG(2) << "New NcclManager " << this;
 #if TENSORFLOW_USE_ROCM
-    ++instance_count;
+  ++instance_count;
 #endif
 }
 NcclManager::~NcclManager() {
   VLOG(2) << "~NcclManager " << this;
 #if TENSORFLOW_USE_ROCM
-    --instance_count;
+  --instance_count;
 #endif
   for (auto& it : device_to_comm_streams_) {
     for (NcclStream* nccl_stream : it.second) {
@@ -236,8 +244,8 @@ NcclManager* NcclManager::instance() {
 #if TENSORFLOW_USE_ROCM
   // singleton does not count against total instances
   // see comment above in Collective constructor concerning ROCm platform
-  static std::once_flag once;
-  std::call_once(once, [] { --NcclManager::instance_count; });
+  static absl::once_flag once;
+  absl::call_once(once, [] { --NcclManager::instance_count; });
 #endif
   return instance;
 }
@@ -546,6 +554,13 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
           collective->root_rank, " but new participant has root_rank ",
           context.source_rank);
     }
+    if (collective->status.ok() &&
+        !kValidDataTypes.Contains(collective->data_type)) {
+      collective->status = errors::Internal(
+          "Collective ", collective->collective_key,
+          " expected data types compatible with NCCL but instead got ",
+          DataTypeString(collective->data_type));
+    }
 
     if (context.source_rank >= 0) {
       collective->root_rank = context.source_rank;
@@ -701,6 +716,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         if (p->output) {
           recvbuff = const_cast<char*>(p->output->tensor_data().data());
           num_elements = p->output->NumElements();
+        } else {
+          // Operate in-place if no output (for the src node).
+          recvbuff = const_cast<void*>(sendbuff);
         }
         if (num_elements < 0) {
           p->done_callback(errors::Internal(

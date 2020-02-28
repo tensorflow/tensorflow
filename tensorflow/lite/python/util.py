@@ -26,6 +26,7 @@ import six
 from six.moves import range
 
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
+from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
@@ -225,7 +226,6 @@ def _convert_op_hints_if_present(sess, graph_def, output_tensors,
   graph_def = tf_graph_util.convert_variables_to_constants(
       sess, graph_def, output_arrays + hinted_outputs_nodes)
   graph_def = convert_op_hints_to_stubs(graph_def=graph_def)
-  graph_def = tf_graph_util.remove_training_nodes(graph_def)
   return graph_def
 
 
@@ -327,6 +327,35 @@ def build_debug_info_func(original_graph):
   return f
 
 
+def convert_debug_info_func(saved_debug_info):
+  """Returns a method to retrieve the `GraphDebugInfo` from the original graph.
+
+  Args:
+    saved_debug_info: The `GraphDebugInfo` containing all the debug info.
+
+  Returns:
+    A function which retrieves the stack traces from the original graph and
+    converts them to a `GraphDebugInfo` for a given set of nodes.
+  """
+
+  def f(original_nodes):
+    """Function to create `GraphDebugInfo` for the given `original_nodes`."""
+    if not saved_debug_info:
+      return None
+
+    output_debug_info = graph_debug_info_pb2.GraphDebugInfo()
+    # All the files are copied over, so the index wouldn't be changed.
+    output_debug_info.files[:] = saved_debug_info.files
+    # We only copy over the debug info for the input nodes
+    for func, node in original_nodes:
+      debug_key = node + "@" + func
+      output_debug_info.traces[debug_key].CopyFrom(
+          saved_debug_info.traces[debug_key])
+    return output_debug_info
+
+  return f
+
+
 def get_debug_info(nodes_to_debug_info_func, converted_graph):
   """Returns the debug info for the original nodes in the `converted_graph`.
 
@@ -351,7 +380,8 @@ def get_debug_info(nodes_to_debug_info_func, converted_graph):
       original_nodes.add(("", node.name))
     else:
       for i in range(len(debug_nodes)):
-        original_nodes.add((debug_funcs[i], debug_nodes[i]))
+        debug_func = "" if i >= len(debug_funcs) else debug_funcs[i]
+        original_nodes.add((debug_func, debug_nodes[i]))
 
   # Convert the nodes to the debug info proto object.
   return nodes_to_debug_info_func(original_nodes)

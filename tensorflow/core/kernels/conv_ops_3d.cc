@@ -443,6 +443,12 @@ struct LaunchConvOp<GPUDevice, T> {
     using se::dnn::AlgorithmDesc;
     using se::dnn::ProfileResult;
 
+#if TENSORFLOW_USE_ROCM
+    // cudnn_use_autotune is applicable only the CUDA flow
+    // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
+    // if we do not have a cached algorithm_config for this conv_parameters
+    cudnn_use_autotune = true;
+#endif
     AlgorithmConfig algorithm_config;
 
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
@@ -505,37 +511,56 @@ struct LaunchConvOp<GPUDevice, T> {
         }
       }
 #elif TENSORFLOW_USE_ROCM
-      std::vector<AlgorithmDesc> algorithms;
+      DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+
+      std::vector<ProfileResult> algorithms;
       OP_REQUIRES(ctx,
                   stream->parent()->GetMIOpenConvolveAlgorithms(
-                      se::dnn::ConvolutionKind::FORWARD, stream,
-                      se::dnn::ToDataType<T>::value, input_desc, filter_desc,
-                      conv_desc, output_desc, &algorithms),
+                      se::dnn::ConvolutionKind::FORWARD,
+                      se::dnn::ToDataType<T>::value, stream, input_desc,
+                      input_ptr, filter_desc, filter_ptr, output_desc,
+                      output_ptr, conv_desc, &scratch_allocator, &algorithms),
                   errors::Unknown(
                       "Failed to get convolution algorithm. This is probably "
                       "because MIOpen failed to initialize, so try looking to "
                       "see if a warning log message was printed above."));
       std::vector<tensorflow::AutotuneResult> results;
-      for (auto profile_algorithm : algorithms) {
-        DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-        ProfileResult profile_result;
-        bool miopen_launch_status =
-            stream
-                ->ThenConvolveWithAlgorithm(
-                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
-                .ok();
-        if (miopen_launch_status) {
-          if (profile_result.is_valid()) {
-            results.emplace_back();
-            auto& result = results.back();
-            result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
-            result.mutable_conv()->set_tensor_ops_enabled(
-                profile_algorithm.tensor_ops_enabled());
-            result.set_scratch_bytes(scratch_allocator.TotalByteSize());
-            *result.mutable_run_time() = proto_utils::ToDurationProto(
-                absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+      if (algorithms.size() == 1) {
+        auto profile_result = algorithms[0];
+        results.emplace_back();
+        auto& result = results.back();
+        result.mutable_conv()->set_algorithm(
+            profile_result.algorithm().algo_id());
+        result.mutable_conv()->set_tensor_ops_enabled(
+            profile_result.algorithm().tensor_ops_enabled());
+
+        result.set_scratch_bytes(profile_result.scratch_size());
+        *result.mutable_run_time() = proto_utils::ToDurationProto(
+            absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+      } else {
+        for (auto miopen_algorithm : algorithms) {
+          auto profile_algorithm = miopen_algorithm.algorithm();
+          ProfileResult profile_result;
+          bool miopen_launch_status =
+              stream
+                  ->ThenConvolveWithAlgorithm(
+                      input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+                      output_desc, &output_ptr, &scratch_allocator,
+                      AlgorithmConfig(profile_algorithm,
+                                      miopen_algorithm.scratch_size()),
+                      &profile_result)
+                  .ok();
+          if (miopen_launch_status) {
+            if (profile_result.is_valid()) {
+              results.emplace_back();
+              auto& result = results.back();
+              result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+              result.mutable_conv()->set_tensor_ops_enabled(
+                  profile_algorithm.tensor_ops_enabled());
+              result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+              *result.mutable_run_time() = proto_utils::ToDurationProto(
+                  absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+            }
           }
         }
       }

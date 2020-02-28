@@ -74,7 +74,8 @@ class Adadelta(optimizer_v2.OptimizerV2):
     learning rate can be set, as in most other Keras optimizers.
 
     Args:
-      learning_rate: A `Tensor` or a floating point value. The learning rate.
+      learning_rate: A `Tensor`, floating point value, or a schedule that is a
+        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
         To match the exact form in the original paper use 1.0.
       rho: A `Tensor` or a floating point value. The decay rate.
       epsilon: A `Tensor` or a floating point value.  A constant epsilon used
@@ -109,10 +110,10 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
   def _prepare_local(self, var_device, var_dtype, apply_state):
     super(Adadelta, self)._prepare_local(var_device, var_dtype, apply_state)
-    apply_state[(var_device, var_dtype)].update(dict(
-        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
-        rho=array_ops.identity(self._get_hyper('rho', var_dtype))
-    ))
+    apply_state[(var_device, var_dtype)].update(
+        dict(
+            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            rho=array_ops.identity(self._get_hyper('rho', var_dtype))))
 
   def set_weights(self, weights):
     params = self.weights

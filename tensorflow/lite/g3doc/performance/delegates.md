@@ -14,15 +14,24 @@ Running inference on compute-heavy machine learning models on mobile devices is 
 
 Instead of relying on the CPU, some devices have hardware accelerators, such as GPU or DSP, that allows for better performance and higher energy efficiency.
 
-## Using the GPU delegate
+## Using the GPU / NNAPI delegate
 
-TensorFlow Lite provides a GPU delegate that can be used to accelerate models on
-devices that have a GPU available.
+TensorFlow Lite provides the following delegates for hardware acceleration:
 
-For an overview of the GPU delegate, see
-[TensorFlow Lite on GPU](https://www.tensorflow.org/lite/performance/gpu_advanced).
-For step-by-step tutorials on using the GPU delegate with Android and iOS, see
-[TensorFlow Lite GPU Delegate Tutorial](https://www.tensorflow.org/lite/performance/gpu).
+*   **GPU delegate for cross platform acceleration** - The GPU delegate can be
+    used on both Android and iOS. It is optimized to run 32-bit and 16-bit float
+    based models where a GPU is available. For an overview of the GPU delegate,
+    see
+    [TensorFlow Lite on GPU](gpu_advanced.md).
+    For step-by-step tutorials on using the GPU delegate with Android and iOS,
+    see
+    [TensorFlow Lite GPU Delegate Tutorial](gpu.md).
+*   **NNAPI delegate for newer Android devices** - The NNAPI delegate can be
+    used to accelerate models on Android devices with GPU, DSP and / or NPU
+    available. It is available in Android 8.1 (API 27+) or higher. For an
+    overview of the NNAPI delegate, step-by-step instructions and best
+    practices, see
+    [TensorFlow Lite NNAPI delegate](nnapi.md).
 
 ## How do delegates work?
 
@@ -50,7 +59,7 @@ Based on the previous section, to add a delegate, we need to do the following:
 
 
 1.  Define a kernel node that is responsible for evaluating the delegate subgraph
-1.  Create an instance of [TfLiteDelegate](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/c_api_internal.h#L545), which is responsible for registering the kernel node and claiming the nodes that the delegate can execute
+1.  Create an instance of [TfLiteDelegate](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h#L611), which is responsible for registering the kernel node and claiming the nodes that the delegate can execute
 
 To see it in code, let's define a delegate and call it "MyDelegate," which can execute Conv2D and Mean operations faster.
 

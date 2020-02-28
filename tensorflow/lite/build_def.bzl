@@ -13,12 +13,8 @@ def tflite_copts():
     copts = [
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
-        clean_dep("//tensorflow:android_arm64"): [
-            "-O3",
-        ],
         clean_dep("//tensorflow:android_arm"): [
             "-mfpu=neon",
-            "-O3",
         ],
         clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
@@ -29,6 +25,20 @@ def tflite_copts():
         ],
         "//conditions:default": [
             "-Wno-sign-compare",
+        ],
+    }) + select({
+        clean_dep("//tensorflow:optimized"): ["-O3"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:android"): [
+            "-ffunction-sections",  # Helps trim binary size.
+            "-fdata-sections",  # Helps trim binary size.
+        ],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "-fno-exceptions",  # Exceptions are unused in TFLite.
         ],
     })
 
@@ -142,7 +152,9 @@ def tflite_cc_shared_object(
         linkopts = [],
         linkstatic = 1,
         deps = [],
-        visibility = None):
+        visibility = None,
+        per_os_targets = False,
+        tags = None):
     """Builds a shared object for TFLite."""
     tf_cc_shared_object(
         name = name,
@@ -152,6 +164,8 @@ def tflite_cc_shared_object(
         framework_so = [],
         deps = deps,
         visibility = visibility,
+        tags = tags,
+        per_os_targets = per_os_targets,
     )
 
 def tf_to_tflite(name, src, options, out):
@@ -645,7 +659,7 @@ def flex_dep(target_op_sets):
     else:
         return []
 
-def gen_model_coverage_test(src, model_name, data, failure_type, tags):
+def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "medium"):
     """Generates Python test targets for testing TFLite models.
 
     Args:
@@ -668,15 +682,16 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
             name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
             srcs = [src],
             main = src,
-            size = "large",
+            size = size,
             args = [
                 "--model_name=%s" % model_name,
                 "--target_ops=%s" % target_op_sets,
             ] + args,
             data = data,
             srcs_version = "PY2AND3",
-            python_version = "PY2",
+            python_version = "PY3",
             tags = [
+                "no_gpu",  # Executing with TF GPU configurations is redundant.
                 "no_oss",
                 "no_windows",
             ] + tags,
@@ -686,3 +701,23 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
                 "//tensorflow/python:client_testlib",
             ] + flex_dep(target_op_sets),
         )
+
+def if_tflite_experimental_runtime(if_eager, if_non_eager, if_none = []):
+    return select({
+        "//tensorflow/lite:tflite_experimental_runtime_eager": if_eager,
+        "//tensorflow/lite:tflite_experimental_runtime_non_eager": if_non_eager,
+        "//conditions:default": if_none,
+    })
+
+def tflite_experimental_runtime_linkopts(if_eager = [], if_non_eager = [], if_none = []):
+    return if_tflite_experimental_runtime(
+        if_eager = [
+            # "//tensorflow/lite/experimental/tf_runtime:eager_interpreter",
+            # "//tensorflow/lite/experimental/tf_runtime:eager_model",
+        ] + if_eager,
+        if_non_eager = [
+            # "//tensorflow/lite/experimental/tf_runtime:interpreter",
+            # "//tensorflow/lite/experimental/tf_runtime:model",
+        ] + if_non_eager,
+        if_none = [] + if_none,
+    )

@@ -23,12 +23,14 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
@@ -308,6 +310,40 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.interleave(
         interleave_fn, cycle_length=2, num_parallel_calls=2)
     self.assertDatasetProduces(dataset, list(range(5)))
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              local_determinism=[None, True, False],
+              global_determinism=[True, False])))
+  def testDeterminismConfiguration(self, local_determinism, global_determinism):
+    expect_determinism = local_determinism or (local_determinism is None and
+                                               global_determinism)
+    elements = list(range(1000))
+
+    def dataset_fn(delay_ms):
+
+      def interleave_fn(x):
+        ds = dataset_ops.Dataset.from_tensors(x)
+        if math_ops.equal(x, 0):
+          ds = ds.apply(testing.sleep(delay_ms * 1000))
+        else:
+          ds = ds.apply(testing.sleep(0))
+        return ds
+
+      dataset = dataset_ops.Dataset.from_tensor_slices(elements)
+      dataset = dataset.interleave(
+          interleave_fn,
+          cycle_length=10,
+          num_parallel_calls=10,
+          deterministic=local_determinism)
+      opts = dataset_ops.Options()
+      opts.experimental_deterministic = global_determinism
+      dataset = dataset.with_options(opts)
+      return dataset
+
+    self.checkDeterminism(dataset_fn, expect_determinism, elements)
 
 
 if __name__ == "__main__":

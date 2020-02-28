@@ -45,9 +45,7 @@ def _mel_to_hertz(mel_values, name=None):
   """
   with ops.name_scope(name, 'mel_to_hertz', [mel_values]):
     mel_values = ops.convert_to_tensor(mel_values)
-    return _MEL_BREAK_FREQUENCY_HERTZ * (
-        math_ops.exp(mel_values / _MEL_HIGH_FREQUENCY_Q) - 1.0
-    )
+    return _MEL_BREAK_FREQUENCY_HERTZ * math_ops.expm1(mel_values / _MEL_HIGH_FREQUENCY_Q)
 
 
 def _hertz_to_mel(frequencies_hertz, name=None):
@@ -63,8 +61,7 @@ def _hertz_to_mel(frequencies_hertz, name=None):
   """
   with ops.name_scope(name, 'hertz_to_mel', [frequencies_hertz]):
     frequencies_hertz = ops.convert_to_tensor(frequencies_hertz)
-    return _MEL_HIGH_FREQUENCY_Q * math_ops.log(
-        1.0 + (frequencies_hertz / _MEL_BREAK_FREQUENCY_HERTZ))
+    return _MEL_HIGH_FREQUENCY_Q * math_ops.log1p(frequencies_hertz / _MEL_BREAK_FREQUENCY_HERTZ)
 
 
 def _validate_arguments(num_mel_bins, sample_rate,
@@ -103,6 +100,15 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
   `num_spectrogram_bins` linearly sampled frequency information from
   `[0, sample_rate / 2]` into `num_mel_bins` frequency information from
   `[lower_edge_hertz, upper_edge_hertz]` on the [mel scale][mel].
+
+  This function follows the [Hidden Markov Model Toolkit
+  (HTK)](http://htk.eng.cam.ac.uk/) convention, defining the mel scale in
+  terms of a frequency in hertz according to the following formula:
+
+      $$\textrm{mel}(f) = 2595 * \textrm{log}_{10}(1 + \frac{f}{700})$$
+
+  In the returned matrix, all the triangles (filterbanks) have a peak value
+  of 1.0.
 
   For example, the returned matrix `A` can be used to right-multiply a
   spectrogram `S` of shape `[frames, num_spectrogram_bins]` of linear

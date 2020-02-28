@@ -80,7 +80,7 @@ bool CanTriviallyChangeShape(const HloInstruction* instruction) {
     return true;
   }
 
-  // A broadcase of scalar can trivially change its shape.
+  // A broadcast of scalar can trivially change its shape.
   if (instruction->opcode() == HloOpcode::kBroadcast &&
       ShapeUtil::IsScalar(instruction->operand(0)->shape())) {
     return true;

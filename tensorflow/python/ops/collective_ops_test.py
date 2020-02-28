@@ -29,6 +29,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -243,28 +244,32 @@ class CollectiveOpTest(test.TestCase):
         merge_op='Min',
         final_op='Id')
 
-  def _testCollectiveBroadcast(self, t0):
+  def _testCollectiveBroadcast(self, in_val):
     group_key = 1
     instance_key = 1
     with self.session(
         config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
       with ops.device('/CPU:0'):
-        in0 = constant_op.constant(t0)
+        in0 = constant_op.constant(in_val)
         out0 = collective_ops.broadcast_send(in0, in0.shape, in0.dtype,
                                              2, group_key, instance_key)
       with ops.device('/CPU:1'):
-        c1 = constant_op.constant(t0)
+        c1 = constant_op.constant(in_val)
         out1 = collective_ops.broadcast_recv(c1.shape, c1.dtype,
                                              2, group_key, instance_key)
       run_options = config_pb2.RunOptions()
       run_options.experimental.collective_graph_key = 1
       results = sess.run([out0, out1], options=run_options)
-    self.assertAllClose(results[0], t0, rtol=1e-5, atol=1e-5)
-    self.assertAllClose(results[1], t0, rtol=1e-5, atol=1e-5)
+    self.assertAllClose(results[0], in_val, rtol=1e-5, atol=1e-5)
+    self.assertAllClose(results[1], in_val, rtol=1e-5, atol=1e-5)
 
   @test_util.run_deprecated_v1
   def testCollectiveBroadcast(self):
     self._testCollectiveBroadcast([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1])
+
+  @test_util.run_deprecated_v1
+  def testCollectiveBroadcastBool(self):
+    self._testCollectiveBroadcast([True, False])
 
   def _testCollectiveGather(self, t0, t1, expected, set_graph_key):
     group_key = 1
@@ -346,13 +351,40 @@ class CollectiveOpTest(test.TestCase):
                                    'Shape mismatch'):
         sess.run([c0, c1], options=run_options)
 
+  @test_util.run_deprecated_v1
+  def testCollectiveGatherPolymorphicShape(self):
+    t0 = [0, 1, 2, 3, 4, 5, 6, 7]
+    t1 = [10, 11, 12, 13, 14, 15, 16, 17]
+    group_size = 2
+    group_key = 1
+    instance_key = 123
+    with self.session(
+        config=config_pb2.ConfigProto(
+            device_count={'CPU': group_size})) as sess:
+      with ops.device('/CPU:0'):
+        in0 = array_ops.placeholder(dtype=dtypes.int32, shape=[None])
+        c0 = collective_ops.all_gather(in0, group_size, group_key, instance_key)
+      with ops.device('/CPU:1'):
+        in1 = array_ops.placeholder(dtype=dtypes.int32, shape=[None])
+        c1 = collective_ops.all_gather(in1, group_size, group_key, instance_key)
+
+      results = sess.run([c0, c1], feed_dict={in0: t0, in1: t1})
+      expected_output = [0, 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17]
+      self.assertAllClose(results[0], expected_output, rtol=1e-5, atol=1e-5)
+      self.assertAllClose(results[1], expected_output, rtol=1e-5, atol=1e-5)
+
+      results_ = sess.run([c0, c1], feed_dict={in0: t0[1:], in1: t1[1:]})
+      expected_output_ = [1, 2, 3, 4, 5, 6, 7, 11, 12, 13, 14, 15, 16, 17]
+      self.assertAllClose(results_[0], expected_output_, rtol=1e-5, atol=1e-5)
+      self.assertAllClose(results_[1], expected_output_, rtol=1e-5, atol=1e-5)
+
   @test_util.run_v2_only
   def testCollectiveGroupSizeMismatch(self):
     cpus = config.list_physical_devices('CPU')
     self.assertEqual(len(cpus), 1)
-    config.set_virtual_device_configuration(cpus[0], [
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration()
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
     ])
     context.ensure_initialized()
 

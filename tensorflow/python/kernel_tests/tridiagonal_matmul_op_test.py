@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+
 import numpy as np
 
 from tensorflow.python.client import session
@@ -165,18 +166,12 @@ class TridiagonalMulOpTest(test.TestCase):
                        dtype=dtypes.float64)
 
   def testGradientComplexSmall(self):
-    if test.is_built_with_rocm():
-      self.skipTest("ROCm does not support BLAS operations for complex types")
-
     self._gradientTest(
         np.array([[[1 + 1j, 2j, 0], [1 + 2j, 2j, 3 + 0j], [0, 1j, 2 + 0j]]]),
         np.array([[[1j, 2 + 0j], [3 + 1j, 4j], [5j, 6 + 3j]]]),
         dtype=dtypes.complex128)
 
   def testGradientComplexWithBatches(self):
-    if test.is_built_with_rocm():
-      self.skipTest("ROCm does not support BLAS operations for complex types")
-
     b = 5
     m = 10
     n = 15

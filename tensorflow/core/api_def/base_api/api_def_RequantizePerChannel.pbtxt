@@ -30,7 +30,7 @@ END
     description: <<END
 The maximum value of the output tensor requested.
 END
-  }  
+  }
   out_arg {
     name: "output"
     description: <<END
@@ -52,7 +52,7 @@ END
   attr {
     name: "T"
     description: <<END
-The quantized type of input tensor that needs to be converted. 
+The quantized type of input tensor that needs to be converted.
 END
   }
   attr {

@@ -3023,6 +3023,9 @@ bool ConstantFolding::ConstantPushDownBiasAdd(GraphProperties* properties,
     input_to_swap = vector_idx;
   }
   if (input_to_swap == -1) return false;
+  const NodeDef* leaf_to_swap =
+      node_map_->GetNode(ctx.op_child->input(input_to_swap));
+  if (IsConstant(*leaf_to_swap)) return false;
 
   node_map_->UpdateInput(node->name(), node->input(const_idx),
                          ctx.op_child->input(input_to_swap));
@@ -3554,6 +3557,7 @@ bool ConstantFolding::MergeConcat(bool use_shape_info,
     const NodeDef* input_node = node_map_->GetNode(node->input(i));
     if (!IsReallyConstant(*input_node)) {
       all_inputs_are_const = false;
+      break;
     }
   }
   if (all_inputs_are_const) return false;
@@ -3564,9 +3568,32 @@ bool ConstantFolding::MergeConcat(bool use_shape_info,
     return false;
   }
 
+  // Make a pass over the parent inputs to see if any of them have explicit
+  // device() fields set, and if different inputs are on different tasks.  If
+  // so, this concat of concats may have been carefully constructed to be a
+  // two-stage concat, and we don't want to undo that here.
+  string task, device;
+  absl::flat_hash_set<string> unique_input_tasks;
+  const int n_parent_inputs = NumNonControlInputs(*parent);
+  // Iterate over the real inputs to concatenate [0..n_parent_inputs - 1).  The
+  // input at n_parent_inputs - 1 is the concat axis argument for a ConcatV2
+  // node, which we don't want to consider here.
+  for (int i = 0; i < n_parent_inputs - 1; ++i) {
+    const NodeDef* input_node = node_map_->GetNode(parent->input(i));
+    if (!input_node->device().empty() &&
+        tensorflow::DeviceNameUtils::SplitDeviceName(input_node->device(),
+                                                     &task, &device)) {
+      unique_input_tasks.insert(task);
+      if (unique_input_tasks.size() >= 2) {
+        // More than one input task represented in the device specifications
+        // of the parent's input nodes.  Don't mess with this.
+        return false;
+      }
+    }
+  }
+
   protobuf::RepeatedPtrField<string> parent_inputs;
   parent_inputs.Swap(parent->mutable_input());
-  std::vector<string> ctrl_output;
   // TODO(rmlarsen): IF the child occurs more than once, is it beneficial to
   // collapse it into the parent multiple times? Probably not.
   for (const auto& input : parent_inputs) {

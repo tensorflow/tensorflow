@@ -206,31 +206,20 @@ void MapDefunOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     // We use a different cancellation manager each time the function is run
     // to avoid the race condition between a function run error and other
     // functions being cancelled as a result.
-    CancellationManager* c_mgr = new CancellationManager();
-    CancellationToken token = parent_mgr->get_cancellation_token();
-    const bool success = parent_mgr->RegisterCallback(
-        token, [c_mgr]() { c_mgr->StartCancel(); });
-
+    CancellationManager* c_mgr = new CancellationManager(parent_mgr);
     opts.cancellation_manager = c_mgr;
-    if (!success) {
-      delete c_mgr;
-      refcounted->UpdateStatus(errors::Cancelled(
-          "MapDefunOp functions cancelled because parent graph cancelled"));
-      break;
-    }
 
     auto* call_frame = new MapFunctionCallFrame(compute_opts, this, i);
 
     refcounted->Ref();
-    ctx->function_library()->Run(opts, func_handle_, call_frame,
-                                 [call_frame, refcounted, c_mgr, parent_mgr,
-                                  token](const Status& func_status) {
-                                   parent_mgr->DeregisterCallback(token);
-                                   delete c_mgr;
-                                   delete call_frame;
-                                   refcounted->UpdateStatus(func_status);
-                                   refcounted->Unref();
-                                 });
+    ctx->function_library()->Run(
+        opts, func_handle_, call_frame,
+        [call_frame, refcounted, c_mgr](const Status& func_status) {
+          delete c_mgr;
+          delete call_frame;
+          refcounted->UpdateStatus(func_status);
+          refcounted->Unref();
+        });
   }
 
   // Unref 1 because refcounted is initialized with refcount = 1

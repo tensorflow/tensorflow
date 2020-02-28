@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+
 import six
 
 from tensorflow.python.framework import errors
@@ -335,14 +336,16 @@ def _get_grouped_variables(vars_to_warm_start):
     ValueError: If vars_to_warm_start is not a string, `None`, a list of
       `Variables`, or a list of strings.
   """
-  if isinstance(vars_to_warm_start, str) or vars_to_warm_start is None:
+  # TODO(b/143899805): Remove unicode checks when deprecating Python2.
+  if isinstance(vars_to_warm_start,
+                six.string_types) or vars_to_warm_start is None:
     # Both vars_to_warm_start = '.*' and vars_to_warm_start = None will match
     # everything (in TRAINABLE_VARIABLES) here.
     logging.info("Warm-starting variables only in TRAINABLE_VARIABLES.")
     list_of_vars = ops.get_collection(
         ops.GraphKeys.TRAINABLE_VARIABLES, scope=vars_to_warm_start)
   elif isinstance(vars_to_warm_start, list):
-    if all(isinstance(v, str) for v in vars_to_warm_start):
+    if all(isinstance(v, six.string_types) for v in vars_to_warm_start):
       list_of_vars = []
       for v in vars_to_warm_start:
         list_of_vars += ops.get_collection(

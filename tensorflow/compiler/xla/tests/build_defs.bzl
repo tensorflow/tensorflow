@@ -5,8 +5,8 @@ load("@local_config_rocm//rocm:build_defs.bzl", "rocm_is_configured")
 load("//tensorflow/compiler/xla/tests:plugin.bzl", "plugins")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
-    "tf_cuda_tests_tags","tf_gpu_tests_tags",
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
 )
 
 all_backends = ["cpu", "gpu"] + plugins.keys()
@@ -24,8 +24,6 @@ def filter_backends(backends):
       The filtered list of backends.
     """
     if cuda_is_configured() or rocm_is_configured():
-        return backends
-    elif rocm_is_configured():
         return backends
     else:
         return [backend for backend in backends if backend != "gpu"]
@@ -175,7 +173,7 @@ def xla_test(
 
         test_names.append(test_name)
 
-    native.test_suite(name = name, tests = test_names)
+    native.test_suite(name = name, tags = tags, tests = test_names)
 
 def xla_test_library(
         name,

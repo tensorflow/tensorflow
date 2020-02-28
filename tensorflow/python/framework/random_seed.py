@@ -20,6 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import weakref
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.util import deprecation
@@ -28,6 +30,8 @@ from tensorflow.python.util.tf_export import tf_export
 
 DEFAULT_GRAPH_SEED = 87654321
 _MAXINT32 = 2**31 - 1
+
+_graph_to_seed_dict = weakref.WeakKeyDictionary()
 
 
 def _truncate_seed(seed):
@@ -69,7 +73,8 @@ def get_seed(op_seed):
       if eager:
         op_seed = context.internal_operation_seed()
       else:
-        op_seed = ops.get_default_graph()._last_id
+        op_seed = _graph_to_seed_dict.setdefault(ops.get_default_graph(), 0)
+        _graph_to_seed_dict[ops.get_default_graph()] += 1
 
     seeds = _truncate_seed(global_seed), _truncate_seed(op_seed)
   else:
@@ -96,9 +101,12 @@ def set_random_seed(seed):
     1. If neither the graph-level nor the operation seed is set:
       A random seed is used for this op.
     2. If the graph-level seed is set, but the operation seed is not:
-      The system deterministically (determined by the current graph size) picks
-      an operation seed in conjunction with the graph-level seed so that it gets
-      a unique random sequence.
+      The system deterministically picks an operation seed in conjunction with
+      the graph-level seed so that it gets a unique random sequence. Within the
+      same version of tensorflow and user code, this sequence is deterministic.
+      However across different versions, this sequence might change. If the
+      code depends on particular seeds to work, specify both graph-level
+      and operation-level seeds explicitly.
     3. If the graph-level seed is not set, but the operation seed is set:
       A default graph-level seed and the specified operation seed are used to
       determine the random sequence.
@@ -198,9 +206,13 @@ def set_seed(seed):
 
     1. If neither the global seed nor the operation seed is set: A randomly
       picked seed is used for this op.
-    2. If the operation seed is not set but the global seed is set: The system
-      picks an operation seed from a stream of seeds determined by the global
-      seed.
+    2. If the graph-level seed is set, but the operation seed is not:
+      The system deterministically picks an operation seed in conjunction with
+      the graph-level seed so that it gets a unique random sequence. Within the
+      same version of tensorflow and user code, this sequence is deterministic.
+      However across different versions, this sequence might change. If the
+      code depends on particular seeds to work, specify both graph-level
+      and operation-level seeds explicitly.
     3. If the operation seed is set, but the global seed is not set:
       A default global seed and the specified operation seed are used to
       determine the random sequence.
@@ -243,7 +255,30 @@ def set_seed(seed):
   ```
 
   The reason we get 'A2' instead 'A1' on the second call of `tf.random.uniform`
-  above is because the secand call uses a different operation seed.
+  above is because the second call uses a different operation seed.
+
+  Note that `tf.function` acts like a re-run of a program in this case. When
+  the global seed is set but operation seeds are not set, the sequence of random
+  numbers are the same for each `tf.function`. For example:
+
+  ```python
+  tf.random.set_seed(1234)
+
+  @tf.function
+  def f():
+    a = tf.random.uniform([1])
+    b = tf.random.uniform([1])
+    return a, b
+
+  @tf.function
+  def g():
+    a = tf.random.uniform([1])
+    b = tf.random.uniform([1])
+    return a, b
+
+  print(f())  # prints '(A1, A2)'
+  print(g())  # prints '(A1, A2)'
+  ```
 
   If the operation seed is set, we get different results for every call to the
   random op, but the same sequence for every re-run of the program:
@@ -261,7 +296,7 @@ def set_seed(seed):
   ```
 
   The reason we get 'A2' instead 'A1' on the second call of `tf.random.uniform`
-  above is because the same `tf.random.uniform` kernel (i.e. internel
+  above is because the same `tf.random.uniform` kernel (i.e. internal
   representation) is used by TensorFlow for all calls of it with the same
   arguments, and the kernel maintains an internal counter which is incremented
   every time it is executed, generating different results.
@@ -308,5 +343,4 @@ def set_seed(seed):
   Args:
     seed: integer.
   """
-  # TODO(go/tf2-random): change doc, update to match design doc
   set_random_seed(seed)

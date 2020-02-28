@@ -18,14 +18,15 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/op_name_mapper.h"
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 
 namespace tflite {
 
 // Translates the given MLIR `module` into a FlatBuffer and stores the
-// serialized flatbuffer into the string. This uses OpLocNameMapper to convert
-// location of the op to name in flatbuffer.
+// serialized flatbuffer into the string. This uses OpOrArgLocNameMapper to
+// convert location of the op to name in flatbuffer. Returns true if translation
+// fails, otherwise returns false.
 bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        std::string* serialized_flatbuffer,
                                        bool emit_builtin_tflite_ops,
@@ -36,7 +37,7 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
 bool MlirToFlatBufferTranslateFunction(
     mlir::ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    tensorflow::OpNameMapper* op_name_mapper);
+    tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_TRANSLATE_H_

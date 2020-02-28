@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string.h>
+
 #include <vector>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -48,7 +50,7 @@ struct SpaceToBatchNDContext {
 
 // Currently, only 4D NHWC input/output op_context are supported.
 // The 4D array need to have exactly 2 spatial dimensions.
-// TODO(nupurgarg): Support arbitrary dimension in SpaceToBatchND.
+// TODO(b/149952582): Support arbitrary dimension in SpaceToBatchND.
 const int kInputDimensionNum = 4;
 const int kBlockSizeDimensionNum = 1;
 const int kSpatialDimensionNum = 2;

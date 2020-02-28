@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import glob
 import math
 import os
 import random
@@ -34,9 +35,9 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -69,6 +70,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training import saver_test_utils
@@ -1107,6 +1109,136 @@ class SaveRestoreShardedTest(test.TestCase):
 
 class SaveRestoreShardedTestV2(SaveRestoreShardedTest):
   _WRITE_VERSION = saver_pb2.SaverDef.V2
+
+  def testIterators(self):
+    save_path = os.path.join(self.get_temp_dir(), "sharded_iterators")
+
+    # Build a graph with 2 parameter nodes on different devices and save.
+    with session.Session(
+        target="",
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+      with sess.graph.device("/cpu:0"):
+        ds0 = dataset_ops.Dataset.range(10)
+        it0 = dataset_ops.make_initializable_iterator(ds0)
+        get_next0 = it0.get_next()
+      saveable0 = iterator_ops._IteratorSaveable(
+          it0._iterator_resource, name="saveable_it0")
+
+      with sess.graph.device("/cpu:1"):
+        ds1 = dataset_ops.Dataset.range(20)
+        it1 = dataset_ops.make_initializable_iterator(ds1)
+        get_next1 = it1.get_next()
+      saveable1 = iterator_ops._IteratorSaveable(
+          it1._iterator_resource, name="saveable_it1")
+      saver = saver_module.Saver({
+          "it0": saveable0,
+          "it1": saveable1
+      },
+                                 write_version=self._WRITE_VERSION,
+                                 sharded=True)
+      self.evaluate(it0.initializer)
+      self.evaluate(it1.initializer)
+      self.assertEqual(0, self.evaluate(get_next0))
+      self.assertEqual(1, self.evaluate(get_next0))
+      self.assertEqual(0, self.evaluate(get_next1))
+      val = saver.save(sess, save_path)
+      self.assertEqual(save_path, val)
+      data_files = glob.glob(save_path + ".data*")
+      self.assertEqual(2, len(data_files))
+
+    # Restore
+    with session.Session(
+        target="",
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+      with sess.graph.device("/cpu:0"):
+        ds0 = dataset_ops.Dataset.range(10)
+        it0 = dataset_ops.make_initializable_iterator(ds0)
+        get_next0 = it0.get_next()
+      saveable0 = iterator_ops._IteratorSaveable(
+          it0._iterator_resource, name="saveable_it0")
+
+      with sess.graph.device("/cpu:1"):
+        ds1 = dataset_ops.Dataset.range(20)
+        it1 = dataset_ops.make_initializable_iterator(ds1)
+        get_next1 = it1.get_next()
+      saveable1 = iterator_ops._IteratorSaveable(
+          it1._iterator_resource, name="saveable_it1")
+      saver = saver_module.Saver({
+          "it0": saveable0,
+          "it1": saveable1
+      },
+                                 write_version=self._WRITE_VERSION,
+                                 sharded=True)
+      self.evaluate(it0.initializer)
+      self.evaluate(it1.initializer)
+      saver.restore(sess, save_path)
+      self.assertEqual(2, self.evaluate(get_next0))
+      self.assertEqual(1, self.evaluate(get_next1))
+
+  def testIteratorsUnshardedRestore(self):
+    save_path = os.path.join(self.get_temp_dir(), "restore_unsharded_iterators")
+
+    # Build a graph with 2 parameter nodes on different devices and save.
+    with session.Session(
+        target="",
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+      with sess.graph.device("/cpu:0"):
+        ds0 = dataset_ops.Dataset.range(10)
+        it0 = dataset_ops.make_initializable_iterator(ds0)
+        get_next0 = it0.get_next()
+      saveable0 = iterator_ops._IteratorSaveable(
+          it0._iterator_resource, name="saveable_it0")
+
+      with sess.graph.device("/cpu:1"):
+        ds1 = dataset_ops.Dataset.range(20)
+        it1 = dataset_ops.make_initializable_iterator(ds1)
+        get_next1 = it1.get_next()
+      saveable1 = iterator_ops._IteratorSaveable(
+          it1._iterator_resource, name="saveable_it1")
+      saver = saver_module.Saver({
+          "it0": saveable0,
+          "it1": saveable1
+      },
+                                 write_version=self._WRITE_VERSION,
+                                 sharded=True)
+      self.evaluate(it0.initializer)
+      self.evaluate(it1.initializer)
+      self.assertEqual(0, self.evaluate(get_next0))
+      self.assertEqual(1, self.evaluate(get_next0))
+      self.assertEqual(0, self.evaluate(get_next1))
+      val = saver.save(sess, save_path)
+      self.assertEqual(save_path, val)
+      data_files = glob.glob(save_path + ".data*")
+      self.assertEqual(2, len(data_files))
+
+    # Restore
+    with session.Session(
+        target="",
+        config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+      with sess.graph.device("/cpu:0"):
+        ds0 = dataset_ops.Dataset.range(10)
+        it0 = dataset_ops.make_initializable_iterator(ds0)
+        get_next0 = it0.get_next()
+      saveable0 = iterator_ops._IteratorSaveable(
+          it0._iterator_resource, name="saveable_it0")
+
+      with sess.graph.device("/cpu:1"):
+        ds1 = dataset_ops.Dataset.range(20)
+        it1 = dataset_ops.make_initializable_iterator(ds1)
+        get_next1 = it1.get_next()
+      saveable1 = iterator_ops._IteratorSaveable(
+          it1._iterator_resource, name="saveable_it1")
+      saver = saver_module.Saver({
+          "it0": saveable0,
+          "it1": saveable1
+      },
+                                 write_version=self._WRITE_VERSION,
+                                 sharded=False)
+      self.evaluate(it0.initializer)
+      self.evaluate(it1.initializer)
+      saver.restore(sess, save_path)
+      self.assertEqual(2, self.evaluate(get_next0))
+      self.assertEqual(1, self.evaluate(get_next1))
 
 
 class MaxToKeepTest(test.TestCase):
@@ -2468,7 +2600,7 @@ class CheckpointReaderTest(test.TestCase):
       save.save(sess, save_path)
 
       # Creates a reader.
-      reader = pywrap_tensorflow.NewCheckpointReader(save_path)
+      reader = py_checkpoint_reader.NewCheckpointReader(save_path)
       # Verifies that the tensors exist.
       self.assertTrue(reader.has_tensor("v0"))
       self.assertTrue(reader.has_tensor("v1"))
@@ -2493,7 +2625,7 @@ class CheckpointReaderTest(test.TestCase):
   def testNonexistentPath(self):
     with self.assertRaisesRegexp(errors.NotFoundError,
                                  "Unsuccessful TensorSliceReader"):
-      pywrap_tensorflow.NewCheckpointReader("non-existent")
+      py_checkpoint_reader.NewCheckpointReader("non-existent")
 
 
 class CheckpointReaderForV2Test(CheckpointReaderTest):
@@ -2733,7 +2865,7 @@ class ScopedGraphTest(test.TestCase):
       self.assertAllClose(expected, sess.run("hidden1/relu:0"))
       self.assertAllClose(expected, sess.run("hidden2/relu:0"))
 
-    # Verifies copy to differen graph.
+    # Verifies copy to different graph.
     graph2 = ops_lib.Graph()
     new_var_list_1 = meta_graph.copy_scoped_meta_graph(
         from_scope="hidden1",

@@ -1,0 +1,81 @@
+op {
+  graph_op_name: "GenerateBoundingBoxProposals"
+  visibility: HIDDEN
+  in_arg {
+    name: "scores"
+    description: <<END
+A 4-D float tensor of shape `[num_images, height, width, num_achors]` containing scores of the boxes for given anchors, can be unsorted.
+END
+  }
+  in_arg {
+    name: "bbox_deltas"
+    description: <<END
+A 4-D float tensor of shape `[num_images, height, width, 4 x num_anchors]`. encoding boxes with respec to each anchor.
+Coordinates are given in the form [dy, dx, dh, dw].
+END
+  }
+  in_arg {
+    name: "image_info"
+    description: <<END
+A 2-D float tensor of shape `[num_images, 5]` containing image information Height, Width, Scale.
+END
+  }
+  in_arg {
+    name: "anchors"
+    description: <<END
+A 2-D float tensor of shape `[num_anchors, 4]` describing the anchor boxes. Boxes are formatted in the form [y1, x1, y2, x2].
+END
+  }
+  in_arg {
+    name: "nms_threshold"
+    description: <<END
+A scalar float tensor for non-maximal-suppression threshold.
+END
+  }
+  in_arg {
+    name: "pre_nms_topn"
+    description: <<END
+A scalar int tensor for the number of top scoring boxes to be used as input.
+END
+  }
+  in_arg {
+    name: "min_size"
+    description: <<END
+A scalar float tensor. Any box that has a smaller size than min_size will be discarded.
+END
+  }
+  out_arg {
+    name: "rois"
+    description: <<END
+A 3-D float tensor of shape `[num_images,post_nms_topn,4]` representing the selected
+region of interest boxes. Sorted in descending order in scores.
+END
+  }
+  out_arg {
+    name: "roi_probabilities"
+    description: <<END
+A 2-D float tensor of shape `[num_images, post_nms_topn]` representing the score of the
+region of interest box in `rois` tensor at the same index.
+END
+  }
+  attr {
+    name: "post_nms_topn"
+    description: <<END
+An integer. Maximum number of rois in the output.
+END
+  }
+  summary: "This op produces Region of Interests from given bounding boxes(bbox_deltas) encoded wrt anchors according to eq.2 in arXiv:1506.01497"
+  description: <<END
+      The op selects top `pre_nms_topn` scoring boxes, decodes them with respect to anchors,
+      applies non-maximal suppression on overlapping boxes with higher than
+      `nms_threshold` intersection-over-union (iou) value, discarding boxes where shorter
+      side is less than `min_size`.
+      Inputs:
+      `scores`: A 4D tensor of shape [Batch, Height, Width, Num Anchors] containing the scores per anchor at given postion
+      `bbox_deltas`: is a tensor of shape [Batch, Height, Width, 4 x Num Anchors] boxes encoded to each anchor
+      `anchors`: A 1D tensor of shape [4 x Num Anchors], representing the anchors.
+      Outputs:
+      `rois`: output RoIs, a 3D tensor of shape [Batch, post_nms_topn, 4], padded by 0 if less than post_nms_topn candidates found.
+      `roi_probabilities`: probability scores of each roi in 'rois', a 2D tensor of shape [Batch,post_nms_topn], padded with 0 if needed, sorted by scores.
+END
+}

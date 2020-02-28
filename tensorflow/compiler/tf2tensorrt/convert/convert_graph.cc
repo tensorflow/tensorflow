@@ -161,7 +161,7 @@ Status GetEngineInfo(const Graph* g,
     const int node_id = node->id();
     const string& node_name = node->name();
 
-    // Create input connections. Sort edges first to make determnistic since
+    // Create input connections. Sort edges first to make deterministic since
     // in_edges is a set of pointers.
     std::vector<const Edge*> in_edges(node->in_edges().begin(),
                                       node->in_edges().end());
@@ -186,7 +186,7 @@ Status GetEngineInfo(const Graph* g,
         // If it doesn't have any edges, TF will prune it out.
         //
         // Note that the segmenter already ensure that the constant data input
-        // is valid and suppported by the engine.
+        // is valid and supported by the engine.
         if (!added_const_nodes.insert(input_node).second) {
           // Already added before.
           continue;
@@ -209,7 +209,7 @@ Status GetEngineInfo(const Graph* g,
             node_id, edge->dst_input(), /*input_edge=*/true, port);
       }
     }
-    // Create output connections. Sort edges first to make determnistic since
+    // Create output connections. Sort edges first to make deterministic since
     // out_edges is a set of pointers.
     std::vector<const Edge*> out_edges(node->out_edges().begin(),
                                        node->out_edges().end());
@@ -307,7 +307,7 @@ void UpdateToEngineNode(const std::vector<EngineInfo>& infos,
       }
     }
   }
-  LOG(FATAL) << "Node " << (**node).name() << " not found in any engine.";
+  LOG(FATAL) << "Node " << node_name << " not found in any engine.";
 }
 
 // Function to insert a TRT engine node into the graph.
@@ -328,6 +328,7 @@ Status CreateTRTNode(const ConversionParams& params,
                      nvinfer1::IGpuAllocator* alloc,
                      std::vector<Node*>* engine_nodes) {
   const auto& info = infos.at(pos);
+  std::vector<tensorflow::TensorShapeProto> input_shape_protos;
   std::vector<PartialTensorShape> input_shapes;
   std::vector<NodeDefBuilder::NodeOut> inputs;
   std::vector<Node*> input_nodes;
@@ -369,12 +370,15 @@ Status CreateTRTNode(const ConversionParams& params,
       } else {
         // Set the shapes and data types of input edge.
         if (input_shapes.size() <= conn.port_number) {
+          input_shape_protos.resize(conn.port_number + 1);
           input_shapes.resize(conn.port_number + 1);
         }
+        conn.outside_shape.AsProto(&input_shape_protos.at(conn.port_number));
         input_shapes.at(conn.port_number) = conn.outside_shape;
         // Shape must be fully defined (excluding batch dimension) for static
         // mode.
-        if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
+        if (params.use_implicit_batch &&
+            info.engine_type == EngineInfo::EngineType::TRTStatic) {
           for (int i = 1; i < conn.outside_shape.dims(); i++) {
             if (conn.outside_shape.dim_size(i) <= 0) {
               return errors::Internal(
@@ -427,7 +431,8 @@ Status CreateTRTNode(const ConversionParams& params,
         calibrate_int8 ? TrtPrecisionMode::FP32 : info.precision_mode,
         max_batch_size, info.max_workspace_size_bytes, input_shapes, trt_logger,
         alloc, /*calibrator=*/nullptr, &engine, info.use_calibration,
-        /*convert_successfully=*/nullptr));
+        params.use_implicit_batch, /*convert_successfully=*/nullptr,
+        /*profile=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string = string(static_cast<const char*>(engine_data->data()),
                             engine_data->size());
@@ -453,7 +458,7 @@ Status CreateTRTNode(const ConversionParams& params,
   NameAttrList function;
   function.set_name(StrCat(info.engine_name, "_native_segment"));
   Status status =
-      node_builder
+      node_builder.Attr("input_shapes", input_shape_protos)
           .Attr("static_engine",
                 info.engine_type == EngineInfo::EngineType::TRTStatic)
           .Attr("segment_func", function)
@@ -463,6 +468,8 @@ Status CreateTRTNode(const ConversionParams& params,
           .Attr("workspace_size_bytes", info.max_workspace_size_bytes)
           .Attr("precision_mode", prec_string)
           .Attr("use_calibration", info.use_calibration)
+          .Attr("_use_implicit_batch", params.use_implicit_batch)
+          .Attr("_allow_build_at_runtime", info.allow_build_at_runtime)
           .Attr("OutT", out_types)
           .Finalize(&trt_node);
   if (!status.ok()) {
@@ -624,7 +631,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   segment_options.minimum_segment_size = params.minimum_segment_size;
   segment::SegmentNodesVector initial_segments;
   TrtNodeValidator validator(*params.graph_properties, params.precision_mode,
-                             params.use_calibration);
+                             params.use_calibration, params.use_implicit_batch);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
       &graph,
       std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
@@ -666,6 +673,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
                                    : EngineInfo::EngineType::TRTStatic);
     curr_engine.use_calibration = params.use_calibration;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
+    curr_engine.allow_build_at_runtime = params.allow_build_at_runtime;
 
     status = RegisterGraphToFunctionLibrary(curr_engine.segment_graph_def,
                                             &graph, curr_engine.engine_name);

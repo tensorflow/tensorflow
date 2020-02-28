@@ -52,6 +52,9 @@ class GuardedPhiloxRandom {
   void Init(random::PhiloxRandom::ResultType counter,
             random::PhiloxRandom::Key key);
 
+  // Used by dropout operator to reset seed to achieve same random state
+  void ResetSeeds(int64 seed, int64 seed2);
+
   // Reserve a certain number of 128-bit samples.
   // This function is thread safe.  The returned generator is valid for the
   // given number of samples, and can be used without a lock.

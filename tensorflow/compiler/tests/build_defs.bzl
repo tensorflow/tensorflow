@@ -4,9 +4,9 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "rocm_is_configured")
 load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
-    "tf_exec_compatible_with",
+    "tf_exec_properties",
 )
 
 def all_backends():
@@ -86,16 +86,10 @@ def tf_xla_py_test(
                 "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_COMPLEX128",
             ]
         elif backend == "gpu":
-            if rocm_is_configured():
-                backend_args += [
-                    "--test_device=" + gpu_xla_device,
-                    "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_BFLOAT16",
-                ]
-            else:
-                backend_args += [
-                    "--test_device=" + gpu_xla_device,
-                    "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_COMPLEX128,DT_BFLOAT16",
-                ]
+            backend_args += [
+                "--test_device=" + gpu_xla_device,
+                "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_COMPLEX128,DT_BFLOAT16",
+            ]
             backend_tags += tf_cuda_tests_tags()
         elif backend in plugins:
             backend_args += [
@@ -119,7 +113,7 @@ def tf_xla_py_test(
             data = data + backend_data,
             deps = deps + backend_deps,
             tags = test_tags,
-            exec_compatible_with = tf_exec_compatible_with({"tags": test_tags}),
+            exec_properties = tf_exec_properties({"tags": test_tags}),
             **kwargs
         )
         test_names.append(test_name)

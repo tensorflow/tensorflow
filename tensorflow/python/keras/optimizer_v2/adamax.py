@@ -83,7 +83,8 @@ class Adamax(optimizer_v2.OptimizerV2):
     used).
 
     Args:
-      learning_rate: A Tensor or a floating point value.  The learning rate.
+      learning_rate: A `Tensor`, floating point value, or a schedule that is a
+        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
       beta_1: A float value or a constant float tensor. The exponential decay
         rate for the 1st moment estimates.
       beta_2: A float value or a constant float tensor. The exponential decay
@@ -120,15 +121,15 @@ class Adamax(optimizer_v2.OptimizerV2):
     beta_1_power = math_ops.pow(beta_1_t, local_step)
     lr_t = apply_state[(var_device, var_dtype)]['lr_t']
 
-    apply_state[(var_device, var_dtype)].update(dict(
-        neg_scaled_lr=-lr_t / (1 - beta_1_power),
-        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
-        beta_1_t=beta_1_t,
-        beta_1_power=beta_1_power,
-        one_minus_beta_1_t=1 - beta_1_t,
-        beta_2_t=beta_2_t,
-        zero=array_ops.zeros((), dtype=dtypes.int64)
-    ))
+    apply_state[(var_device, var_dtype)].update(
+        dict(
+            neg_scaled_lr=-lr_t / (1 - beta_1_power),
+            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            beta_1_t=beta_1_t,
+            beta_1_power=beta_1_power,
+            one_minus_beta_1_t=1 - beta_1_t,
+            beta_2_t=beta_2_t,
+            zero=array_ops.zeros((), dtype=dtypes.int64)))
 
   def _resource_apply_dense(self, grad, var, apply_state=None):
     var_device, var_dtype = var.device, var.dtype.base_dtype

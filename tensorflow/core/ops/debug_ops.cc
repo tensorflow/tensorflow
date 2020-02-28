@@ -93,4 +93,12 @@ REGISTER_OP("DebugIdentityV2")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("DebugNumericSummaryV2")
+    .Input("input: T")
+    .Output("output: output_dtype")
+    .Attr("output_dtype: {float32, float64} = DT_FLOAT")
+    .Attr("T: type")
+    .Attr("tensor_debug_mode: int = -1")
+    .Attr("tensor_id: int = -1")
+    .SetShapeFn(shape_inference::UnknownShape);
 }  // namespace tensorflow

@@ -56,7 +56,7 @@ TEST_F(GpuLdgTest, LdgForParamRead) {
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  CompileAndVerifyPtx(std::move(hlo_module), R"(
+  CompileAndOptionallyVerifyPtx(std::move(hlo_module), R"(
     CHECK-NOT: ld.global.f32
     CHECK: ld.global.nc.f32
   )");
@@ -86,7 +86,7 @@ TEST_F(GpuLdgTest, LdgForNonParamRead) {
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  CompileAndVerifyPtx(std::move(hlo_module), R"(
+  CompileAndOptionallyVerifyPtx(std::move(hlo_module), R"(
     CHECK: {
     CHECK-NOT: ld.global.f32
     CHECK: ld.global.nc.f32
@@ -143,7 +143,7 @@ TEST_F(GpuLdgTest, NoLdgWhenSharingBuffer) {
   std::unique_ptr<HloComputation> computation = builder.Build();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  CompileAndVerifyPtx(std::move(hlo_module), R"(
+  CompileAndOptionallyVerifyPtx(std::move(hlo_module), R"(
     CHECK-LABEL: .entry sin
     CHECK: {
     CHECK-NOT: ld.global.nc.f32

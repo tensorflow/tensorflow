@@ -106,13 +106,9 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
 
   @test_util.run_v1_only('b/120545219')
   def Test(self):
-    # rocBLAS on ROCm stack causes accuracy failure
-    if test_lib.is_built_with_rocm():
-      use_gpu = False
-    else:
     # TODO(rmlarsen): Debug illegal address bug on CUDA and re-enable
     # GPU test for matrix_solve.
-      use_gpu = False if functor_ == linalg_ops.matrix_solve else True
+    use_gpu = False if functor_ == linalg_ops.matrix_solve else True
 
     with self.session(use_gpu=use_gpu):
       np.random.seed(1)
@@ -169,8 +165,8 @@ if __name__ == '__main__':
                test_lib.is_built_with_rocm():
               # Skip this one particular subtest on the ROCm platform
               # It will fail because of 1 element in 10,000 mismatch,
-              # and the mismatch is minor (tolerance is 0.20, mismtach is 0,22)
-              # TODO(rocm) : investigate cause of mistmach and fix
+              # and the mismatch is minor (tolerance is 0.20, mismatch is 0,22)
+              # TODO(rocm) : investigate cause of mismatch and fix
               continue
             _AddTest(MatrixBinaryFunctorGradientTest,
                      'MatrixTriangularSolveGradient', name,

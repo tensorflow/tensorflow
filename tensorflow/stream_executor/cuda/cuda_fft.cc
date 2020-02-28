@@ -466,7 +466,7 @@ bool CUDAFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufftExec,
 
   cuda::ScopedActivateExecutorContext sac(parent_);
   auto ret = cufftExec(cuda_fft_plan->GetPlan(),
-                       GpuComplex(const_cast<InputT*>(GpuMemory(input))),
+                       GpuComplex(const_cast<InputT *>(GpuMemory(input))),
                        GpuComplex(GpuMemoryMutable(output)));
 
   if (ret != CUFFT_SUCCESS) {
@@ -494,7 +494,7 @@ bool CUDAFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
 
   cuda::ScopedActivateExecutorContext sac(parent_);
   auto ret = cufftExec(cuda_fft_plan->GetPlan(),
-                       GpuComplex(const_cast<InputT*>(GpuMemory(input))),
+                       GpuComplex(const_cast<InputT *>(GpuMemory(input))),
                        GpuComplex(GpuMemoryMutable(output)),
                        cuda_fft_plan->GetFftDirection());
 
@@ -508,20 +508,20 @@ bool CUDAFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
 
 #define STREAM_EXECUTOR_CUDA_DEFINE_FFT(__type, __fft_type1, __fft_type2,      \
                                         __fft_type3)                           \
-  bool CUDAFft::DoFft(Stream* stream, fft::Plan* plan,                         \
-                      const DeviceMemory<std::complex<__type>>& input,         \
-                      DeviceMemory<std::complex<__type>>* output) {            \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                         \
+                      const DeviceMemory<std::complex<__type>> &input,         \
+                      DeviceMemory<std::complex<__type>> *output) {            \
     return DoFftWithDirectionInternal(stream, plan, cufftExec##__fft_type1,    \
                                       input, output);                          \
   }                                                                            \
-  bool CUDAFft::DoFft(Stream* stream, fft::Plan* plan,                         \
-                      const DeviceMemory<__type>& input,                       \
-                      DeviceMemory<std::complex<__type>>* output) {            \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                         \
+                      const DeviceMemory<__type> &input,                       \
+                      DeviceMemory<std::complex<__type>> *output) {            \
     return DoFftInternal(stream, plan, cufftExec##__fft_type2, input, output); \
   }                                                                            \
-  bool CUDAFft::DoFft(Stream* stream, fft::Plan* plan,                         \
-                      const DeviceMemory<std::complex<__type>>& input,         \
-                      DeviceMemory<__type>* output) {                          \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                         \
+                      const DeviceMemory<std::complex<__type>> &input,         \
+                      DeviceMemory<__type> *output) {                          \
     return DoFftInternal(stream, plan, cufftExec##__fft_type3, input, output); \
   }
 

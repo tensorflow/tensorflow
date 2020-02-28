@@ -22,6 +22,7 @@ from __future__ import print_function
 import argparse
 import os
 import sys
+import warnings
 
 import six
 from six.moves import zip
@@ -29,6 +30,7 @@ from six.moves import zip
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
+from tensorflow.lite.toco.logging import gen_html
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.platform import app
@@ -172,6 +174,8 @@ def _convert_tf1_model(flags):
 
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
+  if flags.custom_opdefs:
+    converter._custom_opdefs = _parse_array(flags.custom_opdefs)  # pylint: disable=protected-access
   if flags.target_ops:
     ops_set_options = lite.OpsSet.get_options()
     converter.target_spec.supported_ops = set()
@@ -198,9 +202,11 @@ def _convert_tf1_model(flags):
     converter.dump_graphviz_dir = flags.dump_graphviz_dir
   if flags.dump_graphviz_video:
     converter.dump_graphviz_vode = flags.dump_graphviz_video
+  if flags.conversion_summary_dir:
+    converter.conversion_summary_dir = flags.conversion_summary_dir
 
-  if flags.experimental_new_converter:
-    converter.experimental_new_converter = True
+  if flags.experimental_new_converter is not None:
+    converter.experimental_new_converter = flags.experimental_new_converter
 
   # Convert model.
   output_data = converter.convert()
@@ -224,8 +230,8 @@ def _convert_tf2_model(flags):
     model = keras.models.load_model(flags.keras_model_file)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
 
-  if flags.experimental_new_converter:
-    converter.experimental_new_converter = True
+  if flags.experimental_new_converter is not None:
+    converter.experimental_new_converter = flags.experimental_new_converter
 
   # Convert the model.
   tflite_model = converter.convert()
@@ -294,6 +300,12 @@ def _check_tf1_flags(flags, unparsed):
   if flags.dump_graphviz_video and not flags.dump_graphviz_dir:
     raise ValueError("--dump_graphviz_video must be used with "
                      "--dump_graphviz_dir")
+
+  if flags.custom_opdefs and not flags.experimental_new_converter:
+    raise ValueError("--custom_opdefs must be used with "
+                     "--experimental_new_converter")
+  if flags.custom_opdefs and not flags.allow_custom_ops:
+    raise ValueError("--custom_opdefs must be used with --allow_custom_ops")
 
 
 def _check_tf2_flags(flags):
@@ -459,6 +471,12 @@ def _get_tf1_flags(parser):
             "provide these to the TensorFlow Lite runtime with a custom "
             "resolver. (default False)"))
   parser.add_argument(
+      "--custom_opdefs",
+      type=str,
+      help=("String representing a list of custom ops OpDefs delineated with "
+            "commas that are included in the GraphDef. Required when using "
+            "custom operations with --experimental_new_converter."))
+  parser.add_argument(
       "--target_ops",
       type=str,
       help=("Experimental flag, subject to change. Set of OpsSet options "
@@ -479,6 +497,13 @@ def _get_tf1_flags(parser):
       action="store_true",
       help=("Boolean indicating whether to dump the graph after every graph "
             "transformation"))
+  parser.add_argument(
+      "--conversion_summary_dir",
+      type=str,
+      help=("Full filepath to store the conversion logs, which inclues graphviz"
+            " of the model before/after the conversion, an HTML report and the "
+            "conversion proto buffers. This will only be generated when passing"
+            " --experimental_new_converter"))
 
 
 def _get_tf2_flags(parser):
@@ -505,6 +530,36 @@ def _get_tf2_flags(parser):
       help=("Enables the TensorFlow V1 converter in 2.0"))
 
 
+class _ParseExperimentalNewConverter(argparse.Action):
+  """Helper class to parse --experimental_new_converter argument."""
+
+  def __init__(self, option_strings, dest, nargs=None, **kwargs):
+    if nargs != "?":
+      # This should never happen. This class is only used once below with
+      # nargs="?".
+      raise ValueError(
+          "This parser only supports nargs='?' (0 or 1 additional arguments)")
+    super(_ParseExperimentalNewConverter, self).__init__(
+        option_strings, dest, nargs=nargs, **kwargs)
+
+  def __call__(self, parser, namespace, values, option_string=None):
+    if values is None:
+      # Handling `--experimental_new_converter`.
+      # Without additional arguments, it implies enabling the new converter.
+      experimental_new_converter = True
+    elif values.lower() == "true":
+      # Handling `--experimental_new_converter=true`.
+      # (Case insensitive after the equal sign)
+      experimental_new_converter = True
+    elif values.lower() == "false":
+      # Handling `--experimental_new_converter=false`.
+      # (Case insensitive after the equal sign)
+      experimental_new_converter = False
+    else:
+      raise ValueError("Invalid --experimental_new_converter argument.")
+    setattr(namespace, self.dest, experimental_new_converter)
+
+
 def _get_parser(use_v2_converter):
   """Returns an ArgumentParser for tflite_convert.
 
@@ -527,17 +582,17 @@ def _get_parser(use_v2_converter):
   else:
     _get_tf1_flags(parser)
 
-  # Enable MLIR-TFLite converter.
   parser.add_argument(
       "--experimental_new_converter",
-      action="store_true",
+      action=_ParseExperimentalNewConverter,
+      nargs="?",
       help=("Experimental flag, subject to change. Enables MLIR-based "
             "conversion instead of TOCO conversion."))
   return parser
 
 
 def run_main(_):
-  """Main in toco_convert.py."""
+  """Main in tflite_convert.py."""
   use_v2_converter = tf2.enabled()
   parser = _get_parser(use_v2_converter)
   tflite_flags, unparsed = parser.parse_known_args(args=sys.argv[1:])
@@ -565,7 +620,18 @@ def run_main(_):
   if use_v2_converter:
     _convert_tf2_model(tflite_flags)
   else:
-    _convert_tf1_model(tflite_flags)
+    try:
+      _convert_tf1_model(tflite_flags)
+    finally:
+      if tflite_flags.conversion_summary_dir:
+        if tflite_flags.experimental_new_converter:
+          gen_html.gen_conversion_log_html(tflite_flags.conversion_summary_dir,
+                                           tflite_flags.post_training_quantize,
+                                           tflite_flags.output_file)
+        else:
+          warnings.warn(
+              "Conversion summary will only be generated when enabling"
+              " the new converter via --experimental_new_converter. ")
 
 
 def main():

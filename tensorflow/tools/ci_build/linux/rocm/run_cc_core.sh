@@ -30,33 +30,38 @@ export PYTHON_BIN_PATH=`which python3`
 export CC_OPT_FLAGS='-mavx'
 
 export TF_NEED_ROCM=1
-export TF_NEED_CUDA=0
 export TF_GPU_COUNT=${N_GPUS}
 
 yes "" | $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test \
-      --config=rocm --config=opt \
+      --config=rocm \
       -k \
-      --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu \
-      --test_lang_filters=cc --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
-      --build_tests_only --test_output=errors --local_test_jobs=${TF_GPU_COUNT}\
+      --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-no_rocm,-benchmark-test,-rocm_multi_gpu,-v1only \
+      --test_lang_filters=cc \
+      --jobs=${N_JOBS} \
+      --local_test_jobs=${TF_GPU_COUNT}\
+      --test_timeout 600,900,2400,7200 \
+      --build_tests_only \
+      --test_output=errors \
       --test_sharding_strategy=disabled \
-      --test_size_filters=small,medium \
-      --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
+      --test_size_filters=small,medium,large \
+      --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
+      -- \
       //tensorflow/... \
       -//tensorflow/compiler/... \
       -//tensorflow/lite/delegates/gpu/gl/... \
       -//tensorflow/lite/delegates/gpu/cl/... \
 && bazel test \
-      --config=rocm --config=opt \
+      --config=rocm \
       -k \
-      --test_tag_filters=-no_rocm \
-      --test_timeout 600,900,2400,7200 \
-      --test_output=errors \
+      --test_tag_filters=gpu \
       --jobs=${N_JOBS} \
       --local_test_jobs=1 \
+      --test_timeout 600,900,2400,7200 \
+      --build_tests_only \
+      --test_output=errors \
       --test_sharding_strategy=disabled \
       -- \
       //tensorflow/core/nccl:nccl_manager_test

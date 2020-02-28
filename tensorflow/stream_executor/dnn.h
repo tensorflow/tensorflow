@@ -647,6 +647,33 @@ class ConvolutionDescriptor {
   // int64 upscale_input_y;
 };
 
+class DropoutDescriptor {
+ public:
+  DropoutDescriptor(){};
+
+  DropoutDescriptor& set_seed(unsigned long long value) {
+    seed_ = value;
+    return *this;
+  }
+  DropoutDescriptor& set_rate(float value) {
+    rate_ = value;
+    return *this;
+  }
+  DropoutDescriptor& set_mask(const std::vector<uint8>& mask) {
+    mask_ = mask;
+    return *this;
+  }
+
+  unsigned long long seed() const { return seed_; }
+  float rate() const { return rate_; }
+  std::vector<uint8> mask() const { return mask_; }
+
+ private:
+  unsigned long long seed_;
+  float rate_;
+  std::vector<uint8> mask_;
+};
+
 // A patch of values in the input can be pooled via either a max or an average
 // operation.
 // Specify int64 so there's no padding in PoolingDescriptor.
@@ -1036,11 +1063,6 @@ class DnnSupport {
   //  reserve_space_2: saved inv_var (1/sqrt(epsilon + variance), to be reused
   //    in the backward gradient computation.
   //  is_training: Set to true for training, false for inference.
-  //  var_to_inv_var: a function to convert the variance to inverted variance
-  //    for cuDNN v4 forward inference.
-  //  inv_var_to_var: a function to convert the inverted variance to
-  //    variance for cuDNN v4 forward training, to be used for TensorFlow
-  //    to calculate the running variance.
   virtual bool DoBatchNormalizationForward(
       Stream* stream, const DeviceMemory<float>& x,
       const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
@@ -1048,14 +1070,13 @@ class DnnSupport {
       const DeviceMemory<float>& estimated_variance,
       const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<float>* y,
       DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
       DeviceMemory<float>* reserve_space_1,
       DeviceMemory<float>* reserve_space_2, bool is_training,
       ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator,
-      std::function<const DeviceMemory<float>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var) {
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 
@@ -1068,14 +1089,13 @@ class DnnSupport {
       const DeviceMemory<float>& estimated_variance,
       const DeviceMemory<float>& side_input, const dnn::BatchDescriptor& x_desc,
       const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y,
       DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
       DeviceMemory<float>* reserve_space_1,
       DeviceMemory<float>* reserve_space_2, bool is_training,
       ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator,
-      std::function<const DeviceMemory<float>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var) {
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 
@@ -1358,12 +1378,15 @@ class DnnSupport {
       std::vector<AlgorithmDesc>* out_algorithms);
 
   virtual bool GetMIOpenConvolveAlgorithms(
-      dnn::ConvolutionKind kind, Stream* stream, dnn::DataType element_type,
-      const dnn::BatchDescriptor& input_descriptor,
+      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
       const dnn::FilterDescriptor& filter_descriptor,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      DeviceMemoryBase filter_data,
       const dnn::BatchDescriptor& output_descriptor,
-      std::vector<AlgorithmDesc>* out_algorithms);
+      DeviceMemoryBase output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      ScratchAllocator* scratch_allocator,
+      std::vector<ProfileResult>* out_algorithms);
 
   // Returns a list of supported rnn algorithms.
   virtual bool GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms);
@@ -1646,6 +1669,54 @@ class DnnSupport {
                          const DeviceMemory<float>& biases,
                          const dnn::BatchDescriptor& dimensions,
                          DeviceMemory<float>* output_data) = 0;
+
+  virtual bool DoDropoutForward(
+      Stream* stream, const dnn::DropoutDescriptor& dropout_params,
+      const dnn::BatchDescriptor& noise_dimensions,
+      const dnn::BatchDescriptor& input_dimensions,
+      const DeviceMemory<float>& input_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      DeviceMemory<float>* output_data,
+      ScratchAllocator* workspace_allocator = nullptr) {
+    LOG(FATAL) << "DoDropoutForward not implemented for float.";
+    return false;
+  }
+
+  virtual bool DoDropoutForward(
+      Stream* stream, const dnn::DropoutDescriptor& dropout_params,
+      const dnn::BatchDescriptor& noise_dimensions,
+      const dnn::BatchDescriptor& input_dimensions,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      DeviceMemory<Eigen::half>* output_data,
+      ScratchAllocator* workspace_allocator = nullptr) {
+    LOG(FATAL) << "DoDropoutForward not implemented for half.";
+    return false;
+  }
+
+  virtual bool DoDropoutBackward(
+      Stream* stream, const dnn::DropoutDescriptor& dropout_params,
+      const dnn::BatchDescriptor& noise_dimensions,
+      const dnn::BatchDescriptor& input_dimensions,
+      const DeviceMemory<float>& input_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      DeviceMemory<float>* output_data,
+      ScratchAllocator* workspace_allocator = nullptr) {
+    LOG(FATAL) << "DoDropoutBackward not implemented for float.";
+    return false;
+  }
+
+  virtual bool DoDropoutBackward(
+      Stream* stream, const dnn::DropoutDescriptor& dropout_params,
+      const dnn::BatchDescriptor& noise_dimensions,
+      const dnn::BatchDescriptor& input_dimensions,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::BatchDescriptor& output_dimensions,
+      DeviceMemory<Eigen::half>* output_data,
+      ScratchAllocator* workspace_allocator = nullptr) {
+    LOG(FATAL) << "DoDropoutBackward not implemented for half.";
+    return false;
+  }
 
   // Performs a forward pooling operation on input_data, writing to
   // output_data. See PoolingDescriptor for how to configure the
@@ -2153,7 +2224,7 @@ class DnnSupport {
   //  max_seq_length: the max length of the sequences.
   //  batch_size: the size of a minibatch.
   //  data_size: the size of the state.
-  //  seq_lenghs: the lengths of sequences in a batch.
+  //  seq_lengths: the lengths of sequences in a batch.
   //  data_type: an enum to specify the type for the underlying data.
   virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
@@ -2394,6 +2465,73 @@ class DnnSupport {
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result) {
     return false;
+  }
+
+  template <typename ElementType>
+  port::Status PrepareForCtcLoss(Stream* stream,
+                                 const RnnStateTensorDescriptor& probs_desc,
+                                 DeviceMemory<ElementType> probs_data,
+                                 const RnnStateTensorDescriptor& grads_desc,
+                                 absl::Span<const int> labels_data,
+                                 absl::Span<const int> labels_lengths_data,
+                                 absl::Span<const int> input_lengths_data,
+                                 ScratchAllocator* workspace_allocator,
+                                 DeviceMemory<uint8>* scratch_memory) {
+    return DoPrepareForCtcLoss(stream, ToDataType<ElementType>::value,
+                               probs_desc, grads_desc, labels_data,
+                               labels_lengths_data, input_lengths_data,
+                               workspace_allocator, scratch_memory);
+  }
+
+  // Enqueue a CTC Loss operation onto the stream.
+  //
+  // Arguments:
+  //  stream: pointer to the stream where this operation should be enqueued to.
+  //  element_type: date type of the input tensors
+  //  probs_desc: specifies the shape and the data layout of the input tensor.
+  //  probs_data: the device memory region that contains the input tensor.
+  //  labels_data: the device memory region that contains the labels_value
+  //    tensor.
+  //  labels_lengths_data: the device memory region that contains the
+  //    labels_lengths tensor
+  //  input_lengths_data: the device memory region that contains the seq_lengths
+  //    tensor
+  //  costs_data: the device memory region that contains the costs tensor.
+  //  grads_desc: specifies the shape and the data layout of the grads tensor.
+  //  grads_data: the device memory region that contains the grads tensor.
+  //  ctc_loss_desc: a CTCLoss descriptor.
+  //  workspace_allocator: a memory allocator that creates the temporary
+  //    workspace memory used by this operation. The caller is responsible for
+  //    keeping the memory alive long enough for this operation, and recylces
+  //    afterwards.
+  virtual port::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
+                                 const RnnStateTensorDescriptor& probs_desc,
+                                 const DeviceMemoryBase probs_data,
+                                 absl::Span<const int> labels_data,
+                                 absl::Span<const int> labels_lengths_data,
+                                 absl::Span<const int> input_lengths_data,
+                                 DeviceMemoryBase costs_data,
+                                 const RnnStateTensorDescriptor& grads_desc,
+                                 DeviceMemoryBase grads_data,
+                                 DeviceMemory<uint8> scratch_memory);
+
+  template <typename ElementType>
+  bool DoCtcLoss(Stream* stream,
+                 const dnn::RnnStateTensorDescriptor& probs_desc,
+                 const DeviceMemory<ElementType>& probs_data,
+                 absl::Span<const int> labels_data,
+                 absl::Span<const int> labels_lengths_data,
+                 absl::Span<const int> input_lengths_data,
+                 DeviceMemory<ElementType>* costs_data,
+                 const dnn::RnnStateTensorDescriptor& grads_desc,
+                 DeviceMemory<ElementType>* grads_data,
+                 DeviceMemory<uint8>* scratch_memory) {
+    return IsStatusOk(
+        DoCtcLoss(stream, ToDataType<ElementType>::value, probs_desc,
+                  probs_data, labels_data, labels_lengths_data,
+                  input_lengths_data, *costs_data, grads_desc, *grads_data,
+                  *scratch_memory),
+        false);
   }
 
   // Transforms a tensor into another tensor with a different layout and/or data
@@ -2647,6 +2785,19 @@ class DnnSupport {
       ScratchAllocator* scratch_allocator, AlgorithmDesc* algorithm_desc,
       DeviceMemory<uint8>* scratch_memory) {
     *algorithm_desc = {};
+    *scratch_memory = {};
+    return port::Status::OK();
+  }
+
+  virtual port::Status DoPrepareForCtcLoss(
+      Stream* stream, DataType element_type,
+      const RnnStateTensorDescriptor& probs_desc,
+      const RnnStateTensorDescriptor& grads_desc,
+      absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data,
+      ScratchAllocator* scratch_allocator,
+      DeviceMemory<uint8>* scratch_memory) {
     *scratch_memory = {};
     return port::Status::OK();
   }

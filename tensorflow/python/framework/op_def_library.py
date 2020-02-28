@@ -25,9 +25,9 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
-from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_callbacks
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import tf_logging as logging
@@ -217,12 +217,14 @@ def _MakeFunc(v, arg_name):
   """Ensure v is a func."""
   if isinstance(v, attr_value_pb2.NameAttrList):
     return v
-  fn_attr = attr_value_pb2.NameAttrList()
   if isinstance(v, compat.bytes_or_text_types):
-    fn_attr.name = v
+    fn_attr = attr_value_pb2.NameAttrList(name=v)
   elif hasattr(v, "add_to_graph"):
     v.add_to_graph(ops.get_default_graph())
-    fn_attr.name = v.name
+    if hasattr(v, "_as_name_attr_list"):
+      fn_attr = v._as_name_attr_list  # pylint: disable=protected-access
+    else:
+      fn_attr = attr_value_pb2.NameAttrList(name=v.name)
   else:
     raise TypeError("Don't know how to convert {} to a func for "
                     "argument {}".format(v, arg_name))

@@ -55,9 +55,9 @@ class RemoteMgrTest : public ::testing::Test {
     ctx_ = new tensorflow::EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        tensorflow::ContextMirroringPolicy::MIRRORING_NONE, false,
-        device_mgr.release(), true, rendezvous, GetDefaultCustomKernelCreator(),
-        nullptr);
+        tensorflow::ContextMirroringPolicy::MIRRORING_NONE, /*async=*/false,
+        /*lazy_copy_function_remote_inputs=*/false, device_mgr.release(), true,
+        rendezvous, GetDefaultCustomKernelCreator(), nullptr);
   }
 
   ~RemoteMgrTest() override { ctx_->Unref(); }
@@ -67,41 +67,6 @@ class RemoteMgrTest : public ::testing::Test {
   uint64 context_id_;
   EagerContext* ctx_;
 };
-
-TEST_F(RemoteMgrTest, LocalTensorHandle) {
-  TestRemoteMgr remote_mgr(true, ctx_);
-  Tensor t(DT_FLOAT, TensorShape({0}));
-
-  TensorHandle* handle;
-  TF_ASSERT_OK(TensorHandle::CreateLocalHandle(t, &handle));
-  EXPECT_EQ(nullptr, handle->device());
-  EXPECT_EQ(local_device_, handle->DeviceOrHostCPU(ctx_));
-  const uint64 op_id = remote_mgr.OpId();
-  EXPECT_EQ(1, op_id);
-  RemoteTensorHandle remote_handle;
-  TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
-      handle, &remote_handle, handle->device(),
-      handle->DeviceOrHostCPU(ctx_)->name()));
-  EXPECT_EQ(2, remote_mgr.OpId());
-  EXPECT_EQ(op_id, remote_handle.op_id());
-  EXPECT_EQ(0, remote_handle.output_num());
-  EXPECT_EQ(local_device_->name(), remote_handle.device());
-
-  TensorHandle* deserialized_handle;
-  TF_ASSERT_OK(remote_mgr.DeserializeRemoteTensorHandle(remote_handle,
-                                                        &deserialized_handle));
-  tensorflow::TensorHandle* h;
-  TF_EXPECT_OK(remote_mgr.GetTensorHandle(
-      RemoteTensorHandleInternal(remote_handle), &h));
-  TF_ASSERT_OK(
-      remote_mgr.DeleteTensorHandle(RemoteTensorHandleInternal(remote_handle)));
-  EXPECT_FALSE(
-      remote_mgr.GetTensorHandle(RemoteTensorHandleInternal(remote_handle), &h)
-          .ok());
-
-  deserialized_handle->Unref();
-  handle->Unref();
-}
 
 TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
   RemoteMgr remote_mgr(false, ctx_);

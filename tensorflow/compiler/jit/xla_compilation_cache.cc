@@ -163,12 +163,11 @@ Status XlaCompilationCache::BuildExecutable(
   build_options.set_device_allocator(options.device_allocator);
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
 
-  auto compile_result =
-      client_->Compile(*result.computation, argument_layouts, build_options);
-  if (!compile_result.ok()) {
-    return compile_result.status();
-  }
-  *executable = std::move(compile_result.ValueOrDie());
+  TF_ASSIGN_OR_RETURN(
+      auto executables,
+      client_->Compile(*result.computation, argument_layouts, build_options));
+  TF_RET_CHECK(executables.size() == 1);
+  *executable = std::move(executables[0]);
   return Status::OK();
 }
 
@@ -259,7 +258,7 @@ Status XlaCompilationCache::CompileImpl(
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << args.size();
     for (int i = 0; i < args.size(); i++) {
-      VLOG(2) << i << ": " << args[i].HumanString();
+      VLOG(3) << i << ": " << args[i].HumanString();
     }
   }
 

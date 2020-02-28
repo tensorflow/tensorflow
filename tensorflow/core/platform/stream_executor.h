@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_PLATFORM_STREAM_EXECUTOR_H_
 
 #include "tensorflow/core/platform/platform.h"
+
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"

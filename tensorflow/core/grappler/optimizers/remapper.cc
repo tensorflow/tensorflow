@@ -282,6 +282,10 @@ bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
 // Checks if we can rewrite a pattern to the `_FusedConv2D` on GPU device.
 bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithBiasAddAndActivation& matched) {
+#if TENSORFLOW_USE_ROCM
+  // ROCm does not support _FusedConv2D
+  return false;
+#endif  
   const GraphDef* graph = ctx.graph_view.graph();
   const NodeDef& contraction_node = graph->node(matched.contraction);
   if (!IsConv2D(contraction_node)) return false;
@@ -573,6 +577,7 @@ bool FindContractionWithBiasInPort(const RemapperContext& ctx,
   if (add_node_view.NumRegularFanins() < port_id + 1) return false;
   const auto& bias_add_node_view =
       add_node_view.GetRegularFanin(port_id).node_view();
+  if (bias_add_node_view == nullptr) return false;
   const auto* bias_add_node_def = bias_add_node_view->node();
 
   if (!FindContractionWithBias(ctx, bias_add_node_view->node_index(), base,
@@ -637,6 +642,7 @@ bool FindContractionWithBiasAndAddActivation(
 
   // Root of the pattern must be an activation node.
   const auto* node_def = node_view->node();
+  if (node_def == nullptr) return false;
   if (!IsSupportedActivation(*node_def)) return false;
 
   // MKL activation op only supports float data type.

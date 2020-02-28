@@ -51,7 +51,7 @@ class BaseFFTOpsTest(test.TestCase):
   def _compare_forward(self, x, rank, fft_length=None, use_placeholder=False,
                        rtol=1e-4, atol=1e-4):
     if test.is_built_with_rocm() and x.dtype in (np.complex64, np.complex128):
-      # self.skipTest("Complex datatype not yet supported in ROCm.")
+      self.skipTest("Complex datatype not yet supported in ROCm.")
       return
     x_np = self._np_fft(x, rank, fft_length)
     if use_placeholder:
@@ -65,7 +65,7 @@ class BaseFFTOpsTest(test.TestCase):
   def _compare_backward(self, x, rank, fft_length=None, use_placeholder=False,
                         rtol=1e-4, atol=1e-4):
     if test.is_built_with_rocm() and x.dtype in (np.complex64, np.complex128):
-      # self.skipTest("Complex datatype not yet supported in ROCm.")
+      self.skipTest("Complex datatype not yet supported in ROCm.")
       return
     x_np = self._np_ifft(x, rank, fft_length)
     if use_placeholder:

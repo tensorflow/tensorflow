@@ -179,6 +179,7 @@ REGISTER_OP("FusedBatchNorm")
     .Output("reserve_space_2: T")
     .Attr("T: {float}")
     .Attr("epsilon: float = 0.0001")
+    .Attr("exponential_avg_factor: float = 1.0")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormShape);
@@ -197,6 +198,7 @@ REGISTER_OP("FusedBatchNormV2")
     .Attr("T: {half, bfloat16, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
+    .Attr("exponential_avg_factor: float = 1.0")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormShape);
@@ -216,6 +218,7 @@ REGISTER_OP("FusedBatchNormV3")
     .Attr("T: {half, bfloat16, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
+    .Attr("exponential_avg_factor: float = 1.0")
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormV3Shape);
@@ -236,6 +239,7 @@ REGISTER_OP("_FusedBatchNormEx")
     .Attr("T: {half, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
+    .Attr("exponential_avg_factor: float = 1.0")
     .Attr("num_side_inputs: int >= 0 = 0")
     .Attr("activation_mode: string = \"Identity\"")
     .Attr(GetConvnetDataFormatAttrString())
@@ -324,6 +328,26 @@ REGISTER_OP("BiasAddV1")
     .Input("bias: T")
     .Output("output: T")
     .SetShapeFn(shape_inference::BiasAddShape);
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Dropout")
+    .Input("input: T")
+    .Input("rate: T")
+    .Input("noise_shape: int32")
+    .Input("seed: int64")
+    .Output("output: T")
+    .Attr("T: {float, half}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("DropoutGrad")
+    .Input("gradients: T")
+    .Input("rate: T")
+    .Input("noise_shape: int32")
+    .Input("seed: int64")
+    .Output("backprops: T")
+    .Attr("T: {float, half}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("Conv2D")
@@ -3143,7 +3167,7 @@ REGISTER_OP("_ROCmFusedConvolutionBiasActivation")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 
+    Computes a fused kernel which implements:
       Conv2D op, followed by
       BiasAdd op, followed by
       any activation op (None, Sigmoid, Relu, Relu6, Tanh)
@@ -3197,7 +3221,7 @@ REGISTER_OP("_ROCmFusedBatchNormActivationInference")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 
+    Computes a fused kernel which implements:
       FusedBatchNorm / FusedBatchNormV2 (inference only), followed by
       any activation op (None, Sigmoid, Relu, Relu6, Tanh)
     Supports only tensors of type float, half.
@@ -3257,7 +3281,7 @@ REGISTER_OP("_ROCmFusedBatchNormActivationForward")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 
+    Computes a fused kernel which implements:
       FusedBatchNorm / FusedBatchNormV2 (training-fwd only), followed by
       any activation op (None, Sigmoid, Relu, Relu6, Tanh)
     Supports only tensors of type float, half.
@@ -3321,7 +3345,7 @@ REGISTER_OP("_ROCmFusedBatchNormActivationBackward")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 
+    Computes a fused kernel which implements:
       FusedBatchNorm / FusedBatchNormV2 (training-bwd only), followed by
       any activation op (None, Sigmoid, Relu, Relu6, Tanh)
     Supports only tensors of type float, half.
@@ -3360,7 +3384,7 @@ REGISTER_OP("_ROCmFusedAddRelu")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 
+    Computes a fused kernel which implements:
       Add op (element-wise), followed by
       Relu Op
     Supports only tensors of type {half, float}.
@@ -3390,7 +3414,7 @@ REGISTER_OP("_ROCmFusedAddNReluGrad")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 
+    Computes a fused kernel which implements:
       AddN Op, Relu Op followed by
       ReluGrad Op
     Supports only tensors of type {half, float}.
@@ -3461,6 +3485,41 @@ REGISTER_OP("QuantizedMatMulWithBiasAndRelu")
     });
 
 REGISTER_OP("QuantizedMatMulWithBiasAndReluAndRequantize")
+    .Input("a: T1")
+    .Input("b: T2")
+    .Input("bias: Tbias")
+    .Input("min_a: float")
+    .Input("max_a: float")
+    .Input("min_b: float")
+    .Input("max_b: float")
+    .Input("min_freezed_output: float")
+    .Input("max_freezed_output: float")
+    .Output("out: Toutput")
+    .Output("min_out: float")
+    .Output("max_out: float")
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("Tbias: {float, qint32}")
+    .Attr("Toutput: quantizedtype = DT_QUINT8")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("QuantizedMatMulWithBiasAndRequantize")
     .Input("a: T1")
     .Input("b: T2")
     .Input("bias: Tbias")
@@ -3577,6 +3636,7 @@ REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndRelu")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
@@ -3599,6 +3659,7 @@ REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 }  // namespace tensorflow

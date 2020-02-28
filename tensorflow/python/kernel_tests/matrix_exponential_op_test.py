@@ -63,7 +63,7 @@ class ExponentialOpTest(test.TestCase):
         else:
           np_ans = np_expm(inp)
       out = self.evaluate(tf_ans)
-      self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
+      self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
 
   def _verifyExponentialReal(self, x):
     for np_type in [np.float32, np.float64]:
@@ -91,8 +91,6 @@ class ExponentialOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testNonsymmetricComplex(self):
-    if test.is_built_with_rocm():
-      self.skipTest("ROCm does not support BLAS operations for complex types")
     matrix1 = np.array([[1., 2.], [3., 4.]])
     matrix2 = np.array([[1., 3.], [3., 5.]])
     matrix1 = matrix1.astype(np.complex64)
@@ -114,8 +112,6 @@ class ExponentialOpTest(test.TestCase):
     self._verifyExponentialReal(self._makeBatch(matrix1, matrix2))
 
   def testSymmetricPositiveDefiniteComplex(self):
-    if test.is_built_with_rocm():
-      self.skipTest("ROCm does not support BLAS operations for complex types")
     matrix1 = np.array([[2., 1.], [1., 2.]])
     matrix2 = np.array([[3., -1.], [-1., 3.]])
     matrix1 = matrix1.astype(np.complex64)

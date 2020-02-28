@@ -107,7 +107,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
     with self.assertRaisesRegexp(TypeError, "Cannot iterate"):
-      next(iter(t))
+      iter(t)
 
   def testIterableGraph(self):
     if context.executing_eagerly():
@@ -180,8 +180,8 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1, 2, 3])
       b = array_ops.ones([4, 5, 6])
       with self.assertRaisesRegexp(
-          ValueError, r"Dimensions must be equal, but are 2 and 5 for 'add' "
-          r"\(op: 'Add(V2)?'\) with input shapes: \[1,2,3\], \[4,5,6\]."):
+          ValueError, r"Dimensions must be equal, but are 2 and 5 for .*add"
+          r".*Add(V2)?.* with input shapes: \[1,2,3\], \[4,5,6\]."):
         _ = a + b
 
   def testNumpyArray(self):
@@ -210,19 +210,19 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     z = constant_op.constant([6, 10])
     w = variables.Variable(5)
 
-    self.assertEqual(x1.experimental_ref(), x1.experimental_ref())
-    self.assertEqual(x2.experimental_ref(), x2.experimental_ref())
-    self.assertEqual(x1.experimental_ref(), x2.experimental_ref())
-    self.assertEqual(y.experimental_ref(), y.experimental_ref())
-    self.assertEqual(z.experimental_ref(), z.experimental_ref())
-    self.assertEqual(w.experimental_ref(), w.experimental_ref())
+    self.assertEqual(x1.ref(), x1.ref())
+    self.assertEqual(x2.ref(), x2.ref())
+    self.assertEqual(x1.ref(), x2.ref())
+    self.assertEqual(y.ref(), y.ref())
+    self.assertEqual(z.ref(), z.ref())
+    self.assertEqual(w.ref(), w.ref())
 
-    self.assertNotEqual(x1.experimental_ref(), y.experimental_ref())
-    self.assertNotEqual(x1.experimental_ref(), z.experimental_ref())
-    self.assertNotEqual(x1.experimental_ref(), w.experimental_ref())
-    self.assertNotEqual(y.experimental_ref(), z.experimental_ref())
-    self.assertNotEqual(y.experimental_ref(), w.experimental_ref())
-    self.assertNotEqual(z.experimental_ref(), w.experimental_ref())
+    self.assertNotEqual(x1.ref(), y.ref())
+    self.assertNotEqual(x1.ref(), z.ref())
+    self.assertNotEqual(x1.ref(), w.ref())
+    self.assertNotEqual(y.ref(), z.ref())
+    self.assertNotEqual(y.ref(), w.ref())
+    self.assertNotEqual(z.ref(), w.ref())
 
   def testRefDeref(self):
     x1 = constant_op.constant(3)
@@ -231,19 +231,19 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     z = constant_op.constant([6, 10])
     w = variables.Variable(5)
 
-    self.assertIs(x1, x1.experimental_ref().deref())
-    self.assertIs(x2, x2.experimental_ref().deref())
-    self.assertIs(x1, x2.experimental_ref().deref())
-    self.assertIs(x2, x1.experimental_ref().deref())
-    self.assertIs(y, y.experimental_ref().deref())
-    self.assertIs(z, z.experimental_ref().deref())
+    self.assertIs(x1, x1.ref().deref())
+    self.assertIs(x2, x2.ref().deref())
+    self.assertIs(x1, x2.ref().deref())
+    self.assertIs(x2, x1.ref().deref())
+    self.assertIs(y, y.ref().deref())
+    self.assertIs(z, z.ref().deref())
 
-    self.assertIsNot(x1, y.experimental_ref().deref())
-    self.assertIsNot(x1, z.experimental_ref().deref())
-    self.assertIsNot(x1, w.experimental_ref().deref())
-    self.assertIsNot(y, z.experimental_ref().deref())
-    self.assertIsNot(y, w.experimental_ref().deref())
-    self.assertIsNot(z, w.experimental_ref().deref())
+    self.assertIsNot(x1, y.ref().deref())
+    self.assertIsNot(x1, z.ref().deref())
+    self.assertIsNot(x1, w.ref().deref())
+    self.assertIsNot(y, z.ref().deref())
+    self.assertIsNot(y, w.ref().deref())
+    self.assertIsNot(z, w.ref().deref())
 
   def testRefInSet(self):
     x1 = constant_op.constant(3)
@@ -252,22 +252,22 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     z = constant_op.constant([6, 10])
     w = variables.Variable(5)
 
-    self.assertEqual(x1.experimental_ref(), x2.experimental_ref())
+    self.assertEqual(x1.ref(), x2.ref())
 
     tensor_set = {
-        x1.experimental_ref(),
-        x2.experimental_ref(),
-        y.experimental_ref(),
-        z.experimental_ref(),
-        w.experimental_ref(),
+        x1.ref(),
+        x2.ref(),
+        y.ref(),
+        z.ref(),
+        w.ref(),
     }
 
     self.assertEqual(len(tensor_set), 4)
-    self.assertIn(x1.experimental_ref(), tensor_set)
-    self.assertIn(x2.experimental_ref(), tensor_set)
-    self.assertIn(y.experimental_ref(), tensor_set)
-    self.assertIn(z.experimental_ref(), tensor_set)
-    self.assertIn(w.experimental_ref(), tensor_set)
+    self.assertIn(x1.ref(), tensor_set)
+    self.assertIn(x2.ref(), tensor_set)
+    self.assertIn(y.ref(), tensor_set)
+    self.assertIn(z.ref(), tensor_set)
+    self.assertIn(w.ref(), tensor_set)
 
   def testRefInDict(self):
     x1 = constant_op.constant(3)
@@ -276,36 +276,36 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     z = constant_op.constant([6, 10])
     w = variables.Variable(5)
 
-    self.assertEqual(x1.experimental_ref(), x2.experimental_ref())
+    self.assertEqual(x1.ref(), x2.ref())
 
     tensor_dict = {
-        x1.experimental_ref(): "x1",
-        y.experimental_ref(): "y",
-        z.experimental_ref(): "z",
-        w.experimental_ref(): "w",
+        x1.ref(): "x1",
+        y.ref(): "y",
+        z.ref(): "z",
+        w.ref(): "w",
     }
 
     self.assertEqual(len(tensor_dict), 4)
 
     # Overwriting x1
-    tensor_dict[x2.experimental_ref()] = "x2"
+    tensor_dict[x2.ref()] = "x2"
     self.assertEqual(len(tensor_dict), 4)
 
-    self.assertEqual(tensor_dict[x1.experimental_ref()], "x2")
-    self.assertEqual(tensor_dict[x2.experimental_ref()], "x2")
-    self.assertEqual(tensor_dict[y.experimental_ref()], "y")
-    self.assertEqual(tensor_dict[z.experimental_ref()], "z")
-    self.assertEqual(tensor_dict[w.experimental_ref()], "w")
+    self.assertEqual(tensor_dict[x1.ref()], "x2")
+    self.assertEqual(tensor_dict[x2.ref()], "x2")
+    self.assertEqual(tensor_dict[y.ref()], "y")
+    self.assertEqual(tensor_dict[z.ref()], "z")
+    self.assertEqual(tensor_dict[w.ref()], "w")
 
   def testTensorRefStrong(self):
     x = constant_op.constant(1.)
-    x_ref = x.experimental_ref()
+    x_ref = x.ref()
     del x
     self.assertIsNotNone(x_ref.deref())
 
   def testVariableRefStrong(self):
     x = variables.Variable(1.)
-    x_ref = x.experimental_ref()
+    x_ref = x.ref()
     del x
     self.assertIsNotNone(x_ref.deref())
 
@@ -695,7 +695,8 @@ class OperationTest(test_util.TensorFlowTestCase):
   def testConvertToLongLongTensorType(self):
     tensor = ops.convert_to_tensor(
         # Get a numpy array of dtype NPY_LONGLONG
-        np.prod(constant_op.constant([1])._shape_tuple()))
+        np.prod(constant_op.constant([1])._shape_tuple()),
+        dtype=dtypes.int64)
     self.assertEqual(dtypes.int64, tensor.dtype)
 
   @test_util.run_in_graph_and_eager_modes
@@ -2300,40 +2301,40 @@ class OpScopeTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNames(self):
-    with ops.name_scope("foo") as foo:
+    with ops.name_scope("foo", skip_on_eager=False) as foo:
       self.assertEqual("foo/", foo)
-      with ops.name_scope("foo2") as foo2:
+      with ops.name_scope("foo2", skip_on_eager=False) as foo2:
         self.assertEqual("foo/foo2/", foo2)
-      with ops.name_scope(None) as empty1:
+      with ops.name_scope(None, skip_on_eager=False) as empty1:
         self.assertEqual("", empty1)
-        with ops.name_scope("foo3") as foo3:
+        with ops.name_scope("foo3", skip_on_eager=False) as foo3:
           self.assertEqual("foo3/", foo3)
-      with ops.name_scope("") as empty2:
+      with ops.name_scope("", skip_on_eager=False) as empty2:
         self.assertEqual("", empty2)
-    with ops.name_scope("foo/") as outer_foo:
+    with ops.name_scope("foo/", skip_on_eager=False) as outer_foo:
       self.assertEqual("foo/", outer_foo)
-      with ops.name_scope("") as empty3:
+      with ops.name_scope("", skip_on_eager=False) as empty3:
         self.assertEqual("", empty3)
-      with ops.name_scope("foo4") as foo4:
+      with ops.name_scope("foo4", skip_on_eager=False) as foo4:
         self.assertEqual("foo/foo4/", foo4)
-      with ops.name_scope("foo5//") as foo5:
+      with ops.name_scope("foo5//", skip_on_eager=False) as foo5:
         self.assertEqual("foo5//", foo5)
-        with ops.name_scope("foo6") as foo6:
+        with ops.name_scope("foo6", skip_on_eager=False) as foo6:
           self.assertEqual("foo5//foo6/", foo6)
-      with ops.name_scope("/") as foo7:
+      with ops.name_scope("/", skip_on_eager=False) as foo7:
         self.assertEqual("/", foo7)
-      with ops.name_scope("//") as foo8:
+      with ops.name_scope("//", skip_on_eager=False) as foo8:
         self.assertEqual("//", foo8)
-      with ops.name_scope("a//b/c") as foo9:
+      with ops.name_scope("a//b/c", skip_on_eager=False) as foo9:
         self.assertEqual("foo/a//b/c/", foo9)
-    with ops.name_scope("a//b/c") as foo10:
+    with ops.name_scope("a//b/c", skip_on_eager=False) as foo10:
       self.assertEqual("a//b/c/", foo10)
 
   @test_util.run_in_graph_and_eager_modes
   def testEagerDefaultScopeName(self):
-    with ops.name_scope(None, "default") as scope:
+    with ops.name_scope(None, "default", skip_on_eager=False) as scope:
       self.assertEqual(scope, "default/")
-      with ops.name_scope(None, "default2") as scope2:
+      with ops.name_scope(None, "default2", skip_on_eager=False) as scope2:
         self.assertEqual(scope2, "default/default2/")
 
   @test_util.run_in_graph_and_eager_modes
@@ -2671,7 +2672,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       function_graph = ops.Graph()
       with function_graph.as_default():
-        with ops.name_scope("inner"), ops.init_scope():
+        with ops.name_scope("inner", skip_on_eager=False), ops.init_scope():
           self.assertEqual(ops.get_name_scope(), "inner")
       self.assertEqual(ops.get_name_scope(), "")
 
@@ -2698,7 +2699,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
   def testPreservesNameScopeInEagerExecution(self):
     with context.eager_mode():
       def foo():
-        with ops.name_scope("inner"), ops.init_scope():
+        with ops.name_scope("inner", skip_on_eager=False), ops.init_scope():
           if context.executing_eagerly():
             # A trailing slash is always appended when eager execution is
             # enabled.

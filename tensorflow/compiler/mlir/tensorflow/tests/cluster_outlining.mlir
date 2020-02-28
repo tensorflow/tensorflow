@@ -91,12 +91,12 @@ module {
   func @multiplelaunches(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island wraps
-        // CHECK: %[[A_OUTPUT:[0-9]*]]:2 = {{.*}} "tf_device.launch_func"() {device = "tpu0", func = @tpu0_func}
+        // CHECK: %[[A_OUTPUT:[a-z0-9]*]], %{{.*}} = {{.*}} "tf_device.launch_func"() {device = "tpu0", func = @tpu0_func}
         "tf_device.launch"() ( {
           %3 = "tf.A"() : () -> tensor<?xi32>
           tf_device.return %3 : tensor<?xi32>
         }) {device = "tpu0"} : () -> tensor<?xi32>
-      // CHECK: tf_executor.fetch %[[A_OUTPUT]]#0
+      // CHECK: tf_executor.fetch %[[A_OUTPUT]]
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
     return %0 : tensor<?xi32>

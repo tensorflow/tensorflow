@@ -118,7 +118,7 @@ bool Arg<toco::IntList>::Parse(string text) {
   if (!text.empty()) {
     int32 element;
     for (absl::string_view part : absl::StrSplit(text, ',')) {
-      if (!SimpleAtoi(part, &element)) return false;
+      if (!absl::SimpleAtoi(part, &element)) return false;
       parsed_value_.elements.push_back(element);
     }
   }

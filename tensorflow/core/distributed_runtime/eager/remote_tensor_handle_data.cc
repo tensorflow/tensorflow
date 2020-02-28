@@ -34,7 +34,7 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
     return;
   }
 
-  eager::EagerClient* eager_client;
+  core::RefCountPtr<eager::EagerClient> eager_client;
   Status status = ctx->GetClient(remote_task, &eager_client);
   if (!status.ok()) {
     LOG_EVERY_N_SEC(INFO, 60)
@@ -52,8 +52,8 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
 
   VLOG(3) << "Sending request to delete " << request->DebugString();
   std::unique_ptr<EagerNode> node(
-      absl::make_unique<eager::DestroyTensorHandleNode>(std::move(request), ctx,
-                                                        remote_task, ready));
+      absl::make_unique<eager::DestroyTensorHandleNode>(
+          std::move(request), eager_client.get(), ready));
   auto& executor = ctx->Executor();
   if (executor.Async()) {
     Status status = executor.AddOrExecute(std::move(node));
@@ -142,6 +142,10 @@ Status RemoteTensorHandleData::NumElements(int64* num_elements) const {
   return Status::OK();
 }
 
+Status RemoteTensorHandleData::Unprotect() {
+  return errors::Unavailable("Unable to unprotect a remote handle.");
+}
+
 string RemoteTensorHandleData::DebugString() const {
   return strings::StrCat("RemoteTensorHandleData:", " op_id: ", op_id_,
                          " output_num: ", output_num_);
@@ -205,6 +209,10 @@ Status UnshapedRemoteTensorHandleData::NumElements(int64* num_elements) const {
   return errors::Unavailable(
       "Unable to get shape information for an async remote handle. Please wait "
       "until it is ready");
+}
+
+Status UnshapedRemoteTensorHandleData::Unprotect() {
+  return errors::Unavailable("Unable to unprotect a remote handle.");
 }
 
 string UnshapedRemoteTensorHandleData::DebugString() const {

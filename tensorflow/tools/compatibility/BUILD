@@ -165,8 +165,7 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
-        "no_cuda",
-        "no_rocm",
+        "no_windows",
         "v1only",
     ],
     deps = [
@@ -254,8 +253,7 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
-        "no_cuda",
-        "no_rocm",
+        "no_windows",
         "v1only",
     ],
     deps = [
@@ -269,6 +267,7 @@ py_test(
     srcs = ["test_file_v2_0.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
