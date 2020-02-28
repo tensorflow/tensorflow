@@ -19,14 +19,22 @@ limitations under the License.
 // of DebugLog() and then get the numerical variations without requiring any
 // more code.
 
-#include "tensorflow/lite/micro/debug_log_numbers.h"
-
-#include "tensorflow/lite/micro/debug_log.h"
+#include "tensorflow/lite/micro/micro_string.h"
 
 namespace {
 
+// Int formats can need up to 10 bytes for the value plus a single byte for the
+// sign.
+constexpr int kMaxIntCharsNeeded = 10 + 1;
+// Hex formats can need up to 8 bytes for the value plus two bytes for the "0x".
+constexpr int kMaxHexCharsNeeded = 8 + 2;
+
+// Float formats can need up to 7 bytes for the fraction plus 3 bytes for "x2^"
+// plus 3 bytes for the exponent and a single sign bit.
+constexpr float kMaxFloatCharsNeeded = 7 + 3 + 3 + 1;
+
 // All input buffers to the number conversion functions must be this long.
-static const int kFastToBufferSize = 48;
+const int kFastToBufferSize = 48;
 
 // Reverses a zero-terminated string in-place.
 char* ReverseStringInPlace(char* start, char* end) {
@@ -158,28 +166,97 @@ char* FastFloatToBufferLeft(float f, char* buffer) {
   return current;
 }
 
+int FormatInt32(char* output, int32_t i) {
+  return static_cast<int>(FastInt32ToBufferLeft(i, output) - output);
+}
+
+int FormatUInt32(char* output, uint32_t i) {
+  return static_cast<int>(FastUInt32ToBufferLeft(i, output, 10) - output);
+}
+
+int FormatHex(char* output, uint32_t i) {
+  return static_cast<int>(FastUInt32ToBufferLeft(i, output, 16) - output);
+}
+
+int FormatFloat(char* output, float i) {
+  return static_cast<int>(FastFloatToBufferLeft(i, output) - output);
+}
+
 }  // namespace
 
-extern "C" void DebugLogInt32(int32_t i) {
-  char number_string[kFastToBufferSize];
-  FastInt32ToBufferLeft(i, number_string);
-  DebugLog(number_string);
+extern "C" int MicroVsnprintf(char* output, int len, const char* format,
+                              va_list args) {
+  int output_index = 0;
+  const char* current = format;
+  // One extra character must be left for the null terminator.
+  const int usable_length = len - 1;
+  while (*current != '\0' && output_index < usable_length) {
+    if (*current == '%') {
+      current++;
+      switch (*current) {
+        case 'd':
+          // Cut off log message if format could exceed log buffer length.
+          if (usable_length - output_index < kMaxIntCharsNeeded) {
+            output[output_index++] = '\0';
+            return output_index;
+          }
+          output_index +=
+              FormatInt32(&output[output_index], va_arg(args, int32_t));
+          current++;
+          break;
+        case 'u':
+          if (usable_length - output_index < kMaxIntCharsNeeded) {
+            output[output_index++] = '\0';
+            return output_index;
+          }
+          output_index +=
+              FormatUInt32(&output[output_index], va_arg(args, uint32_t));
+          current++;
+          break;
+        case 'x':
+          if (usable_length - output_index < kMaxHexCharsNeeded) {
+            output[output_index++] = '\0';
+            return output_index;
+          }
+          output[output_index++] = '0';
+          output[output_index++] = 'x';
+          output_index +=
+              FormatHex(&output[output_index], va_arg(args, uint32_t));
+          current++;
+          break;
+        case 'f':
+          if (usable_length - output_index < kMaxFloatCharsNeeded) {
+            output[output_index++] = '\0';
+            return output_index;
+          }
+          output_index +=
+              FormatFloat(&output[output_index], va_arg(args, double));
+          current++;
+          break;
+        case '%':
+          output[output_index++] = *current++;
+          break;
+        case 's':
+          char* string = va_arg(args, char*);
+          int string_idx = 0;
+          while (string_idx + output_index < usable_length &&
+                 string[string_idx] != '\0') {
+            output[output_index++] = string[string_idx++];
+          }
+          current++;
+      }
+    } else {
+      output[output_index++] = *current++;
+    }
+  }
+  output[output_index++] = '\0';
+  return output_index;
 }
 
-extern "C" void DebugLogUInt32(uint32_t i) {
-  char number_string[kFastToBufferSize];
-  FastUInt32ToBufferLeft(i, number_string, 10);
-  DebugLog(number_string);
-}
-
-extern "C" void DebugLogHex(uint32_t i) {
-  char number_string[kFastToBufferSize];
-  FastUInt32ToBufferLeft(i, number_string, 16);
-  DebugLog(number_string);
-}
-
-extern "C" void DebugLogFloat(float i) {
-  char number_string[kFastToBufferSize];
-  FastFloatToBufferLeft(i, number_string);
-  DebugLog(number_string);
+extern "C" int MicroSnprintf(char* output, int len, const char* format, ...) {
+  va_list args;
+  va_start(args, format);
+  int bytes_written = MicroVsnprintf(output, len, format, args);
+  va_end(args);
+  return bytes_written;
 }
