@@ -262,7 +262,3 @@ class CentralStorageStrategyV1(distribute_lib.StrategyV1):
         'CentralStorageStrategy')
 
   __init__.__doc__ = CentralStorageStrategy.__init__.__doc__
-
-  def _in_multi_worker_mode(self):
-    """Whether this strategy indicates working in multi-worker settings."""
-    return False
