@@ -402,7 +402,8 @@ std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
     Aws::InitAPI(options);
 
     // The creation of S3Client disables virtual addressing:
-    //   S3Client(clientConfiguration, signPayloads, useVirtualAdressing = true)
+    //   S3Client(clientConfiguration, signPayloads, useVirtualAddressing =
+    //   true)
     // The purpose is to address the issue encountered when there is an `.`
     // in the bucket name. Due to TLS hostname validation or DNS rules,
     // the bucket may not be resolved. Disabling of virtual addressing

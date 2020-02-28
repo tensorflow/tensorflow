@@ -3671,7 +3671,7 @@ const MklLayoutRewritePass::RewriteInfo*
 MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   CHECK_NOTNULL(n);
 
-  // QuntizedOps may have attributes other than "T", so decoupled the check
+  // QuantizedOps may have attributes other than "T", so decoupled the check
   // with a function, CheckForQuantizedNodeRewrite(const Node*).
   const RewriteInfo* ri = CheckForQuantizedNodeRewrite(n);
   if (ri != nullptr) return ri;
@@ -3821,7 +3821,7 @@ MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
     // a.k.a. "a->b->c" matches "op1->op2->op3"
     //
 
-    // Stores the first unvisted outgoing edge of each matched node in "nodes".
+    // Stores the first unvisited outgoing edge of each matched node in "nodes".
     std::stack<EdgeSet::const_iterator> current_neighbor_stack;
     nodes.clear();
 

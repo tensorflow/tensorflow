@@ -338,7 +338,7 @@ inline Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
 // Shape function for random operations.
 Status RandomShape(shape_inference::InferenceContext* c);
 
-// Shape function for Slice opertaions.
+// Shape function for Slice operations.
 Status SliceShape(shape_inference::InferenceContext* c);
 
 // Validates the 3 component tensors of a sparse tensor have the proper

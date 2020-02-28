@@ -190,7 +190,7 @@ class EagerExecutor {
   void NotifyWaiters(uint64 id) EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   // Starts execution of pending EagerNodes. This function loops till executor
-  // state_ is set to kShutDown. If any errors are encontered, these are set
+  // state_ is set to kShutDown. If any errors are encountered, these are set
   // inside `status_`. The loop blocks anytime there are no pending nodes, or if
   // `status_` is not ok.
   void Run();

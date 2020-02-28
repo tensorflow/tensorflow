@@ -120,7 +120,7 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     std::shared_ptr<memory> src_mem;
     std::shared_ptr<memory> dst_mem;
 
-    // desc & prmitive desc
+    // desc & primitive desc
     std::shared_ptr<mkldnn::eltwise_forward::desc> fwd_desc;
     std::shared_ptr<EltwiseFwdPd> fwd_pd;
 

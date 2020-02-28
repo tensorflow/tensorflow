@@ -162,7 +162,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
     remote_op->add_inputs()->Swap(&(*args)[i]);
   }
   // The remote component function should use the same op_id as its parent
-  // multi-device function's in order to get the global unqiue op_id generated
+  // multi-device function's in order to get the global unique op_id generated
   // by the master context.
   remote_op->set_id(opts.op_id.value());
   remote_op->set_is_function(true);

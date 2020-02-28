@@ -1312,7 +1312,7 @@ int GetConstantFoldingCounter() {
       return counter;
     }
   }
-  LOG(FATAL) << "Should have found a node that replcaed add";
+  LOG(FATAL) << "Should have found a node that replaced add";
 }
 
 TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
@@ -2129,7 +2129,7 @@ TEST(OptimizationTest, RemoveListArrayConverter) {
   }
 }
 
-TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
+TEST(OptimizationTest, RemoveListArrayConverter_WithControlDeps) {
   auto func = FDH::Create(
       // Name
       "Test",

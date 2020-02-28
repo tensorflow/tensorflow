@@ -205,7 +205,7 @@ class ThreadWorkSource {
       // thread pool waiting queues. Wake up threads from sub thread waiting
       // queues.
       // The waiting queues are defined at RunHandlerPool.
-      // Get the waiter_queue and coresponding mutex. Note, the thread work
+      // Get the waiter_queue and corresponding mutex. Note, the thread work
       // source may change afterwards if a new request comes or an old request
       // finishes.
       tf_shared_lock lock(run_handler_waiter_mu_);
@@ -522,7 +522,7 @@ class RunHandlerThreadPool {
 
   // Search tasks from Requets range searching_range_start to
   // searching_range_end. If there is no tasks in the search range and
-  // may_steal_blocking_work is true, then search from all reuqests.
+  // may_steal_blocking_work is true, then search from all requests.
   Task FindTask(
       int searching_range_start, int searching_range_end, int thread_id,
       int sub_thread_pool_id, int max_blocking_inflight,
@@ -596,7 +596,7 @@ Task RunHandlerThreadPool::FindTask(
   int current_index = thread_data_[thread_id].current_index;
   *task_from_blocking_queue = false;
 
-  // TODO(chaox): Chagne the search algorithm from round robin to random
+  // TODO(chaox): Change the search algorithm from round robin to random
   // walk.
   for (int i = 0; i < searching_range_end - searching_range_start; ++i) {
     if (current_index >= searching_range_end) {

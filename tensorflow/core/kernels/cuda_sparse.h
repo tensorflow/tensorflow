@@ -286,7 +286,7 @@ class GpuSparse {
   //
   // **NOTE** Matrices B and C are expected to be in column-major
   // order; to make them consistent with TensorFlow they
-  // must be transposed (or the matmul op's pre/post-procesisng must take this
+  // must be transposed (or the matmul op's pre/post-processing must take this
   // into account).
   //
   // **NOTE** This is an in-place operation for data in C.

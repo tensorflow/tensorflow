@@ -1840,7 +1840,7 @@ void GPUKernelTracker::RecordTerminated(uint64 queued_count) {
   // advance the completed frontier to the just-completed PendingKernel.  In
   // practice we occasionally see the termination callbacks arrive out of
   // order probably because of thread scheduling.  Eventually we may support
-  // out-of- order completion involving multple compute streams so here we
+  // out-of- order completion involving multiple compute streams so here we
   // follow a conservative approach and wait for every single callback to
   // arrive before advancing the frontier.
   while (true) {
