@@ -274,7 +274,7 @@ class BatchMatMulMkl : public OpKernel {
                               ldb_Array, beta_Array, C_Array, ldc_Array,
                               group_count, group_size);
   }
-#endif  // ENABLE_INTEL_MKL_BFLOAT16 && ENABLE_INTEL_MKL_BFLOAT16
+#endif  // ENABLE_MKLDNN_V1 && ENABLE_INTEL_MKL_BFLOAT16
 };
 
 #define REGISTER_BATCH_MATMUL_MKL(TYPE)                                       \
