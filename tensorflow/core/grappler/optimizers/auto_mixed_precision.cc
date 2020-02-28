@@ -1145,14 +1145,14 @@ bool IsTensorListOp(const string& op) {
 }
 
 bool IsTensorListReaderOp(const string& op) {
-  const gtl::FlatSet<string> tensor_list_reader_ops = {
+  static const gtl::FlatSet<string> tensor_list_reader_ops = {
       "TensorListConcat",  "TensorListConcatV2", "TensorListGather",
       "TensorListGetItem", "TensorListPopBack",  "TensorListStack"};
   return tensor_list_reader_ops.count(op);
 }
 
 bool IsTensorListWriterOp(const string& op) {
-  const gtl::FlatSet<string> tensor_list_writer_ops = {
+  static const gtl::FlatSet<string> tensor_list_writer_ops = {
       "TensorListFromTensor",    "TensorListPushBack",
       "TensorListPushBackBatch", "TensorListScatter",
       "TensorListScatterV2",     "TensorListScatterIntoExistingList",
@@ -1349,6 +1349,11 @@ const NodeTypeId* AutoMixedPrecisionImpl::GetTensorListFloat32NodeTypeId(
   for (const TypeAttrId& type_attr : node_type_map_.GetTypeAttrs(node)) {
     const NodeTypeId* node_type =
         graph_type_view_.GetNode(node.name(), type_attr);
+    // This assumes that the float32 data type on a Tensor List op is always a
+    // non-fixed type attribute containing a single type, and that this type
+    // attribute represents the dtype of the values in the list.
+    // TODO(benbarsdell): A new Tensor List op could theoretically break these
+    // assumptions.
     if (node_type && node_type->type_attr.fixed_type == DT_INVALID &&
         node_type->type_attr.type_index == TypeAttrId::kSingleType &&
         IsFloat32(*node_type)) {
@@ -1374,30 +1379,30 @@ bool AutoMixedPrecisionImpl::IsSourceOrSinkOp(const string& op) const {
 // Finds all clusters of float32 Tensor List nodes that are connected via their
 // handle edges. Unsafe clusters (those with edges that cross untraversable
 // boundaries via _Arg, _Ret, PartitionedCall etc. nodes) are added to black_set
-// and not returned.
+// and not returned. The caller should paint all nodes in a cluster the same
+// color, as they may all refer to the same Tensor List.
 void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndBlacklistUnsafe(
     std::vector<absl::flat_hash_set<const NodeDef*>>* tensor_list_clusters,
     absl::flat_hash_set<int>* black_set) const {
   absl::flat_hash_set<const NodeDef*> tensor_list_prop_set;
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
-    // First add any non-processable Tensor List nodes to the black set to avoid
-    // them getting forced to white at the end of optimization.
-    if (!ShouldProcess(*root.node) &&
-        GetTensorListFloat32NodeTypeId(*root.node) == &root) {
-      black_set->insert(root_idx);
-      continue;
-    }
     if (!ShouldProcess(*root.node) ||
         root.type_attr.fixed_type != DataType::DT_VARIANT ||
         !GetTensorListFloat32NodeTypeId(*root.node) ||
         tensor_list_prop_set.count(root.node)) {
       continue;
     }
+    const NodeTypeId* root_fp32 = GetTensorListFloat32NodeTypeId(*root.node);
+    const absl::optional<int> maybe_root_fp32_idx =
+        graph_type_view_.GetNodeIndex(*root_fp32);
+    DCHECK(maybe_root_fp32_idx.has_value())
+        << "Type attribute " << root_fp32->type_attr.DebugString()
+        << " of node " << root.node->name() << " not found in graph view";
+    int root_fp32_idx = maybe_root_fp32_idx.value();
     // Traverse Tensor List handle edges (DT_VARIANT) to find cluster of all
     // connected Tensor List nodes.
     absl::flat_hash_set<const NodeDef*> cluster({root.node});
-    bool cluster_is_safe = true;
     DfsTypeTraversal(graph_type_view_, {&root},
                      TypeTraversalDirection::kFollowInputsAndOutputs,
                      DfsTypePredicates::Enter([&](int idx) -> bool {
@@ -1405,40 +1410,24 @@ void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndBlacklistUnsafe(
                        return !tensor_list_prop_set.count(item.node);
                      }),
                      DfsTypeCallbacks::PreOrder([&](int idx) {
-                       const NodeDef* node =
-                           graph_type_view_.GetNode(idx)->node;
-                       tensor_list_prop_set.insert(node);
+                       const NodeTypeId& item = *graph_type_view_.GetNode(idx);
+                       const NodeDef* node = item.node;
                        if (GetTensorListFloat32NodeTypeId(*node)) {
                          cluster.insert(node);
+                         if (!ShouldProcess(*node)) {
+                           // The cluster contains an un-processable node.
+                           black_set->insert(root_fp32_idx);
+                         }
+                         // TODO(benbarsdell): In a theoretical pathological
+                         // case of a Tensor List of Tensor List handles, the
+                         // Tensor List itself would need to be treated as a
+                         // sink.
                        } else if (IsSourceOrSinkOp(node->op())) {
-                         // The cluster crosses an untraversable boundary, so
-                         // mark as unsafe.
-                         cluster_is_safe = false;
+                         // The cluster crosses an untraversable boundary.
+                         black_set->insert(root_fp32_idx);
                        }
                      }));
-    if (cluster_is_safe) {
-      tensor_list_clusters->push_back(cluster);
-    } else {
-      // Paint the entire cluster black if it's unsafe.
-      VLOG(1) << "Painting Tensor List cluster of size " << cluster.size()
-              << " BLACK because it crosses graph boundaries";
-      for (const NodeDef* node : cluster) {
-        const NodeTypeId* node_type = GetTensorListFloat32NodeTypeId(*node);
-        /*D*/ CHECK(node_type) << "No float32 type attribute found for "
-                               << node->op() << " node " << node->name();
-        const absl::optional<int> maybe_node_type_idx =
-            graph_type_view_.GetNodeIndex(*node_type);
-        DCHECK(maybe_node_type_idx.has_value())
-            << "Type attribute " << node_type->type_attr.DebugString()
-            << " of node " << node->name() << " not found in graph view";
-        int node_type_idx = maybe_node_type_idx.value();
-        VLOG(2) << "Painting type " << node_type->type_attr.DebugString()
-                << " of " << node->op() << " node " << node->name()
-                << " BLACK because its handle crosses graph boundaries, "
-                   "making it unsafe to change";
-        black_set->insert(node_type_idx);
-      }
-    }
+    tensor_list_clusters->push_back(cluster);
   }
 }
 
@@ -1451,8 +1440,8 @@ void AutoMixedPrecisionImpl::FindTensorListImplicitFloat32Edges(
     if (!IsTensorListReaderOp(root_node->op())) continue;
     NodeTypeId root(root_node, TypeAttrId(DataType::DT_VARIANT));
     const NodeTypeId* root_fp32 = GetTensorListFloat32NodeTypeId(*root.node);
-    /*D*/ CHECK(root_fp32) << "No float32 type attribute found for "
-                           << root.node->op() << " node " << root.node->name();
+    CHECK(root_fp32) << "No float32 type attribute found for "  // Crash OK
+                     << root.node->op() << " node " << root.node->name();
     // Search backwards through handle edges (DT_VARIANT) for all writer ops,
     // adding direct implicit edges between them and the reader.
     DfsTypeTraversal(
@@ -1466,7 +1455,7 @@ void AutoMixedPrecisionImpl::FindTensorListImplicitFloat32Edges(
           if (IsTensorListWriterOp(item.node->op())) {
             const NodeTypeId* item_fp32 =
                 GetTensorListFloat32NodeTypeId(*item.node);
-            /*D*/ CHECK(item_fp32)
+            CHECK(item_fp32)  // Crash OK
                 << "No float32 type attribute found for " << item.node->op()
                 << " node " << item.node->name();
             VLOG(2) << "Adding ephemeral float32 edge from "
