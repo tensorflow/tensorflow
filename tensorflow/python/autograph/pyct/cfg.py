@@ -754,6 +754,12 @@ class AstToCfg(gast.NodeVisitor):
   def visit_Return(self, node):
     self._process_exit_statement(node, (gast.FunctionDef,))
 
+  def visit_Import(self, node):
+    self._process_basic_statement(node)
+
+  def visit_ImportFrom(self, node):
+    self._process_basic_statement(node)
+
   def visit_Expr(self, node):
     self._process_basic_statement(node)
 
