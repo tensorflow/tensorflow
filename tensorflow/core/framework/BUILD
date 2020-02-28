@@ -272,6 +272,7 @@ filegroup(
         "log_memory.cc",
         "log_memory.h",
         "numeric_types.h",
+        "op_requires.h",
         "register_types.h",
         "resource_handle.cc",
         "resource_handle.h",
@@ -353,7 +354,6 @@ filegroup(
         "op_def_util.h",
         "op_kernel.cc",
         "op_kernel.h",
-        "op_requires.h",
         "op_segment.cc",
         "op_segment.h",
         "ops_util.cc",
@@ -787,6 +787,7 @@ cc_library(
         "//tensorflow/core/util:padding",
         "//tensorflow/core/util:tensor_format",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -865,6 +866,7 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/util:padding",
         "@com_google_absl//absl/strings",
     ],
 )

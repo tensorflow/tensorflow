@@ -103,6 +103,22 @@ class RaggedGatherOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
          [[[b'g']], [[b'g']]]]                                  #  [p2, p2]]
     )  # pyformat: disable
 
+  def test3DRaggedParamsAnd3DTensorIndices(self):
+    params = ragged_factory_ops.constant([[['a', 'b'], []],            # p0
+                                          [['c', 'd'], ['e'], ['f']],  # p1
+                                          [['g']]                      # p2
+                                         ])  # pyformat: disable
+    indices = [[[1, 2], [0, 1], [2, 2]], [[0, 0], [1, 2], [0, 1]]]
+    self.assertAllEqual(
+        ragged_gather_ops.gather(params, indices),
+        [[[[[b'c', b'd'], [b'e'], [b'f']], [[b'g']]],             # [[p1, p2],
+          [[[b'a', b'b'], []], [[b'c', b'd'], [b'e'], [b'f']]],   #  [p0, p1],
+          [[[b'g']], [[b'g']]]],                                  #  [p2, p2]]
+         [[[[b'a', b'b'], []], [[b'a', b'b'], []]],               # [[p0, p0],
+          [[[b'c', b'd'], [b'e'], [b'f']], [[b'g']]],             #  [p1, p2],
+          [[[b'a', b'b'], []], [[b'c', b'd'], [b'e'], [b'f']]]]]  #  [p0, p1]]
+    )  # pyformat: disable
+
   def testTensorParamsAnd4DRaggedIndices(self):
     indices = ragged_factory_ops.constant(
         [[[[3, 4], [0, 6]], []], [[[2, 1], [1, 0]], [[2, 5]], [[2, 3]]],

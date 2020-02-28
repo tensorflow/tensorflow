@@ -533,7 +533,8 @@ string CreateConstArray(Model* model, string const& name,
   string array_name = toco::AvailableArrayName(*model, name);
   auto& array = model->GetOrCreateArray(array_name);
   array.data_type = T;
-  array.mutable_shape()->mutable_dims()->emplace_back(data.size());
+  array.mutable_shape()->mutable_dims()->emplace_back(
+      static_cast<int>(data.size()));
   array.GetMutableBuffer<T>().data = data;
   return array_name;
 }

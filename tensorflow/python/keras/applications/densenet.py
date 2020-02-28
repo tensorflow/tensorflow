@@ -141,6 +141,9 @@ def DenseNet(
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.densenet.preprocess_input` for an example.
+
   Arguments:
     blocks: numbers of building blocks for the four dense layers.
     include_top: whether to include the fully-connected
@@ -359,6 +362,10 @@ def preprocess_input(x, data_format=None):
 def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
 
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TORCH)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
 
 DOC = """
 

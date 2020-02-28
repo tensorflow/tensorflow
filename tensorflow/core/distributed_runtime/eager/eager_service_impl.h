@@ -186,6 +186,9 @@ class EagerServiceImpl {
 
     void Abort(Status status) override {}
 
+    // Remote node deletions are best effort
+    bool Fatal() const override { return false; }
+
     string DebugString() const override {
       string out = "[ClientTensorHandleDeleteNode]";
       strings::StrAppend(&out, " op_id: ", handle_to_delete_->op_id);

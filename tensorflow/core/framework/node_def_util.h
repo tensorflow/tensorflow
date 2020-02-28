@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
 
@@ -303,6 +304,10 @@ bool TryGetNodeAttr(
 // a matching type, a reference to an empty string is returned.
 // REQUIRES: Must not use the returned value beyond the lifetime of node_def.
 const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name);
+
+// Specialization to parse an attribute directly into a Padding enum.
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   Padding* value);
 
 // Computes the input type for a specific node input.
 // REQUIRES: ValidateOpDef(op_def).ok()

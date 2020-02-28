@@ -1901,6 +1901,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:single_threaded_executor",
         "@com_google_absl//absl/base",
     ],
 )
@@ -1923,7 +1924,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "fused_batch_norm_op_test",
     size = "small",
     srcs = ["fused_batch_norm_op_test.cc"],
@@ -3243,6 +3244,22 @@ tf_cc_tests(
     ],
 )
 
+tf_cc_test(
+    name = "non_max_suppression_op_benchmark_test",
+    srcs = ["non_max_suppression_op_benchmark_test.cc"],
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "resize_bilinear_op_test",
     srcs = ["resize_bilinear_op_test.cc"],
@@ -3936,10 +3953,15 @@ cc_library(
         "aggregate_ops.h",
         "aggregate_ops_cpu.h",
     ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//third_party/eigen3",
-    ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            "//third_party/eigen3",
+            "//tensorflow/core:framework",
+        ],
+    }),
 )
 
 tf_kernel_library(

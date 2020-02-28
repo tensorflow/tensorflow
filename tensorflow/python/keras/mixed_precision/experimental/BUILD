@@ -211,7 +211,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["keras_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 10,
     tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
     deps = [
         ":test_util",

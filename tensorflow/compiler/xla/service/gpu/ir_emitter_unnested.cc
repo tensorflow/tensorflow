@@ -2346,7 +2346,9 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
               shared_cache,
               {b_.getInt32(0), constant(j), thread_id_info.lane_id}));
           llvm::Value* initial_value = reduction_info.GetInitialValues()[i];
-          llvm::Value* initial_value_addr = b_.CreateAlloca(element_type);
+          llvm::Value* initial_value_addr =
+              shared_to_global(llvm_ir::EmitAllocaAtFunctionEntry(
+                  element_type, "initial_value_addr", &b_));
           b_.CreateStore(initial_value, initial_value_addr);
 
           llvm::Value* warp_exists = b_.CreateICmpULT(
@@ -3095,9 +3097,20 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
            << " " << reduction_dimensions.dimensions[0] << " "
            << reduction_dimensions.dimensions[1] << " "
            << reduction_dimensions.dimensions[2];
+  auto get_dtype_bits = [](const HloInstruction* i) {
+    return primitive_util::BitWidth(i->shape().element_type());
+  };
 
+  // For fusion with multiple inputs, use the smallest input dtype to
+  // select the reduction_tiling.
+  int smallest_input_dtype_bits = get_dtype_bits(first_reduce->operand(0));
+  for (xla::HloInstruction* input : unnested_hlo->operands()) {
+    smallest_input_dtype_bits =
+        std::min(get_dtype_bits(input), smallest_input_dtype_bits);
+  }
   std::array<int64, 3> reduction_tiling =
-      GetReductionTiling(reduction_dimensions);
+      GetReductionTiling(reduction_dimensions, smallest_input_dtype_bits,
+                         &ir_emitter_context_->device_description());
   bool dilated_x =
       reduction_dimensions.is_row_reduction ||
       !IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,

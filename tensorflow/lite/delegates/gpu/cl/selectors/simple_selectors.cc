@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/strided_slice.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/transpose.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/winograd.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -193,6 +194,28 @@ void SelectTranspose(const TransposeAttributes& attr,
                      std::unique_ptr<GPUOperation>* ptr) {
   Transpose operation = CreateTranspose(op_def, attr);
   *ptr = absl::make_unique<Transpose>(std::move(operation));
+}
+
+Status SelectWinograd4x4To36(const CreationContext& creation_context,
+                             const Padding2D& padding,
+                             const OperationDef& op_def,
+                             std::unique_ptr<GPUOperation>* ptr) {
+  Winograd4x4To36 operation;
+  RETURN_IF_ERROR(
+      CreateWinograd4x4To36(creation_context, op_def, padding, &operation));
+  *ptr = absl::make_unique<Winograd4x4To36>(std::move(operation));
+  return OkStatus();
+}
+
+Status SelectWinograd36To4x4(
+    const CreationContext& creation_context, const OperationDef& op_def,
+    const ::tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
+    std::unique_ptr<GPUOperation>* ptr) {
+  Winograd36To4x4 operation;
+  RETURN_IF_ERROR(
+      CreateWinograd36To4x4(creation_context, op_def, biases, &operation));
+  *ptr = absl::make_unique<Winograd36To4x4>(std::move(operation));
+  return OkStatus();
 }
 
 }  // namespace cl

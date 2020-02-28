@@ -62,6 +62,9 @@ def VGG19(
 
   The default input size for this model is 224x224.
 
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.vgg19.preprocess_input` for an example.
+
   Arguments:
     include_top: whether to include the 3 fully-connected
       layers at the top of the network.
@@ -257,3 +260,8 @@ def decode_predictions(preds, top=5):
     ValueError: In case of invalid shape of the `preds` array (must be 2D).
   """
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_CAFFE)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

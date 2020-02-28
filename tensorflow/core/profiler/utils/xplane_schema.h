@@ -76,6 +76,8 @@ enum HostEventType {
   kPartitionedCallOp,
   // tf.data related.
   kIteratorGetNextOp,
+  // Virtual events for grouping.
+  kHostTrainingLoopIteration,
   // GPU related.
   kKernelLaunch,
   kKernelExecute,

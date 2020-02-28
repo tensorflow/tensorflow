@@ -77,8 +77,7 @@ void AverageEvalFloat(const TfLiteContext* context, const TfLiteNode* node,
 void AverageEvalQuantized(TfLiteContext* context, const TfLiteNode* node,
                           const TfLitePoolParams* params, const OpData* data,
                           const TfLiteTensor* input, TfLiteTensor* output) {
-  assert(input->type == kTfLiteUInt8 || input->type == kTfLiteInt8);
-
+  TFLITE_DCHECK(input->type == kTfLiteUInt8 || input->type == kTfLiteInt8);
   int32_t activation_min, activation_max;
   (void)CalculateActivationRangeQuantized(context, params->activation, output,
                                           &activation_min, &activation_max);
@@ -128,7 +127,7 @@ void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
 void MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
                       TfLitePoolParams* params, OpData* data,
                       const TfLiteTensor* input, TfLiteTensor* output) {
-  assert(input->type == kTfLiteUInt8 || input->type == kTfLiteInt8);
+  TFLITE_DCHECK(input->type == kTfLiteUInt8 || input->type == kTfLiteInt8);
 
   int32_t activation_min, activation_max;
   (void)CalculateActivationRangeQuantized(context, params->activation, output,
@@ -175,7 +174,7 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, input, output, &data));
 
-  // Inputs and outputs share the same type, guarenteed by the converter.
+  // Inputs and outputs share the same type, guaranteed by the converter.
   switch (input->type) {
     case kTfLiteFloat32:
       AverageEvalFloat(context, node, params, &data, input, output);

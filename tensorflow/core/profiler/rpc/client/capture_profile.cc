@@ -60,6 +60,7 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
   }
   request.add_tools("op_profile");
   request.add_tools("input_pipeline");
+  request.add_tools("kernel_stats");
   request.add_tools("memory_viewer");
   request.add_tools("overview_page");
   request.add_tools("pod_viewer");

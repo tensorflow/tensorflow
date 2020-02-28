@@ -63,6 +63,9 @@ def InceptionV3(
   Note that the data format convention used by the model is
   the one specified in the `tf.keras.backend.image_data_format()`.
 
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.inception_v3.preprocess_input` for an example.
+
   Arguments:
     include_top: Boolean, whether to include the fully-connected
       layer at the top, as the last layer of the network. Default to `True`.
@@ -434,3 +437,8 @@ def decode_predictions(preds, top=5):
     ValueError: In case of invalid shape of the `preds` array (must be 2D).
   """
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

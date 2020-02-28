@@ -165,5 +165,45 @@ bool KernelReportEqualToComparator::operator()(const KernelReport& lhs,
   // clang-format on
 }
 
+void SortKernelsByTotalDurationDesc(KernelStatsDb* kernel_stats_db) {
+  // Sort kernel reports by total duration descendingly.
+  std::sort(kernel_stats_db->mutable_reports()->begin(),
+            kernel_stats_db->mutable_reports()->end(),
+            [](const KernelReport& lhs, const KernelReport& rhs) {
+              return lhs.total_duration_ns() > rhs.total_duration_ns() ||
+                     (lhs.total_duration_ns() == rhs.total_duration_ns() &&
+                      KernelReportLessThanComparator()(lhs, rhs));
+            });
+}
+
+void GroupKernelReports(std::vector<KernelReport>* reports,
+                        KernelStatsDb* dst) {
+  // Sort reports by grouping criteria.
+  std::sort(reports->begin(), reports->end(), KernelReportLessThanComparator());
+
+  // Group reports together.
+  KernelReport* prev = nullptr;
+  for (const KernelReport& report : *reports) {
+    DCHECK_EQ(3, report.grid_dim_size());
+    DCHECK_EQ(3, report.block_dim_size());
+    if (prev != nullptr && KernelReportEqualToComparator()(*prev, report)) {
+      // Previous element is identical to the one that we are adding, so
+      // aggregate them.
+      prev->set_occurrences(prev->occurrences() + 1);
+      prev->set_max_duration_ns(
+          std::max(prev->max_duration_ns(), report.max_duration_ns()));
+      prev->set_min_duration_ns(
+          std::min(prev->min_duration_ns(), report.min_duration_ns()));
+      prev->set_total_duration_ns(prev->total_duration_ns() +
+                                  report.total_duration_ns());
+    } else {
+      // Current element does not exist yet.
+      prev = dst->add_reports();
+      *prev = report;
+      prev->set_occurrences(1);
+    }
+  }
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

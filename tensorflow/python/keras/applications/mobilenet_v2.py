@@ -108,6 +108,9 @@ def MobileNetV2(input_shape=None,
 
   Optionally loads weights pre-trained on ImageNet.
 
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.mobilenet_v2.preprocess_input` for an example.
+
   Arguments:
     input_shape: Optional shape tuple, to be specified if you would
       like to use a model with an input image resolution that is not
@@ -491,11 +494,14 @@ def _make_divisible(v, divisor, min_value=None):
 
 @keras_export('keras.applications.mobilenet_v2.preprocess_input')
 def preprocess_input(x, data_format=None):
-  """Preprocesses the input (encoding a batch of images) for the model."""
   return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.mobilenet_v2.decode_predictions')
 def decode_predictions(preds, top=5):
-  """Decodes the prediction result from the model."""
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

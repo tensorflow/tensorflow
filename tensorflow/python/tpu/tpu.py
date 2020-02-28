@@ -208,13 +208,14 @@ def _enclosing_tpu_device_assignment():
 
 
 @auto_control_deps.register_acd_resource_resolver
-def tpu_replicated_input_resolver(op, resource_inputs):
+def tpu_replicated_input_resolver(op, resource_reads, resource_writes):
   """Replaces TPUReplicatedInput outputs with its inputs in resource_inputs."""
   # Ignore TPUReplicatedInput for ACD purposes since we will be directly adding
   # control deps on the replicated inputs.
   if op.type == "TPUReplicatedInput":
-    if resource_inputs:
-      resource_inputs.clear()
+    if resource_reads or resource_writes:
+      resource_reads.clear()
+      resource_writes.clear()
       return True
     else:
       return False
@@ -222,18 +223,21 @@ def tpu_replicated_input_resolver(op, resource_inputs):
   # with the actual replicated inputs. This allows ACD to correct add control
   # deps when there are multiple calls to `experimental_run_v2` in a
   # `tf.function`.
-  to_remove = []
-  to_add = []
-  for resource in resource_inputs:
-    if resource.op.type == "TPUReplicatedInput":
-      to_remove.append(resource)
-      to_add.extend(resource.op.inputs)
-  if not to_add and not to_remove:
-    return False
-  for t in to_remove:
-    resource_inputs.discard(t)
-  resource_inputs.update(to_add)
-  return True
+  def replace_with_unreplicated_resources(resource_inputs):
+    """Replaces handles in `resource_inputs` with their unreplicated inputs."""
+    to_remove = []
+    to_add = []
+    for resource in resource_inputs:
+      if resource.op.type == "TPUReplicatedInput":
+        to_remove.append(resource)
+        to_add.extend(resource.op.inputs)
+    for t in to_remove:
+      resource_inputs.discard(t)
+    resource_inputs.update(to_add)
+    return to_add or to_remove
+
+  return (replace_with_unreplicated_resources(resource_reads) or
+          replace_with_unreplicated_resources(resource_writes))
 
 
 class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
@@ -1158,6 +1162,7 @@ def split_compile_and_replicate(computation,
                for i in inputs[0]]), infeed_queue.number_of_tuple_elements,
                                              arg_error))
 
+  dynamic_shape_inputs = False
   if maximum_shapes:
     if infeed_queue:
       raise ValueError(
@@ -1174,6 +1179,8 @@ def split_compile_and_replicate(computation,
 
     flat_inputs, padding_maps = _pad_all_input(flat_inputs, flat_maximum_shapes,
                                                padding_spec)
+    if padding_maps:
+      dynamic_shape_inputs = True
 
     serialized_padding_maps = []
     for padding_map in padding_maps:
@@ -1228,7 +1235,7 @@ def split_compile_and_replicate(computation,
         # inputs when dynamic padding is enabled.
         # TODO(rxsang): Use other ways except argument index in padding_map so
         # outside compilation can work with dynamic padding correctly.
-        if maximum_shapes is None:
+        if not dynamic_shape_inputs:
           i.op._set_attr("_tpu_input_identity",
                          attr_value_pb2.AttrValue(b=True))
         # pylint: enable=protected-access
@@ -1262,9 +1269,8 @@ def split_compile_and_replicate(computation,
           kwargs["partitioner"] = None
           logging.warning(
               "Partitioned variables are not supported on TPU. Got "
-              "`partitioner` that is {} for variable {}. "
-              "Setting `partitioner` to `None`."
-              .format(partitioner, name))
+              "`partitioner` that is %s for variable %s. "
+              "Setting `partitioner` to `None`.", partitioner, name)
         if saved_custom_getter is None:
           return getter(name, *args, **kwargs)
         else:

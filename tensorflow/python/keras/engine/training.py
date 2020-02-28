@@ -42,6 +42,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.profiler import traceme
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -73,12 +74,9 @@ def disable_multi_worker(method):
   """Decorator that disallows multi-worker use of `method`."""
 
   def _method_wrapper(self, *args, **kwargs):
-    strategy = self.distribute_strategy
-    if (self._in_multi_worker_mode() or dist_utils.is_tpu_strategy(strategy) and  # pylint: disable=protected-access
-        strategy.extended.num_hosts > 1):
+    if self._in_multi_worker_mode():  # pylint: disable=protected-access
       raise ValueError('{} is not supported in multi-worker mode.'.format(
           method.__name__))
-
     return method(self, *args, **kwargs)
 
   return tf_decorator.make_decorator(
@@ -173,6 +171,13 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     # Fault-tolerance handler. Set in `ModelCheckpoint`.
     self._training_state = None
+    self.history = None
+
+    # These objects are used in the default `Model.compile`. They are not
+    # guaranteed to be set after `Model.compile` is called, as users can
+    # override compile with custom logic.
+    self.compiled_loss = None
+    self.compiled_metrics = None
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -350,9 +355,12 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """Returns the model's metrics added using `compile`, `add_metric` APIs."""
     metrics = []
     if self._is_compiled:
-      # TODO(omalleyt): Track `CompiledLoss` and `CompiledMetrics` objects
+      # TODO(omalleyt): Track `LossesContainer` and `MetricsContainer` objects
       # so that attr names are not load-bearing.
-      metrics = self.compiled_loss.metrics + self.compiled_metrics.metrics
+      if self.compiled_loss is not None:
+        metrics += self.compiled_loss.metrics
+      if self.compiled_metrics is not None:
+        metrics += self.compiled_metrics.metrics
 
     all_layers = self._gather_unique_layers()
     for l in all_layers:
@@ -415,7 +423,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
   def run_eagerly(self, value):
     self._run_eagerly = value
 
-  def _train_step(self, data):
+  def train_step(self, data):
     """The logic for one training step.
 
     This method can be overridden to support custom training logic.
@@ -463,7 +471,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
     return {m.name: m.result() for m in self.metrics}
 
-  def _make_train_function(self):
+  def make_train_function(self):
     """Creates a function that executes one step of training.
 
     This method can be overridden to support custom training logic.
@@ -489,7 +497,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     def train_function(iterator):
       data = next(iterator)
       outputs = self.distribute_strategy.experimental_run_v2(
-          self._train_step, args=(data,))
+          self.train_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='first')
       return outputs
@@ -748,7 +756,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           steps=data_handler._steps)  # pylint: disable=protected-access
 
       self.stop_training = False
-      train_function = self._make_train_function()
+      train_function = self.make_train_function()
       callbacks.on_train_begin()
       # Handle fault-tolerance for multi-worker.
       # TODO(omalleyt): Fix the ordering issues that mean this has to
@@ -760,9 +768,19 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         callbacks.on_epoch_begin(epoch)
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
-            callbacks.on_train_batch_begin(step)
-            logs = train_function(iterator)
-            callbacks.on_train_batch_end(step, logs)
+            with traceme.TraceMe(
+                'TraceContext',
+                graph_type='train',
+                epoch_num=epoch,
+                step_num=step,
+                batch_size=batch_size):
+              callbacks.on_train_batch_begin(step)
+              tmp_logs = train_function(iterator)
+              # Catch possible OutOfRangeError here.
+              # TODO(b/150292341): Allow multiple async steps.
+              context.async_wait()
+              logs = tmp_logs
+              callbacks.on_train_batch_end(step, logs)
         epoch_logs = {m.name: m.result() for m in self.metrics}
 
         # Run validation.
@@ -790,7 +808,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       callbacks.on_train_end()
       return self.history
 
-  def _test_step(self, data):
+  def test_step(self, data):
     """The logic for one evaluation step.
 
     This method can be overridden to support custom evaluation logic.
@@ -824,7 +842,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
     return {m.name: m.result() for m in self.metrics}
 
-  def _make_test_function(self):
+  def make_test_function(self):
     """Creates a function that executes one step of evaluation.
 
     This method can be overridden to support custom evaluation logic.
@@ -849,7 +867,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     def test_function(iterator):
       data = next(iterator)
       outputs = self.distribute_strategy.experimental_run_v2(
-          self._test_step, args=(data,))
+          self.test_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='first')
       return outputs
@@ -977,15 +995,21 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             epochs=1,
             steps=data_handler._steps)  # pylint: disable=protected-access
 
-      test_function = self._make_test_function()
+      test_function = self.make_test_function()
       callbacks.on_test_begin()
       for _, iterator in data_handler.enumerate_epochs():  # Single epoch.
         self.reset_metrics()
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
-            callbacks.on_test_batch_begin(step)
-            logs = test_function(iterator)
-            callbacks.on_test_batch_end(step, logs)
+            with traceme.TraceMe(
+                'TraceContext',
+                graph_type='test',
+                step_num=step):
+              callbacks.on_test_batch_begin(step)
+              tmp_logs = test_function(iterator)
+              context.async_wait()  # Possible OutOfRangeError here.
+              logs = tmp_logs
+              callbacks.on_test_batch_end(step, logs)
       callbacks.on_test_end()
 
       logs = to_numpy(logs)
@@ -997,7 +1021,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           return results[0]
         return results
 
-  def _predict_step(self, data):
+  def predict_step(self, data):
     """The logic for one inference step.
 
     This method can be overridden to support custom inference logic.
@@ -1021,7 +1045,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     x, _, _ = data_adapter.unpack_x_y_sample_weight(data)
     return self(x, training=False)
 
-  def _make_predict_function(self):
+  def make_predict_function(self):
     """Creates a function that executes one step of inference.
 
     This method can be overridden to support custom inference logic.
@@ -1045,7 +1069,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     def predict_function(iterator):
       data = next(iterator)
       outputs = self.distribute_strategy.experimental_run_v2(
-          self._predict_step, args=(data,))
+          self.predict_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='concat')
       return outputs
@@ -1158,13 +1182,15 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           epochs=1,
           steps=data_handler._steps)  # pylint: disable=protected-access
 
-      predict_function = self._make_predict_function()
+      predict_function = self.make_predict_function()
       callbacks.on_predict_begin()
       for _, iterator in data_handler.enumerate_epochs():  # Single epoch.
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
             callbacks.on_predict_batch_begin(step)
-            batch_outputs = predict_function(iterator)
+            tmp_batch_outputs = predict_function(iterator)
+            context.async_wait()  # Possible OutOfRangeError here.
+            batch_outputs = tmp_batch_outputs
             if outputs is None:
               outputs = nest.map_structure(lambda batch_output: [batch_output],
                                            batch_outputs)
@@ -1237,7 +1263,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
                                                     y, sample_weight,
                                                     class_weight)
-      train_function = self._make_train_function()
+      train_function = self.make_train_function()
       logs = train_function(iterator)
 
     if reset_metrics:
@@ -1295,7 +1321,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     with self.distribute_strategy.scope():
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
                                                     y, sample_weight)
-      test_function = self._make_test_function()
+      test_function = self.make_test_function()
       logs = test_function(iterator)
 
     if reset_metrics:
@@ -1327,7 +1353,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     self._check_call_args('predict_on_batch')
     with self.distribute_strategy.scope():
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x)
-      predict_function = self._make_predict_function()
+      predict_function = self.make_predict_function()
       outputs = predict_function(iterator)
     return to_numpy(outputs)
 
@@ -1612,9 +1638,12 @@ def reduce_per_replica(values, strategy, reduction='first'):
     if not isinstance(v, ds_values.PerReplica):
       return v
     elif reduction == 'first':
-      return strategy.unwrap(v)[0]  # pylint: disable=protected-access
+      return strategy.unwrap(v)[0]
     elif reduction == 'concat':
-      return concat(strategy.unwrap(v))  # pylint: disable=protected-access
+      if _is_tpu_multi_host(strategy):
+        return _tpu_multi_host_concat(v, strategy)
+      else:
+        return concat(strategy.unwrap(v))
     else:
       raise ValueError('`reduction` must be "first" or "concat".')
 
@@ -1639,3 +1668,23 @@ def to_numpy(tensors):
     return t  # Don't turn ragged or sparse tensors to NumPy.
 
   return nest.map_structure(_to_single_numpy, tensors)
+
+
+def _is_tpu_multi_host(strategy):
+  return (dist_utils.is_tpu_strategy(strategy) and
+          strategy.extended.num_hosts > 1)
+
+
+def _tpu_multi_host_concat(v, strategy):
+  """Correctly order TPU PerReplica objects."""
+  replicas = strategy.unwrap(v)
+  # When distributed datasets are created from Tensors / NumPy,
+  # TPUStrategy.experimental_distribute_dataset shards data in
+  # (Replica, Host) order, and TPUStrategy.unwrap returns it in
+  # (Host, Replica) order.
+  # TODO(b/150317897): Figure out long-term plan here.
+  num_replicas_per_host = strategy.extended.num_replicas_per_host
+  ordered_replicas = []
+  for replica_id in range(num_replicas_per_host):
+    ordered_replicas += replicas[replica_id::num_replicas_per_host]
+  return concat(ordered_replicas)

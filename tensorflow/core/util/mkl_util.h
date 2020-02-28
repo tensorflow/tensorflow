@@ -42,7 +42,9 @@ limitations under the License.
 
 using mkldnn::engine;
 using mkldnn::memory;
+#ifndef ENABLE_MKLDNN_V1
 using mkldnn::padding_kind;
+#endif
 using mkldnn::primitive;
 using mkldnn::reorder;
 using mkldnn::stream;
@@ -677,7 +679,7 @@ inline void ExecutePrimitive(const std::vector<primitive>& net,
   }
   cpu_stream.wait();
 #else
-  stream(stream::kind::eager).submit(net).wait();
+  stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
 }
 
@@ -1224,10 +1226,12 @@ inline memory::dims CalculateTFStrides(const memory::dims& dims_tf_order) {
   return strides;
 }
 
+#ifndef ENABLE_MKLDNN_V1
 inline padding_kind TFPaddingToMklDnnPadding(Padding pad) {
   // MKL-DNN only supports zero padding.
   return padding_kind::zero;
 }
+#endif
 
 /// Helper function to create memory descriptor in Blocked format
 ///
@@ -1629,7 +1633,7 @@ class MklDnnData {
       reorder_memory_ = new memory(op_pd);
       std::vector<primitive> net;
       net.push_back(FindOrCreateReorder<T>(user_memory_, reorder_memory_));
-      stream(stream::kind::eager).submit(net).wait();
+      stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
       return true;
     }
@@ -1707,7 +1711,7 @@ class MklDnnData {
       std::vector<primitive> net;
       reorder_memory_ = new memory(op_pd, reorder_data_handle);
       net.push_back(FindOrCreateReorder<T>(user_memory_, reorder_memory_));
-      stream(stream::kind::eager).submit(net).wait();
+      stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
       return true;
     }
@@ -2157,7 +2161,7 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 }
 
 #ifdef ENABLE_MKLDNN_V1
-void execute_primitives(
+inline void execute_primitives(
     std::vector<mkldnn::primitive>& primitives, std::shared_ptr<stream> stream,
     std::vector<std::unordered_map<int, memory>>& net_args) {
   DCHECK_EQ(primitives.size(), net_args.size());

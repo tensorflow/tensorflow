@@ -1514,6 +1514,7 @@ cuda_py_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -1534,6 +1535,7 @@ cuda_py_test(
         "no_rocm",
     ],
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         ":test_utils",
         "//tensorflow/core:protos_all_py",
@@ -1558,6 +1560,7 @@ cuda_py_test(
         "no_rocm",
     ],
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         ":test_utils",
         "//tensorflow/core:protos_all_py",
@@ -1650,6 +1653,7 @@ cuda_py_test(
         "no_rocm",
     ],
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         ":lstm",
         ":xla_test",

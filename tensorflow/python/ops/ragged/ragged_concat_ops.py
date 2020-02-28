@@ -161,7 +161,7 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
       rt.shape.assert_has_rank(ndims)
 
   out_ndims = ndims if (ndims is None or not stack_values) else ndims + 1
-  axis = ragged_util.get_positive_axis(axis, out_ndims)
+  axis = array_ops.get_positive_axis(axis, out_ndims)
 
   if stack_values and ndims == 1 and axis == 0:
     return ragged_tensor.RaggedTensor.from_row_lengths(

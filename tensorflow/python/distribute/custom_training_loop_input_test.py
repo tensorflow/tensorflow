@@ -316,6 +316,42 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
   @combinations.generate(
       combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetIteratorWithoutFunction(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(
+            lambda _: get_dataset_from_tensor_slices(data)))
+
+    self.assertAllEqual(
+        distribution.experimental_local_results(input_iterator.get_next()),
+        data[0:distribution.num_replicas_in_sync])
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetIteratorWithFunction(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(
+            lambda _: get_dataset_from_tensor_slices(data)))
+
+    @def_function.function
+    def run(iterator):
+      return distribution.experimental_local_results(iterator.get_next())
+
+    local_results = run(input_iterator)
+    self.assertAllEqual(local_results,
+                        data[0:distribution.num_replicas_in_sync])
+    backing_devices = [result.backing_device for result in local_results]
+    self.assertAllEqual(backing_devices, distribution.extended.worker_devices)
+
+  @combinations.generate(
+      combinations.combine(
           distribution=strategy_combinations.multidevice_strategies,
           mode=["eager"]
       ))

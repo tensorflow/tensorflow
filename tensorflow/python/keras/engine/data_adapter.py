@@ -223,6 +223,10 @@ class DataAdapter(object):
       total_sample -= (self.batch_size() - self.partial_batch_size())
     return total_sample
 
+  def on_epoch_end(self):
+    """A hook called after each epoch."""
+    pass
+
 
 class TensorLikeDataAdapter(DataAdapter):
   """Adapter that handles Tensor-like objects, e.g. EagerTensor and NumPy."""
@@ -891,6 +895,7 @@ class KerasSequenceAdapter(GeneratorDataAdapter):
 
     self._size = len(x)
     self._shuffle_sequence = shuffle
+    self._keras_sequence = x
     super(KerasSequenceAdapter, self).__init__(
         x,
         shuffle=False,  # Shuffle is handed in the _make_callable override.
@@ -931,6 +936,9 @@ class KerasSequenceAdapter(GeneratorDataAdapter):
 
   def should_recreate_iterator(self):
     return True
+
+  def on_epoch_end(self):
+    self._keras_sequence.on_epoch_end()
 
 
 ALL_ADAPTER_CLS = [
@@ -1084,8 +1092,8 @@ class DataHandler(object):
     self._epochs = epochs
     self._insufficient_data = False
 
-    train_adapter_cls = select_data_adapter(x, y)
-    self._train_adapter = train_adapter_cls(
+    adapter_cls = select_data_adapter(x, y)
+    self._adapter = adapter_cls(
         x,
         y,
         batch_size=batch_size,
@@ -1100,21 +1108,27 @@ class DataHandler(object):
         model=model)
 
     strategy = ds_context.get_strategy()
-    dataset = self._train_adapter.get_dataset()
+    dataset = self._adapter.get_dataset()
     if class_weight:
       dataset = dataset.map(_make_class_weight_map_fn(class_weight))
     self._steps_per_epoch = self._infer_steps(steps_per_epoch, dataset)
-    self._train_dataset = strategy.experimental_distribute_dataset(dataset)
+    self._dataset = strategy.experimental_distribute_dataset(dataset)
 
   def enumerate_epochs(self):
     """Yields `(epoch, tf.data.Iterator)`."""
-    data_iterator = iter(self._train_dataset)
+    data_iterator = iter(self._dataset)
     for epoch in range(self._initial_epoch, self._epochs):
       if self._insufficient_data:  # Set by `catch_stop_iteration`.
         break
-      if self._train_adapter.should_recreate_iterator():
-        data_iterator = iter(self._train_dataset)
+      if self._adapter.should_recreate_iterator():
+        if ds_context.has_strategy():
+          # TODO(b/138326910): remove this when MultiDeviceIterator is a
+          # CompositeTensor (unless this is more efficient)
+          data_iterator._initializer  # pylint: disable=pointless-statement, protected-access
+        else:
+          data_iterator = iter(self._dataset)
       yield epoch, data_iterator
+      self._adapter.on_epoch_end()
 
   @contextlib.contextmanager
   def catch_stop_iteration(self):
@@ -1122,8 +1136,8 @@ class DataHandler(object):
     try:
       yield
     except (StopIteration, errors.OutOfRangeError):
-      if (self._train_adapter.get_size() is None and
-          self._steps_per_epoch is None and self._current_step > 0):
+      if (self._adapter.get_size() is None and self._steps_per_epoch is None and
+          self._current_step > 0):
         # The input passed by the user ran out of batches.
         # Now we know the cardinality of the input(dataset or generator).
         self._steps_per_epoch = self._current_step
@@ -1154,7 +1168,7 @@ class DataHandler(object):
     if steps is not None:
       return steps
 
-    adapter_steps = self._train_adapter.get_size()
+    adapter_steps = self._adapter.get_size()
     if adapter_steps is not None:
       return adapter_steps
 
@@ -1175,11 +1189,11 @@ class DataHandler(object):
 
   @property
   def _samples(self):
-    return self._train_adapter.get_samples()
+    return self._adapter.get_samples()
 
   @property
   def _steps(self):
-    return self._train_adapter.get_size()
+    return self._adapter.get_size()
 
 
 def _make_class_weight_map_fn(class_weight):

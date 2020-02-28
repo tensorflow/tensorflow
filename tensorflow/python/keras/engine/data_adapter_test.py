@@ -786,7 +786,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     # User can choose to only partially consume `Dataset`.
     data_handler = data_adapter.DataHandler(
         data, initial_epoch=0, epochs=2, steps_per_epoch=2)
-    self.assertFalse(data_handler._train_adapter.should_recreate_iterator())
+    self.assertFalse(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -812,7 +812,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     # create a new iterator each epoch.
     data_handler = data_adapter.DataHandler(
         data, initial_epoch=0, epochs=2, steps_per_epoch=4)
-    self.assertTrue(data_handler._train_adapter.should_recreate_iterator())
+    self.assertTrue(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -842,7 +842,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     # User can choose to only partially consume `Dataset`.
     data_handler = data_adapter.DataHandler(
         filtered_ds, initial_epoch=0, epochs=2, steps_per_epoch=2)
-    self.assertFalse(data_handler._train_adapter.should_recreate_iterator())
+    self.assertFalse(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -860,7 +860,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
 
     data_handler = data_adapter.DataHandler(
         filtered_ds, initial_epoch=0, epochs=2)
-    self.assertTrue(data_handler._train_adapter.should_recreate_iterator())
+    self.assertTrue(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []

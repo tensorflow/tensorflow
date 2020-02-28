@@ -161,14 +161,46 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testWriteSnapshotRepeatAfterwards(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(compression=[
+              snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP,
+              snapshot.COMPRESSION_SNAPPY
+          ])))
+  def testWriteSnapshotRepeatAfterwards(self, compression):
     tmpdir = self.snapshot_dir
 
     dataset = dataset_ops.Dataset.range(10)
-    dataset = dataset.apply(snapshot.snapshot(tmpdir))
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, compression=compression))
     dataset = dataset.repeat(10)
     self.assertDatasetProduces(dataset, list(range(10)) * 10)
+
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(compression=[
+              snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP,
+              snapshot.COMPRESSION_SNAPPY
+          ])))
+  def testWriteSnapshotMixTypes(self, compression):
+    tmpdir = self.snapshot_dir
+
+    dataset = dataset_ops.Dataset.range(10)
+
+    def map_fn(x):
+      return (x, string_ops.as_string(x), string_ops.as_string(2 * x), 2 * x)
+
+    dataset = dataset.map(map_fn)
+    dataset = dataset.apply(snapshot.snapshot(tmpdir, compression=compression))
+    dataset = dataset.repeat(10)
+
+    expected = []
+    for i in range(10):
+      expected.append((i, str(i), str(2 * i), 2 * i))
+    self.assertDatasetProduces(dataset, expected * 10)
 
     self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 1)
 
@@ -365,8 +397,14 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
       res3 = self.evaluate(next3())
       self.assertEqual(res2, res3)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testReadSnapshotParallelAfterWrite(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(compression=[
+              snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP,
+              snapshot.COMPRESSION_SNAPPY
+          ])))
+  def testReadSnapshotParallelAfterWrite(self, compression):
     self.setUpTFRecord(10, 4000)
     filenames = self.test_filenames
 
@@ -383,7 +421,8 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
             tmpdir,
             shard_size_bytes=1024 * 1024,
             num_reader_threads=2,
-            reader_buffer_size=10))
+            reader_buffer_size=10,
+            compression=compression))
     self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
 
     # remove the original files and try to read the data back only from
@@ -396,7 +435,8 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
             tmpdir,
             shard_size_bytes=1024 * 1024,
             num_reader_threads=2,
-            reader_buffer_size=10))
+            reader_buffer_size=10,
+            compression=compression))
     self.assertDatasetProduces(dataset2, expected, assert_items_equal=True)
 
   # Not testing Snappy here because Snappy reads currently require a lot of
@@ -514,21 +554,31 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
       self.evaluate(next2())
     self.assertSnapshotDirectoryContains(tmpdir, 2, 1, 1)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testSpecifyShardSize(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(compression=[
+              snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP,
+              snapshot.COMPRESSION_SNAPPY
+          ])))
+  def testSpecifyShardSize(self, compression):
     tmpdir = self.snapshot_dir
 
     dataset = dataset_ops.Dataset.from_tensor_slices([1.0])
     dataset = dataset.map(lambda x: gen_array_ops.broadcast_to(x, [1024, 1024]))
     dataset = dataset.repeat(10)
     dataset = dataset.apply(
-        snapshot.snapshot(tmpdir, shard_size_bytes=10 * 1024 * 1024))
+        snapshot.snapshot(
+            tmpdir, shard_size_bytes=10 * 1024 * 1024, compression=compression))
     next_fn = self.getNext(dataset)
 
     for _ in range(10):
       self.evaluate(next_fn())
 
-    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, 3)
+    num_files = 1
+    if compression == snapshot.COMPRESSION_NONE:
+      num_files = 3
+    self.assertSnapshotDirectoryContains(tmpdir, 1, 1, num_files)
 
   @combinations.generate(test_base.default_test_combinations())
   def testAdditionalOperationsAfterReadBack(self):

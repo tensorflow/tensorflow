@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Utils/Utils.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 namespace mlir {
 namespace xla_lhlo {
@@ -123,8 +124,9 @@ class LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg() {
-  return absl::make_unique<LhloFuseLinalg>();
+std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg(
+    bool use_parallel_loops, ArrayRef<unsigned> tile_sizes) {
+  return absl::make_unique<LhloFuseLinalg>(use_parallel_loops, tile_sizes);
 }
 
 static PassRegistration<LhloFuseLinalg> legalize_pass(
