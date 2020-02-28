@@ -247,5 +247,36 @@ class RaggedSizeOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           metrics_utils.ragged_assert_compatible_and_get_flat_values([x, y])
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class FilterTopKTest(test_util.TensorFlowTestCase):
+
+  def test_one_dimensional(self):
+    x = constant_op.constant([.3, .1, .2, -.5, 42.])
+    top_1 = self.evaluate(metrics_utils._filter_top_k(x=x, k=1))
+    top_2 = self.evaluate(metrics_utils._filter_top_k(x=x, k=2))
+    top_3 = self.evaluate(metrics_utils._filter_top_k(x=x, k=3))
+
+    self.assertAllClose(top_1, [
+        metrics_utils.NEG_INF, metrics_utils.NEG_INF, metrics_utils.NEG_INF,
+        metrics_utils.NEG_INF, 42.
+    ])
+    self.assertAllClose(top_2, [
+        .3, metrics_utils.NEG_INF, metrics_utils.NEG_INF, metrics_utils.NEG_INF,
+        42.
+    ])
+    self.assertAllClose(
+        top_3, [.3, metrics_utils.NEG_INF, .2, metrics_utils.NEG_INF, 42.])
+
+  def test_three_dimensional(self):
+    x = constant_op.constant([[[.3, .1, .2], [-.3, -.2, -.1]],
+                              [[5., .2, 42.], [-.3, -.6, -.99]]])
+    top_2 = self.evaluate(metrics_utils._filter_top_k(x=x, k=2))
+
+    self.assertAllClose(
+        top_2,
+        [[[.3, metrics_utils.NEG_INF, .2], [metrics_utils.NEG_INF, -.2, -.1]],
+         [[5., metrics_utils.NEG_INF, 42.], [-.3, -.6, metrics_utils.NEG_INF]]])
+
+
 if __name__ == '__main__':
   googletest.main()
