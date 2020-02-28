@@ -388,6 +388,30 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
                                            &scatter_op.update_computation()));
       return scatter_op.getOperation();
     }
+    case HloOpcode::kSelectAndScatter: {
+      auto select_scatter = Cast<HloSelectAndScatterInstruction>(instruction);
+      llvm::SmallVector<int64_t, 4> window_strides, window_dimensions;
+      llvm::SmallVector<int64_t, 8> padding;
+      for (const auto& dim : select_scatter->window().dimensions()) {
+        window_strides.push_back(dim.stride());
+        window_dimensions.push_back(dim.size());
+        padding.push_back(dim.padding_low());
+        padding.push_back(dim.padding_high());
+      }
+      attributes.push_back(
+          builder_->getNamedAttr("window_strides", Convert(window_strides)));
+      attributes.push_back(builder_->getNamedAttr("window_dimensions",
+                                                  Convert(window_dimensions)));
+      attributes.push_back(ConvertPadding(padding));
+      auto select_scatter_op =
+          func_builder->create<mlir::xla_hlo::SelectAndScatterOp>(
+              loc, result_type, operands, attributes);
+      TF_RETURN_IF_ERROR(ImportComputation(select_scatter->select(),
+                                           &select_scatter_op.select()));
+      TF_RETURN_IF_ERROR(ImportComputation(select_scatter->scatter(),
+                                           &select_scatter_op.scatter()));
+      return select_scatter_op.getOperation();
+    }
     case HloOpcode::kSetDimensionSize: {
       attributes.push_back(builder_->getNamedAttr(
           "dimension", builder_->getIntegerAttr(builder_->getIntegerType(32),
