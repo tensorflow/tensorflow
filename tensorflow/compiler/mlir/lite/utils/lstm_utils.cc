@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -70,14 +70,14 @@ Value CreateNoneValue(OpBuilder* builder, mlir::Location location) {
                                            builder->getUnitAttr());
 }
 
-Value Transpose2D(OpBuilder* builder, Value value_to_transpose,
-                  RankedTensorType type, mlir::Location location) {
+Value Transpose(OpBuilder* builder, Value value_to_transpose,
+                SmallVector<int64_t, 4> perm, RankedTensorType original_type,
+                mlir::Location location) {
   // Create a constant op for transpose permutation.
-  SmallVector<int64_t, 2> perm = {1, 0};
   auto perm_op = CreateI64DenseConst(builder, perm, perm, location);
 
   // Create tensor type for the transpose result.
-  auto transpose_type = type;
+  auto transpose_type = original_type;
   auto transpose_shape = functional::map(
       [transpose_type](int64_t dim) { return transpose_type.getDimSize(dim); },
       perm);
@@ -86,6 +86,21 @@ Value Transpose2D(OpBuilder* builder, Value value_to_transpose,
 
   return builder->create<TF::TransposeOp>(location, result_type,
                                           value_to_transpose, perm_op);
+}
+
+Value Transpose2D(OpBuilder* builder, Value value_to_transpose,
+                  RankedTensorType type, mlir::Location location) {
+  // Create a constant op for transpose permutation.
+  SmallVector<int64_t, 4> perm = {1, 0};
+  return Transpose(builder, value_to_transpose, perm, type, location);
+}
+
+Value Reverse(OpBuilder* builder, Value value_to_reverse, int axis,
+              RankedTensorType type, mlir::Location location) {
+  auto axis_op = CreateI32SplatConst(builder, {1}, axis, location);
+  // The result type will be the same as the input.
+  return builder->create<TF::ReverseV2Op>(location, type, value_to_reverse,
+                                          axis_op);
 }
 
 ArrayRef<int64_t> GetRankedTensorShape(Value value) {
@@ -586,15 +601,40 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
   Value recurrent_kernel = func_op.getArgument(4);
   Value bias = func_op.getArgument(5);
 
-  // Assume it's batch majored.
+  // TFL lstm only supports time-majored inputs, so if it's not time-majored,
+  // we will transpose the inputs and outputs.
+  auto time_major_attr = func_op.getAttrOfType<BoolAttr>("tf.time_major");
+  if (time_major_attr == nullptr) return failure();
+
+  bool time_majored = time_major_attr.getValue();
   auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
   if (!input_type) {
     func_op.emitError() << "Input type is not a ranked tensor type";
     return failure();
   }
 
-  int batch = input_type.getDimSize(0);
-  int time = input_type.getDimSize(1);
+  auto final_inputs = input;
+  auto final_input_type = input_type;
+  // We will transpose the inputs.
+  if (!time_majored) {
+    SmallVector<int64_t, 4> perm = {1, 0, 2};
+    final_inputs =
+        Transpose(builder, final_inputs, perm, input_type, func_op.getLoc());
+    final_input_type = final_inputs.getType().dyn_cast<RankedTensorType>();
+  }
+
+  // Handle go_backwards:
+  // LSTM in Keras semantic will reverse the input sequence if it's go_backwards
+  auto go_backwards_attr = func_op.getAttrOfType<BoolAttr>("tf.go_backwards");
+
+  if (go_backwards_attr != nullptr && go_backwards_attr.getValue()) {
+    // We assume input is already in {time, batch, size} layout.
+    final_inputs =
+        Reverse(builder, final_inputs, 0, final_input_type, func_op.getLoc());
+  }
+
+  int batch = final_input_type.getDimSize(1);
+  int time = final_input_type.getDimSize(0);
 
   // Setup correct weights.
   RankedTensorType weight_type =
@@ -672,7 +712,13 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       builder->getF32FloatAttr(10.0), builder->getF32FloatAttr(0.0),
       builder->getStringAttr("FULL"));
 
-  builder->create<mlir::ReturnOp>(func_op.getLoc(), lstm.getResult());
+  auto final_output = lstm.getResult();
+  if (!time_majored) {
+    SmallVector<int64_t, 4> perm = {1, 0, 2};
+    final_output =
+        Transpose(builder, final_output, perm, result_type, func_op.getLoc());
+  }
+  builder->create<mlir::ReturnOp>(func_op.getLoc(), final_output);
   return success();
 }
 

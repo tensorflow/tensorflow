@@ -229,6 +229,13 @@ message Percentiles {
 }
 
 message MetricValues {
+  enum UnitOfMeasure {
+    INVALID = 0;
+    NUMBER = 1;
+    TIME = 2;
+    BYTES = 3;
+  }
+
   // The metric name.
   string name = 1;
 
@@ -236,6 +243,8 @@ message MetricValues {
     Percentiles percentiles_value = 2;
     int64 int64_value = 3;
   }
+
+  UnitOfMeasure unit_of_measure = 4;
 }
 
 message MetricsReport {

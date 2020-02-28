@@ -1,4 +1,3 @@
-
 ifneq (3.82,$(firstword $(sort $(MAKE_VERSION) 3.82)))
   $(error "Requires make version 3.82 or later (current is $(MAKE_VERSION))")
 endif
@@ -65,21 +64,29 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
-# There are no rules for compiling objects for the host system (since we don't
-# generate things like the protobuf compiler that require that), so all of
-# these settings are for the target compiler.
-CXXFLAGS := -O3 -DNDEBUG
-CXXFLAGS += -std=c++11 -g -DTF_LITE_STATIC_MEMORY
-CXXFLAGS += -fno-rtti
-CCFLAGS := -DNDEBUG -g -DTF_LITE_STATIC_MEMORY
-LDOPTS := -L/usr/local/lib
+# TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
+CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY
+CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY
 ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
 CC_PREFIX :=
 
+ifeq ($(BUILD_TYPE), debug)
+	CXXFLAGS += -DDEBUG -g
+	CCFLAGS  += -DDEBUG -g
+else ifeq ($(BUILD_TYPE), release)
+	CXXFLAGS += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
+	CCFLAGS  += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
+else
+	CXXFLAGS += -O3
+	CCFLAGS  += -O3
+endif
+
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
 MICROLITE_LIB_NAME := libtensorflow-microlite.a
+
+MICRO_LITE_EXAMPLE_TESTS := $(wildcard tensorflow/lite/micro/examples/*/Makefile.inc)
 
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/micro/*test.cc) \
@@ -242,7 +249,7 @@ CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${CC_TOOL}
 AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
 # Load the examples.
-include $(wildcard tensorflow/lite/micro/examples/*/Makefile.inc)
+include $(MICRO_LITE_EXAMPLE_TESTS)
 
 # Create rules for downloading third-party dependencies.
 THIRD_PARTY_TARGETS :=
@@ -309,6 +316,9 @@ $(foreach TEST_TARGET,$(filter tensorflow/lite/micro/kernels/%,$(MICROLITE_TEST_
 $(eval $(call microlite_test,kernel_$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
 test: $(MICROLITE_TEST_TARGETS)
+
+# Just build the test targets
+build: $(MICROLITE_BUILD_TARGETS)
 
 generate_projects: $(ALL_PROJECT_TARGETS)
 

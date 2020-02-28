@@ -211,10 +211,7 @@ StatusOr<std::shared_ptr<BlockingCounter>> Rendezvous::SubmitParticipant(
 // Rendezvous objects are one-time use, so they're removed from this map once
 // we're through with them.
 RefcountingHashMap<RendezvousKey, Rendezvous>& GlobalRendezvousMap() {
-  static auto& m = *new RefcountingHashMap<RendezvousKey, Rendezvous>(
-      [](const RendezvousKey& key) {
-        return absl::make_unique<Rendezvous>(key);
-      });
+  static auto& m = *new RefcountingHashMap<RendezvousKey, Rendezvous>();
   return m;
 }
 
@@ -233,7 +230,11 @@ Status CollectivePermuteThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Rendezvous with the threads for all other devices that are participating in
   // this CollectivePermute.
   RendezvousKey key{params.run_id, params.device_assn->replica_count()};
-  std::shared_ptr<Rendezvous> rendezvous = GlobalRendezvousMap()[key];
+  auto rendezvous_factory = [](const RendezvousKey& key) {
+    return absl::make_unique<Rendezvous>(key);
+  };
+  std::shared_ptr<Rendezvous> rendezvous =
+      GlobalRendezvousMap().GetOrCreateIfAbsent(key, rendezvous_factory);
 
   TF_ASSIGN_OR_RETURN(int64 replica_id,
                       params.device_assn->ReplicaIdForDeviceOrdinal(

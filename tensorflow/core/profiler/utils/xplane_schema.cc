@@ -82,6 +82,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"PartitionedCallOp", kPartitionedCallOp},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
+      // Virtual events for grouping.
+      {"HostTrainingLoopIteration", kHostTrainingLoopIteration},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},
@@ -114,6 +116,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"bytes_available", kBytesAvailable},
       {"fragmentation", kFragmentation},
       {"peak_bytes_in_use", kPeakBytesInUse},
+      {"requested_bytes", kRequestedBytes},
       {"shape", kTensorShapes},
       // Device trace arguments.
       {"device_id", kDeviceId},

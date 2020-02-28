@@ -54,7 +54,7 @@ UNSPECIFIED = object()
 
 def overload_of(f):
   if f in SUPPORTED_BUILTINS:
-    return BUILTIN_FUINCTIONS_MAP[f.__name__]
+    return BUILTIN_FUNCTIONS_MAP[f.__name__]
   return f
 
 
@@ -441,7 +441,7 @@ def all_(iterable):
   return _py_all(iterable)
 
 
-# all() operation is similiar to any() and could be translated
+# all() operation is similar to any() and could be translated
 # to `filter(False)` then `take(1)`, and check if `False` exists.
 def _tf_dataset_all(iterable):
   # check and make sure iterable.element_spec only consists of one
@@ -467,7 +467,7 @@ SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map,
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
 
-BUILTIN_FUINCTIONS_MAP = {
+BUILTIN_FUNCTIONS_MAP = {
     'abs': abs_,
     'float': float_,
     'int': int_,

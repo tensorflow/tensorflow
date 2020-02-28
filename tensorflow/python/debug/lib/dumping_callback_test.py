@@ -1128,7 +1128,7 @@ class TracingCallbackTest(
         # 1st element: tensor ID; 2nd element: 0 indicating no inf or nan.
         self.assertAllClose(trace.debug_tensor_value, [tensor_id, 0])
     elif tensor_debug_mode == "CONCISE_HEALTH":
-      for tensor_value in tensor_values:
+      for trace in graph_exec_traces:
         tensor_id = reader.graph_execution_trace_to_tensor_id(trace)
         # 1st element: tensor ID.
         # 2nd element: element count. Remaining elements: all zero because there
@@ -1352,7 +1352,7 @@ class TracingCallbackTest(
       ("FullTensor", "FULL_TENSOR"),
   )
   @test_util.run_in_graph_and_eager_modes
-  def testMobiletNetV2Fit(self, tensor_debug_mode):
+  def testMobileNetV2Fit(self, tensor_debug_mode):
     """Test training Keras MobileNetV2 works with dumping."""
     # Use a large circular-buffer to make sure we capture all the executed ops.
     writer = dumping_callback.enable_dump_debug_info(

@@ -197,6 +197,10 @@ struct NodeItem {
   // Number of output edges.
   size_t num_output_edges;
 
+  // If non-null, contains an array of num_outputs bools, where the ith bool
+  // is true if and only if the ith output is consumed by another node.
+  std::unique_ptr<bool[]> outputs_required;
+
   const EdgeInfo* output_edge_list() const { return output_edge_base(); }
 
   // ith output edge.
@@ -654,11 +658,10 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     item->input_start = frame_info->total_inputs;
     frame_info->total_inputs += n->num_inputs();
 
-    Status s = params_.create_kernel(n->def(), &item->kernel);
+    Status s = params_.create_kernel(n->properties(), &item->kernel);
     if (!s.ok()) {
       item->kernel = nullptr;
       s = AttachDef(s, *n);
-      LOG(ERROR) << "Executor failed to create kernel. " << s;
       return s;
     }
     CHECK(item->kernel);
@@ -709,16 +712,24 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     }
 
     // Record information about whether each output of the op is used.
-    std::vector<bool> used_outputs(n->num_outputs(), false);
+    std::unique_ptr<bool[]> outputs_required(new bool[n->num_outputs()]);
+    std::fill(&outputs_required[0], &outputs_required[n->num_outputs()], false);
+    size_t unused_outputs = n->num_outputs();
     for (const Edge* e : n->out_edges()) {
       if (e->src_output() >= 0) {
-        used_outputs[e->src_output()] = true;
+        if (!outputs_required[e->src_output()]) {
+          --unused_outputs;
+          outputs_required[e->src_output()] = true;
+        }
       }
     }
-    for (bool used_output : used_outputs) {
-      if (!used_output) {
-        metrics::RecordUnusedOutput(n->type_string());
+    if (unused_outputs > 0) {
+      for (int i = 0; i < n->num_outputs(); ++i) {
+        if (!outputs_required[i]) {
+          metrics::RecordUnusedOutput(n->type_string());
+        }
       }
+      item->outputs_required = std::move(outputs_required);
     }
   }
 
@@ -1824,6 +1835,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
       params.is_input_dead = is_input_dead;
       params.output_attr_array = item.output_attrs();
       params.forward_from_array = item.forward_from();
+      params.outputs_required_array = item.outputs_required.get();
 
       if (item.kernel_is_async) {
         // Asynchronous computes.
@@ -1878,7 +1890,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         };
         nodestats::SetOpStart(stats);
         {
-          profiler::TraceMe activity(
+          profiler::AnnotatedTraceMe activity(
               [&] {
                 return op_kernel->TraceString(
                     &state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
@@ -2094,9 +2106,10 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
   for (int i = 0; i < item.num_outputs; ++i) {
     const TensorValue val = ctx->release_output(i);
     if (val.tensor == nullptr) {
-      // Unless it's a Switch or a Recv, the node must produce a
-      // tensor value at i-th output.
-      if (!item.is_recv_or_switch) {
+      // Unless it's a Switch or a Recv, or the executor has marked the output
+      // as not required, the node must produce a tensor value at i-th output.
+      if (!(item.is_recv_or_switch ||
+            (item.outputs_required && !item.outputs_required[i]))) {
         s.Update(errors::Internal("Missing ", i, "-th output from ",
                                   FormatNodeDefForError(item.kernel->def())));
       }
@@ -2161,9 +2174,10 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      TaggedNodeSeq* ready) {
   profiler::TraceMe activity(
       [&]() {
-        return strings::StrCat(
-            "ExecutorPropagateOutputs:", item->kernel->name_view(),
-            "#id=", step_id_, "#");
+        return strings::StrCat("ExecutorPropagateOutputs#", "id=", step_id_,
+                               ",kernel_name=", item->kernel->name_view(),
+                               ",num_output_edges=", item->num_output_edges,
+                               "#");
       },
       profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
@@ -2975,12 +2989,12 @@ Status NewLocalExecutor(const LocalExecutorParams& params, const Graph& graph,
 }
 
 Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
-                             const NodeDef& ndef, int graph_def_version,
-                             OpKernel** kernel) {
+                             const std::shared_ptr<const NodeProperties>& props,
+                             int graph_def_version, OpKernel** kernel) {
   const auto device_type = DeviceType(device->attributes().device_type());
   auto allocator = device->GetAllocator(AllocatorAttributes());
   return CreateOpKernel(device_type, device, allocator, flib,
-                        device->resource_manager(), ndef, graph_def_version,
+                        device->resource_manager(), props, graph_def_version,
                         kernel);
 }
 

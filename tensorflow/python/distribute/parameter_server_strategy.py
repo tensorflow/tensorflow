@@ -50,7 +50,7 @@ _LOCAL_CPU = "/device:CPU:0"
 class ParameterServerStrategy(distribute_lib.Strategy):
   """An asynchronous multi-worker parameter server tf.distribute strategy.
 
-  This strategy requires two jobs: workers and parameter servers. Variables and
+  This strategy requires two roles: workers and parameter servers. Variables and
   updates to those variables will be assigned to parameter servers and other
   operations are assigned to workers.
 
@@ -466,28 +466,33 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
             "Cannot reduce to another worker: %r, current worker is %r" %
             (d, self._input_workers.worker_devices[0]))
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     self._verify_destinations_not_different_worker(destinations)
     if not isinstance(value, values.DistributedValues):
       # pylint: disable=protected-access
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
     return self._cross_device_ops.reduce(
-        reduce_op, value, destinations=destinations)
+        reduce_op,
+        value,
+        destinations=destinations,
+        experimental_hints=experimental_hints)
 
-  def _batch_reduce_to(self, reduce_op, value_destination_pairs):
+  def _batch_reduce_to(self, reduce_op, value_destination_pairs,
+                       experimental_hints):
     for _, destinations in value_destination_pairs:
       self._verify_destinations_not_different_worker(destinations)
     return self._cross_device_ops.batch_reduce(reduce_op,
-                                               value_destination_pairs)
+                                               value_destination_pairs,
+                                               experimental_hints)
 
   def _select_single_value(self, structured):
     """Select any single value in `structured`."""
 
     def _select_fn(x):  # pylint: disable=g-missing-docstring
       if isinstance(x, values.Mirrored):
-        if len(x.devices) == 1:
-          return x.primary
+        if len(x._devices) == 1:  # pylint: disable=protected-access
+          return x._primary  # pylint: disable=protected-access
         else:
           raise ValueError(
               "You cannot update variable with a Mirrored object with multiple "
@@ -550,7 +555,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
                  cluster_spec=None,
                  task_type=None,
                  task_id=None):
-    """Configures the strategy class with `cluser_spec`.
+    """Configures the strategy class with `cluster_spec`.
 
     The strategy object will be re-initialized if `cluster_spec` is passed to
     `configure` but was not passed when instantiating the strategy.

@@ -44,7 +44,7 @@ class Scope(object):
 
   Scope objects are mutable during construction only, and must be frozen using
   `Scope.finalize()` before use. Furthermore, a scope is consistent only after
-  all its chiledren have been frozen. While analysing code blocks, scopes are
+  all its children have been frozen. While analysing code blocks, scopes are
   being gradually built, from the innermost scope outward. Freezing indicates
   that the analysis of a code block is complete. Once frozen, mutation is no
   longer allowed. `is_final` tracks whether the scope is frozen or not. Certain
@@ -205,6 +205,12 @@ class _Comprehension(object):
     self.targets = set()
 
 
+class _FunctionOrClass(object):
+
+  def __init__(self):
+    self.node = None
+
+
 class ActivityAnalyzer(transformer.Base):
   """Annotates nodes with local scope information.
 
@@ -225,10 +231,13 @@ class ActivityAnalyzer(transformer.Base):
 
   @property
   def _in_constructor(self):
-    if len(self.enclosing_entities) > 1:
-      innermost = self.enclosing_entities[-1]
-      parent = self.enclosing_entities[-2]
-      return isinstance(parent, gast.ClassDef) and innermost.name == '__init__'
+    context = self.state[_FunctionOrClass]
+    if context.level > 2:
+      innermost = context.stack[-1].node
+      parent = context.stack[-2].node
+      return (isinstance(parent, gast.ClassDef) and
+              (isinstance(innermost, gast.FunctionDef) and
+               innermost.name == '__init__'))
     return False
 
   def _node_sets_self_attribute(self, node):
@@ -276,7 +285,7 @@ class ActivityAnalyzer(transformer.Base):
 
     elif isinstance(node.ctx, gast.Param):
       self.scope.bound.add(qn)
-      self.scope.mark_param(qn, self.enclosing_entities[-1])
+      self.scope.mark_param(qn, self.state[_FunctionOrClass].node)
 
     elif isinstance(node.ctx, gast.Del):
       # The read matches the Python semantics - attempting to delete an
@@ -414,19 +423,18 @@ class ActivityAnalyzer(transformer.Base):
                              node,
                              is_list_comp=False,
                              is_dict_comp=False):
-    self.state[_Comprehension].enter()
-    self.state[_Comprehension].is_list_comp = is_list_comp
-    # Note: it's important to visit the generators first to properly account
-    # for the variables local to these generators. Example: `x` is local to the
-    # expression `z for x in y for z in x`.
-    node.generators = self.visit_block(node.generators)
-    if is_dict_comp:
-      node.key = self.visit(node.key)
-      node.value = self.visit(node.value)
-    else:
-      node.elt = self.visit(node.elt)
-    self.state[_Comprehension].exit()
-    return node
+    with self.state[_Comprehension] as comprehension_:
+      comprehension_.is_list_comp = is_list_comp
+      # Note: it's important to visit the generators first to properly account
+      # for the variables local to these generators. Example: `x` is local to
+      # the expression `z for x in y for z in x`.
+      node.generators = self.visit_block(node.generators)
+      if is_dict_comp:
+        node.key = self.visit(node.key)
+        node.value = self.visit(node.value)
+      else:
+        node.elt = self.visit(node.elt)
+      return node
 
   def visit_comprehension(self, node):
     # It is important to visit children in this order so that the reads to
@@ -451,51 +459,57 @@ class ActivityAnalyzer(transformer.Base):
     return self._process_statement(node)
 
   def visit_ClassDef(self, node):
-    # The ClassDef node itself has a Scope object that tracks the creation
-    # of its name, along with the usage of any decorator accompanying it.
-    self._enter_scope(False)
-    node.decorator_list = self.visit_block(node.decorator_list)
-    self.scope.modified.add(qual_names.QN(node.name))
-    self.scope.bound.add(qual_names.QN(node.name))
-    node.bases = self.visit_block(node.bases)
-    node.keywords = self.visit_block(node.keywords)
-    self._exit_and_record_scope(node)
+    with self.state[_FunctionOrClass] as fn:
+      fn.node = node
+      # The ClassDef node itself has a Scope object that tracks the creation
+      # of its name, along with the usage of any decorator accompanying it.
+      self._enter_scope(False)
+      node.decorator_list = self.visit_block(node.decorator_list)
+      self.scope.modified.add(qual_names.QN(node.name))
+      self.scope.bound.add(qual_names.QN(node.name))
+      node.bases = self.visit_block(node.bases)
+      node.keywords = self.visit_block(node.keywords)
+      self._exit_and_record_scope(node)
 
-    # A separate Scope tracks the actual class definition.
-    self._enter_scope(True)
-    node = self.generic_visit(node)
-    self._exit_scope()
-    return node
+      # A separate Scope tracks the actual class definition.
+      self._enter_scope(True)
+      node = self.generic_visit(node)
+      self._exit_scope()
+      return node
 
   def visit_FunctionDef(self, node):
-    # The FunctionDef node itself has a Scope object that tracks the creation
-    # of its name, along with the usage of any decorator accompanying it.
-    self._enter_scope(False)
-    node.decorator_list = self.visit_block(node.decorator_list)
-    function_name = qual_names.QN(node.name)
-    self.scope.modified.add(function_name)
-    self.scope.bound.add(function_name)
-    self._exit_and_record_scope(node)
+    with self.state[_FunctionOrClass] as fn:
+      fn.node = node
+      # The FunctionDef node itself has a Scope object that tracks the creation
+      # of its name, along with the usage of any decorator accompanying it.
+      self._enter_scope(False)
+      node.decorator_list = self.visit_block(node.decorator_list)
+      function_name = qual_names.QN(node.name)
+      self.scope.modified.add(function_name)
+      self.scope.bound.add(function_name)
+      self._exit_and_record_scope(node)
 
-    # A separate Scope tracks the actual function definition.
-    self._enter_scope(True)
-    node.args = self.visit(node.args)
+      # A separate Scope tracks the actual function definition.
+      self._enter_scope(True)
+      node.args = self.visit(node.args)
 
-    # Track the body separately. This is for compatibility reasons, it may not
-    # be strictly needed.
-    self._enter_scope(False)
-    node.body = self.visit_block(node.body)
-    self._exit_and_record_scope(node, NodeAnno.BODY_SCOPE)
+      # Track the body separately. This is for compatibility reasons, it may not
+      # be strictly needed.
+      self._enter_scope(False)
+      node.body = self.visit_block(node.body)
+      self._exit_and_record_scope(node, NodeAnno.BODY_SCOPE)
 
-    self._exit_scope()
-    return node
+      self._exit_scope()
+      return node
 
   def visit_Lambda(self, node):
     # Lambda nodes are treated in roughly the same way as FunctionDef nodes.
-    self._enter_scope(True)
-    node = self.generic_visit(node)
-    self._exit_and_record_scope(node)
-    return node
+    with self.state[_FunctionOrClass] as fn:
+      fn.node = node
+      self._enter_scope(True)
+      node = self.generic_visit(node)
+      self._exit_and_record_scope(node)
+      return node
 
   def visit_With(self, node):
     self._enter_scope(False)

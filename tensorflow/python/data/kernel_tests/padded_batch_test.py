@@ -31,6 +31,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -224,12 +225,20 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatchSparseError(self):
 
-    def _map_fn(i):
-      return sparse_tensor.SparseTensorValue(
-          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1]), i
+    st = sparse_tensor.SparseTensorValue(
+        indices=[[0, 0]], values=([42]), dense_shape=[1, 1])
 
     with self.assertRaises(TypeError):
-      _ = dataset_ops.Dataset.range(10).map(_map_fn).padded_batch(10)
+      _ = dataset_ops.Dataset.from_tensors(st).repeat(10).padded_batch(10)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatchRaggedError(self):
+
+    rt = ragged_tensor_value.RaggedTensorValue(
+        np.array([0, 42]), np.array([0, 2], dtype=np.int64))
+
+    with self.assertRaises(TypeError):
+      _ = dataset_ops.Dataset.from_tensors(rt).repeat(10).padded_batch(10)
 
   @combinations.generate(test_base.default_test_combinations())
   def testPaddedBatchShapeErrorWrongRank(self):

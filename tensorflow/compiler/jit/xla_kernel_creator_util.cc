@@ -104,7 +104,7 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
       BackwardsConstAnalysis(*((*fbody)->graph), &const_args,
                              /*compile_time_const_nodes=*/nullptr, flr));
 
-  for (int i = 0; i < const_args.size(); ++i) {
+  for (size_t i = 0; i < const_args.size(); ++i) {
     if (const_args[i]) {
       constant_arg_indices->push_back(i);
     }
@@ -113,7 +113,7 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
   // There can be hundreds of resource variables. Reserve the space for them.
   // We don't reserve for constants above as they are usually few.
   resource_arg_indices->reserve(arg_types.size());
-  for (int i = 0; i < arg_types.size(); ++i) {
+  for (size_t i = 0; i < arg_types.size(); ++i) {
     if (arg_types[i] == DT_RESOURCE) {
       resource_arg_indices->push_back(i);
     }
@@ -177,7 +177,7 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
   // 214 variables and a similar number of activations.
   SinglePassSearch constants_search(&constant_arg_indices);
   SinglePassSearch resources_search(&resource_arg_indices);
-  for (int i = 0; i < fbody->arg_types.size(); ++i) {
+  for (size_t i = 0; i < fbody->arg_types.size(); ++i) {
     if (resources_search.ScanForValue(i) || constants_search.ScanForValue(i)) {
       // Compile-time constants and resource handles are expected to be in
       // host memory.
@@ -207,7 +207,7 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
   // XlaLaunch kernel keeps all outputs (including constants, which it copies),
   // in device memory except for resources.
   MemoryTypeVector output_memory_types(fbody->ret_types.size(), DEVICE_MEMORY);
-  for (int i = 0; i < fbody->ret_types.size(); ++i) {
+  for (size_t i = 0; i < fbody->ret_types.size(); ++i) {
     if (fbody->ret_types[i] == DT_RESOURCE) {
       output_memory_types[i] = HOST_MEMORY;
     }
@@ -218,15 +218,17 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
   TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
   Device* dev = flr->device();
   Status s;
-  OpKernelConstruction construction(
-      DeviceType(dev->device_type()), dev,
-      dev->GetAllocator(AllocatorAttributes()), &node_def,
-      &fbody->fdef.signature(), flr, dev->resource_manager(), fbody->arg_types,
-      input_memory_types, fbody->ret_types, output_memory_types,
-      flr->graph_def_version(), &s);
+  auto props = std::make_shared<NodeProperties>(
+      &fbody->fdef.signature(), node_def, fbody->arg_types, fbody->ret_types);
+  OpKernelConstruction construction(DeviceType(dev->device_type()), dev,
+                                    dev->GetAllocator(AllocatorAttributes()),
+                                    flr, dev->resource_manager(), props,
+                                    input_memory_types, output_memory_types,
+                                    flr->graph_def_version(), &s);
 
   *kernel = absl::make_unique<XlaLocalLaunchBase>(
-      &construction, constant_arg_indices, resource_arg_indices, function);
+      &construction, constant_arg_indices, resource_arg_indices, function,
+      /*has_ref_vars=*/false);
   return s;
 }
 }  // namespace tensorflow

@@ -14,6 +14,10 @@ package_group(
     includes = [
         "//tensorflow/compiler/tf2xla:internal",
     ],
+    packages = [
+        "//tensorflow/compiler/tests/...",
+        "//tensorflow/python/...",
+    ],
 )
 
 package_group(

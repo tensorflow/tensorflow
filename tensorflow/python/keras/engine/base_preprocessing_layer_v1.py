@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer
@@ -53,11 +52,6 @@ class CombinerPreprocessingLayer(
     for name, var in self.state_variables.items():
       data_dict[name] = K.get_session().run(var)
     return data_dict
-
-  def _dataset_is_infinite(self, dataset):
-    """True if the passed dataset is infinite."""
-    dataset_size = K.get_session().run(cardinality.cardinality(dataset))
-    return dataset_size == cardinality.INFINITE
 
   def _get_dataset_iterator(self, dataset):
     """Gets an iterator from a tf.data.Dataset."""

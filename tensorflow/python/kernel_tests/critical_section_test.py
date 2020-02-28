@@ -347,7 +347,7 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
     # It's OK if neither requests exclusive resource access.
     cs1.execute(lambda: v2 + 1, exclusive_resource_access=False)
 
-    # It's not OK if the second request requires exlusive resource
+    # It's not OK if the second request requires exclusive resource
     # access.
     with self.assertRaisesRegexp(
         ValueError, "requested exclusive resource access"):

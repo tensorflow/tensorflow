@@ -52,13 +52,25 @@ def HLO_FpTensor : TensorOf<[AnyFloat]>;
 
 def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 
-def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger, AnyComplex]>;
+def HLO_Tensor : TensorOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
 
 def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
 
 def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
+
+// Dynamic representation of a shape vector as a tensor. Ideally this would be
+// an index type (as it stores indices) but that is currently disallowed in
+// MLIR.
+def HLO_DimensionTensor : ShapedContainerType<
+    [AnySignlessInteger], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
+    "a 1D tensor of dimensions">;
+
+// In general, static shaped tensor constraints should be avoided unless
+// it is for a legacy op which is only correct with static shapes.
+def HLO_StaticShapeTensor : StaticShapeTensorOf<[
+      AnyFloat, AnySignlessInteger, AnyComplex]>;
 
 //===----------------------------------------------------------------------===//
 // XLA combined type definitions.
@@ -108,9 +120,7 @@ def HLO_ConstOp : HLO_Op<"constant", [NoSideEffect]>, BASE_HLO_ConstOp {
 def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]>, BASE_HLO_IotaOp {
   let arguments = (ins I64Attr:$iota_dimension);
 
-  let results = (outs HLO_Tensor:$output);
-
-  let hasFolder = 1;
+  let results = (outs HLO_IntFpOrComplexTensor:$output);
 
   // TODO(b/130357376): Iota has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -672,7 +682,8 @@ def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
 }
 
 def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
-      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>]> {
+      [NoSideEffect, AllElementTypesMatch<["operand", "update", "result"]>,
+       AllShapesMatch<["operand", "result"]>]> {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$update,
@@ -758,10 +769,51 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
     BroadcastDimAttr:$broadcast_dimensions
   );
 
+  let results = (outs HLO_StaticShapeTensor);
+
+  // Only handles a static subset of the legacy format.
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_ScalarsToDimensionTensorOp : HLO_Op<"scalars_to_dimension_tensor",
+    [SameOperandsElementType, NoSideEffect]> {
+  string summary = "Converts a sequence of scalars into a 1d tensor.";
+
+  string description = [{
+    This is a useful operation that is currently missing in Standard. Used to
+    compute shape arguments to dynamic operations.
+  }];
+
+  let arguments = (ins Variadic<AnySignlessInteger>);
+  let results = (outs HLO_DimensionTensor);
+
+  // Cannot be exported to legacy formats.
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
+      [NoSideEffect]> {
+  string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
+  string description = [{
+    This is a generalization of the BroadcastInDimOp which accepts its output
+    dimensions as an argument. It should eventually supercede the statically
+    shaped original, but is being phased as a separate op in order to support
+    compatibility with lowerings and translations that precede dynamic
+    shapes.
+
+    Note that the `broadcast_dimensions` attribute is optional and if omitted,
+    it is assumed to be an ordered, right-aligned mapping from input to
+    output dimensions.
+  }];
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_DimensionTensor:$output_dimensions,
+    BroadcastDimAttr:$broadcast_dimensions
+  );
+
   let results = (outs HLO_Tensor);
 
-  // TODO(b/130357376): One of the arguments comes from the new shape, which is
-  // not handled by the codegen.
+  // Cannot be exported to legacy formats.
   let hasCustomHLOConverter = 1;
 }
 

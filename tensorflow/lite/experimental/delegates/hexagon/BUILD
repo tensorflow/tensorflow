@@ -56,6 +56,7 @@ cc_library(
         ":utils",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/delegates/hexagon/builders:op_builder",
         "//tensorflow/lite/experimental/delegates/hexagon/hexagon_nn:hexagon_nn_header",
         "//tensorflow/lite/schema:schema_fbs",

@@ -38,13 +38,14 @@ class PForTestCase(test.TestCase):
       self.evaluate(init)
     return self.evaluate(targets1 + targets2)
 
+  # TODO(agarwal): Allow tests to pass down tolerances.
   def run_and_assert_equal(self, targets1, targets2):
     outputs = self._run_targets(targets1, targets2)
     outputs = nest.flatten(outputs)  # flatten SparseTensorValues
     n = len(outputs) // 2
     for i in range(n):
       if outputs[i + n].dtype != np.object:
-        self.assertAllClose(outputs[i + n], outputs[i], rtol=1e-4, atol=1e-5)
+        self.assertAllClose(outputs[i + n], outputs[i], rtol=1e-4, atol=1e-4)
       else:
         self.assertAllEqual(outputs[i + n], outputs[i])
 

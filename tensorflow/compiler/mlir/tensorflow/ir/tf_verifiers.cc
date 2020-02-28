@@ -21,22 +21,34 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
-LogicalResult VerifyLayoutSensitiveInterface(Operation* op) {
-  auto layout_sensitive_interface = cast<LayoutSensitiveInterface>(op);
+namespace {
 
-  if (!llvm::all_of(
-          layout_sensitive_interface.GetLayoutDependentArgs(),
-          [&](int64_t index) { return index < op->getNumOperands(); })) {
+template <typename Interface>
+LogicalResult VerifyLayoutDependentArgsAndResults(Operation* op,
+                                                  Interface interface) {
+  auto valid_operand = [&](int64_t idx) { return idx < op->getNumOperands(); };
+  if (!llvm::all_of(interface.GetLayoutDependentArgs(), valid_operand)) {
     return op->emitOpError("layout dependent argument index is out of bound");
   }
 
-  if (!llvm::all_of(
-          layout_sensitive_interface.GetLayoutDependentResults(),
-          [&](int64_t index) { return index < op->getNumResults(); })) {
+  auto valid_result = [&](int64_t idx) { return idx < op->getNumResults(); };
+  if (!llvm::all_of(interface.GetLayoutDependentResults(), valid_result)) {
     return op->emitOpError("layout dependent result index is out of bound");
   }
 
   return success();
+}
+
+}  // namespace
+
+LogicalResult VerifyLayoutSensitiveInterface(Operation* op) {
+  auto layout_sensitive_interface = cast<LayoutSensitiveInterface>(op);
+  return VerifyLayoutDependentArgsAndResults(op, layout_sensitive_interface);
+}
+
+LogicalResult VerifyFoldOperandsTransposeInterface(Operation* op) {
+  auto fold_operands_transpose = cast<FoldOperandsTransposeInterface>(op);
+  return VerifyLayoutDependentArgsAndResults(op, fold_operands_transpose);
 }
 
 }  // namespace TF

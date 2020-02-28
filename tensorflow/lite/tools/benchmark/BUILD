@@ -111,6 +111,19 @@ cc_test(
 )
 
 cc_library(
+    name = "profiling_listener",
+    srcs = ["profiling_listener.cc"],
+    hdrs = ["profiling_listener.h"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_model_lib",
+        "//tensorflow/lite/profiling:profile_summarizer",
+        "//tensorflow/lite/profiling:profile_summary_formatter",
+        "//tensorflow/lite/profiling:profiler",
+    ],
+)
+
+cc_library(
     name = "benchmark_tflite_model_lib",
     srcs = ["benchmark_tflite_model.cc"],
     hdrs = ["benchmark_tflite_model.h"],
@@ -121,6 +134,7 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
+        ":profiling_listener",
         ":benchmark_model_lib",
         ":benchmark_utils",
         ":delegate_provider_hdr",
@@ -128,18 +142,21 @@ cc_library(
         ":hexagon_delegate_provider",
         ":logging",
         ":nnapi_delegate_provider",
-        ":xnnpack_delegate_provider",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/ruy/profiler",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/nnapi:nnapi_util",
-        "//tensorflow/lite/profiling:profile_summarizer",
         "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/tools/evaluation:utils",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + select({
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [
+            ":xnnpack_delegate_provider",
+        ],
+    }),
 )
 
 cc_library(

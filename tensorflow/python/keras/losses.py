@@ -51,7 +51,7 @@ class Loss(object):
   ```python
   class MeanSquaredError(Loss):
     def call(self, y_true, y_pred):
-      y_pred = ops.convert_to_tensor(y_pred)
+      y_pred = ops.convert_to_tensor_v2(y_pred)
       y_true = math_ops.cast(y_true, y_pred.dtype)
       return K.mean(math_ops.square(y_pred - y_true), axis=-1)
   ```
@@ -95,6 +95,17 @@ class Loss(object):
     # SUM_OVER_BATCH is only allowed in losses managed by `fit` or
     # CannedEstimators.
     self._allow_sum_over_batch_size = False
+    self._set_name_scope()
+
+  def _set_name_scope(self):
+    """Creates a valid `name_scope` name."""
+    if self.name is None:
+      self._name_scope = self.__class__.__name__
+    elif self.name == '<lambda>':
+      self._name_scope = 'lambda'
+    else:
+      # E.g. '_my_loss' => 'my_loss'
+      self._name_scope = self.name.strip('_')
 
   def __call__(self, y_true, y_pred, sample_weight=None):
     """Invokes the `Loss` instance.
@@ -124,10 +135,9 @@ class Loss(object):
     """
     # If we are wrapping a lambda function strip '<>' from the name as it is not
     # accepted in scope name.
-    scope_name = 'lambda' if self.name == '<lambda>' else self.name
     graph_ctx = tf_utils.graph_context_for_symbolic_tensors(
         y_true, y_pred, sample_weight)
-    with K.name_scope(scope_name or self.__class__.__name__), graph_ctx:
+    with K.name_scope(self._name_scope), graph_ctx:
       losses = self.call(y_true, y_pred)
       return losses_utils.compute_weighted_loss(
           losses, sample_weight, reduction=self._get_reduction())
@@ -835,7 +845,7 @@ def mean_squared_error(y_true, y_pred):
   Returns:
     Mean squared error values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   return K.mean(math_ops.squared_difference(y_pred, y_true), axis=-1)
 
@@ -858,7 +868,7 @@ def mean_absolute_error(y_true, y_pred):
   Returns:
     Mean absolute error values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   return K.mean(math_ops.abs(y_pred - y_true), axis=-1)
 
@@ -881,7 +891,7 @@ def mean_absolute_percentage_error(y_true, y_pred):
   Returns:
     Mean absolute percentage error values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   diff = math_ops.abs(
       (y_true - y_pred) / K.maximum(math_ops.abs(y_true), K.epsilon()))
@@ -906,7 +916,7 @@ def mean_squared_logarithmic_error(y_true, y_pred):
   Returns:
     Mean squared logarithmic error values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   first_log = math_ops.log(K.maximum(y_pred, K.epsilon()) + 1.)
   second_log = math_ops.log(K.maximum(y_true, K.epsilon()) + 1.)
@@ -943,7 +953,7 @@ def squared_hinge(y_true, y_pred):
   Returns:
      Squared hinge loss values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   y_true = _maybe_convert_labels(y_true)
   return K.mean(
@@ -965,7 +975,7 @@ def hinge(y_true, y_pred):
   Returns:
     Hinge loss values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   y_true = _maybe_convert_labels(y_true)
   return K.mean(math_ops.maximum(1. - y_true * y_pred, 0.), axis=-1)
@@ -986,7 +996,7 @@ def categorical_hinge(y_true, y_pred):
   Returns:
     Categorical hinge loss values.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
   neg = math_ops.reduce_max((1. - y_true) * y_pred, axis=-1)
@@ -1021,7 +1031,7 @@ def huber_loss(y_true, y_pred, delta=1.0):
   linear = math_ops.subtract(abs_error, quadratic)
   return math_ops.add(
       math_ops.multiply(
-          ops.convert_to_tensor(0.5, dtype=quadratic.dtype),
+          ops.convert_to_tensor_v2(0.5, dtype=quadratic.dtype),
           math_ops.multiply(quadratic, quadratic)),
       math_ops.multiply(delta, linear))
 
@@ -1042,7 +1052,7 @@ def logcosh(y_true, y_pred):
   Returns:
     Logcosh error values. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
 
   def _logcosh(x):
@@ -1069,9 +1079,9 @@ def categorical_crossentropy(y_true,
   Returns:
     Categorical crossentropy loss value.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  label_smoothing = ops.convert_to_tensor(label_smoothing, dtype=K.floatx())
+  label_smoothing = ops.convert_to_tensor_v2(label_smoothing, dtype=K.floatx())
 
   def _smooth_labels():
     num_classes = math_ops.cast(array_ops.shape(y_true)[1], y_pred.dtype)
@@ -1098,7 +1108,7 @@ def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False, axis=-1):
   Returns:
     Sparse categorical crossentropy loss value.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   return K.sparse_categorical_crossentropy(
       y_true, y_pred, from_logits=from_logits, axis=axis)
@@ -1119,9 +1129,9 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
   Returns:
     Binary crossentropy loss value. shape = `[batch_size, d0, .. dN-1]`.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
-  label_smoothing = ops.convert_to_tensor(label_smoothing, dtype=K.floatx())
+  label_smoothing = ops.convert_to_tensor_v2(label_smoothing, dtype=K.floatx())
 
   def _smooth_labels():
     return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
@@ -1162,7 +1172,7 @@ def kullback_leibler_divergence(y_true, y_pred):
   Raises:
       TypeError: If `y_true` cannot be cast to the `y_pred.dtype`.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   y_true = K.clip(y_true, K.epsilon(), 1)
   y_pred = K.clip(y_pred, K.epsilon(), 1)
@@ -1186,7 +1196,7 @@ def poisson(y_true, y_pred):
   Raises:
       InvalidArgumentError: If `y_true` and `y_pred` have incompatible shapes.
   """
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_pred = ops.convert_to_tensor_v2(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   return K.mean(y_pred - y_true * math_ops.log(y_pred + K.epsilon()), axis=-1)
 

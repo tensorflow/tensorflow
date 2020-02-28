@@ -79,6 +79,66 @@ void SetGroupId(const XPlaneVisitor& visitor, int64 group_id, XEvent* event) {
                      event);
 }
 
+using VirtualEventContainer = std::vector<std::unique_ptr<XEvent>>;
+
+using VirtualEventNodeMap =
+    absl::flat_hash_map<int64 /*step_id*/,
+                        absl::flat_hash_map<int64 /*iter_num*/, EventNode*>>;
+
+std::unique_ptr<XEvent> CreateVirtualEvent(const XStat& step_id_stat,
+                                           const XStat& iter_num_stat) {
+  auto virtual_event = absl::make_unique<XEvent>();
+  *virtual_event->add_stats() = step_id_stat;
+  *virtual_event->add_stats() = iter_num_stat;
+  return virtual_event;
+}
+
+// Create virtual events of HostEventType::kHostTrainingLoopIteration and event
+// nodes for them. A virtual event is created for each iteration of the host
+// training loop and connected to the HostEventType::kExecutorStateProcess event
+// nodes of the iteration.
+void CreateVirtualEvents(EventNodeMap* event_node_map,
+                         VirtualEventContainer* virtual_event_container) {
+  VirtualEventNodeMap virtual_event_node_map;
+  auto executor_event_node_list =
+      gtl::FindOrNull(*event_node_map, HostEventType::kExecutorStateProcess);
+  if (!executor_event_node_list) return;
+  for (auto& executor_event_node : *executor_event_node_list) {
+    const XStat* step_id_stat =
+        executor_event_node->GetContextStat(StatType::kStepId);
+    const XStat* iter_num_stat =
+        executor_event_node->GetContextStat(StatType::kIterNum);
+    if (!step_id_stat || !iter_num_stat) continue;
+    int64 step_id = step_id_stat->int64_value();
+    int64 iter_num = iter_num_stat->int64_value();
+    // Process the event with nonzero iter_num only to filter out the events
+    // related to tf.data.
+    // TODO(jihochoi): Filter out tf.data events more reliably.
+    if (!iter_num) continue;
+    EventNode*& virtual_event_node = virtual_event_node_map[step_id][iter_num];
+    if (!virtual_event_node) {
+      std::unique_ptr<XEvent> new_virtual_event =
+          CreateVirtualEvent(*step_id_stat, *iter_num_stat);
+      auto new_virtual_event_node = absl::make_unique<EventNode>(
+          &executor_event_node->GetPlaneVisitor(), new_virtual_event.get());
+      // virtual_event_container keeps new_virtual_event alive.
+      virtual_event_container->push_back(std::move(new_virtual_event));
+      virtual_event_node = new_virtual_event_node.get();
+      // event_node_map keeps new_virtual_event_node alive.
+      (*event_node_map)[HostEventType::kHostTrainingLoopIteration].push_back(
+          std::move(new_virtual_event_node));
+    }
+    virtual_event_node->AddChild(executor_event_node.get());
+  }
+}
+
+bool NeedsVirtualEvents(
+    const std::vector<int64 /*EventType*/>& root_event_types) {
+  return std::find(root_event_types.begin(), root_event_types.end(),
+                   HostEventType::kHostTrainingLoopIteration) !=
+         root_event_types.end();
+}
+
 }  // namespace
 
 const XStat* EventNode::GetContextStat(int64 stat_type) const {
@@ -100,7 +160,7 @@ std::string EventNode::GetGroupName() const {
     step_num = step_num_stat->int64_value();
   }
   if (const XStat* iter_num_stat = GetContextStat(StatType::kIterNum)) {
-    step_num += iter_num_stat->int64_value();
+    step_num = iter_num_stat->int64_value();
   }
   name_parts.push_back(absl::StrCat(step_num));
   return absl::StrJoin(name_parts, " ");
@@ -139,6 +199,7 @@ void ConnectIntraThread(const XPlaneVisitor& visitor, XPlane* plane,
         }
       }
       parent_nodes.push_back(cur_node.get());
+      // event_node_map keeps cur_node alive.
       (*event_node_map)[GetEventType(visitor, event)].push_back(
           std::move(cur_node));
     }
@@ -200,13 +261,11 @@ void CreateEventGroup(const std::vector<int64 /*EventType*/>& root_event_types,
         if (root_event_node->GetGroupId()) continue;
         int64 group_id = next_group_id++;
         root_event_node->PropagateGroupId(group_id);
+        std::string group_name = root_event_node->GetGroupName();
+        // TODO(jihochoi): change event name instead.
+        root_event_node->AddStepName(group_name);
         if (event_group_name_map) {
-          (*event_group_name_map)[group_id] = root_event_node->GetGroupName();
-          // Add step_name stat if it is a TraceContext event.
-          // TODO(jihochoi): change event name instead.
-          if (root_event_type == HostEventType::kTraceContext) {
-            root_event_node->AddStepName((*event_group_name_map)[group_id]);
-          }
+          (*event_group_name_map)[group_id] = std::move(group_name);
         }
       }
     }
@@ -217,6 +276,8 @@ void GroupEvents(const std::vector<InterThreadConnectInfo>& connect_info_list,
                  const std::vector<int64>& root_event_types, XSpace* space,
                  EventGroupNameMap* event_group_name_map) {
   EventNodeMap event_node_map;
+  // Keeps virtual events alive for this scope.
+  VirtualEventContainer virtual_event_container;
   std::vector<XPlaneVisitor> visitors;
   visitors.reserve(space->planes_size());
   for (auto& plane : *space->mutable_planes()) {
@@ -225,6 +286,9 @@ void GroupEvents(const std::vector<InterThreadConnectInfo>& connect_info_list,
     ConnectIntraThread(visitors.back(), &plane, &event_node_map);
   }
   ConnectInterThread(event_node_map, connect_info_list);
+  if (NeedsVirtualEvents(root_event_types)) {
+    CreateVirtualEvents(&event_node_map, &virtual_event_container);
+  }
   CreateEventGroup(root_event_types, event_node_map, event_group_name_map);
 }
 
@@ -238,13 +302,13 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
         {StatType::kStepId}},
        {HostEventType::kExecutorStateProcess,
         HostEventType::kIteratorGetNextOp,
-        {StatType::kStepId, kIterNum}},
+        {StatType::kStepId, StatType::kIterNum}},
        {HostEventType::kKernelLaunch,
         HostEventType::kKernelExecute,
         {StatType::kCorrelationId}}});
   const std::vector<int64 /*EventType*/> root_event_types(
-      {HostEventType::kTraceContext, HostEventType::kFunctionRun,
-       HostEventType::kSessionRun});
+      {HostEventType::kHostTrainingLoopIteration, HostEventType::kTraceContext,
+       HostEventType::kFunctionRun, HostEventType::kSessionRun});
   GroupEvents(connect_info_list, root_event_types, space, event_group_name_map);
 }
 

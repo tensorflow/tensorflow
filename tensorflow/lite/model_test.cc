@@ -441,6 +441,8 @@ TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
   ASSERT_EQ(t1->sparsity->dim_metadata[3].array_indices, nullptr);
 }
 
+// TODO(b/150072943): Add malformed model with sparse tensor tests.
+
 // TODO(aselle): Add tests for serialization of builtin op data types.
 // These tests will occur with the evaluation tests of individual operators,
 // not here.

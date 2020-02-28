@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Block.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Diagnostics.h"  // TF:llvm-project
@@ -60,16 +60,23 @@ namespace TF {
 namespace {
 Optional<llvm::SmallVector<mlir::Type, 4>> InferShapeForFunctionReturnType(
     FuncOp func) {
-  // Only infer shape when there is one return op for now.
-  if (!has_single_element(func.getBody()) || func.front().empty()) {
+  // Find any return ops.
+  SmallVector<ReturnOp, 4> return_ops;
+  for (Block& block : func) {
+    if (auto return_op = dyn_cast<ReturnOp>(block.getTerminator())) {
+      return_ops.push_back(return_op);
+    }
+  }
+
+  // Right now we only handle the case of a single return op.
+  // To handle multiple return ops, we would need to look at all their shapes
+  // and come up with a common shape and insert appropriate casts.
+  if (return_ops.size() != 1) {
     return None;
   }
 
   // Find the return type.
-  auto return_op = dyn_cast<mlir::ReturnOp>(func.front().back());
-  if (!return_op) {
-    return None;
-  }
+  auto return_op = return_ops.front();
 
   // Manually fold tf.Cast that precedes the return instruction and only differs
   // in shape refinement level.
@@ -446,9 +453,10 @@ LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
                                      {while_op.cond(), while_op.body()},
                                      graph_version, max_iteration);
   } else if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
-    return PropagateShapeToFunctions(module, call_op.getOperandTypes(),
-                                     {call_op.f()}, graph_version,
-                                     max_iteration);
+    if (call_op.f().isa<FlatSymbolRefAttr>())
+      return PropagateShapeToFunctions(module, call_op.getOperandTypes(),
+                                       {call_op.f().getRootReference()},
+                                       graph_version, max_iteration);
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.

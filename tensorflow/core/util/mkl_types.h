@@ -20,11 +20,10 @@ limitations under the License.
 namespace tensorflow {
 
 #ifdef ENABLE_MKLDNN_V1
-// TODO(mdfaijul): Temporarily commenting out redefining mkldnn type.
-// typedef uint16_t mkldnn_bfloat16_t;
 #define ADD_MD add_md
 #define ALGORITHM mkldnn::algorithm
 #define ALGORITHM_UNDEF ALGORITHM::undef
+#define BN_FLAGS mkldnn::normalization_flags
 #define CPU_STREAM(engine) stream(engine)
 #define DATA_WITH_ENGINE(data, engine) data, engine
 #define DST_MD dst_md
@@ -35,12 +34,16 @@ namespace tensorflow {
   md, tensor, net, net_args, engine
 #define GET_DESC get_desc()
 #define GET_FORMAT_FROM_SHAPE(src_mkl_shape) MklTensorFormat::FORMAT_BLOCKED
+#define GET_BLOCK_STRIDES(strides, idx) strides
 #define GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm) \
   { {dims}, MklDnnType<type>(), fm }
 #define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) mem_ptr->get_desc()
 #define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \
   GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr)
+#define GET_MEMORY_SIZE_FROM_MD(md, engine) md.get_size()
 #define GET_SRC_DESC_FROM_OP_PD(op_pd) op_pd->src_desc()
+#define GET_DST_DESC_FROM_OP_PD(op_pd) op_pd->dst_desc()
+#define GET_BIAS_DESC_FROM_OP_PD(op_pd) op_pd->bias_desc()
 #define GET_DIFF_DST_DESC_FROM_OP_PD(op_pd) op_pd->diff_dst_desc()
 #define GET_WORKSPACE_DESC_FROM_OP_PD(op_pd) op_pd->workspace_desc()
 #define GET_TENSOR_FORMAT(fmt) MklTensorFormatToMklDnnDataFormat(fmt)
@@ -77,6 +80,7 @@ namespace tensorflow {
   memory::desc({dims}, MklDnnType<type>(), fm)
 #define MEMORY_PD_WITHOUT_DATA(md, engine) md, engine
 #define MEMORY_PRIMITIVE_DESC memory::desc
+#define MEMORY_PD_CONSTRUCTOR_2_PARAMS(md, engine) MEMORY_PRIMITIVE_DESC(md)
 #define MKL_FMT_TAG mkl_fmt_tag
 #define MKL_TENSOR_FORMAT MklTensorFormat
 #define MKL_TENSOR_FORMAT_BLOCKED MklTensorFormat::FORMAT_BLOCKED
@@ -110,13 +114,15 @@ namespace tensorflow {
 #define TENSOR_FORMAT MKL_TENSOR_FORMAT
 #define TENSOR_FORMAT_NHWC MKL_TENSOR_FORMAT_NHWC
 #define TENSOR_MAX_DIMS MKLDNN_MAX_NDIMS
+#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemDesc()
 
 #else
 
 #define ADD_MD add_pd
 #define ALGORITHM mkldnn
 #define ALGORITHM_UNDEF ALGORITHM::algorithm_undef
-#define CPU_STREAM(engine) stream(stream::kind::eager)
+#define BN_FLAGS mkldnn
+#define CPU_STREAM(engine) stream(stream::kind::eager_nostore)
 #define DATA_WITH_ENGINE(data, engine) data
 #define DST_MD dst_pd
 #define ENGINE_CPU engine::cpu
@@ -128,9 +134,14 @@ namespace tensorflow {
 #define GET_DESC get_primitive_desc()
 #define GET_FORMAT_FROM_SHAPE(src_mkl_shape) \
   static_cast<memory::format>(src_mkl_shape.GetMklLayout().data.format)
+#define GET_BLOCK_STRIDES(strides, idx) strides[(idx)]
 #define GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm) \
   { {dims}, MklDnnType<type>(), fm }
+#define GET_MEMORY_SIZE_FROM_MD(md, engine) \
+  memory::primitive_desc(md, engine).get_size()
 #define GET_SRC_DESC_FROM_OP_PD(op_pd) op_pd.get()->src_primitive_desc()
+#define GET_DST_DESC_FROM_OP_PD(op_pd) op_pd.get()->dst_primitive_desc()
+#define GET_BIAS_DESC_FROM_OP_PD(op_pd) op_pd.get()->bias_primitive_desc()
 #define GET_DIFF_DST_DESC_FROM_OP_PD(op_pd) \
   op_pd.get()->diff_dst_primitive_desc()
 #define GET_WORKSPACE_DESC_FROM_OP_PD(op_pd) \
@@ -148,7 +159,7 @@ namespace tensorflow {
 #define IS_SRC_REORDER_NEEDED(src_md, op_pd, op) \
   src_md.data.format != op->GetSrcMemoryFormat()
 #define IS_WEIGHTS_REORDER_NEEDED(weights_md, op_pd, op) \
-  weights_md.data.format != op->GetWeightsMemoryFormat()
+  weights_md.data.format != op->GetWeightMemoryFormat()
 #define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) \
   mem_ptr->get_primitive_desc().desc()
 #define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \
@@ -170,6 +181,8 @@ namespace tensorflow {
   memory::primitive_desc(GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm), engine)
 #define MEMORY_PD_WITHOUT_DATA(pd, engine) pd
 #define MEMORY_PRIMITIVE_DESC memory::primitive_desc
+#define MEMORY_PD_CONSTRUCTOR_2_PARAMS(md, engine) \
+  MEMORY_PRIMITIVE_DESC(md, engine)
 #define MKL_FMT_TAG tf_fmt
 #define MKL_TENSOR_FORMAT memory::format
 #define MKL_TENSOR_FORMAT_BLOCKED memory::format::blocked
@@ -202,6 +215,7 @@ namespace tensorflow {
 #define SUMMAND_MD summand_pd
 #define TENSOR_FORMAT TensorFormat
 #define TENSOR_FORMAT_NHWC FORMAT_NHWC
+#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemPrimDesc()
 #endif  // ENABLE_MKLDNN_V1
 
 }  // namespace tensorflow

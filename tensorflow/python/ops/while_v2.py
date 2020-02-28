@@ -26,6 +26,7 @@ from __future__ import print_function
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
+from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -275,13 +276,8 @@ def while_loop(cond,
       # This is needed so we do not compute derivative wrt these extra outputs.
       outputs[0].op._set_attr("_num_original_outputs",
                               attr_value_pb2.AttrValue(i=num_original_outputs))
-
     outputs[0].op._cond_graph = cond_graph
     outputs[0].op._body_graph = body_graph
-    _copy_handle_data(body_graph.outputs, outputs)
-    util.maybe_set_lowering_attr(outputs[0].op)
-    util.maybe_propagate_compile_time_consts_in_xla(outputs[0].op)
-
     if not ops.get_default_graph().building_function:
       # In V1 graph mode, return identities for each output of the While op,
       # rather than the output of the While op directly. This makes pruning work
@@ -370,7 +366,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
                           [t.shape for t in new_outputs])
     _copy_handle_data(new_outputs, op.outputs[orig_num_params:])
 
-  # Do not ingore grads wrt extra outputs when computing higher order
+  # Do not ignore grads wrt extra outputs when computing higher order
   # derivatives.
   while_op._set_attr("_num_original_outputs",
                      attr_value_pb2.AttrValue(i=len(while_op.outputs)))
@@ -401,11 +397,6 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       output_shapes=[t.shape for t in body_grad_graph.outputs],
       parallel_iterations=parallel_iterations,
       name="%s_grad" % while_op.name)
-  grad_op = outputs[0].op
-
-  _copy_handle_data(body_grad_graph.outputs, outputs)
-  util.maybe_set_lowering_attr(grad_op)
-  util.maybe_propagate_compile_time_consts_in_xla(grad_op)
 
   # See comment in while_loop.
   outputs = [array_ops.identity(t) for t in outputs]
@@ -426,13 +417,19 @@ def _build_while_op(loop_vars, cond_graph, body_graph, output_shapes,
   else:
     op_fn = gen_functional_ops.stateless_while
 
-  return op_fn(
+  outputs = op_fn(
       loop_vars,
       util.create_new_tf_function(cond_graph),
       util.create_new_tf_function(body_graph),
       output_shapes=output_shapes,
       parallel_iterations=parallel_iterations,
       name=name)
+  while_op = outputs[0].op
+  _copy_handle_data(body_graph.outputs, outputs)
+  util.maybe_set_lowering_attr(while_op)
+  util.maybe_propagate_compile_time_consts_in_xla(while_op)
+  _set_read_only_resource_inputs_attr(while_op, [cond_graph, body_graph])
+  return outputs
 
 
 def _get_intermediates(func_graph):
@@ -460,8 +457,7 @@ def _get_intermediates(func_graph):
   # 3. Do not accumulate loop vars that are returned as-is just like captured
   #    tensors.
   intermediates = []
-  reverse_captures = dict(
-      (v.experimental_ref(), k) for k, v in func_graph.captures)
+  reverse_captures = dict((v.ref(), k) for k, v in func_graph.captures)
 
   for op in func_graph.get_operations():
     if op.type == "Identity":
@@ -473,7 +469,7 @@ def _get_intermediates(func_graph):
       if (o is not func_graph.inputs[0] and  # Loop counter.
           o.dtype != dtypes.resource and  # Do not accumulate resource tensors.
           _get_accumulator(o) is None and  # Has existing accumulator.
-          o.experimental_ref() not in reverse_captures
+          o.ref() not in reverse_captures
          ):  # Captured value, hence loop invariant.
         intermediates.append(o)
   return intermediates
@@ -1294,5 +1290,29 @@ class _OperationWithOutputs(ops.Operation):
     self._id_value = g._add_op(self, self.name)
     self._is_stateful = False
 
+
+def _set_read_only_resource_inputs_attr(op, branch_graphs):
+  """Sets the list of resource inputs which are read-only.
+
+  This is used by AutomaticControlDependencies.
+
+  Args:
+    op: While Operation.
+    branch_graphs: List of branch FuncGraphs.
+  """
+  read_only_indices = []
+  for i in range(len(op.inputs)):
+    if op.inputs[i].dtype != dtypes.resource:
+      continue
+    has_write = False
+    for branch_graph in branch_graphs:
+      handle = branch_graph.inputs[i]
+      if acd.resource_has_writes(handle):
+        has_write = True
+        break
+    if not has_write:
+      read_only_indices.append(i)
+  ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
+                        read_only_indices)
 
 # pylint: enable=protected-access

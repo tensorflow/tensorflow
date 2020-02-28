@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/AffineExpr.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -33,17 +33,39 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
+#include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
 namespace mlir {
 namespace {
 
-ArrayAttr GetNParallelLoopsAttrs(unsigned nParallelLoops, Builder b) {
-  auto parallelLoopTypeAttr = b.getStringAttr("parallel");
+ArrayAttr GetNParallelLoopsAttrs(unsigned nParallelLoops, Builder* b) {
+  auto parallelLoopTypeAttr = b->getStringAttr("parallel");
   SmallVector<Attribute, 3> iteratorTypes;
   for (int i = 0; i < nParallelLoops; ++i) {
     iteratorTypes.push_back(parallelLoopTypeAttr);
   }
-  return b.getArrayAttr(iteratorTypes);
+  return b->getArrayAttr(iteratorTypes);
+}
+
+template <bool isLHLO = true>
+ShapedType getXLAOpResultType(Operation* op) {
+  if (isLHLO) {
+    return op->getOperand(op->getNumOperands() - 1)
+        .getType()
+        .cast<ShapedType>();
+  }
+  return op->getResult(0).getType().cast<ShapedType>();
+}
+
+template <bool isLHLO = true>
+bool verifyXLAOpBufferOrTensorSemantics(Operation* op) {
+  auto verifyType = [&](Value val) -> bool {
+    return (isLHLO && val.getType().isa<MemRefType>()) ||
+           (!isLHLO && val.getType().isa<RankedTensorType>());
+  };
+  if (!llvm::all_of(op->getOperands(), verifyType)) return false;
+  return isLHLO ? op->getResults().empty()
+                : llvm::all_of(op->getResults(), verifyType);
 }
 
 template <typename OpTy, bool isLHLO = true>
@@ -61,7 +83,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
       emitError(loc, "lhlo to linalg conversion expects ranked args");
       return ConversionPattern::matchFailure();
     }
-    if (!argType.getElementType().isIntOrFloat()) {
+    if (!argType.getElementType().isSignlessIntOrFloat()) {
       return ConversionPattern::matchFailure();
     }
 
@@ -110,7 +132,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
         rewriter.getI64IntegerAttr(bodyArgTypes.size()),     // args_in
         rewriter.getI64IntegerAttr(bodyResultTypes.size()),  // args_out
         rewriter.getArrayAttr(indexingMaps),
-        GetNParallelLoopsAttrs(nloops, rewriter),
+        GetNParallelLoopsAttrs(nloops, &rewriter),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
@@ -149,7 +171,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
     auto loc = lhlo_op.getLoc();
     auto argType =
         lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
-    if (!argType || !argType.getElementType().isIntOrFloat() ||
+    if (!argType || !argType.getElementType().isSignlessIntOrFloat() ||
         (argType.getRank() != 0)) {
       return ConversionPattern::matchFailure();
     }
@@ -167,7 +189,101 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
   }
 };
 
+/// Base class for lowering xla operations that have one operand and one result,
+/// and are semantically equivalent to a copy of the input to the output (like
+/// transpose, some reshape, etc.). The derived classes need to provide a method
+/// `getIndexingMapsAttr` that returns an ArrayAttr containing AffineMapAttr for
+/// the index maps of the input and the output.
+template <typename Derived, typename OpTy, bool isLHLO = true>
+class DataMovementOpConverter : public OpConversionPattern<OpTy> {
+ public:
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      OpTy op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op))
+      return ConversionPattern::matchFailure();
+    auto operandType = op.operand().getType().template cast<ShapedType>();
+    auto resultType = getXLAOpResultType<isLHLO>(op);
+    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op))
+      return ConversionPattern::matchFailure();
+    // TODO(b/150203558) Enable once tiling/fusion works in this case.
+    if (isLHLO && (operandType.getRank() == 0))
+      return ConversionPattern::matchFailure();
+    ArrayAttr indexingMapsAttr =
+        static_cast<const Derived&>(*this).getIndexingMapsAttr(op, &rewriter);
+    if (!indexingMapsAttr) return ConversionPattern::matchFailure();
+
+    OpBuilder::InsertionGuard linalgOpGuard(rewriter);
+    auto nloops = resultType.getRank();
+    auto loc = op.getLoc();
+    auto linalgOp = rewriter.create<linalg::GenericOp>(
+        loc, isLHLO ? ArrayRef<Type>{} : resultType, args,
+        rewriter.getI64IntegerAttr(1), rewriter.getI64IntegerAttr(1),
+        indexingMapsAttr, GetNParallelLoopsAttrs(nloops, &rewriter),
+        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+
+    auto* region = &linalgOp.region();
+    auto* block = rewriter.createBlock(region, region->end());
+    block->addArguments(operandType.getElementType());
+    if (isLHLO) block->addArgument(resultType.getElementType());
+
+    rewriter.setInsertionPointToEnd(block);
+    rewriter.create<linalg::YieldOp>(loc, block->getArgument(0));
+
+    rewriter.replaceOp(op, linalgOp.getOperation()->getResults());
+    return ConversionPattern::matchSuccess();
+  }
+};
+
+template <typename OpTy, bool isLHLO = true>
 class BroadcastInDimConverter
+    : public DataMovementOpConverter<BroadcastInDimConverter<OpTy, isLHLO>,
+                                     OpTy, isLHLO> {
+ public:
+  using DataMovementOpConverter<BroadcastInDimConverter<OpTy, isLHLO>, OpTy,
+                                isLHLO>::DataMovementOpConverter;
+
+  ArrayAttr getIndexingMapsAttr(OpTy broadcastOp, Builder* b) const {
+    auto resultType = getXLAOpResultType<isLHLO>(broadcastOp);
+    auto operandType =
+        broadcastOp.operand().getType().template cast<ShapedType>();
+    unsigned nloops = resultType.getRank();
+
+    auto operandShape = operandType.getShape();
+    SmallVector<AffineExpr, 4> dimExprs;
+    {
+      dimExprs.reserve(nloops);
+
+      if (broadcastOp.broadcast_dimensions()) {
+        for (const auto& broadcastDim :
+             enumerate(broadcastOp.broadcast_dimensions()
+                           .getValue()
+                           .getIntValues())) {
+          int size = broadcastDim.value().getSExtValue();
+          // TODO(pifon): Add support for args with dynamic shapes for the case
+          // when a dimension of size 1 is broadcasted into dim of size N.
+          AffineExpr affineExpr = operandShape[broadcastDim.index()] == 1
+                                      ? b->getAffineConstantExpr(0)
+                                      : b->getAffineDimExpr(size);
+          dimExprs.push_back(affineExpr);
+        }
+      }
+      if (dimExprs.empty()) {
+        // The input is a scalar, i.e. this is a scalar broadcast op.
+        dimExprs.push_back(b->getAffineConstantExpr(0));
+      }
+    }
+    return b->getAffineMapArrayAttr(
+        {AffineMap::get(nloops, /*symbolCount=*/0, dimExprs),
+         b->getMultiDimIdentityMap(nloops)});
+  }
+};
+
+// Special case for scalar broadcast in lhlo.
+// TODO(b/150203558) Remove once the bug is fixed.
+class ScalarBroadcastInDimConverter
     : public OpConversionPattern<xla_lhlo::BroadcastInDimOp> {
  public:
   using OpConversionPattern<xla_lhlo::BroadcastInDimOp>::OpConversionPattern;
@@ -177,96 +293,132 @@ class BroadcastInDimConverter
       ConversionPatternRewriter& rewriter) const final {
     auto operandMemrefType =
         broadcastOp.operand().getType().dyn_cast<MemRefType>();
+    // Only support scalar operands.
+    if (operandMemrefType.getRank() != 0) return matchFailure();
     auto resultMemrefType =
         broadcastOp.output().getType().dyn_cast<MemRefType>();
     if (!operandMemrefType || !resultMemrefType) return matchFailure();
     auto broadcastDims = broadcastOp.broadcast_dimensions();
     if (!broadcastDims.hasValue()) return matchFailure();
 
-    return broadcastDims.getValue().getIntValues().empty()
-               ? emitScalarBroadcast(broadcastOp, args, resultMemrefType,
-                                     &rewriter)
-               : emitNonScalarBroadcast(broadcastOp, args, operandMemrefType,
-                                        resultMemrefType, &rewriter);
-  }
-
- private:
-  PatternMatchResult emitScalarBroadcast(
-      xla_lhlo::BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
-      MemRefType resultMemrefType, ConversionPatternRewriter* rewriter) const {
     unsigned nloops = resultMemrefType.getRank();
     SmallVector<Attribute, 1> indexingMaps{
-        AffineMapAttr::get(rewriter->getMultiDimIdentityMap(nloops))};
+        AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops))};
     auto loc = broadcastOp.getLoc();
-    auto linalgOp = rewriter->create<linalg::GenericOp>(
+    auto linalgOp = rewriter.create<linalg::GenericOp>(
         loc, ArrayRef<Type>{}, broadcastOp.output(),
-        rewriter->getI64IntegerAttr(0),  // args_in
-        rewriter->getI64IntegerAttr(1),  // args_out
-        rewriter->getArrayAttr(indexingMaps),
-        GetNParallelLoopsAttrs(nloops, *rewriter),
+        rewriter.getI64IntegerAttr(0),  // args_in
+        rewriter.getI64IntegerAttr(1),  // args_out
+        rewriter.getArrayAttr(indexingMaps),
+        GetNParallelLoopsAttrs(nloops, &rewriter),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
     auto* region = &linalgOp.region();
-    auto* block = rewriter->createBlock(region, region->end());
+    auto* block = rewriter.createBlock(region, region->end());
     block->addArguments(resultMemrefType.getElementType());
 
-    rewriter->setInsertionPointToEnd(block);
+    rewriter.setInsertionPointToEnd(block);
     auto scalar =
-        rewriter->create<LoadOp>(loc, broadcastOp.operand(), llvm::None);
-    rewriter->create<linalg::YieldOp>(loc, scalar.getResult());
-    rewriter->eraseOp(broadcastOp);
+        rewriter.create<LoadOp>(loc, broadcastOp.operand(), llvm::None);
+    rewriter.create<linalg::YieldOp>(loc, scalar.getResult());
+    rewriter.eraseOp(broadcastOp);
     return matchSuccess();
   }
+};
 
-  PatternMatchResult emitNonScalarBroadcast(
-      xla_lhlo::BroadcastInDimOp broadcastOp, ArrayRef<Value> args,
-      MemRefType operandMemrefType, MemRefType resultMemrefType,
-      ConversionPatternRewriter* rewriter) const {
-    SmallVector<Type, 4> bodyArgTypes{operandMemrefType.getElementType()};
+template <typename OpTy, bool isLHLO = true>
+class TransposeConverter
+    : public DataMovementOpConverter<TransposeConverter<OpTy, isLHLO>, OpTy,
+                                     isLHLO> {
+ public:
+  using DataMovementOpConverter<TransposeConverter<OpTy, isLHLO>, OpTy,
+                                isLHLO>::DataMovementOpConverter;
+  ArrayAttr getIndexingMapsAttr(OpTy op, Builder* b) const {
+    auto resultType =
+        getXLAOpResultType<isLHLO>(op).template cast<ShapedType>();
+    auto nloops = resultType.getRank();
+    SmallVector<AffineExpr, 2> inputExprs;
+    inputExprs.resize(resultType.getRank());
+    for (auto permutation : llvm::enumerate(op.permutation())) {
+      inputExprs[permutation.value().getZExtValue()] =
+          b->getAffineDimExpr(permutation.index());
+    }
+    return b->getAffineMapArrayAttr(
+        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs),
+         b->getMultiDimIdentityMap(nloops)});
+  }
+};
 
-    unsigned nloops = resultMemrefType.getRank();
+/// Pattern for the special case where reshape is adding or removing a dimension
+/// of size 1. These can be lowered to a linalg.generic op.
+///
+/// For example a
+///   "xla_hlo.reshape"(..) : (tensor<12x1x42xi32) -> tensor<12x42xi32>
+/// can have indexing maps
+/// [affine_map<(d0, d1) -> (d0, 0, d1)>, affine_map<(d0, d1) -> (d0, d1)>]
+///
+/// Similarly a
+///   "xla_hlo.reshape"(..) : (tensor<12x42xi32>) -> tensor<12x1x42xi32>
+/// can have indexing maps
+/// [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d0, d1,
+/// d2)>]
+template <typename OpTy, bool isLHLO = true>
+class ReshapeAddRemoveDimConverter
+    : public DataMovementOpConverter<ReshapeAddRemoveDimConverter<OpTy, isLHLO>,
+                                     OpTy, isLHLO> {
+ public:
+  using DataMovementOpConverter<ReshapeAddRemoveDimConverter<OpTy, isLHLO>,
+                                OpTy, isLHLO>::DataMovementOpConverter;
 
-    SmallVector<AffineExpr, 4> dimExprs;
-    {
-      dimExprs.reserve(nloops);
+  ArrayAttr getIndexingMapsAttr(OpTy op, Builder* b) const {
+    auto resultType =
+        getXLAOpResultType<isLHLO>(op).template cast<ShapedType>();
+    auto operandType =
+        op.getOperation()->getOperand(0).getType().template cast<ShapedType>();
+    if (!resultType.hasStaticShape() || !operandType.hasStaticShape())
+      return nullptr;
 
-      auto operandShape = operandMemrefType.getShape();
-      int index = 0;
-      for (const auto& broadcastSize :
-           broadcastOp.broadcast_dimensions().getValue().getIntValues()) {
-        int size = broadcastSize.getSExtValue();
-        dimExprs.push_back(
-            operandShape[index++] == 1
-                ? mlir::getAffineConstantExpr(0, broadcastOp.getContext())
-                : mlir::getAffineDimExpr(size, broadcastOp.getContext()));
+    auto nloops = resultType.getRank();
+    SmallVector<AffineExpr, 2> inputExprs;
+    unsigned resultIndex = 0, operandIndex = 0;
+    auto resultShape = resultType.getShape();
+    auto operandShape = operandType.getShape();
+
+    while (resultIndex < resultShape.size() &&
+           operandIndex < operandShape.size()) {
+      if (resultShape[resultIndex] == operandShape[operandIndex]) {
+        // Copy over the affine expr when the size of the result and operand
+        // match at a dim
+        inputExprs.push_back(b->getAffineDimExpr(resultIndex));
+        resultIndex++;
+        operandIndex++;
+      } else if (resultShape[resultIndex] == 1) {
+        // If size at result is 1, then ignore this dimension for the input, it
+        // is an extra dim added.
+        resultIndex++;
+      } else if (operandShape[operandIndex] == 1) {
+        // If the operandShape is 1, then add a (0) for the operand map since
+        // this dimension is dropped.
+        inputExprs.push_back(b->getAffineConstantExpr(0));
+        operandIndex++;
+      } else {
+        return nullptr;
       }
     }
-
-    // Construct the indexing maps needed for linalg.generic ops.
-    SmallVector<Attribute, 2> indexingMaps{
-        AffineMapAttr::get(AffineMap::get(nloops, /*symbolCount=*/0, dimExprs)),
-        AffineMapAttr::get(rewriter->getMultiDimIdentityMap(nloops))};
-
-    auto loc = broadcastOp.getLoc();
-    auto linalgOp = rewriter->create<linalg::GenericOp>(
-        loc, ArrayRef<Type>{}, args,
-        rewriter->getI64IntegerAttr(bodyArgTypes.size()),  // args_in
-        rewriter->getI64IntegerAttr(1),                    // args_out
-        rewriter->getArrayAttr(indexingMaps),
-        GetNParallelLoopsAttrs(nloops, *rewriter),
-        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
-
-    // Add a block to the region.
-    auto* region = &linalgOp.region();
-    auto* block = rewriter->createBlock(region, region->end());
-    block->addArguments(bodyArgTypes);
-    block->addArguments(resultMemrefType.getElementType());
-
-    rewriter->setInsertionPointToEnd(block);
-    rewriter->create<linalg::YieldOp>(loc, block->getArgument(0));
-    rewriter->eraseOp(broadcastOp);
-    return matchSuccess();
+    // Make sure all remaining dimensions of the operand and result are ones.
+    auto checkRemainingDims = [](int64_t dim) { return dim != 1; };
+    if ((resultIndex < resultShape.size() &&
+         llvm::any_of(resultShape.drop_front(resultIndex),
+                      checkRemainingDims)) ||
+        (operandIndex < operandShape.size() &&
+         llvm::any_of(operandShape.drop_front(operandIndex),
+                      checkRemainingDims)))
+      return nullptr;
+    inputExprs.resize(operandShape.size(), b->getAffineConstantExpr(0));
+    return b->getAffineMapArrayAttr(
+        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs),
+         b->getMultiDimIdentityMap(nloops)});
   }
 };
 
@@ -282,7 +434,7 @@ class IotaConverter : public OpConversionPattern<xla_lhlo::IotaOp> {
     if (!resultMemrefType) return matchFailure();
 
     auto resultElementType = resultMemrefType.getElementType();
-    if (!resultElementType.isIntOrFloat()) return matchFailure();
+    if (!resultElementType.isSignlessIntOrFloat()) return matchFailure();
 
     // Construct the indexing maps needed for linalg.generic ops.
     unsigned nloops = resultMemrefType.getRank();
@@ -296,7 +448,7 @@ class IotaConverter : public OpConversionPattern<xla_lhlo::IotaOp> {
         rewriter.getI64IntegerAttr(0),  // args_in
         rewriter.getI64IntegerAttr(1),  // args_out
         rewriter.getArrayAttr(indexingMaps),
-        GetNParallelLoopsAttrs(nloops, rewriter),
+        GetNParallelLoopsAttrs(nloops, &rewriter),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
@@ -339,10 +491,44 @@ class ConstConverter : public OpConversionPattern<xla_lhlo::ConstOp> {
   }
 };
 
+class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
+ public:
+  using OpConversionPattern<xla_lhlo::SliceOp>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      xla_lhlo::SliceOp sliceOp, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = sliceOp.getLoc();
+    auto argType =
+        sliceOp.getOperand(0).getType().template dyn_cast<ShapedType>();
+    if (!argType || !argType.hasRank()) {
+      emitError(loc, "lhlo to linalg conversion expects known-rank args");
+      return ConversionPattern::matchFailure();
+    }
+
+    SmallVector<Value, 3> ranges;
+    for (int i = 0, e = argType.getRank(); i < e; ++i) {
+      Value start_index = rewriter.create<ConstantIndexOp>(
+          loc, sliceOp.start_indices().getValue<int64_t>(i));
+      Value limit_index = rewriter.create<ConstantIndexOp>(
+          loc, sliceOp.limit_indices().getValue<int64_t>(i));
+      Value stride = rewriter.create<ConstantIndexOp>(
+          loc, sliceOp.strides().getValue<int64_t>(i));
+      ranges.push_back(rewriter.create<linalg::RangeOp>(loc, start_index,
+                                                        limit_index, stride));
+    }
+    auto linalg_slice =
+        rewriter.create<linalg::SliceOp>(loc, sliceOp.getOperand(0), ranges);
+    rewriter.create<linalg::CopyOp>(loc, linalg_slice, sliceOp.getOperand(1));
+    rewriter.eraseOp(sliceOp);
+    return matchSuccess();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
-  patterns->insert<BroadcastInDimConverter,
+  patterns->insert<BroadcastInDimConverter<xla_lhlo::BroadcastInDimOp>,
                    ConstConverter,
                    IotaConverter,
                    PointwiseToLinalgConverter<xla_lhlo::AbsOp>,
@@ -364,23 +550,12 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::SignOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SubOp>,
                    PointwiseToLinalgConverter<xla_lhlo::TanhOp>,
-                   ScalarPointwiseToStandardConverter<xla_lhlo::AddOp>
+                   ReshapeAddRemoveDimConverter<xla_lhlo::ReshapeOp>,
+                   ScalarBroadcastInDimConverter,
+                   ScalarPointwiseToStandardConverter<xla_lhlo::AddOp>,
+                   SliceConverter
                   >(context);
   // clang-format on
-}
-
-void populateHLOToLinalgConversionPattern(MLIRContext* context,
-                                          OwningRewritePatternList* patterns) {
-  patterns->insert<PointwiseToLinalgConverter<xla_hlo::AbsOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::AddOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::AndOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::CeilOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::ExpOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::MulOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::NegOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::RemOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::SubOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::TanhOp, false>>(context);
 }
 
 // Converts LHLO ops to Linalg generic.
@@ -424,7 +599,7 @@ struct HloLegalizeToLinalg : public FunctionPass<HloLegalizeToLinalg> {
     target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect>();
 
     auto func = getFunction();
-    populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
+    xla_hlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
     if (failed(applyPartialConversion(func, target, patterns, nullptr))) {
       signalPassFailure();
     }
@@ -443,6 +618,30 @@ static PassRegistration<LhloLegalizeToLinalg> legalize_lhlo_pass(
 }  // namespace xla_lhlo
 
 namespace xla_hlo {
+
+void populateHLOToLinalgConversionPattern(MLIRContext* context,
+                                          OwningRewritePatternList* patterns) {
+  patterns->insert<BroadcastInDimConverter<xla_hlo::BroadcastInDimOp, false>,
+                   ReshapeAddRemoveDimConverter<xla_hlo::ReshapeOp, false>,
+                   TransposeConverter<xla_hlo::TransposeOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::AbsOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::AddOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::AndOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::CeilOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::CompareOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::CopyOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::DivOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::ExpOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::MaxOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::MinOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::MulOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::NegOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::RemOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::SelectOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::SubOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::TanhOp, false>>(context);
+}
+
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass() {
   return absl::make_unique<HloLegalizeToLinalg>();
 }

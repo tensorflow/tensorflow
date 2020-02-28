@@ -20,10 +20,15 @@ from __future__ import print_function
 import os as _os
 import sys as _sys
 
-from rules_python.python.runfiles import runfiles
-
 from tensorflow.python.util import tf_inspect as _inspect
 from tensorflow.python.util.tf_export import tf_export
+
+# pylint: disable=g-import-not-at-top
+try:
+  from rules_python.python.runfiles import runfiles
+except ImportError:
+  runfiles = None
+# pylint: enable=g-import-not-at-top
 
 
 @tf_export(v1=['resource_loader.load_resource'])
@@ -112,11 +117,12 @@ def get_path_to_datafile(path):
     IOError: If the path is not found, or the resource can't be opened.
   """
   # First, try finding in the new path.
-  r = runfiles.Create()
-  new_fpath = r.Rlocation(
-      _os.path.abspath(_os.path.join('tensorflow', path)))
-  if new_fpath is not None and _os.path.exists(new_fpath):
-    return new_fpath
+  if runfiles:
+    r = runfiles.Create()
+    new_fpath = r.Rlocation(
+        _os.path.abspath(_os.path.join('tensorflow', path)))
+    if new_fpath is not None and _os.path.exists(new_fpath):
+      return new_fpath
 
   # Then, the old style path, as people became dependent on this buggy call.
   old_filepath = _os.path.join(

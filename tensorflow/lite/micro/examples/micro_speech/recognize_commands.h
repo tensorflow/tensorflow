@@ -59,7 +59,8 @@ class PreviousResultsQueue {
 
   void push_back(const Result& entry) {
     if (size() >= kMaxResults) {
-      error_reporter_->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
           "Couldn't push_back latest result, too many already!");
       return;
     }
@@ -69,7 +70,8 @@ class PreviousResultsQueue {
 
   Result pop_front() {
     if (size() <= 0) {
-      error_reporter_->Report("Couldn't pop_front result, none present!");
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Couldn't pop_front result, none present!");
       return Result();
     }
     Result result = front();
@@ -86,7 +88,8 @@ class PreviousResultsQueue {
   // queue.
   Result& from_front(int offset) {
     if ((offset < 0) || (offset >= size_)) {
-      error_reporter_->Report("Attempt to read beyond the end of the queue!");
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Attempt to read beyond the end of the queue!");
       offset = size_ - 1;
     }
     int index = front_index_ + offset;

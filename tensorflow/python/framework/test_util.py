@@ -636,7 +636,7 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
 
         # There should be no new Python objects hanging around.
         obj_count_by_type = _get_object_count_by_type() - obj_count_by_type
-        # In some cases (specifacally on MacOS), new_count is somehow
+        # In some cases (specifically on MacOS), new_count is somehow
         # smaller than previous_count.
         # Using plain assert because not all classes using this decorator
         # have assertLessEqual
@@ -766,7 +766,7 @@ def _find_reference_cycle(objects, idx):
         return "{}, {}".format(type(obj), id(obj))
 
   def build_ref_graph(obj, graph, reprs, blacklist):
-    """Builds a reference graph as <referrer> -> <list of refferents>.
+    """Builds a reference graph as <referrer> -> <list of referents>.
 
     Args:
       obj: The object to start from. The graph will be built by recursively
@@ -1136,7 +1136,7 @@ def run_in_graph_and_eager_modes(func=None,
         run_eagerly(self, **kwargs)
       ops.dismantle_graph(graph_for_eager_test)
 
-    return decorated
+    return tf_decorator.make_decorator(f, decorated)
 
   if func is not None:
     return decorator(func)
@@ -1394,7 +1394,7 @@ def run_gpu_only(func=None):
 def run_cuda_only(func=None):
   """Execute the decorated test only if a GPU is available.
 
-  This function is intended to be applied to tests that require the precense
+  This function is intended to be applied to tests that require the presence
   of a CUDA GPU. If a CUDA GPU is absent, it will simply be skipped.
 
   Args:
@@ -1583,7 +1583,7 @@ class FakeEagerSession(object):
     self._test_case = test_case
 
   def run(self, fetches, *args, **kwargs):
-    """Evalaute `fetches`.
+    """Evaluate `fetches`.
 
     Fail if additional args are specified.
 

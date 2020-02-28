@@ -61,12 +61,16 @@ def ResNet(stack_fn,
            input_shape=None,
            pooling=None,
            classes=1000,
+           classifier_activation='softmax',
            **kwargs):
   """Instantiates the ResNet, ResNetV2, and ResNeXt architecture.
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.resnet.preprocess_input` for an example.
 
   Arguments:
     stack_fn: a function that returns output tensor for the
@@ -103,14 +107,18 @@ def ResNet(stack_fn,
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
     **kwargs: For backwards compatibility only.
-
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
   if 'layers' in kwargs:
     global layers
@@ -167,7 +175,9 @@ def ResNet(stack_fn,
 
   if include_top:
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
-    x = layers.Dense(classes, activation='softmax', name='probs')(x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
@@ -507,6 +517,10 @@ def preprocess_input(x, data_format=None):
 def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
 
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_CAFFE)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
 
 DOC = """
 

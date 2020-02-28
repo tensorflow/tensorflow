@@ -17,11 +17,14 @@ limitations under the License.
 
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
+#include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
+#include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
+#include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -86,6 +89,8 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space) {
   OpMetricsDbCombiner op_metrics_db_combiner(
       op_stats.mutable_device_op_metrics_db());
   SetRunEnvironment(device_planes.size(), op_stats.mutable_run_environment());
+
+  std::vector<KernelReport> reports;
   for (const XPlane* device_trace : device_planes) {
     if (!op_stats.has_perf_env()) {
       *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
@@ -97,7 +102,13 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space) {
     op_metrics_db_combiner.Combine(device_op_metrics_db);
     CombineStepEvents(ConvertDeviceTraceXPlaneToStepEvents(*device_trace),
                       &step_events);
+    KernelStatsDb kernel_stats_db = ConvertDeviceTraceXPlaneToKernelStatsDb(
+        *device_trace, /*on_kernel_fn=*/{});
+    reports.insert(reports.begin(), kernel_stats_db.reports().begin(),
+                   kernel_stats_db.reports().end());
   }
+  GroupKernelReports(&reports, op_stats.mutable_kernel_stats_db());
+  SortKernelsByTotalDurationDesc(op_stats.mutable_kernel_stats_db());
   // Convert a host plane.
   bool has_device = !device_planes.empty();
   if (host_plane) {
@@ -108,8 +119,11 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space) {
             *host_plane, /*use_device_step_events=*/has_device, step_events),
         &step_events);
   }
+  StepEvents nonoverlapped_step_events = ToNonOverlappedStepEvents(step_events);
   *op_stats.mutable_step_db() =
-      ConvertStepEventsToStepDb(has_device, step_events);
+      ConvertStepEventsToStepDb(has_device, nonoverlapped_step_events);
+  *op_stats.mutable_device_op_metrics_db()->mutable_precision_stats() =
+      ComputePrecisionStats(nonoverlapped_step_events);
   return op_stats;
 }
 

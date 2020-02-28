@@ -37,8 +37,11 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testParallelMap(self):
     dataset = dataset_ops.Dataset.range(100)
+    parallel_map = "ParallelMap"
+    if compat.forward_compatible(2020, 3, 6):
+      parallel_map = "ParallelMapV2"
     dataset = dataset.apply(
-        testing.assert_next(["ParallelMap", "Prefetch", "FiniteTake"]))
+        testing.assert_next([parallel_map, "Prefetch", "FiniteTake"]))
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset.take(50)
@@ -64,6 +67,8 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     parallel_interleave = "ParallelInterleaveV2"
     if compat.forward_compatible(2020, 2, 20):
       parallel_interleave = "ParallelInterleaveV3"
+    if compat.forward_compatible(2020, 3, 6):
+      parallel_interleave = "ParallelInterleaveV4"
     dataset = dataset.apply(
         testing.assert_next([parallel_interleave, "Prefetch", "FiniteTake"]))
     dataset = dataset.interleave(
@@ -79,9 +84,14 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     parallel_interleave = "ParallelInterleaveV2"
     if compat.forward_compatible(2020, 2, 20):
       parallel_interleave = "ParallelInterleaveV3"
+    if compat.forward_compatible(2020, 3, 6):
+      parallel_interleave = "ParallelInterleaveV4"
+    parallel_map = "ParallelMap"
+    if compat.forward_compatible(2020, 3, 6):
+      parallel_map = "ParallelMapV2"
     dataset = dataset.apply(
         testing.assert_next([
-            "ParallelMap", "Prefetch", parallel_interleave, "Prefetch",
+            parallel_map, "Prefetch", parallel_interleave, "Prefetch",
             "MapAndBatch", "Prefetch", "FiniteTake"
         ]))
     dataset = dataset.map(
@@ -103,6 +113,7 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda x: x + 1).take(50)
     dataset = self._enable_autotune_buffers(dataset)
     self.assertDatasetProduces(dataset, range(1, 51))
+
 
 if __name__ == "__main__":
   test.main()

@@ -61,23 +61,29 @@ NASNET_LARGE_WEIGHT_PATH = BASE_WEIGHTS_PATH + 'NASNet-large.h5'
 NASNET_LARGE_WEIGHT_PATH_NO_TOP = BASE_WEIGHTS_PATH + 'NASNet-large-no-top.h5'
 
 
-def NASNet(input_shape=None,
-           penultimate_filters=4032,
-           num_blocks=6,
-           stem_block_filters=96,
-           skip_reduction=True,
-           filter_multiplier=2,
-           include_top=True,
-           weights=None,
-           input_tensor=None,
-           pooling=None,
-           classes=1000,
-           default_size=None):
+def NASNet(
+    input_shape=None,
+    penultimate_filters=4032,
+    num_blocks=6,
+    stem_block_filters=96,
+    skip_reduction=True,
+    filter_multiplier=2,
+    include_top=True,
+    weights=None,
+    input_tensor=None,
+    pooling=None,
+    classes=1000,
+    default_size=None,
+    classifier_activation='softmax',
+):
   """Instantiates a NASNet model.
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.nasnet.preprocess_input` for an example.
 
   Arguments:
     input_shape: Optional shape tuple, the input shape
@@ -127,13 +133,18 @@ def NASNet(input_shape=None,
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
     default_size: Specifies the default image size of the model
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
 
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: In case of invalid argument for `weights`,
-        invalid input shape or invalid `penultimate_filters` value.
+      invalid input shape or invalid `penultimate_filters` value.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
   if not (weights in {'imagenet', None} or os.path.exists(weights)):
     raise ValueError('The `weights` argument should be either '
@@ -247,7 +258,9 @@ def NASNet(input_shape=None,
 
   if include_top:
     x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(classes, activation='softmax', name='predictions')(x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D()(x)
@@ -774,3 +787,8 @@ def preprocess_input(x, data_format=None):
 @keras_export('keras.applications.nasnet.decode_predictions')
 def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

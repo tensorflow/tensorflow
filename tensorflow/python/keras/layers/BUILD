@@ -372,6 +372,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:platform",
+        "//tensorflow/python:platform_build_info",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:util",
@@ -447,7 +448,7 @@ tf_py_test(
     size = "medium",
     srcs = ["convolutional_recurrent_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 6,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

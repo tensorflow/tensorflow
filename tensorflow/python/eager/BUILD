@@ -54,6 +54,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -204,9 +205,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
-        "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
-        "//tensorflow/python/profiler/internal:_pywrap_profiler_session",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
 
@@ -226,11 +226,12 @@ py_library(
     name = "profiler_client",
     srcs = ["profiler_client.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/core/profiler:internal",
+    ],
     deps = [
-        "//tensorflow/python:c_api_util",
-        "//tensorflow/python:pywrap_tf_session",
-        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
 
@@ -240,7 +241,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
-    visibility = ["//tensorflow:internal"],
     deps = [
         ":profiler_client",
         ":test",
@@ -514,6 +514,7 @@ py_library(
         ":tape",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
@@ -688,6 +689,7 @@ py_library(
         ":lift_to_graph",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:util",
@@ -867,6 +869,24 @@ tpu_py_test(
     python_version = "PY3",
     tags = [
         "notap",
+    ],
+    deps = [
+        ":context",
+        ":remote",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+    ],
+)
+
+tpu_py_test(
+    name = "remote_cloud_tpu_pod_test",
+    srcs = ["remote_cloud_tpu_test.py"],
+    args = ["--num_tpu_devices=32"],
+    main = "remote_cloud_tpu_test.py",
+    python_version = "PY3",
+    tags = [
+        "notap",
+        "tpu_pod",
     ],
     deps = [
         ":context",

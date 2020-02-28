@@ -480,7 +480,11 @@ class HloInstruction {
     kCustom,
   };
 
-  virtual ~HloInstruction();
+  virtual ~HloInstruction() { DetachFromOperandsAndUsers(); }
+
+  // Detaches an instruction from its operands and users. That is, remove the
+  // instruction from each operand's user set and user's operand set.
+  void DetachFromOperandsAndUsers();
 
   // Creates an instruction from the given proto. Arguments:
   //
@@ -631,7 +635,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id);
+      const absl::optional<int64>& channel_id, bool use_global_device_ids);
 
   // An all-to-all op takes N array operands of the same shape and scatters them
   // to N replicas.  Each replica gathers the results into a tuple.
@@ -2024,6 +2028,10 @@ class HloInstruction {
   // This field is assigned to true when backend_config_ is assigned to
   // a default configuration.
   bool is_default_config_ = false;
+
+  // True if this instruction has already been detached from its user and
+  // operands.
+  bool cleaned_up_ = false;
 
   // String identifier for instruction.
   string name_;

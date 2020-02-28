@@ -26,7 +26,7 @@ using namespace tflite;
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jint preference, jstring accelerator_name,
-    jstring cache_dir, jstring model_token) {
+    jstring cache_dir, jstring model_token, jint max_delegated_partitions) {
   StatefulNnApiDelegate::Options options = StatefulNnApiDelegate::Options();
   options.execution_preference =
       (StatefulNnApiDelegate::Options::ExecutionPreference)preference;
@@ -38,6 +38,10 @@ Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
   }
   if (model_token) {
     options.model_token = env->GetStringUTFChars(model_token, NULL);
+  }
+
+  if (max_delegated_partitions >= 0) {
+    options.max_number_delegated_partitions = max_delegated_partitions;
   }
 
   auto delegate = new StatefulNnApiDelegate(options);

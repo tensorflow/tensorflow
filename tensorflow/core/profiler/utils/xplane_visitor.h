@@ -99,10 +99,9 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   absl::optional<int64> Type() const { return type_; }
 
-  absl::string_view DisplayName() const {
-    return !metadata_->display_name().empty() ? metadata_->display_name()
-                                              : metadata_->name();
-  }
+  bool HasDisplayName() const { return !metadata_->display_name().empty(); }
+
+  absl::string_view DisplayName() const { return metadata_->display_name(); }
 
   absl::string_view Metadata() const { return metadata_->metadata(); }
 
@@ -134,9 +133,9 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   const XEventMetadata* metadata() const { return metadata_; }
 
- private:
   Timespan GetTimespan() const { return Timespan(TimestampPs(), DurationPs()); }
 
+ private:
   const XPlaneVisitor* plane_;
   const XLine* line_;
   const XEvent* event_;

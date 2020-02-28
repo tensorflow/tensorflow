@@ -115,7 +115,7 @@ class KerasSumTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(m.total), 63.75, 2)
 
   def test_sum_graph_with_placeholder(self):
-    with context.graph_mode(), self.cached_session() as sess:
+    with ops.get_default_graph().as_default(), self.cached_session() as sess:
       m = metrics.Sum()
       v = array_ops.placeholder(dtypes.float32)
       w = array_ops.placeholder(dtypes.float32)
@@ -265,7 +265,7 @@ class MeanTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_mean_graph_with_placeholder(self):
-    with context.graph_mode(), self.cached_session() as sess:
+    with ops.get_default_graph().as_default(), self.cached_session() as sess:
       m = metrics.Mean()
       v = array_ops.placeholder(dtypes.float32)
       w = array_ops.placeholder(dtypes.float32)
@@ -575,7 +575,7 @@ class KerasAccuracyTest(test.TestCase):
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
   def test_sparse_categorical_accuracy_mismatched_dims_dynamic(self):
-    with context.graph_mode(), self.cached_session() as sess:
+    with ops.get_default_graph().as_default(), self.cached_session() as sess:
       acc_obj = metrics.SparseCategoricalAccuracy(name='my_acc')
       self.evaluate(variables.variables_initializer(acc_obj.variables))
 
@@ -2081,6 +2081,36 @@ class ResetStatesTest(keras_parameterized.TestCase):
 
   def test_reset_states_specificity_at_sensitivity(self):
     s_obj = metrics.SpecificityAtSensitivity(0.5, num_thresholds=1)
+    model = _get_model([s_obj])
+    x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
+                        np.ones((25, 4))))
+    y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones((25, 1)),
+                        np.zeros((25, 1))))
+
+    for _ in range(2):
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(s_obj.true_positives), 25.)
+      self.assertEqual(self.evaluate(s_obj.false_positives), 25.)
+      self.assertEqual(self.evaluate(s_obj.false_negatives), 25.)
+      self.assertEqual(self.evaluate(s_obj.true_negatives), 25.)
+
+  def test_reset_states_precision_at_recall(self):
+    s_obj = metrics.PrecisionAtRecall(recall=0.5, num_thresholds=1)
+    model = _get_model([s_obj])
+    x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
+                        np.ones((25, 4))))
+    y = np.concatenate((np.ones((25, 1)), np.zeros((25, 1)), np.ones((25, 1)),
+                        np.zeros((25, 1))))
+
+    for _ in range(2):
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(s_obj.true_positives), 25.)
+      self.assertEqual(self.evaluate(s_obj.false_positives), 25.)
+      self.assertEqual(self.evaluate(s_obj.false_negatives), 25.)
+      self.assertEqual(self.evaluate(s_obj.true_negatives), 25.)
+
+  def test_reset_states_recall_at_precision(self):
+    s_obj = metrics.RecallAtPrecision(precision=0.5, num_thresholds=1)
     model = _get_model([s_obj])
     x = np.concatenate((np.ones((25, 4)), np.zeros((25, 4)), np.zeros((25, 4)),
                         np.ones((25, 4))))

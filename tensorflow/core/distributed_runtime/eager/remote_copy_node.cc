@@ -35,13 +35,13 @@ void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
   remote_op->set_name(op->Name());
 
   op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
-  remote_op->set_device(op->Device()->name());
+  remote_op->set_device(VariantDeviceName(op->Device()));
 }
 
 Status CreateUncachedKernelAndDeviceOp(
     EagerOperation* op, core::RefCountPtr<KernelAndDevice>* kernel) {
   EagerContext& ctx = op->EagerContext();
-  Device* device = op->Device();
+  Device* device = absl::get<Device*>(op->Device());
 
   FunctionLibraryRuntime* flr = ctx.func_lib(device);
   if (flr == nullptr) {
@@ -102,7 +102,9 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
   gtl::InlinedVector<TensorValue, 4> input_vector(1);
-  TF_RETURN_IF_ERROR(src_->TensorValue(&input_vector[0]));
+  TF_RETURN_IF_ERROR(src_->TensorValue(
+      &input_vector[0],
+      ctx_->CanonicalDevice(absl::get<Device*>(op->Device()))));
 
   EagerKernelArgs args(std::move(input_vector));
   return kernel->Run(args, /*outputs=*/nullptr,
@@ -198,11 +200,12 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
   auto* remote_op = request.add_queue()->mutable_operation();
   PrepareRemoteOp(remote_op, op);
   remote_op->set_id(recv_op_id_);
+  uint64 context_view_id = ctx_->GetContextViewId();
 
   core::RefCountPtr<eager::EagerClient> eager_client;
   Status status = ctx_->GetClient(recv_device_, &eager_client);
   if (!status.ok()) {
-    captured_state_->dst()->Poison(status);
+    captured_state_->dst()->PoisonRemote(status, recv_device_, context_view_id);
     done(status);
     return;
   }
@@ -214,7 +217,7 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
   // Blocks until send has completed.
   Status send_status = captured_state_->GetSendStatus();
   if (!send_status.ok()) {
-    captured_state_->dst()->Poison(send_status);
+    captured_state_->dst()->PoisonRemote(status, recv_device_, context_view_id);
     done(send_status);
     return;
   }
@@ -224,10 +227,12 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
   Device* recv_device = recv_device_;
   eager_client->StreamingEnqueueAsync(
       &request, response,
-      [captured_state, response, recv_device, done](const Status& s) {
+      [captured_state, response, recv_device, context_view_id,
+       done](const Status& s) {
         if (s.ok()) {
           Status status = captured_state->dst()->SetRemoteShape(
-              response->queue_response(0).shape(0), recv_device);
+              response->queue_response(0).shape(0), recv_device,
+              context_view_id);
           if (!status.ok()) {
             LOG(ERROR) << "Ignoring an error encountered when setting remote "
                           "shape of tensor received by remote Recv op: "
@@ -236,7 +241,7 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
                           "Please file an issue with the TensorFlow Team.";
           }
         } else {
-          captured_state->dst()->Poison(s);
+          captured_state->dst()->PoisonRemote(s, recv_device, context_view_id);
         }
         done(s);
         delete response;
@@ -249,8 +254,9 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
   EagerOperation op(ctx_);
   Status status = op.Reset("_Recv", /*raw_device_name=*/nullptr,
                            /*remote=*/false, /*executor=*/nullptr);
+  Device* recv_device = ctx_->CanonicalDevice(recv_device_);
   if (!status.ok()) {
-    captured_state_->dst()->Poison(status);
+    captured_state_->dst()->Poison(status, recv_device);
     done(status);
     return;
   }
@@ -271,11 +277,12 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
     std::vector<Tensor> outputs(1);
     status = RunLocalRecv(&op, &outputs);
     if (!status.ok()) {
-      captured_state_->dst()->Poison(status);
+      captured_state_->dst()->Poison(status, recv_device);
       done(status);
       return;
     }
-    status = captured_state_->dst()->SetTensor(std::move(outputs[0]));
+    status =
+        captured_state_->dst()->SetTensor(std::move(outputs[0]), recv_device);
     done(status);
   } else {
     // Handles captured_state_->dst_ internally.
@@ -291,6 +298,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   auto* send_tensor = request.add_queue()->mutable_send_tensor();
   send_tensor->set_op_id(recv_op_id_);
   send_tensor->set_device_name(recv_device_->name());
+  uint64 context_view_id = ctx_->GetContextViewId();
 
   // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
   // copy it to the CPU before copying it out.
@@ -308,7 +316,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   core::RefCountPtr<eager::EagerClient> eager_client;
   s = ctx_->GetClient(recv_device_, &eager_client);
   if (!s.ok()) {
-    captured_state_->dst()->Poison(s);
+    captured_state_->dst()->PoisonRemote(s, recv_device_, context_view_id);
     done(s);
     return;
   }
@@ -318,17 +326,18 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   Device* recv_device = recv_device_;
   eager_client->StreamingEnqueueAsync(
       &request, response,
-      [captured_state, response, recv_device, done](const Status& s) {
+      [captured_state, response, recv_device, context_view_id,
+       done](const Status& s) {
         if (s.ok()) {
           Status status = captured_state->dst()->SetRemoteShape(
-              captured_state->GetSrcShape(), recv_device);
+              captured_state->GetSrcShape(), recv_device, context_view_id);
           if (!status.ok()) {
             LOG(ERROR) << "Ignoring an error encountered when setting remote "
                           "shape of tensor received by SendTensor rpc: "
                        << status.ToString();
           }
         } else {
-          captured_state->dst()->Poison(s);
+          captured_state->dst()->PoisonRemote(s, recv_device, context_view_id);
         }
         done(s);
         delete response;
@@ -370,7 +379,8 @@ void RemoteCopyNode::RunAsync(StatusCallback done) {
 
 void RemoteCopyNode::Abort(Status status) {
   if (!started_) {
-    captured_state_->dst()->Poison(status);
+    uint64 context_view_id = ctx_->GetContextViewId();
+    captured_state_->dst()->PoisonRemote(status, recv_device_, context_view_id);
   }
 }
 

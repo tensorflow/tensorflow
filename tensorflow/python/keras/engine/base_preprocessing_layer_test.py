@@ -135,7 +135,7 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     input_dataset = [1, 2, 3, 4, 5]
 
     layer = get_layer()
-    with self.assertRaisesRegex(ValueError, ".*a Dataset or a Numpy.*"):
+    with self.assertRaisesRegex(ValueError, "requires a"):
       layer.adapt(input_dataset)
 
   def test_adapt_infinite_dataset_fails(self):

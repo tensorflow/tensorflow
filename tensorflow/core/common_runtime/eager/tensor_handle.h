@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
 #include "tensorflow/core/platform/fingerprint.h"
@@ -69,13 +68,15 @@ class TensorHandle : public core::RefCounted {
 
   // TensorHandle for dtype != DT_RESOURCE
   TensorHandle(std::unique_ptr<LocalTensorHandleData> t, DataType dtype,
-               VariantDevice d, Device* op_device, EagerContext* ctx);
+               Device* d, Device* op_device, EagerContext* ctx);
   // TensorHandle for dtype == DT_RESOURCE
   TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
-               const ResourceHandle& resource_handle, VariantDevice d,
+               const ResourceHandle& resource_handle, Device* d,
                Device* op_device, EagerContext* ctx);
+  TensorHandle(std::unique_ptr<LocalTensorHandleData> t, DataType dtype,
+               CustomDevice* d, EagerContext* ctx);
   TensorHandle(std::unique_ptr<EmptyLocalTensorHandleData> t, bool async,
-               VariantDevice d, Device* op_device, Device* resource_device,
+               Device* d, Device* op_device, Device* resource_device,
                DataType dtype, EagerContext* ctx);
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -89,30 +90,30 @@ class TensorHandle : public core::RefCounted {
   // TensorHandle with no assigned device
   static Status CreateLocalHandle(const class Tensor& t, TensorHandle** h);
   // TensorHandle with device == op_device
-  static Status CreateLocalHandle(const class Tensor& t, VariantDevice d,
+  static Status CreateLocalHandle(const class Tensor& t, Device* d,
                                   EagerContext* ctx, TensorHandle** h);
-  static Status CreateLocalHandle(const class Tensor& t, VariantDevice d,
+  static Status CreateLocalHandle(const class Tensor& t, Device* d,
                                   Device* op_device, EagerContext* ctx,
                                   TensorHandle** h);
+  static Status CreateLocalHandle(const class Tensor& t, CustomDevice* d,
+                                  EagerContext* ctx, TensorHandle** h);
   static Status CreateEmptyLocalHandle(bool async, Device* d, Device* op_device,
                                        Device* resource_device, DataType dtype,
                                        EagerContext* ctx, TensorHandle** h);
 #if !defined(IS_MOBILE_PLATFORM)
   static Status CreateRemoteHandle(int64 op_id, int output_num,
                                    const TensorShape& shape,
-                                   const string& remote_task, uint64 context_id,
-                                   DataType dtype, Device* d,
-                                   Device* resource_device, EagerContext* ctx,
-                                   TensorHandle** h);
+                                   const string& remote_task, DataType dtype,
+                                   Device* d, Device* resource_device,
+                                   EagerContext* ctx, TensorHandle** h);
   static Status CreateRemoteHandle(std::unique_ptr<RemoteTensorHandleData> t,
                                    DataType dtype, Device* d,
                                    Device* resource_device, EagerContext* ctx,
                                    TensorHandle** h);
   static Status CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
                                            const string& remote_task,
-                                           uint64 context_id, DataType dtype,
-                                           Device* device, EagerContext* ctx,
-                                           TensorHandle** h);
+                                           DataType dtype, Device* device,
+                                           EagerContext* ctx, TensorHandle** h);
   static Status CreateUnshapedRemoteHandle(
       std::unique_ptr<UnshapedRemoteTensorHandleData> t, DataType dtype,
       Device* device, EagerContext* ctx, TensorHandle** h);
@@ -120,9 +121,17 @@ class TensorHandle : public core::RefCounted {
 
   ~TensorHandle() override { DVLOG(3) << "Deleting TensorHandle " << this; }
 
-  Status Tensor(const tensorflow::Tensor** t);
+  // Return the Tensor from the default device.
+  Status Tensor(const tensorflow::Tensor** t) const;
+  // Return the Tensor from the specified device which could be either the
+  // default device or a local mirror. The device pointer should be nullptr if
+  // requesting the HostCPU.
+  Status TensorFromDevice(const Device* d, const tensorflow::Tensor** t) const;
 
-  Status TensorValue(tensorflow::TensorValue* t);
+  // Return the TensorValue from the specified device which could be either the
+  // default device or a local mirror. The device pointer should be nullptr if
+  // requesting the HostCPU.
+  Status TensorValue(tensorflow::TensorValue* t, const Device* d);
 
   VariantDevice device() const { return device_; }
   Device* op_device() const { return op_device_; }
@@ -135,23 +144,32 @@ class TensorHandle : public core::RefCounted {
   Status Dim(int dim_index, int64* dim) const;
   Status NumElements(int64* num_elements) const;
 
+  Status Unprotect(const Device* d);
+
+  // Checks if a mirror tensor exists for the specified device. Mirrors are only
+  // maintained for local devices, like CPUs & GPUs. Note a mirror may be empty,
+  // as it is still to be set by an async operation.
+  bool HasLocalMirror(const Device* d) const;
+  // Add an empty mirror placeholder for the specified device. The expectation
+  // is this will be populated by a call to SetTensor.
+  Status AddEmptyLocalMirror(const Device* d);
+  // Add a local mirror. This will fail if an empty local mirror was previously
+  // added. For that case, SetTensor should be used instead.
+  Status AddLocalMirror(tensorflow::Tensor&& tensor, const Device* d);
+
 #if !defined(IS_MOBILE_PLATFORM)
-  bool HasRemoteMirror(Device* d);
-  bool HasResourceShapeMirror(Device* d);
+  bool HasRemoteMirror(const Device* d, uint64 context_view_id) const;
+  bool HasResourceShapeMirror(const Device* d, uint64 context_view_id) const;
 
   Status AddUnshapedRemoteMirror(
-      std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d);
-  Status AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t, Device* d);
+      std::unique_ptr<UnshapedRemoteTensorHandleData> t, const Device* d);
+  Status AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t,
+                         const Device* d);
   Status AddResourceShapeMirror(
-      std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d);
+      std::unique_ptr<UnshapedRemoteTensorHandleData> t, const Device* d);
 
   // Return the op_id and output num if the handle refers to a remote tensor.
-  Status RemoteAddress(Device* d, int64* op_id, int32* output_num) const;
-
-  // Set remote_op_id_ and remote_output_num_ if the handle refers to a local
-  // tensor that needs to be copied to remote workers.
-  void SetRemoteOpIdAndOutputNumToLocalTensorHandle(const int64 op_id,
-                                                    const int32 output_num);
+  Status RemoteAddress(const Device* d, int64* op_id, int32* output_num) const;
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
@@ -159,22 +177,30 @@ class TensorHandle : public core::RefCounted {
   // queried.
   // This method or Poison must be called exactly once for remote tensors that
   // were created without a known shape.
-  Status SetRemoteShape(const TensorShape& shape, tensorflow::Device* d);
+  Status SetRemoteShape(const TensorShape& shape, const Device* d,
+                        uint64 context_view_id);
+
+  // Poisons either this handle or a remote mirror with error `status`.
+  // Poisoning means that the handle will become ready and methods trying
+  // to access the remote shape will return this error `status`.
+  // Exactly one of SetRemoteShape or PoisonRemote methods must be called on a
+  // unshaped handle on a remote device.
+  void PoisonRemote(Status status, const Device* d, uint64 context_view_id);
 #endif
 
   // Sets the `tensor` for this async non-ready handle making it ready.
   // This method or Poison must be called exactly once for non-ready async
   // handles to make them ready.
-  Status SetTensor(tensorflow::Tensor&& tensor);
+  Status SetTensor(tensorflow::Tensor&& tensor, const Device* d);
 
-  // Poisons this non-ready handle with an error `status`.
+  // Poisons either this handle or a local mirror with error `status`.
   // Poisoning means that the handle will become ready and methods trying
   // to access the actual tensor or shape will return this error `status`.
-  // Exactly one of SetTensor, SetRemoteShape, or Poison methods must be called
-  // on a non-ready tensor.
-  void Poison(Status status);
+  // Exactly one of SetTensor or Poison methods must be called on a non-ready
+  // tensor for a specific device.
+  void Poison(Status status, const Device* d);
 
-  Status CopyToDevice(const EagerContext& ctx, tensorflow::Device* dstd,
+  Status CopyToDevice(const EagerContext& ctx, tensorflow::Device* d,
                       tensorflow::Tensor* output);
 
   Status InferenceShape(
@@ -202,6 +228,8 @@ class TensorHandle : public core::RefCounted {
   }
 
   bool IsRemote() const { return is_remote_; }
+  void EnableImplicitMirroring() { implicit_mirroring_ = true; }
+  bool ImplicitMirroring() const { return implicit_mirroring_; }
 
   string DebugString() const;
 
@@ -247,28 +275,33 @@ class TensorHandle : public core::RefCounted {
 
   mutable mutex mu_;
 
+  // Map of local mirrors. In sync mode the EmptyLocalTensorHandleData is
+  // nullptr. In async mode, we use the EmptyLocalTensorHandleData to manage
+  // waiting clients. Once the EmptyLocalTensorHandleData is "ready" only the
+  // LocalTensorHandleData should be used.
+  std::map<const tensorflow::Device*,
+           std::pair<std::unique_ptr<EmptyLocalTensorHandleData>,
+                     std::unique_ptr<LocalTensorHandleData>>>
+      local_mirrors_ GUARDED_BY(mu_);
 #if !defined(IS_MOBILE_PLATFORM)
   // TODO(yujingzhang): Remove resource_shape_mirrors_ once scalable per-replica
   // variable is ready, since we could get the shape locally without remote copy
   // then.
-  std::map<tensorflow::Device*, std::unique_ptr<UnshapedRemoteTensorHandleData>>
+  std::map<string, std::unique_ptr<UnshapedRemoteTensorHandleData>>
       resource_shape_mirrors_ GUARDED_BY(mu_);
-
-  // TODO(gjn): Unshaped remote mirrors are long expected to be long-lived.
+  // TODO(gjn): Unshaped remote mirrors are not expected to be long-lived.
   // Consider replacing the unshaped_remote_mirrors_ map with something more
   // efficient.
-  std::map<tensorflow::Device*, std::unique_ptr<UnshapedRemoteTensorHandleData>>
+  std::map<string, std::unique_ptr<UnshapedRemoteTensorHandleData>>
       unshaped_remote_mirrors_ GUARDED_BY(mu_);
   // TODO(gjn): Is std::map the most optimal choice here? Perhaps this should be
   // a fixed size map.
-  std::map<tensorflow::Device*, std::unique_ptr<RemoteTensorHandleData>>
-      remote_mirrors_ GUARDED_BY(mu_);
+  std::map<string, std::unique_ptr<RemoteTensorHandleData>> remote_mirrors_
+      GUARDED_BY(mu_);
 
   // IDs required when this class is representing a remote tensor handle.
   int64 remote_op_id_;
   int32 remote_output_num_;
-  string remote_task_;
-  uint64 remote_context_id_;
 #endif
 
   // `ctx` is only guaranteed to be set if the handle is not "ready". This is
@@ -281,6 +314,7 @@ class TensorHandle : public core::RefCounted {
   Status is_poisoned_;
   const bool is_remote_;
   const bool is_async_;
+  bool implicit_mirroring_;
   bool is_ready_ GUARDED_BY(mu_);
 
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
@@ -298,8 +332,16 @@ class TensorHandle : public core::RefCounted {
 // Checks whether a VariantDevice contains a custom device.
 bool VariantDeviceIsCustom(absl::variant<Device*, CustomDevice*> device);
 
+// Wraps device->name() or CustomDevice->name().
+string VariantDeviceName(absl::variant<Device*, CustomDevice*> device);
+
 // Wraps device->DebugString() or CustomDevice->name().
 string VariantDeviceDebugString(absl::variant<Device*, CustomDevice*> device);
+
+// Indicates either HostCPU or an unset physical device. We never set a null
+// CustomDevice*.
+const absl::variant<Device*, CustomDevice*> kVariantDeviceNull =
+    static_cast<Device*>(nullptr);
 
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);

@@ -1,12 +1,13 @@
 # Description:
 # TensorFlow Lite Support API in Java.
 
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 # TODO(138904786): Split Java part and Android part to make the support library usable by pure Java.
 android_library(
@@ -25,4 +26,22 @@ android_library(
 alias(
     name = "tensorflowlite_support",
     actual = ":tensorflow-lite-support",
+)
+
+java_library(
+    name = "tensorflow-lite-support-precondition",
+    srcs = ["src/java/org/tensorflow/lite/support/common/SupportPreconditions.java"],
+    javacopts = JAVACOPTS,
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+android_library(
+    name = "tensorflow-lite-support-precondition-lib-android",
+    srcs = ["src/java/org/tensorflow/lite/support/common/SupportPreconditions.java"],
+    manifest = "AndroidManifest.xml",
+    deps = [
+        "@org_checkerframework_qual",
+    ],
 )

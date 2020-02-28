@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Region.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -370,6 +371,22 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
                                          Convert(interior_padding))
           .getOperation();
     }
+    case HloOpcode::kScatter: {
+      auto scatter = static_cast<HloScatterInstruction*>(instruction);
+      attributes.push_back(
+          ConvertScatterDimensionNumbers(scatter->scatter_dimension_numbers()));
+      attributes.push_back(builder_->getNamedAttr(
+          "indices_are_sorted",
+          builder_->getBoolAttr(scatter->indices_are_sorted())));
+      attributes.push_back(builder_->getNamedAttr(
+          "unique_indices", builder_->getBoolAttr(scatter->unique_indices())));
+
+      auto scatter_op = func_builder->create<mlir::xla_hlo::ScatterOp>(
+          loc, result_type, operands, attributes);
+      TF_RETURN_IF_ERROR(ImportComputation(scatter->to_apply(),
+                                           &scatter_op.update_computation()));
+      return scatter_op.getOperation();
+    }
     case HloOpcode::kSetDimensionSize: {
       attributes.push_back(builder_->getNamedAttr(
           "dimension", builder_->getIntegerAttr(builder_->getIntegerType(32),
@@ -384,6 +401,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
               ConvertDimensions(instruction->slice_limits()),
               ConvertDimensions(instruction->slice_strides()))
           .getOperation();
+    }
+    case HloOpcode::kSort: {
+      auto sort_instruction = static_cast<HloSortInstruction*>(instruction);
+      auto sort_op = func_builder->create<mlir::xla_hlo::SortOp>(
+          loc, result_type, operands,
+          builder_->getI64IntegerAttr(sort_instruction->sort_dimension()),
+          builder_->getBoolAttr(sort_instruction->is_stable()));
+      TF_RETURN_IF_ERROR(ImportComputation(sort_instruction->to_apply(),
+                                           &sort_op.comparator()));
+      return sort_op.getOperation();
     }
     case HloOpcode::kConditional: {
       llvm::SmallVector<Type, 4> rets;
@@ -637,52 +664,6 @@ StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(
   return operands;
 }
 
-// TODO(suderman): Move to a general library when needed in other places.
-StatusOr<mlir::RankedTensorType> HloFunctionImporter::ConvertTensorType(
-    const Shape& shape) {
-  auto type = shape.element_type();
-
-  llvm::SmallVector<int64_t, 4> array;
-  array.reserve(shape.dimensions_size());
-  for (auto val : shape.dimensions()) {
-    array.push_back(val);
-  }
-
-  switch (type) {
-    case PrimitiveType::PRED:
-      return mlir::RankedTensorType::get(array, builder_->getI1Type());
-    case PrimitiveType::F16:
-      return mlir::RankedTensorType::get(array, builder_->getF16Type());
-    case PrimitiveType::F32:
-      return mlir::RankedTensorType::get(array, builder_->getF32Type());
-    case PrimitiveType::F64:
-      return mlir::RankedTensorType::get(array, builder_->getF64Type());
-    case PrimitiveType::S8:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(8));
-    case PrimitiveType::S16:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(16));
-    case PrimitiveType::S32:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(32));
-    case PrimitiveType::S64:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(64));
-    // TODO(b/130356985): Update once MLIR supports unsigned integers.
-    case PrimitiveType::U8:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(8));
-    case PrimitiveType::U16:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(16));
-    case PrimitiveType::U32:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(32));
-    case PrimitiveType::U64:
-      return mlir::RankedTensorType::get(array, builder_->getIntegerType(64));
-    case PrimitiveType::C64:
-      return mlir::RankedTensorType::get(
-          array, mlir::ComplexType::get(builder_->getF32Type()));
-    default:
-      return tensorflow::errors::Internal(
-          absl::StrCat("Unsupported type: ", PrimitiveType_Name(type)));
-  }
-}
-
 StatusOr<mlir::Type> HloFunctionImporter::ConvertType(const Shape& shape) {
   if (shape.IsToken()) {
     return mlir::xla_hlo::TokenType::get(builder_->getContext());
@@ -698,7 +679,7 @@ StatusOr<mlir::Type> HloFunctionImporter::ConvertType(const Shape& shape) {
     return builder_->getTupleType(contents);
   }
 
-  return ConvertTensorType(shape);
+  return ConvertTensorShapeToType<RankedTensorType>(shape, *builder_);
 }
 
 tensorflow::Status HloFunctionImporter::GetMlirTypes(
@@ -832,6 +813,22 @@ mlir::NamedAttribute HloFunctionImporter::ConvertGatherDimensionNumbers(
       Convert(start_index_map),
       builder_->getI64IntegerAttr(dnums.index_vector_dim()), context_);
   return builder_->getNamedAttr("dimension_numbers", attr);
+}
+
+mlir::NamedAttribute HloFunctionImporter::ConvertScatterDimensionNumbers(
+    const xla::ScatterDimensionNumbers& dnums) {
+  std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
+                                          dnums.update_window_dims().end());
+  std::vector<int64_t> inserted_window_dims(
+      dnums.inserted_window_dims().begin(), dnums.inserted_window_dims().end());
+  std::vector<int64_t> scatter_dims_to_operand_dims(
+      dnums.scatter_dims_to_operand_dims().begin(),
+      dnums.scatter_dims_to_operand_dims().end());
+  auto attr = mlir::xla_hlo::ScatterDimensionNumbers::get(
+      Convert(update_window_dims), Convert(inserted_window_dims),
+      Convert(scatter_dims_to_operand_dims),
+      builder_->getI64IntegerAttr(dnums.index_vector_dim()), context_);
+  return builder_->getNamedAttr("scatter_dimension_numbers", attr);
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(

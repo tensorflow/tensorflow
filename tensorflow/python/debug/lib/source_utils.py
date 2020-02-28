@@ -73,7 +73,7 @@ def guess_is_tensorflow_py_library(py_file_path):
 
   Raises:
     ValueError: if the extension name of py_file_path does not indicate a Python
-      source file (compiled or uncomplied).
+      source file (compiled or uncompiled).
   """
   if (not is_extension_uncompiled_python_source(py_file_path) and
       not is_extension_compiled_python_source(py_file_path)):

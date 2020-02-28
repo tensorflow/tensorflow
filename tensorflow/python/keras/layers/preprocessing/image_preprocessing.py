@@ -178,7 +178,7 @@ class RandomCrop(Layer):
 
   This layer will crop all the images in the same batch to the same cropping
   location.
-  By default, random croppping is only applied during training. At inference
+  By default, random cropping is only applied during training. At inference
   time, the images will be first rescaled to preserve the shorter side, and
   center cropped. If you need to apply random cropping at inference time,
   set `training` to True when calling the layer.
@@ -215,10 +215,8 @@ class RandomCrop(Layer):
       crop_size = array_ops.stack(
           [input_shape[0], self.height, self.width, input_shape[3]])
       check = control_flow_ops.Assert(
-          math_ops.reduce_all(input_shape >= crop_size), [
-              'Need value.shape >= size, got input shape', input_shape,
-              ' but height is ', self.height, ' and weight is ', self.width
-          ])
+          math_ops.reduce_all(input_shape >= crop_size),
+          [self.height, self.width])
       input_shape = control_flow_ops.with_dependencies([check], input_shape)
       limit = input_shape - crop_size + 1
       offset = stateless_random_ops.stateless_random_uniform(
@@ -583,7 +581,7 @@ def transform(images,
         if output_shape_value is not None:
           output_shape = output_shape_value
 
-    output_shape = ops.convert_to_tensor(
+    output_shape = ops.convert_to_tensor_v2(
         output_shape, dtypes.int32, name='output_shape')
 
     if not output_shape.get_shape().is_compatible_with([2]):

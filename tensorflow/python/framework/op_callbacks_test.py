@@ -62,13 +62,13 @@ _MUL_OP = b"Mul"
 _NEXT_ITERATION_OP = b"NextIteration"
 _PLACEHOLDER_OP = b"Placeholder"
 _POW_OP = b"Pow"
-_READ_VARIALBE_OP = b"ReadVariableOp"
+_READ_VARIABLE_OP = b"ReadVariableOp"
 _SIN_OP = b"Sin"
 _SPARSE_TENSOR_DENSE_MATMUL_OP = b"SparseTensorDenseMatMul"
 _SQRT_OP = b"Sqrt"
 _SQUARE_OP = b"Square"
 _STATELESS_IF_OP = b"StatelessIf"
-_SWTICH_OP = b"Switch"
+_SWITCH_OP = b"Switch"
 _UNIQUE_OP = b"Unique"
 _VAR_HANDLE_OP = b"VarHandleOp"
 _WHILE_OP = b"While"
@@ -107,10 +107,10 @@ class _NumpyFunctionCallback(object):
       # Instrument the graph with numpy_function.
       instrumented_outputs = []
       for output in outputs:
-        if compat.as_bytes(op_type) in (
-            _ENTER_OP, _EXIT_OP, _IF_OP, _MERGE_OP, _NEXT_ITERATION_OP,
-            _STATELESS_IF_OP, _SWTICH_OP, _WHILE_OP, _IDENTITY_OP,
-            _VAR_HANDLE_OP, _PLACEHOLDER_OP):
+        if compat.as_bytes(op_type) in (_ENTER_OP, _EXIT_OP, _IF_OP, _MERGE_OP,
+                                        _NEXT_ITERATION_OP, _STATELESS_IF_OP,
+                                        _SWITCH_OP, _WHILE_OP, _IDENTITY_OP,
+                                        _VAR_HANDLE_OP, _PLACEHOLDER_OP):
           # TODO(cais): Overriding the output of StatelessIf, If and While ops
           # currently fails with error. Investigate (b/139668453).
           # Avoid instrumenting Identity ops as well, as they are inserted
@@ -660,7 +660,7 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
 
     # Check the graph internal ndarrays recorded at runtime.
     read_variable_op_outputs = instrument.graph_internal_ndarrays[
-        _READ_VARIALBE_OP]
+        _READ_VARIABLE_OP]
     self.assertAllClose(read_variable_op_outputs, [1.0, 2.0, 4.0, 8.0])
     less_op_outputs = instrument.graph_internal_ndarrays[_LESS_OP]
     self.assertAllClose(less_op_outputs, [True, True, True, True, False])
@@ -794,7 +794,8 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
     self.assertIn(_COS_OP, instrument.graph_op_types)
 
     # Check the ndarrays from runtime.
-    cos_op_outputs = instrument.graph_internal_ndarrays[_COS_OP]
+    cos_op_outputs = instrument.graph_internal_ndarrays[b"gradient_tape/" +
+                                                        _COS_OP]
     self.assertEqual(len(cos_op_outputs), 1)
     self.assertAllClose(cos_op_outputs[0], np.cos(3.0 * 3.0))
 

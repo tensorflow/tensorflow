@@ -21,6 +21,12 @@ include "mlir/IR/OpBase.td"
 def HLO_Int : IntOfWidths<[8, 16, 32, 64]>;
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
+// The broadcasting dimensions correspond to a tuple that describes how a
+// smaller rank shape is broadcast into a larger rank shape. For example,
+// given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
+// matching the matrix to dimensions 1 and 2 of the cuboid.
+def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
+
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -317,12 +323,6 @@ class BASE_HLO_TanhOp {
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
-
-// The broadcasting dimensions correspond to a tuple that describes how a
-// smaller rank shape is broadcast into a larger rank shape. For example,
-// given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
-// matching the matrix to dimensions 1 and 2 of the cuboid.
-def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
 
 class BASE_HLO_AddOp {
   string summary = "Addition operator";

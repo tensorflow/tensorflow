@@ -172,7 +172,7 @@ else_branch: A function that takes 'inputs' and returns a list of
   }];
 }
 
-def TF_MeanOp : TF_Op<"Mean", [NoSideEffect]> {
+def TF_MeanOp : TF_Op<"Mean", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
   let summary = "Computes the mean of elements across dimensions of a tensor.";
 
   let description = [{
@@ -195,6 +195,13 @@ retained with length 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let extraClassDeclaration = [{
+    // TF_FoldOperandsTransposeInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {}; }
+    LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
+  }];
 }
 
 def TF_LegacyCallOp : TF_Op<"LegacyCall",
@@ -291,7 +298,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
 
-    FlatSymbolRefAttr:$f,
+    SymbolRefAttr:$f,
     StrAttr:$config,
     StrAttr:$config_proto,
     StrAttr:$executor_type
@@ -351,6 +358,36 @@ def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
   DerivedAttr shape = TF_DerivedResultShapeAttr;
 }
+
+def TF_SparseMatMulOp : TF_Op<"SparseMatMul", [NoSideEffect]> {
+  let summary = [{
+SparseMatMul is MatMul with hints on the sparseness of the matrices.
+  }];
+
+  let description = [{
+Similar to MatMul, with a_is_sparse and b_is_sparse indicating whether a and b
+are sparse matrices.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$a,
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$b,
+
+    DefaultValuedAttr<BoolAttr, "true">:$a_is_sparse,
+    DefaultValuedAttr<BoolAttr, "false">:$b_is_sparse,
+
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_b
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$product
+  );
+
+  TF_DerivedOperandTypeAttr Ta = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tb = TF_DerivedOperandTypeAttr<1>;
+}
+
 
 def TF_StatefulPartitionedCallOp : TF_Op<"StatefulPartitionedCall",
                                          [CallOpInterface]> {

@@ -56,10 +56,8 @@ LIBS := \
 # There are no rules for compiling objects for the host system (since we don't
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
-CXXFLAGS := -O3 -DNDEBUG -fPIC
-CXXFLAGS += $(EXTRA_CXXFLAGS)
-CFLAGS := ${CXXFLAGS}
-CXXFLAGS += --std=c++11
+CFLAGS := -O3 -DNDEBUG -fPIC
+CXXFLAGS := $(CFLAGS) --std=c++11 $(EXTRA_CXXFLAGS)
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
@@ -67,6 +65,21 @@ CC_PREFIX :=
 
 ifeq ($(HOST_OS),windows)
 CXXFLAGS += -fext-numeric-literals -D__LITTLE_ENDIAN__
+endif
+
+# Auto-detect optimization opportunity if building natively.
+ifeq ($(HOST_OS),$(TARGET))
+ifeq ($(HOST_ARCH),$(TARGET_ARCH))
+ifeq ($(TARGET_ARCH),armv7l)
+ifneq ($(shell cat /proc/cpuinfo | grep Features | grep neon),)
+  ifneq ($(shell cat /proc/cpuinfo | grep Features | grep vfpv4),)
+    CXXFLAGS += -mfpu=neon-vfpv4
+  else
+    CXXFLAGS += -mfpu=neon
+  endif
+endif # ifeq ($(TARGET_ARCH),armv7l)
+endif # ifeq ($(HOST_ARCH),$(TARGET_ARCH))
+endif # ifeq ($(HOST_OS),$(TARGET))
 endif
 
 # This library is the main target for this makefile. It will contain a minimal
@@ -91,6 +104,7 @@ PROFILER_SRCS := \
 
 PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/lite/profiling/profile_summarizer.cc \
+	tensorflow/lite/profiling/profile_summary_formatter.cc \
 	tensorflow/core/util/stats_calculator.cc
 
 CMD_LINE_TOOLS_SRCS := \
@@ -102,7 +116,7 @@ $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
-$(wildcard tensorflow/lite/experimental/resource_variable/*.cc) \
+$(wildcard tensorflow/lite/experimental/resource/*.cc) \
 $(wildcard tensorflow/lite/experimental/ruy/*.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
@@ -114,10 +128,11 @@ $(wildcard tensorflow/lite/tools/optimize/sparsity/*.cc) \
 $(PROFILER_SRCS) \
 tensorflow/lite/tools/make/downloads/farmhash/src/farmhash.cc \
 tensorflow/lite/tools/make/downloads/fft2d/fftsg.c \
+tensorflow/lite/tools/make/downloads/fft2d/fftsg2d.c \
 tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp
 CORE_CC_ALL_SRCS += \
 	$(shell find tensorflow/lite/tools/make/downloads/absl/absl/ \
-	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization | grep -v debugging)
+	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization | grep -v debugging | grep -v hash | grep -v flags)
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
@@ -128,9 +143,11 @@ $(wildcard tensorflow/lite/*/*/benchmark.cc) \
 $(wildcard tensorflow/lite/*/*/example*.cc) \
 $(wildcard tensorflow/lite/*/*/test*.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
+$(wildcard tensorflow/lite/*/*/*tool.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util*.cc) \
+tensorflow/lite/experimental/ruy/tune_tool.cc \
 $(MINIMAL_SRCS)
 
 BUILD_WITH_MMAP ?= true
@@ -146,22 +163,15 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
 endif
 
-BUILD_WITH_NNAPI ?= true
-ifeq ($(BUILD_TYPE),micro)
-	BUILD_WITH_NNAPI=false
+BUILD_WITH_RUY ?= false
+ifeq ($(TARGET_ARCH),aarch64)
+	BUILD_WITH_RUY=true
 endif
-ifeq ($(TARGET),windows)
-	BUILD_WITH_NNAPI=false
+ifeq ($(BUILD_WITH_RUY),true)
+  CXXFLAGS += -DTFLITE_WITH_RUY
 endif
-ifeq ($(TARGET),ios)
-	BUILD_WITH_NNAPI=false
-endif
-ifeq ($(TARGET),rpi)
-	BUILD_WITH_NNAPI=false
-endif
-ifeq ($(TARGET),generic-aarch64)
-	BUILD_WITH_NNAPI=false
-endif
+
+BUILD_WITH_NNAPI ?= false
 ifeq ($(BUILD_WITH_NNAPI),true)
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/quant_lstm_sup.cc
@@ -219,7 +229,8 @@ ALL_SRCS := \
 	$(CMD_LINE_TOOLS_SRCS)
 
 # Where compiled objects are stored.
-GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
+TARGET_OUT_DIR ?= $(TARGET)_$(TARGET_ARCH)
+GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET_OUT_DIR)/
 OBJDIR := $(GENDIR)obj/
 BINDIR := $(GENDIR)bin/
 LIBDIR := $(GENDIR)lib/

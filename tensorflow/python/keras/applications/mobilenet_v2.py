@@ -85,7 +85,6 @@ from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
-
 BASE_WEIGHT_PATH = ('https://storage.googleapis.com/tensorflow/'
                     'keras-applications/mobilenet_v2/')
 
@@ -99,6 +98,7 @@ def MobileNetV2(input_shape=None,
                 input_tensor=None,
                 pooling=None,
                 classes=1000,
+                classifier_activation='softmax',
                 **kwargs):
   """Instantiates the MobileNetV2 architecture.
 
@@ -107,6 +107,9 @@ def MobileNetV2(input_shape=None,
   (https://arxiv.org/abs/1801.04381) (CVPR 2018)
 
   Optionally loads weights pre-trained on ImageNet.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.mobilenet_v2.preprocess_input` for an example.
 
   Arguments:
     input_shape: Optional shape tuple, to be specified if you would
@@ -152,6 +155,9 @@ def MobileNetV2(input_shape=None,
     classes: Integer, optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
     **kwargs: For backwards compatibility only.
 
   Returns:
@@ -161,6 +167,8 @@ def MobileNetV2(input_shape=None,
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape or invalid alpha, rows when
       weights='imagenet'
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
   if 'layers' in kwargs:
     global layers
@@ -360,9 +368,10 @@ def MobileNetV2(input_shape=None,
 
   if include_top:
     x = layers.GlobalAveragePooling2D()(x)
-    x = layers.Dense(
-        classes, activation='softmax', use_bias=True, name='Logits')(
-            x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
+
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D()(x)
@@ -485,11 +494,14 @@ def _make_divisible(v, divisor, min_value=None):
 
 @keras_export('keras.applications.mobilenet_v2.preprocess_input')
 def preprocess_input(x, data_format=None):
-  """Preprocesses the input (encoding a batch of images) for the model."""
   return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.mobilenet_v2.decode_predictions')
 def decode_predictions(preds, top=5):
-  """Decodes the prediction result from the model."""
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

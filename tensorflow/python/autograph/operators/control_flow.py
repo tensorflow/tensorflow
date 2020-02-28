@@ -104,22 +104,19 @@ INEFFICIENT_UNROLL_MIN_OPS = 1
 # datasets. Before it can be used though, we need to standardize the interface.
 
 
-# TODO(mdan): Use existing symbol names rather than carrying them separately.
-def _disallow_undefs_into_loop(*values):
+def _verify_loop_init_vars(values, symbol_names):
   """Ensures that all values in the state are defined when entering a loop."""
-  undefined = tuple(filter(special_values.is_undefined, values))
-  if undefined:
-    raise ValueError(
-        '{} must be defined before the loop.'.format(
-            ','.join(s.symbol_name for s in undefined)))
-
-  for value in values:
+  for name, value in zip(symbol_names, values):
+    if value is None:
+      raise ValueError('"{}" may not be None before the loop.'.format(name))
     if special_values.is_undefined_return(value):
       # Assumption: the loop will only capture the variable which tracks the
       # return value if the loop contained a return statement.
       # TODO(mdan): This should be checked at the place where return occurs.
       raise ValueError(
           'return statements are not supported within a TensorFlow loop.')
+    if special_values.is_undefined(value):
+      raise ValueError('"{}" must be defined before the loop.'.format(name))
 
 
 def _is_subshape(left, right):
@@ -142,11 +139,15 @@ def _is_subshape(left, right):
 def _verify_single_loop_var(
     name, check_shape, init, entry, exit_, shape_invariant):
   """Verifies whether the initial, entry and exit values are consistent."""
+  assert entry is not None, 'no TF op should set "{}" to None?'.format(name)
+  if exit_ is None:
+    raise ValueError('"{}" is None at the end of the iteration.'.format(name))
+
   if isinstance(init, (bool, int, float, str, np.ndarray)):
     init = ops.convert_to_tensor_v2(init)
   if isinstance(entry, (bool, int, float, str, np.ndarray)):
     entry = ops.convert_to_tensor_v2(entry)
-  if isinstance(exit_, (bool, int, float, str)):
+  if isinstance(exit_, (bool, int, float, str, np.ndarray)):
     exit_ = ops.convert_to_tensor_v2(exit_)
 
   if (not tensor_util.is_tensor(entry) or
@@ -237,10 +238,16 @@ def _verify_tf_loop_vars(init_vars,
 
 def _verify_single_cond_var(name, body_var, orelse_var):
   """Verifies whether body_var and orelse_var are consistent."""
-  if isinstance(body_var, (bool, int, float, str)):
+  if body_var is None:
+    raise ValueError('"{}" is None at the end of the TRUE branch.'.format(name))
+  if orelse_var is None:
+    raise ValueError(
+        '"{}" is None at the end of the FALSE branch.'.format(name))
+
+  if isinstance(body_var, (bool, int, float, str, np.ndarray)):
     body_var = ops.convert_to_tensor_v2(body_var)
 
-  if isinstance(orelse_var, (bool, int, float, str)):
+  if isinstance(orelse_var, (bool, int, float, str, np.ndarray)):
     orelse_var = ops.convert_to_tensor_v2(orelse_var)
 
   if (not tensor_util.is_tensor(body_var) or
@@ -443,7 +450,7 @@ def _tf_ragged_for_stmt(
     iter_, extra_test, body, get_state, set_state, symbol_names, opts):
   """Overload of for_stmt that iterates over TF ragged tensors."""
   init_vars = get_state()
-  _disallow_undefs_into_loop(*init_vars)
+  _verify_loop_init_vars(init_vars, symbol_names)
 
   # TODO(mdan): Move this into len()? Requires eager support.
   if iter_.shape and iter_.shape[0] is not None:
@@ -540,7 +547,7 @@ def _tf_iterator_for_stmt(
     set_state(loop_vars)
 
   init_vars = aug_get_state()
-  _disallow_undefs_into_loop(*init_vars)
+  _verify_loop_init_vars(init_vars, symbol_names)
 
   def aug_body():
     """Main body passed to _tf_while_stmt."""
@@ -612,7 +619,7 @@ def _tf_dataset_for_stmt(
   #  reduce(take_while(scan(3)))
 
   init_vars = get_state()
-  _disallow_undefs_into_loop(*init_vars)
+  _verify_loop_init_vars(init_vars, symbol_names)
 
   # Workaround for Dataset.reduce not allowing empty state tensors - create
   # a dummy state variable that remains unused.
@@ -680,7 +687,7 @@ def _tf_distributed_iterable_for_stmt(
         'for ... in distributed input loops.')
 
   init_vars = get_state()
-  _disallow_undefs_into_loop(init_vars)
+  _verify_loop_init_vars(init_vars, symbol_names)
 
   if 'shape_invariants' in opts:
     opts['shape_invariants'] = _shape_invariants_mapping_to_positional_list(
@@ -773,7 +780,7 @@ class _PythonLoopChecker(object):
     self.check_op_count_after_iteration = False
     self.ops_before_iteration = None
 
-  def _verify_ineffcient_unroll(self):
+  def _verify_inefficient_unroll(self):
     """Checks for possibly-inefficient creation of ops in a Python loop."""
     assert self.ops_before_iteration is not None
     ops_after_iteration = self._get_ops()
@@ -810,7 +817,7 @@ class _PythonLoopChecker(object):
     self._check_unroll_limits()
 
     if self.check_op_count_after_iteration:
-      did_warn = self._verify_ineffcient_unroll()
+      did_warn = self._verify_inefficient_unroll()
       if did_warn:
         self._stop_checking_inefficient_unroll()  # Only warn once.
       elif self.iterations > INEFFICIENT_UNROLL_MIN_ITERATIONS + 3:
@@ -852,7 +859,7 @@ def _shape_invariants_mapping_to_positional_list(mapping, keys):
 def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
   """Overload of while_stmt that stages a TF while_stmt."""
   init_vars = get_state()
-  _disallow_undefs_into_loop(*init_vars)
+  _verify_loop_init_vars(init_vars, symbol_names)
 
   def aug_test(*loop_vars):
     set_state(loop_vars)
