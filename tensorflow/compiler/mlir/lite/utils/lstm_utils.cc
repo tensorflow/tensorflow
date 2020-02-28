@@ -57,6 +57,14 @@ Value CreateF32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
   return builder->create<ConstantOp>(location, type, attr);
 }
 
+Value CreatTfF32ConstOp(OpBuilder* builder, ArrayRef<int64_t> shape, float val,
+                        mlir::Location location) {
+  auto type = RankedTensorType::get(shape, builder->getF32Type());
+  auto ele_type = RankedTensorType::get({1}, builder->getF32Type());
+  auto attr = DenseElementsAttr::get(ele_type, val);
+  return builder->create<TF::ConstOp>(location, type, attr);
+}
+
 Value CreateI64DenseConst(OpBuilder* builder, ArrayRef<int64_t> shape,
                           ArrayRef<int64_t> values, mlir::Location location) {
   auto type = RankedTensorType::get(static_cast<int>(shape.size()),
@@ -601,6 +609,9 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
   Value recurrent_kernel = func_op.getArgument(4);
   Value bias = func_op.getArgument(5);
 
+  // The func op should have 5 outputs.
+  if (func_op.getNumResults() != 5) return failure();
+
   // TFL lstm only supports time-majored inputs, so if it's not time-majored,
   // we will transpose the inputs and outputs.
   auto time_major_attr = func_op.getAttrOfType<BoolAttr>("tf.time_major");
@@ -674,11 +685,8 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
                                      &bias_array)))
     return failure();
 
-  // Update the function signature:
-  UpdateFuncSignature(batch, time, n_output, &func_op);
-
   // Build the lstm op.
-  SmallVector<int64_t, 3> output_shape = {batch, time, n_output};
+  SmallVector<int64_t, 3> output_shape = {time, batch, n_output};
   auto result_type = mlir::RankedTensorType::get(
       output_shape, input.getType().cast<RankedTensorType>().getElementType());
 
@@ -718,7 +726,22 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
     final_output =
         Transpose(builder, final_output, perm, result_type, func_op.getLoc());
   }
-  builder->create<mlir::ReturnOp>(func_op.getLoc(), final_output);
+
+  SmallVector<Value, 5> outputs;
+
+  for (int i = 0; i < 5; ++i) {
+    if (i == 1) {
+      // only this one is the real output.
+      outputs.push_back(final_output);
+    } else {
+      auto result_type =
+          func_op.getCallableResults()[i].dyn_cast<RankedTensorType>();
+      outputs.push_back(CreatTfF32ConstOp(builder, result_type.getShape(), 0.0f,
+                                          func_op.getLoc()));
+    }
+  }
+
+  builder->create<mlir::ReturnOp>(func_op.getLoc(), outputs);
   return success();
 }
 
