@@ -62,13 +62,19 @@ struct MklConvBwdFilterParams {
   memory::dims dilations;
   memory::dims padding_left;
   memory::dims padding_right;
+#ifndef ENABLE_MKLDNN_V1
   padding_kind padding;
+#endif  // !ENABLE_MKLDNN_V1
 
   MklConvBwdFilterParams(memory::dims src_dims, memory::dims diff_filter_dims,
                          memory::dims diff_bias_dims,
                          memory::dims diff_dst_dims, memory::dims strides,
                          memory::dims dilations, memory::dims padding_left,
+#ifndef ENABLE_MKLDNN_V1
                          memory::dims padding_right, padding_kind padding)
+#else
+                         memory::dims padding_right)
+#endif  // !ENABLE_MKLDNN_V1
       : src_dims(src_dims),
         diff_filter_dims(diff_filter_dims),
         diff_bias_dims(diff_bias_dims),
@@ -76,8 +82,14 @@ struct MklConvBwdFilterParams {
         strides(strides),
         dilations(dilations),
         padding_left(padding_left),
+#ifndef ENABLE_MKLDNN_V1
         padding_right(padding_right),
-        padding(padding) {}
+        padding(padding) {
+  }
+#else
+        padding_right(padding_right) {
+  }
+#endif  // !ENABLE_MKLDNN_V1
 };
 
 template <typename T>
@@ -241,8 +253,12 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
         prop_kind::forward, ALGORITHM::convolution_direct, *context_.src_md,
         *context_.diff_filter_md, *context_.diff_dst_md,
         convBwdFilterDims.strides, convBwdFilterDims.dilations,
+#ifndef ENABLE_MKLDNN_V1
         convBwdFilterDims.padding_left, convBwdFilterDims.padding_right,
         convBwdFilterDims.padding));
+#else
+        convBwdFilterDims.padding_left, convBwdFilterDims.padding_right));
+#endif  // !ENABLE_MKLDNN_V1
     context_.fwd_pd.reset(new ConvFwdPd(*context_.fwd_desc, cpu_engine_));
 
     // Create descriptor and primitive descriptor for convolution bwd filter.
@@ -252,14 +268,22 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
           *context_.diff_filter_md, *context_.diff_bias_md,
           *context_.diff_dst_md, convBwdFilterDims.strides,
           convBwdFilterDims.dilations, convBwdFilterDims.padding_left,
+#ifndef ENABLE_MKLDNN_V1
           convBwdFilterDims.padding_right, convBwdFilterDims.padding));
+#else
+          convBwdFilterDims.padding_right));
+#endif  // !ENABLE_MKLDNN_V1
     } else {
       context_.bwd_filter_desc.reset(new ConvBwdFilterDesc(
           ALGORITHM::convolution_direct, *context_.src_md,
           *context_.diff_filter_md, *context_.diff_dst_md,
           convBwdFilterDims.strides, convBwdFilterDims.dilations,
+#ifndef ENABLE_MKLDNN_V1
           convBwdFilterDims.padding_left, convBwdFilterDims.padding_right,
           convBwdFilterDims.padding));
+#else
+          convBwdFilterDims.padding_left, convBwdFilterDims.padding_right));
+#endif  // !ENABLE_MKLDNN_V1
     }
     context_.bwd_filter_pd.reset(new ConvBwdFilterPd(
         *context_.bwd_filter_desc, cpu_engine_, *context_.fwd_pd));
@@ -495,11 +519,14 @@ class MklConvCustomBackpropFilterOp
       // The default dilation factor for each dimension is 1 in TF and
       // 0 in MKL-DNN.
       for (int i = 0; i < dilations.size(); ++i) --dilations[i];
-
       MklConvBwdFilterParams convBwdFilterDims(
           fwd_src_dims, fwd_filter_dims, diff_bias_dims, diff_dst_dims, strides,
+#ifndef ENABLE_MKLDNN_V1
           dilations, padding_left, padding_right,
           TFPaddingToMklDnnPadding(this->padding_));
+#else
+          dilations, padding_left, padding_right);
+#endif  // !ENABLE_MKLDNN_V1
 
       // MKL-DNN allocates large buffers when a conv gradient filter primtive is
       // created. So we don't cache conv backward primitives when the env
