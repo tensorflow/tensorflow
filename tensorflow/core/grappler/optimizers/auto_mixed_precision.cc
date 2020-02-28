@@ -1377,10 +1377,10 @@ bool AutoMixedPrecisionImpl::IsSourceOrSinkOp(const string& op) const {
 }
 
 // Finds all clusters of float32 Tensor List nodes that are connected via their
-// handle edges. Unsafe clusters (those with edges that cross untraversable
-// boundaries via _Arg, _Ret, PartitionedCall etc. nodes) are added to black_set
-// and not returned. The caller should paint all nodes in a cluster the same
-// color, as they may all refer to the same Tensor List.
+// handle edges. Unsafe clusters (those with unprocessable nodes, or with edges
+// that cross untraversable boundaries via _Arg, _Ret, PartitionedCall etc.
+// nodes) are added to black_set. The caller should paint all nodes in a cluster
+// the same color, as they may all refer to the same Tensor List.
 void AutoMixedPrecisionImpl::FindFloat32TensorListOpClustersAndBlacklistUnsafe(
     std::vector<absl::flat_hash_set<const NodeDef*>>* tensor_list_clusters,
     absl::flat_hash_set<int>* black_set) const {
