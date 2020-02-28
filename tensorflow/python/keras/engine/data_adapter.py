@@ -1121,7 +1121,12 @@ class DataHandler(object):
       if self._insufficient_data:  # Set by `catch_stop_iteration`.
         break
       if self._adapter.should_recreate_iterator():
-        data_iterator = iter(self._dataset)
+        if ds_context.has_strategy():
+          # TODO(b/138326910): remove this when MultiDeviceIterator is a
+          # CompositeTensor (unless this is more efficient)
+          data_iterator._initializer  # pylint: disable=pointless-statement, protected-access
+        else:
+          data_iterator = iter(self._dataset)
       yield epoch, data_iterator
       self._adapter.on_epoch_end()
 
