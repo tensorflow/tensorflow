@@ -1885,9 +1885,12 @@ void ProcessSparseToDenseOperator(Model* model, SparseToDenseOperator* op) {
   } else {
     const std::vector<int64>& output_shape_data =
         output_shape_array.GetBuffer<ArrayDataType::kInt64>().data;
-    std::copy(
+    // explicitly cast elements to int in order to avoid MSVC warnings about
+    // narrowing conversion.
+    std::transform(
         output_shape_data.begin(), output_shape_data.end(),
-        std::back_inserter(*output_array.mutable_shape()->mutable_dims()));
+        std::back_inserter(*output_array.mutable_shape()->mutable_dims()),
+        [](const int64 dim) { return static_cast<int>(dim); });
   }
 }
 

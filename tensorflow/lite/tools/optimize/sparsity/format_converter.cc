@@ -304,7 +304,7 @@ void FormatConverter<T>::Populate(const T* src_data, std::vector<int> indices,
 template <typename T>
 TfLiteStatus FormatConverter<T>::SparseToDense(const T* src_data) {
   data_.resize(dense_size_);
-  std::fill(data_.begin(), data_.end(), 0);
+  std::fill(data_.begin(), data_.end(), T(0));
 
   int total_rank = traversal_order_.size();
   int src_data_ptr = 0;
