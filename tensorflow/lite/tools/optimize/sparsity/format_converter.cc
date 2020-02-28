@@ -285,10 +285,12 @@ void FormatConverter<T>::Populate(const T* src_data, std::vector<int> indices,
   }
 
   const int metadata_idx = 2 * level;
+  const int shape_of_level = dim_metadata_[metadata_idx][0];
   if (format_[level] == kTfLiteDimDense) {
-    for (int i = 0; i < dim_metadata_[metadata_idx][0]; i++) {
+    for (int i = 0; i < shape_of_level; i++) {
       indices[level] = i;
-      Populate(src_data, indices, level + 1, i, src_data_ptr);
+      Populate(src_data, indices, level + 1, prev_idx * shape_of_level + i,
+               src_data_ptr);
     }
   } else {
     const auto& array_segments = dim_metadata_[metadata_idx];
