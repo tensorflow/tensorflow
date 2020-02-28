@@ -46,6 +46,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
 
 def _create_simple_recurrent_keras_model(input_shape):
@@ -105,6 +107,26 @@ class TracingCallbackTest(
         r"Valid options.*NO_TENSOR.*"):
       dumping_callback.enable_dump_debug_info(
           self.dump_root, tensor_debug_mode="NONSENSICAL")
+
+  @parameterized.named_parameters(
+      ("NoTensor", "NO_TENSOR"),
+      ("CurtHealth", "CURT_HEALTH"),
+      ("ConciseHealth", "CONCISE_HEALTH"),
+      ("Shape", "SHAPE"),
+      ("FullTensor", "FULL_TENSOR"),
+  )
+  def testEnableDumpDebugInfoLogsTensorDebugModeAsStringName(self,
+                                                             tensor_debug_mode):
+    log_messages = []
+    def fake_logging_info(*args):
+      log_messages.append(args)
+    with test.mock.patch.object(
+        tf_logging, "info", side_effect=fake_logging_info):
+      dumping_callback.enable_dump_debug_info(
+          self.dump_root, tensor_debug_mode=tensor_debug_mode)
+      self.assertLen(log_messages, 1)
+      self.assertIn(self.dump_root, log_messages[0])
+      self.assertIn(tensor_debug_mode, log_messages[0])
 
   def testDisablingTracingCallbackWithoutEnablingFirstIsTolerated(self):
     dumping_callback.disable_dump_debug_info()
