@@ -341,7 +341,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
         Defaults to `value_rowids[-1]` (or zero if `value_rowids` is empty).
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
-        a valid `RaggedTensor`.
+        a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
+        since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor`.  `result.rank = values.rank + 1`.
@@ -450,7 +451,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
         zero and `row_splits[-1]` must be `nvals`.
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
-        a valid `RaggedTensor`.
+        a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
+        since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor`.  `result.rank = values.rank + 1`.
@@ -511,7 +513,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
         nonnegative.  `sum(row_lengths)` must be `nvals`.
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
-        a valid `RaggedTensor`.
+        a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
+        since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor`.  `result.rank = values.rank + 1`.
@@ -566,7 +569,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
         `row_starts[0]` must be zero.
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
-        a valid `RaggedTensor`.
+        a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
+        since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor`.  `result.rank = values.rank + 1`.
@@ -615,7 +619,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
         ascending order.  If `nrows>0`, then `row_limits[-1]` must be `nvals`.
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
-        a valid `RaggedTensor`.
+        a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
+        since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor`.  `result.rank = values.rank + 1`.
@@ -695,7 +700,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
         `uniform_row_length` might be zero.  `uniform_row_length*nrows` must
         be `nvals`.
       validate: If true, then use assertions to check that the arguments form
-        a valid `RaggedTensor`.
+        a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
+        since they must be checked for each tensor value.
       name: A name prefix for the RaggedTensor (optional).
 
     Returns:
@@ -819,7 +825,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       name: A name prefix for the RaggedTensor (optional).
 
       validate: If true, then use assertions to check that the arguments form
-        a valid `RaggedTensor`.
+        a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
+        since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor` (or `flat_values` if `nested_value_rowids` is empty).
@@ -871,8 +878,9 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       nested_row_splits: A list of 1-D integer tensors.  The `i`th tensor is
         used as the `row_splits` for the `i`th ragged dimension.
       name: A name prefix for the RaggedTensor (optional).
-      validate: If true, then use assertions to check that the arguments form a
-        valid `RaggedTensor`.
+      validate: If true, then use assertions to check that the arguments form
+        a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
+        since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor` (or `flat_values` if `nested_row_splits` is empty).
@@ -910,7 +918,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
         used as the `row_lengths` for the `i`th ragged dimension.
       name: A name prefix for the RaggedTensor (optional).
       validate: If true, then use assertions to check that the arguments form
-        a valid `RaggedTensor`.
+        a valid `RaggedTensor`.  Note: these assertions incur a runtime cost,
+        since they must be checked for each tensor value.
 
     Returns:
       A `RaggedTensor` (or `flat_values` if `nested_row_lengths` is empty).
