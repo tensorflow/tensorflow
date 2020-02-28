@@ -173,6 +173,12 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     self._training_state = None
     self.history = None
 
+    # These objects are used in the default `Model.compile`. They are not
+    # guaranteed to be set after `Model.compile` is called, as users can
+    # override compile with custom logic.
+    self.compiled_loss = None
+    self.compiled_metrics = None
+
   def get_weights(self):
     """Retrieves the weights of the model.
 
@@ -349,9 +355,12 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """Returns the model's metrics added using `compile`, `add_metric` APIs."""
     metrics = []
     if self._is_compiled:
-      # TODO(omalleyt): Track `CompiledLoss` and `CompiledMetrics` objects
+      # TODO(omalleyt): Track `LossesContainer` and `MetricsContainer` objects
       # so that attr names are not load-bearing.
-      metrics = self.compiled_loss.metrics + self.compiled_metrics.metrics
+      if self.compiled_loss is not None:
+        metrics += self.compiled_loss.metrics
+      if self.compiled_metrics is not None:
+        metrics += self.compiled_metrics.metrics
 
     all_layers = self._gather_unique_layers()
     for l in all_layers:
@@ -414,7 +423,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
   def run_eagerly(self, value):
     self._run_eagerly = value
 
-  def _train_step(self, data):
+  def train_step(self, data):
     """The logic for one training step.
 
     This method can be overridden to support custom training logic.
@@ -462,7 +471,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
     return {m.name: m.result() for m in self.metrics}
 
-  def _make_train_function(self):
+  def make_train_function(self):
     """Creates a function that executes one step of training.
 
     This method can be overridden to support custom training logic.
@@ -488,7 +497,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     def train_function(iterator):
       data = next(iterator)
       outputs = self.distribute_strategy.experimental_run_v2(
-          self._train_step, args=(data,))
+          self.train_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='first')
       return outputs
@@ -747,7 +756,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           steps=data_handler._steps)  # pylint: disable=protected-access
 
       self.stop_training = False
-      train_function = self._make_train_function()
+      train_function = self.make_train_function()
       callbacks.on_train_begin()
       # Handle fault-tolerance for multi-worker.
       # TODO(omalleyt): Fix the ordering issues that mean this has to
@@ -799,7 +808,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       callbacks.on_train_end()
       return self.history
 
-  def _test_step(self, data):
+  def test_step(self, data):
     """The logic for one evaluation step.
 
     This method can be overridden to support custom evaluation logic.
@@ -833,7 +842,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
     return {m.name: m.result() for m in self.metrics}
 
-  def _make_test_function(self):
+  def make_test_function(self):
     """Creates a function that executes one step of evaluation.
 
     This method can be overridden to support custom evaluation logic.
@@ -858,7 +867,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     def test_function(iterator):
       data = next(iterator)
       outputs = self.distribute_strategy.experimental_run_v2(
-          self._test_step, args=(data,))
+          self.test_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='first')
       return outputs
@@ -986,7 +995,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             epochs=1,
             steps=data_handler._steps)  # pylint: disable=protected-access
 
-      test_function = self._make_test_function()
+      test_function = self.make_test_function()
       callbacks.on_test_begin()
       for _, iterator in data_handler.enumerate_epochs():  # Single epoch.
         self.reset_metrics()
@@ -1012,7 +1021,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           return results[0]
         return results
 
-  def _predict_step(self, data):
+  def predict_step(self, data):
     """The logic for one inference step.
 
     This method can be overridden to support custom inference logic.
@@ -1036,7 +1045,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     x, _, _ = data_adapter.unpack_x_y_sample_weight(data)
     return self(x, training=False)
 
-  def _make_predict_function(self):
+  def make_predict_function(self):
     """Creates a function that executes one step of inference.
 
     This method can be overridden to support custom inference logic.
@@ -1060,7 +1069,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     def predict_function(iterator):
       data = next(iterator)
       outputs = self.distribute_strategy.experimental_run_v2(
-          self._predict_step, args=(data,))
+          self.predict_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='concat')
       return outputs
@@ -1173,7 +1182,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           epochs=1,
           steps=data_handler._steps)  # pylint: disable=protected-access
 
-      predict_function = self._make_predict_function()
+      predict_function = self.make_predict_function()
       callbacks.on_predict_begin()
       for _, iterator in data_handler.enumerate_epochs():  # Single epoch.
         with data_handler.catch_stop_iteration():
@@ -1254,7 +1263,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
                                                     y, sample_weight,
                                                     class_weight)
-      train_function = self._make_train_function()
+      train_function = self.make_train_function()
       logs = train_function(iterator)
 
     if reset_metrics:
@@ -1312,7 +1321,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     with self.distribute_strategy.scope():
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
                                                     y, sample_weight)
-      test_function = self._make_test_function()
+      test_function = self.make_test_function()
       logs = test_function(iterator)
 
     if reset_metrics:
@@ -1344,7 +1353,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     self._check_call_args('predict_on_batch')
     with self.distribute_strategy.scope():
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x)
-      predict_function = self._make_predict_function()
+      predict_function = self.make_predict_function()
       outputs = predict_function(iterator)
     return to_numpy(outputs)
 

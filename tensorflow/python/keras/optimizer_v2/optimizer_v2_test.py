@@ -689,7 +689,8 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           loss='categorical_crossentropy',
           metrics=[],
           run_eagerly=testing_utils.should_run_eagerly())
-      model_v2._make_train_function()
+      if not ops.executing_eagerly_outside_functions():
+        model_v2._make_train_function()
       if test_weights:
         opt_v2.set_weights(opt_v1.get_weights())
 
