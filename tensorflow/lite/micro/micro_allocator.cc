@@ -317,7 +317,9 @@ TfLiteStatus InitializeRuntimeTensor(
 
     result->quantization = {kTfLiteAffineQuantization, quantization};
   }
-  result->name = flatbuffer_tensor.name()->c_str();
+  if (flatbuffer_tensor.name() != nullptr) {
+    result->name = flatbuffer_tensor.name()->c_str();
+  }
   return kTfLiteOk;
 }
 }  // namespace internal
