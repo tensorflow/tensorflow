@@ -463,13 +463,14 @@ tf_device::LaunchOp AssignDevicesToReplicatedExecute(
 
 // Creates a `tf.TPUCompileSucceededAssert` operation that parses compilation
 // status of `compile_op` to check whether compilation is successful.
-// TODO(lyandy): Assign compilation device as op device.
 void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
+                                      llvm::StringRef compilation_device,
                                       OpBuilder* builder) {
   OperationState assert_op_state(compile_op->getLoc(),
                                  "tf.TPUCompileSucceededAssert");
   assert_op_state.addOperands(compile_op->getResult(0));
-  builder->createOperation(assert_op_state);
+  Operation* assert_op = builder->createOperation(assert_op_state);
+  WrapOpInLaunch(builder, compile_op->getLoc(), assert_op, compilation_device);
 }
 
 // Rewrites a `tf_device.launch_func` operation into a set of TPU Runtime
@@ -577,7 +578,8 @@ LogicalResult Rewrite(
   for (auto compile_result_op : block->getOps<TF::TPUCompilationResultOp>())
     compile_result_op.output().replaceAllUsesWith(compile_op->getResult(0));
 
-  BuildTPUCompileSucceededAssertOp(compile_op, builder);
+  BuildTPUCompileSucceededAssertOp(
+      compile_op, tpu_device_assignment.compilation_device, builder);
 
   if (num_cores_per_replica > 1) {
     // For model parallelism, tf_device.parallel_execute is used to express

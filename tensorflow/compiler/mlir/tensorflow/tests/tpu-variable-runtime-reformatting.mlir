@@ -65,7 +65,10 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
         mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<!tf.string>)
       tf_device.return %2#0, %2#1 : tensor<!tf.string>, tensor<!tf.string>
     }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<!tf.string>)
-    "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+    "tf_device.launch"() ( {
+      "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+      tf_device.return
+    }) {device = "/device:CPU:0"} : () -> ()
     // CHECK: tf_device.replicate
     // CHECK-SAME: [%[[BODY_ARG1]], %[[BODY_ARG2]]] as %[[R0:.*]]: tensor<*x!tf.resource<tensor<f32>>>,
     // CHECK-SAME: [%[[BODY_ARG3]], %[[BODY_ARG4]]] as %[[R1:.*]]: tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>,
@@ -154,7 +157,10 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
         mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<!tf.string>)
       tf_device.return %2#0, %2#1 : tensor<!tf.string>, tensor<!tf.string>
     }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<!tf.string>)
-    "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+    "tf_device.launch"() ( {
+      "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+      tf_device.return
+    }) {device = "/device:CPU:0"} : () -> ()
     %id0 = "tf.Identity"(%arg3) : (tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>) -> tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>
     "tf._Unknown_"(%id0) : (tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>) -> ()
     %newvar = "tf._SomeOp"() : () -> tensor<*x!tf.resource<tensor<f32>>>

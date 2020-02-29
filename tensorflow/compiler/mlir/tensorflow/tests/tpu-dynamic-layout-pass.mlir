@@ -21,7 +21,12 @@ func @non_replicated(%arg0: tensor<*x!tf.resource> {tf.device = "/device:CPU:0"}
     : (tensor<*x!tf.resource>) -> (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>)
   // CHECK-DAG: %[[COPY0:.*]] = "tf.TPUCopyWithLayout"(%[[ITER]]#0, %[[LAYOUT0]]) {device = "/device:TPU:0"}
   // CHECK-DAG: %[[COPY1:.*]] = "tf.TPUCopyWithLayout"(%[[ITER]]#1, %[[LAYOUT1]]) {device = "/device:TPU:0"}
-  "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+  // CHECK: "tf_device.launch"
+  // CHECK-NEXT: "tf.TPUCompileSucceededAssert"
+  "tf_device.launch"() ( {
+    "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+    tf_device.return
+  }) {device = "/device:CPU:0"} : () -> ()
   // CHECK: "tf_device.launch"
   // CHECK-NEXT: "tf.TPUExecute"(%[[COPY0]], %[[COPY1]], %[[COMPILE]]#1)
   %execute = "tf_device.launch"() ( {
@@ -51,7 +56,10 @@ func @multiple_compile_uses(%arg0: tensor<*x!tf.resource> {tf.device = "/device:
   // CHECK-NOT: "tf.TPUCopyWithLayout"
   %2:2 = "tf.IteratorGetNext"(%arg0) {device = "/device:CPU:0"}
     : (tensor<*x!tf.resource>) -> (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>)
-  "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+  "tf_device.launch"() ( {
+    "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+    tf_device.return
+  }) {device = "/device:CPU:0"} : () -> ()
   %execute0 = "tf_device.launch"() ( {
     %3 = "tf.TPUExecute"(%2#0, %2#1, %compile#1)
       : (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>, tensor<!tf.string>) -> tensor<i32>
@@ -84,7 +92,10 @@ func @on_tpu_iter(%arg0: tensor<*x!tf.resource> {tf.device = "/device:TPU:0"}) -
   // CHECK-NOT: "tf.TPUCopyWithLayout"
   %2:2 = "tf.IteratorGetNext"(%arg0) {device = "/device:TPU:0"}
     : (tensor<*x!tf.resource>) -> (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>)
-  "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+  "tf_device.launch"() ( {
+    "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+    tf_device.return
+  }) {device = "/device:CPU:0"} : () -> ()
   %execute = "tf_device.launch"() ( {
     %3 = "tf.TPUExecute"(%2#0, %2#1, %compile#1)
       : (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>, tensor<!tf.string>) -> tensor<i32>
@@ -110,7 +121,10 @@ func @unsupported_ops(%arg0: tensor<3x3x1x32xf32>) -> tensor<i32> {
   // CHECK-NOT: "tf.TPUGetLayoutOp"
   // CHECK-NOT: "tf.TPUCopyWithLayout"
   %2 = "tf._Unknown_"() : () -> tensor<3x3x1x32xf32>
-  "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+  "tf_device.launch"() ( {
+    "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+    tf_device.return
+  }) {device = "/device:CPU:0"} : () -> ()
   %execute = "tf_device.launch"() ( {
     %3 = "tf.TPUExecute"(%arg0, %2, %compile#1)
       : (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>, tensor<!tf.string>) -> tensor<i32>
@@ -147,7 +161,10 @@ func @replicated(%arg0: tensor<*x!tf.resource> {tf.device = "/device:CPU:0"}) ->
     : (tensor<*x!tf.resource>) -> (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>)
   // CHECK-DAG: %[[COPY2:.*]] = "tf.TPUCopyWithLayout"(%[[ITER1]]#0, %[[LAYOUT0]]) {device = "/device:TPU:1"}
   // CHECK-DAG: %[[COPY3:.*]] = "tf.TPUCopyWithLayout"(%[[ITER1]]#1, %[[LAYOUT1]]) {device = "/device:TPU:1"}
-  "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+  "tf_device.launch"() ( {
+    "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+    tf_device.return
+  }) {device = "/device:CPU:0"} : () -> ()
   // CHECK: tf_device.replicate([%[[COPY0]], %[[COPY2]]] as %[[R0:.*]]: tensor<3x3x1x32xf32>, [%[[COPY1]], %[[COPY3]]] as %[[R1:.*]]: tensor<3x3x1x32xf32>)
   %5:2 = tf_device.replicate([%2#0, %3#0] as %r0: tensor<3x3x1x32xf32>, [%2#1, %3#1] as %r1: tensor<3x3x1x32xf32>)
       {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]}} {
@@ -177,7 +194,10 @@ func @inside_replicated(%arg0: tensor<*x!tf.resource>, %arg1: tensor<*x!tf.resou
   }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<!tf.string>)
   // CHECK-NOT: "tf.TPUGetLayoutOp"
   // CHECK-NOT: "tf.TPUCopyWithLayout"
-  "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+  "tf_device.launch"() ( {
+    "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
+    tf_device.return
+  }) {device = "/device:CPU:0"} : () -> ()
   %5:2 = tf_device.replicate([%arg0, %arg1] as %r0: tensor<*x!tf.resource>)
       {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/device:TPU:0", "/device:TPU:1"]}} {
     %2:2 = "tf.IteratorGetNext"(%r0)

@@ -440,6 +440,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
     // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
     // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
     // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:0"
@@ -482,6 +485,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       // CHECK-SAME: func @main
       // CHECK-SAME: tf.B
       // CHECK-NOT: func = @tpu0_func
+      // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+      // CHECK: "tf_device.launch"
+      // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
       // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
       // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
       // CHECK-NEXT: "tf.TPUExecute"(%[[RI_0]], %[[COMPILE_OUTPUT]]#1)
@@ -554,6 +560,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
     // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
     // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:0"
@@ -600,6 +609,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @referenced_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
     // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
 
@@ -646,6 +657,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: @referenced_func2
     // CHECK-SAME: tf.E
     // CHECK-NOT: func = @tpu0_func
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
     // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
 
@@ -697,6 +710,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-COUNT-1: func @referenced_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
     // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
 
@@ -740,6 +755,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func0
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE0_OUTPUT]]#0)
     // CHECK: %[[EXECUTE0_OUTPUT:[0-9]*]] = "tf_device.launch"
     // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE0_OUTPUT]]#1)
 
@@ -753,6 +770,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func1
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE1_OUTPUT]]#0)
     // CHECK: %[[EXECUTE1_OUTPUT:[0-9]*]] = "tf_device.launch"
     // CHECK-NEXT: "tf.TPUExecute"(%[[EXECUTE0_OUTPUT]], %[[COMPILE1_OUTPUT]]#1)
 
@@ -794,6 +813,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE0_OUTPUT]]#0)
     // CHECK: %[[EXECUTE0_OUTPUT:[0-9]*]] = "tf_device.launch"
     // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE0_OUTPUT]]#1)
 
@@ -807,6 +828,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE1_OUTPUT]]#0)
     // CHECK: %[[EXECUTE1_OUTPUT:[0-9]*]] = "tf_device.launch"
     // CHECK-NEXT: "tf.TPUExecute"(%[[EXECUTE0_OUTPUT]], %[[COMPILE1_OUTPUT]]#1)
 
@@ -851,6 +874,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.G
     // CHECK-SAME: func @referenced_func0
     // CHECK-SAME: tf.F
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
     // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
 
@@ -899,6 +924,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
     // CHECK-NEXT: "tf._TPUCompileMlir"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
     // CHECK-NEXT: "tf.TPUExecute"
     %1 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<?xi32>) -> tensor<?xi32>
