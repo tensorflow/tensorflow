@@ -614,11 +614,12 @@ class SingleOpModel {
     std::vector<int> traversal_order(dims_count);
     std::vector<T> dense_data(data);
 
-    // Compress all dimensions and traverse them in the original order.
+    // Compress only the last dimension and traverse in the original order.
     for (int i = 0; i < dims_count; i++) {
-      format[i] = kTfLiteDimSparseCSR;
+      format[i] = kTfLiteDimDense;
       traversal_order[i] = i;
     }
+    format[dims_count - 1] = kTfLiteDimSparseCSR;
 
     tflite::optimize::sparsity::FormatConverter<T> converter(
         shape, traversal_order, format);
@@ -630,20 +631,26 @@ class SingleOpModel {
     // Build sparsity parameter.
     std::vector<flatbuffers::Offset<DimensionMetadata>> fb_dim_metadata(
         dims_count);
-    for (int i = 0; i < dims_count; i++) {
+    for (int i = 0; i < dims_count - 1; i++) {
       const int metadata_idx = 2 * i;
-      auto array_segments =
-          CreateInt32Vector(builder_,
-                            builder_.CreateVector(dim_metadata[metadata_idx]))
-              .Union();
-      auto array_indices =
-          CreateInt32Vector(
-              builder_, builder_.CreateVector(dim_metadata[metadata_idx + 1]))
-              .Union();
       fb_dim_metadata[i] = CreateDimensionMetadata(
-          builder_, DimensionType_SPARSE_CSR, 0, SparseIndexVector_Int32Vector,
-          array_segments, SparseIndexVector_Int32Vector, array_indices);
+          builder_, DimensionType_DENSE, dim_metadata[metadata_idx][0]);
     }
+
+    // Parameters for the last compressed dimension.
+    const int compressed_metadata_idx = 2 * (dims_count - 1);
+    auto array_segments =
+        CreateInt32Vector(builder_, builder_.CreateVector(
+                                        dim_metadata[compressed_metadata_idx]))
+            .Union();
+    auto array_indices =
+        CreateInt32Vector(
+            builder_,
+            builder_.CreateVector(dim_metadata[compressed_metadata_idx + 1]))
+            .Union();
+    fb_dim_metadata[dims_count - 1] = CreateDimensionMetadata(
+        builder_, DimensionType_SPARSE_CSR, 0, SparseIndexVector_Int32Vector,
+        array_segments, SparseIndexVector_Int32Vector, array_indices);
 
     flatbuffers::Offset<SparsityParameters> s_param = CreateSparsityParameters(
         builder_, builder_.CreateVector(traversal_order), 0,
