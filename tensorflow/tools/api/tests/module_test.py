@@ -74,7 +74,7 @@ class ModuleTest(test.TestCase):
     # If we use v2 API, check for create_file_writer,
     # otherwise check for FileWriter.
     if hasattr(tf, '_major_api_version') and tf._major_api_version == 2:
-      tf.compat.v1.summary.create_file_writer
+      tf.compat.v2.summary.create_file_writer
     else:
       tf.compat.v1.summary.FileWriter
     # pylint: enable=pointless-statement
