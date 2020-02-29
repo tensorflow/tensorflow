@@ -646,8 +646,7 @@ class CategoricalHinge(LossFunctionWrapper):
   """Computes the categorical hinge loss between `y_true` and `y_pred`.
 
   `loss = maximum(neg - pos + 1, 0)`
-  where `neg = maximum((1 - y_true)*y_pred)` and `pos = sum(y_true * y_pred)`
-
+  where `neg = sum(y_true * y_pred)` and `pos = maximum(1 - y_true)`	
   Usage:
 
   >>> h = tf.keras.losses.CategoricalHinge()
