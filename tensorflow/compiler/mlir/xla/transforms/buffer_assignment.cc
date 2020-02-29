@@ -124,7 +124,29 @@ template <typename AliasesT, typename DominatorT>
 static Operation* getAllocPosition(Value value, const Liveness& liveness,
                                    const AliasesT& aliases,
                                    const DominatorT& dominators) {
-  return nullptr;
+  // Determine the actual block to place the alloc and get liveness information.
+  auto placementBlock = findPlacementBlock(value, aliases, dominators);
+  auto livenessInfo = liveness.getLiveness(placementBlock);
+
+  // We have to ensure that the alloc will be before the first use of all
+  // aliases of the given value. We first assume that there are no uses in the
+  // placementBlock and that we can safely place the alloc before the terminator
+  // at the end of the block.
+  Operation* startOperation = placementBlock->getTerminator();
+  // Iterate over all aliases and ensure that the startOperation will point to
+  // the first operation of all potential aliases in the placementBlock.
+  for (auto alias : aliases) {
+    auto aliasStartOperation = livenessInfo->getStartOperation(alias);
+    // Check whether the aliasStartOperation lies in the desired block and
+    // whether it is before the current startOperation. If yes, this will be the
+    // new startOperation.
+    if (aliasStartOperation->getBlock() == placementBlock &&
+        aliasStartOperation->isBeforeInBlock(startOperation))
+      startOperation = aliasStartOperation;
+  }
+  // startOperation is the first operation before which we can safely store the
+  // alloc taking all potential aliases into account.
+  return startOperation;
 }
 
 /// Finds a proper dealloc positions according to the algorithm described at the
@@ -133,7 +155,29 @@ template <typename AliasesT, typename DominatorT>
 static Operation* getDeallocPosition(Value value, const Liveness& liveness,
                                      const AliasesT& aliases,
                                      const DominatorT& postDominators) {
-  return nullptr;
+  // Determine the actual block to place the dealloc and get liveness
+  // information.
+  auto placementBlock = findPlacementBlock(value, aliases, postDominators);
+  auto livenessInfo = liveness.getLiveness(placementBlock);
+
+  // We have to ensure that the dealloc will be after the last use of all
+  // aliases of the given value. We first assume that there are no uses in the
+  // placementBlock and that we can safely place the dealloc at the beginning.
+  Operation* endOperation = &placementBlock->front();
+  // Iterate over all aliases and ensure that the endOperation will point to the
+  // last operation of all potential aliases in the placementBlock.
+  for (auto alias : aliases) {
+    auto aliasEndOperation = livenessInfo->getEndOperation(alias, endOperation);
+    // Check whether the aliasEndOperation lies in the desired block and whether
+    // it is behind the current endOperation. If yes, this will be the new
+    // endOperation.
+    if (aliasEndOperation->getBlock() == placementBlock &&
+        endOperation->isBeforeInBlock(aliasEndOperation))
+      endOperation = aliasEndOperation;
+  }
+  // endOperation is the last operation behind which we can safely store the
+  // dealloc taking all potential aliases into account.
+  return endOperation;
 }
 
 /// Creates a new BufferAssignment analysis.
