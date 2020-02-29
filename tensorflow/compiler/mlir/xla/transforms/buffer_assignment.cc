@@ -97,6 +97,45 @@ BufferAssignmentPositions::BufferAssignmentPositions(Operation* allocPosition,
 // BufferAssignment
 //===----------------------------------------------------------------------===//
 
+/// Finds a proper placement block to store alloc/dealloc node according to the
+/// algorithm descirbed at the top of the file. It supports dominator and
+/// post-dominator analyses via template arguments.
+template <typename AliasesT, typename DominatorT>
+static Block* findPlacementBlock(Value value, const AliasesT& aliases,
+                                 const DominatorT& doms) {
+  assert(!value.isa<BlockArgument>() & "Cannot place a block argument");
+  // Start with the current block the value is defined in.
+  Block* dom = value.getDefiningOp()->getBlock();
+  // Iterate over all aliases and their uses to find a safe placement block
+  // according to the given dominator information.
+  for (auto alias : aliases) {
+    for (auto user : alias.getUsers()) {
+      // Move upwards in the dominator tree to find an appropriate
+      // dominator block that takes the current use into account.
+      dom = doms.findNearestCommonDominator(dom, user->getBlock());
+    }
+  }
+  return dom;
+}
+
+/// Finds a proper alloc positions according to the algorithm described at the
+/// top of the file.
+template <typename AliasesT, typename DominatorT>
+static Operation* getAllocPosition(Value value, const Liveness& liveness,
+                                   const AliasesT& aliases,
+                                   const DominatorT& dominators) {
+  return nullptr;
+}
+
+/// Finds a proper dealloc positions according to the algorithm described at the
+/// top of the file.
+template <typename AliasesT, typename DominatorT>
+static Operation* getDeallocPosition(Value value, const Liveness& liveness,
+                                     const AliasesT& aliases,
+                                     const DominatorT& postDominators) {
+  return nullptr;
+}
+
 /// Creates a new BufferAssignment analysis.
 BufferAssignment::BufferAssignment(Operation* op)
     : operation(op),
@@ -109,7 +148,15 @@ BufferAssignment::BufferAssignment(Operation* op)
 /// value.
 BufferAssignmentPositions BufferAssignment::computeAllocAndDeallocPositions(
     Value value) const {
-  // TODO
+  // Check for an artifical case that a dead value is passed to this function
+  if (value.use_empty())
+    return BufferAssignmentPositions(value.getDefiningOp(),
+                                     value.getDefiningOp());
+  // Get all possible aliases
+  auto possibleValues = aliases.resolve(value);
+  return BufferAssignmentPositions(
+      getAllocPosition(value, liveness, possibleValues, dominators),
+      getDeallocPosition(value, liveness, possibleValues, postDominators));
 }
 
 }  // namespace xla
