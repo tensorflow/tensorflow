@@ -42,13 +42,13 @@ To install the current release, which includes support for
 Windows)*:
 
 ```
-$ pip3 install tensorflow
+$ pip install tensorflow
 ```
 
 A smaller CPU-only package is also available:
 
 ```
-$ pip3 install tensorflow-cpu
+$ pip install tensorflow-cpu
 ```
 
 To update TensorFlow to the latest version, add `--upgrade` flag to the above
