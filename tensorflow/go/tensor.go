@@ -243,12 +243,11 @@ func decodeTensor(raw []byte, shape []int64, dt DataType) reflect.Value {
 	l := n * int(typ.Size())
 	typ = reflect.SliceOf(typ)
 	slice := reflect.MakeSlice(typ, n, n)
-	h := sliceHeader{
-		Data: unsafe.Pointer(slice.Pointer()),
+	baseBytes := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: slice.Pointer(),
 		Len:  l,
 		Cap:  l,
-	}
-	baseBytes := *(*[]byte)(unsafe.Pointer(&h))
+	}))
 	copy(baseBytes, raw)
 	// Now we have the data in place in the base slice we can add the
 	// dimensions. We want to walk backwards through the shape. If the shape is
@@ -283,23 +282,27 @@ func decodeTensor(raw []byte, shape []int64, dt DataType) reflect.Value {
 		// We insert slice headers directly into this data.
 		data := slice.Pointer()
 		nextSlice := reflect.MakeSlice(typ, n, n)
-		nextData := nextSlice.Pointer()
-		const sliceSize = unsafe.Sizeof(sliceHeader{})
+
 		for j := 0; j < n; j++ {
-			// This is equivalent to h := slice[j*subsliceLen: (j+1)*subsliceLen]
-			h := sliceHeader{
-				Data: unsafe.Pointer(data + (uintptr(j*subsliceLen) * underlyingSize)),
+			// This is equivalent to nSlice[j] = slice[j*subsliceLen: (j+1)*subsliceLen]
+			setSliceInSlice(nextSlice, j, reflect.SliceHeader{
+				Data: data + (uintptr(j*subsliceLen) * underlyingSize),
 				Len:  subsliceLen,
 				Cap:  subsliceLen,
-			}
-
-			// This is equivalent to nSlice[j] = h
-			*(*sliceHeader)(unsafe.Pointer(nextData + (uintptr(j) * sliceSize))) = h
+			})
 		}
 
 		slice = nextSlice
 	}
 	return slice
+}
+
+//go:nocheckptr
+// setSliceInSlice sets slice[index] = content. We set nocheckptr as the pointer
+// checking stuff doesn't seem to work well with reflection.
+func setSliceInSlice(slice reflect.Value, index int, content reflect.SliceHeader) {
+	const sliceSize = unsafe.Sizeof(reflect.SliceHeader{})
+	*(*reflect.SliceHeader)(unsafe.Pointer(slice.Pointer() + (uintptr(index) * sliceSize))) = content
 }
 
 // WriteContentsTo writes the serialized contents of t to w.
@@ -454,26 +457,16 @@ func encodeTensorWithSlices(w *bytes.Buffer, v reflect.Value, shape []int64) err
 	return nil
 }
 
-// sliceHeader is a safer version of reflect.SliceHeader. Using unsafe.Pointer
-// for Data reduces potential issues with the GC. The reflect package uses a
-// similar struct internally.
-type sliceHeader struct {
-	Data unsafe.Pointer
-	Len  int
-	Cap  int
-}
-
 // copyPtr copies the backing data for a slice or array directly into w. Note
 // we don't need to worry about byte ordering because we want the natural byte
 // order for the machine we're running on.
 func copyPtr(w *bytes.Buffer, ptr unsafe.Pointer, l int) error {
-	h := sliceHeader{
-		Data: ptr,
+	// Convert our slice header into a []byte so we can call w.Write
+	b := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: uintptr(ptr),
 		Len:  l,
 		Cap:  l,
-	}
-	// Convert our slice header into a []byte so we can call w.Write
-	b := *(*[]byte)(unsafe.Pointer(&h))
+	}))
 	_, err := w.Write(b)
 	return err
 }
