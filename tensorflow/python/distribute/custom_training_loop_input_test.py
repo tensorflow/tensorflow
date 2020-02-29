@@ -23,6 +23,7 @@ from absl.testing import parameterized
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
@@ -349,6 +350,78 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
                         data[0:distribution.num_replicas_in_sync])
     backing_devices = [result.backing_device for result in local_results]
     self.assertAllEqual(backing_devices, distribution.extended.worker_devices)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetPrefetch(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_dataset(
+            get_dataset_from_tensor_slices(data).batch(2)))
+
+    local_results = distribution.experimental_local_results(
+        input_iterator.get_next())
+
+    backing_devices = [result.backing_device for result in local_results]
+    self.assertAllEqual(backing_devices, distribution.extended.worker_devices)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetFunctionPrefetch(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(
+            lambda _: get_dataset_from_tensor_slices(data)))
+
+    local_results = distribution.experimental_local_results(
+        input_iterator.get_next())
+
+    backing_devices = [result.backing_device for result in local_results]
+    self.assertAllEqual(backing_devices, distribution.extended.worker_devices)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.tpu_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetHostPrefetch(self, distribution):
+    data = [5., 6., 7., 8.]
+    distribution.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
+    input_iterator = iter(
+        distribution.experimental_distribute_dataset(
+            get_dataset_from_tensor_slices(data).batch(2)))
+
+    local_results = distribution.experimental_local_results(
+        input_iterator.get_next())
+
+    for result in local_results:
+      self.assertEqual(result.backing_device,
+                       device_util.resolve("/device:CPU:0"))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.tpu_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetFunctionHostPrefetch(self, distribution):
+    data = [5., 6., 7., 8.]
+    distribution.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(
+            lambda _: get_dataset_from_tensor_slices(data)))
+
+    local_results = distribution.experimental_local_results(
+        input_iterator.get_next())
+
+    for result in local_results:
+      self.assertEqual(result.backing_device,
+                       device_util.resolve("/device:CPU:0"))
 
   @combinations.generate(
       combinations.combine(
