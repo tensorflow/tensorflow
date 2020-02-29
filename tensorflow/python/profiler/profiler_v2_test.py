@@ -62,7 +62,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
         self.assertEqual(file_name, 'plugins')
       else:
         self.assertTrue(file_name.endswith('.profile-empty'))
-    profile_dir = os.path.join(logdir, 'plugins/profile/')
+    profile_dir = os.path.join(logdir, 'plugins', 'profile')
     run = gfile.ListDirectory(profile_dir)[0]
     hostname = socket.gethostname()
     overview_page = os.path.join(profile_dir, run,

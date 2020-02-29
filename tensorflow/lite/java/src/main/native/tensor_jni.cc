@@ -482,6 +482,18 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_index(JNIEnv* env,
   return GetTensorIndexFromHandle(env, handle);
 }
 
+JNIEXPORT jfloat JNICALL Java_org_tensorflow_lite_Tensor_quantizationScale(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  const TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  return static_cast<jfloat>(tensor ? tensor->params.scale : 0.f);
+}
+
+JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_quantizationZeroPoint(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  const TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  return static_cast<jint>(tensor ? tensor->params.zero_point : 0);
+}
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

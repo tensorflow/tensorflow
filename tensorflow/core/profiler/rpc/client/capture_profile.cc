@@ -60,6 +60,7 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
   }
   request.add_tools("op_profile");
   request.add_tools("input_pipeline");
+  request.add_tools("kernel_stats");
   request.add_tools("memory_viewer");
   request.add_tools("overview_page");
   request.add_tools("pod_viewer");
@@ -88,10 +89,10 @@ inline bool ShouldRetryTracing(Status status) {
 // Returns whether the returned trace is empty.
 // Failure are handled by CHECK, i.e. abort()
 Status Profile(const string& service_addr, const string& logdir,
-               int duration_ms, const string& repository_root,
-               const string& session_id, const ProfileOptions& opts) {
+               int duration_ms, const string& session_id,
+               const ProfileOptions& opts) {
   ProfileRequest request =
-      PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
+      PopulateProfileRequest(duration_ms, logdir, session_id, opts);
 
   ::grpc::ClientContext context;
   ::grpc::ChannelArguments channel_args;
@@ -128,10 +129,9 @@ Status Profile(const string& service_addr, const string& logdir,
 // Start a new profiling session that include all the hosts included in
 // hostnames, for the time interval of duration_ms. Possibly save the profiling
 // result in the directory specified by repository_root and session_id.
-Status NewSession(const string& service_addr,
+Status NewSession(const string& service_addr, const string& repository_root,
                   const std::vector<string>& hostnames, int duration_ms,
-                  const string& repository_root, const string& session_id,
-                  const ProfileOptions& opts) {
+                  const string& session_id, const ProfileOptions& opts) {
   NewProfileSessionRequest new_session_request;
   *new_session_request.mutable_request() =
       PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
@@ -149,8 +149,8 @@ Status NewSession(const string& service_addr,
   // TODO(jiesun): GRPC support following relevant naming scheme:
   // 1. dns:///host:port
   // 2. ipv4:host:port or ipv6:[host]:port
-  // We might need to change the prefix which depends on what TPU name resolver
-  // will give us.
+  // We might need to change the prefix which depends on what cluster name
+  // resolver will give us.
   std::unique_ptr<grpc::ProfileAnalysis::Stub> stub =
       grpc::ProfileAnalysis::NewStub(::grpc::CreateCustomChannel(
           "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
@@ -191,7 +191,7 @@ Status ValidateHostPortPair(const string& host_port) {
   return Status::OK();
 }
 
-// Starts tracing on a single or multiple TPU hosts and saves the result in the
+// Starts tracing on a single or multiple hosts and saves the result in the
 // given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts.
 Status Trace(const string& service_addr, const string& logdir,
@@ -199,8 +199,6 @@ Status Trace(const string& service_addr, const string& logdir,
              int duration_ms, int num_tracing_attempts) {
   // Use the current timestamp as the run name.
   tensorflow::string session_id = GetCurrentTimeStampAsString();
-  constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-  string repository_root = io::JoinPath(logdir, kProfilePluginDirectory);
   std::vector<string> hostnames;
   if (!workers_list.empty()) {
     hostnames = absl::StrSplit(workers_list, ',');
@@ -211,14 +209,12 @@ Status Trace(const string& service_addr, const string& logdir,
   ProfileOptions opts;
   opts.set_include_dataset_ops(include_dataset_ops);
   while (true) {
-    std::cout << "Starting to profile TPU traces for " << duration_ms << " ms. "
+    std::cout << "Starting to trace for " << duration_ms << " ms. "
               << "Remaining attempt(s): " << --remaining_attempts << std::endl;
     if (hostnames.empty()) {
-      status = Profile(service_addr, logdir, duration_ms, repository_root,
-                       session_id, opts);
+      status = Profile(service_addr, logdir, duration_ms, session_id, opts);
     } else {
-      string tpu_master = service_addr;
-      status = NewSession(tpu_master, hostnames, duration_ms, repository_root,
+      status = NewSession(service_addr, logdir, hostnames, duration_ms,
                           session_id, opts);
     }
     if (remaining_attempts <= 0 || status.ok() || !ShouldRetryTracing(status))

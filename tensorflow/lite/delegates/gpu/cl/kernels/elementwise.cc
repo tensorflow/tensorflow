@@ -48,6 +48,9 @@ std::string ElementwiseOneInput::GetCoreCode(
     case OperationType::COS:
       result = "$0 = cos($0);\n";
       break;
+    case OperationType::EXP:
+      result = "$0 = exp($0);\n";
+      break;
     case OperationType::HARD_SWISH:
       result =
           "$0 *= clamp($0 * (FLT)(0.16666667f) + (FLT)(0.5f), (FLT4)(0.0f), "

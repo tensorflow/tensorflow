@@ -68,7 +68,7 @@ struct FillPhiloxRandom {
         ctx, false,
         errors::Internal(
             "Default `FillPhiloxRandom` implementation should not be executed. "
-            "The cause of this error is probabily that `FillPhiloxRandom` does "
+            "The cause of this error is probably that `FillPhiloxRandom` does "
             "not support this device or random distribution yet."));
   }
 };

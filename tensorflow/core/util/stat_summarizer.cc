@@ -149,9 +149,9 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       // NOTE(fishx): We will record ops execution time twice: one as CPU
       // activity with device name "/host:CPU" and the other as TF runtime
       // activity with device name started with "/job:*". It is safe to ignore
-      // CPU activties here.
+      // CPU activities here.
       // TODO(b/138729463): Read ops execution time from CPU activities instead
-      // of runtime acitivities.
+      // of runtime activities.
       if (ds.device().find("/host:CPU") != std::string::npos) {
         continue;
       }

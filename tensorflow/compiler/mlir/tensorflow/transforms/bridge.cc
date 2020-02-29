@@ -32,6 +32,7 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateToIslandPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
+  pm.addNestedPass<FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass());
 }
 
 tensorflow::Status RunTPUBridge(
@@ -119,8 +120,13 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
   PassManager bridge(module.getContext());
 
   // Add logger to bridge passmanager.
-  if (enable_logging)
-    bridge.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>());
+  if (enable_logging) {
+    // Print the whole module after each pass, which requires disabling
+    // multi-threading as well.
+    bridge.disableMultithreading();
+    bridge.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
+        /* print_module_scope=*/true));
+  }
 
   StandardPipelineOptions pipeline_options;
   pipeline_options.enable_inliner.setValue(enable_inliner);

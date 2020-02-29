@@ -89,12 +89,26 @@ class MklDequantizeOp : public OpKernel {
       Tensor* output_tensor = nullptr;
       MklDnnShape output_mkl_shape;
       TensorShape output_tf_shape;
+#ifndef ENABLE_MKLDNN_V1
       memory::desc dst_md =
           src_mkl_shape.IsMklTensor()
               ? memory::desc(src_dims, MklDnnType<float>(),
-                             static_cast<memory::format>(src_md.data.format))
+                             static_cast<MEMORY_FORMAT>(src_md.data.format))
               : memory::desc(src_dims, MklDnnType<float>(),
                              MEMORY_FORMAT::nhwc);
+#else
+      memory::desc dst_md = memory::desc();
+      if (src_mkl_shape.IsMklTensor()) {
+        dst_md = memory::desc(src_mkl_shape.GetMklLayout().data);
+        // There is no API in MKL-DNN v1.x to construct memory descriptor with
+        // same .data field but different type.
+        dst_md.data.data_type = memory::convert_to_c(MklDnnType<float>());
+      } else {
+        dst_md =
+            memory::desc(src_dims, MklDnnType<float>(), MEMORY_FORMAT::nhwc);
+      }
+#endif  // !ENABLE_MKLDNN_V1
+
       // If input is MKL shape, output is also MKL shape.
       // If input is TF shape, output is also TF shape.
       if (src_mkl_shape.IsMklTensor()) {

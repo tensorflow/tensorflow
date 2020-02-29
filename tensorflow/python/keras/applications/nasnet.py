@@ -82,6 +82,9 @@ def NASNet(
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.nasnet.preprocess_input` for an example.
+
   Arguments:
     input_shape: Optional shape tuple, the input shape
       is by default `(331, 331, 3)` for NASNetLarge and
@@ -784,3 +787,8 @@ def preprocess_input(x, data_format=None):
 @keras_export('keras.applications.nasnet.decode_predictions')
 def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

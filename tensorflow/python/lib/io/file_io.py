@@ -523,13 +523,16 @@ def atomic_write_string_to_file(filename, contents, overwrite=True):
     overwrite: boolean, if false it's an error for `filename` to be occupied by
       an existing file.
   """
-  temp_pathname = filename + ".tmp" + uuid.uuid4().hex
-  write_string_to_file(temp_pathname, contents)
-  try:
-    rename(temp_pathname, filename, overwrite)
-  except errors.OpError:
-    delete_file(temp_pathname)
-    raise
+  if not has_atomic_move(filename):
+    write_string_to_file(filename, contents)
+  else:
+    temp_pathname = filename + ".tmp" + uuid.uuid4().hex
+    write_string_to_file(temp_pathname, contents)
+    try:
+      rename(temp_pathname, filename, overwrite)
+    except errors.OpError:
+      delete_file(temp_pathname)
+      raise
 
 
 @tf_export(v1=["gfile.DeleteRecursively"])
@@ -585,6 +588,30 @@ def is_directory_v2(path):
     return _pywrap_file_io.IsDirectory(compat.as_bytes(path))
   except errors.OpError:
     return False
+
+
+def has_atomic_move(path):
+  """Checks whether the file system supports atomic moves.
+
+  Returns whether or not the file system of the given path supports the atomic
+  move operation for a file or folder.  If atomic move is supported, it is
+  recommended to use a temp location for writing and then move to the final
+  location.
+
+  Args:
+    path: string, path to a file
+
+  Returns:
+    True, if the path is on a file system that supports atomic move
+    False, if the file system does not support atomic move. In such cases
+           we need to be careful about using moves. In some cases it is safer
+           not to use temporary locations in this case.
+  """
+  try:
+    return _pywrap_file_io.HasAtomicMove(compat.as_bytes(path))
+  except errors.OpError:
+    # defaults to True
+    return True
 
 
 @tf_export(v1=["gfile.ListDirectory"])

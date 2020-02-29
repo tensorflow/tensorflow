@@ -38,9 +38,7 @@ namespace {
 
 using ::tensorflow::io::JoinPath;
 
-constexpr char kProfilePluginDirectory[] = "plugins/profile/";
 constexpr char kProtoTraceFileName[] = "trace";
-
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
 
 Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
@@ -87,13 +85,20 @@ Status MaybeCreateEmptyEventFile(const string& logdir) {
 
 }  // namespace
 
+string GetTensorBoardProfilePluginDir(const string& logdir) {
+  constexpr char kPluginName[] = "plugins";
+  constexpr char kProfileName[] = "profile";
+  return JoinPath(logdir, kPluginName, kProfileName);
+}
+
 Status SaveTensorboardProfile(const string& logdir, const string& run,
                               const string& host,
                               const ProfileResponse& response,
                               std::ostream* os) {
   // Dumps profile data to <logdir>/plugins/profile/<run>/.
   string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
-  string profile_run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
+  string profile_run_dir =
+      JoinPath(GetTensorBoardProfilePluginDir(logdir), run);
   *os << "Creating directory: " << profile_run_dir;
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(profile_run_dir));
 

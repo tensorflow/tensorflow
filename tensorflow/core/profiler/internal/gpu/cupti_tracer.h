@@ -172,7 +172,7 @@ class AnnotationMap {
 
  private:
   struct PerDeviceAnnotationMap {
-    // The population/consuption of annotations might happen from multiple
+    // The population/consumption of annotations might happen from multiple
     // callback/activity api related threads.
     absl::Mutex mutex;
     // Annotation tends to be repetitive, use a hash_set to store the strings,

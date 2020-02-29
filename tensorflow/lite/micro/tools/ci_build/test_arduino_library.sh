@@ -38,7 +38,7 @@ unzip -q ${LIBRARY_ZIP} -d ${ARDUINO_LIBRARIES_DIR}
 # Installs all dependencies for Arduino
 InstallLibraryDependencies () {
   # Required by magic_wand
-  ${ARDUINO_CLI_TOOL} lib install Arduino_LSM9DS1@1.0.0
+  ${ARDUINO_CLI_TOOL} lib install Arduino_LSM9DS1@1.1.0
 
   # Required by person_detection
   ${ARDUINO_CLI_TOOL} lib install JPEGDecoder@1.8.0

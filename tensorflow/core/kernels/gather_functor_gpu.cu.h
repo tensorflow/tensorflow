@@ -105,7 +105,7 @@ struct GatherFunctor<GPUDevice, T, Index> {
           out.data(), gather_dim_size, indices_size, slice_size, out_size));
     }
     // TODO(fpmc): enable indices validation on GPU.
-    // Right now checking for indicies out of bound in the kernel would
+    // Right now checking for indices out of bound in the kernel would
     // require copying code between GPU/CPU, and thus slow.
     return -1;
   }

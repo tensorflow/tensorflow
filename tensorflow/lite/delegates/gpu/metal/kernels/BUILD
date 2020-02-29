@@ -1,5 +1,10 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
-load("//tensorflow/lite:special_rules.bzl", "tflite_ios_per_kernel_test", "tflite_portable_test_suite")
+load(
+    "//tensorflow/lite:special_rules.bzl",
+    "tflite_ios_lab_runner",
+    "tflite_ios_per_kernel_test",
+    "tflite_portable_test_suite",
+)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
@@ -65,6 +70,7 @@ ios_unit_test(
     name = "add_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -102,6 +108,7 @@ ios_unit_test(
     name = "concat_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -140,6 +147,7 @@ ios_unit_test(
     name = "conv_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -192,6 +200,7 @@ ios_unit_test(
     name = "depthwise_conv_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -231,6 +240,7 @@ ios_unit_test(
     name = "elementwise_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -270,6 +280,7 @@ ios_unit_test(
     name = "fully_connected_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -308,6 +319,7 @@ ios_unit_test(
     name = "max_unpooling_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -346,6 +358,7 @@ ios_unit_test(
     name = "mean_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = [
         "notap",
         "tflite_not_portable_android",
@@ -385,6 +398,7 @@ ios_unit_test(
     name = "mul_test",
     testonly = 1,
     minimum_os_version = "9.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -423,6 +437,7 @@ ios_unit_test(
     name = "padding_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -462,6 +477,7 @@ ios_unit_test(
     name = "pooling_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -501,6 +517,7 @@ ios_unit_test(
     name = "prelu_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -539,6 +556,7 @@ ios_unit_test(
     name = "relu_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -577,6 +595,7 @@ ios_unit_test(
     name = "resize_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -616,6 +635,7 @@ ios_unit_test(
     name = "reshape_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -654,6 +674,7 @@ ios_unit_test(
     name = "slice_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -692,6 +713,7 @@ ios_unit_test(
     name = "softmax_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -728,6 +750,7 @@ ios_unit_test(
     name = "space_to_depth_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -767,6 +790,7 @@ ios_unit_test(
     name = "transpose_conv_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",

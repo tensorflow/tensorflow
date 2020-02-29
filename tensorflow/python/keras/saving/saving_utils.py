@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import os
 import six
 
@@ -76,6 +77,7 @@ def model_input_signature(model, keep_original_batch_size=False):
   input_specs = model._get_save_spec(dynamic_batch=not keep_original_batch_size)  # pylint: disable=protected-access
   if input_specs is None:
     return None
+  input_specs = _enforce_names_consistency(input_specs)
   # Return a list with a single element as the model's input signature.
   if isinstance(input_specs, collections.Sequence) and len(input_specs) == 1:
     # Note that the isinstance check filters out single-element dictionaries,
@@ -180,8 +182,10 @@ def model_metadata(model, include_optimizer=True, require_config=True):
             '`tf.saved_model.save`, delete the optimizer from the model.')
       else:
         optimizer_config = {
-            'class_name': model.optimizer.__class__.__name__,
-            'config': model.optimizer.get_config()
+            'class_name':
+                generic_utils.get_registered_name(model.optimizer.__class__),
+            'config':
+                model.optimizer.get_config()
         }
       metadata['training_config']['optimizer_config'] = optimizer_config
   return metadata
@@ -279,3 +283,25 @@ def _deserialize_metric(metric_config):
     # case handling for these in compile, based on model output shape.
     return metric_config
   return metrics_module.deserialize(metric_config)
+
+
+def _enforce_names_consistency(specs):
+  """Enforces that either all specs have names or none do."""
+
+  def _has_name(spec):
+    return hasattr(spec, 'name') and spec.name is not None
+
+  def _clear_name(spec):
+    spec = copy.deepcopy(spec)
+    if hasattr(spec, 'name'):
+      spec._name = None  # pylint:disable=protected-access
+    return spec
+
+  flat_specs = nest.flatten(specs)
+  name_inconsistency = (
+      any(_has_name(s) for s in flat_specs) and
+      not all(_has_name(s) for s in flat_specs))
+
+  if name_inconsistency:
+    specs = nest.map_structure(_clear_name, specs)
+  return specs

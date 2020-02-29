@@ -1,4 +1,4 @@
-// RUN: tf-opt -hlo-legalize-to-lhlo -lhlo-redundant-copies-removal %s -o - | FileCheck %s --dump-input=always
+// RUN: tf-opt -hlo-legalize-to-lhlo -lhlo-redundant-copies-removal -split-input-file %s -o - | FileCheck %s -dump-input-on-failure
 
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -11,6 +11,8 @@ func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   return
 }
 
+// -----
+
 // CHECK-LABEL: func @func_op
 func @func_op(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: (%[[NEW_ARG0:.*]]: memref<4xf32>, %[[NEW_ARG1:.*]]: memref<4xf32>, %[[RESULT:.*]]: memref<4xf32>)
@@ -19,6 +21,8 @@ func @func_op(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   return %0 : tensor<4xf32>
   // CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
 }
+
+// -----
 
 // CHECK-LABEL: func @func_op_long
 func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
@@ -45,6 +49,8 @@ func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> 
   // CHECK-NEXT: "xla_lhlo.terminator"() : () -> ()
 }
 
+// -----
+
 // CHECK-LABEL: func @remove_lhlo_copy_op_created_from_tensor_store
 func @remove_lhlo_copy_op_created_from_tensor_store(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: memref<f32>) {
   %0 = "xla_hlo.max"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -57,6 +63,8 @@ func @remove_lhlo_copy_op_created_from_tensor_store(%arg0: tensor<f32>, %arg1: t
 // CHECK-NOT: "xla_lhlo.copy"(%[[ALLOC_OPERAND]], %[[RESULT]]) : (memref<f32>, memref<f32>) -> ()
 // CHECK-NOT: dealloc %[[ALLOC_OPERAND]] : memref<f32>
 // CHECK: "xla_lhlo.terminator"() : () -> ()
+
+// -----
 
 // CHECK-LABEL: func @fusion
 func @fusion(%multiplier: memref<2x2xf32>, %summand_1: memref<2x2xf32>,
@@ -77,6 +85,8 @@ func @fusion(%multiplier: memref<2x2xf32>, %summand_1: memref<2x2xf32>,
   "xla_lhlo.terminator"() : () -> ()
 }
 
+// -----
+
 // CHECK-LABEL: func @copy
 func @copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
@@ -87,6 +97,8 @@ func @copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   return
 }
 
+// -----
+
 // CHECK-LABEL: func @exp
 func @exp(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
@@ -96,6 +108,8 @@ func @exp(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
+
+// -----
 
 // CHECK-LABEL: func @select
 func @select(%pred: memref<2x2xi1>, %lhs: memref<2x2xf32>,
@@ -110,6 +124,8 @@ func @select(%pred: memref<2x2xi1>, %lhs: memref<2x2xf32>,
   return
 }
 
+// -----
+
 // CHECK-LABEL: func @compare
 func @compare(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>, %result: memref<2x2xi1>) {
   %tensor_lhs = tensor_load %lhs : memref<2x2xf32>
@@ -122,6 +138,8 @@ func @compare(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>, %result: memref<2x2x
   return
 }
 
+// -----
+
 // CHECK-LABEL: func @broadcast
 func @broadcast(%operand: memref<5xf32>, %result: memref<10x5xf32>) {
   %tensor_operand = tensor_load %operand : memref<5xf32>
@@ -132,6 +150,8 @@ func @broadcast(%operand: memref<5xf32>, %result: memref<10x5xf32>) {
   tensor_store %tensor_result, %result : memref<10x5xf32>
   return
 }
+
+// -----
 
 // CHECK-LABEL: func @dyn_broadcast
 func @dyn_broadcast(%operand: memref<?x?xf32>) {
@@ -157,6 +177,8 @@ func @dyn_broadcast(%operand: memref<?x?xf32>) {
   return
 }
 
+// -----
+
 // CHECK-LABEL: func @iota
 func @iota(%result: memref<10xi32>) {
   %tensor_result = "xla_hlo.iota"()
@@ -165,6 +187,8 @@ func @iota(%result: memref<10xi32>) {
   tensor_store %tensor_result, %result : memref<10xi32>
   return
 }
+
+// -----
 
 // CHECK-LABEL: func @abs
 func @abs(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -176,6 +200,8 @@ func @abs(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   return
 }
 
+// -----
+
 // CHECK-LABEL: func @ceil
 func @ceil(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
@@ -185,6 +211,8 @@ func @ceil(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
+
+// -----
 
 // CHECK-LABEL: func @convert
 func @convert(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -196,6 +224,8 @@ func @convert(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   return
 }
 
+// -----
+
 // CHECK-LABEL: func @cos
 func @cos(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
@@ -205,6 +235,8 @@ func @cos(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
+
+// -----
 
 // CHECK-LABEL: func @neg
 func @neg(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -216,6 +248,8 @@ func @neg(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   return
 }
 
+// -----
+
 // CHECK-LABEL: func @sign
 func @sign(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
@@ -225,6 +259,8 @@ func @sign(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
+
+// -----
 
 // CHECK-LABEL: func @tanh
 func @tanh(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -236,6 +272,8 @@ func @tanh(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   return
 }
 
+// -----
+
 // CHECK-LABEL: func @remainder
 func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_lhs = tensor_load %lhs : memref<2x2xf32>
@@ -244,5 +282,49 @@ func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>, %result: memref<2x
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK-NEXT: "xla_lhlo.remainder"(%{{.*}}, %{{.*}}, %{{.*}})
   tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
+
+// -----
+
+// Dynamic shape binary element-wise operation.
+// CHECK-LABEL: func @add_dyn
+func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) {
+  %result = "xla_hlo.add"(%lhs, %rhs)
+      : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK: %[[DIM0:.*]] = dim %arg0, 0 : memref<?x?xf32>
+  // CHECK: %[[IC0:.*]] = index_cast %[[DIM0]] : index to i64
+  // CHECK: %[[DIM1:.*]] = dim %arg0, 1 : memref<?x?xf32>
+  // CHECK: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
+  // CHECK: %[[SHAPE:.*]] = "xla_hlo.scalars_to_dimension_tensor"(%[[IC0]], %[[IC1]]) : (i64, i64) -> tensor<2xi64>
+  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<2xi64>
+  // CHECK: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
+  // CHECK: %[[EE1:.*]] = extract_element %[[SHAPE]][%[[C1]]] : tensor<2xi64>
+  // CHECK: %[[ICS1:.*]] = index_cast %[[EE1]] : i64 to index
+  // CHECK: %[[RESULT:.*]] = alloc(%[[ICS0]], %[[ICS1]])
+  // CHECK: "xla_lhlo.add"(%arg0, %arg1, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
+  return
+}
+
+// -----
+
+// Dynamic shape unary element-wise operation.
+// CHECK-LABEL: func @tanh_dyn
+func @tanh_dyn(%arg0: tensor<?x?xf32>) {
+  %result = "xla_hlo.tanh"(%arg0)
+      : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK: %[[DIM0:.*]] = dim %arg0, 0 : memref<?x?xf32>
+  // CHECK: %[[IC0:.*]] = index_cast %[[DIM0]] : index to i64
+  // CHECK: %[[DIM1:.*]] = dim %arg0, 1 : memref<?x?xf32>
+  // CHECK: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
+  // CHECK: %[[SHAPE:.*]] = "xla_hlo.scalars_to_dimension_tensor"(%[[IC0]], %[[IC1]]) : (i64, i64) -> tensor<2xi64>
+  // CHECK: %[[C0:.*]] = constant 0 : index
+  // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<2xi64>
+  // CHECK: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
+  // CHECK: %[[EE1:.*]] = extract_element %[[SHAPE]][%[[C1]]] : tensor<2xi64>
+  // CHECK: %[[ICS1:.*]] = index_cast %[[EE1]] : i64 to index
+  // CHECK: %[[RESULT:.*]] = alloc(%[[ICS0]], %[[ICS1]])
+  // CHECK: "xla_lhlo.tanh"(%arg0, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()
   return
 }

@@ -162,7 +162,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
     remote_op->add_inputs()->Swap(&(*args)[i]);
   }
   // The remote component function should use the same op_id as its parent
-  // multi-device function's in order to get the global unqiue op_id generated
+  // multi-device function's in order to get the global unique op_id generated
   // by the master context.
   remote_op->set_id(opts.op_id.value());
   remote_op->set_is_function(true);
@@ -176,7 +176,9 @@ void EagerClusterFunctionLibraryRuntime::Run(
     handle->Ref();
   }
 
-  // TODO(yujingzhang): Use RemoteExecuteNode once we enable async execution.
+  // StreamingEnqueueAsync may introduce a deadlock. When streaming RPC is
+  // disabled, Run() returns when the remote function execution completes, which
+  // might be blocked by a non-enqueued function execution.
   EnqueueResponse* response = new EnqueueResponse;
   eager_client->EnqueueAsync(request, response,
                              [op, request, response, done](const Status& s) {
@@ -211,12 +213,15 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
   CleanupFunctionOp* cleanup_function =
       request->add_queue()->mutable_cleanup_function();
   cleanup_function->set_step_id(step_id);
-  eager_client->StreamingEnqueueAsync(
-      request, response, [request, response, done](const Status& status) {
-        done(status);
-        delete request;
-        delete response;
-      });
+  // StreamingEnqueueAsync could be blocking when streaming RPC is disabled.
+  // CleanUp() needs to be non-blocking since it would be invoked inside the
+  // enqueue done callback of Run(). So we don't use StreamingEnqueueAsync here.
+  eager_client->EnqueueAsync(request, response,
+                             [request, response, done](const Status& status) {
+                               done(status);
+                               delete request;
+                               delete response;
+                             });
 }
 
 DistributedFunctionLibraryRuntime* CreateClusterFLR(

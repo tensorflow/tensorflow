@@ -24,8 +24,7 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-// Returns true if the given event_name is a step marker.
-inline bool IsStepMarker(absl::string_view event_name) {
+inline bool IsExplicitHostStepMarker(absl::string_view event_name) {
   return (str_util::StartsWith(event_name, "train") ||
           str_util::StartsWith(event_name, "test") ||
           str_util::StartsWith(event_name, "TraceContext")) &&
@@ -39,7 +38,7 @@ inline bool IsRealCpuCompute(absl::string_view event_name) {
                   str_util::StartsWith(event_name, "EagerLocalExecute") ||
                   str_util::StartsWith(event_name, "EagerKernelExecute") ||
                   str_util::StartsWith(event_name, "FunctionRun") ||
-                  IsStepMarker(event_name);
+                  IsExplicitHostStepMarker(event_name);
   return !not_real;
 }
 
@@ -71,14 +70,18 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
         device_step_events.find(group_id) == device_step_events.end())
       return;
     Timespan timespan = Timespan(event.TimestampPs(), event.DurationPs());
-    // If an explicit step marker is not available, look for an implicit one
-    // which has a step_name stat.
-    if (IsStepMarker(event.Name()) || !step_name.empty()) {
-      result[group_id].AddMarker(
-          StepMarker(/*device=*/false, event.Name(), timespan));
+    if (IsExplicitHostStepMarker(event.Name())) {
+      result[group_id].AddMarker(StepMarker(
+          StepMarkerType::kExplicitHostStepMarker, event.Name(), timespan));
+    } else if (!step_name.empty()) {
+      // Grouping adds a step_name stat to implicit host step markers.
+      result[group_id].AddMarker(StepMarker(
+          StepMarkerType::kImplicitHostStepMarker, event.Name(), timespan));
     } else if (IsRealCpuCompute(event.Name())) {
       EventTypeSpan event_type_span(
-          ClassifyCpuEvent(event.Name(), correlation_id), timespan);
+          ClassifyCpuEvent(event.Name(), correlation_id,
+                           use_device_step_events),
+          timespan);
       result[group_id].AddEvent(event_type_span);
     }
   });
@@ -94,6 +97,21 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
     CombineStepEvents(ConvertHostThreadsXLineToStepEvents(
                           line, use_device_step_events, device_step_events),
                       &result);
+  });
+  return result;
+}
+
+StepEvents ConvertDeviceStepInfoToStepMarkers(const XLineVisitor& line) {
+  StepEvents result;
+  line.ForEachEvent([&](const XEventVisitor& event) {
+    event.ForEachStat([&](const XStatVisitor& stat) {
+      if (stat.Type() == StatType::kGroupId) {
+        result[stat.IntValue()].AddMarker(
+            StepMarker(StepMarkerType::kDeviceStepMarker, event.Name(),
+                       Timespan(event.TimestampPs(), event.DurationPs())));
+        return;
+      }
+    });
   });
   return result;
 }
@@ -128,8 +146,14 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
   StepEvents result;
   XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
-    if (IsDerivedThreadId(line.Id())) return;
-    CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(line), &result);
+    int64 line_id = line.Id();
+    if (line_id == kThreadIdStepInfo) {
+      CombineStepEvents(ConvertDeviceStepInfoToStepMarkers(line), &result);
+    } else if (IsDerivedThreadId(line_id)) {
+      return;
+    } else {
+      CombineStepEvents(ConvertDeviceTraceXLineToStepEvents(line), &result);
+    }
   });
   return result;
 }

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 
@@ -76,8 +77,17 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToLinalgPass();
 // Lowers from LHLO dialect to GPU dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToGpuPass();
 
-// Fuses linalg ops obtained after LHLO lowering.
-std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg();
+// Fuses linalg ops obtained after LHLO lowering. To enable fusion,
+// operations are first tiled.
+//
+// When 'use_parallel_loops' is set, the tiling will use loop.parallel
+// operations. Otherwise, loop.for operations are used.
+//
+// 'tile_sizes' provides the tile sizes to use for tiling. If the linalg
+// operation has more dimensions than tile sizes provided, 1 is used as
+// default.
+std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg(
+    bool use_parallel_loops = false, ArrayRef<unsigned> tile_sizes = {});
 
 }  // namespace xla_lhlo
 }  // namespace mlir

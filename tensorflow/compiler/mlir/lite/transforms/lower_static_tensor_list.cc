@@ -32,7 +32,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Analysis/LoopAnalysis.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Block.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -335,8 +335,9 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
       ConversionPatternRewriter &rewriter) const override {
     Type dtype = op.element_dtype();
     if (!(dtype.isF16() || dtype.isF32() || dtype.isF64() ||
-          dtype.isInteger(1) || dtype.isInteger(8) || dtype.isInteger(16) ||
-          dtype.isInteger(32) || dtype.isInteger(64))) {
+          dtype.isInteger(1) || dtype.isSignlessInteger(8) ||
+          dtype.isSignlessInteger(16) || dtype.isSignlessInteger(32) ||
+          dtype.isSignlessInteger(64))) {
       op.emitError(
           "requires element_dtype to be 1-bit/8-bit/16-bit/32-bit/64-bit "
           "integer or 16-bit/32-bit/64-bit float type during TF Lite "
@@ -346,6 +347,16 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
 
     Value element_shape = operands[0];
     Type shape_dtype = getElementTypeOrSelf(element_shape.getType());
+    // If the `element_shape` is a scalar, we know that it's dynamic shape
+    // and returns an error.
+    if (auto shaped_type = element_shape.getType().dyn_cast<ShapedType>()) {
+      if (shaped_type.getRank() == 0) {
+        op.emitError(
+            "requires element_shape to be 1D tensor during TF Lite "
+            "transformation pass");
+        return ConversionPattern::matchFailure();
+      }
+    }
 
     DenseIntElementsAttr dense_elem_attr;
     if (matchPattern(element_shape, m_Constant(&dense_elem_attr))) {

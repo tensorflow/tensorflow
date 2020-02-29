@@ -281,6 +281,12 @@ Status Env::IsDirectory(const string& fname) {
   return fs->IsDirectory(fname);
 }
 
+Status Env::HasAtomicMove(const string& path, bool* has_atomic_move) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(path, &fs));
+  return fs->HasAtomicMove(path, has_atomic_move);
+}
+
 Status Env::DeleteRecursively(const string& dirname, int64* undeleted_files,
                               int64* undeleted_dirs) {
   FileSystem* fs;

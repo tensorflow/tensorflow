@@ -155,7 +155,7 @@ Status TransposeShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithValue(perm_elems, rank, &perm_elems));
 
   // If we know the rank of the input and the value of perm, we can return
-  // all shape informantion, otherwise we can only return rank information,
+  // all shape information, otherwise we can only return rank information,
   // but no information for the dimensions.
   if (perm != nullptr) {
     std::vector<int64> data;
@@ -2797,38 +2797,6 @@ REGISTER_OP("QuantizeAndDequantizeV2")
             c->Merge(c->Dim(minmax, 0), c->Dim(input, axis), &depth));
       }
       c->set_output(0, c->input(0));
-      return Status::OK();
-    });
-
-REGISTER_OP("QuantizeAndDequantizeV2Grad")
-    .Input("gradients: T")
-    .Input("input: T")
-    .Input("input_min: T")
-    .Input("input_max: T")
-    .Output("input_backprop: T")
-    .Output("input_min_backprop: T")
-    .Output("input_max_backprop: T")
-    .Attr("T: {bfloat16, half, float, double}")
-    .Attr("axis: int = -1")
-    .SetShapeFn([](InferenceContext* c) {
-      int axis;
-      TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
-      const int minmax_rank = (axis == -1) ? 0 : 1;
-      ShapeHandle minmax;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), minmax_rank, &minmax));
-      TF_RETURN_IF_ERROR(c->Merge(c->input(3), minmax, &minmax));
-      if (axis != -1) {
-        ShapeHandle input;
-        TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
-        DimensionHandle depth;
-        TF_RETURN_IF_ERROR(
-            c->Merge(c->Dim(minmax, 0), c->Dim(input, axis), &depth));
-      }
-      ShapeHandle inputs;
-      TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(1), &inputs));
-      c->set_output(0, inputs);
-      c->set_output(1, minmax);
-      c->set_output(2, minmax);
       return Status::OK();
     });
 

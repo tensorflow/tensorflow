@@ -409,7 +409,7 @@ template <typename TaskType>
 void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleNextBatch() {
   if (batches_.empty() || in_flight_batches_ >= in_flight_batches_limit_)
     return;
-  // Non-integer limit handled probabilistially.
+  // Non-integer limit handled probabilistically.
   if (in_flight_batches_limit_ - in_flight_batches_ < 1 &&
       rand_double_(rand_engine_) >
           in_flight_batches_limit_ - in_flight_batches_) {

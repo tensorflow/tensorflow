@@ -115,7 +115,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
     def proc_model_checkpoint_works_with_same_file_path(
         test_obj, saving_filepath):
       model, _, train_ds, steps = _model_setup(test_obj, file_format='')
-      num_epoch = 10
+      num_epoch = 2
 
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
       test_obj.assertFalse(file_io.file_exists(saving_filepath))
@@ -132,7 +132,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
     multi_process_runner.run(
         proc_model_checkpoint_works_with_same_file_path,
-        cluster_spec=test_base.create_cluster_spec(num_workers=20),
+        cluster_spec=test_base.create_cluster_spec(num_workers=2),
         args=(self, saving_filepath))
 
   @combinations.generate(combinations.combine(mode=['eager']))

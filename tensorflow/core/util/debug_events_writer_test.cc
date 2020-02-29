@@ -805,7 +805,7 @@ TEST_F(DebugEventsWriterTest, RegisterDeviceAndGetIdTrace) {
   }
 }
 
-TEST_F(DebugEventsWriterTest, DisableCyclicBufferBeahavior) {
+TEST_F(DebugEventsWriterTest, DisableCyclicBufferBehavior) {
   const size_t kCyclicBufferSize = 0;  // A value <= 0 disables cyclic behavior.
   DebugEventsWriter* writer =
       DebugEventsWriter::GetDebugEventsWriter(dump_root_, kCyclicBufferSize);

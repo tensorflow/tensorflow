@@ -105,6 +105,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RecallAtPrecision"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "RootMeanSquaredError"
     mtype: "<type \'type\'>"
   }

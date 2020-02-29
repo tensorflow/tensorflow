@@ -81,6 +81,9 @@ table QuantizationParameters {
 }
 
 // Sparse tensors.
+// We use a modification of the TACO format.
+// Reference: http://tensor-compiler.org/kjolstad-oopsla17-tensor-compiler.pdf
+//
 // To encode a conceptual n-dimensional dense tensor with dims (d0, ..., dn-1),
 // potentially with a k-dimensional block (0 <= k <= n) with dims
 // (dn, ..., dn+k-1), the format needs to specify:
@@ -108,6 +111,27 @@ enum DimensionType : byte {
   SPARSE_CSR = 1,
 }
 
+table Int32Vector {
+  values:[int];
+}
+
+table Uint16Vector {
+  values:[ushort] (force_align: 4);
+}
+
+table Uint8Vector {
+  values:[ubyte] (force_align: 4);
+}
+
+// Variable-typed buffer to store the index metadata for a sparse dimension.
+// The widest type is Int32 instead of UInt32 because tensor's shape is a int32
+// vector. We don't want the per-dimensional index to overflow that range.
+union SparseIndexVector {
+  Int32Vector,
+  Uint16Vector,
+  Uint8Vector
+}
+
 table DimensionMetadata {
   // Whether a dimension is dense or sparse.
   format:DimensionType;
@@ -123,8 +147,8 @@ table DimensionMetadata {
   //     format, where the first array is row pointers and the second array is
   //     column indices).
   dense_size:int;
-  array_segments:[int];
-  array_indices:[int];
+  array_segments:SparseIndexVector;
+  array_indices:SparseIndexVector;
 }
 
 // Parameters to encode a sparse TfLite tensor.
@@ -945,7 +969,7 @@ table Operator {
   // complicate map lookups.
   opcode_index:uint;
 
-  // Optional input and output tensors are indicated by -1.
+  // Optional input are indicated by -1.
   inputs:[int];
   outputs:[int];
 

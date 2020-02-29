@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
+#include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
@@ -37,6 +38,7 @@ namespace {
 const absl::string_view kTensorflowStats = "tensorflow_stats";
 const absl::string_view kInputPipeline = "input_pipeline";
 const absl::string_view kOverviewPage = "overview_page";
+const absl::string_view kKernelStats = "kernel_stats";
 
 HardwareType HardwareTypeFromRunEnvironment(const RunEnvironment& run_env) {
   if (run_env.device_type() == "GPU") return HardwareType::GPU;
@@ -84,6 +86,9 @@ void ConvertXSpaceToProfileResponse(const XSpace& xspace,
   if (tools.contains(kTensorflowStats)) {
     TfStatsDatabase tf_stats_db = ConvertOpStatsToTfStats(op_stats);
     AddToolData(ToolName(kTensorflowStats), tf_stats_db, response);
+  }
+  if (tools.contains(kKernelStats)) {
+    AddToolData(ToolName(kKernelStats), op_stats.kernel_stats_db(), response);
   }
 }
 

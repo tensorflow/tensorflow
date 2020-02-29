@@ -180,7 +180,7 @@ class MklAddNOp : public OpKernel {
 
       // Create memory descriptor for MKL-DNN.
       // If all input in Tensorflow format, create block memory descriptor,
-      // else convet TF format to MKL memory descriptor
+      // else convert TF format to MKL memory descriptor
       for (int src_idx = 0; src_idx < num_inputs; ++src_idx) {
         MklDnnShape src_mkl_shape;
         GetMklShape(ctx, src_idx, &src_mkl_shape);

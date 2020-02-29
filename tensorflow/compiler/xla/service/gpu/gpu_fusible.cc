@@ -30,6 +30,12 @@ namespace xla {
 namespace gpu {
 namespace {
 
+// The amount of shared memory a CUDA kernel can use.
+//
+// Stay on the conservative side, this is smaller than full 64kB, but allows
+// some extra space for cache.
+int64 kSharedMemoryBudgetInBytes = 40000;
+
 void AppendParams(const HloInstruction& instr,
                   std::vector<HloInstruction*>* params) {
   if (instr.opcode() == HloOpcode::kFusion) {
@@ -277,7 +283,37 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   return true;
 }
 
-// This function limits the maximum number of operands to a fusion.
+// Returns shared memory usage for a given instruction in bytes.
+static int64 SharedMemoryUsage(const HloInstruction& instr) {
+  // For now we are only fusing reductions.
+  if (instr.opcode() == HloOpcode::kReduce &&
+      IsReductionFromOrToContiguousDimensions(instr)) {
+    ReductionDimensions reduction_info =
+        GetReductionKindAndContiguousComponents(instr);
+    int64 primitive_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
+    if (reduction_info.is_row_reduction) {
+      // __shared__[32] is used for row reduction.
+      return 32 * primitive_size;
+    } else {
+      // __shared__[2][32][33] cache is used for column reduction ("2" comes
+      // from potential x-tiling).
+      return 2 * 32 * 33 * primitive_size;
+    }
+  } else if (instr.opcode() == HloOpcode::kFusion) {
+    int64 sum = 0;
+    for (const HloInstruction* operand :
+         instr.fused_expression_root()->operands()) {
+      sum += SharedMemoryUsage(*operand);
+    }
+    return sum;
+  }
+  // Other fused expressions for now don't need the shared memory budget.
+  return 0;
+}
+
+// This function limits the maximum number of operands to a fusion, and the
+// amount of shared memory which can be consumed by the fusion.
 //
 // There's a cap on how many parameters we can pass to a CUDA kernel, but
 // exactly what that limit is hazy, as it depends on (among other things) how
@@ -297,6 +333,11 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
 // uses a lot of registers, thus limiting occupancy.
 bool FusionWouldBeTooLarge(const HloInstruction& instr1,
                            const HloInstruction& instr2) {
+  if (SharedMemoryUsage(instr1) + SharedMemoryUsage(instr2) >
+      kSharedMemoryBudgetInBytes) {
+    return true;
+  }
+
   // Compute the number of outputs of the (possibly multi-output) fusion node
   // we're considering creating.
   //

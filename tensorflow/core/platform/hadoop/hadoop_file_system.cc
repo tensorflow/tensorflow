@@ -473,7 +473,7 @@ Status HadoopFileSystem::DeleteDir(const string& dir) {
     libhdfs()->hdfsFreeFileInfo(info, entries);
   }
   // Due to HDFS bug HDFS-8407, we can't distinguish between an error and empty
-  // folder, expscially for Kerberos enable setup, EAGAIN is quite common when
+  // folder, especially for Kerberos enable setup, EAGAIN is quite common when
   // the call is actually successful. Check again by Stat.
   if (info == nullptr && errno != 0) {
     FileStatistics stat;

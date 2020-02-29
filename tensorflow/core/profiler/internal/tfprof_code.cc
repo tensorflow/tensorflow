@@ -138,7 +138,7 @@ class LocationTable {
   explicit LocationTable(FunctionTable* function_table)
       : function_table_(function_table) {}
 
-  // Returns the index of a function call localtion. If not found, adds a
+  // Returns the index of a function call location. If not found, adds a
   // location proto and returns the location index.
   uint64 GetIndex(const string& file_path, uint64 line_number,
                   const string& called_function_name,

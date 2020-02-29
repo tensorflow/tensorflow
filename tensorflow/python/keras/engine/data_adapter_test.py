@@ -786,7 +786,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     # User can choose to only partially consume `Dataset`.
     data_handler = data_adapter.DataHandler(
         data, initial_epoch=0, epochs=2, steps_per_epoch=2)
-    self.assertFalse(data_handler._train_adapter.should_recreate_iterator())
+    self.assertFalse(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -812,7 +812,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     # create a new iterator each epoch.
     data_handler = data_adapter.DataHandler(
         data, initial_epoch=0, epochs=2, steps_per_epoch=4)
-    self.assertTrue(data_handler._train_adapter.should_recreate_iterator())
+    self.assertTrue(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -842,7 +842,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     # User can choose to only partially consume `Dataset`.
     data_handler = data_adapter.DataHandler(
         filtered_ds, initial_epoch=0, epochs=2, steps_per_epoch=2)
-    self.assertFalse(data_handler._train_adapter.should_recreate_iterator())
+    self.assertFalse(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -860,7 +860,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
 
     data_handler = data_adapter.DataHandler(
         filtered_ds, initial_epoch=0, epochs=2)
-    self.assertTrue(data_handler._train_adapter.should_recreate_iterator())
+    self.assertTrue(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -1060,6 +1060,15 @@ class TestValidationSplit(keras_parameterized.TestCase):
         (np.ones((10, 1)), None), validation_split=0.2)
     self.assertIsNone(train_sw)
     self.assertIsNone(val_sw)
+
+
+class TestUtils(keras_parameterized.TestCase):
+
+  def test_expand_1d_sparse_tensors_untouched(self):
+    st = sparse_tensor.SparseTensor(
+        indices=[[0], [10]], values=[1, 2], dense_shape=[10])
+    st = data_adapter.expand_1d(st)
+    self.assertEqual(st.shape.rank, 1)
 
 
 if __name__ == '__main__':

@@ -99,6 +99,11 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
 // Performs resource lifting on the function body to hoist resource variable
 // accesses outside all control flow statements.
 LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function);
+
+// Converts stack ops into operations on local variables, which can later be
+// removed by resource lifting. Requires known maximum sizes of stacks and
+// known element shapes of push ops.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateStackOpsDecompositionPass();
 }  // namespace TF
 
 namespace TFControlFlow {
@@ -186,6 +191,10 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateParallelExecuteToIslandsPass();
 // same data across replicas.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateAnnotateParameterReplicationPass();
 
+// Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
+// attribute to each TensorFlow dialect op in the body based on the `device`
+// attribute on the `tf_device.launch`.
+std::unique_ptr<OpPassBase<FuncOp>> CreateLaunchToDeviceAttributePass();
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -227,10 +236,6 @@ namespace tf_saved_model {
 
 // Creates a pass that optimizes tf_saved_model.global_tensor ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass();
-
-// Creates a pass that inlines global tensors as tf.Const ops in the function
-// body.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateInlineGlobalTensorsPass();
 
 // Creates a pass that uses tf_saved_model dialect linkage information
 // to mark function visibility. That is, exported functions are marked with

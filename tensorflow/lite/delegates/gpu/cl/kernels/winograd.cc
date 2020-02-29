@@ -386,12 +386,18 @@ Status Winograd4x4To36::Compile(const CreationContext& creation_context) {
   if (creation_context.device->IsAdreno()) {
     options.push_back(CompilerOptions::ADRENO_MORE_WAVES);
   }
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      creation_context.device->IsPowerVR()) {
+    options.push_back(CompilerOptions::POWERVR_FP16);
+  }
   RETURN_IF_ERROR(UploadBt(creation_context.context));
   const auto code =
       GetWinograd4x4To36Code(definition_, bt_, linked_operations_);
-  return creation_context.cache->GetOrCreateCLKernel(
+  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
+      *creation_context.device, &kernel_));
+  work_group_size_ = SelectBestWorkGroup();
+  return OkStatus();
 }
 
 Status Winograd4x4To36::UploadBt(CLContext* context) {
@@ -412,6 +418,13 @@ Status Winograd4x4To36::UploadBt(CLContext* context) {
   create_info.data_type = definition_.GetDataType();
   create_info.name = "bt_arr";
   return CreateLinearStorage(create_info, bt_aligned, context, &bt_);
+}
+
+int3 Winograd4x4To36::SelectBestWorkGroup() {
+  const std::vector<int3> wgs = {{8, 6, 4}, {8, 6, 2}, {4, 6, 2},
+                                 {4, 6, 2}, {2, 6, 2}, {2, 6, 1},
+                                 {1, 6, 1}, {1, 3, 1}, {1, 1, 1}};
+  return GetFirstSuitableWorkGroup(wgs, kernel_.GetMaxWorkGroupSize());
 }
 
 Status Winograd4x4To36::BindArguments() {
@@ -444,21 +457,13 @@ int3 Winograd4x4To36::GetGridSize() const {
 
 Status Winograd4x4To36::Tune(const TuningParameters& params) {
   switch (params.tuning_type) {
-    case TuningType::FAST:
-      work_group_size_ = {8, 6, 4};
-      if (params.info->vendor == Vendor::QUALCOMM) {
-        auto adreno_info = params.info->adreno_info;
-        if (adreno_info.gpu_version < 400) {
-          work_group_size_ = {4, 6, 2};
-        }
-      }
-      return OkStatus();
     case TuningType::EXHAUSTIVE:
       RETURN_IF_ERROR(BindArguments());
       return GetBestWorkGroup(params, kernel_, GetGridSize(),
                               &work_group_size_);
+    case TuningType::FAST:
     default:
-      work_group_size_ = {4, 6, 2};
+      work_group_size_ = SelectBestWorkGroup();
       return OkStatus();
   }
 }
@@ -495,11 +500,18 @@ Winograd36To4x4& Winograd36To4x4::operator=(Winograd36To4x4&& operation) {
 }
 
 Status Winograd36To4x4::Compile(const CreationContext& creation_context) {
+  std::vector<CompilerOptions> options;
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      creation_context.device->IsPowerVR()) {
+    options.push_back(CompilerOptions::POWERVR_FP16);
+  }
   const auto code =
       GetWinograd36To4x4Code(definition_, at_, biases_, linked_operations_);
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
+  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
+      code, "main_function", options, *creation_context.context,
+      *creation_context.device, &kernel_));
+  work_group_size_ = SelectBestWorkGroup();
+  return OkStatus();
 }
 
 Status Winograd36To4x4::UploadAt(CLContext* context) {
@@ -520,6 +532,13 @@ Status Winograd36To4x4::UploadAt(CLContext* context) {
   create_info.data_type = definition_.GetDataType();
   create_info.name = "at_arr";
   return CreateLinearStorage(create_info, at_aligned, context, &at_);
+}
+
+int3 Winograd36To4x4::SelectBestWorkGroup() {
+  const std::vector<int3> wgs = {{32, 4, 2}, {16, 4, 2}, {16, 4, 1},
+                                 {8, 4, 1},  {4, 4, 1},  {2, 4, 1},
+                                 {1, 4, 1},  {1, 2, 1},  {1, 1, 1}};
+  return GetFirstSuitableWorkGroup(wgs, kernel_.GetMaxWorkGroupSize());
 }
 
 Status Winograd36To4x4::BindArguments() {
@@ -548,21 +567,13 @@ int3 Winograd36To4x4::GetGridSize() const {
 
 Status Winograd36To4x4::Tune(const TuningParameters& params) {
   switch (params.tuning_type) {
-    case TuningType::FAST:
-      work_group_size_ = {32, 4, 2};
-      if (params.info->vendor == Vendor::QUALCOMM) {
-        auto adreno_info = params.info->adreno_info;
-        if (adreno_info.gpu_version < 400) {
-          work_group_size_ = {16, 4, 1};
-        }
-      }
-      return OkStatus();
     case TuningType::EXHAUSTIVE:
       RETURN_IF_ERROR(BindArguments());
       return GetBestWorkGroup(params, kernel_, GetGridSize(),
                               &work_group_size_);
+    case TuningType::FAST:
     default:
-      work_group_size_ = {16, 4, 1};
+      work_group_size_ = SelectBestWorkGroup();
       return OkStatus();
   }
 }

@@ -63,9 +63,11 @@ py_library(
     srcs = ["cross_device_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":collective_util",
         ":cross_device_utils",
         ":device_util",
         ":reduce_util",
+        ":tpu_values",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:device_lib",
@@ -96,6 +98,7 @@ py_library(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -144,6 +147,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":collective_util",
         ":device_util",
         ":numpy_dataset",
         ":reduce_util",
@@ -210,7 +214,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
-        "//tensorflow/python:training_lib",
+        "//tensorflow/python:training_server_lib",
     ],
 )
 
@@ -401,7 +405,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:training_lib",
+        "//tensorflow/python:training_server_lib",
     ],
 )
 
@@ -531,6 +535,7 @@ py_library(
         ":input_lib",
         ":numpy_dataset",
         ":reduce_util",
+        ":tpu_values",
         ":values",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:array_ops",
@@ -579,6 +584,15 @@ py_library(
 )
 
 py_library(
+    name = "collective_util",
+    srcs = ["collective_util.py"],
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_library(
     name = "shared_variable_creator",
     srcs = ["shared_variable_creator.py"],
 )
@@ -612,17 +626,36 @@ py_library(
     deps = [
         ":device_util",
         ":distribute_lib",
+        ":reduce_util",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:composite_tensor",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:training",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking:base",
-        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tpu_values",
+    srcs = ["tpu_values.py"],
+    deps = [
+        ":values",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops_gen",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/tpu:tpu_lib",
     ],
 )
 
@@ -774,7 +807,9 @@ cuda_py_test(
     name = "cross_device_utils_test",
     srcs = ["cross_device_utils_test.py"],
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/distribute:combinations",
@@ -790,11 +825,11 @@ cuda_py_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     tags = [
-        # TODO(b/138143527): Re-enable after fixing Guitar failure.
-        # "multi_and_single_gpu",
+        "multi_and_single_gpu",
     ],
     deps = [
         ":collective_all_reduce_strategy",
+        ":collective_util",
         ":mirrored_strategy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -883,7 +918,7 @@ distribute_py_test(
     srcs = ["values_test.py"],
     main = "values_test.py",
     tags = [
-        "no_oss",  # http://b/119349471
+        "multi_and_single_gpu",
     ],
     deps = [
         ":mirrored_strategy",
@@ -949,6 +984,9 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",  # Target too big to run serially reliably.
     ],
     deps = [
         "//tensorflow/python:errors",
@@ -1147,7 +1185,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",  # TODO(b/130551176)
-        "noguitar",
     ],
     deps = [
         ":combinations",

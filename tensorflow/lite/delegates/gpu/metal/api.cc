@@ -268,6 +268,7 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       break;
     case OperationType::ABS:
     case OperationType::COS:
+    case OperationType::EXP:
     case OperationType::HARD_SWISH:
     case OperationType::LOG:
     case OperationType::RSQRT:
@@ -327,6 +328,9 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
             node->operation.type, custom_status.error_message(),
             primary_status.error_message()));
       }
+    }
+    for (auto task : tasks) {
+      task->description = node->operation.type + "_" + std::to_string(node->id);
     }
     compiled_model->insert(compiled_model->end(), tasks.begin(), tasks.end());
   }

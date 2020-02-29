@@ -39,47 +39,30 @@ PACKAGE_NAME = 'tflite_runtime'
 PACKAGE_VERSION = os.environ['PACKAGE_VERSION']
 DOCLINES = __doc__.split('\n')
 TENSORFLOW_DIR = os.environ['TENSORFLOW_DIR']
-
-# Setup cross compiling
-TARGET = os.environ.get('TENSORFLOW_TARGET', None)
-if TARGET == 'rpi':
-  os.environ['CXX'] = 'arm-linux-gnueabihf-g++'
-  os.environ['CC'] = 'arm-linux-gnueabihf-gcc'
-elif TARGET == 'aarch64':
-  os.environ['CXX'] = 'aarch64-linux-gnu-g++'
-  os.environ['CC'] = 'aarch64-linux-gnu-gcc'
-MAKE_CROSS_OPTIONS = ['TARGET=%s' % TARGET]  if TARGET else []
-
-TARGET_ARCH = (
-    os.environ['TENSORFLOW_TARGET_ARCH'] \
-    if 'TENSORFLOW_TARGET_ARCH' in os.environ
-    else None)
-MAKE_CROSS_OPTIONS += ['TARGET_ARCH=%s' % TARGET_ARCH] \
-        if TARGET_ARCH else []
-
-CC_PREFIX = (
-    os.environ['TENSORFLOW_CC_PREFIX'] \
-    if 'TENSORFLOW_CC_PREFIX' in os.environ
-    else None)
-MAKE_CROSS_OPTIONS += ['CC_PREFIX=%s' % CC_PREFIX] \
-        if CC_PREFIX else []
-
-EXTRA_CXXFLAGS = (
-    os.environ['TENSORFLOW_EXTRA_CXXFLAGS'] \
-    if 'TENSORFLOW_EXTRA_CXXFLAGS' in os.environ
-    else None)
-MAKE_CROSS_OPTIONS += ['EXTRA_CXXFLAGS=%s' % EXTRA_CXXFLAGS] \
-        if EXTRA_CXXFLAGS else []
-
 RELATIVE_MAKE_DIR = os.path.join('tensorflow', 'lite', 'tools', 'make')
 MAKE_DIR = os.path.join(TENSORFLOW_DIR, RELATIVE_MAKE_DIR)
 DOWNLOADS_DIR = os.path.join(MAKE_DIR, 'downloads')
 RELATIVE_MAKEFILE_PATH = os.path.join(RELATIVE_MAKE_DIR, 'Makefile')
 DOWNLOAD_SCRIPT_PATH = os.path.join(MAKE_DIR, 'download_dependencies.sh')
 
+# Setup cross compiling
+TARGET = os.environ.get('TENSORFLOW_TARGET')
+if TARGET == 'rpi':
+  os.environ['CXX'] = 'arm-linux-gnueabihf-g++'
+  os.environ['CC'] = 'arm-linux-gnueabihf-gcc'
+elif TARGET == 'aarch64':
+  os.environ['CXX'] = 'aarch64-linux-gnu-g++'
+  os.environ['CC'] = 'aarch64-linux-gnu-gcc'
+
+MAKE_CROSS_OPTIONS = []
+for name in ['TARGET', 'TARGET_ARCH', 'CC_PREFIX', 'EXTRA_CXXFLAGS']:
+  value = os.environ.get('TENSORFLOW_%s' % name)
+  if value:
+    MAKE_CROSS_OPTIONS.append('%s=%s' % (name, value))
+
 
 # Check physical memory and if we are on a reasonable non small SOC machine
-# with more than 4GB, use all the CPUs, otherwisxe only 1.
+# with more than 4GB, use all the CPUs, otherwise only 1.
 def get_build_cpus():
   physical_bytes = os.sysconf('SC_PAGESIZE') * os.sysconf('SC_PHYS_PAGES')
   if physical_bytes < (1<<30) * 4:
@@ -156,6 +139,7 @@ ext = Extension(
              'interpreter_wrapper/numpy.cc',
              'interpreter_wrapper/python_error_reporter.cc',
              'interpreter_wrapper/python_utils.cc'],
+    extra_compile_args=['--std=c++11'],
     swig_opts=['-c++',
                '-I%s' % TENSORFLOW_DIR,
                '-module', 'interpreter_wrapper',

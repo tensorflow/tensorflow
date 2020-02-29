@@ -42,7 +42,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
@@ -1340,34 +1339,36 @@ class MirroredVariableStopGradientTest(test.TestCase, parameterized.TestCase):
       self.assertIsNone(grads[0])
 
 
-class FunctionTest(test.TestCase):
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        mode=["eager"]))
+class FunctionTest(test.TestCase, parameterized.TestCase):
 
-  def testBackwardFunctionDevicePlacement(self):
-    if context.num_gpus() < 1:
-      self.skipTest("At least one GPU is required.")
-    devices = [device_util.resolve("/device:GPU:0"),
-               device_util.resolve("/device:CPU:0")]
-    ms = mirrored_strategy.MirroredStrategy(devices)
-
-    with ms.scope():
+  def testBackwardFunctionDevicePlacement(self, distribution):
+    with distribution.scope():
       w = variable_scope.variable([1.5], name="w")
       b = variable_scope.variable([0.5], name="b")
 
     @def_function.function
     def forward(x, w, b):
       return x * w + b
-    x = constant_op.constant([1.0], name="x_useless")
+
+    x = array_ops.identity([1.0], name="x_useless")
     concrete_forward = forward.get_concrete_function(x, w._primary, b._primary)
 
-    with ms.scope():
+    with distribution.scope():
+
       def replica_fn():
         with backprop.GradientTape() as t:
-          x = constant_op.constant([1.0], name="x")
+          x = array_ops.identity([1.0], name="x")
           loss = concrete_forward(x, w._get(), b._get()) - [1.0]
           return t.gradient(loss, [w, b])
 
       def step_fn():
-        return ms.experimental_run_v2(replica_fn)
+        return distribution.experimental_run_v2(replica_fn)
 
       context.enable_run_metadata()
       g1, g2 = step_fn()
@@ -1383,30 +1384,32 @@ class FunctionTest(test.TestCase):
         for node in partition_graph.node:
           if node.name == node_name:
             devices_for_this_node.add(node.device)
+      devices = [device_util.resolve("/device:GPU:0"),
+                 device_util.resolve("/device:CPU:0")]
       self.assertSetEqual(devices_for_this_node, set(devices))
 
-  def testFuctionPreservesAutoGraph(self):
-    config.set_logical_device_configuration(
-        config.list_physical_devices("CPU")[0],
-        [context.LogicalDeviceConfiguration()] * 2)
-    ms = mirrored_strategy.MirroredStrategy()
-
+  def testFuctionPreservesAutoGraph(self, distribution):
     def f():
       self.assertTrue(converter_testing.is_inside_generated_code())
       return 1
 
-    with ms.scope():
+    with distribution.scope():
+
       @def_function.function
       def replica_fn():
         return f()
 
-      ms.experimental_run_v2(replica_fn)
+      distribution.experimental_run_v2(replica_fn)
 
 
 def _replica_id():
   replica_id = ds_context.get_replica_context().replica_id_in_sync_group
   if not isinstance(replica_id, ops.Tensor):
     replica_id = constant_op.constant(replica_id)
+  # TODO(b/149852830): Workaround for small Tensor caching (which is only on
+  # CPU) to ensure the value is on the correct device.
+  replica_id = math_ops.cast(replica_id, dtypes.float32)
+  replica_id = math_ops.cast(replica_id, dtypes.int32)
   return replica_id
 
 

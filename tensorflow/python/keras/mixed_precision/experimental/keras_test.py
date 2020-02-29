@@ -496,10 +496,6 @@ class KerasModelTest(keras_parameterized.TestCase):
           'strategy_fn': create_central_storage_strategy,
           'use_regularizer': True,
           'save_format': 'tf'
-      }, {
-          'testcase_name': 'norun_distributed',
-          'strategy_fn': create_mirrored_strategy,
-          'experimental_run_tf_function': False
       })
   def test_model(self,
                  strategy_fn,
@@ -508,8 +504,7 @@ class KerasModelTest(keras_parameterized.TestCase):
                  policy_name='mixed_float16',
                  get_config=False,
                  save_format=None,
-                 use_input_spec=False,
-                 experimental_run_tf_function=True):
+                 use_input_spec=False):
     self._skip_if_strategy_unsupported(strategy_fn)
     self._skip_if_save_format_unsupported(save_format)
     regularizer = (mp_test_util.IdentityRegularizer() if use_regularizer
@@ -546,8 +541,7 @@ class KerasModelTest(keras_parameterized.TestCase):
         model.compile(
             opt,
             loss=loss_fn,
-            run_eagerly=testing_utils.should_run_eagerly(),
-            experimental_run_tf_function=testing_utils.should_run_tf_function())
+            run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.ones((2, 1))
     y = np.ones((2, 1))
@@ -606,14 +600,9 @@ class KerasModelTest(keras_parameterized.TestCase):
       }, {
           'testcase_name': 'distribute',
           'strategy_fn': create_mirrored_strategy,
-      }, {
-          'testcase_name': 'norun_distributed',
-          'strategy_fn': create_mirrored_strategy,
-          'experimental_run_tf_function': False,
       })
   def test_fixed_loss_scaling(self,
-                              strategy_fn,
-                              experimental_run_tf_function=True):
+                              strategy_fn):
     # Note: We do not test mixed precision in this method, only loss scaling.
     loss_scale = 8.
     batch_size = 4
@@ -640,8 +629,7 @@ class KerasModelTest(keras_parameterized.TestCase):
       model.compile(
           opt,
           loss=loss_fn,
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
 
     self.assertEqual(backend.eval(layer.v), 1)
     x = np.ones((batch_size, 1))
@@ -720,8 +708,7 @@ class KerasModelTest(keras_parameterized.TestCase):
         model.compile(
             opt,
             loss=loss_fn,
-            run_eagerly=testing_utils.should_run_eagerly(),
-            experimental_run_tf_function=testing_utils.should_run_tf_function())
+            run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.ones((2, 1))
     y = np.ones((2, 1))
@@ -735,7 +722,7 @@ class KerasModelTest(keras_parameterized.TestCase):
         # Layer does not have weight regularizer
         self.assertEqual(backend.eval(layer.v), 1 - learning_rate)
 
-  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   @parameterized.named_parameters(
       {
           'testcase_name': 'base',
@@ -760,16 +747,11 @@ class KerasModelTest(keras_parameterized.TestCase):
           'testcase_name': 'central_storage',
           'strategy_fn': create_central_storage_strategy,
           'get_config': True,
-      }, {
-          'testcase_name': 'norun_distributed',
-          'strategy_fn': create_mirrored_strategy,
-          'experimental_run_tf_function': False,
       })
   def test_dynamic_loss_scaling(self,
                                 strategy_fn,
                                 pass_loss_scale_to_policy=False,
-                                get_config=False,
-                                experimental_run_tf_function=True):
+                                get_config=False):
     strategy = strategy_fn()
     initial_loss_scale = 2.
     batch_size = 4
@@ -816,8 +798,7 @@ class KerasModelTest(keras_parameterized.TestCase):
         model.compile(
             opt,
             loss=loss_fn,
-            run_eagerly=testing_utils.should_run_eagerly(),
-            experimental_run_tf_function=testing_utils.should_run_tf_function())
+            run_eagerly=testing_utils.should_run_eagerly())
 
     self.assertEqual(backend.eval(layer.v), 1)
     x = np.ones((batch_size, 1))
@@ -959,8 +940,7 @@ class KerasModelTest(keras_parameterized.TestCase):
       model.compile(
           optimizer=opt,
           loss='mse',
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
 
     model.fit(np.ones((2, 2)), np.zeros((2, 2)), batch_size=2)
     weights_file = os.path.join(self.get_temp_dir(), 'weights')
@@ -997,8 +977,7 @@ class KerasModelTest(keras_parameterized.TestCase):
       model.compile(
           optimizer=opt,
           loss='mse',
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
     # Run for 3 steps (6 examples with a batch size of 2)
     model.fit(np.zeros((6, 2)), np.zeros((6, 2)), batch_size=2)
     self.assertEqual(backend.get_value(loss_scale()), 2)
@@ -1057,8 +1036,7 @@ class KerasModelTest(keras_parameterized.TestCase):
       model.compile(
           optimizer=opt,
           loss='mse',
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
     # Run for 3 steps (6 examples with a batch size of 2)
     model.fit(np.ones((6, 2)), np.zeros((6, 2)), batch_size=2)
     self.assertEqual(backend.get_value(loss_scale()), 2)

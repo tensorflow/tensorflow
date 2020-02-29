@@ -1544,7 +1544,7 @@ std::vector<string> InputDevices(const Node& caller) {
   return input_devices;
 }
 
-// Place input nodes on the same device as the correspinding caller input
+// Place input nodes on the same device as the corresponding caller input
 // node. Do not specify any placement for all other nodes.
 class DefaultFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
  public:
@@ -1593,7 +1593,7 @@ class SingleDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
   const string caller_device_;
 };
 
-// Place input nodes on the same device as the correspinding caller input
+// Place input nodes on the same device as the corresponding caller input
 // node. Do not place output node. Place control nodes on the same device as
 // caller node. For all function body nodes overrides job, replica and task
 // parts of the device assignment to match function caller node.

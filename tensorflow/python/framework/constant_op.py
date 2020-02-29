@@ -224,6 +224,10 @@ def constant(value, dtype=None, shape=None, name="Const"):
   ...
   NotImplementedError: ...
 
+  `tf.constant` will _always_ create CPU (host) tensors. In order to create
+  tensors on other devices, use `tf.identity`. (If the `value` is an eager
+  Tensor, however, the tensor will be returned unmodified as mentioned above.)
+
   Related Ops:
 
   * `tf.convert_to_tensor` is similar but:
