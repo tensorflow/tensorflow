@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/strings/str_cat.h"
+
 namespace xla {
 
 RunId::RunId() {
@@ -26,9 +28,7 @@ RunId::RunId() {
 
 bool operator==(const RunId& a, const RunId& b) { return a.data_ == b.data_; }
 
-std::string RunId::ToString() const {
-  return "RunId: " + std::to_string(data_);
-}
+std::string RunId::ToString() const { return absl::StrCat("RunId: ", data_); }
 
 ExecutableRunOptions& ExecutableRunOptions::set_device_ordinal(
     int device_ordinal) {

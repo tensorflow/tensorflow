@@ -836,23 +836,6 @@ cc_library(
     ],
 )
 
-filegroup(
-    name = "xla_cpu_runtime_hdrs",
-    srcs = [
-        "eigen_contraction_kernel.h",
-        "eigen_convolution_helpers.h",
-        "eigen_spatial_convolutions.h",
-        "eigen_spatial_convolutions-inl.h",
-    ],
-)
-
-filegroup(
-    name = "xla_cpu_runtime_srcs",
-    srcs = [
-        "eigen_contraction_kernel.cc",
-    ],
-)
-
 cc_library(
     name = "redux_functor",
     hdrs = ["redux_functor.h"],

@@ -154,7 +154,8 @@ def saved_model_compile_aot(
         tags = tags,
         deps = _maybe_force_compile(
             [
-                "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_standalone",
+                "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+                "//tensorflow/core/platform:types",
             ],
             force_compile = force_without_xla_support_flag,
         ),

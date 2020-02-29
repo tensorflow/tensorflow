@@ -215,8 +215,7 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
                                    signature_def_key,
                                    cpp_class,
                                    target_triple,
-                                   variables_to_feed=(),
-                                   enable_multithreading=False):
+                                   variables_to_feed=()):
   """Compile a `MetaGraphDef` to header+object files in `output_prefix`.
 
   Use XLA AOT (`tfcompile`) to convert the given meta graph and
@@ -243,8 +242,6 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
       user; these won't be frozen.  If `None`, then we will extract all the
       variables in the graph and mark them as to-feed.  The default behavior is
       an empty tuple: all variables must be frozen.
-    enable_multithreading: Not implemented.  Enable multithreading in the
-      compiled computation.
 
   Raises:
     RuntimeError: If tensorflow was not built with XLA.
@@ -252,24 +249,9 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
       issue importing the tfcompile python wrapper.
     ValueError: If `meta_graph_def.signature_def[signature_def_key]` is
       missing or has empty outputs.
-    NotImplementedError: If `enable_multithreading is True`.
   """
   if _pywrap_tfcompile_import_error:
     raise _pywrap_tfcompile_import_error
-
-  if enable_multithreading:
-    raise NotImplementedError(
-        'Multithreading is not currently supported because it requires '
-        'additional dependencies in the AOT runtime.')
-  else:
-    # TODO(ebrevdo): Pipe DebugOptions through tfcompile::Main and pywrap
-    # so that we can set these directly instead of relying on env vars.
-    xla_flags = os.environ.get('XLA_FLAGS')
-    if not xla_flags:
-      xla_flags = '--xla_cpu_multi_thread_eigen=false'
-    else:
-      xla_flags += ',--xla_cpu_multi_thread_eigen=false'
-    os.environ['XLA_FLAGS'] = xla_flags
 
   signature_def_map = meta_graph_def.signature_def
   if signature_def_key not in signature_def_map:

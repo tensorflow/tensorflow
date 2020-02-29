@@ -41,30 +41,6 @@ function cp_external() {
   cp "${src_dir}/local_config_cuda/cuda/cuda/cuda_config.h" "${dest_dir}/local_config_cuda/cuda/cuda/"
 }
 
-function copy_xla_aot_runtime_sources() {
-  local src_dir=$1
-  local dst_dir=$2
-
-  pushd $src_dir
-  for file in $(cat tensorflow/tools/pip_package/xla_compiled_cpu_runtime_srcs.txt)
-  do
-    # Sometimes $file has a prefix bazel-out/host/ we want to remove.
-    prefix=${file%%tensorflow/*}  # Find the location of "tensorflow/*"
-    candidate_file=${file#$prefix}  # Remove the prefix
-    if [ ! -z "$candidate_file" ]; then
-      file=$candidate_file
-    fi
-    dn=$(dirname $file)
-    if test -f "$file"; then
-      mkdir -p "${dst_dir}/${dn}"
-      cp $file "${dst_dir}/${file}"
-    else
-      echo "Missing xla source file: ${file}" 1>&2
-    fi
-  done
-  popd
-}
-
 function move_to_root_if_exists () {
   arg_to_move="$1"
   if [ -e "${arg_to_move}" ]; then
@@ -108,7 +84,6 @@ function prepare_src() {
   TMPDIR="${1%/}"
   mkdir -p "$TMPDIR"
   EXTERNAL_INCLUDES="${TMPDIR}/tensorflow/include/external"
-  XLA_AOT_RUNTIME_SOURCES="${TMPDIR}/tensorflow/xla_aot_runtime_src"
 
   echo $(date) : "=== Preparing sources in dir: ${TMPDIR}"
 
@@ -133,9 +108,6 @@ function prepare_src() {
     cp_external \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
       "${EXTERNAL_INCLUDES}/"
-    copy_xla_aot_runtime_sources \
-      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
-      "${XLA_AOT_RUNTIME_SOURCES}/"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
   else
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
@@ -150,9 +122,6 @@ function prepare_src() {
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${EXTERNAL_INCLUDES}"
-      copy_xla_aot_runtime_sources \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
-        "${XLA_AOT_RUNTIME_SOURCES}"
       # Copy MKL libs over so they can be loaded at runtime
       so_lib_dir=$(ls $RUNFILES | grep solib) || true
       if [ -n "${so_lib_dir}" ]; then
@@ -173,9 +142,6 @@ function prepare_src() {
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${EXTERNAL_INCLUDES}"
-      copy_xla_aot_runtime_sources \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow \
-        "${XLA_AOT_RUNTIME_SOURCES}"
       # Copy MKL libs over so they can be loaded at runtime
       so_lib_dir=$(ls $RUNFILES | grep solib) || true
       if [ -n "${so_lib_dir}" ]; then

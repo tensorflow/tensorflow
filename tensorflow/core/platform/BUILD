@@ -335,21 +335,6 @@ cc_library(
     hdrs = ["macros.h"],
 )
 
-filegroup(
-    name = "xla_cpu_runtime_srcs",
-    srcs = tf_platform_deps("xla_cpu_runtime_srcs") + [
-        "cord.h",
-        "ctstring.h",
-        "ctstring_internal.h",
-        "dynamic_annotations.h",
-        "env_time.h",
-        "macros.h",
-        "platform.h",
-        "tstring.h",
-        "types.h",
-    ],
-)
-
 cc_library(
     name = "mutex",
     textual_hdrs = ["mutex.h"],
