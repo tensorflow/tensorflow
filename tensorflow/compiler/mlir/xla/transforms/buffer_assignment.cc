@@ -83,5 +83,34 @@ void BufferAssignmentAliasAnalysis::build(MutableArrayRef<Region> regions) {
     }
 }
 }  // namespace detail
+
+//===----------------------------------------------------------------------===//
+// BufferAssignmentPositions
+//===----------------------------------------------------------------------===//
+
+/// Creates a new positions tuple including alloc and dealloc positions.
+BufferAssignmentPositions::BufferAssignmentPositions(Operation* allocPosition,
+                                                     Operation* deallocPosition)
+    : allocPosition(allocPosition), deallocPosition(deallocPosition) {}
+
+//===----------------------------------------------------------------------===//
+// BufferAssignment
+//===----------------------------------------------------------------------===//
+
+/// Creates a new BufferAssignment analysis.
+BufferAssignment::BufferAssignment(Operation* op)
+    : operation(op),
+      liveness(op),
+      dominators(op),
+      postDominators(op),
+      aliases(op) {}
+
+/// Computes the actual positions to place allocs and deallocs for the given
+/// value.
+BufferAssignmentPositions BufferAssignment::computeAllocAndDeallocPositions(
+    Value value) const {
+  // TODO
+}
+
 }  // namespace xla
 }  // namespace mlir

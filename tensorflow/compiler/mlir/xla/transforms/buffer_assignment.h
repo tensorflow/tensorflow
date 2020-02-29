@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_BUFFER_ASSIGNMENT_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_BUFFER_ASSIGNMENT_H_
 
+#include "mlir/Analysis/Dominance.h"
+#include "mlir/Analysis/Liveness.h"
 #include "mlir/IR/Builders.h"   // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"
@@ -24,6 +26,31 @@ namespace mlir {
 namespace xla {
 
 namespace detail {
+/// A specialized dominator analysis that provided access to some private
+/// methods.
+/// TODO(dfki): merge this functionality into the underlying MLIR core dominator
+/// analysis.
+template <bool IsPostDom>
+class BufferAssignmentDominators
+    : public mlir::detail::DominanceInfoBase<IsPostDom> {
+ public:
+  using super = mlir::detail::DominanceInfoBase<IsPostDom>;
+  using super::super;
+
+  /// Finds the nearest common dominator block for the two given blocks first
+  /// and second. If there is no common dominator this function will return
+  /// nullptr.
+  Block* findNearestCommonDominator(Block* first, Block* second) const {
+    assert(first->getParent() == second->getParent() & "Invalid region");
+    return super::dominanceInfos.find(first->getParent())
+        ->second->findNearestCommonDominator(first, second);
+  }
+};
+
+/// A straight-forward alias analysis which ensures that all aliases of all
+/// values will be determined. This is a requirement for the BufferAssignment
+/// class since you need to determine safe positions to place alloc and
+/// deallocs.
 class BufferAssignmentAliasAnalysis {
  public:
   using ValueSetT = SmallPtrSet<Value, 16>;
@@ -50,6 +77,61 @@ class BufferAssignmentAliasAnalysis {
   llvm::DenseMap<Value, ValueSetT> aliases;
 };
 }  // namespace detail
+
+/// Stores proper alloc and dealloc positions to place dialect-specific alloc
+/// and dealloc operations.
+struct BufferAssignmentPositions {
+ public:
+  /// Creates a new positions tuple including alloc and dealloc positions.
+  BufferAssignmentPositions(Operation* allocPosition,
+                            Operation* deallocPosition);
+
+  /// Returns the alloc position before which the alloc operation has to be
+  /// inserted.
+  Operation* getAllocPosition() const { return allocPosition; }
+
+  /// Returns the dealloc position after which the dealloc operation has to be
+  /// inserted.
+  Operation* getDeallocPosition() const { return deallocPosition; }
+
+ private:
+  Operation* allocPosition;
+  Operation* deallocPosition;
+};
+
+class BufferAssignment {
+ public:
+  /// Creates a new BufferAssignment analysis that computes liveness of values
+  /// (including their aliases) accross block boundaries to place allocs and
+  /// deallocs.
+  BufferAssignment(Operation* op);
+
+  /// Returns the operation this analysis was constructed from.
+  Operation* getOperation() const { return operation; }
+
+  /// Computes the actual positions to place allocs and deallocs for the given
+  /// value.
+  BufferAssignmentPositions computeAllocAndDeallocPositions(Value value) const;
+
+ private:
+  /// The operation this analysis was constructed from.
+  Operation* operation;
+
+  /// The underlying liveness analysis to compute fine grained information about
+  /// alloc and dealloc positions.
+  Liveness liveness;
+
+  /// The dominator analysis to place allocs in the appropriate blocks.
+  detail::BufferAssignmentDominators<false> dominators;
+
+  /// The post dominator analysis to place deallocs in the appropriate blocks.
+  detail::BufferAssignmentDominators<true> postDominators;
+
+  /// The internal alias analysis to ensure that allocs and deallocs take all
+  /// their potential aliases into account.
+  detail::BufferAssignmentAliasAnalysis aliases;
+};
+
 }  // namespace xla
 }  // namespace mlir
 
