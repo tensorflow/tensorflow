@@ -136,6 +136,22 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
   @combinations.generate(
       combinations.combine(
+          distribution=strategy_combinations.tpu_strategies,
+          mode=["eager"]))
+  def testFullEagerTPU(self, distribution):
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+
+    def train_step(data):
+      return math_ops.square(data)
+
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with self.assertRaisesRegexp(NotImplementedError,
+                                 "does not support pure eager execution"):
+      distribution.experimental_run_v2(train_step, args=(next(input_iterator),))
+
+  @combinations.generate(
+      combinations.combine(
           distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
