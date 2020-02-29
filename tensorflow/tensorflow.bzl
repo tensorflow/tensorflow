@@ -2709,3 +2709,18 @@ def tfcompile_extra_flags():
 def tf_external_workspace_visible(visibility):
     # External workspaces can see this target.
     return ["//visibility:public"]
+
+def _filegroup_as_file(ctx):
+    out = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(
+        output = out,
+        content = "\n".join([f.short_path for f in ctx.files.dep]),
+    )
+    return DefaultInfo(files = depset([out]))
+
+filegroup_as_file = rule(
+    implementation = _filegroup_as_file,
+    attrs = {
+        "dep": attr.label(),
+    },
+)
