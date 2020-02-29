@@ -21,6 +21,67 @@ limitations under the License.
 
 namespace mlir {
 namespace xla {
+namespace detail {
 
+//===----------------------------------------------------------------------===//
+// BufferAssignmentAliasAnalysis
+//===----------------------------------------------------------------------===//
+
+/// Constructs a new alias analysis using the op provided.
+BufferAssignmentAliasAnalysis::BufferAssignmentAliasAnalysis(Operation* op) {
+  build(op->getRegions());
+}
+
+/// Finds all immediate and indirect aliases this value could potentially
+/// have.
+BufferAssignmentAliasAnalysis::ValueSetT BufferAssignmentAliasAnalysis::resolve(
+    Value value) const {
+  ValueSetT result;
+  resolveRecursive(value, result);
+  return result;
+}
+
+/// Recursively determines alias information for the given value. It stores
+/// all newly found potential aliases in the given result set.
+void BufferAssignmentAliasAnalysis::resolveRecursive(Value value,
+                                                     ValueSetT& result) const {
+  if (!result.insert(value).second) return;
+  auto it = aliases.find(value);
+  if (it == aliases.end()) return;
+  for (auto alias : it->second) {
+    resolveRecursive(alias, result);
+  }
+}
+
+/// This function constructs a mapping from values to its immediate aliases. It
+/// iterates over all blocks, gets their predecessors, determines the values
+/// that will be passed to the corresponding block arguments and inserts them
+/// into map.
+void BufferAssignmentAliasAnalysis::build(MutableArrayRef<Region> regions) {
+  for (Region& region : regions)
+    for (Block& block : region) {
+      // Iterate over all predecessor and get the mapped values to their
+      // corresponding block arguments values.
+      for (auto pred : block.getPredecessors()) {
+        // Determine the current successor index of the current predecessor.
+        unsigned successorIndex = 0;
+        for (auto successor : llvm::enumerate(pred->getSuccessors())) {
+          if (successor.value() == &block) {
+            successorIndex = successor.index();
+            break;
+          }
+        }
+        // Get the terminator and the values that will be passed to our block.
+        auto terminator = pred->getTerminator();
+        auto successorOps = terminator->getSuccessorOperands(successorIndex);
+        // Build the actual mapping of values to their immediate aliases.
+        for (auto arg : block.getArguments()) {
+          auto value = successorOps[arg.getArgNumber()];
+          aliases[value].insert(arg);
+        }
+      }
+    }
+}
+}  // namespace detail
 }  // namespace xla
 }  // namespace mlir

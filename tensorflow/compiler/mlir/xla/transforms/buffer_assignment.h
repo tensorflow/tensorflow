@@ -23,6 +23,33 @@ limitations under the License.
 namespace mlir {
 namespace xla {
 
+namespace detail {
+class BufferAssignmentAliasAnalysis {
+ public:
+  using ValueSetT = SmallPtrSet<Value, 16>;
+
+ public:
+  /// Constructs a new alias analysis using the op provided.
+  BufferAssignmentAliasAnalysis(Operation* op);
+
+  /// Finds all immediate and indirect aliases this value could potentially
+  /// have. Note that the resulting set will also contain the value provided as
+  /// it is an alias of itself.
+  ValueSetT resolve(Value value) const;
+
+ private:
+  /// Recursively determines alias information for the given value. It stores
+  /// all newly found potential aliases in the given result set.
+  void resolveRecursive(Value value, ValueSetT& result) const;
+
+  /// Initializes the internal mappings.
+  void build(MutableArrayRef<Region> regions);
+
+ private:
+  /// Maps values to all immediate aliases this value can have.
+  llvm::DenseMap<Value, ValueSetT> aliases;
+};
+}  // namespace detail
 }  // namespace xla
 }  // namespace mlir
 
