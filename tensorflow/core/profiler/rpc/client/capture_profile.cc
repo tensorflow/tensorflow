@@ -89,10 +89,10 @@ inline bool ShouldRetryTracing(Status status) {
 // Returns whether the returned trace is empty.
 // Failure are handled by CHECK, i.e. abort()
 Status Profile(const string& service_addr, const string& logdir,
-               int duration_ms, const string& repository_root,
-               const string& session_id, const ProfileOptions& opts) {
+               int duration_ms, const string& session_id,
+               const ProfileOptions& opts) {
   ProfileRequest request =
-      PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
+      PopulateProfileRequest(duration_ms, logdir, session_id, opts);
 
   ::grpc::ClientContext context;
   ::grpc::ChannelArguments channel_args;
@@ -129,10 +129,9 @@ Status Profile(const string& service_addr, const string& logdir,
 // Start a new profiling session that include all the hosts included in
 // hostnames, for the time interval of duration_ms. Possibly save the profiling
 // result in the directory specified by repository_root and session_id.
-Status NewSession(const string& service_addr,
+Status NewSession(const string& service_addr, const string& repository_root,
                   const std::vector<string>& hostnames, int duration_ms,
-                  const string& repository_root, const string& session_id,
-                  const ProfileOptions& opts) {
+                  const string& session_id, const ProfileOptions& opts) {
   NewProfileSessionRequest new_session_request;
   *new_session_request.mutable_request() =
       PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
@@ -200,8 +199,6 @@ Status Trace(const string& service_addr, const string& logdir,
              int duration_ms, int num_tracing_attempts) {
   // Use the current timestamp as the run name.
   tensorflow::string session_id = GetCurrentTimeStampAsString();
-  constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-  string repository_root = io::JoinPath(logdir, kProfilePluginDirectory);
   std::vector<string> hostnames;
   if (!workers_list.empty()) {
     hostnames = absl::StrSplit(workers_list, ',');
@@ -215,11 +212,9 @@ Status Trace(const string& service_addr, const string& logdir,
     std::cout << "Starting to trace for " << duration_ms << " ms. "
               << "Remaining attempt(s): " << --remaining_attempts << std::endl;
     if (hostnames.empty()) {
-      status = Profile(service_addr, logdir, duration_ms, repository_root,
-                       session_id, opts);
+      status = Profile(service_addr, logdir, duration_ms, session_id, opts);
     } else {
-      string master = service_addr;
-      status = NewSession(master, hostnames, duration_ms, repository_root,
+      status = NewSession(service_addr, logdir, hostnames, duration_ms,
                           session_id, opts);
     }
     if (remaining_attempts <= 0 || status.ok() || !ShouldRetryTracing(status))
