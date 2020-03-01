@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
-
 namespace profiler {
 namespace {
 
@@ -40,16 +39,6 @@ using ::tensorflow::io::JoinPath;
 
 constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
-
-Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
-                               const string& encoded_trace, std::ostream* os) {
-  string proto_path =
-      JoinPath(run_dir, absl::StrCat(host_prefix, kProtoTraceFileName));
-  TF_RETURN_IF_ERROR(
-      WriteStringToFile(Env::Default(), proto_path, encoded_trace));
-  if (os) *os << "Dumped raw-proto trace data to " << proto_path;
-  return Status::OK();
-}
 
 Status DumpToolDataToLogDirectory(StringPiece run_dir,
                                   const string& host_prefix,
@@ -79,7 +68,7 @@ Status MaybeCreateEmptyEventFile(const string& logdir) {
       return Status::OK();
     }
   }
-  EventsWriter event_writer(io::JoinPath(logdir, "events"));
+  EventsWriter event_writer(JoinPath(logdir, "events"));
   return event_writer.InitWithSuffix(kProfileEmptySuffix);
 }
 
@@ -105,16 +94,10 @@ Status SaveTensorboardProfile(const string& logdir, const string& run,
   // Creates an empty event file so that TensorBoard plugin logic can find
   // the logdir.
   TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
-  // Ignore computation_graph for now.
-  if (!response.encoded_trace().empty()) {
-    TF_RETURN_IF_ERROR(DumpTraceToLogDirectory(profile_run_dir, host_prefix,
-                                               response.encoded_trace(), os));
-  }
   for (const auto& tool_data : response.tool_data()) {
     TF_RETURN_IF_ERROR(DumpToolDataToLogDirectory(profile_run_dir, host_prefix,
                                                   tool_data, os));
   }
-
   return Status::OK();
 }
 

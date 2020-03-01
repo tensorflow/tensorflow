@@ -58,6 +58,7 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
     request.set_repository_root(repository_root);
     request.set_session_id(session_id);
   }
+  request.add_tools("trace_viewer");
   request.add_tools("op_profile");
   request.add_tools("input_pipeline");
   request.add_tools("kernel_stats");
@@ -108,7 +109,7 @@ Status Profile(const string& service_addr, const string& logdir,
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->Profile(&context, request, &response)));
 
-  if (!response.encoded_trace().empty()) {
+  if (!response.empty_trace()) {
     TF_CHECK_OK(
         SaveTensorboardProfile(logdir, session_id, "", response, &std::cout));
     // Print this at the end so that it's not buried in irrelevant LOG messages.
@@ -120,7 +121,7 @@ Status Profile(const string& service_addr, const string& logdir,
         << std::endl;
   }
 
-  if (response.encoded_trace().empty()) {
+  if (response.empty_trace()) {
     return Status(error::Code::UNAVAILABLE, "No trace event is collected");
   }
   return Status::OK();

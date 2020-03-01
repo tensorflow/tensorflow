@@ -35,6 +35,7 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+const absl::string_view kTraceViewer = "trace_viewer";
 const absl::string_view kTensorflowStats = "tensorflow_stats";
 const absl::string_view kInputPipeline = "input_pipeline";
 const absl::string_view kOverviewPage = "overview_page";
@@ -55,21 +56,26 @@ void AddToolData(absl::string_view tool_name, const Proto& tool_output,
 }
 
 // Returns the tool name with extension.
-string ToolName(absl::string_view tool) { return absl::StrCat(tool, ".pb"); }
+string ToolName(absl::string_view tool) {
+  if (tool == kTraceViewer) return "trace";
+  return absl::StrCat(tool, ".pb");
+}
 
 }  // namespace
 
 void ConvertXSpaceToProfileResponse(const XSpace& xspace,
                                     const ProfileRequest& req,
                                     ProfileResponse* response) {
-  {
-    Trace trace;
-    ConvertXSpaceToTraceEvents(xspace, &trace);
-    trace.SerializeToString(response->mutable_encoded_trace());
-  }
   absl::flat_hash_set<absl::string_view> tools(req.tools().begin(),
                                                req.tools().end());
   if (tools.empty()) return;
+  if (tools.contains(kTraceViewer)) {
+    Trace trace;
+    ConvertXSpaceToTraceEvents(xspace, &trace);
+    AddToolData(ToolName(kTraceViewer), trace, response);
+    // Trace viewer is the only tool, skip OpStats conversion.
+    if (tools.size() == 1) return;
+  }
   OpStats op_stats = ConvertXSpaceToOpStats(xspace);
   HardwareType hw_type =
       HardwareTypeFromRunEnvironment(op_stats.run_environment());
