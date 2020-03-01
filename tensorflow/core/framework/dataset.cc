@@ -461,7 +461,7 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
   mutex_lock l(mu_);
   EparallaxTensorIndex* out_index;
 
-  int64 last_local_index = GetIndexOffset(prefix);
+  int64 last_local_index = -1;
   for (auto issued_index : *issued_indices_.Get(prefix, ToStringV(*parent_indices))) {
     if (*issued_index->parent_indices() == *parent_indices &&
         issued_index->local_index() > last_local_index) {
@@ -488,13 +488,13 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
   }
 
   // Mark infertile indices.
-  if (out_index->local_index() == GetIndexOffset(out_index->iterator_id())+1 &&
-      !IsShuffled(out_index)) {
+  if (out_index->local_index() == 0) {
     auto last_index = last_index_map_.find(out_index->iterator_id());
-    if (last_index == last_index_map_.end()) return out_index;
-    for (auto last_parent_index : *last_index->second->parent_indices()) {
-      ////LOG(INFO) << "Infertile: " << *last_parent_index;
-      infertile_indices_.Push(last_parent_index);
+    if (last_index != last_index_map_.end()) {
+      for (auto last_parent_index : *last_index->second->parent_indices()) {
+        ////LOG(INFO) << "Infertile: " << *last_parent_index;
+        infertile_indices_.Push(last_parent_index);
+      }
     }
   }
   //LOG(INFO) << "Issued " << *out_index;
@@ -515,35 +515,14 @@ bool IndexManager::AlreadyProcessedInternal(EparallaxTensorIndex* index) {
   return processed_indices_.Contains(index);
 }
 
-void IndexManager::SetIndexOffset(string prefix, int64 offset) {
-  mutex_lock l(mu_);
-  offset_map_.insert(std::make_pair(prefix, offset));
-}
-
 void IndexManager::ResetParentIndex(string iterator_id) {
   mutex_lock l(mu_);
   processed_indices_.ClearParent(iterator_id);
-  processed_indices_.Clear(iterator_id);
+  //processed_indices_.Clear(iterator_id);
   issued_indices_.ClearParent(iterator_id);
-  issued_indices_.Clear(iterator_id);
+  //issued_indices_.Clear(iterator_id);
   infertile_indices_.ClearParent(iterator_id);
-  infertile_indices_.Clear(iterator_id);
-  /*
-  for (auto it = last_index_map_.begin(); it != last_index_map_.end();) {
-    if (it->first.substr(0, iterator_id.length()) == iterator_id) {
-      last_index_map_.erase(it++);
-    } else {
-      it++;
-    }
-  }
-  for (auto it = current_index_map_.begin(); it != current_index_map_.end();) {
-    if (it->first.substr(0, iterator_id.length()) == iterator_id) {
-      current_index_map_.erase(it++);
-    } else {
-      it++;
-    }
-  }*/
-
+  //infertile_indices_.Clear(iterator_id);
   /*
   LOG(INFO) << "Processed indices";
   for (auto vec : processed_indices_.GetAll()) {

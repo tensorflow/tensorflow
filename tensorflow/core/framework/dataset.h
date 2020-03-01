@@ -522,8 +522,6 @@ class IndexManager {
 
   bool AlreadyProcessed(EparallaxTensorIndex* index);
 
-  void SetIndexOffset(string prefix, int64 offset);
-
   void ResetParentIndex(string iterator_id);
 
   void SetShardID(int64 index);
@@ -531,31 +529,20 @@ class IndexManager {
  protected:
   bool AlreadyProcessedInternal(EparallaxTensorIndex* index);
 
-  int64 GetIndexOffset(string prefix) {
-    auto it = offset_map_.find(prefix);
-    if (it == offset_map_.end()) {
-      return -1;
-    } else {
-      return it->second;
-    }
-  }
-
-  bool IsShuffled(EparallaxTensorIndex* index) {
+  bool IsParentShuffle(EparallaxTensorIndex* index) {
     for (auto parent_index : *index->parent_indices()) {
       size_t pos = parent_index->iterator_id().find_last_of("::");
       string optype = parent_index->iterator_id().substr(pos+1);
-      if (optype.find("Shuffle") != std::string::npos ||
-          optype.find("Interleave") != std::string::npos) {
+      if (optype.find("Shuffle") != std::string::npos) {
         //LOG(INFO) << "Shuffled";
         return true;
-      } else if (parent_index->parent_indices() != nullptr) {
-        for (auto grand_parent_index : *parent_index->parent_indices()) {
-          if (IsShuffled(grand_parent_index)) {
-            //LOG(INFO) << "Shuffled";
-            return true;
-          }
-        }
       }
+      /*for (auto grand_parent_index : *parent_index->parent_indices()) {
+        if (IsShuffled(grand_parent_index)) {
+          //LOG(INFO) << "Shuffled";
+          return true;
+        }
+      }*/
     }
     return false;
   }
