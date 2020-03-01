@@ -3109,6 +3109,7 @@ cc_library(
     deps = [
         ":heap_simulator",
         ":hlo_cost_analysis",
+        "//tensorflow/compiler/xla:debug_options_flags",
     ],
 )
 
