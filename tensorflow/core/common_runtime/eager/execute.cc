@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
-#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -848,14 +847,7 @@ bool IsPinnableOp(const string& op_type) {
 // (int32/int64). This can be disabled by setting the environment variable
 // "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
 Status MaybeUpdateOpDevice(EagerOperation* op) {
-  const auto& exempt_ops = InputColocationExemptionRegistry::Global()->Get();
-  if (op->is_function() || exempt_ops.find(op->Name()) != exempt_ops.end()) {
-    // Don't update the device of direct function calls.
-    // Particularly, if the user did not explicitly request any device for this
-    // function, picking a device would result in this device being the default
-    // for nodes inside the function. This is undesirable for multi-device
-    // functions since the not-explicitly-placed nodes inside the body will all
-    // end up on this default device.
+  if (op->colocation_exempt()) {
     return Status::OK();
   }
   EagerContext& ctx = op->EagerContext();
