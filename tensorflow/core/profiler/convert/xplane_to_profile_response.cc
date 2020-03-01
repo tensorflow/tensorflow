@@ -77,8 +77,11 @@ void ConvertXSpaceToProfileResponse(const XSpace& xspace,
     OverviewPage overview_page_db =
         ConvertOpStatsToOverviewPage(op_stats, hw_type);
     AddToolData(ToolName(kOverviewPage), overview_page_db, response);
-  }
-  if (tools.contains(kInputPipeline)) {
+    if (tools.contains(kInputPipeline)) {
+      AddToolData(ToolName(kInputPipeline), overview_page_db.input_analysis(),
+                  response);
+    }
+  } else if (tools.contains(kInputPipeline)) {
     InputPipelineAnalysisResult input_pipeline_analysis =
         ConvertOpStatsToInputPipelineAnalysis(op_stats, hw_type);
     AddToolData(ToolName(kInputPipeline), input_pipeline_analysis, response);
