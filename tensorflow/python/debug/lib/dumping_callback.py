@@ -49,6 +49,17 @@ from tensorflow.python.util.tf_export import tf_export
 _state = threading.local()
 DEFAULT_TENSOR_DEBUG_MODE = "NO_TENSOR"
 
+# pylint:disable=protected-access
+_FUNCTION_PREFIXES = (
+    compat.as_bytes(function_lib._FORWARD_PREFIX),
+    compat.as_bytes(function_lib._BACKWARD_PREFIX),
+    compat.as_bytes(function_lib._INFERENCE_PREFIX))
+# pylint:enable=protected-access
+
+
+def is_op_type_function(op_type):
+  return compat.as_bytes(op_type).startswith(_FUNCTION_PREFIXES)
+
 
 @ops.RegisterGradient("DebugIdentityV2")
 def _debug_identity_v2_grad(op, dy):
@@ -89,12 +100,6 @@ class _DumpingCallback(object):
     # Mapping op context to unique ID.
     self._context_to_id = dict()
     self._function_to_graph_id = dict()
-    # pylint:disable=protected-access
-    self._function_prefixes = (
-        compat.as_bytes(function_lib._FORWARD_PREFIX),
-        compat.as_bytes(function_lib._BACKWARD_PREFIX),
-        compat.as_bytes(function_lib._INFERENCE_PREFIX))
-    # pylint:enable=protected-access
     self._op_type_to_context_id = dict()
     # Keeps track of counter for symbolic tensors output by in-graph ops.
     self._symbolic_tensor_counter = 0
@@ -583,7 +588,7 @@ class _DumpingCallback(object):
       Else, `None` is returned.
     """
     op_type = compat.as_bytes(op_type)
-    if op_type.startswith(self._function_prefixes):
+    if is_op_type_function(op_type):
       # op_type for eagerly-executed FuncGraphs have the prefixed and suffixed
       # form such as "__inference_my_function_13579", wherein the middle part
       # "my_function" is the name of the Python function from which the
