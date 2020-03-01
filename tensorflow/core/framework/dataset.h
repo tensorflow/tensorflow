@@ -379,17 +379,23 @@ class GraphDefBuilderWrapper {
 class StatsAggregator;
 class FunctionHandleCache;
 
-class MultiLevelIndexQueue {
+//TODO(KG): memory management
+//TODO(KG): index tree
+//TODO(KG): Remove stale indices of repeat()
+typedef std::map<string, std::vector<EparallaxTensorIndex*>*> IndexTree;
+class MultiLevelIndexTree {
  public:
   void Push(EparallaxTensorIndex* index) {
-    std::vector<EparallaxTensorIndex*>* queue = Get(index->iterator_id());
-    queue->push_back(index);
+    std::vector<EparallaxTensorIndex*>* indices = Get(index->iterator_id(),
+                                                    ToStringV(*index->parent_indices()));
+    indices->push_back(index);
   }
 
   bool Contains(EparallaxTensorIndex *index) {
-    std::vector<EparallaxTensorIndex*>* queue = Get(index->iterator_id());
-    for (auto queued_index : *queue) {
-      if (*index == *queued_index) {
+    std::vector<EparallaxTensorIndex*>* indices = Get(index->iterator_id(),
+                                                    ToStringV(*index->parent_indices()));
+    for (auto buffered_index : *indices) {
+      if (*index == *buffered_index) {
         return true;
       }
     }
@@ -398,43 +404,105 @@ class MultiLevelIndexQueue {
 
   void ClearParent(string iterator_id) {
     string key;
-    std::vector<EparallaxTensorIndex*>* queue;
-    for (auto& it : queues_) {
+    IndexTree* tree;
+    for (auto& it : tree_) {
       key = it.first;
-      if (key.substr(0, iterator_id.length()) == iterator_id &&
-          key.length() > iterator_id.length()) {
-        queue = it.second;
-        for (EparallaxTensorIndex* index : *queue) {
-          //LOG(INFO) << "Clearing " << *index;
-          //delete index;
+      tree = it.second;
+      if (key.substr(0, iterator_id.length()) == iterator_id) {
+        if (key.length() > iterator_id.length()) {
+          //for (EparallaxTensorIndex* index : *tree) {
+          //  LOG(INFO) << "Clearing " << *index;
+          //  delete index;
+          //}
+          tree->clear();
         }
-        queue->clear();
-      }
+      } /*else if (key.length() < iterator_id.length()) {
+        for (auto it = tree->begin(); it != tree->end();) {
+          bool found = false;
+          for (auto index : *Get(iterator_id)) {
+            if (ContainsAncestor(*it, index)) {
+              found = true;
+              break;
+            }
+          }
+          if (found) {
+            LOG(INFO) << "Deleted index: " << **it;
+            tree->erase(it);
+          } else {
+            it++;
+          }
+        }
+      }*/
     }
   }
 
-  std::vector<EparallaxTensorIndex*>* Get(string iterator_id) {
-    auto it = queues_.find(iterator_id);
-    if (it == queues_.end()) {
-      std::vector<EparallaxTensorIndex*>* queue =
-          new std::vector<EparallaxTensorIndex*>;
-      queues_.insert(std::make_pair(iterator_id, queue));
-      return queue;
+  bool ContainsAncestor(EparallaxTensorIndex* index,
+                        EparallaxTensorIndex* ancestor) {
+    bool found = false;
+    for (auto parent_index : *index->parent_indices()) {
+      if (*parent_index == *ancestor) {
+        found = true;
+        break;
+      } else if (ContainsAncestor(parent_index, ancestor)) {
+        found = true;
+        break;
+      }
+    }
+    return found;
+  }
+
+  void Clear(string iterator_id) {
+    Get(iterator_id)->clear();
+  }
+
+  void ClearChildren(string iterator_id) {
+    return;
+  }
+
+  IndexTree* Get(string iterator_id) {
+    auto it = tree_.find(iterator_id);
+    if (it == tree_.end()) {
+      IndexTree* tree = new IndexTree;
+      tree_.insert(std::make_pair(iterator_id, tree));
+      return tree;
     } else {
       return it->second;
     }
   }
 
-  std::vector<std::vector<EparallaxTensorIndex*>*> GetAll() {
-    std::vector<std::vector<EparallaxTensorIndex*>*> queues;
-    for (auto const& it : queues_) {
-      queues.push_back(it.second);
+  std::vector<EparallaxTensorIndex*>* Get(string iterator_id,
+                                          string parent_indices) {
+    auto it = tree_.find(iterator_id);
+    if (it == tree_.end()) {
+      IndexTree* tree = new IndexTree;
+      std::vector<EparallaxTensorIndex*>* q = new std::vector<EparallaxTensorIndex*>;
+      tree->insert(std::make_pair(parent_indices, q));
+      tree_.insert(std::make_pair(iterator_id, tree));
+      return q;
+    } else {
+      IndexTree* tree = it->second;
+      if (tree->find(parent_indices) == tree->end()) {
+        std::vector<EparallaxTensorIndex*>* q = new std::vector<EparallaxTensorIndex*>;
+        tree->insert(std::make_pair(parent_indices, q));
+        return q;
+      } else {
+        return tree->find(parent_indices)->second;
+      }
     }
-    return queues;
+  }
+
+  std::vector<std::vector<EparallaxTensorIndex*>*> GetAll() {
+    std::vector<std::vector<EparallaxTensorIndex*>*> index_vectors;
+    for (auto const& it : tree_) {
+      for (auto const& i: *it.second) {
+        index_vectors.push_back(i.second);
+      }
+    }
+    return index_vectors;
   }
 
  private:
-  std::map<string, std::vector<EparallaxTensorIndex*>*> queues_;
+  std::map<string, IndexTree*> tree_;
 };
 
 class IndexManager {
@@ -597,9 +665,9 @@ class IndexManager {
 
  private:
   mutex mu_;
-  MultiLevelIndexQueue processed_indices_ GUARDED_BY(mu_);
-  MultiLevelIndexQueue issued_indices_ GUARDED_BY(mu_);
-  MultiLevelIndexQueue infertile_indices_ GUARDED_BY(mu_);
+  MultiLevelIndexTree processed_indices_ GUARDED_BY(mu_);
+  MultiLevelIndexTree issued_indices_ GUARDED_BY(mu_);
+  MultiLevelIndexTree infertile_indices_ GUARDED_BY(mu_);
   std::map<string, EparallaxTensorIndex*> last_index_map_ GUARDED_BY(mu_);
   std::map<string, EparallaxTensorIndex*> current_index_map_ GUARDED_BY(mu_);
   std::map<string, int64> offset_map_ GUARDED_BY(mu_);

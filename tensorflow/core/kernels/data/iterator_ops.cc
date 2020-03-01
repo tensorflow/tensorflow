@@ -88,12 +88,9 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
       s = captured_state->iterator->GetNext(IteratorContext(std::move(params)),
                                             out_tensors, end_of_sequence,
                                             out_index);
-      if (!s.ok() || *end_of_sequence || !out_tensors->empty()) {
-        break;
-      }
     } while (s.ok() && !*end_of_sequence && out_tensors->empty());
 
-    if (s.ok()) {
+    if (s.ok() && !*end_of_sequence && !out_tensors->empty()) {
       index_manager_.NotifyFinished(out_index);
     }
     return s;

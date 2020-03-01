@@ -432,9 +432,10 @@ void IndexManager::NotifyFinished(EparallaxTensorIndex* index) {
       continue;
     }
 
-    //LOG(INFO) << "Processed " << *processed_index;
+    //LOG(INFO) << "Processing finished: " << *processed_index;
     //LOG(INFO) << "Finding last parent indices " << *last_parent_indices;
-    for (auto issued_index : *issued_indices_.Get(processed_index->iterator_id())) {
+    for (auto issued_index : *issued_indices_.Get(processed_index->iterator_id(),
+          ToStringV(*processed_index->parent_indices()))) {
       if (*issued_index->parent_indices() == *last_parent_indices &&
           !AlreadyProcessedInternal(issued_index)) {
         //LOG(INFO) << "Still Not processed " << *issued_index;
@@ -461,7 +462,7 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
   EparallaxTensorIndex* out_index;
 
   int64 last_local_index = GetIndexOffset(prefix);
-  for (auto issued_index : *issued_indices_.Get(prefix)) {
+  for (auto issued_index : *issued_indices_.Get(prefix, ToStringV(*parent_indices))) {
     if (*issued_index->parent_indices() == *parent_indices &&
         issued_index->local_index() > last_local_index) {
       last_local_index = issued_index->local_index();
@@ -504,8 +505,8 @@ bool IndexManager::AlreadyProcessed(EparallaxTensorIndex* index) {
   mutex_lock l(mu_);
   bool already_processed = AlreadyProcessedInternal(index);
   if (already_processed) {
-    LOG(INFO) << "Index is already processed; Skipping.";
-    LOG(INFO) << *index;
+    //LOG(INFO) << "Index is already processed; Skipping.";
+    //LOG(INFO) << *index;
   }
   return already_processed;
 }
@@ -522,26 +523,46 @@ void IndexManager::SetIndexOffset(string prefix, int64 offset) {
 void IndexManager::ResetParentIndex(string iterator_id) {
   mutex_lock l(mu_);
   processed_indices_.ClearParent(iterator_id);
+  processed_indices_.Clear(iterator_id);
   issued_indices_.ClearParent(iterator_id);
+  issued_indices_.Clear(iterator_id);
   infertile_indices_.ClearParent(iterator_id);
-  //LOG(INFO) << "Processed indices";
-  //for (auto vec : processed_indices_.GetAll()) {
-  //  for (auto index : *vec) {
-  //    LOG(INFO) << *index;
-  //  }
-  //}
-  //LOG(INFO) << "Issued indices";
-  //for (auto vec : issued_indices_.GetAll()) {
-  //  for (auto index : *vec) {
-  //    LOG(INFO) << *index;
-  //  }
-  //}
-  //LOG(INFO) << "Infertile indices";
-  //for (auto vec : infertile_indices_.GetAll()) {
-  //  for (auto index : *vec) {
-  //    LOG(INFO) << *index;
-  //  }
-  //}
+  infertile_indices_.Clear(iterator_id);
+  /*
+  for (auto it = last_index_map_.begin(); it != last_index_map_.end();) {
+    if (it->first.substr(0, iterator_id.length()) == iterator_id) {
+      last_index_map_.erase(it++);
+    } else {
+      it++;
+    }
+  }
+  for (auto it = current_index_map_.begin(); it != current_index_map_.end();) {
+    if (it->first.substr(0, iterator_id.length()) == iterator_id) {
+      current_index_map_.erase(it++);
+    } else {
+      it++;
+    }
+  }*/
+
+  /*
+  LOG(INFO) << "Processed indices";
+  for (auto vec : processed_indices_.GetAll()) {
+    for (auto index : *vec) {
+      LOG(INFO) << *index;
+    }
+  }
+  LOG(INFO) << "Issued indices";
+  for (auto vec : issued_indices_.GetAll()) {
+    for (auto index : *vec) {
+      LOG(INFO) << *index;
+    }
+  }
+  LOG(INFO) << "Infertile indices";
+  for (auto vec : infertile_indices_.GetAll()) {
+    for (auto index : *vec) {
+      LOG(INFO) << *index;
+    }
+  }*/
   std::ofstream ckpt_file;
   ckpt_file.open(ckpt_file_path_.data());
   if (ckpt_file.is_open()) {
