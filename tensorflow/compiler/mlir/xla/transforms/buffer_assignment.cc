@@ -260,5 +260,22 @@ void BufferAssignment::print(raw_ostream& os) const {
         }
 }
 
+/// A simple pass to print debug/test information for the buffer assignment
+/// analysis.
+struct BufferAssignmentTestPass : mlir::FunctionPass<BufferAssignmentTestPass> {
+  void runOnFunction() override {
+    llvm::errs() << "Testing : " << getFunction().getName() << "\n";
+    getAnalysis<BufferAssignment>().print(llvm::errs());
+  };
+};
+
+std::unique_ptr<OpPassBase<FuncOp>> createBufferAssignmentTestPass() {
+  return absl::make_unique<BufferAssignmentTestPass>();
+}
+
+static PassRegistration<BufferAssignmentTestPass> buffer_assignment_test_pass(
+    "test-buffer-assignment",
+    "Outputs debug test information for the buffer assignment analysis");
+
 }  // namespace xla
 }  // namespace mlir
