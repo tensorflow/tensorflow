@@ -105,9 +105,13 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
   kernel_.reset(k);
 
   input_alloc_attrs_.resize(kernel_->num_inputs());
+  input_devices_.resize(kernel_->num_inputs(), device_);
   for (size_t i = 0; i < input_alloc_attrs_.size(); ++i) {
-    input_alloc_attrs_[i].set_on_host(kernel_->input_memory_types()[i] ==
-                                      tensorflow::HOST_MEMORY);
+    bool host = kernel_->input_memory_types()[i] == tensorflow::HOST_MEMORY;
+    input_alloc_attrs_[i].set_on_host(host);
+    if (host) {
+      input_devices_[i] = host_cpu_device_;
+    }
   }
   output_alloc_attrs_.resize(kernel_->num_outputs());
   for (size_t i = 0; i < output_alloc_attrs_.size(); ++i) {
@@ -404,19 +408,8 @@ tensorflow::Device* KernelAndDeviceFunc::OutputResourceDevice(int idx) const {
   return nullptr;
 }
 
-DataType KernelAndDeviceOp::input_type(int i) const {
-  return kernel_->input_type(i);
-}
-
-DataType KernelAndDeviceFunc::input_type(int i) const {
-  return input_dtypes_[i];
-}
-
 Device* KernelAndDeviceOp::InputDevice(int i) const {
-  if (kernel_->input_memory_types()[i] == HOST_MEMORY) {
-    return host_cpu_device_;
-  }
-  return device_;
+  return input_devices_[i];
 }
 
 Device* KernelAndDeviceFunc::InputDevice(int i) const {
