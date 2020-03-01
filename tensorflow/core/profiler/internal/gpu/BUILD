@@ -31,7 +31,6 @@ tf_cuda_library(
     ],
     deps = [
         ":cupti_utils",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/internal:annotation_stack",
