@@ -94,6 +94,24 @@ struct BufferAssignmentPositions {
   /// inserted.
   Operation* getDeallocPosition() const { return deallocPosition; }
 
+  /// Inserts a new dialect-specific alloc operation that will be constructed in
+  /// the right place using the arguments provided.
+  template <typename AllocOpT, typename... Args>
+  AllocOpT insertAlloc(Value value, Args... args) const {
+    OpBuilder allocBuilder(value.getDefiningOp());
+    allocBuilder.setInsertionPoint(allocPosition);
+    return allocBuilder.create<AllocOpT>(args...);
+  }
+
+  /// Inserts a new dialect-specific dealloc operation that will be constructed
+  /// in the right place using the arguments provided.
+  template <typename DeallocOpT, typename... Args>
+  DeallocOpT insertDealloc(Value value, Args... args) const {
+    OpBuilder deallocBuilder(value.getDefiningOp());
+    deallocBuilder.setInsertionPointAfter(deallocPosition);
+    return deallocBuilder.create<DeallocOpT>(args...);
+  }
+
  private:
   Operation* allocPosition;
   Operation* deallocPosition;
