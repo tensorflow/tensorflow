@@ -117,6 +117,29 @@ struct BufferAssignmentPositions {
   Operation* deallocPosition;
 };
 
+/// Represents an analysis for alloc and dealloc positions of given values.
+/// The intended use case of this analysis is to store SSA values into buffers
+/// using load/store operations. For this purpose, you need to know proper
+/// positions to place the required allocs and deallocs. Sample usage:
+///   BufferAssignment assignments(funcOp);
+///   -> Determine positions
+///   auto positions = assignments.computeAllocAndDeallocPositions(value);
+///   -> Place alloc
+///   allocBuilder.setInsertionPoint(positions.getAllocPosition());
+///   <create alloc>
+///   -> Place dealloc
+///   deallocBuilder.setInsertionPointAfter(positions.getDeallocPosition());
+///   <create dealloc>
+///   Alternatively:
+///   -> Place alloc and dealloc
+///   positions.insertAlloc<AllocOp>(...);
+///   positions.insertDealloc<DeallocOp>(...);
+/// 1) Note that the function signatures and all types for which buffers should
+/// be allocated need to be converted in advance. 2) Note that it could happen
+/// that it is required to place a delloc after a ReturnOp. If this is required,
+/// you have to lower the ReturnOp into a "void return" and move it to the end
+/// of the block. 3) Note that the current implementation does not support
+/// loops.
 class BufferAssignment {
  public:
   /// Creates a new BufferAssignment analysis that computes liveness of values

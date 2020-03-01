@@ -13,6 +13,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// This file implements logic for computing proper alloc and dealloc positions.
+// The main class is the BufferAssignment class that realizes this analysis.
+// In order to put allocations and deallocations at safe positions, it is
+// significantly important to put them into the proper blocks. However, the
+// liveness analysis does not pay attention to aliases, which can occur due to
+// branches (and their associated block arguments) in general. For this purpose,
+// BufferAssignment firstly finds all possible aliases for a single value (using
+// the BufferAssignmentAliasAnalysis class). Consider the following example:
+// ^bb0(%arg0):
+//   cond_br %cond, ^bb1, ^bb2
+// ^bb1:
+//   br ^exit(%arg0)
+// ^bb2:
+//   x = ...
+//   br ^exit(x)
+// ^exit(%arg1):
+//   return %arg1;
+// Using liveness information on its own would cause us to place the allocs and
+// deallocs in the wrong block. This is due to the fact that x will not be
+// liveOut of its block. Instead, we have to place the alloc for x in bb0 and
+// its associated dealloc in exit. Using the class
+// BufferAssignmentAliasAnalysis, we will find out that x has a poential alias
+// %arg1. In order to find the dealloc position we have to find all potential
+// aliases, iterate over their uses and find the common post-dominator block. In
+// this block we can safely be sure that x will die and can use liveness
+// information to determine the exact operation after which we have to insert
+// the dealloc. Finding the alloc position is highly similar and non obvious.
+// Again, we have to consider all potential aliases and find the common
+// dominator block to place the alloc.
+// TODO(dfki):
+// Note: the current implementation does not support loops. The only thing that
+// is currently missing is a high-level loop analysis that allows us to move
+// allocs and deallocs outside of the loop blocks.
+
 #include "tensorflow/compiler/mlir/xla/transforms/buffer_assignment.h"
 #include "absl/memory/memory.h"
 #include "mlir/IR/Function.h"   // TF:llvm-project
