@@ -1317,6 +1317,53 @@ class TrainingTest(keras_parameterized.TestCase):
     history = model.fit(x, y, epochs=2)
     self.assertIsInstance(history.history['my_metric'][0], int)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_calling_aggregate_gradient(self):
+
+    class _Optimizer(gradient_descent.SGD):
+      """Mock optimizer to check if _aggregate_gradient is called."""
+
+      _HAS_ALL_REDUCE_SUM_GRAD = True
+
+      def __init__(self):
+        self.aggregate_gradients_called = False
+        super(_Optimizer, self).__init__(name='MyOptimizer')
+
+      def _aggregate_gradients(self, grads):
+        self.aggregate_gradients_called = True
+        return super(_Optimizer, self)._aggregate_gradients(grads)
+
+    mock_optimizer = _Optimizer()
+
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(10, activation='relu'))
+
+    model.compile(mock_optimizer, 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 10)), np.ones((10, 10))
+    model.fit(x, y)
+    self.assertEqual(model.optimizer.aggregate_gradients_called, True)
+
+    class _OptimizerOverrideApplyGradients(_Optimizer):
+      """Override apply_gradients.
+
+      To test the case where the optimizer does not define the
+      all_reduce_sum_gradients parameter.
+      """
+
+      _HAS_ALL_REDUCE_SUM_GRAD = False
+
+      def apply_gradients(self, grads_and_vars, name=None):  # pylint: disable=useless-super-delegation
+        return super(_OptimizerOverrideApplyGradients,
+                     self).apply_gradients(grads_and_vars, name)
+
+    mock_optimizer = _OptimizerOverrideApplyGradients()
+    model.compile(mock_optimizer, 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 10)), np.ones((10, 10))
+    model.fit(x, y)
+    self.assertEqual(model.optimizer.aggregate_gradients_called, True)
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
