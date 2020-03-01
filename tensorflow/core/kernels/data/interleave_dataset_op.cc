@@ -147,9 +147,11 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           // We are currently processing a mapped element, so try to get the
           // next subelement.
           bool end_of_element;
-          TF_RETURN_IF_ERROR(this->GetNextFromInput(
-              current_elements_[cycle_index_].iterator, ctx, out_tensors, &end_of_element));
-          parent_indices->push_back(current_elements_[cycle_index_].index);
+          EparallaxTensorIndex* index;
+          TF_RETURN_IF_ERROR(current_elements_[cycle_index_].iterator->GetNext(
+                ctx, out_tensors, &end_of_element, index));
+          //parent_indices->push_back(current_elements_[cycle_index_].index);
+          parent_indices->push_back(index);
           if (!end_of_element) {
             // Produce the subelement as output.
             AdvancePosition();
