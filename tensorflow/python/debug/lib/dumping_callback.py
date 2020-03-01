@@ -360,13 +360,15 @@ class _DumpingCallback(object):
       return instrumented_tensors
     elif tensor_debug_mode in (debug_event_pb2.TensorDebugMode.CURT_HEALTH,
                                debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
+                               debug_event_pb2.TensorDebugMode.FULL_HEALTH,
                                debug_event_pb2.TensorDebugMode.SHAPE):
       for output_slot, tensor in enumerate(tensors):
         dtype = tensor.dtype
         dtype_is_dumpable = (
             tensor_debug_mode in (
                 debug_event_pb2.TensorDebugMode.CURT_HEALTH,
-                debug_event_pb2.TensorDebugMode.CONCISE_HEALTH) and
+                debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
+                debug_event_pb2.TensorDebugMode.FULL_HEALTH) and
             dtype.is_floating or
             tensor_debug_mode == debug_event_pb2.TensorDebugMode.SHAPE and
             (dtype.is_floating or dtype.is_integer or dtype.is_bool))
@@ -459,6 +461,7 @@ class _DumpingCallback(object):
           code_location=self._process_stack_frames())
     elif tensor_debug_mode in (debug_event_pb2.TensorDebugMode.CURT_HEALTH,
                                debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
+                               debug_event_pb2.TensorDebugMode.FULL_HEALTH,
                                debug_event_pb2.TensorDebugMode.SHAPE,
                                debug_event_pb2.TensorDebugMode.FULL_TENSOR):
       execution_proto = debug_event_pb2.Execution(
@@ -475,7 +478,8 @@ class _DumpingCallback(object):
             tensor.dtype.is_numpy_compatible):
           if tensor_debug_mode in (
               debug_event_pb2.TensorDebugMode.CURT_HEALTH,
-              debug_event_pb2.TensorDebugMode.CONCISE_HEALTH):
+              debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
+              debug_event_pb2.TensorDebugMode.FULL_HEALTH):
             if tensor.dtype.is_floating:
               tensor_proto = _concrete_tensor_to_proto(
                   gen_debug_ops.debug_numeric_summary_v2(
@@ -738,6 +742,7 @@ def enable_dump_debug_info(dump_root,
   if tensor_debug_mode not in (debug_event_pb2.TensorDebugMode.NO_TENSOR,
                                debug_event_pb2.TensorDebugMode.CURT_HEALTH,
                                debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
+                               debug_event_pb2.TensorDebugMode.FULL_HEALTH,
                                debug_event_pb2.TensorDebugMode.SHAPE,
                                debug_event_pb2.TensorDebugMode.FULL_TENSOR):
     raise NotImplementedError(
