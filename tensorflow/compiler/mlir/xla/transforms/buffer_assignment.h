@@ -131,6 +131,12 @@ class BufferAssignment {
   /// value.
   BufferAssignmentPositions computeAllocAndDeallocPositions(Value value) const;
 
+  /// Dumps the buffer assignment information in a human readable format.
+  void dump() const;
+
+  /// Dumps the buffer assignment information to the given stream.
+  void print(raw_ostream& os) const;
+
  private:
   /// The operation this analysis was constructed from.
   Operation* operation;

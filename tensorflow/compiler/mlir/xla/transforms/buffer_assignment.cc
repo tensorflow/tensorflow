@@ -203,5 +203,28 @@ BufferAssignmentPositions BufferAssignment::computeAllocAndDeallocPositions(
       getDeallocPosition(value, liveness, possibleValues, postDominators));
 }
 
+/// Dumps the buffer assignment information in a human readable format.
+void BufferAssignment::dump() const { print(llvm::errs()); }
+
+/// Dumps the buffer assignment information to the given stream.
+void BufferAssignment::print(raw_ostream& os) const {
+  os << "// ---- Buffer Assignment -----\n";
+
+  for (Region& region : operation->getRegions())
+    for (Block& block : region)
+      for (Operation& operation : block)
+        for (Value result : operation.getResults()) {
+          BufferAssignmentPositions positions =
+              computeAllocAndDeallocPositions(result);
+          os << "Positions for ";
+          result.print(os);
+          os << "\n Alloc: ";
+          positions.getAllocPosition()->print(os);
+          os << "\n Dealloc: ";
+          positions.getDeallocPosition()->print(os);
+          os << "\n";
+        }
+}
+
 }  // namespace xla
 }  // namespace mlir
