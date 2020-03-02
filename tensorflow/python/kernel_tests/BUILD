@@ -651,6 +651,8 @@ tf_py_test(
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:readers",
     ],
 )
 

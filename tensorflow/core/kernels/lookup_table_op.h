@@ -221,7 +221,9 @@ class HashTable : public InitializableLookupTable {
     if (is_initialized()) {
       return errors::Aborted("HashTable already initialized.");
     }
-    table_.reserve(size);
+    if (size > 0) {
+      table_.reserve(size);
+    }
     return Status::OK();
   };
 
