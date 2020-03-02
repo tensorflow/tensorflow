@@ -2,9 +2,9 @@
 
 #IMPORTANT: 
 # either install xmos tools 15.x on your system
-# OR
+# OR (assumes docker installed and docker daemon running)
 # simply run the docker container before calling make, etc.:
-# $ docker run -it -v$(pwd):/home/builder:z --rm andrewxcav/xcore_test:latest make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" <your make target>
+# $ docker run -it -v$(pwd):/home/builder:z --rm xcoreai/build-tools:latest make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" <your make target>
 
 #TODO changing this file doesn't mark build as dirty
 ifeq ($(TARGET), xcore)
