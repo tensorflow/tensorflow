@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
+
 Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
   Device device;
   device.set_name(std::string(plane.Name()));
@@ -34,6 +35,18 @@ Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
   });
   return device;
 }
+
+// Returns true if the given stat shouldn't be shown in the trace viewer.
+bool IsInternalStat(StatType stat_type) {
+  switch (stat_type) {
+    case StatType::kKernelDetails:
+    case StatType::kLevel0:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
 
 void MaybeDropEventsForTraceViewer(Trace* trace, uint32 limit) {
@@ -61,7 +74,7 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
   auto* trace_devices = trace->mutable_devices();
 
   for (const auto& raw_plane : xspace.planes()) {
-    XPlaneVisitor xplane(&raw_plane);
+    XPlaneVisitor xplane = CreateTfXPlaneVisitor(&raw_plane);
     // Convert devices and resources.
     int64 device_id = xplane.Id();
     (*trace_devices)[device_id] = BuildDeviceAndResource(xplane);
@@ -85,6 +98,7 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
 
         xevent.ForEachStat([&](const XStatVisitor& stat) {
           if (stat.ValueCase() == XStat::VALUE_NOT_SET) return;
+          if (stat.Type() && IsInternalStat(StatType(*stat.Type()))) return;
           args[string(stat.Name())] = stat.ToString();
         });
       });
