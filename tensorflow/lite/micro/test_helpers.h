@@ -37,6 +37,9 @@ const Model* GetComplexMockModel();
 // Returns a simple flatbuffer model with two branches.
 const Model* GetSimpleModelWithBranch();
 
+// Returns a flatbuffer model with `simple_stateful_op`
+const Model* GetSimpleStatefulModel();
+
 // Builds a one-dimensional flatbuffer tensor of the given size.
 const Tensor* Create1dFlatbufferTensor(int size, bool is_variable = false);
 
