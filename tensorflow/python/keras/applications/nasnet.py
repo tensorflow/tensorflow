@@ -33,7 +33,7 @@ The below table describes the performance on ImageNet 2012:
 |   NASNet-A (6 @ 4032)  |   82.7 %  |   96.2 %  |      23.8 B    |    88.9    |
 --------------------------------------------------------------------------------
 
-References:
+Reference paper:
   - [Learning Transferable Architectures for Scalable Image Recognition]
     (https://arxiv.org/abs/1707.07012) (CVPR 2018)
 """
@@ -77,6 +77,10 @@ def NASNet(
     classifier_activation='softmax',
 ):
   """Instantiates a NASNet model.
+
+  Reference paper:
+  - [Learning Transferable Architectures for Scalable Image Recognition]
+    (https://arxiv.org/abs/1707.07012) (CVPR 2018)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is

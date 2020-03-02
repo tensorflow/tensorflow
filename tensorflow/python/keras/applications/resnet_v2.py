@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
-"""ResNet v2 models for Keras."""
+"""ResNet v2 models for Keras.
+
+Reference paper:
+  - [Identity Mappings in Deep Residual Networks]
+    (https://arxiv.org/abs/1603.05027) (CVPR 2016)
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -163,6 +168,10 @@ preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
 decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
 
 DOC = """
+
+  Reference paper:
+  - [Identity Mappings in Deep Residual Networks]
+    (https://arxiv.org/abs/1603.05027) (CVPR 2016)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
