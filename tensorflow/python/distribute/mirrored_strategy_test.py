@@ -1389,18 +1389,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                  device_util.resolve("/device:CPU:0")]
       self.assertSetEqual(devices_for_this_node, set(devices))
 
-<<<<<<< HEAD
-  def testFuctionPreservesAutoGraph(self):
-    if build_info.is_rocm_build:
-      self.skipTest("This test fails on ROCm but is not related to ROCm changes.")
-    config.set_logical_device_configuration(
-        config.list_physical_devices("CPU")[0],
-        [context.LogicalDeviceConfiguration()] * 2)
-    ms = mirrored_strategy.MirroredStrategy()
-
-=======
   def testFuctionPreservesAutoGraph(self, distribution):
->>>>>>> google_upstream/master
     def f():
       self.assertTrue(converter_testing.is_inside_generated_code())
       return 1

@@ -5017,12 +5017,8 @@ cuda_py_test(
     size = "large",
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     python_version = "PY3",
-<<<<<<< HEAD
-    shard_count = 16,
-    tags = ["no_rocm"],
-=======
     shard_count = 24,
->>>>>>> google_upstream/master
+    tags = ["no_rocm"],
     deps = [
         ":array_ops",
         ":client_testlib",

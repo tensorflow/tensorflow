@@ -203,16 +203,11 @@ class ConvLSTMTest(keras_parameterized.TestCase):
       self.assertAllClose(reference_outputs, outputs, atol=1e-5)
 
   def test_conv_lstm_with_initial_state(self):
-<<<<<<< HEAD
     if test.is_built_with_rocm():
       return
 
-    num_samples = 128
-    sequence_len = 10
-=======
     num_samples = 32
     sequence_len = 5
->>>>>>> google_upstream/master
     encoder_inputs = keras.layers.Input((None, 32, 32, 3))
     encoder = keras.layers.ConvLSTM2D(
         filters=32, kernel_size=(3, 3), padding='same',
