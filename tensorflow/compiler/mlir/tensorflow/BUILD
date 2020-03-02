@@ -402,6 +402,7 @@ cc_library(
     deps = [
         ":convert_tensor",
         ":convert_type",
+        ":error_util",
         ":export_tf_dialect_op",
         ":export_utils",
         ":mangling_util",
