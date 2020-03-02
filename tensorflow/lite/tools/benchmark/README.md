@@ -87,6 +87,11 @@ and the following optional parameters:
     `enable_op_profiling`. When this is set to true the profile of ops
     on hexagon DSP will be added to the profile table.
     Note that, the reported data on hexagon is in cycles, not in ms like on cpu.
+*   `external_delegate_path`: `string` (default="") \
+    Path to the external delegate library to use.
+*   `external_delegate_options`: `string` (default="") \
+    A list of options to be passed to the external delegate library.
+    Options should be in the format of `option1:value1;option2:value2;optionN:valueN`
 
 ## To build/install/run
 
