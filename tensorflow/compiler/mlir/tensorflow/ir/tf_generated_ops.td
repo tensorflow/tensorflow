@@ -6784,6 +6784,24 @@ occurred during compilation.
   );
 }
 
+def TF_TPUCompileSucceededAssertOp : TF_Op<"TPUCompileSucceededAssert", []> {
+  let summary = [{
+Asserts that compilation succeeded. This op produces no output and closes the
+  }];
+
+  let description = [{
+device during failure to ensure all pending device interactions fail.
+
+'compilation_status' is a serialized CompilationResultProto.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$compilation_status
+  );
+
+  let results = (outs);
+}
+
 def TF_TPUCopyWithLayoutOp : TF_Op<"TPUCopyWithLayout", [NoSideEffect]> {
   let summary = "Op that copies host tensor to device with specified layout.";
 
@@ -7932,4 +7950,39 @@ def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, SameOperandsAndResultType
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF__TPUCompileMlirOp : TF_Op<"_TPUCompileMlir", []> {
+  let summary = [{
+Compiles a computations for execution on one or more TPU devices.
+  }];
+
+  let description = [{
+For the internal use of the distributed TPU compiler. Note that currently only
+single TPU device is supported.
+
+'mlir_module' is a serialized MLIR module with a `main` function that contains
+target computation.
+'dynamic_shapes' contains dynamic shapes of arguments whose shapes were not
+known statically at TPUReplication rewrite time.
+'metadata' is a serialized TPUCompileMetadataProto describing
+the shapes and types of the inputs to the computation, as well as a mapping onto
+the TPU pod topology.
+'program' output is a string key that is passed to the _TPUExecute op and
+used to look up the program in the compilation cache.
+  }];
+
+  let arguments = (ins
+    Variadic<I64Tensor>:$dynamic_shapes,
+
+    StrAttr:$mlir_module,
+    StrAttr:$metadata
+  );
+
+  let results = (outs
+    TF_StrTensor:$compilation_status,
+    TF_StrTensor:$program
+  );
+
+  TF_DerivedOperandSizeAttr NumDynamicShapes = TF_DerivedOperandSizeAttr<0>;
 }
