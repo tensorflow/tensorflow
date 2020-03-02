@@ -36,6 +36,27 @@ Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
 }
 }  // namespace
 
+void MaybeDropEventsForTraceViewer(Trace* trace, uint32 limit) {
+  auto* trace_events = trace->mutable_trace_events();
+  size_t trace_event_size = trace_events->size();
+  if (trace_event_size <= limit) return;  // Nothing to do.
+  // Sort the events according to start time.
+  std::vector<uint64> timestamps;
+  timestamps.reserve(trace_event_size);
+  for (const auto& event : *trace_events) {
+    timestamps.push_back(event.timestamp_ps());
+  }
+  std::partial_sort(timestamps.begin(), timestamps.begin() + limit,
+                    timestamps.end(), std::less<uint64>());
+  uint64 cutoff_timestamp = timestamps[limit - 1];
+  trace_events->erase(std::remove_if(trace_events->begin(), trace_events->end(),
+                                     [&](const TraceEvent& event) {
+                                       return event.timestamp_ps() >
+                                              cutoff_timestamp;
+                                     }),
+                      trace_events->end());
+}
+
 void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
   auto* trace_devices = trace->mutable_devices();
 
@@ -69,6 +90,11 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
       });
     });
   }
+
+  // Trace viewer (non-streaming) has scalability issues, we need to drop
+  // events to avoid loading failure for trace viewer.
+  constexpr uint64 kMaxEvents = 1000000;
+  MaybeDropEventsForTraceViewer(trace, kMaxEvents);
 }
 
 }  // namespace profiler
