@@ -844,9 +844,9 @@ cc_test(
 )
 
 cc_test(
-    name = "conv_per_channel_quantized_16x8_test",
+    name = "depthwiseconv_per_channel_quantized_16x8_test",
     srcs = [
-        "conv_per_channel_quantized_16x8_test.cc",
+        "depthwiseconv_per_channel_quantized_16x8_test.cc",
     ],
     shard_count = 2,
     deps = [
@@ -859,11 +859,11 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
-      
+
 cc_test(
-    name = "depthwiseconv_per_channel_quantized_16x8_test",
+    name = "conv_per_channel_quantized_16x8_test",
     srcs = [
-        "depthwiseconv_per_channel_quantized_16x8_test.cc",
+        "conv_per_channel_quantized_16x8_test.cc",
     ],
     shard_count = 2,
     deps = [
