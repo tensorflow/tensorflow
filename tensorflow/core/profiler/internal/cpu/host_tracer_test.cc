@@ -12,10 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
+#include <atomic>
+#include <string>
+
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -107,7 +109,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsRunMetadata) {
 }
 
 TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
-  int32 thread_id;
+  std::atomic<int32> thread_id;
   string thread_name = "MyThreadName";
   XSpace space;
 
