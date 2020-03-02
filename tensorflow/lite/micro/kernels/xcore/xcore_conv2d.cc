@@ -15,6 +15,8 @@ namespace conv {
         int32_t C_out;
         int32_t K_h;
         int32_t K_w;
+        int32_t stride_h;
+        int32_t stride_w;
         ParPlan par_plan;
     } Conv2DOptions;
 
@@ -46,6 +48,10 @@ namespace conv {
                 options->K_w = vec[2].AsInt32();
                 options->C_in = vec[3].AsInt32();
             }
+            else if (key.compare("stride_h") == 0)
+                options->stride_h = values[i].AsInt32();
+            else if (key.compare("stride_w") == 0)
+                options->stride_w = values[i].AsInt32();
             else if (key.compare("par_plan") == 0)
             {
                 auto jobs = values[i].AsVector();
@@ -205,7 +211,7 @@ namespace conv {
 
             const TfLiteTensor* input = GetInput(context, node, 0);
             const TfLiteTensor* weights = GetInput(context, node, 1);
-            const TfLiteTensor* biases = GetInput(context, node, 2);
+            const TfLiteTensor* bias_shift_scale = GetInput(context, node, 2);
             const TfLiteTensor* output = GetOutput(context, node, 0);
 
             auto* user_data = reinterpret_cast<UserData*>(node->user_data);
@@ -246,7 +252,7 @@ namespace conv {
                 &init_params,
                 &region_params,
                 weights->data.int8,
-                (data16_t*) biases->data.i16
+                (data16_t*) bias_shift_scale->data.i16
             );
 
             return kTfLiteOk;
@@ -273,6 +279,95 @@ namespace conv {
 
     }  // namespace dido
 
+    //**************************************
+    //**************************************
+    //**************************************
+    // 1x1
+    //**************************************
+    //**************************************
+    //**************************************
+
+    namespace n1x1 {
+
+        typedef struct {
+            Conv2DOptions options;
+            nn_conv2d_1x1_plan_t plan;
+        } UserData;
+
+        void* Init2D(TfLiteContext* context, const char* buffer, size_t length)
+        {
+            auto* user_data = new UserData();
+
+            if (buffer)
+                parse_options(buffer, length, &user_data->options);
+
+            return user_data;
+        }
+
+        void Free2D(TfLiteContext* context, void* buffer) {
+            auto* user_data = reinterpret_cast<UserData*>(buffer);
+
+            delete user_data;
+        }
+
+
+        TfLiteStatus Prepare2D(TfLiteContext* context, TfLiteNode* node) {
+            TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
+            TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+
+            const TfLiteTensor* input = GetInput(context, node, 0);
+            const TfLiteTensor* output = GetOutput(context, node, 0);
+
+            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+
+            // set param values not parsed from custom options
+            user_data->options.C_in = input->dims->data[3];
+            user_data->options.C_out = output->dims->data[3];
+
+            nn_image_params_t params_in;
+            params_in.height = input->dims->data[1];
+            params_in.width = input->dims->data[2];
+            params_in.channels = user_data->options.C_in;
+
+            nn_image_params_t params_out;
+            params_out.height = output->dims->data[1];
+            params_out.width = output->dims->data[2];
+            params_out.channels = user_data->options.C_out;
+
+            conv2d_1x1_init(
+                &user_data->plan,
+                &params_in,
+                &params_out,
+                0, // start_row
+                0, // start_col
+                params_out.height * params_out.width //out_pixels
+            );
+
+            return kTfLiteOk;
+        }
+
+
+        TfLiteStatus Eval2D(TfLiteContext* context, TfLiteNode* node) {
+            const TfLiteTensor* input = GetInput(context, node, 0);
+            const TfLiteTensor* weights = GetInput(context, node, 1);
+            const TfLiteTensor* bias_shift_scale = GetInput(context, node, 2);
+            TfLiteTensor* output = GetOutput(context, node, 0);
+
+            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+
+            conv2d_1x1(
+                output->data.int8, // Y
+                input->data.int8, // X,
+                weights->data.int8, // K
+                (data16_t*) bias_shift_scale->data.i16, // BSS
+                &user_data->plan
+            );
+
+            return kTfLiteOk;
+        }
+
+    } //namespace n1x1
+
 }  // namespace conv
 
 
@@ -292,6 +387,16 @@ TfLiteRegistration* Register_Conv2D_SIDO() {
         conv::sido::Free2D,
         conv::sido::Prepare2D,
         conv::sido::Eval2D
+    };
+    return &r;
+}
+
+TfLiteRegistration* Register_Conv2D_1x1() {
+    static TfLiteRegistration r = {
+        conv::n1x1::Init2D,
+        conv::n1x1::Free2D,
+        conv::n1x1::Prepare2D,
+        conv::n1x1::Eval2D
     };
     return &r;
 }

@@ -68,6 +68,7 @@ XcoreOpsResolver::XcoreOpsResolver() {
     AddCustom("XC_fc_deepin_anyout", Register_FullyConnected_16());
     AddCustom("XC_conv2d_shallowin_deepout_relu", Register_Conv2D_SIDO());
     AddCustom("XC_conv2d_deepin_deepout_relu", Register_Conv2D_DIDO());
+    AddCustom("XC_conv2d_1x1", Register_Conv2D_1x1());
     AddCustom("XC_requantize_16_to_8", Register_Requantize_16_to_8());
     AddCustom("XC_lookup_8", Register_Lookup_8());
 }
