@@ -43,6 +43,9 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateMaterializePassthroughOpPass();
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 
+// Optional pass which will unroll BatchMatMul and use only MatMul
+std::unique_ptr<OpPassBase<FuncOp>> CreateUnrollBatchMatMulPassPass();
+
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
