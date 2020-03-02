@@ -661,6 +661,41 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertAllClose(loaded.predict_on_batch(array_ops.ones((3, 2, 1))),
                         predictions)
 
+  @parameterized.named_parameters([('with_unrolling', True),
+                                   ('no_unrolling', False)])
+  def testSaveStatefulRNN(self, unroll):
+    batch = 12
+    timesteps = 10
+    input_dim = 8
+    input_arr = np.ones((batch, timesteps, input_dim)).astype('float32')
+
+    cells = [keras.layers.LSTMCell(32), keras.layers.LSTMCell(64)]
+    if unroll:
+      x = keras.Input(batch_shape=(batch, timesteps, input_dim))
+    else:
+      x = keras.Input(batch_shape=(batch, None, input_dim))
+    layer = keras.layers.RNN(cells, stateful=True, unroll=unroll)
+    y = layer(x)
+
+    model = keras.Model(x, y)
+    model.compile('rmsprop', 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(
+        np.zeros((batch, timesteps, input_dim)).astype('float32'),
+        np.zeros((batch, 64)).astype('float32'))
+
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+
+    loaded = keras_load.load(saved_model_dir)
+    loaded_layer = loaded.layers[1]
+
+    if not context.executing_eagerly():
+      keras.backend.get_session()  # force variable initialization
+
+    self.assertAllClose(layer.states, loaded_layer.states)
+    self.assertAllClose(model(input_arr), loaded(input_arr))
+
 
 class TestLayerCallTracing(test.TestCase):
 

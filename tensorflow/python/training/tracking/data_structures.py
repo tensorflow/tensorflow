@@ -70,14 +70,14 @@ def _should_wrap_tuple(t):
       return True  # We should remove the NoDependency object from the tuple.
     if isinstance(element, base.Trackable):
       return True
-    if _wrap_or_unwrap(element) is not element:
+    if wrap_or_unwrap(element) is not element:
       return True
   # There are no trackable elements or data structures. Tuples are immutable, so
   # mutation isn't a concern. Don't wrap.
   return False
 
 
-def _wrap_or_unwrap(value):
+def wrap_or_unwrap(value):
   """Wraps basic data structures, unwraps NoDependency objects."""
   # pylint: disable=unidiomatic-typecheck
   # Exact type checking to avoid mucking up custom logic in list/dict
@@ -122,7 +122,7 @@ def sticky_attribute_assignment(trackable, name, value):
     add_dependency = False
   else:
     add_dependency = True
-  value = _wrap_or_unwrap(value)
+  value = wrap_or_unwrap(value)
   if not add_dependency:
     return value
   if isinstance(value, base.Trackable):
@@ -848,7 +848,7 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
     if isinstance(key, six.string_types):
       value = self._track_value(value, name=key)
     else:
-      value = _wrap_or_unwrap(value)
+      value = wrap_or_unwrap(value)
       if not no_dep and isinstance(value, base.Trackable):
         # Non-string keys are OK as long as we have no reason to add a
         # dependency on the value (either because the value is not
@@ -896,7 +896,7 @@ class _TupleWrapper(TrackableDataStructure, wrapt.ObjectProxy):
         add_dependency.append(False)
       else:
         add_dependency.append(True)
-      substituted_wrapped_tuple.append(_wrap_or_unwrap(element))
+      substituted_wrapped_tuple.append(wrap_or_unwrap(element))
     try:
       fields = original_wrapped_tuple._fields
     except AttributeError:

@@ -36,6 +36,9 @@ training_lib = LazyLoader(
     "tensorflow.python.keras.engine.training")
 metrics = LazyLoader("metrics", globals(),
                      "tensorflow.python.keras.metrics")
+recurrent = LazyLoader(
+    "recurrent", globals(),
+    "tensorflow.python.keras.layers.recurrent")
 # pylint:enable=g-inconsistent-quotes
 
 
@@ -138,10 +141,13 @@ class SerializedAttributes(object):
 
   @staticmethod
   def new(obj):
+    """Returns a new SerializedAttribute object."""
     if isinstance(obj, training_lib.Model):
       return ModelAttributes()
     elif isinstance(obj, metrics.Metric):
       return MetricAttributes()
+    elif isinstance(obj, recurrent.RNN):
+      return RNNAttributes()
     elif isinstance(obj, base_layer.Layer):
       return LayerAttributes()
     else:
@@ -285,3 +291,16 @@ class MetricAttributes(
     variables: list of all variables
   """
   pass
+
+
+class RNNAttributes(SerializedAttributes.with_attributes(
+    'RNNAttributes',
+    checkpointable_objects=['states'],
+    copy_from=[LayerAttributes])):
+  """RNN checkpointable objects + functions that are saved to the SavedModel.
+
+  List of all attributes:
+    All attributes from LayerAttributes (including CommonEndpoints)
+    states: List of state variables
+  """
+
