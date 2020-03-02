@@ -319,7 +319,7 @@ class ImporterBase {
   mlir::Location GetLocation(const NodeDef& node);
 
   // Gets the location information string for the given node.
-  std::string GetLocationStr(const Node& node, bool includeNodeName = false);
+  std::string GetLocationStr(const Node& node);
 
   // Inserts a placeholder node in the graph to replace a feed output tensor,
   // and returns the new placeholder node and a boolean indicating if the
@@ -1346,17 +1346,12 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
   }
 }
 
-std::string ImporterBase::GetLocationStr(const Node& node,
-                                         bool includeNodeName) {
+std::string ImporterBase::GetLocationStr(const Node& node) {
   const auto location = GetLocation(node.def());
   std::string s;
   llvm::raw_string_ostream ss(s);
   location.print(ss);
   ss.flush();
-  // Removes the node name prefix if it exists.
-  if (!s.empty() && s[0] == '\"' && s.find_first_of(node.name()) == 1) {
-    return s.replace(0, node.name().size() + 3, "");
-  }
   return s;
 }
 
