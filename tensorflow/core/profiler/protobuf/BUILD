@@ -83,7 +83,7 @@ tf_proto_library(
     visibility = [":friends"],
 )
 
-# This proto is deprecating and not guarenteed to be compatible across versions.
+# This proto is deprecating and not guaranteed to be compatible across versions.
 # Please don't refer in new project unless you are double confirmed.
 tf_proto_library(
     name = "tf_stats_proto",

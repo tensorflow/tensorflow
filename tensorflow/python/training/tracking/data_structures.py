@@ -288,7 +288,7 @@ class List(TrackableDataStructure, collections_abc.Sequence):
 
     def __init__(self):
       super(HasList, self).__init__()
-      self.layer_list = tf.contrib.checkpoint.List([layers.Dense(3)])
+      self.layer_list = List([layers.Dense(3)])
       self.layer_list.append(layers.Dense(4))
 
     def call(self, x):
@@ -408,7 +408,7 @@ class ListWrapper(
 
   On assignment to an attribute of a Model or Trackable object, Python
   lists are replaced with ListWrapper. Wrapping a list in a
-  `tf.contrib.checkpoint.NoDependency` object prevents this.
+  `NoDependency` object prevents this.
   """
 
   def __init__(self, wrapped_list):
@@ -505,8 +505,7 @@ class ListWrapper(
            "or moved (sort). In order to support restoration on object "
            "creation, tracking is exclusively for append-only data structures."
            "\n\nIf you don't need this list checkpointed, wrap it in a "
-           "tf.contrib.checkpoint.NoDependency object; it will be "
-           "automatically un-wrapped and subsequently ignored." % (self,)))
+           "non-trackable object; it will be subsequently ignored." % (self,)))
     if self._external_modification:
       raise ValueError(
           ("Unable to save the object %s (a list wrapper constructed to track "
@@ -514,8 +513,8 @@ class ListWrapper(
            "outside the wrapper (its final value was %s, its value when a "
            "checkpoint dependency was added was %s), which breaks restoration "
            "on object creation.\n\nIf you don't need this list checkpointed, "
-           "wrap it in a tf.contrib.checkpoint.NoDependency object; it will be "
-           "automatically un-wrapped and subsequently ignored." % (
+           "wrap it in a NoDependency object; it will be "
+           "subsequently ignored." % (
                self, self._storage, self._last_wrapped_list_snapshot)))
     return super(ListWrapper, self)._checkpoint_dependencies
 
@@ -639,8 +638,7 @@ class Mapping(TrackableDataStructure, collections_abc.Mapping):
   Maintains checkpoint dependencies on its contents (which must also be
   trackable), named based on its keys.
 
-  Note that once a key has been added, it may not be deleted or replaced. If
-  names may not be unique, see `tf.contrib.checkpoint.UniqueNameTracker`.
+  Note that once a key has been added, it may not be deleted or replaced.
   """
 
   def __init__(self, *args, **kwargs):
@@ -781,9 +779,8 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
           "automatically on attribute assignment). The wrapped dictionary "
           "contains a non-string key which maps to a trackable object or "
           "mutable data structure.\n\nIf you don't need this dictionary "
-          "checkpointed, wrap it in a tf.contrib.checkpoint.NoDependency "
-          "object; it will be automatically un-wrapped and subsequently "
-          "ignored." % (self,))
+          "checkpointed, wrap it in a non-trackable "
+          "object; it will be subsequently ignored." % (self,))
     if self._self_external_modification:
       raise ValueError(
           "Unable to save the object %s (a dictionary wrapper constructed "
@@ -792,8 +789,7 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
           "when a checkpoint dependency was added was %s), which breaks "
           "restoration on object creation.\n\nIf you don't need this "
           "dictionary checkpointed, wrap it in a "
-          "tf.contrib.checkpoint.NoDependency object; it will be automatically "
-          "un-wrapped and subsequently ignored." % (
+          "non-trackable object; it will be subsequently ignored." % (
               self, self, self._self_last_wrapped_dict_snapshot))
     assert not self._dirty  # Any reason for dirtiness should have an exception.
     return super(_DictWrapper, self)._checkpoint_dependencies

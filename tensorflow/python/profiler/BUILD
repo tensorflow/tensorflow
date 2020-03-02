@@ -57,7 +57,10 @@ cuda_py_test(
     name = "profiler_v2_test",
     srcs = ["profiler_v2_test.py"],
     python_version = "PY3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":profiler_v2",
         "//tensorflow/python:constant_op",

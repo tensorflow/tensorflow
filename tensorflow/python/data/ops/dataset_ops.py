@@ -528,12 +528,22 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def from_tensors(tensors):
     """Creates a `Dataset` with a single element, comprising the given tensors.
 
+    `from_tensors` produces a dataset containing only a single element. To slice
+    the input tensor into multiple elements, use `from_tensor_slices` instead.
+
     >>> dataset = tf.data.Dataset.from_tensors([1, 2, 3])
     >>> list(dataset.as_numpy_iterator())
     [array([1, 2, 3], dtype=int32)]
     >>> dataset = tf.data.Dataset.from_tensors(([1, 2, 3], 'A'))
     >>> list(dataset.as_numpy_iterator())
     [(array([1, 2, 3], dtype=int32), b'A')]
+
+    >>> # You can use `from_tensors` to produce a dataset which repeats
+    >>> # the same example many times.
+    >>> example = tf.constant([1,2,3])
+    >>> dataset = tf.data.Dataset.from_tensors(example).repeat(2)
+    >>> list(dataset.as_numpy_iterator())
+    [array([1, 2, 3], dtype=int32), array([1, 2, 3], dtype=int32)]
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
@@ -3830,22 +3840,27 @@ def _padding_value_to_tensor(value, output_type):
 
 def _padding_values_or_default(padding_values, input_dataset):
   """Returns padding values with None elements replaced with default values."""
+
   def make_zero(t):
     if t.base_dtype == dtypes.string:
       return ""
     elif t.base_dtype == dtypes.variant:
       error_msg = ("Unable to create padding for field of type 'variant' "
                    "because t.base_type == dtypes.variant == "
-                   "{}.".format(
-                       t.base_dtype))
+                   "{}.".format(t.base_dtype))
       raise TypeError(error_msg)
+    elif t.base_dtype == dtypes.bfloat16:
+      # Special case `bfloat16` because it is not supported by NumPy.
+      return constant_op.constant(0, dtype=dtypes.bfloat16)
     else:
       return np.zeros_like(t.as_numpy_dtype())
+
   def value_or_default(value, default):
     return default if value is None else value
 
-  default_padding = nest.map_structure(make_zero,
-                                       get_legacy_output_types(input_dataset))
+  default_padding = nest.map_structure(
+      make_zero,
+      get_legacy_output_types(input_dataset))
   return nest.map_structure_up_to(padding_values, value_or_default,
                                   padding_values, default_padding)
 
@@ -4488,18 +4503,12 @@ def _collect_resource_inputs(op):
     if op in seen_ops:
       return reads, writes
     seen_ops.add(op)
-    for t in op.inputs:
-      if t.dtype == dtypes.variant:
-        # Conservatively assume that any variant inputs are datasets.
-        op_queue.append(t.op)
-      elif t.dtype == dtypes.resource:
-        # TODO(b/150139257): This always returns True right now since we have
-        # not updated the functional ops to set the special attribute that ACD
-        # uses to figure out which of the op's inputs are read-only.
-        if acd_utils.op_writes_to_resource(t, op):
-          writes.append(t)
-        else:
-          reads.append(t)
+    # TODO(b/150139257): All resource inputs are in writes right now since we
+    # have not updated the functional ops to set the special attribute that ACD
+    # uses to figure out which of the op's inputs are read-only.
+    reads, writes = acd_utils.get_read_write_resource_inputs(op)
+    # Conservatively assume that any variant inputs are datasets.
+    op_queue.extend(t.op for t in op.inputs if t.dtype == dtypes.variant)
     return reads, writes
 
   op_queue = [op]

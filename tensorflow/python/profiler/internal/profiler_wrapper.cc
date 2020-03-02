@@ -38,6 +38,7 @@ tensorflow::string GetCurrentTimeStampAsString() {
 
 tensorflow::ProfileRequest MakeProfileRequest() {
   tensorflow::ProfileRequest request;
+  request.add_tools("trace_viewer");
   request.add_tools("overview_page");
   request.add_tools("input_pipeline");
   request.add_tools("kernel_stats");

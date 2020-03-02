@@ -100,6 +100,24 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
 }
 
 //===----------------------------------------------------------------------===//
+// tf_device.launch
+//===----------------------------------------------------------------------===//
+
+// Checks if a tf_device.launch wraps a single operation and the single
+// operation results are perfectly forwarded to the launch return.
+bool LaunchOp::WrapsSingleOp() {
+  auto body = GetBody().without_terminator();
+  if (!has_single_element(body)) return false;
+
+  Operation& wrapped_op = *body.begin();
+  Operation* terminator = GetBody().getTerminator();
+  return wrapped_op.getNumResults() == terminator->getNumOperands() &&
+         std::equal(wrapped_op.getResults().begin(),
+                    wrapped_op.getResults().end(),
+                    terminator->getOperands().begin());
+}
+
+//===----------------------------------------------------------------------===//
 // tf_device.return
 //===----------------------------------------------------------------------===//
 

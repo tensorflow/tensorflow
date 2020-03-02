@@ -1812,7 +1812,7 @@ namespace {
 // substrings for a single feature, plus some auxiliary information derived
 // from those protos (such as the total value length).
 struct FeatureProtos {
-  // Proto substrings from each serialized SequenceExamle that correspond
+  // Proto substrings from each serialized SequenceExample that correspond
   // with this feature.  `protos_present` records whether the proto had a
   // value defined (even if that value is empty).
   std::vector<StringPiece> protos;
@@ -2133,7 +2133,7 @@ Status ExtractFeaturesFromSequenceExamples(
   return Status::OK();
 }
 
-// Populates context_fatures[k].length based on context_features[k].protos
+// Populates context_features[k].length based on context_features[k].protos
 // (for all k).
 Status GetContextFeatureLengths(const gtl::ArraySlice<tstring> example_names,
                                 FeatureProtosMap* context_features) {
@@ -2168,7 +2168,7 @@ Status GetContextFeatureLengths(const gtl::ArraySlice<tstring> example_names,
   return Status::OK();
 }
 
-// Populates sequence_fatures[k].length and sequence_features[k].num_rows based
+// Populates sequence_features[k].length and sequence_features[k].num_rows based
 // on sequence_features[k].protos (for all k).
 Status GetSequenceFeatureLengths(const gtl::ArraySlice<tstring> example_names,
                                  FeatureProtosMap* sequence_features) {

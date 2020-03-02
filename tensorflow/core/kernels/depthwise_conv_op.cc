@@ -334,7 +334,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // The last dimension for filter is depth multiplier.
     const int32 depth_multiplier = filter.dim_size(3);
 
-    // The output depth is input depth x depth multipler
+    // The output depth is input depth x depth multiplier
     const int32 out_depth = in_depth * depth_multiplier;
 
     const int64 input_rows_raw = GetTensorDim(input, data_format_, 'H');

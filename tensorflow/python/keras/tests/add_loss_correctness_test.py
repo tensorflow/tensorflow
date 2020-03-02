@@ -79,8 +79,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     model.add_loss(math_ops.reduce_mean(mae(targets, outputs)))
     model.compile(
         optimizer_v2.gradient_descent.SGD(0.05),
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     history = model.fit([self.x, self.y], batch_size=3, epochs=5)
     self.assertAllClose(history.history['loss'], [2., 1.8, 1.6, 1.4, 1.2], 1e-3)
@@ -97,8 +96,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     model.add_loss(callable_loss)
     model.compile(
         optimizer_v2.gradient_descent.SGD(0.1),
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     history = model.fit(self.x, batch_size=3, epochs=5)
     self.assertAllClose(history.history['loss'], [0., -.1, -.2, -.3, -.4], 1e-3)
@@ -157,8 +155,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     model.add_loss(3 * math_ops.reduce_mean(sw * mae(targets, outputs)))
     model.compile(
         optimizer_v2.gradient_descent.SGD(0.025),
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     history = model.fit([self.x, self.y, self.w], batch_size=3, epochs=5)
     self.assertAllClose(history.history['loss'], [4., 3.6, 3.2, 2.8, 2.4], 1e-3)
@@ -203,8 +200,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     model.predict([self.x, self.y, self.w])
     model.compile(
         optimizer_v2.gradient_descent.SGD(0.05),
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     history = model.fit([self.x, self.y, self.w], batch_size=3, epochs=5)
     self.assertEqual(len(model.losses), 2)
@@ -237,8 +233,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     model.predict([self.x, self.y, self.w])
     model.compile(
         optimizer_v2.gradient_descent.SGD(0.05),
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     history = model.fit([self.x, self.y, self.w], batch_size=3, epochs=5)
     self.assertAllClose(history.history['loss'], [2., 1.8, 1.6, 1.4, 1.2], 1e-3)
@@ -266,8 +261,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
     self.assertEqual(loss, 2 * 3)
 
@@ -300,8 +294,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
       model.compile(
           optimizer,
           'binary_crossentropy',
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       model.fit(x, y, batch_size=2, epochs=5)
       loss[reg] = model.evaluate(x, y)
     self.assertLess(loss[None], loss['l2'])
@@ -321,8 +314,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     model.compile(
         optimizer,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     loss = model.test_on_batch(x)
     self.assertAlmostEqual(0.01, loss, places=4)
 
@@ -336,8 +328,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     model.compile(
         optimizer,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     loss_small_batch = model.test_on_batch(np.ones((10, 10), 'float32'))
     loss_big_batch = model.test_on_batch(np.ones((20, 10), 'float32'))

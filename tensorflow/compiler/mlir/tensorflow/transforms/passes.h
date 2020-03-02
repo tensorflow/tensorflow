@@ -43,6 +43,9 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateMaterializePassthroughOpPass();
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 
+// Optional pass which will unroll BatchMatMul and use only MatMul
+std::unique_ptr<OpPassBase<FuncOp>> CreateUnrollBatchMatMulPassPass();
+
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
@@ -99,6 +102,11 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
 // Performs resource lifting on the function body to hoist resource variable
 // accesses outside all control flow statements.
 LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function);
+
+// Converts stack ops into operations on local variables, which can later be
+// removed by resource lifting. Requires known maximum sizes of stacks and
+// known element shapes of push ops.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateStackOpsDecompositionPass();
 }  // namespace TF
 
 namespace TFControlFlow {

@@ -3953,10 +3953,15 @@ cc_library(
         "aggregate_ops.h",
         "aggregate_ops_cpu.h",
     ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//third_party/eigen3",
-    ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            "//third_party/eigen3",
+            "//tensorflow/core:framework",
+        ],
+    }),
 )
 
 tf_kernel_library(
@@ -8411,8 +8416,10 @@ exports_files([
     "cwise_op_gpu_less_equal.cu.cc",
     "cwise_op_gpu_logical_and.cu.cc",
     "cwise_op_gpu_logical_not.cu.cc",
+    "cwise_op_gpu_logical_or.cu.cc",
     "cwise_op_gpu_maximum.cu.cc",
     "cwise_op_gpu_minimum.cu.cc",
+    "cwise_op_gpu_mod.cu.cc",
     "cwise_op_gpu_mul.cu.cc",
     "cwise_op_gpu_neg.cu.cc",
     "cwise_op_gpu_not_equal_to.cu.cc",
@@ -8431,8 +8438,10 @@ exports_files([
     "cwise_op_less_equal.cc",
     "cwise_op_logical_and.cc",
     "cwise_op_logical_not.cc",
+    "cwise_op_logical_or.cc",
     "cwise_op_maximum.cc",
     "cwise_op_minimum.cc",
+    "cwise_op_mod.cc",
     "cwise_op_mul_1.cc",
     "cwise_op_mul_2.cc",
     "cwise_op_neg.cc",

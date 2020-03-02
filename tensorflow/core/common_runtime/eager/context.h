@@ -609,7 +609,7 @@ class EagerContext : public core::RefCounted {
 
   uint64 context_id_ GUARDED_BY(remote_state_mu_);
   // The view id of an eager context should be set to 0 when context is created,
-  // and continously incremented when context with the same context_id gets
+  // and continuously incremented when context with the same context_id gets
   // updated. The view id should be consistent between master and workers.
   uint64 context_view_id_ GUARDED_BY(remote_state_mu_);
   std::vector<string> remote_contexts_;

@@ -22,6 +22,9 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+// Returns the profile plugin directory given a logdir to TensorBoard.
+string GetTensorBoardProfilePluginDir(const string& logdir);
+
 // Saves all profiling tool data in a profile to a TensorBoard log directory
 // with the given run name. This writes user-facing log messages to `os`.
 // Note: this function creates a directory even when all fields in

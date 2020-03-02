@@ -3196,7 +3196,7 @@ versions {
   EXPECT_EQ(17, refiner.graph_def_version());
 }
 
-TEST_F(GraphConstructorTest, ImportGraphDef_ValidateColationConstraints) {
+TEST_F(GraphConstructorTest, ImportGraphDef_ValidateColocationConstraints) {
   GraphDef def;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
       "node { name: 'A' op: 'TestInput' attr { key: '_class' value { list { "

@@ -340,7 +340,7 @@ boosted_trees::Node* BoostedTreesEnsembleResource::AddLeafNodes(
         node->mutable_leaf());
   }
   node->mutable_metadata()->set_gain(candidate.gain);
-  // TODO(npononareva): this is LAYER-BY-LAYER boosting; add WHOLE-TREE.
+  // TODO(nponomareva): this is LAYER-BY-LAYER boosting; add WHOLE-TREE.
   if (logits_dimension == 1) {
     const float prev_logit_value = node->metadata().original_leaf().scalar();
     left_node->mutable_leaf()->set_scalar(prev_logit_value +

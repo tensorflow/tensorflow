@@ -44,13 +44,35 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 }
 
 // CHECK-LABEL:  func @test_after_all
-// CHECK-SAME:    ([[VAL_0:%.*]]: !xla_hlo.token, [[VAL_1:%.*]]: !xla_hlo.token) -> !xla_hlo.token
+// CHECK-SAME:  ([[VAL_0:%.*]]: !xla_hlo.token, [[VAL_1:%.*]]: !xla_hlo.token) -> !xla_hlo.token
 %test_after_all (token0: token[], token1: token[] ) -> token[] {
   token0 = token[] parameter(0)
   token1 = token[] parameter(1)
   // CHECK-NEXT:  "xla_hlo.after_all"([[VAL_0]], [[VAL_1]]) {name = "{{.*}}"} : (!xla_hlo.token, !xla_hlo.token) -> !xla_hlo.token
   ROOT after-all = token[] after-all(token0, token1)
 }
+
+// Test all-reduce
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL:  func @test_all_reduce
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<8xf32>)
+%test_all_reduce {
+  input = f32[8] parameter(0)
+  // CHECK-NEXT:  "xla_hlo.all_reduce"([[INPUT]])
+  // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+  // CHECK:    [[ADD:%.*]] = xla_hlo.add [[ARG0]], [[ARG1]]
+  // CHECK:    "xla_hlo.return"([[ADD]]) : (tensor<f32>) -> ()
+  // CHECK:  }) {
+  // CHECK-SAME:  channel_handle = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  replica_groups = dense<{{\[\[}}0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
+  ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
+}
+
 
 // CHECK-LABEL:  func @test_and
 %test_and (Arg_0.1: pred[4], Arg_1.2: pred[4]) -> pred[4] {
@@ -756,6 +778,44 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK:  "xla_hlo.select"(%arg0, %arg1, %arg2) {name = "{{.*}}"} : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   ROOT %select.4 = s32[2,3] select(pred[2,3] %Arg_0.1, s32[2,3] %Arg_1.2, s32[2,3] %Arg_2.3)
 }
+
+// Test SelectAndScatter
+%ge_select (lhs: f32[], rhs: f32[]) -> pred[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE
+}
+
+%add_gather (lhs.1: f32[], rhs.1: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
+}
+
+// CHECK-LABEL:  func @test_select_and_scatter
+// CHECK-SAME:  [[INPUT:%.*]]: tensor<4x5xf32>, [[SOURCE:%.*]]: tensor<2x2xf32>, [[INIT_VAL:%.*]]: tensor<f32>
+%test_select_and_scatter {
+  %input = f32[4,5] parameter(0)
+  %source = f32[2,2] parameter(1)
+  %init_value = f32[] parameter(2)
+  ROOT %select-and-scatter = f32[4,5] select-and-scatter(f32[4,5] %input, f32[2,2] %source, f32[] %init_value), window={size=2x3 stride=2x3 pad=0_0x0_1}, select=%ge_select, scatter=%add_gather
+}
+
+// CHECK:  [[RESULT:%.*]] = "xla_hlo.select_and_scatter"([[INPUT]], [[SOURCE]], [[INIT_VAL]]) ( {
+// CHECK:  ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
+// CHECK:    [[CMP:%.*]] = "xla_hlo.compare"([[LHS]], [[RHS]])
+// CHECK:    "xla_hlo.return"([[CMP]]) : (tensor<i1>) -> ()
+// CHECK:  },  {
+// CHECK:  ^bb0([[LHS:%.*]]: tensor<f32>, [[RHS:%.*]]: tensor<f32>):
+// CHECK:    [[ADD:%.*]] = xla_hlo.add [[LHS]], [[RHS]]
+// CHECK:    "xla_hlo.return"([[ADD]]) : (tensor<f32>) -> ()
+// CHECK:    }) {
+// CHECK-SAME:    padding = dense<{{\[\[}}0, 0], [0, 1]]> : tensor<2x2xi64>
+// CHECK-SAME:    window_dimensions = dense<[2, 3]> : tensor<2xi64>
+// CHECK-SAME:    window_strides = dense<[2, 3]> : tensor<2xi64>
+// CHECK-SAME:  }
+// CHECK:  return [[RESULT:%.*]] : tensor<4x5xf32>
+
 
 // CHECK-LABEL:  func @test_set_dimension_size
 // CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>, [[SIZE:%.*]]: tensor<i32>)

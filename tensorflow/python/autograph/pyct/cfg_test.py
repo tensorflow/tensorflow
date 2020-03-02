@@ -1481,6 +1481,23 @@ class AstToCfgTest(test.TestCase):
     )
     self.assertGraphEnds(graph, 'a, b', ('return C',))
 
+  def test_import(self):
+
+    def test_fn():
+      from a import b  # pylint:disable=g-import-not-at-top
+      return b
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('', 'from a import b', 'return b'),
+            ('from a import b', 'return b', None),
+        ),
+    )
+    self.assertGraphEnds(graph, '', ('return b',))
+
 
 if __name__ == '__main__':
   test.main()

@@ -79,6 +79,23 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
     # of 10 resulting in mean of 4.5.
     self.assertEqual(metric.result().numpy(), 4.5)
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_update_keras_metric_outside_strategy_scope_cross_replica(
+      self, distribution):
+    metric = keras.metrics.Mean("test_metric", dtype=np.float32)
+
+    with distribution.scope():
+      for i in range(10):
+        metric.update_state(i)
+
+    # This should be the mean of integers 0-9 which has a sum of 45 and a count
+    # of 10 resulting in mean of 4.5.
+    self.assertEqual(metric.result().numpy(), 4.5)
+
 
 if __name__ == "__main__":
   test.main()

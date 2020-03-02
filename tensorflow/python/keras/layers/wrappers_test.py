@@ -371,8 +371,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     model_1.compile(
         'rmsprop',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     output_with_mask = model_1.predict(data, steps=1)
 
     y = keras.layers.TimeDistributed(rnn_layer)(x)
@@ -380,8 +379,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     model_2.compile(
         'rmsprop',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     output = model_2.predict(data, steps=1)
 
     self.assertNotAllClose(output_with_mask, output, atol=1e-7)
@@ -392,7 +390,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
           layer=[keras.layers.LSTM,
                  keras.layers.Dense]))
   def test_TimeDistributed_with_ragged_input(self, layer):
-    if testing_utils.should_run_tf_function():
+    if context.executing_eagerly():
       self.skipTest('b/143103634')
     np.random.seed(100)
     layer = layer(4)
@@ -405,8 +403,6 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     x_ragged = keras.Input(shape=(None, 2, 1), dtype='float32', ragged=True)
     y_ragged = keras.layers.TimeDistributed(layer)(x_ragged)
     model_1 = keras.models.Model(x_ragged, y_ragged)
-    model_1._experimental_run_tf_function = (
-        testing_utils.should_run_tf_function())
     model_1._run_eagerly = testing_utils.should_run_eagerly()
     output_ragged = model_1.predict(ragged_data, steps=1)
 
@@ -415,8 +411,6 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     y_dense = keras.layers.TimeDistributed(layer)(masking)
     model_2 = keras.models.Model(x_dense, y_dense)
     dense_data = ragged_data.to_tensor()
-    model_2._experimental_run_tf_function = (
-        testing_utils.should_run_tf_function())
     model_2._run_eagerly = testing_utils.should_run_eagerly()
     output_dense = model_2.predict(dense_data, steps=1)
 

@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
-#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -188,31 +187,35 @@ Status ValidateInputTypeAndPlacement(
   }
   const bool skip_remote_copy =
       ctx->LazyCopyFunctionRemoteInputs() && kernel->IsFunction();
-  for (int i = 0; i < n_inputs; ++i) {
-    TensorHandle* handle = op->Inputs()[i];
-    Device* expected_device = kernel->InputDevice(i);
-    auto handle_device_variant = handle->DeviceOrHostCPU(*ctx);
-    if (VariantDeviceIsCustom(handle_device_variant)) {
-      return errors::Unimplemented(
-          "Custom devices and remote execution are not yet supported "
-          "together.");
-    }
-    Device* handle_device = absl::get<Device*>(handle_device_variant);
-    const bool maybe_copy = !skip_remote_copy || !handle->IsRemote();
-    // If the input is already on the right device, then nothing to do.
-    if (expected_device != handle_device && maybe_copy) {
-      TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(ctx, op, kernel->device(),
-                                                   handle, i, handle_device,
-                                                   expected_device, &handle));
-      op->UpdateInput(i, handle);
-      // Unref handle since it has a ref as an input now
-      handle->Unref();
-    }
-    if (handle->dtype != kernel->input_type(i)) {
-      return errors::InvalidArgument(
-          "cannot compute ", op->Name(), " as input #", i, "(zero-based)",
-          " was expected to be a ", DataTypeString(kernel->input_type(i)),
-          " tensor but is a ", DataTypeString(handle->dtype), " tensor");
+  if (n_inputs > 0) {
+    const DataType* input_types = &kernel->input_dtypes()[0];
+    TensorHandle* const* handles = &op->Inputs()[0];
+    for (int i = 0; i < n_inputs; ++i) {
+      TensorHandle* handle = handles[i];
+      Device* expected_device = kernel->InputDevice(i);
+      auto handle_device_variant = handle->DeviceOrHostCPU(*ctx);
+      if (VariantDeviceIsCustom(handle_device_variant)) {
+        return errors::Unimplemented(
+            "Custom devices and remote execution are not yet supported "
+            "together.");
+      }
+      Device* handle_device = absl::get<Device*>(handle_device_variant);
+      const bool maybe_copy = !skip_remote_copy || !handle->IsRemote();
+      // If the input is already on the right device, then nothing to do.
+      if (expected_device != handle_device && maybe_copy) {
+        TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(ctx, op, kernel->device(),
+                                                     handle, i, handle_device,
+                                                     expected_device, &handle));
+        op->UpdateInput(i, handle);
+        // Unref handle since it has a ref as an input now
+        handle->Unref();
+      }
+      if (handle->dtype != input_types[i]) {
+        return errors::InvalidArgument(
+            "cannot compute ", op->Name(), " as input #", i, "(zero-based)",
+            " was expected to be a ", DataTypeString(input_types[i]),
+            " tensor but is a ", DataTypeString(handle->dtype), " tensor");
+      }
     }
   }
   return Status::OK();
@@ -844,14 +847,7 @@ bool IsPinnableOp(const string& op_type) {
 // (int32/int64). This can be disabled by setting the environment variable
 // "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
 Status MaybeUpdateOpDevice(EagerOperation* op) {
-  const auto& exempt_ops = InputColocationExemptionRegistry::Global()->Get();
-  if (op->is_function() || exempt_ops.find(op->Name()) != exempt_ops.end()) {
-    // Don't update the device of direct function calls.
-    // Particularly, if the user did not explicitly request any device for this
-    // function, picking a device would result in this device being the default
-    // for nodes inside the function. This is undesirable for multi-device
-    // functions since the not-explicitly-placed nodes inside the body will all
-    // end up on this default device.
+  if (op->colocation_exempt()) {
     return Status::OK();
   }
   EagerContext& ctx = op->EagerContext();

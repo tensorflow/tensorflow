@@ -343,7 +343,7 @@ func @launch_with_loop() -> () {
 }
 func @while_body(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>) {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<f32>>>
-  // expected-error @+1 {{Resource used in while loop is only supported when the resource input and output alias each other in the loop body}}
+  // expected-error @+1 {{resource used in while loop is only supported when the resource input and output alias each other in the loop body}}
   return %0 : tensor<*x!tf.resource<tensor<f32>>>
 }
 func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
@@ -367,7 +367,7 @@ func @launch_with_loop() -> () {
   return
 }
 func @while_body(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>) {
-  // expected-error @+1 {{Found unsupported operations on resource.}}
+  // expected-error @+1 {{found unsupported operations on resource.}}
   "tf._UnknownOp"(%arg0) : (tensor<*x!tf.resource<tensor<f32>>>) -> ()
   return %arg0 : tensor<*x!tf.resource<tensor<f32>>>
 }
@@ -399,7 +399,7 @@ func @while_body(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.re
 func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
   %read = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32>
   %constant = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
-  // expected-error @+1 {{Found resource write in loop condition.}}
+  // expected-error @+1 {{found resource write in loop condition.}}
   "tf.AssignVariableOp"(%arg0, %constant) : (tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
   return %read : tensor<f32>
 }
@@ -524,7 +524,7 @@ func @launch_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
   %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
   %2 = "tf_device.launch"() ( {
-    // expected-error @+1 {{Unsupported tf.IfOp output: resource does not alias a single input.}}
+    // expected-error @+1 {{unsupported tf.IfOp output: resource does not alias a single input.}}
     %3 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
         output_shapes = ["tfshape$"], is_stateless = false}
       : (tensor<i1>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
@@ -650,7 +650,7 @@ func @launch_with_stateful_partitioned_call() -> () {
   }) {device = "tpu0", launch_attr = "launch_attr"} : () -> ()
   return
 }
-// expected-error @+1 {{Unsupported function call: resource return value does not alias an input.}}
+// expected-error @+1 {{unsupported function call: resource return value does not alias an input.}}
 func @callee(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf.resource<tensor<f32>>>, %arg2: tensor<f32>) -> tensor<*x!tf.resource<tensor<f32>>> {
   %0 = "tf._Unknown_"() : () -> tensor<*x!tf.resource<tensor<f32>>>
   return %0 : tensor<*x!tf.resource<tensor<f32>>>

@@ -58,6 +58,7 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
     request.set_repository_root(repository_root);
     request.set_session_id(session_id);
   }
+  request.add_tools("trace_viewer");
   request.add_tools("op_profile");
   request.add_tools("input_pipeline");
   request.add_tools("kernel_stats");
@@ -89,10 +90,10 @@ inline bool ShouldRetryTracing(Status status) {
 // Returns whether the returned trace is empty.
 // Failure are handled by CHECK, i.e. abort()
 Status Profile(const string& service_addr, const string& logdir,
-               int duration_ms, const string& repository_root,
-               const string& session_id, const ProfileOptions& opts) {
+               int duration_ms, const string& session_id,
+               const ProfileOptions& opts) {
   ProfileRequest request =
-      PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
+      PopulateProfileRequest(duration_ms, logdir, session_id, opts);
 
   ::grpc::ClientContext context;
   ::grpc::ChannelArguments channel_args;
@@ -108,7 +109,7 @@ Status Profile(const string& service_addr, const string& logdir,
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->Profile(&context, request, &response)));
 
-  if (!response.encoded_trace().empty()) {
+  if (!response.empty_trace()) {
     TF_CHECK_OK(
         SaveTensorboardProfile(logdir, session_id, "", response, &std::cout));
     // Print this at the end so that it's not buried in irrelevant LOG messages.
@@ -120,7 +121,7 @@ Status Profile(const string& service_addr, const string& logdir,
         << std::endl;
   }
 
-  if (response.encoded_trace().empty()) {
+  if (response.empty_trace()) {
     return Status(error::Code::UNAVAILABLE, "No trace event is collected");
   }
   return Status::OK();
@@ -129,10 +130,9 @@ Status Profile(const string& service_addr, const string& logdir,
 // Start a new profiling session that include all the hosts included in
 // hostnames, for the time interval of duration_ms. Possibly save the profiling
 // result in the directory specified by repository_root and session_id.
-Status NewSession(const string& service_addr,
+Status NewSession(const string& service_addr, const string& repository_root,
                   const std::vector<string>& hostnames, int duration_ms,
-                  const string& repository_root, const string& session_id,
-                  const ProfileOptions& opts) {
+                  const string& session_id, const ProfileOptions& opts) {
   NewProfileSessionRequest new_session_request;
   *new_session_request.mutable_request() =
       PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
@@ -200,8 +200,6 @@ Status Trace(const string& service_addr, const string& logdir,
              int duration_ms, int num_tracing_attempts) {
   // Use the current timestamp as the run name.
   tensorflow::string session_id = GetCurrentTimeStampAsString();
-  constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-  string repository_root = io::JoinPath(logdir, kProfilePluginDirectory);
   std::vector<string> hostnames;
   if (!workers_list.empty()) {
     hostnames = absl::StrSplit(workers_list, ',');
@@ -215,11 +213,9 @@ Status Trace(const string& service_addr, const string& logdir,
     std::cout << "Starting to trace for " << duration_ms << " ms. "
               << "Remaining attempt(s): " << --remaining_attempts << std::endl;
     if (hostnames.empty()) {
-      status = Profile(service_addr, logdir, duration_ms, repository_root,
-                       session_id, opts);
+      status = Profile(service_addr, logdir, duration_ms, session_id, opts);
     } else {
-      string master = service_addr;
-      status = NewSession(master, hostnames, duration_ms, repository_root,
+      status = NewSession(service_addr, logdir, hostnames, duration_ms,
                           session_id, opts);
     }
     if (remaining_attempts <= 0 || status.ok() || !ShouldRetryTracing(status))

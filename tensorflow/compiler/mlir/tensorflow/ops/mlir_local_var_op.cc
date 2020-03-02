@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,17 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_MICRO_DEBUG_LOG_NUMBERS_H_
-#define TENSORFLOW_LITE_MICRO_DEBUG_LOG_NUMBERS_H_
 
-#include <cstdint>
+#include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/op.h"
 
-// Output numbers to the debug logging stream.
-extern "C" {
-void DebugLogInt32(int32_t i);
-void DebugLogUInt32(uint32_t i);
-void DebugLogHex(uint32_t i);
-void DebugLogFloat(float i);
-}
+namespace tensorflow {
 
-#endif  // TENSORFLOW_LITE_MICRO_DEBUG_LOG_NUMBERS_H_
+REGISTER_OP("MlirLocalVarOp")
+    .Output("resource: resource")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"(Creates a handle to a in-scope variable.
+Used by internal passes for temporary representation of local state, which will
+be eventually removed.)");
+
+}  // namespace tensorflow

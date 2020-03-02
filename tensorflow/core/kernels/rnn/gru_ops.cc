@@ -341,11 +341,11 @@ class GRUBlockCellGradOp : public OpKernel {
                                            TensorShape({batch_size, cell_size}),
                                            &d_h_prevr_tensor));
 
-    Tensor d_x_component_1_h_prev_compenent_1;
+    Tensor d_x_component_1_h_prev_component_1;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(
                             DataTypeToEnum<T>::v(),
                             TensorShape({batch_size, input_size + cell_size}),
-                            &d_x_component_1_h_prev_compenent_1));
+                            &d_x_component_1_h_prev_component_1));
 
     Tensor d_x_component_2_h_prevr;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(
@@ -365,7 +365,7 @@ class GRUBlockCellGradOp : public OpKernel {
         d_c_bar_tensor->matrix<T>(), d_r_bar_u_bar_tensor->matrix<T>(),
         d_r_bar_tensor.matrix<T>(), d_u_bar_tensor.matrix<T>(),
         d_h_prevr_tensor.matrix<T>(),
-        d_x_component_1_h_prev_compenent_1.matrix<T>(),
+        d_x_component_1_h_prev_component_1.matrix<T>(),
         d_x_component_2_h_prevr.matrix<T>());
   }
 };

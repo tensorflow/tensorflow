@@ -182,8 +182,10 @@ def model_metadata(model, include_optimizer=True, require_config=True):
             '`tf.saved_model.save`, delete the optimizer from the model.')
       else:
         optimizer_config = {
-            'class_name': model.optimizer.__class__.__name__,
-            'config': model.optimizer.get_config()
+            'class_name':
+                generic_utils.get_registered_name(model.optimizer.__class__),
+            'config':
+                model.optimizer.get_config()
         }
       metadata['training_config']['optimizer_config'] = optimizer_config
   return metadata

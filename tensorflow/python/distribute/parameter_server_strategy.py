@@ -607,9 +607,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
   def _in_multi_worker_mode(self):
     """Whether this strategy indicates working in multi-worker settings."""
-    # With a PS job, PS strategy should always be considered as in multi
-    # worker mode.
-    return True
+    return self._cluster_spec is not None
 
   @property
   def _num_replicas_in_sync(self):

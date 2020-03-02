@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -49,10 +50,15 @@ Status ParseMlirModule(llvm::StringRef mlir_module_string,
       << "unexpected empty serialized MLIR module string";
   TF_RET_CHECK(mlir_module) << "unexpected null MLIR module pointer";
 
+  // Make sure we catch any error reported by MLIR and forward it to the TF
+  // error reporting system.
+  mlir::StatusScopedDiagnosticHandler error_handler(mlir_context);
+
   // Parse the module.
   *mlir_module = mlir::parseSourceString(mlir_module_string, mlir_context);
   if (!*mlir_module) {
-    return errors::InvalidArgument("could not parse MLIR module");
+    return error_handler.Combine(
+        errors::InvalidArgument("could not parse MLIR module"));
   }
 
   return Status::OK();
@@ -154,16 +160,9 @@ void GetInputMappingForMlir(int num_inputs, std::vector<int>* input_mapping) {
 // Refine MLIR types based on new shape information.
 Status RefineShapes(llvm::ArrayRef<TensorShape> arg_shapes,
                     mlir::ModuleOp module) {
-  auto versions = module.getAttrOfType<::mlir::DictionaryAttr>("tf.versions");
-  if (!versions) {
-    return errors::Internal(
-        "Missing 'tf.versions' attribute on the module, abort.\n");
-  }
-  auto producer = versions.get("producer").dyn_cast<mlir::IntegerAttr>();
-  if (!producer) {
-    return errors::Internal(
-        "Missing 'producer' attribute on the module, abort.\n");
-  }
+  auto producer_or = GetTfGraphProducerVersion(module);
+  if (!producer_or.ok()) return producer_or.status();
+  int64_t producer_version = producer_or.ValueOrDie();
 
   llvm::SmallVector<int64_t, 16> shape_backing;
   llvm::SmallVector<llvm::ArrayRef<int64_t>, 4> arg_shapes_copy;
@@ -195,7 +194,7 @@ Status RefineShapes(llvm::ArrayRef<TensorShape> arg_shapes,
 
   mlir::StatusScopedDiagnosticHandler error_handler(module.getContext());
   mlir::LogicalResult result = mlir::TF::InferShapeForFunction(
-      main_func, arg_shapes_copy, producer.getInt());
+      main_func, arg_shapes_copy, producer_version);
 
   if (failed(result)) {
     return error_handler.Combine(
@@ -211,6 +210,7 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    bool use_tuple_args, bool return_tuple) {
   mlir::PassManager tf2xla(module_op.getContext());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  tf2xla.addPass(mlir::TF::CreateStackOpsDecompositionPass());
   tf2xla.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
   tf2xla.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
   // LegalizeTFControlFlow encapsulates arguments for control flow operations
