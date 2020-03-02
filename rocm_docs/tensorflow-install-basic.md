@@ -3,7 +3,7 @@
 ## Intro
 
 This instruction provides a starting point for TensorFlow ROCm port (mostly via deb packages).
-*Note*: it is recommended to start with a clean Ubuntu 16.04 system
+*Note*: it is recommended to start with a clean Ubuntu 18.04 system
 
 ## Install ROCm
 
