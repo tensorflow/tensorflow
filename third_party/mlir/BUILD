@@ -1894,7 +1894,12 @@ cc_binary(
     name = "mlir-cpu-runner",
     srcs = ["tools/mlir-cpu-runner/mlir-cpu-runner.cpp"],
     linkopts = ["-ldl"],
-    deps = [":MlirJitRunner"],
+    deps = [
+        ":AllPassesAndDialectsNoRegistration",
+        ":ExecutionEngineUtils",
+        ":MlirJitRunner",
+        "@llvm-project//llvm:support",
+    ],
 )
 
 cc_binary(
@@ -1917,6 +1922,8 @@ cc_binary(
         "@llvm-project//mlir/test/mlir-cpu-runner:libmlir_runner_utils.so",
     ],
     deps = [
+        ":AllPassesAndDialectsNoRegistration",
+        ":ExecutionEngineUtils",
         ":GPUDialect",
         ":GPUToNVVMTransforms",
         ":GPUToROCDLTransforms",
