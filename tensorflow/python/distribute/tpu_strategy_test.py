@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
+from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
@@ -39,6 +40,7 @@ class TpuStrategyTest(test.TestCase):
         zone=FLAGS.zone,
         project=FLAGS.project,
     )
+    remote.connect_to_cluster(resolver)
     tpu_strategy_util.initialize_tpu_system(resolver)
 
     with test.mock.patch.object(logging, "warning") as mock_log:
