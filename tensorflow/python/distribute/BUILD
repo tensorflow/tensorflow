@@ -919,6 +919,7 @@ distribute_py_test(
     main = "values_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":mirrored_strategy",

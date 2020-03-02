@@ -346,6 +346,7 @@ xla_test(
         "conv_depthwise_test.cc",
     ],
     shard_count = 50,
+    tags = ["no_rocm"],
     deps = [
         ":conv_depthwise_common",
         ":test_macros_header",
