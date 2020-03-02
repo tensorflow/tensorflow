@@ -684,6 +684,10 @@ class MklFusedBatchNormOp : public OpKernel {
     float epsilon;
     OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
     epsilon_ = epsilon;
+    float exponential_avg_factor;
+    OP_REQUIRES_OK(context, context->GetAttr("exponential_avg_factor",
+                                             &exponential_avg_factor));
+    exponential_avg_factor_ = static_cast<U>(exponential_avg_factor);
     string tensor_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
@@ -737,17 +741,6 @@ class MklFusedBatchNormOp : public OpKernel {
           context, est_variance_tensor.dims() == 1,
           errors::InvalidArgument("estimated_variance must be 1-dimensional",
                                   est_variance_tensor.shape().DebugString()));
-
-      if (is_training_) {
-        OP_REQUIRES(
-            context, est_mean_tensor.dim_size(0) == 0,
-            errors::InvalidArgument("estimated_mean must be empty for training",
-                                    est_mean_tensor.shape().DebugString()));
-        OP_REQUIRES(context, est_variance_tensor.dim_size(0) == 0,
-                    errors::InvalidArgument(
-                        "estimated_variance must be empty for training",
-                        est_variance_tensor.shape().DebugString()));
-      }
 
       // Handle the special case: input with 0 element and 0 batch size.
       Tensor* dst_tensor = nullptr;
@@ -875,28 +868,39 @@ class MklFusedBatchNormOp : public OpKernel {
       bn_fwd->Execute(src_data, weights_op_data, dst_data, mean_op_data,
                       variance_op_data);
 
-      // Copy batch_mean data
-      U* batch_mean_data_tf = batch_mean_tensor->flat<U>().data();
-      std::memcpy(reinterpret_cast<char*>(batch_mean_data_tf),
-                  reinterpret_cast<char*>(saved_mean_data_tf),
-                  depth_ * sizeof(U));
-
-      // Copy batch_variance data with Bessel's correction.
       float adjust_factor = 1.0;
       if (is_training_) {
         size_t orig_size = src_dims[0] * src_dims[2] * src_dims[3];
-        size_t adjust_size = orig_size - 1;
+        size_t adjust_size = (orig_size > 1) ? (orig_size - 1) : 1;
         adjust_factor = (static_cast<float>(orig_size)) / adjust_size;
       }
 
+      auto mean_data = reinterpret_cast<U*>(saved_mean_data_tf);
       auto variance_data = reinterpret_cast<U*>(saved_variance_data_tf);
+      auto batch_mean_data = batch_mean_tensor->flat<U>().data();
       auto batch_variance_data = batch_variance_tensor->flat<U>().data();
+      auto est_mean_data = est_mean_tensor.flat<U>().data();
+      auto est_variance_data = est_variance_tensor.flat<U>().data();
       if (is_training_) {
-        for (int k = 0; k < depth_; k++) {
-          batch_variance_data[k] =
-              variance_data[k] * static_cast<U>(adjust_factor);
+        if (exponential_avg_factor_ == U(1.0)) {
+          for (int k = 0; k < depth_; k++) {
+            batch_mean_data[k] = mean_data[k];
+            batch_variance_data[k] =
+                static_cast<U>(adjust_factor) * variance_data[k];
+          }
+        } else {
+          U one_minus_factor = U(1.0) - exponential_avg_factor_;
+          for (int k = 0; k < depth_; k++) {
+            batch_mean_data[k] = one_minus_factor * est_mean_data[k] +
+                                 exponential_avg_factor_ * mean_data[k];
+            batch_variance_data[k] = one_minus_factor * est_variance_data[k] +
+                                     exponential_avg_factor_ *
+                                         static_cast<U>(adjust_factor) *
+                                         variance_data[k];
+          }
         }
       } else {
+        std::memcpy(batch_mean_data, mean_data, depth_ * sizeof(U));
         std::memcpy(batch_variance_data, variance_data, depth_ * sizeof(U));
       }
     } catch (mkldnn::error& e) {
@@ -911,6 +915,7 @@ class MklFusedBatchNormOp : public OpKernel {
 
  private:
   float epsilon_;
+  U exponential_avg_factor_;
   TensorFormat tensor_format_;
   bool is_training_;
   U* mean_values_;
