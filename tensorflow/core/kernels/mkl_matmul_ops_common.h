@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::inner_product_forward;
+using mkldnn::primitive_attr;
 using mkldnn::prop_kind;
 using mkldnn::stream;
 
@@ -512,30 +513,29 @@ class MklDnnMatMulOpBase : public OpKernel {
   const int kOutputIndexDst = 0;
 };
 
-#ifdef ENABLE_MKLDNN_V1_2
 // MatMul support for bfloat16 and int8 types is introduced in DNNLv1.2.
-// We will enable this macro when we port our changes to DNNLv1.2.
+#ifdef ENABLE_MKLDNN_V1
 namespace {
 
-void dnnl_gemm_exec(const dnnl::desc& a_md, const dnnl::desc& b_md,
-                    const dnnl::desc& c_md, void* a, void* b, void* c,
-                    const dnnl::primitive_attr& attr) {
+void dnnl_gemm_exec(const memory::desc& a_md, const memory::desc& b_md,
+                    const memory::desc& c_md, const void* a, const void* b,
+                    void* c, const primitive_attr& attr) {
   // Create a MatMul primitive
-  dnnl::engine cpu_engine = mkldnn::engine(ENGINE_CPU, 0);
-  dnnl::matmul::desc matmul_desc(a_md, b_md, c_md);
-  dnnl::matmul::primitive_desc matmul_pd(matmul_desc, attr, cpu_engine);
-  dnnl::matmul matmul_prim(matmul_pd);
+  mkldnn::engine cpu_engine = mkldnn::engine(ENGINE_CPU, 0);
+  mkldnn::matmul::desc matmul_desc(a_md, b_md, c_md);
+  mkldnn::matmul::primitive_desc matmul_pd(matmul_desc, attr, cpu_engine);
+  mkldnn::matmul matmul_prim(matmul_pd);
   // Wrap raw pointers into DNNL memory objects
-  dnnl::memory a_memory(a_md, cpu_engine, a);
-  dnnl::memory b_memory(b_md, cpu_engine, b);
-  dnnl::memory c_memory(c_md, cpu_engine, c);
+  mkldnn::memory a_memory(a_md, cpu_engine, const_cast<void*>(a));
+  mkldnn::memory b_memory(b_md, cpu_engine, const_cast<void*>(b));
+  mkldnn::memory c_memory(c_md, cpu_engine, c);
   // Execute the MatMul primitive.
   // Since here all shapes and parameters are static, please note that we
   // don't need to pass alpha (scales) again, as they are already hard-coded
   // in the primitive descriptor. Also, we are not allowed to change the
   // shapes of matrices A, B, and C -- they should exactly match
   // the memory descriptors passed to MatMul operation descriptor.
-  dnnl::stream s(cpu_engine);
+  mkldnn::stream s(cpu_engine);
   matmul_prim.execute(s, {{DNNL_ARG_SRC, a_memory},
                           {DNNL_ARG_WEIGHTS, b_memory},
                           { DNNL_ARG_DST,
@@ -545,15 +545,14 @@ void dnnl_gemm_exec(const dnnl::desc& a_md, const dnnl::desc& b_md,
 
 template <typename T>
 void dnnl_gemm_batch(const std::vector<bool>& transa,
-                     const std::vector<bool>& transb,
-                     const std::vector<int64_t>& m,
-                     const std::vector<int64_t>& n,
-                     const std::vector<int64_t>& k,
+                     const std::vector<bool>& transb, const std::vector<int>& m,
+                     const std::vector<int>& n, const std::vector<int>& k,
                      const std::vector<float>& alpha, const T** a,
-                     const std::vector<int64_t> lda, const T** b,
-                     const std::vector<int64_t>& ldb, const float* beta, T** c,
-                     const std::vector<int64_t>& ldc, const int64_t group_count,
-                     const std::vector<int64_t>& group_size) {
+                     const std::vector<int>& lda, const T** b,
+                     const std::vector<int>& ldb,
+                     const std::vector<float>& beta, T** c,
+                     const std::vector<int>& ldc, const int group_count,
+                     const std::vector<int>& group_size) {
   // Current BatchMatMul support in Tensorflow is narrower than the one offered
   // by MKL and MKL-DNN. Current BatchMatMul support in Tensorflow uses only 1
   // group of size equal to batch_size, and all MatMul parameters (m, n, k,
@@ -584,7 +583,7 @@ void dnnl_gemm_batch(const std::vector<bool>& transa,
   for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(ldb[0] == ldb[idx]);
   for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(ldc[0] == ldc[idx]);
 
-  using dims = dnnl::memory::dims;
+  using dims = mkldnn::memory::dims;
   // Prepare strides based on the transa and transb flags: transposed
   // matrices have strides swapped BatchMatMul in MKL-DNN supports 3D metrices
   // so far. That is why strides are 3D also.
@@ -592,46 +591,48 @@ void dnnl_gemm_batch(const std::vector<bool>& transa,
   dims b_strides = transb[0] ? dims{ldb[0], 1, 1} : dims{1, 1, ldb[0]};
   dims c_strides = dims{ldc[0], 1, 1};
   // Prepare memory descriptors
-  dnnl::desc a_md({group_size[0], m[0], k[0]}, MklDnnType<T>(), a_strides);
-  dnnl::desc b_md({group_size[0], k[0], n[0]}, MklDnnType<T>(), b_strides);
-  dnnl::desc c_md({group_size[0], m[0], n[0]}, MklDnnType<T>(), c_strides);
+  memory::desc a_md({group_size[0], m[0], k[0]}, MklDnnType<T>(), a_strides);
+  memory::desc b_md({group_size[0], k[0], n[0]}, MklDnnType<T>(), b_strides);
+  memory::desc c_md({group_size[0], m[0], n[0]}, MklDnnType<T>(), c_strides);
   // Create attributes (to handle alpha and beta if necessary)
-  dnnl::primitive_attr attr;
+  mkldnn::primitive_attr attr;
   if (alpha[0] != 1.f) attr.set_output_scales(/* mask */ 0, {alpha[0]});
   if (beta[0] != 0.f) {
     mkldnn::post_ops po;
     po.append_sum(beta[0]);
     attr.set_post_ops(po);
   }
-  dnnl_gemm_exec(a_md, b_md, c_md, static_cast<void*>(a), static_cast<void*>(b),
-                 static_cast<void*>(c), attr);
+  dnnl_gemm_exec(a_md, b_md, c_md, static_cast<const void*>(a),
+                 static_cast<const void*>(b), static_cast<void*>(c), attr);
 }
 
 template <typename T>
 void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
                float alpha, const T* a, int64_t lda, const T* b, int64_t ldb,
                float beta, T* c, int64_t ldc) {
-  using dims = dnnl::memory::dims;
+  using dims = mkldnn::memory::dims;
   // Prepare strides based on the transa and transb flags: transposed
   // matrices have strides swapped
   dims a_strides = tolower(transa) == 'n' ? dims{lda, 1} : dims{1, lda};
   dims b_strides = tolower(transb) == 'n' ? dims{ldb, 1} : dims{1, ldb};
   // Prepare memory descriptors
-  dnnl::desc a_md({m, k}, MklDnnType<T>(), a_strides);
-  dnnl::desc b_md({k, n}, MklDnnType<T>(), b_strides);
-  dnnl::desc c_md({m, n}, MklDnnType<T>(), {ldc, 1});
+  memory::desc a_md({m, k}, MklDnnType<T>(), a_strides);
+  memory::desc b_md({k, n}, MklDnnType<T>(), b_strides);
+  memory::desc c_md({m, n}, MklDnnType<T>(), {ldc, 1});
   // Create attributes (to handle alpha and beta if necessary)
-  dnnl::primitive_attr attr;
+  mkldnn::primitive_attr attr;
   if (alpha != 1.f) attr.set_output_scales(/* mask */ 0, {alpha});
   if (beta != 0.f) {
     mkldnn::post_ops po;
     po.append_sum(beta);
     attr.set_post_ops(po);
   }
-  dnnl_gemm_exec(a_md, b_md, c_md, static_cast<void*>(a), static_cast<void*>(b),
-                 static_cast<void*>(c), attr);
+  dnnl_gemm_exec(a_md, b_md, c_md, static_cast<const void*>(a),
+                 static_cast<const void*>(b), static_cast<void*>(c), attr);
 }
-#endif  // ENABLE_MKLDNN_V1_2
+
+}  // anonymous namespace
+#endif  // ENABLE_MKLDNN_V1
 
 }  // namespace tensorflow
 
