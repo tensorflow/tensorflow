@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #ifdef INTEL_MKL
+
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
@@ -222,7 +224,7 @@ class FusedBatchNormOpTest : public OpsTestBase {
   }
 };
 
-TYPED_TEST_CASE_P(FusedBatchNormOpTest);
+TYPED_TEST_SUITE_P(FusedBatchNormOpTest);
 
 TYPED_TEST_P(FusedBatchNormOpTest, Training) {
   const float exponential_avg_factor = 1.0;
@@ -248,12 +250,13 @@ TYPED_TEST_P(FusedBatchNormOpTest, InferenceIgnoreAvgFactor) {
   this->VerifyFusedBatchNorm(exponential_avg_factor, is_training);
 }
 
-REGISTER_TYPED_TEST_CASE_P(FusedBatchNormOpTest, Training, TrainingRunningMean,
-                           Inference, InferenceIgnoreAvgFactor);
+REGISTER_TYPED_TEST_SUITE_P(FusedBatchNormOpTest, Training, TrainingRunningMean,
+                            Inference, InferenceIgnoreAvgFactor);
 
 using FusedBatchNormDataTypes = ::testing::Types<float>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, FusedBatchNormOpTest,
-                              FusedBatchNormDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormOpTest,
+                               FusedBatchNormDataTypes);
 
 }  // namespace tensorflow
+
 #endif  // INTEL_MKL

@@ -881,6 +881,9 @@ class MklFusedBatchNormOp : public OpKernel {
       auto batch_variance_data = batch_variance_tensor->flat<U>().data();
       auto est_mean_data = est_mean_tensor.flat<U>().data();
       auto est_variance_data = est_variance_tensor.flat<U>().data();
+
+      // TODO(intel-tf): Merge the `is_training && exponential_avg_factor == 1`
+      // case with the `else` (`!is_training`) case if possible.
       if (is_training_) {
         if (exponential_avg_factor_ == U(1.0)) {
           for (int k = 0; k < depth_; k++) {
