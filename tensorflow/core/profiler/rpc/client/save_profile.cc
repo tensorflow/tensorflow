@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -40,12 +41,12 @@ using ::tensorflow::io::JoinPath;
 constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
 
-Status DumpToolDataToLogDirectory(StringPiece run_dir,
-                                  const string& host_prefix,
+Status DumpToolDataToLogDirectory(StringPiece run_dir, const string& host,
                                   const ProfileToolData& tool,
                                   std::ostream* os) {
   // Don't save the intermediate results for combining the per host tool data.
   if (absl::EndsWith(tool.name(), kTfStatsHelperSuffix)) return Status::OK();
+  string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
   string path = JoinPath(run_dir, absl::StrCat(host_prefix, tool.name()));
   TF_RETURN_IF_ERROR(WriteStringToFile(Env::Default(), path, tool.data()));
   if (os) {
@@ -72,6 +73,32 @@ Status MaybeCreateEmptyEventFile(const string& logdir) {
   return event_writer.InitWithSuffix(kProfileEmptySuffix);
 }
 
+Status WriteGzippedDataToFile(const string& filepath, const string& data) {
+  std::unique_ptr<WritableFile> file;
+  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(filepath, &file));
+  io::ZlibCompressionOptions options = io::ZlibCompressionOptions::GZIP();
+  io::ZlibOutputBuffer buffer(file.get(), options.input_buffer_size,
+                              options.output_buffer_size, options);
+  TF_RETURN_IF_ERROR(buffer.Init());
+  TF_RETURN_IF_ERROR(buffer.Append(data));
+  TF_RETURN_IF_ERROR(buffer.Close());
+  TF_RETURN_IF_ERROR(file->Close());
+  return Status::OK();
+}
+
+Status GetOrCreateProfileRunDir(const string& logdir, const string& run,
+                                string* profile_run_dir, std::ostream* os) {
+  // Dumps profile data to <logdir>/plugins/profile/<run>/.
+  *profile_run_dir = JoinPath(GetTensorBoardProfilePluginDir(logdir), run);
+  *os << "Creating directory: " << *profile_run_dir;
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(*profile_run_dir));
+
+  // Creates an empty event file so that TensorBoard plugin logic can find
+  // the logdir.
+  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
+  return Status::OK();
+}
+
 }  // namespace
 
 string GetTensorBoardProfilePluginDir(const string& logdir) {
@@ -84,20 +111,30 @@ Status SaveTensorboardProfile(const string& logdir, const string& run,
                               const string& host,
                               const ProfileResponse& response,
                               std::ostream* os) {
-  // Dumps profile data to <logdir>/plugins/profile/<run>/.
-  string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
-  string profile_run_dir =
-      JoinPath(GetTensorBoardProfilePluginDir(logdir), run);
-  *os << "Creating directory: " << profile_run_dir;
-  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(profile_run_dir));
-
-  // Creates an empty event file so that TensorBoard plugin logic can find
-  // the logdir.
-  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
+  string profile_run_dir;
+  TF_RETURN_IF_ERROR(
+      GetOrCreateProfileRunDir(logdir, run, &profile_run_dir, os));
   for (const auto& tool_data : response.tool_data()) {
-    TF_RETURN_IF_ERROR(DumpToolDataToLogDirectory(profile_run_dir, host_prefix,
-                                                  tool_data, os));
+    TF_RETURN_IF_ERROR(
+        DumpToolDataToLogDirectory(profile_run_dir, host, tool_data, os));
   }
+  return Status::OK();
+}
+
+Status SaveGzippedToolDataToTensorboardProfile(const string& logdir,
+                                               const string& run,
+                                               const string& host,
+                                               const string& tool_name,
+                                               const string& data) {
+  string profile_run_dir;
+  std::stringstream ss;
+  Status status = GetOrCreateProfileRunDir(logdir, run, &profile_run_dir, &ss);
+  LOG(INFO) << ss.str();
+  TF_RETURN_IF_ERROR(status);
+  string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
+  string path = JoinPath(profile_run_dir, absl::StrCat(host_prefix, tool_name));
+  TF_RETURN_IF_ERROR(WriteGzippedDataToFile(path, data));
+  LOG(INFO) << "Dumped gzipped tool data for " << tool_name << " to " << path;
   return Status::OK();
 }
 
