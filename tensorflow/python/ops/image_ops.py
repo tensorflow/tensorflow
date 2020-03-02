@@ -15,8 +15,11 @@
 
 """Image ops.
 
-The `tf.image` and the `tf.io` modules contain various functions for image 
-processing and decoding-encoding Ops respectively.
+The `tf.image` module contains various functions for image 
+processing and decoding-encoding Ops.
+
+Many of the encoding/decoding functions are also available in the
+core `tf.io` module.
 
 ## Image processing
 
