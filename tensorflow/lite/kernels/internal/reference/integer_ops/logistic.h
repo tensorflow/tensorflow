@@ -58,6 +58,38 @@ inline void Logistic(int32_t input_zero_point, int32_t input_range_radius,
   }
 }
 
+inline void Logistic(int32_t input_size, const int16_t* ptr_input_data,
+                     int16_t* ptr_output_data) {
+  // We use the LUT for sigmoid and take into account, that
+  // tanh(x) = 2*sigmoid(2*x) - 1
+  for (int i = 0; i < input_size; ++i, ptr_input_data++, ptr_output_data++) {
+    int32_t input_data = *ptr_input_data;
+
+    // Scale by 3/4 to expand range [-8,8]->[-10.7,10.7] and
+    // we do interpolation on unsigned values.
+    uint32_t abs_input_data = 3 * abs(input_data);
+
+    // We divide by 2 power of 9, because
+    // we need to divide by 2 in power of 7 for
+    // the input conversion + 1/4 from the scale above.
+    uint8_t uh = abs_input_data >> 9;
+    uint32_t ua = sigmoid_table_uint16[uh];
+    uint32_t ub = sigmoid_table_uint16[uh + 1];
+    uint32_t ut = abs_input_data & 0x1ff;
+
+    // Interpolation is done using the fractional bit.
+    uint32_t result = (ua << 9) + ut * (ub - ua);
+
+    result = (input_data >= 0) ? (result + (1 << 9))
+                               : ((1 << (16 + 9)) - result + (1 << 9) - 1);
+
+    // Back to 16-bit.
+    result >>= 10;
+
+    *ptr_output_data = result;
+  }
+}
+
 }  // namespace reference_integer_ops
 }  // namespace tflite
 
