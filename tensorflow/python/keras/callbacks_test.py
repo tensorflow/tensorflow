@@ -140,8 +140,7 @@ class CallbackCountsTest(keras_parameterized.TestCase):
     model.compile(
         adam.AdamOptimizer(0.001),
         'binary_crossentropy',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   @parameterized.named_parameters(('with_numpy', _get_numpy()),
@@ -257,8 +256,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='rmsprop',
         metrics=[keras.metrics.CategoricalAccuracy(name='my_acc')],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   @keras_parameterized.run_with_all_model_types
@@ -1420,6 +1418,30 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     model.fit(data, epochs=2, callbacks=[progbar])
     self.assertEqual(progbar.target, 5)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_callback_passed_floats(self):
+
+    class MyCallback(keras.callbacks.Callback):
+
+      def on_batch_end(self, batch, logs=None):
+        assert isinstance(batch, int)
+        assert isinstance(logs['loss'], float)
+        self.on_batch_end_called = True
+
+      def on_epoch_end(self, batch, logs=None):
+        assert isinstance(batch, int)
+        assert isinstance(logs['loss'], float)
+        self.on_epoch_end_called = True
+
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    callback = MyCallback()
+    model.fit(x, y, epochs=2, callbacks=[callback])
+    self.assertTrue(callback.on_batch_end_called)
+    self.assertTrue(callback.on_batch_end_called)
+
 
 # A summary that was emitted during a test. Fields:
 #   logdir: str. The logdir of the FileWriter to which the summary was
@@ -1516,8 +1538,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     model.compile(
         opt,
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   def test_TensorBoard_default_logdir(self):
@@ -1703,7 +1724,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     )
 
   def test_custom_summary(self):
-    if not testing_utils.should_run_tf_function():
+    if not context.executing_eagerly():
       self.skipTest('Custom summaries only supported in V2 code path.')
 
     def scalar_v2_mock(name, data, step=None):
@@ -1732,8 +1753,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     tb_cbk = keras.callbacks.TensorBoard(self.logdir, update_freq=1)
     x, y = np.ones((10, 5)), np.ones((10, 5))
     model.fit(x, y, batch_size=2, validation_data=(x, y), callbacks=[tb_cbk])
@@ -1801,8 +1821,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
     model.compile(
         opt,
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   def _get_trace_file(self, logdir):

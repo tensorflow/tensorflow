@@ -153,7 +153,7 @@ class DebugEventsWriter {
   //     with.
   //   tensor_debug_mode: An integer that represents the tensor-debug mode enum.
   //   tensor_value: The value of the tensor that describes the tensor(s)
-  //     that this trace is concerned with. The sematics of this tensor value
+  //     that this trace is concerned with. The semantics of this tensor value
   //     depends on the value of `tensor_debug_mode`.
   void WriteGraphExecutionTrace(const string& tfdbg_context_id,
                                 const string& device_name,

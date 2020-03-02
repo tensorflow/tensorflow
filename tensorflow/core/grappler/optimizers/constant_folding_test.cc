@@ -2662,7 +2662,7 @@ TEST_F(ConstantFoldingTest, PaddingWithZeroSize) {
   test::ExpectTensorEqual<int>(tensors_expected[0], tensors[0]);
 }
 
-TEST_F(ConstantFoldingTest, SqueezeWithAllDimesionsGreaterThanOne) {
+TEST_F(ConstantFoldingTest, SqueezeWithAllDimensionsGreaterThanOne) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
   auto in1 = ops::Variable(scope.WithOpName("in1"), {2, 3}, DT_INT32);
@@ -3383,7 +3383,7 @@ TEST_F(ConstantFoldingTest, SwitchIdenticalInputs) {
   EXPECT_EQ(1, tensors.size());
   test::ExpectTensorEqual<bool>(tensors_expected[0], tensors[0]);
 
-  // Evalute id_false when input tensor is false.
+  // Evaluate id_false when input tensor is false.
   x_t.flat<bool>()(0) = false;
   tensors_expected = EvaluateNodes(item.graph, {"id_false"}, {{"x", x_t}});
   EXPECT_EQ(1, tensors_expected.size());
@@ -3693,8 +3693,8 @@ TEST_F(ConstantFoldingTest, TrivialPack) {
   EXPECT_EQ(tensors_expected[1].shape(), tensors[1].shape());
 }
 
-// The test does not evalute the optimized and original graphs to check if their
-// outputs are the same. See b/78233179.
+// The test does not evalaute the optimized and original graphs to check if
+// their outputs are the same. See b/78233179.
 TEST_F(ConstantFoldingTest, Enter) {
   GrapplerItem item;
   AttrValue frame_name;

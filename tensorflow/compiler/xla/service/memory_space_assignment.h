@@ -580,6 +580,9 @@ class AsynchronousCopyOrdering {
   // Adds an asynchronous copy.
   void AddCopy(const AsynchronousCopy& copy);
 
+  // Removes an asynchronous copy. CHECKs that it is removed.
+  void RemoveCopy(const AsynchronousCopy& copy);
+
   // Returns true if the addition of an asynchronous copy in the the given time
   // interval would violate the asynchronous copy ordering. E.g., consider the
   // following scenario:
@@ -735,11 +738,15 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
                     int64 end_time, int64 copy_done_schedule_before_time,
                     MemorySpaceAssignment::AllocationSequence* allocations);
 
-  // These methods are used for delaying committing the chunk candidate until
-  // the entire live range of the buffer has been considered.
+  // This method is used for committing the chunk candidate but adding it to
+  // pending_chunks_ so that we can "uncommit" them in case we need to roll back
+  // this allocation sequence.
   void AddToPendingChunks(const BufferInterval& buffer_interval,
                           const ChunkCandidate& chunk_candidate);
-  void CommitPendingChunks();
+  // If we need to remove the allocations for this allocation sequence, this
+  // removes pending chunks and asynchronous copies in the respective pending
+  // buffers from the interval trees.
+  void UncommitPendingChunks();
 
   // Returns the available heap size in the alternate memory.
   int64 available_heap_size() const {

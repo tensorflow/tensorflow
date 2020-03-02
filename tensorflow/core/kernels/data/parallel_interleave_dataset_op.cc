@@ -507,7 +507,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       bool active GUARDED_BY(&ParallelInterleaveIterator::mu_) = false;
       // Whether the inputs and iterator have been initialized.
       bool initialized GUARDED_BY(&ParallelInterleaveIterator::mu_) = false;
-      // Whether we tried to initialize the element, but the input interator
+      // Whether we tried to initialize the element, but the input iterator
       // was exhausted so we could produce no inputs.
       bool no_input GUARDED_BY(&ParallelInterleaveIterator::mu_) = false;
       // Condition variable for communicating between current worker threads

@@ -588,7 +588,7 @@ class RunManyGraphs {
   void ReportBadStatus(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     VLOG(1) << "Master received error status " << s;
     if (!cancel_issued_ && !StatusGroup::IsDerived(s)) {
-      // Only start cancelling other workers upon receiveing a non-derived
+      // Only start cancelling other workers upon receiving a non-derived
       // error
       cancel_issued_ = true;
 

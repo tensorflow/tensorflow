@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
 
@@ -158,7 +159,7 @@ class AttrSlice {
   // account.
   //
   // TODO(irving): There is a bug in this routine inherited from its
-  // OptimizerCSE::EqualAttrs precedecessor.  The same tensor attr can be
+  // OptimizerCSE::EqualAttrs predecessor.  The same tensor attr can be
   // represented in more than one way as an AttrValue, since TensorProto is
   // not 1-1.  This bug will go away once I replace everything with NodeInfo,
   // which stores a Tensor object directly.  The Scratch object will also go
@@ -303,6 +304,10 @@ bool TryGetNodeAttr(
 // a matching type, a reference to an empty string is returned.
 // REQUIRES: Must not use the returned value beyond the lifetime of node_def.
 const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name);
+
+// Specialization to parse an attribute directly into a Padding enum.
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   Padding* value);
 
 // Computes the input type for a specific node input.
 // REQUIRES: ValidateOpDef(op_def).ok()

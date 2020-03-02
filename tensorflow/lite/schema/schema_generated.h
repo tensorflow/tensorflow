@@ -3207,6 +3207,7 @@ inline flatbuffers::Offset<Uint16Vector> CreateUint16Vector(
 inline flatbuffers::Offset<Uint16Vector> CreateUint16VectorDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<uint16_t> *values = nullptr) {
+  if (values) { _fbb.ForceVectorAlignment(values->size(), sizeof(uint16_t), 4); }
   auto values__ = values ? _fbb.CreateVector<uint16_t>(*values) : 0;
   return tflite::CreateUint16Vector(
       _fbb,
@@ -3270,6 +3271,7 @@ inline flatbuffers::Offset<Uint8Vector> CreateUint8Vector(
 inline flatbuffers::Offset<Uint8Vector> CreateUint8VectorDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<uint8_t> *values = nullptr) {
+  if (values) { _fbb.ForceVectorAlignment(values->size(), sizeof(uint8_t), 4); }
   auto values__ = values ? _fbb.CreateVector<uint8_t>(*values) : 0;
   return tflite::CreateUint8Vector(
       _fbb,
@@ -10615,6 +10617,7 @@ inline flatbuffers::Offset<Uint16Vector> CreateUint16Vector(flatbuffers::FlatBuf
   (void)_rehasher;
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const Uint16VectorT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  _fbb.ForceVectorAlignment(_o->values.size(), sizeof(uint16_t), 4);
   auto _values = _o->values.size() ? _fbb.CreateVector(_o->values) : 0;
   return tflite::CreateUint16Vector(
       _fbb,
@@ -10641,6 +10644,7 @@ inline flatbuffers::Offset<Uint8Vector> CreateUint8Vector(flatbuffers::FlatBuffe
   (void)_rehasher;
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const Uint8VectorT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  _fbb.ForceVectorAlignment(_o->values.size(), sizeof(uint8_t), 4);
   auto _values = _o->values.size() ? _fbb.CreateVector(_o->values) : 0;
   return tflite::CreateUint8Vector(
       _fbb,

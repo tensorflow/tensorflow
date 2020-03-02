@@ -145,9 +145,9 @@ class KernelAndDevice : public core::RefCounted {
   // returns.
   Device* device() const { return device_; }
 
+  virtual const DataTypeVector& input_dtypes() const = 0;
   virtual const DataTypeVector& output_dtypes() const = 0;
 
-  virtual DataType input_type(int i) const = 0;
   virtual int num_inputs() const = 0;
   virtual int num_outputs() const = 0;
   virtual const string& name() const = 0;
@@ -202,7 +202,9 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   Device* OutputDevice(int idx) const override;
   Device* OutputResourceDevice(int idx) const override;
 
-  DataType input_type(int i) const override;
+  const DataTypeVector& input_dtypes() const override {
+    return kernel_->input_types();
+  }
   const DataTypeVector& output_dtypes() const override {
     return kernel_->output_types();
   }
@@ -213,6 +215,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
  private:
   std::unique_ptr<OpKernel> kernel_;
   gtl::InlinedVector<AllocatorAttributes, 4> input_alloc_attrs_;
+  std::vector<Device*> input_devices_;
   gtl::InlinedVector<AllocatorAttributes, 1> output_alloc_attrs_;
   Rendezvous* const rendez_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
@@ -281,7 +284,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   Device* OutputDevice(int idx) const override;
   Device* OutputResourceDevice(int idx) const override;
 
-  DataType input_type(int i) const override;
+  const DataTypeVector& input_dtypes() const override { return input_dtypes_; }
   const DataTypeVector& output_dtypes() const override {
     return output_dtypes_;
   }

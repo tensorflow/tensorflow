@@ -665,7 +665,7 @@ class FunctionLibraryRuntime {
   // "handle".
   //
   // If function execution succeeds, "done" is called with OK and
-  // "*rets" is filled with the function's return values. Otheriwse,
+  // "*rets" is filled with the function's return values. Otherwise,
   // "done" is called with an error status.
   //
   // Does not take ownership of "rets".

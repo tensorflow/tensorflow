@@ -29,11 +29,13 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import keras_export
 
 
 WHITELIST_FORMATS = ('.bmp', '.gif', '.jpeg', '.jpg', '.png')
 
 
+@keras_export('keras.preprocessing.image.dataset_from_directory', v1=[])
 def dataset_from_directory(directory,
                            labels='inferred',
                            label_mode='int',
@@ -43,10 +45,10 @@ def dataset_from_directory(directory,
                            image_size=(256, 256),
                            shuffle=True,
                            seed=None,
-                           follow_links=False,
                            validation_split=None,
                            subset=None,
-                           interpolation='bilinear'):
+                           interpolation='bilinear',
+                           follow_links=False):
   """Generates a Dataset from image files in a directory.
 
   If your directory structure is:
@@ -105,15 +107,15 @@ def dataset_from_directory(directory,
     shuffle: Whether to shuffle the data. Default: True.
         If set to False, sorts the data in alphanumeric order.
     seed: Optional random seed for shuffling and transformations.
-    follow_links: Whether to visits subdirectories pointed to by symlinks.
-        Defaults to False.
     validation_split: Optional float between 0 and 1,
         fraction of data to reserve for validation.
     subset: One of "training" or "validation".
         Only used if `validation_split` is set.
-    interpolation: String, the interpolation method sed when resizing images.
+    interpolation: String, the interpolation method used when resizing images.
       Defaults to `bilinear`. Supports `bilinear`, `nearest`, `bicubic`,
       `area`, `lanczos3`, `lanczos5`, `gaussian`, `mitchellcubic`.
+    follow_links: Whether to visits subdirectories pointed to by symlinks.
+        Defaults to False.
 
   Returns:
     A `tf.data.Dataset` object.

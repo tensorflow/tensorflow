@@ -45,7 +45,7 @@ StaticDeviceMgr::StaticDeviceMgr(std::vector<std::unique_ptr<Device>> devices)
     }
     const auto& t = d->device_type();
     device_type_counts_[t]++;
-    if (cpu_device_ == nullptr && t == "CPU") {
+    if (cpu_device_ == nullptr && t == "CPU" && d->parsed_name().id == 0) {
       cpu_device_ = d.get();
     }
   }

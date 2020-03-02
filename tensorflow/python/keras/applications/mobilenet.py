@@ -102,6 +102,9 @@ def MobileNet(input_shape=None,
   Note that the data format convention used by the model is
   the one specified in the `tf.keras.backend.image_data_format()`.
 
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.mobilenet.preprocess_input` for an example.
+
   Arguments:
     input_shape: Optional shape tuple, only to be specified if `include_top`
       is False (otherwise the input shape has to be `(224, 224, 3)` (with
@@ -436,9 +439,39 @@ def _depthwise_conv_block(inputs,
 
 @keras_export('keras.applications.mobilenet.preprocess_input')
 def preprocess_input(x, data_format=None):
+  """Preprocesses a numpy array encoding a batch of images.
+
+  Arguments
+    x: A 4D numpy array consists of RGB values within [0, 255].
+
+  Returns
+    Preprocessed array.
+
+  Raises
+    ValueError: In case of unknown `data_format` argument.
+  """
   return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.mobilenet.decode_predictions')
 def decode_predictions(preds, top=5):
+  """Decodes the prediction result from the model.
+
+  Arguments
+    preds: Numpy tensor encoding a batch of predictions.
+    top: Integer, how many top-guesses to return.
+
+  Returns
+    A list of lists of top class prediction tuples
+    `(class_name, class_description, score)`.
+    One list of tuples per sample in batch input.
+
+  Raises
+    ValueError: In case of invalid shape of the `preds` array (must be 2D).
+  """
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

@@ -1004,7 +1004,7 @@ void ColocationGraph::GetSoftDeviceCandidates(
 
   // Failed to find supported devices that don't violate resource devices.
   // Try finding some devices that violated resource devices.
-  // If we succceed, we will log a warning below.
+  // If we succeed, we will log a warning below.
   soft_device_name = root_member.GetSoftDeviceName();
   device_set_.FindMatchingDevices(soft_device_name, possible_devices);
   if (!possible_devices->empty()) {

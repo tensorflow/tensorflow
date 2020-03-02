@@ -282,7 +282,7 @@ int Run(int argc, char** argv) {
     if (line == nullptr) {
       if (!looped) {
         absl::FPrintF(stderr,
-                      "Cannot start interative shell, "
+                      "Cannot start interactive shell, "
                       "use 'bazel-bin' instead of 'bazel run'.\n");
       }
       break;

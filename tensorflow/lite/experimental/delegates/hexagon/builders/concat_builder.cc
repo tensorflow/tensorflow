@@ -41,6 +41,10 @@ TfLiteStatus ConcatOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   int tensor_id;
 
   // Input data tensors.
+  // input_bound_minimum & input_bound_maximum track the minimum & maximum
+  // min/max bounds across all inputs.
+  float input_bound_minimum = std::numeric_limits<float>::max();
+  float input_bound_maximum = std::numeric_limits<float>::min();
   input_minima_.reserve(inputs->size);
   input_maxima_.reserve(inputs->size);
   for (int i = 0; i < inputs->size; ++i) {
@@ -53,6 +57,8 @@ TfLiteStatus ConcatOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
         std::numeric_limits<uint8_t>::max()));
     input_minima_.push_back(data_min);
     input_maxima_.push_back(data_max);
+    if (data_min < input_bound_minimum) input_bound_minimum = data_min;
+    if (data_max > input_bound_maximum) input_bound_maximum = data_max;
   }
 
   // Minima tensors.
@@ -96,19 +102,27 @@ TfLiteStatus ConcatOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   auto* output_max_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, (char*)&output_max_, sizeof(output_max_));
 
-  auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
-  requantize_op->SetOpType(OP_Requantize_8to8);
-  requantize_op->AddInput(concat_out);
-  requantize_op->AddInput(concat_out_min);
-  requantize_op->AddInput(concat_out_max);
-  requantize_op->AddInput(TensorID(output_min_const->GetID(), 0));
-  requantize_op->AddInput(TensorID(output_max_const->GetID(), 0));
-  node_output_ =
-      requantize_op->AddOutput(sizeof(uint8_t), 4,
-                               {output_batch_size, output_height_size,
-                                output_width_size, output_depth_size});
-  requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  if (output_min_ == input_bound_minimum &&
+      output_max_ == input_bound_maximum) {
+    // If the input min/max (across all tensors) is same as the output min/max,
+    // Hexagon's Requantize causes errors in InceptionV3.
+    // TODO(b/150137234): Figure out why this is.
+    node_output_ = concat_out;
+  } else {
+    auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
+    requantize_op->SetOpType(OP_Requantize_8to8);
+    requantize_op->AddInput(concat_out);
+    requantize_op->AddInput(concat_out_min);
+    requantize_op->AddInput(concat_out_max);
+    requantize_op->AddInput(TensorID(output_min_const->GetID(), 0));
+    requantize_op->AddInput(TensorID(output_max_const->GetID(), 0));
+    node_output_ =
+        requantize_op->AddOutput(sizeof(uint8_t), 4,
+                                 {output_batch_size, output_height_size,
+                                  output_width_size, output_depth_size});
+    requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  }
 
   return kTfLiteOk;
 }

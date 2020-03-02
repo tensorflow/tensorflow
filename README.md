@@ -101,7 +101,7 @@ $ python
 3
 >>> hello = tf.constant('Hello, TensorFlow!')
 >>> hello.numpy()
-'Hello, TensorFlow!'
+b'Hello, TensorFlow!'
 ```
 
 For more examples, see the
@@ -161,18 +161,20 @@ Build Type                                                        | Status      
 ## Resources
 
 *   [TensorFlow.org](https://www.tensorflow.org)
-*   [TensorFlow tutorials](https://www.tensorflow.org/tutorials/)
-*   [TensorFlow official models](https://github.com/tensorflow/models/tree/master/official)
-*   [TensorFlow examples](https://github.com/tensorflow/examples)
+*   [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
+*   [TensorFlow Official Models](https://github.com/tensorflow/models/tree/master/official)
+*   [TensorFlow Examples](https://github.com/tensorflow/examples)
 *   [TensorFlow in Practice from Coursera](https://www.coursera.org/specializations/tensorflow-in-practice)
+*   [TensorFlow: Data and Deployment from Coursera](https://www.coursera.org/specializations/tensorflow-data-and-deployment)
 *   [Intro to TensorFlow for Deep Learning from Udacity](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187)
 *   [Introduction to TensorFlow Lite from Udacity](https://www.udacity.com/course/intro-to-tensorflow-lite--ud190)
-*   [TensorFlow blog](https://blog.tensorflow.org)
+*   [TensorFlow Blog](https://blog.tensorflow.org)
+*   [Learn ML with TensorFlow](https://www.tensorflow.org/resources/learn-ml)
 *   [TensorFlow Twitter](https://twitter.com/tensorflow)
 *   [TensorFlow YouTube](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
-*   [TensorFlow roadmap](https://www.tensorflow.org/community/roadmap)
-*   [TensorFlow white papers](https://www.tensorflow.org/about/bib)
-*   [TensorBoard visualization toolkit](https://github.com/tensorflow/tensorboard)
+*   [TensorFlow Roadmap](https://www.tensorflow.org/community/roadmap)
+*   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
+*   [TensorBoard Visualization Toolkit](https://github.com/tensorflow/tensorboard)
 
 Learn more about the
 [TensorFlow community](https://www.tensorflow.org/community) and how to

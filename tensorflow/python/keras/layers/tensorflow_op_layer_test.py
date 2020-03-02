@@ -211,8 +211,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     model.compile(
         adam.Adam(0.001),
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     np_inputs = nest.map_structure(
         lambda x: np.ones((10,) + tuple(x.shape[1:]), 'float32'), model.inputs)
@@ -230,8 +229,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     new_model.compile(
         adam.Adam(0.001),
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     new_model.fit(np_inputs, np_outputs, batch_size=2)
     new_model(np_inputs)  # Test calling the new model directly on inputs.
     # Assert that metrics are preserved and in the right order.

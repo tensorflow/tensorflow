@@ -307,14 +307,12 @@ cc_library(
         "transforms/runtime_type_verify.cc",
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
-        "transforms/unroll_batch_matmul.cc",
         "transforms/while_loop_outline.cc",
     ],
     hdrs = [
         "ir/tfl_ops_interface.h.inc",
         "transforms/dilated_conv.h",
         "transforms/passes.h",
-        "transforms/unroll_batch_matmul.h",
     ],
     deps = [
         ":common",
@@ -327,6 +325,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",

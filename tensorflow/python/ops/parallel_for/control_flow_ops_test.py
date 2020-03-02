@@ -1733,7 +1733,8 @@ class SpectralTest(PForTestCase, parameterized.TestCase):
       (fft_ops.irfft2d,),
       (fft_ops.irfft3d,),
   )
-  def test_irfft(self, op_func):
+  # TODO(agarwal): Reenable this once the test flaky is fixed.
+  def disabled_test_irfft(self, op_func):
     for dtype in (dtypes.complex64, dtypes.complex128):
       shape = [2, 3, 4, 3, 4]
       x = np.random.uniform(size=shape) + 1j * np.random.uniform(size=shape)

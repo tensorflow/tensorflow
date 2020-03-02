@@ -65,6 +65,14 @@ and the following optional parameters:
     This is available on recent Android devices. Note that some Android P
     devices will fail to use NNAPI for models in `/data/local/tmp/` and this
     benchmark tool will not correctly use NNAPI.
+*   `max_delegated_partitions`: `int` (default=0, i.e. no limit) \
+    The maximum number of partitions that will be delegated. \
+    Currently supported only by the NNAPI Delegate and it won't work \
+    if `use_legacy_nnapi` has been selected.
+*   `disable_nnapi_cpu`: `bool` (default=false) \
+    Excludes the [NNAPI CPU reference implementation](https://developer.android.com/ndk/guides/neuralnetworks#device-assignment)
+    from the possible devices to be used by NNAPI to execute the model.
+    This option is ignored if `nnapi_accelerator_name` is specified.
 *   `use_gpu`: `bool` (default=false) \
     Whether to use the [GPU accelerator delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
     This option is currently only available on Android and iOS devices.

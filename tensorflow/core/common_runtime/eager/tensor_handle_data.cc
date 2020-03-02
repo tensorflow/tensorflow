@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
@@ -102,6 +103,32 @@ Status EmptyLocalTensorHandleData::NumElements(int64* num_elements) const {
 
 Status EmptyLocalTensorHandleData::Unprotect() {
   return errors::Unavailable("Unable to unprotect an empty handle.");
+}
+
+bool EmptyLocalTensorHandleData::IsReady() const {
+  tf_shared_lock l(mu_);
+  return is_ready_;
+}
+
+void EmptyLocalTensorHandleData::SetReady() {
+  mutex_lock l(mu_);
+  is_ready_ = true;
+}
+
+Status EmptyLocalTensorHandleData::WaitReady(const char* caller) const {
+  if (!IsReady()) {
+    profiler::TraceMe activity(absl::StrCat(caller, " WaitReady"),
+                               profiler::TraceMeLevel::kInfo);
+    tf_shared_lock l(mu_);
+    mu_.Await(Condition(&is_ready_));
+  }
+  return is_poisoned_;
+}
+
+void EmptyLocalTensorHandleData::Poison(Status status) {
+  is_poisoned_ = status;
+  mutex_lock l(mu_);
+  is_ready_ = true;
 }
 
 string EmptyLocalTensorHandleData::DebugString() const {
