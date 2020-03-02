@@ -660,4 +660,18 @@ def preprocess_input(x, data_format=None):  # pylint: disable=unused-argument
 
 @keras_export('keras.applications.efficientnet.decode_predictions')
 def decode_predictions(preds, top=5):
+  """Decodes the prediction result from the model.
+
+  Arguments
+    preds: Numpy tensor encoding a batch of predictions.
+    top: Integer, how many top-guesses to return.
+
+  Returns
+    A list of lists of top class prediction tuples
+    `(class_name, class_description, score)`.
+    One list of tuples per sample in batch input.
+
+  Raises
+    ValueError: In case of invalid shape of the `preds` array (must be 2D).
+  """
   return imagenet_utils.decode_predictions(preds, top=top)
