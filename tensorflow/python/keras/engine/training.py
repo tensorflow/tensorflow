@@ -240,7 +240,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               loss=None,
               metrics=None,
               loss_weights=None,
-              sample_weight_mode=None,
+              sample_weight_mode=None,  # pylint: disable=unused-argument
               weighted_metrics=None,
               **kwargs):
     """Configures the model for training.
@@ -306,6 +306,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
+    # NOTE: Argument `sample_weight_mode` is not used,
+    # but for backwards compatibility, we keep it untouched.
+
     _keras_api_gauge.get_cell('compile').set(True)
     with self.distribute_strategy.scope():
       self._validate_compile(optimizer, metrics, **kwargs)
