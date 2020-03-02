@@ -433,6 +433,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":convert_op_folder",
+        ":hlo",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/service:hlo",
         "@llvm-project//mlir:IR",
