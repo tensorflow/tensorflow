@@ -179,12 +179,14 @@ def _RGBToHSVGrad(op, grad):
 
   Usage Example:
 
-  ```python
-  # Decode an image and convert it to HSV.
-  rgb_image = tf.image.decode_png(...,  channels=3)
-  rgb_image_float = tf.image.convert_image_dtype(rgb_image, tf.float32)
-  hsv_image = tf.image.rgb_to_hsv(rgb_image)
-  ```
+  >>> rgb_image = tf.stack([ 
+  ...    tf.zeros([5,5]), 
+  ...    tf.zeros([5,5]), 
+  ...    tf.ones([5,5])],
+  ...    axis=-1)
+  >>> hsv_image = tf.image.rgb_to_hsv(rgb_image)
+  >>> hsv_image[1,1].numpy()
+  array([0.6666667, 1. , 1. ], dtype=float32)
   
   Args:
     op: The `rgb_to_hsv` `Operation` that we are differentiating.
