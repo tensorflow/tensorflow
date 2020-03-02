@@ -77,7 +77,11 @@ class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
   // TODO: rename Dilated to Strided?
-  enum IndexingOrder { LinearIndexingX, DilatedIndexingX, LinearDilatedIndexingX };
+  enum IndexingOrder {
+    LinearIndexingX,
+    DilatedIndexingX,
+    LinearDilatedIndexingX
+  };
 
   KernelMappingScheme(absl::Span<const int64> dims_in_elems,
                       absl::Span<const int64> tile_sizes, int64 num_threads_y,
@@ -88,7 +92,7 @@ class KernelMappingScheme {
         num_threads_x_(num_threads_x),
         num_threads_y_(num_threads_y),
         indexing_order_(indexing_order),
-        vector_size_(vector_size){
+        vector_size_(vector_size) {
     CHECK_EQ(tile_sizes[1] % num_threads_y_, 0);
     CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
     VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
@@ -124,12 +128,8 @@ class KernelMappingScheme {
     return GetNumThreadsX() * GetNumThreadsY();
   }
 
-  IndexingOrder GetIndexingOrder() const {
-    return indexing_order_;
-  }
-  int GetVectorSize() const {
-    return vector_size_;
-  }
+  IndexingOrder GetIndexingOrder() const { return indexing_order_; }
+  int GetVectorSize() const { return vector_size_; }
 
  private:
   // The number of elements in each dimension.

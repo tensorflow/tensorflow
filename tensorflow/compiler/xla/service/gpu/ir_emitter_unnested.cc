@@ -1860,7 +1860,8 @@ namespace {
 
 // Returns true if the fusion contains any instruction that is likely
 // translated to complex LLVM IR, such as loops, and prevent vectorization.
-bool MayPreventVectorization(const HloInstruction& hlo, const bool tolerate_reduce=false) {
+bool MayPreventVectorization(const HloInstruction& hlo,
+                             const bool tolerate_reduce = false) {
   if (hlo.opcode() == HloOpcode::kFusion) {
     return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
                           [tolerate_reduce](const HloInstruction* instr) {
@@ -1923,12 +1924,14 @@ static llvm::Value* GetStartOffsetX(const KernelMappingScheme& mapping_scheme,
                                     llvm::Value* thread_id_x,
                                     llvm::Type* index_ty,
                                     llvm::IRBuilder<>* b) {
-  if (mapping_scheme.GetIndexingOrder() == KernelMappingScheme::DilatedIndexingX) {
+  if (mapping_scheme.GetIndexingOrder() ==
+      KernelMappingScheme::DilatedIndexingX) {
     return thread_id_x;
   } else if (mapping_scheme.GetIndexingOrder() ==
              KernelMappingScheme::LinearDilatedIndexingX) {
     int vector_size = mapping_scheme.GetVectorSize();
-    return b->CreateMul(thread_id_x, llvm::ConstantInt::get(index_ty, vector_size));
+    return b->CreateMul(thread_id_x,
+                        llvm::ConstantInt::get(index_ty, vector_size));
   }
   int64 x_num_steps =
       mapping_scheme.GetTileSizeX() / mapping_scheme.GetNumThreadsX();
@@ -1958,7 +1961,10 @@ void IrEmitterUnnested::EmitTile(
   // of threads.
   // Otherwise, the stride is one, but we multiply each offset by the limit of
   // number of steps which can be made.
-  int64 step_x = mapping_scheme.GetIndexingOrder() == KernelMappingScheme::LinearIndexingX? 1 : num_threads_x;
+  int64 step_x =
+      mapping_scheme.GetIndexingOrder() == KernelMappingScheme::LinearIndexingX
+          ? 1
+          : num_threads_x;
 
   IrArray::Index source_idx =
       tile_origin_index.AddOffsetToDim(start_offset_x, kDimX, &b_);
@@ -1996,13 +2002,15 @@ void IrEmitterUnnested::EmitTile(
         llvm::Value* y_loc = b_.CreateAdd(
             thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
         auto unroll = [&](bool add_if, int64 max_element, int64 vector_size) {
-          for (int64 j = 0; j < x_num_steps/vector_size; j++) {
-            //Prep some values. If we do not do this, LLVM doesn't vectorize.
+          for (int64 j = 0; j < x_num_steps / vector_size; j++) {
+            // Prep some values. If we do not do this, LLVM doesn't vectorize.
             llvm::Value* x_loc_base =
-            b_.CreateAdd(constant(j * step_x * vector_size), start_offset_x, "x_loc_base");
+                b_.CreateAdd(constant(j * step_x * vector_size), start_offset_x,
+                             "x_loc_base");
             IrArray::Index source_idx_x_base =
-            source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
-            .AddOffsetToDim(constant(j * step_x * vector_size), kDimX, &b_);
+                source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
+                    .AddOffsetToDim(constant(j * step_x * vector_size), kDimX,
+                                    &b_);
 
             for (int i = 0; i < vector_size; i++) {
               int old_j = j * vector_size + i;
@@ -2010,7 +2018,8 @@ void IrEmitterUnnested::EmitTile(
               IrArray::Index source_idx_x = source_idx_x_base;
               if (i > 0) {
                 x_loc = b_.CreateAdd(constant(i), x_loc_base, "x_loc");
-                source_idx_x = source_idx_x_base.AddOffsetToDim(constant(i), kDimX, &b_);
+                source_idx_x =
+                    source_idx_x_base.AddOffsetToDim(constant(i), kDimX, &b_);
               }
               auto emit_element = [&] {
                 return emit_elem_function(source_idx_x, y_loc, x_loc, old_j);
@@ -2025,24 +2034,24 @@ void IrEmitterUnnested::EmitTile(
           }
         };
 
-        if (!x_tile_fits &&
-            mapping_scheme.GetIndexingOrder() ==
-            KernelMappingScheme::LinearDilatedIndexingX) {
+        if (!x_tile_fits && mapping_scheme.GetIndexingOrder() ==
+                                KernelMappingScheme::LinearDilatedIndexingX) {
           // Only try this path when we try to vectorize the loads.
 
           // Special case when the tile doesn't fit completly for even row size.
-          // For odd row size every other row isn't aligned, so can't be vectorized.
+          // For odd row size every other row isn't aligned, so can't be
+          // vectorized.
           ksl->If(loop_name + "_is_full_tile",
                   // if (block fully fit) {fast path} else {slow path}
                   // tile_width is always exact. For the last block,
                   // it will be the exact number of elements left.
-                  b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeFor(2)), tile_width),
-                  [&] {unroll(false, x_num_steps, vector_size);},
-                  [&] {unroll(true, x_num_steps, vector_size);});
+                  b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeFor(2)),
+                                  tile_width),
+                  [&] { unroll(false, x_num_steps, vector_size); },
+                  [&] { unroll(true, x_num_steps, vector_size); });
         } else {
           unroll(!x_tile_fits, x_num_steps, vector_size);
         }
-
       });
 }
 
@@ -2126,8 +2135,10 @@ static int GetNumberOfPartialResults(
   if (reduction_info.IsRowReduction()) {
     return 1;
   }
-  int64 num_partial_results = mapping_scheme.GetIndexingOrder() ==
-      KernelMappingScheme::DilatedIndexingX ? 1 : 2;
+  int64 num_partial_results =
+      mapping_scheme.GetIndexingOrder() == KernelMappingScheme::DilatedIndexingX
+          ? 1
+          : 2;
   CHECK_EQ(num_partial_results,
            (mapping_scheme.GetTileSizeX() / mapping_scheme.GetNumThreadsX()));
   return num_partial_results;
@@ -2707,12 +2718,13 @@ void IrEmitterUnnested::EmitHlo021Tile(
     absl::Span<const int64> reduced_output_dims,
     absl::Span<const int64> tiled_param_ids) {
   constexpr int kNumRows = 4;
-  KernelMappingScheme mapping_scheme(reduced_output_dims,
-                                     /*tile_sizes=*/{1, kWarpSize, kWarpSize},
-                                     /*num_threads_y=*/kNumRows,
-                                     /*num_threads_x=*/kWarpSize,
-                                     /*indexing_order=*/KernelMappingScheme::LinearIndexingX,
-                                     /*vector_size*/1);
+  KernelMappingScheme mapping_scheme(
+      reduced_output_dims,
+      /*tile_sizes=*/{1, kWarpSize, kWarpSize},
+      /*num_threads_y=*/kNumRows,
+      /*num_threads_x=*/kWarpSize,
+      /*indexing_order=*/KernelMappingScheme::LinearIndexingX,
+      /*vector_size*/ 1);
   LaunchDimensions launch_dimensions(mapping_scheme.GetNumberOfBlocks(),
                                      mapping_scheme.GetThreadsPerBlock());
   llvm::Type* index_type =
@@ -3161,11 +3173,13 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   KernelMappingScheme::IndexingOrder indexing_order;
   if (reduction_dimensions.is_row_reduction &&
       // Only try to vectorize+coales memory access for row of even size.
-      // For odd row size, every other row isn't aligned, so can't be vectorized.
+      // For odd row size, every other row isn't aligned, so can't be
+      // vectorized.
       reduction_dimensions.dimensions[2] % 2 == 0) {
     indexing_order = KernelMappingScheme::LinearDilatedIndexingX;
-  } else if (IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
-                                                   reduction_dimensions.dimensions[2])) {
+  } else if (IsUnrollingColumnReductionBeneficial(
+                 unnested_hlo, input_shape,
+                 reduction_dimensions.dimensions[2])) {
     indexing_order = KernelMappingScheme::LinearIndexingX;
   } else {
     indexing_order = KernelMappingScheme::DilatedIndexingX;
@@ -3196,7 +3210,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
     if (reduction_dimensions.dimensions[2] % 2 == 0 &&
         // As XLA unroll and suppose LLVM will vectorize,
         // disable the unroll for case that LLVM doesn't vectorize.
-        !MayPreventVectorization(*unnested_hlo, /*tolerate_reduce*/true)) {
+        !MayPreventVectorization(*unnested_hlo, /*tolerate_reduce*/ true)) {
       vector_size = 2;
     } else {
       indexing_order = KernelMappingScheme::DilatedIndexingX;
@@ -3205,8 +3219,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   KernelMappingScheme mapping_scheme(
       reduction_dimensions.dimensions,
       {reduction_tiling[0], reduction_tiling[1] * num_threads_y, tile_size_x},
-      num_threads_y, num_threads_x, indexing_order,
-      vector_size);
+      num_threads_y, num_threads_x, indexing_order, vector_size);
   return ReductionCodegenInfo(mapping_scheme,
                               reduction_dimensions.is_row_reduction);
 }

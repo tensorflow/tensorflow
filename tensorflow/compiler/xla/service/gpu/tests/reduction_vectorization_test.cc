@@ -33,7 +33,6 @@ namespace gpu {
 namespace {
 
 class ReductionVectorizationTest : public GpuCodegenTest {
-
  protected:
   void EnsureDeterminism(absl::string_view hlo_text) {
     std::vector<ExecutionProfile> profiles;
