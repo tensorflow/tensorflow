@@ -595,7 +595,10 @@ cc_library(
 cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/compiler:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/platform:types",
