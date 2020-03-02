@@ -101,12 +101,10 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   core::RefCountPtr<KernelAndDevice> kernel;
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
-  gtl::InlinedVector<TensorValue, 4> input_vector(1);
-  TF_RETURN_IF_ERROR(src_->TensorValue(
-      &input_vector[0],
-      ctx_->CanonicalDevice(absl::get<Device*>(op->Device()))));
+  EagerKernelArgs args(1);
+  Device* d = ctx_->CanonicalDevice(absl::get<Device*>(op->Device()));
+  TF_RETURN_IF_ERROR(src_->TensorValue(d, args.MutableInput(0)));
 
-  EagerKernelArgs args(std::move(input_vector));
   return kernel->Run(args, /*outputs=*/nullptr,
                      /*cancellation_manager=*/nullptr,
                      /*remote_func_params=*/absl::nullopt);

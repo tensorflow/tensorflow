@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
@@ -84,66 +85,103 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
 }  // namespace
 
 RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,
-                                               const TensorShape& shape,
-                                               const string& remote_task,
-                                               EagerContext* ctx)
-    : op_id_(op_id),
+                                               uint64 context_view_id)
+    : is_ready_(false),
+      op_id_(op_id),
       output_num_(output_num),
-      shape_(shape),
-      remote_task_(remote_task),
-      context_id_(ctx->GetContextId()),
-      context_view_id_(ctx->GetContextViewId()),
-      ctx_(*ctx) {
+      context_view_id_(context_view_id),
+      ctx_(nullptr) {
   DCHECK(op_id_ >= 0 && output_num_ >= 0)
       << "Op ID and output num should be >= 0. Op ID: " << op_id
       << ", Output num: " << output_num;
-  ctx_.Ref();
+}
+
+RemoteTensorHandleData::RemoteTensorHandleData(int64 op_id, int output_num,
+                                               const string& remote_task,
+                                               EagerContext* ctx)
+    : is_ready_(false),
+      op_id_(op_id),
+      output_num_(output_num),
+      remote_task_(remote_task),
+      context_id_(ctx->GetContextId()),
+      context_view_id_(ctx->GetContextViewId()),
+      ctx_(ctx) {
+  DCHECK(op_id_ >= 0 && output_num_ >= 0)
+      << "Op ID and output num should be >= 0. Op ID: " << op_id
+      << ", Output num: " << output_num;
+  ctx_->Ref();
 }
 
 RemoteTensorHandleData::~RemoteTensorHandleData() {
-  DestroyRemoteTensorHandle(&ctx_, remote_task_, context_id_, op_id_,
-                            output_num_, /*ready=*/true);
-  ctx_.Unref();
-}
-
-Status RemoteTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
-  return errors::Unavailable(
-      "Unable to get a tensor for a remote device. Please copy the tensor "
-      "handle to a local device using TFE_TensorHandleCopyToDevice");
-}
-
-Status RemoteTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
-  return errors::Unavailable(
-      "Unable to get a tensor for a remote device. Please copy the tensor "
-      "handle to a local device using TFE_TensorHandleCopyToDevice");
+  if (ctx_) {
+    DestroyRemoteTensorHandle(ctx_, remote_task_, context_id_, op_id_,
+                              output_num_, /*ready=*/true);
+    ctx_->Unref();
+  }
 }
 
 Status RemoteTensorHandleData::Shape(TensorShape* shape) const {
+  TF_RETURN_IF_ERROR(WaitReady("Shape"));
+
+  tf_shared_lock l(mu_);
   *shape = shape_;
 
   return Status::OK();
 }
 
 Status RemoteTensorHandleData::NumDims(int* num_dims) const {
+  TF_RETURN_IF_ERROR(WaitReady("NumDims"));
+
+  tf_shared_lock l(mu_);
   *num_dims = shape_.dims();
 
   return Status::OK();
 }
 
 Status RemoteTensorHandleData::Dim(int dim_index, int64* dim) const {
+  TF_RETURN_IF_ERROR(WaitReady("Dim"));
+
+  tf_shared_lock l(mu_);
   *dim = shape_.dim_size(dim_index);
 
   return Status::OK();
 }
 
 Status RemoteTensorHandleData::NumElements(int64* num_elements) const {
+  TF_RETURN_IF_ERROR(WaitReady("NumElements"));
+
+  tf_shared_lock l(mu_);
   *num_elements = shape_.num_elements();
 
   return Status::OK();
 }
 
-Status RemoteTensorHandleData::Unprotect() {
-  return errors::Unavailable("Unable to unprotect a remote handle.");
+bool RemoteTensorHandleData::IsReady() const {
+  tf_shared_lock l(mu_);
+  return is_ready_;
+}
+
+void RemoteTensorHandleData::Poison(Status status) {
+  mutex_lock l(mu_);
+  is_poisoned_ = status;
+}
+
+Status RemoteTensorHandleData::IsPoisoned() const {
+  tf_shared_lock l(mu_);
+  return is_poisoned_;
+}
+
+Status RemoteTensorHandleData::SetShape(const TensorShape& shape) {
+  mutex_lock l(mu_);
+  if (is_ready_) {
+    return errors::Internal("SetShape is only called on non-ready handles.");
+  }
+
+  shape_ = shape;
+  is_poisoned_ = Status::OK();
+  is_ready_ = true;
+
+  return Status::OK();
 }
 
 string RemoteTensorHandleData::DebugString() const {
@@ -151,73 +189,20 @@ string RemoteTensorHandleData::DebugString() const {
                          " output_num: ", output_num_);
 }
 
-UnshapedRemoteTensorHandleData::UnshapedRemoteTensorHandleData(
-    int64 op_id, int32 output_num, const string& remote_task, EagerContext* ctx)
-    : op_id_(op_id),
-      output_num_(output_num),
-      delete_remote_tensor_(true),
-      remote_task_(remote_task),
-      context_id_(ctx->GetContextId()),
-      context_view_id_(ctx->GetContextViewId()),
-      ctx_(*ctx) {
-  DCHECK(op_id_ >= 0 && output_num_ >= 0)
-      << "Op ID and output num should be >= 0. Op ID: " << op_id
-      << ", Output num: " << output_num;
-  ctx_.Ref();
-}
-
-UnshapedRemoteTensorHandleData::~UnshapedRemoteTensorHandleData() {
-  if (delete_remote_tensor_) {
-    DestroyRemoteTensorHandle(&ctx_, remote_task_, context_id_, op_id_,
-                              output_num_, /*ready=*/false);
+Status RemoteTensorHandleData::WaitReady(const char* caller) const {
+  if (ctx_ == nullptr) {
+    return errors::Internal("Cannot wait on lazy remote handle");
   }
-  ctx_.Unref();
-}
 
-Status UnshapedRemoteTensorHandleData::Tensor(
-    const tensorflow::Tensor** t) const {
-  return errors::Unavailable(
-      "Unable to get a tensor for a remote handle. Please copy the tensor "
-      "handle to a local device using TFE_TensorHandleCopyToDevice");
-}
-
-Status UnshapedRemoteTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
-  return errors::Unavailable(
-      "Unable to get a tensor for a remote handle. Please copy the tensor "
-      "handle to a local device using TFE_TensorHandleCopyToDevice");
-}
-
-Status UnshapedRemoteTensorHandleData::Shape(TensorShape* shape) const {
-  return errors::Unavailable(
-      "Unable to get shape information for an async remote handle. Please wait "
-      "until it is ready");
-}
-
-Status UnshapedRemoteTensorHandleData::NumDims(int* num_dims) const {
-  return errors::Unavailable(
-      "Unable to get shape information for an async remote handle. Please wait "
-      "until it is ready");
-}
-
-Status UnshapedRemoteTensorHandleData::Dim(int dim_index, int64* dim) const {
-  return errors::Unavailable(
-      "Unable to get shape information for an async remote handle. Please wait "
-      "until it is ready");
-}
-
-Status UnshapedRemoteTensorHandleData::NumElements(int64* num_elements) const {
-  return errors::Unavailable(
-      "Unable to get shape information for an async remote handle. Please wait "
-      "until it is ready");
-}
-
-Status UnshapedRemoteTensorHandleData::Unprotect() {
-  return errors::Unavailable("Unable to unprotect a remote handle.");
-}
-
-string UnshapedRemoteTensorHandleData::DebugString() const {
-  return strings::StrCat("UnshapedRemoteTensorHandleDat:", " op_id: ", op_id_,
-                         " output_num: ", output_num_);
+  tf_shared_lock l(mu_);
+  if (!is_ready_) {
+    profiler::TraceMe activity(
+        [caller] { return absl::StrCat(caller, " WaitReady"); },
+        profiler::TraceMeLevel::kInfo);
+    DVLOG(3) << "WaitReady: " << caller << " " << this;
+    mu_.Await(Condition(&is_ready_));
+  }
+  return is_poisoned_;
 }
 
 }  // namespace tensorflow
