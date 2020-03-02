@@ -34,6 +34,13 @@ Status SaveTensorboardProfile(const string& logdir, const string& run,
                               const ProfileResponse& response,
                               std::ostream* os);
 
+// Gzip the data and save to the specified filepath.
+Status SaveGzippedToolDataToTensorboardProfile(const string& logdir,
+                                               const string& run,
+                                               const string& host,
+                                               const string& tool_name,
+                                               const string& data);
+
 }  // namespace profiler
 }  // namespace tensorflow
 
