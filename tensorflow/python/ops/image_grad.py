@@ -177,6 +177,17 @@ def _RGBToHSVGrad(op, grad):
   separately before adding them in the end. Formulas are given before each
   partial derivative calculation.
 
+  Usage Example:
+
+  >>> rgb_image = tf.stack([ 
+  ...    tf.zeros([5,5]), 
+  ...    tf.zeros([5,5]), 
+  ...    tf.ones([5,5])],
+  ...    axis=-1)
+  >>> hsv_image = tf.image.rgb_to_hsv(rgb_image)
+  >>> hsv_image[1,1].numpy()
+  array([0.6666667, 1. , 1. ], dtype=float32)
+  
   Args:
     op: The `rgb_to_hsv` `Operation` that we are differentiating.
     grad: Gradient with respect to the output of the `rgb_to_hsv` op.
