@@ -36,7 +36,7 @@ export TF2_BEHAVIOR=1
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 test_patterns=(//tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/...)
-tag_filters="tpu,-no_tpu,-notpu,-no_oss,-no_oss_py37"
+tag_filters="tpu,-tpu_pod,-no_tpu,-notpu,-no_oss,-no_oss_py37"
 
 bazel_args=(
   --config=opt \

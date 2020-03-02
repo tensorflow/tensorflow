@@ -125,7 +125,7 @@ Status DynamicDeviceMgr::AddDevices(
     if (device_map_.find(d->name()) != device_map_.end()) {
       return errors::InvalidArgument(
           "Trying to add device ", d->name(),
-          " to manager but its name conflicts with an existing deivce.");
+          " to manager but its name conflicts with an existing device.");
     }
     // Register under the (1) full name and (2) canonical name.
     for (const string& name :
@@ -194,7 +194,8 @@ Device* DynamicDeviceMgr::HostCPU() const {
   }
   cpu_device_ = nullptr;
   for (const auto& pair : dynamic_devices_) {
-    if (pair.first->device_type() == DEVICE_CPU) {
+    if (pair.first->device_type() == DEVICE_CPU &&
+        pair.first->parsed_name().id == 0) {
       cpu_device_ = pair.first;
       break;
     }

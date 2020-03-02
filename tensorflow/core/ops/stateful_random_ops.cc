@@ -113,7 +113,7 @@ REGISTER_OP("StatefulRandomBinomial")
       return Status::OK();
     });
 
-// Register the depracated 'StatefulStandardNormal' op. This op is a short-lived
+// Register the deprecated 'StatefulStandardNormal' op. This op is a short-lived
 // version where the 'resource' variable also contains the algorithm tag.
 // It is deprecated in favor of 'StatefulStandardNormalV2'.
 REGISTER_OP("StatefulStandardNormal")

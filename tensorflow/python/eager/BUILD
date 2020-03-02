@@ -35,6 +35,7 @@ cc_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/c/eager:dlpack",
         "//tensorflow/c/eager:tape",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -93,6 +94,7 @@ py_library(
         ":test",
         ":wrap_function",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/dlpack",
         "//tensorflow/python/eager/memory_tests:memory_test_util",
     ],
 )
@@ -240,7 +242,10 @@ py_test(
     srcs = ["profiler_client_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":profiler_client",
         ":test",
@@ -869,6 +874,24 @@ tpu_py_test(
     python_version = "PY3",
     tags = [
         "notap",
+    ],
+    deps = [
+        ":context",
+        ":remote",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+    ],
+)
+
+tpu_py_test(
+    name = "remote_cloud_tpu_pod_test",
+    srcs = ["remote_cloud_tpu_test.py"],
+    args = ["--num_tpu_devices=32"],
+    main = "remote_cloud_tpu_test.py",
+    python_version = "PY3",
+    tags = [
+        "notap",
+        "tpu_pod",
     ],
     deps = [
         ":context",

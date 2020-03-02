@@ -33,43 +33,38 @@ namespace reference_ops {
 
 static inline void ApplyTimeWeightsBiasAndActivation(
     int batch_size, int memory_size, int num_filters, int num_units, int rank,
-    const TfLiteTensor* weights_time, const TfLiteTensor* bias,
-    TfLiteFusedActivation activation, TfLiteTensor* activation_state,
-    TfLiteTensor* scratch, TfLiteTensor* output) {
+    const float* const __restrict__ weights_time_ptr,
+    const float* const __restrict__ bias_ptr, TfLiteFusedActivation activation,
+    float* const __restrict__ state_ptr, float* const __restrict__ scratch_ptr,
+    float* const __restrict__ output_ptr) {
   // Compute matmul(state, weights_time).
-  // The rightmost column is used to save temporary output (with the size of
-  // num_filters). This is achieved by starting at
-  // GetTensorData<float>(activation_state), and having the stride equal to
-  // memory_size.
   for (int b = 0; b < batch_size; ++b) {
-    float* state_ptr_batch =
-        GetTensorData<float>(activation_state) + b * memory_size * num_filters;
-    float* scratch_ptr_batch = GetTensorData<float>(scratch) + b * num_filters;
+    float* state_ptr_batch = state_ptr + b * memory_size * num_filters;
+    float* scratch_ptr_batch = scratch_ptr + b * num_filters;
     tensor_utils::BatchVectorBatchVectorDotProduct(
-        GetTensorData<float>(weights_time), state_ptr_batch, memory_size,
-        num_filters, scratch_ptr_batch);
+        weights_time_ptr, state_ptr_batch, memory_size, num_filters,
+        scratch_ptr_batch);
   }
 
   // Initialize output with bias if provided.
-  if (bias) {
-    tensor_utils::VectorBatchVectorAssign(GetTensorData<float>(bias), num_units,
-                                          batch_size,
-                                          GetTensorData<float>(output));
+  if (bias_ptr) {
+    tensor_utils::VectorBatchVectorAssign(bias_ptr, num_units, batch_size,
+                                          output_ptr);
   } else {
-    std::fill_n(GetTensorData<float>(output), batch_size * num_units, 0.0f);
+    std::fill_n(output_ptr, batch_size * num_units, 0.0f);
   }
 
   // Reduction sum.
   for (int b = 0; b < batch_size; ++b) {
-    float* output_ptr_batch = GetTensorData<float>(output) + b * num_units;
-    float* scratch_ptr_batch = GetTensorData<float>(scratch) + b * num_filters;
+    float* output_ptr_batch = output_ptr + b * num_units;
+    float* scratch_ptr_batch = scratch_ptr + b * num_filters;
     tensor_utils::ReductionSumVector(scratch_ptr_batch, output_ptr_batch,
                                      num_units, rank);
   }
 
   // Apply activation.
   for (int b = 0; b < batch_size; ++b) {
-    float* output_ptr_batch = GetTensorData<float>(output) + b * num_units;
+    float* output_ptr_batch = output_ptr + b * num_units;
     tensor_utils::ApplyActivationToVector(output_ptr_batch, num_units,
                                           activation, output_ptr_batch);
   }
@@ -90,28 +85,23 @@ inline void EvalIntegerSVDF(
   const int n_unit = n_filter / n_rank;
   const int n_memory = weights_time_tensor->dims->data[1];
 
-  // Shift state.
-  {
-    int16_t zero = 0;
-    for (int b = 0; b < n_batch; ++b) {
-      int16_t* state_ptr_batch =
-          GetTensorData<int16_t>(state_tensor) + b * n_memory * n_filter;
-      for (int f = 0; f < n_filter; ++f) {
-        tensor_utils::VectorShiftLeft(state_ptr_batch, n_memory, zero);
-        state_ptr_batch += n_memory;
-      }
-    }
-  }
+  int16_t* const state_ptr = GetTensorData<int16_t>(state_tensor);
+
+  // Left shift the activation_state.
+  // std::copy is fine for overlapping ranges if the output is outside of the
+  // input range. (This is not true for copy_n.)
+  std::copy(state_ptr + 1, state_ptr + n_batch * n_memory * n_filter,
+            state_ptr);
 
   // Feature matmul.
+  // Note: no need to clear the latest activation, matmul is not accumulative.
   {
-    int16_t* state = GetTensorData<int16_t>(state_tensor);
     const int8_t* input = GetTensorData<int8_t>(input_tensor);
     const int8_t* weight_feature =
         GetTensorData<int8_t>(weights_feature_tensor);
     const int32_t output_max = std::numeric_limits<int16_t>::max();
     const int32_t output_min = std::numeric_limits<int16_t>::min();
-    int16_t* result_in_batch = state + (n_memory - 1);
+    int16_t* result_in_batch = state_ptr + (n_memory - 1);
     for (int b = 0; b < n_batch; b++) {
       const int8_t* matrix_ptr = weight_feature;
       for (int r = 0; r < n_filter; r++) {
@@ -138,8 +128,7 @@ inline void EvalIntegerSVDF(
   // Time.
   {
     for (int b = 0; b < n_batch; ++b) {
-      const int16_t* state_ptr_batch =
-          GetTensorData<int16_t>(state_tensor) + b * n_memory * n_filter;
+      const int16_t* state_ptr_batch = state_ptr + b * n_memory * n_filter;
       int32_t* scratch_ptr_batch =
           GetTensorData<int32_t>(scratch_tensor) + b * n_filter;
       tensor_utils::BatchVectorBatchVectorDotProduct(
@@ -193,30 +182,39 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];
 
-  // Left shift the activation_state, and clear the latest activation (the
-  // rightmost column).
-  for (int b = 0; b < batch_size; ++b) {
-    float* state_ptr_batch =
-        GetTensorData<float>(state) + b * memory_size * num_filters;
-    for (int f = 0; f < num_filters; ++f) {
-      tensor_utils::VectorShiftLeft(state_ptr_batch, memory_size,
-                                    /*shift_value=*/0.0f);
-      state_ptr_batch += memory_size;
-    }
+  // Raw pointers to tensor data.
+  const float* input_ptr = GetTensorData<float>(input);
+  const float* weights_feature_ptr = GetTensorData<float>(weights_feature);
+  const float* weights_time_ptr = GetTensorData<float>(weights_time);
+  const float* bias_ptr = GetTensorData<float>(bias);
+
+  float* state_ptr = GetTensorData<float>(state);
+  float* scratch_ptr = GetTensorData<float>(scratch);
+
+  float* output_ptr = GetTensorData<float>(output);
+
+  // Left shift the activation_state.
+  // std::copy is fine for overlapping ranges if the output is outside of the
+  // input range. (This is not true for copy_n.)
+  std::copy(state_ptr + 1, state_ptr + batch_size * memory_size * num_filters,
+            state_ptr);
+
+  // Clear the latest activation (the rightmost column).
+  for (int i = 0; i < batch_size * num_filters; ++i) {
+    state_ptr[i * memory_size + memory_size - 1] = 0.0f;
   }
 
   // Compute conv1d(inputs, weights_feature).
   // The state's rightmost column is used to save current cycle activation. This
-  // is achieved by starting at GetTensorData<float>(state)[memory_size - 1] and
-  // having the stride equal to memory_size.
+  // is achieved by starting at state_ptr[memory_size - 1] and having the stride
+  // equal to memory_size.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      GetTensorData<float>(weights_feature), num_filters, input_size,
-      GetTensorData<float>(input), batch_size,
-      &GetTensorData<float>(state)[memory_size - 1], memory_size);
+      weights_feature_ptr, num_filters, input_size, input_ptr, batch_size,
+      &state_ptr[memory_size - 1], memory_size);
 
-  ApplyTimeWeightsBiasAndActivation(batch_size, memory_size, num_filters,
-                                    num_units, rank, weights_time, bias,
-                                    params->activation, state, scratch, output);
+  ApplyTimeWeightsBiasAndActivation(
+      batch_size, memory_size, num_filters, num_units, rank, weights_time_ptr,
+      bias_ptr, params->activation, state_ptr, scratch_ptr, output_ptr);
 }
 
 inline void EvalHybridSVDF(
@@ -232,60 +230,59 @@ inline void EvalHybridSVDF(
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];
 
-  // Initialize the pointer to input.
-  const float* input_ptr_batch = GetTensorData<float>(input);
-
-  // Initialize the pointer to storage for quantized values and the weights
-  // feature.
-  int8_t* quantized_input_ptr_batch = GetTensorData<int8_t>(input_quantized);
+  // Raw pointers to tensor data.
+  const float* input_ptr = GetTensorData<float>(input);
   const int8_t* weights_feature_ptr = GetTensorData<int8_t>(weights_feature);
+  const float* weights_time_ptr = GetTensorData<float>(weights_time);
+  const float* bias_ptr = GetTensorData<float>(bias);
 
-  // Initialize the pointer to storage for scaling factors.
+  int8_t* quantized_input_ptr = GetTensorData<int8_t>(input_quantized);
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
+  float* state_ptr = GetTensorData<float>(state);
+  float* scratch_ptr = GetTensorData<float>(scratch);
+
+  float* output_ptr = GetTensorData<float>(output);
 
   // Initialize the weights scale.
   const float weights_feature_scale = weights_feature->params.scale;
 
-  // Left shift the activation_state, and clear the latest activation (the
-  // rightmost column).
-  for (int b = 0; b < batch_size; ++b) {
-    float* state_ptr_batch =
-        GetTensorData<float>(state) + b * memory_size * num_filters;
-    for (int f = 0; f < num_filters; ++f) {
-      tensor_utils::VectorShiftLeft(state_ptr_batch, memory_size,
-                                    /*shift_value=*/0.0f);
-      state_ptr_batch += memory_size;
-    }
+  // Left shift the activation_state.
+  // std::copy is fine for overlapping ranges if the output is outside of the
+  // input range. (This is not true for copy_n.)
+  std::copy(state_ptr + 1, state_ptr + batch_size * memory_size * num_filters,
+            state_ptr);
+
+  // Clear the latest activation (the rightmost column).
+  for (int i = 0; i < batch_size * num_filters; ++i) {
+    state_ptr[i * memory_size + memory_size - 1] = 0.0f;
   }
 
-  if (!tensor_utils::IsZeroVector(input_ptr_batch, batch_size * input_size)) {
+  if (!tensor_utils::IsZeroVector(input_ptr, batch_size * input_size)) {
     // Quantize input from float to int8.
     float unused_min, unused_max;
     for (int b = 0; b < batch_size; ++b) {
       const int offset = b * input_size;
       tensor_utils::SymmetricQuantizeFloats(
-          input_ptr_batch + offset, input_size,
-          quantized_input_ptr_batch + offset, &unused_min, &unused_max,
-          &scaling_factors_ptr[b]);
+          input_ptr + offset, input_size, quantized_input_ptr + offset,
+          &unused_min, &unused_max, &scaling_factors_ptr[b]);
       scaling_factors_ptr[b] *= weights_feature_scale;
     }
 
     // Compute conv1d(inputs, weights_feature).
     // The rightmost column of state is used to save the current cycle
-    // activation.
-    // This is achieved by starting at GetTensorData<float>(state)[memory_size -
-    // 1] and having the stride equal to memory_size.
+    // activation. This is achieved by starting at state_ptr[memory_size - 1]
+    // and having the stride equal to memory_size.
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        weights_feature_ptr, num_filters, input_size, quantized_input_ptr_batch,
-        scaling_factors_ptr, batch_size,
-        &GetTensorData<float>(state)[memory_size - 1], memory_size);
+        weights_feature_ptr, num_filters, input_size, quantized_input_ptr,
+        scaling_factors_ptr, batch_size, &state_ptr[memory_size - 1],
+        memory_size);
   }
 
   // TODO(alanchiao): can optimize hybrid case ~5% by unrolling loop in applying
   // time weights so that the inner loop multiplies eight elements at a time.
-  ApplyTimeWeightsBiasAndActivation(batch_size, memory_size, num_filters,
-                                    num_units, rank, weights_time, bias,
-                                    params->activation, state, scratch, output);
+  ApplyTimeWeightsBiasAndActivation(
+      batch_size, memory_size, num_filters, num_units, rank, weights_time_ptr,
+      bias_ptr, params->activation, state_ptr, scratch_ptr, output_ptr);
 }
 
 }  // namespace reference_ops

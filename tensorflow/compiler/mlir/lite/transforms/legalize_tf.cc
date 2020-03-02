@@ -255,7 +255,7 @@ PatternMatchResult ConvertTFReshapeOp::matchAndRewrite(
 
   ShapedType shape_type = shape.getType().cast<ShapedType>();
   // The tfl reshape's #2 operand needs to i32 tensor type, so we have to cast.
-  if (!shape_type.getElementType().isInteger(32)) {
+  if (!shape_type.getElementType().isSignlessInteger(32)) {
     auto new_shape = shape_type.getShape();
     IntegerType new_ele_type = rewriter.getIntegerType(32);
     ShapedType new_type = RankedTensorType::get(new_shape, new_ele_type);

@@ -56,12 +56,11 @@ ifeq ($(TARGET), stm32f4)
     $(MAKEFILE_DIR)/downloads/stm32_bare_lib/source/debug_log.c
   MICROLITE_CC_SRCS := $(filter-out $(EXCLUDED_SRCS), $(MICROLITE_CC_SRCS))
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_stm32f4_binary.sh
-  # TODO, non working tests.. the micro_speech example and conv_test.cc/depthwise_conv_test.cc partly works
+  # TODO, non working tests.. the micro_speech example partly works
   EXCLUDED_TESTS := \
     tensorflow/lite/micro/micro_interpreter_test.cc \
     tensorflow/lite/micro/micro_allocator_test.cc \
     tensorflow/lite/micro/memory_helpers_test.cc \
-    tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
     tensorflow/lite/micro/kernels/logistic_test.cc \
     tensorflow/lite/micro/kernels/logical_test.cc \
     tensorflow/lite/micro/kernels/maximum_minimum_test.cc \
@@ -77,7 +76,6 @@ ifeq ($(TARGET), stm32f4)
     tensorflow/lite/micro/kernels/dequantize_test.cc \
     tensorflow/lite/micro/kernels/unpack_test.cc \
     tensorflow/lite/micro/kernels/split_test.cc \
-    tensorflow/lite/micro/kernels/conv_test.cc \
     tensorflow/lite/micro/simple_tensor_allocator_test.cc
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
   EXCLUDED_EXAMPLE_TESTS := \

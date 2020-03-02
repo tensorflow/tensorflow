@@ -216,4 +216,15 @@ extern tflite::ErrorReporter* reporter;
     micro_test::did_test_fail = true;                                  \
   } while (false)
 
+#define TF_LITE_MICRO_EXPECT_STRING_EQ(string1, string2)                   \
+  do {                                                                     \
+    for (int i = 0; string1[i] != '\0' && string2[i] != '\0'; i++) {       \
+      if (string1[i] != string2[i]) {                                      \
+        micro_test::reporter->Report("FAIL: %s did not match %s", string1, \
+                                     string2, __FILE__, __LINE__);         \
+        micro_test::did_test_fail = true;                                  \
+      }                                                                    \
+    }                                                                      \
+  } while (false)
+
 #endif  // TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_

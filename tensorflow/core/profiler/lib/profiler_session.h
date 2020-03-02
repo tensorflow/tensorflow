@@ -41,7 +41,7 @@ class ProfilerSession {
       const profiler::ProfilerOptions& options);
   static std::unique_ptr<ProfilerSession> Create();
 
-  // Deletes an exsiting Profiler and enables starting a new one.
+  // Deletes an existing Profiler and enables starting a new one.
   ~ProfilerSession();
 
   tensorflow::Status Status() LOCKS_EXCLUDED(mutex_);

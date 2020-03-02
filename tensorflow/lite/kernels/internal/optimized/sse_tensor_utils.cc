@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <emmintrin.h>  // SSE2
 #include <tmmintrin.h>  // SSSE3
+#ifdef __SSE4_1__
+#include <smmintrin.h>  // SSE4.1
+#endif
 
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
@@ -89,7 +92,6 @@ void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
     float* __restrict__ result, int result_stride) {
-  static constexpr int kBlockSize = 16;
   for (int batch = 0; batch < n_batch; ++batch) {
     const float batch_scaling_factor = scaling_factors[batch];
     // Compute dot-product for every column.
@@ -99,9 +101,9 @@ void SseMatrixBatchVectorMultiplyAccumulate(
 
       // Initialize the dot product sum for the row to 0.
       __m128i dotprod_32x4 = _mm_setzero_si128();
-      // For every block of kBlockSize 8-bit elements.
       int col = 0;
-      for (; col < (m_cols & ~(kBlockSize - 1)); col += kBlockSize) {
+      // For every block of 16x 8-bit inputs.
+      while (col < (m_cols & ~15)) {
         const __m128i vec_8x16 =
             _mm_loadu_si128(reinterpret_cast<const __m128i*>(vectors + col));
         const __m128i row_8x16 =
@@ -109,12 +111,42 @@ void SseMatrixBatchVectorMultiplyAccumulate(
         // dotprod += vec · row
         dotprod_32x4 =
             _mm_add_epi32(dotprod_32x4, DotProdInt8x4x4(vec_8x16, row_8x16));
-      }  // for col
+        col += 16;
+      }
+#ifdef __SSE4_1__
+      // Postamble for 8x 8-bit inputs.
+      if (col < (m_cols & ~7)) {
+        const __m128i vec_16x8 = _mm_cvtepi8_epi16(
+            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(vectors + col)));
+        const __m128i row_16x8 = _mm_cvtepi8_epi16(
+            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(row_ptr + col)));
+        // dotprod += vec · row
+        dotprod_32x4 =
+            _mm_add_epi32(dotprod_32x4, _mm_madd_epi16(vec_16x8, row_16x8));
+        col += 8;
+      }
+      // Postamble for 4x 8-bit inputs.
+      if (col < (m_cols & ~3)) {
+        const __m128i vec_32x4 = _mm_cvtepi8_epi32(
+            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(vectors + col)));
+        const __m128i row_32x4 = _mm_cvtepi8_epi32(
+            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(row_ptr + col)));
+        // dotprod += vec · row
+        dotprod_32x4 =
+            _mm_add_epi32(dotprod_32x4, _mm_mullo_epi32(vec_32x4, row_32x4));
+        col += 4;
+      }
+#endif
+
       // Horizontally add the 4 intermediate sum values to get the final
       // dot-prod value for this row.
       int32_t sum = ReduceInt32x4(dotprod_32x4);
 
-      // Postamble loop.
+#if defined(__SSE4_1__) && defined(__clang__)
+      // SSE 4.1: Don't try to unroll and vectorize this, already done above.
+#pragma clang loop unroll(disable) vectorize(disable)
+#endif
+      // Postamble loop for <4x (<16x without SSE 4.1) remaining 8-bit inputs.
       for (; col < m_cols; ++col) {
         sum += row_ptr[col] * vectors[col];
       }  // for col

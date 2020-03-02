@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/retrying_file_system.h"
 
 namespace tensorflow {
 
@@ -80,6 +81,8 @@ class S3FileSystem : public FileSystem {
 
   Status RenameFile(const string& src, const string& target) override;
 
+  Status HasAtomicMove(const string& path, bool* has_atomic_move) override;
+
  private:
   // Returns the member S3 client, initializing as-needed.
   // When the client tries to access the object in S3, e.g.,
@@ -131,6 +134,17 @@ class S3FileSystem : public FileSystem {
 
   // size to split objects during multipart copy
   uint64 multi_part_copy_part_size_;
+};
+
+/// S3 implementation of a file system with retry on failures.
+class RetryingS3FileSystem : public RetryingFileSystem<S3FileSystem> {
+ public:
+  RetryingS3FileSystem()
+      : RetryingFileSystem(
+            std::unique_ptr<S3FileSystem>(new S3FileSystem),
+            RetryConfig(100000 /* init_delay_time_us */,
+                        32000000 /* max_delay_time_us */, 10 /* max_retries */
+                        )) {}
 };
 
 }  // namespace tensorflow

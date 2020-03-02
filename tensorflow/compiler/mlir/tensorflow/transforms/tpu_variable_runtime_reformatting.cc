@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Support/STLExtras.h"  // TF:llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -143,8 +144,8 @@ Value SkipIdentity(Value v, bool allow_other_use,
 llvm::SmallVector<std::pair<int64_t, llvm::SmallVector<Value, 4>>, 4>
 AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
     TF::WhileOp while_op, tf_device::ReplicateOp replicate,
-    TF::TPUExecuteAndUpdateVariablesOp execute, Operation* compile, FuncOp body,
-    FuncOp cond) {
+    TF::TPUExecuteAndUpdateVariablesOp execute,
+    tf_device::LaunchOp compile_launch, FuncOp body, FuncOp cond) {
   llvm::SmallVector<std::pair<int64_t, llvm::SmallVector<Value, 4>>, 4> mapping;
   auto mirrored_variable_indices_attr =
       replicate.getAttrOfType<ArrayAttr>(kMirroredVariableIndicesAttr);
@@ -168,7 +169,8 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
   if (replicate_arg_to_execute_arg.empty()) return mapping;
 
   // Parse the original compile metadata.
-  auto metadata_str = compile->getAttrOfType<StringAttr>("metadata");
+  Operation& compile = compile_launch.GetBody().front();
+  auto metadata_str = compile.getAttrOfType<StringAttr>("metadata");
   assert(metadata_str && "Missing compilation metadata");
   tensorflow::tpu::TPUCompileMetadataProto metadata;
   metadata.ParseFromString(std::string(metadata_str.getValue()));
@@ -242,8 +244,8 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
     }
   }
   // Update the metadata of the compile op.
-  compile->setAttr("metadata", OpBuilder(compile).getStringAttr(
-                                   metadata.SerializeAsString()));
+  compile.setAttr("metadata", StringAttr::get(metadata.SerializeAsString(),
+                                              compile.getContext()));
   return mapping;
 }
 
@@ -393,26 +395,56 @@ llvm::SmallVector<TF::VarHandleOp, 4> CreateStateVars(
   return state_vars;
 }
 
+// Wraps single op in `tf_device.launch` for explicit device assignment.
+void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
+                    llvm::StringRef device) {
+  OpBuilder::InsertPoint insert_point = builder->saveInsertionPoint();
+
+  auto launch = builder->create<tf_device::LaunchOp>(
+      loc, builder->getStringAttr(device), op->getResultTypes());
+  launch.body().push_back(new Block);
+
+  builder->setInsertionPointToEnd(&launch.GetBody());
+  builder->create<tf_device::ReturnOp>(loc, op->getResults());
+
+  // Move op inside launch.
+  op->moveBefore(launch.GetBody().getTerminator());
+
+  builder->restoreInsertionPoint(insert_point);
+}
+
 // Performs the transformation for a replicate op inside a while loop.
 void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
                        MLIRContext* context) {
   int64_t num_replicas = replicate.n().getLimitedValue();
   if (num_replicas == 1) return;
-  TF::TPUExecuteAndUpdateVariablesOp execute;
-  for (auto execute_op :
-       replicate.GetBody().getOps<TF::TPUExecuteAndUpdateVariablesOp>()) {
-    if (execute == nullptr) {
-      execute = execute_op;
+  tf_device::LaunchOp execute_launch;
+  for (auto execute_launch_op :
+       replicate.GetBody().getOps<tf_device::LaunchOp>()) {
+    if (!execute_launch_op.WrapsSingleOp() ||
+        !llvm::isa<TF::TPUExecuteAndUpdateVariablesOp>(
+            execute_launch_op.GetBody().front()))
+      continue;
+
+    if (execute_launch == nullptr) {
+      execute_launch = execute_launch_op;
     } else {
       // We only support one execute op inside replicate.
-      execute = nullptr;
+      execute_launch = nullptr;
       break;
     }
   }
-  if (!execute) return;
+  if (!execute_launch) return;
+  auto execute = llvm::cast<TF::TPUExecuteAndUpdateVariablesOp>(
+      execute_launch.GetBody().front());
   auto compile =
       SkipIdentity(execute.key(), /*allow_other_use=*/true).getDefiningOp();
   if (!compile) return;
+  auto compile_launch = llvm::dyn_cast<tf_device::LaunchOp>(compile);
+  if (!compile_launch || !compile_launch.WrapsSingleOp() ||
+      compile_launch.GetBody().front().getName().getStringRef() !=
+          "tf._TPUCompileMlir")
+    return;
 
   auto module = while_op.getParentOfType<ModuleOp>();
   auto body = llvm::cast<FuncOp>(module.lookupSymbol(while_op.body()));
@@ -421,7 +453,7 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
   // Analyze the formattable inputs.
   auto execute_arg_to_outer_args =
       AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
-          while_op, replicate, execute, compile, body, cond);
+          while_op, replicate, execute, compile_launch, body, cond);
   if (execute_arg_to_outer_args.empty()) return;
 
   // Extract the replicated devices.
@@ -468,13 +500,15 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
   for (const auto& entry : execute_arg_to_outer_args) {
     reformat_operands.push_back(execute.args()[entry.first]);
   }
-  reformat_operands.push_back(compile->getResult(1));
+  reformat_operands.push_back(compile_launch.getResult(1));
   reformat_operands.push_back(replicate.GetBody().getArgument(
       replicate.GetBody().getNumArguments() - 1));
-  builder.setInsertionPoint(execute);
-  builder.create<TF::TPUReshardVariablesOp>(
-      execute.getLoc(), llvm::ArrayRef<Type>{}, reformat_operands,
+  builder.setInsertionPoint(execute_launch);
+  auto reformat_op = builder.create<TF::TPUReshardVariablesOp>(
+      execute_launch.getLoc(), llvm::ArrayRef<Type>{}, reformat_operands,
       llvm::ArrayRef<NamedAttribute>{});
+  WrapOpInLaunch(&builder, execute_launch.getLoc(), reformat_op,
+                 execute_launch.device());
 
   // Build the replicated unformat op after the loop. First prepare building the
   // replicate op.
@@ -514,9 +548,11 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
       unformat_operands.begin() + unformat_operands.size() - 1,
       default_state_key.getResult());
   // Unformat op.
-  builder.create<TF::TPUReshardVariablesOp>(
+  auto unformat_op = builder.create<TF::TPUReshardVariablesOp>(
       while_op.getLoc(), llvm::ArrayRef<Type>{}, unformat_operands,
       llvm::ArrayRef<NamedAttribute>{});
+  WrapOpInLaunch(&builder, execute_launch.getLoc(), unformat_op,
+                 execute_launch.device());
   builder.create<tf_device::ReturnOp>(while_op.getLoc(), ArrayRef<Value>{});
 }
 

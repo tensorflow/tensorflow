@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 
@@ -206,7 +206,7 @@ inline Value MapXlaCompareOpToStdScalarOp(XLACompareOpTy xla_op,
   const auto& lhs = args[0];
   const auto& rhs = args[1];
   Type element_type = lhs.getType();
-  if (element_type.isa<IntegerType>()) {
+  if (element_type.isSignlessInteger()) {
     Optional<CmpIPredicate> predicate =
         getCmpPredicate<CmpIPredicate>(xla_op.comparison_direction());
     assert(predicate.hasValue() && "expected valid comparison direction");
@@ -288,8 +288,8 @@ template <>
 inline Value MapXlaOpToStdScalarOp<xla_lhlo::ConvertOp>(
     xla_lhlo::ConvertOp xla_op, ArrayRef<Type> result_types,
     ArrayRef<Value> args, OpBuilder* b) {
-  const Type& sourceType = args.front().getType();
-  const Type& targetType = result_types.front();
+  Type sourceType = args.front().getType();
+  Type targetType = result_types.front();
 
   if (mlir::SIToFPOp::areCastCompatible(sourceType, targetType)) {
     return b->create<mlir::SIToFPOp>(xla_op.getLoc(), result_types, args,
@@ -307,7 +307,7 @@ inline Value MapXlaOpToStdScalarOp<xla_lhlo::ConvertOp>(
     // No conversion is needed for the same width floats
     return args.front();
   }
-  if (sourceType.isa<IntegerType>() && targetType.isa<IntegerType>()) {
+  if (sourceType.isSignlessInteger() && targetType.isSignlessInteger()) {
     IntegerType src = sourceType.cast<IntegerType>();
     IntegerType res = targetType.cast<IntegerType>();
     if (src.getWidth() > res.getWidth()) {

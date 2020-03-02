@@ -39,6 +39,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.distribute import multi_worker_training_state as training_state
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
@@ -245,10 +246,9 @@ class CallbackList(object):
         lambda: collections.deque([], maxlen=self._queue_length))
 
   def _process_logs(self, logs):
+    """Turns tensors into numpy arrays or Python scalars."""
     if logs:
-      return {
-          k: v.numpy() if hasattr(v, 'numpy') else v for k, v in logs.items()
-      }
+      return tf_utils.to_numpy_or_python_type(logs)
     return {}
 
   def append(self, callback):
@@ -894,15 +894,22 @@ class History(Callback):
   gets returned by the `fit` method of models.
   """
 
+  def __init__(self):
+    super(History, self).__init__()
+    self.history = {}
+
   def on_train_begin(self, logs=None):
     self.epoch = []
-    self.history = {}
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
     self.epoch.append(epoch)
     for k, v in logs.items():
       self.history.setdefault(k, []).append(v)
+
+    # Set the history attribute on the model after the epoch ends. This will
+    # make sure that the state which is set is the latest one.
+    self.model.history = self
 
 
 @keras_export('keras.callbacks.ModelCheckpoint')
@@ -1672,6 +1679,8 @@ class TensorBoard(Callback):
     self._writers = {}
     self._start_batch, self._stop_batch = self._init_profile_batch(
         profile_batch)
+    if self._start_batch > 0:
+      profiler.warmup()  # Improve the profiling accuracy.
     # True when a trace is running.
     self._is_tracing = False
 

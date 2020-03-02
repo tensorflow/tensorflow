@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -63,6 +64,7 @@ py_library(
     srcs = ["cross_device_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":collective_util",
         ":cross_device_utils",
         ":device_util",
         ":reduce_util",
@@ -97,6 +99,7 @@ py_library(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -145,6 +148,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":collective_util",
         ":device_util",
         ":numpy_dataset",
         ":reduce_util",
@@ -557,6 +561,18 @@ py_library(
     ],
 )
 
+tpu_py_test(
+    name = "tpu_strategy_test",
+    srcs = ["tpu_strategy_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 # Used only by estimator.
 py_library(
     name = "estimator_training",
@@ -574,6 +590,15 @@ py_library(
 py_library(
     name = "reduce_util",
     srcs = ["reduce_util.py"],
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_library(
+    name = "collective_util",
+    srcs = ["collective_util.py"],
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
@@ -795,7 +820,9 @@ cuda_py_test(
     name = "cross_device_utils_test",
     srcs = ["cross_device_utils_test.py"],
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/distribute:combinations",
@@ -815,6 +842,7 @@ cuda_py_test(
     ],
     deps = [
         ":collective_all_reduce_strategy",
+        ":collective_util",
         ":mirrored_strategy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -969,6 +997,9 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",  # Target too big to run serially reliably.
     ],
     deps = [
         "//tensorflow/python:errors",

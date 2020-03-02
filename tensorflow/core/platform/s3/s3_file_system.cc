@@ -135,6 +135,7 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
       strings::safe_strto64(request_timeout_str, &request_timeout);
     }
     cfg.requestTimeoutMs = request_timeout;
+
     const char* ca_file = getenv("S3_CA_FILE");
     if (ca_file) {
       cfg.caFile = Aws::String(ca_file);
@@ -196,6 +197,23 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
   return Status::OK();
 }
 
+static Status CheckForbiddenError(
+    const Aws::Client::AWSError<Aws::S3::S3Errors>& error) {
+  if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
+    return errors::FailedPrecondition(
+        "AWS Credentials have not been set properly. "
+        "Unable to access the specified S3 location");
+  } else {
+    return Status::OK();
+  }
+}
+
+static Status CreateStatusFromAwsError(
+    const Aws::Client::AWSError<Aws::S3::S3Errors>& error) {
+  TF_RETURN_IF_ERROR(CheckForbiddenError(error));
+  return errors::Unknown(error.GetExceptionName(), ": ", error.GetMessage());
+}
+
 class S3RandomAccessFile : public RandomAccessFile {
  public:
   S3RandomAccessFile(const string& bucket, const string& object,
@@ -208,6 +226,8 @@ class S3RandomAccessFile : public RandomAccessFile {
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
+    VLOG(1) << "ReadFilefromS3 s3://" << bucket_ << "/" << object_ << " from "
+            << offset << " for n:" << n;
     Aws::S3::Model::GetObjectRequest getObjectRequest;
     getObjectRequest.WithBucket(bucket_.c_str()).WithKey(object_.c_str());
     string bytes = strings::StrCat("bytes=", offset, "-", offset + n - 1);
@@ -217,9 +237,14 @@ class S3RandomAccessFile : public RandomAccessFile {
     });
     auto getObjectOutcome = this->s3_client_->GetObject(getObjectRequest);
     if (!getObjectOutcome.IsSuccess()) {
-      n = 0;
-      *result = StringPiece(scratch, n);
-      return Status(error::OUT_OF_RANGE, "Read less bytes than requested");
+      auto error = getObjectOutcome.GetError();
+      if (error.GetResponseCode() ==
+          Aws::Http::HttpResponseCode::REQUESTED_RANGE_NOT_SATISFIABLE) {
+        n = 0;
+        *result = StringPiece(scratch, n);
+        return Status(error::OUT_OF_RANGE, "Read less bytes than requested");
+      }
+      return CreateStatusFromAwsError(error);
     }
     n = getObjectOutcome.GetResult().GetContentLength();
     getObjectOutcome.GetResult().GetBody().read(scratch, n);
@@ -286,6 +311,7 @@ class S3WritableFile : public WritableFile {
     if (!sync_needed_) {
       return Status::OK();
     }
+    VLOG(1) << "WriteFileToS3: s3://" << bucket_ << "/" << object_;
     long offset = outfile_->tellp();
     std::shared_ptr<Aws::Transfer::TransferHandle> handle =
         transfer_manager_.get()->UploadFile(
@@ -305,15 +331,10 @@ class S3WritableFile : public WritableFile {
 
     if (handle->GetStatus() != Aws::Transfer::TransferStatus::COMPLETED) {
       auto error = handle->GetLastError();
-      if (error.GetResponseCode() == Aws::Http::HttpResponseCode::FORBIDDEN) {
-        return errors::FailedPrecondition(
-            "AWS Credentials have not been set properly. "
-            "Unable to access the specified S3 location");
-      } else {
-        return errors::Unknown(
-            error.GetExceptionName(), ": ", handle->GetFailedParts().size(),
-            " failed parts. ", handle->GetLastError().GetMessage());
-      }
+      TF_RETURN_IF_ERROR(CheckForbiddenError(error));
+      return errors::Unknown(error.GetExceptionName(), ": ",
+                             handle->GetFailedParts().size(), " failed parts. ",
+                             handle->GetLastError().GetMessage());
     }
     outfile_->clear();
     outfile_->seekp(offset);
@@ -381,7 +402,8 @@ std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
     Aws::InitAPI(options);
 
     // The creation of S3Client disables virtual addressing:
-    //   S3Client(clientConfiguration, signPayloads, useVirtualAdressing = true)
+    //   S3Client(clientConfiguration, signPayloads, useVirtualAddressing =
+    //   true)
     // The purpose is to address the issue encountered when there is an `.`
     // in the bucket name. Due to TLS hostname validation or DNS rules,
     // the bucket may not be resolved. Disabling of virtual addressing
@@ -494,6 +516,7 @@ Status S3FileSystem::FileExists(const string& fname) {
 
 Status S3FileSystem::GetChildren(const string& dir,
                                  std::vector<string>* result) {
+  VLOG(1) << "GetChildren for path: " << dir;
   string bucket, prefix;
   TF_RETURN_IF_ERROR(ParseS3Path(dir, true, &bucket, &prefix));
 
@@ -514,8 +537,7 @@ Status S3FileSystem::GetChildren(const string& dir,
     auto listObjectsOutcome =
         this->GetS3Client()->ListObjects(listObjectsRequest);
     if (!listObjectsOutcome.IsSuccess()) {
-      return errors::Unknown(listObjectsOutcome.GetError().GetExceptionName(),
-                             ": ", listObjectsOutcome.GetError().GetMessage());
+      return CreateStatusFromAwsError(listObjectsOutcome.GetError());
     }
 
     listObjectsResult = listObjectsOutcome.GetResult();
@@ -541,6 +563,7 @@ Status S3FileSystem::GetChildren(const string& dir,
 }
 
 Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
+  VLOG(1) << "Stat on path: " << fname;
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, true, &bucket, &object));
 
@@ -549,8 +572,7 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
     headBucketRequest.WithBucket(bucket.c_str());
     auto headBucketOutcome = this->GetS3Client()->HeadBucket(headBucketRequest);
     if (!headBucketOutcome.IsSuccess()) {
-      return errors::Unknown(headBucketOutcome.GetError().GetExceptionName(),
-                             ": ", headBucketOutcome.GetError().GetMessage());
+      return CreateStatusFromAwsError(headBucketOutcome.GetError());
     }
     stats->length = 0;
     stats->is_directory = 1;
@@ -570,6 +592,8 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
     stats->mtime_nsec =
         headObjectOutcome.GetResult().GetLastModified().Millis() * 1e6;
     found = true;
+  } else {
+    TF_RETURN_IF_ERROR(CheckForbiddenError(headObjectOutcome.GetError()));
   }
   string prefix = object;
   if (prefix.back() != '/') {
@@ -584,11 +608,15 @@ Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
   auto listObjectsOutcome =
       this->GetS3Client()->ListObjects(listObjectsRequest);
   if (listObjectsOutcome.IsSuccess()) {
-    if (listObjectsOutcome.GetResult().GetContents().size() > 0) {
+    auto listObjects = listObjectsOutcome.GetResult().GetContents();
+    if (listObjects.size() > 0) {
       stats->length = 0;
       stats->is_directory = 1;
+      stats->mtime_nsec = listObjects[0].GetLastModified().Millis() * 1e6;
       found = true;
     }
+  } else {
+    TF_RETURN_IF_ERROR(CheckForbiddenError(listObjectsOutcome.GetError()));
   }
   if (!found) {
     return errors::NotFound("Object ", fname, " does not exist");
@@ -602,6 +630,7 @@ Status S3FileSystem::GetMatchingPaths(const string& pattern,
 }
 
 Status S3FileSystem::DeleteFile(const string& fname) {
+  VLOG(1) << "DeleteFile: " << fname;
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
 
@@ -611,13 +640,13 @@ Status S3FileSystem::DeleteFile(const string& fname) {
   auto deleteObjectOutcome =
       this->GetS3Client()->DeleteObject(deleteObjectRequest);
   if (!deleteObjectOutcome.IsSuccess()) {
-    return errors::Unknown(deleteObjectOutcome.GetError().GetExceptionName(),
-                           ": ", deleteObjectOutcome.GetError().GetMessage());
+    return CreateStatusFromAwsError(deleteObjectOutcome.GetError());
   }
   return Status::OK();
 }
 
 Status S3FileSystem::CreateDir(const string& dirname) {
+  VLOG(1) << "CreateDir: " << dirname;
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(dirname, true, &bucket, &object));
 
@@ -626,6 +655,7 @@ Status S3FileSystem::CreateDir(const string& dirname) {
     headBucketRequest.WithBucket(bucket.c_str());
     auto headBucketOutcome = this->GetS3Client()->HeadBucket(headBucketRequest);
     if (!headBucketOutcome.IsSuccess()) {
+      TF_RETURN_IF_ERROR(CheckForbiddenError(headBucketOutcome.GetError()));
       return errors::NotFound("The bucket ", bucket, " was not found.");
     }
     return Status::OK();
@@ -634,13 +664,16 @@ Status S3FileSystem::CreateDir(const string& dirname) {
   if (filename.back() != '/') {
     filename.push_back('/');
   }
-  std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(NewWritableFile(filename, &file));
-  TF_RETURN_IF_ERROR(file->Close());
+  if (!this->FileExists(filename).ok()) {
+    std::unique_ptr<WritableFile> file;
+    TF_RETURN_IF_ERROR(NewWritableFile(filename, &file));
+    TF_RETURN_IF_ERROR(file->Close());
+  }
   return Status::OK();
 }
 
 Status S3FileSystem::DeleteDir(const string& dirname) {
+  VLOG(1) << "DeleteDir: " << dirname;
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(dirname, false, &bucket, &object));
 
@@ -660,7 +693,10 @@ Status S3FileSystem::DeleteDir(const string& dirname) {
     auto contents = listObjectsOutcome.GetResult().GetContents();
     if (contents.size() > 1 ||
         (contents.size() == 1 && contents[0].GetKey() != prefix.c_str())) {
-      return errors::FailedPrecondition("Cannot delete a non-empty directory.");
+      return errors::Unknown(
+          "Cannot delete a non-empty directory. "
+          "This operation will be retried in case this "
+          "is due to S3's eventual consistency.");
     }
     if (contents.size() == 1 && contents[0].GetKey() == prefix.c_str()) {
       string filename = dirname;
@@ -669,6 +705,8 @@ Status S3FileSystem::DeleteDir(const string& dirname) {
       }
       return DeleteFile(filename);
     }
+  } else {
+    TF_RETURN_IF_ERROR(CheckForbiddenError(listObjectsOutcome.GetError()));
   }
   return Status::OK();
 }
@@ -762,8 +800,7 @@ Status S3FileSystem::SimpleCopy(const Aws::String& source,
   copyObjectRequest.SetCopySource(source);
   auto copyObjectOutcome = this->GetS3Client()->CopyObject(copyObjectRequest);
   if (!copyObjectOutcome.IsSuccess()) {
-    return errors::Unknown(copyObjectOutcome.GetError().GetExceptionName(),
-                           ": ", copyObjectOutcome.GetError().GetMessage());
+    return CreateStatusFromAwsError(copyObjectOutcome.GetError());
   }
   return Status::OK();
 }
@@ -782,9 +819,7 @@ Status S3FileSystem::MultiPartCopy(const Aws::String& source,
   auto multipartUploadOutcome =
       this->GetS3Client()->CreateMultipartUpload(multipartUploadRequest);
   if (!multipartUploadOutcome.IsSuccess()) {
-    return errors::Unknown(multipartUploadOutcome.GetError().GetExceptionName(),
-                           ": ",
-                           multipartUploadOutcome.GetError().GetMessage());
+    return CreateStatusFromAwsError(multipartUploadOutcome.GetError());
   }
 
   Aws::String uploadID = multipartUploadOutcome.GetResult().GetUploadId();
@@ -916,8 +951,7 @@ Status S3FileSystem::AbortMultiPartCopy(Aws::String target_bucket,
       .WithUploadId(uploadID);
   auto abortOutcome = this->GetS3Client()->AbortMultipartUpload(abortRequest);
   if (!abortOutcome.IsSuccess()) {
-    return errors::Unknown(abortOutcome.GetError().GetExceptionName(), ": ",
-                           abortOutcome.GetError().GetMessage());
+    return CreateStatusFromAwsError(abortOutcome.GetError());
   }
   return Status::OK();
 }
@@ -933,13 +967,13 @@ Status S3FileSystem::CompleteMultiPartCopy(
   auto completeOutcome =
       this->GetS3Client()->CompleteMultipartUpload(completeRequest);
   if (!completeOutcome.IsSuccess()) {
-    return errors::Unknown(completeOutcome.GetError().GetExceptionName(), ": ",
-                           completeOutcome.GetError().GetMessage());
+    return CreateStatusFromAwsError(completeOutcome.GetError());
   }
   return Status::OK();
 }
 
 Status S3FileSystem::RenameFile(const string& src, const string& target) {
+  VLOG(1) << "RenameFile from: " << src << " to: " << target;
   string src_bucket, src_object, target_bucket, target_object;
   TF_RETURN_IF_ERROR(ParseS3Path(src, false, &src_bucket, &src_object));
   TF_RETURN_IF_ERROR(
@@ -969,8 +1003,7 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
     auto listObjectsOutcome =
         this->GetS3Client()->ListObjects(listObjectsRequest);
     if (!listObjectsOutcome.IsSuccess()) {
-      return errors::Unknown(listObjectsOutcome.GetError().GetExceptionName(),
-                             ": ", listObjectsOutcome.GetError().GetMessage());
+      return CreateStatusFromAwsError(listObjectsOutcome.GetError());
     }
 
     listObjectsResult = listObjectsOutcome.GetResult();
@@ -989,9 +1022,7 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
       auto deleteObjectOutcome =
           this->GetS3Client()->DeleteObject(deleteObjectRequest);
       if (!deleteObjectOutcome.IsSuccess()) {
-        return errors::Unknown(
-            deleteObjectOutcome.GetError().GetExceptionName(), ": ",
-            deleteObjectOutcome.GetError().GetMessage());
+        return CreateStatusFromAwsError(deleteObjectOutcome.GetError());
       }
     }
     listObjectsRequest.SetMarker(listObjectsResult.GetNextMarker());
@@ -1000,6 +1031,11 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
   return Status::OK();
 }
 
-REGISTER_FILE_SYSTEM("s3", S3FileSystem);
+Status S3FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
+  *has_atomic_move = false;
+  return Status::OK();
+}
+
+REGISTER_FILE_SYSTEM("s3", RetryingS3FileSystem);
 
 }  // namespace tensorflow

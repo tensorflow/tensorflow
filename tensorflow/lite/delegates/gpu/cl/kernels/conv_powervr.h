@@ -70,6 +70,7 @@ class ConvPowerVR : public GPUOperation {
     int3 work_group_size;
     int3 work_group_launch_order;
     bool fixed_work_group_size;
+    bool linear_hw;
     bool different_weights_for_height;
     int src_depth_loop_size;
     WeightsUploadType weights_upload_type;
@@ -127,7 +128,8 @@ class ConvPowerVR : public GPUOperation {
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition, int src_depth,
                              int dst_depth, bool x_kernel_is_1,
-                             bool y_kernel_is_1) const;
+                             bool y_kernel_is_1,
+                             bool different_weights_for_height) const;
 
   Status BindArguments();
   int3 GetGridSize() const;

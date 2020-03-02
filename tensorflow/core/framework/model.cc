@@ -786,7 +786,7 @@ std::map<string, std::shared_ptr<Parameter>> Model::CollectTunableParameters(
 
 std::map<string, std::shared_ptr<Parameter>> Model::CollectEssentialParallelism(
     std::shared_ptr<Node> node) {
-  // Parallelism parameter is considered to be essential if the coressponding
+  // Parallelism parameter is considered to be essential if the corresponding
   // transformations's processing time is greater than essential rate times the
   // average transformation self processing time.
   constexpr double kEssentialRate = 0.3L;

@@ -234,7 +234,7 @@ class Queue {
   using SchedulableBatchCallback = std::function<void()>;
   Queue(const typename SharedBatchScheduler<TaskType>::QueueOptions& options,
         Env* env, ProcessBatchCallback process_batch_callback,
-        SchedulableBatchCallback schdulable_batch_callback);
+        SchedulableBatchCallback schedulable_batch_callback);
 
   // Illegal to destruct unless the queue is empty.
   ~Queue();

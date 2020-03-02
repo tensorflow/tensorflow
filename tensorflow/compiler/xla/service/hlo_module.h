@@ -196,6 +196,10 @@ class HloModule {
   // computation B, then A will appear after B in the sort.
   std::vector<HloComputation*> MakeComputationPostOrder() const;
 
+  // Same as MakeComputationPostOrder() but sorting the computations by their
+  // contents.
+  std::vector<HloComputation*> MakeComputationSortedByContent() const;
+
   // Gets the computations in this module which aren't for fusion nodes.
   //
   // Postcondition: All computations in the returned list have
@@ -345,10 +349,6 @@ class HloModule {
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers);
-
-  // Same as MakeComputationPostOrder() but sorting the computations by their
-  // contents.
-  std::vector<HloComputation*> MakeComputationSortedByContent() const;
 
   string name_;
   HloModuleConfig config_;

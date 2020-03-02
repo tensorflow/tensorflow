@@ -40,7 +40,7 @@ class NumericVerifyOpModel : public SingleOpModel {
  public:
   NumericVerifyOpModel(TensorType type, std::initializer_list<int> shape,
                        float scale, int32_t zero_point, int version,
-                       float tolerance = 1e-5) {
+                       float tolerance = 5.0) {
     const TensorData input_tensor_data = {type, shape, 0, 0, scale, zero_point};
     input_ = AddInput(input_tensor_data);
     ref_ = AddInput({TensorType_FLOAT32, shape});

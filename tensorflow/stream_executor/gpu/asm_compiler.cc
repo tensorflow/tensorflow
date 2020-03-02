@@ -155,7 +155,12 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   int cc_minor;
   TF_RETURN_IF_ERROR(
       gpu::GpuDriver::GetComputeCapability(&cc_major, &cc_minor, handle));
+  return CompileGpuAsm(cc_major, cc_minor, ptx_contents, options);
+}
 
+port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
+                                                 const char* ptx_contents,
+                                                 GpuAsmOpts options) {
   string ptxas_path;
   auto env = tensorflow::Env::Default();
   for (const string& cuda_root :

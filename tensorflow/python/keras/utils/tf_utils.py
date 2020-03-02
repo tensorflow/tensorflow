@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import numpy as np
 import six
 
 from tensorflow.python.data.experimental.ops import cardinality
@@ -493,3 +494,31 @@ def get_tensor_spec(t, dynamic_batch=False, name=None):
     shape[0] = None
     dynamic_batch_spec._shape = tensor_shape.TensorShape(shape)  # pylint: disable=protected-access
   return dynamic_batch_spec
+
+
+def to_numpy_or_python_type(tensors):
+  """Converts a structure of `Tensor`s to `NumPy` arrays or Python scalar types.
+
+  For each tensor, it calls `tensor.numpy()`. If the result is a scalar value,
+  it converts it to a Python type, such as a float or int, by calling
+  `result.item()`.
+
+  Numpy scalars are converted, as Python types are often more convenient to deal
+  with. This is especially useful for bfloat16 Numpy scalars, which don't
+  support as many operations as other Numpy values.
+
+  Args:
+    tensors: A structure of tensors.
+
+  Returns:
+    `tensors`, but scalar tensors are converted to Python types and non-scalar
+    tensors are converted to Numpy arrays.
+  """
+  def _to_single_numpy_or_python_type(t):
+    if isinstance(t, ops.Tensor):
+      x = t.numpy()
+      return x.item() if np.ndim(x) == 0 else x
+    return t  # Don't turn ragged or sparse tensors to NumPy.
+
+  return nest.map_structure(_to_single_numpy_or_python_type, tensors)
+

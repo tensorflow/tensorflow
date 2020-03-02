@@ -816,6 +816,7 @@ class UnknownShapes(TestModels):
 
   @test_util.run_v2_only
   def testMatMul(self):
+    self.skipTest('b/150489014')
     input_data = constant_op.constant(
         np.array(np.random.random_sample((10, 4)), dtype=np.float32))
 

@@ -87,39 +87,6 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   return Status::OK();
 }
 
-Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
-    HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
-  HloPassPipeline pipeline("post-layout_assignment");
-  pipeline.AddInvariantChecker<HloVerifier>(
-      /*layout_sensitive=*/true,
-      /*allow_mixed_precision=*/false,
-      LayoutAssignment::InstructionCanChangeLayout);
-
-  pipeline.AddPass<ReductionDegenerateDimRemover>();
-  pipeline.AddPass<ReductionLayoutNormalizer>();
-  pipeline.AddPass<ReductionDimensionGrouper>();
-
-  // The LayoutAssignment pass may leave behind kCopy instructions which are
-  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-  AlgebraicSimplifierOptions options;
-  options.set_is_layout_sensitive(true);
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
-
-  // Rewrite GEMMs into custom calls.
-  pipeline.AddPass<GemmRewriter>();
-
-  pipeline.AddPass<GpuConvAlgorithmPicker>(stream_exec, device_allocator);
-
-  // Clean up new_tuple described above.
-  pipeline.AddPass<TupleSimplifier>();
-
-  pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
-  TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-
-  return Status::OK();
-}
-
 AMDGPUCompiler::AMDGPUCompiler()
     : GpuCompiler(stream_executor::rocm::kROCmPlatformId, amdgpu::kTargetTriple,
                   amdgpu::kDataLayout) {}

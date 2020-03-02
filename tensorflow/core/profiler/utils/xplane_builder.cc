@@ -91,6 +91,12 @@ XEventBuilder XLineBuilder::AddEvent(const XEventMetadata& metadata) {
   return XEventBuilder(line_, event);
 }
 
+XEventBuilder XLineBuilder::AddEvent(const XEvent& event) {
+  XEvent* new_event = line_->add_events();
+  *new_event = event;
+  return XEventBuilder(line_, new_event);
+}
+
 void XLineBuilder::SetTimestampNsAndAdjustEventOffsets(int64 timestamp_ns) {
   int64 offset_ps = NanosToPicos(line_->timestamp_ns() - timestamp_ns);
   line_->set_timestamp_ns(timestamp_ns);

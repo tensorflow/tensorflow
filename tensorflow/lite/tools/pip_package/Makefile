@@ -46,9 +46,10 @@ docker-build: docker-image
 		--volume $(TENSORFLOW_DIR):/tensorflow \
 		--volume $(OUT_DIR):/out \
 		$(TAG_IMAGE) \
-		/bin/bash -c "tensorflow/tensorflow/lite/tools/pip_package/build_pip_package.sh && \
-		              (cp ${MAKEFILE_DIR}/gen/tflite_pip/*.deb ${MAKEFILE_DIR}/gen/tflite_pip/python3/dist/{*.whl,*.tar.gz} /out 2>/dev/null || true)"
+		/bin/bash -c "/tensorflow/tensorflow/lite/tools/pip_package/build_pip_package.sh && \
+		              (cp /tensorflow/tensorflow/lite/tools/pip_package/gen/tflite_pip/*.deb \
+		                  /tensorflow/tensorflow/lite/tools/pip_package/gen/tflite_pip/${PYTHON}/dist/{*.whl,*.tar.gz} \
+		                  /out 2>/dev/null || true)"
 
 clean:
 	rm -rf $(CURDIR)/out
-

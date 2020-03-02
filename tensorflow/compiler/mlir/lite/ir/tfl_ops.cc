@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Matchers.h"  // TF:llvm-project
@@ -275,7 +275,7 @@ Attribute ConstFoldBinaryOp(
     return ConstFoldBinaryOp<FloatAttr>(result_type, operands[0], operands[1],
                                         float_calculate, is_commutative);
 
-  if (elemType.isa<IntegerType>())
+  if (elemType.isSignlessInteger())
     return ConstFoldBinaryOp<IntegerAttr>(result_type, operands[0], operands[1],
                                           int_calculate, is_commutative);
 
@@ -1560,7 +1560,7 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
            limit_tensor.getType().getRank() == 0 &&
            delta_tensor.getType().getRank() == 0);
     Type elem_type = getType().cast<ShapedType>().getElementType();
-    if (elem_type.isa<IntegerType>()) {
+    if (elem_type.isSignlessInteger()) {
       auto start_attr = start_tensor.getValue<IntegerAttr>({});
       auto limit_attr = limit_tensor.getValue<IntegerAttr>({});
       auto delta_attr = delta_tensor.getValue<IntegerAttr>({});
@@ -1662,7 +1662,7 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 
   // Do not try to fold elements attr of a quant type because
   // DenseElementsAttr does not support it.
-  if (!getType().cast<ShapedType>().getElementType().isIntOrFloat())
+  if (!getType().cast<ShapedType>().getElementType().isSignlessIntOrFloat())
     return nullptr;
 
   assert(perm_tensor.getType().getRank() == 1);

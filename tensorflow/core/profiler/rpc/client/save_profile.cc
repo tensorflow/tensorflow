@@ -32,26 +32,13 @@ limitations under the License.
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
-
 namespace profiler {
 namespace {
 
 using ::tensorflow::io::JoinPath;
 
-constexpr char kProfilePluginDirectory[] = "plugins/profile/";
 constexpr char kProtoTraceFileName[] = "trace";
-
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
-
-Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
-                               const string& encoded_trace, std::ostream* os) {
-  string proto_path =
-      JoinPath(run_dir, absl::StrCat(host_prefix, kProtoTraceFileName));
-  TF_RETURN_IF_ERROR(
-      WriteStringToFile(Env::Default(), proto_path, encoded_trace));
-  if (os) *os << "Dumped raw-proto trace data to " << proto_path;
-  return Status::OK();
-}
 
 Status DumpToolDataToLogDirectory(StringPiece run_dir,
                                   const string& host_prefix,
@@ -81,11 +68,17 @@ Status MaybeCreateEmptyEventFile(const string& logdir) {
       return Status::OK();
     }
   }
-  EventsWriter event_writer(io::JoinPath(logdir, "events"));
+  EventsWriter event_writer(JoinPath(logdir, "events"));
   return event_writer.InitWithSuffix(kProfileEmptySuffix);
 }
 
 }  // namespace
+
+string GetTensorBoardProfilePluginDir(const string& logdir) {
+  constexpr char kPluginName[] = "plugins";
+  constexpr char kProfileName[] = "profile";
+  return JoinPath(logdir, kPluginName, kProfileName);
+}
 
 Status SaveTensorboardProfile(const string& logdir, const string& run,
                               const string& host,
@@ -93,23 +86,18 @@ Status SaveTensorboardProfile(const string& logdir, const string& run,
                               std::ostream* os) {
   // Dumps profile data to <logdir>/plugins/profile/<run>/.
   string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
-  string profile_run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
+  string profile_run_dir =
+      JoinPath(GetTensorBoardProfilePluginDir(logdir), run);
   *os << "Creating directory: " << profile_run_dir;
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(profile_run_dir));
 
   // Creates an empty event file so that TensorBoard plugin logic can find
   // the logdir.
   TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
-  // Ignore computation_graph for now.
-  if (!response.encoded_trace().empty()) {
-    TF_RETURN_IF_ERROR(DumpTraceToLogDirectory(profile_run_dir, host_prefix,
-                                               response.encoded_trace(), os));
-  }
   for (const auto& tool_data : response.tool_data()) {
     TF_RETURN_IF_ERROR(DumpToolDataToLogDirectory(profile_run_dir, host_prefix,
                                                   tool_data, os));
   }
-
   return Status::OK();
 }
 
