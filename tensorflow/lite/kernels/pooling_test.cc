@@ -919,7 +919,7 @@ TEST(QuantizedInt8PoolingOpTest16, MaxPool) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({6, 10})));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({(96 - 128) << 8, (160 - 128) << 8}));
+              ElementsAreArray({(96 - 128) * 256, (160 - 128) * 256}));
 }
 
 TEST(QuantizedInt8PoolingOpTest, MaxPoolActivationRelu) {
