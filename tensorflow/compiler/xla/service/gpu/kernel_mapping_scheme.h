@@ -77,6 +77,12 @@ class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
   // TODO: rename Dilated to Strided?
+  // LinearIndexing mean each thread reads consecutive elements.
+  // DilatedIndexingX mean each thread reads Dilated(Strided)
+  //   elements. This conserve memory coalescing.
+  // LinearDilatedIndexingX mean each thread read a few consecutive
+  //   elements then take a bigger step. The goal is to trigger
+  //   vectorized reads and keep memory coalescing.
   enum IndexingOrder {
     LinearIndexingX,
     DilatedIndexingX,
@@ -146,14 +152,8 @@ class KernelMappingScheme {
 
   // When num_threads_x threads process a total of tile_size_x
   // elements in the X dimension of a tile, each threads process
-  // n=tile_size_x/num_threads_x elements. When indexing_order_ have
-  // the value LinearIndexingX, the n elements processed by a thread
-  // are contiguous. When the value is DilatedIndexingX, the n
-  // elements are dilated by a factor of num_threads_x. When the value
-  // is LinearDilatedIndexingX, it is a mix of both to enable
-  // vectorizing while keeping memory coalescing. It reads
-  // vector_size_ elements, then do a step to the next vector_size_
-  // elements.
+  // n=tile_size_x/num_threads_x elements.
+  // indexing_order_ define which tile's elements each thread reads.
   const IndexingOrder indexing_order_;
   // vector_size_ only supported for row reduction.
   // Must be a divisor of tile_sizes_[2]/num_threads_x.
