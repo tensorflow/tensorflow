@@ -4,43 +4,42 @@ namespace tflite {
 namespace ops {
 namespace micro {
 namespace xcore {
-namespace argmax {
+namespace type_conversions {
 
-    TfLiteStatus Prepare_ArgMax_16(TfLiteContext* context, TfLiteNode* node) {
+    TfLiteStatus Prepare_Requantize_16_to_8(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
         TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
         return kTfLiteOk;
     }
 
-    TfLiteStatus Eval_ArgMax_16(TfLiteContext* context, TfLiteNode* node) {
+    TfLiteStatus Eval_Requantize_16_to_8(TfLiteContext* context, TfLiteNode* node) {
         const TfLiteTensor* input = GetInput(context, node, 0);
-
-        int32_t N = input->bytes / sizeof(int16_t);
-
         TfLiteTensor* output = GetOutput(context, node, 0);
+        int32_t n = input->bytes / sizeof(int16_t);
 
-        argmax_16(
+        requantize_16_to_8(
+            output->data.int8,
             input->data.i16,
-            output->data.i32,
-            N
+            n
         );
 
         return kTfLiteOk;
     }
 
-}  // namespace argmax
+}  // namespace type_conversions
 
 
-TfLiteRegistration* Register_ArgMax_16() {
+TfLiteRegistration* Register_Requantize_16_to_8() {
     static TfLiteRegistration r = {
         nullptr,
         nullptr,
-        argmax::Prepare_ArgMax_16,
-        argmax::Eval_ArgMax_16
+        type_conversions::Prepare_Requantize_16_to_8,
+        type_conversions::Eval_Requantize_16_to_8
     };
     return &r;
 }
+
 
 }  // namespace xcore
 }  // namespace micro
