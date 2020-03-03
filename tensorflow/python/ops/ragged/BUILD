@@ -1129,6 +1129,9 @@ py_test(
     srcs = ["ragged_cross_op_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # TODO(b/150702952): Reenable windows test once fixed.
+    ],
     deps = [
         ":ragged_array_ops",
         "//tensorflow/python:constant_op",
