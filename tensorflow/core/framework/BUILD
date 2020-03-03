@@ -129,6 +129,7 @@ exports_files(
     [
         "attr_value_util.h",
         "common_shape_fns.h",
+        "kernel_shape_util.h",
         "node_def_util.h",
         "node_properties.h",
         "op.h",
@@ -166,6 +167,7 @@ filegroup(
         "graph_to_functiondef.h",
         "kernel_def_builder.h",
         "kernel_def_util.h",
+        "kernel_shape_util.h",
         "local_rendezvous.h",
         "log_memory.h",
         "logging.h",
@@ -269,6 +271,8 @@ filegroup(
         "bfloat16.h",
         "bounds_check.h",
         "cpu_allocator_impl.cc",
+        "kernel_shape_util.cc",
+        "kernel_shape_util.h",
         "log_memory.cc",
         "log_memory.h",
         "numeric_types.h",
@@ -772,6 +776,19 @@ cc_library(
         "//tensorflow/core/lib/strings:str_util",
         "//tensorflow/core/platform:macros",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "kernel_shape_util",
+    srcs = ["kernel_shape_util.cc"],
+    hdrs = ["kernel_shape_util.h"],
+    deps = [
+        ":tensor",
+        ":tensor_shape",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/util:padding",
     ],
 )
 
