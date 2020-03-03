@@ -19,7 +19,7 @@ limitations under the License.
 
 TfLiteStatus InitCamera(tflite::ErrorReporter* error_reporter) {
   if (BSP_CAMERA_Init(RESOLUTION_R160x120) != CAMERA_OK) {
-    error_reporter->Report("Failed to init camera.\n");
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to init camera.\n");
     return kTfLiteError;
   }
 

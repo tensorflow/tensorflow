@@ -45,13 +45,13 @@ int main(int argc, char** argv) {
   tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   if (InitCamera(error_reporter) != kTfLiteOk) {
-    error_reporter->Report("Failed to init camera.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to init camera.");
     return 1;
   }
 
   const tflite::Model* model = ::tflite::GetModel(image_recognition_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(error_reporter,
         "Model provided is schema version %d not equal "
         "to supported version %d.",
         model->version(), TFLITE_SCHEMA_VERSION);
@@ -77,12 +77,12 @@ int main(int argc, char** argv) {
                        input->data.uint8);
 
     if (input->type != kTfLiteUInt8) {
-      error_reporter->Report("Wrong input type.");
+      TF_LITE_REPORT_ERROR(error_reporter, "Wrong input type.");
     }
 
     TfLiteStatus invoke_status = interpreter.Invoke();
     if (invoke_status != kTfLiteOk) {
-      error_reporter->Report("Invoke failed.");
+      TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed.");
       break;
     }
 

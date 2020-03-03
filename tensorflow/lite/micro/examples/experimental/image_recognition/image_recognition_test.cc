@@ -36,7 +36,7 @@ TF_LITE_MICRO_TEST(TestImageRecognitionInvoke) {
 
   const tflite::Model* model = ::tflite::GetModel(image_recognition_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(error_reporter,
         "Model provided is schema version %d not equal "
         "to supported version %d.\n",
         model->version(), TFLITE_SCHEMA_VERSION);
@@ -78,7 +78,7 @@ TF_LITE_MICRO_TEST(TestImageRecognitionInvoke) {
     TfLiteStatus invoke_status = interpreter.Invoke();
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
     if (invoke_status != kTfLiteOk) {
-      error_reporter->Report("Invoke failed\n");
+      TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
     }
 
     TfLiteTensor* output = interpreter.output(0);
