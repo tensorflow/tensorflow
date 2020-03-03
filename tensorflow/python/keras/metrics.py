@@ -769,11 +769,11 @@ class CategoricalAccuracy(MeanMetricWrapper):
 @keras_export('keras.metrics.SparseCategoricalAccuracy')
 class SparseCategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches integer labels.
-  
-  For example, if `y_true` is `[[2], [1]]` and `y_pred` is
-  `[[0.1, 0.6, 0.3], [0.05, 0.95, 0]]` then the categorical accuracy is 1/2 or .5.
-  If the weights were specified as `[0.7, 0.3]` then the categorical accuracy
-  would be .3. You can provide logits of classes as `y_pred`, since argmax of
+
+  `acc = dot(sample_weight, (y_true == argmax(y_pred)) / n_pred`
+  where `n_pred = len(y_true)` 
+
+  You can provide logits of classes as `y_pred`, since argmax of
   logits and probabilities are same.
 
   This metric creates two local variables, `total` and `count` that are used to
