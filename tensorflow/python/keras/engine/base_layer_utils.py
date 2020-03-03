@@ -181,7 +181,8 @@ def create_keras_history(tensors):
       operations and need to have Keras metadata assigned to them.
 
   Returns:
-    keras_tensors: The Tensors found that came from a Keras Layer.
+    created_layers: List. The `TensorFlowOpLayer` instances created to wrap
+      the raw Tensorflow operations.
   """
   _, created_layers = _create_keras_history_helper(tensors, set(), [])
   return created_layers
