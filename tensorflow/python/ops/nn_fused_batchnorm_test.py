@@ -466,6 +466,7 @@ class BatchNormalizationTest(test.TestCase):
     x_shape = [0, 131, 127, 6]
     self._runtests(x_shape, True)
 
+  @test_util.run_deprecated_v1
   def testBatchNormGradInferenceShape1(self):
     x_shape = [1, 1, 6, 1]
     self._runtests(x_shape, is_training=False, gradient_test=True)

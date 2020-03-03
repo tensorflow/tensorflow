@@ -77,7 +77,7 @@ int NumTotalCPUs() {
   // the Size fields by iterating over the written-to buffer.  Since I can't
   // easily test this on Windows, I'm deferring this to someone who can!
   //
-  // If you fix this, also consider updatig GetCurrentCPU below.
+  // If you fix this, also consider updating GetCurrentCPU below.
   return NumSchedulableCPUs();
 }
 

@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -557,6 +558,18 @@ py_library(
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/tpu:tpu_py",
         "//third_party/py/numpy",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_strategy_test",
+    srcs = ["tpu_strategy_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
     ],
 )
 

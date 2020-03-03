@@ -1062,6 +1062,15 @@ class TestValidationSplit(keras_parameterized.TestCase):
     self.assertIsNone(val_sw)
 
 
+class TestUtils(keras_parameterized.TestCase):
+
+  def test_expand_1d_sparse_tensors_untouched(self):
+    st = sparse_tensor.SparseTensor(
+        indices=[[0], [10]], values=[1, 2], dense_shape=[10])
+    st = data_adapter.expand_1d(st)
+    self.assertEqual(st.shape.rank, 1)
+
+
 if __name__ == '__main__':
   ops.enable_eager_execution()
   test.main()

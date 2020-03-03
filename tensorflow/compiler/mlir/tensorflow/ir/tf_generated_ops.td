@@ -3926,6 +3926,21 @@ pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_MlirLocalVarOp : TF_Op<"MlirLocalVarOp", []> {
+  let summary = "Creates a handle to a in-scope variable.";
+
+  let description = [{
+Used by internal passes for temporary representation of local state, which will
+be eventually removed.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_ResourceTensor:$resource
+  );
+}
+
 def TF_MlirPassthroughOp : TF_Op<"MlirPassthroughOp", [NoSideEffect]> {
   let summary = [{
 Wraps an arbitrary MLIR computation expressed as a module with a main() function.
@@ -6418,6 +6433,74 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_StackCloseV2Op : TF_Op<"StackCloseV2", []> {
+  let summary = "Delete the stack from its resource container.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle
+  );
+
+  let results = (outs);
+}
+
+def TF_StackPopV2Op : TF_Op<"StackPopV2", []> {
+  let summary = "Pop the element at the top of the stack.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle
+  );
+
+  let results = (outs
+    TF_Tensor:$elem
+  );
+
+  TF_DerivedResultTypeAttr elem_type = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StackPushV2Op : TF_Op<"StackPushV2", []> {
+  let summary = "Push an element onto the stack.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle,
+    TF_Tensor:$elem,
+
+    DefaultValuedAttr<BoolAttr, "false">:$swap_memory
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_StackV2Op : TF_Op<"StackV2", []> {
+  let summary = "A stack that produces elements in first-in last-out order.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    I32Tensor:$max_size,
+
+    TypeAttr:$elem_type,
+    StrAttr:$stack_name
+  );
+
+  let results = (outs
+    TF_ResourceTensor:$handle
+  );
+}
+
 def TF_StopGradientOp : TF_Op<"StopGradient", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Stops gradient computation.";
 
@@ -6701,6 +6784,24 @@ occurred during compilation.
   );
 }
 
+def TF_TPUCompileSucceededAssertOp : TF_Op<"TPUCompileSucceededAssert", []> {
+  let summary = [{
+Asserts that compilation succeeded. This op produces no output and closes the
+  }];
+
+  let description = [{
+device during failure to ensure all pending device interactions fail.
+
+'compilation_status' is a serialized CompilationResultProto.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$compilation_status
+  );
+
+  let results = (outs);
+}
+
 def TF_TPUCopyWithLayoutOp : TF_Op<"TPUCopyWithLayout", [NoSideEffect]> {
   let summary = "Op that copies host tensor to device with specified layout.";
 
@@ -6919,6 +7020,38 @@ is the corresponding input gradient.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TensorListConcatV2Op : TF_Op<"TensorListConcatV2", [NoSideEffect]> {
+  let summary = "Concats all tensors in the list along the 0th dimension.";
+
+  let description = [{
+Requires that all tensors have the same shape except the first dimension.
+
+input_handle: The input list.
+element_shape: The shape of the uninitialized elements in the list. If the first
+  dimension is not -1, it is assumed that all list elements have the same
+  leading dim.
+leading_dims: The list of leading dims of uninitialized list elements. Used if
+  the leading dim of input_handle.element_shape or the element_shape input arg
+  is not already set.
+tensor: The concated result.
+lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    TF_I32OrI64Tensor:$element_shape,
+    I64Tensor:$leading_dims
+  );
+
+  let results = (outs
+    TF_Tensor:$tensor,
+    I64Tensor:$lengths
+  );
+
+  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_TensorListFromTensorOp : TF_Op<"TensorListFromTensor", [NoSideEffect]> {
   let summary = [{
 Creates a TensorList which, when stacked, has the value of `tensor`.
@@ -6978,6 +7111,33 @@ length: the number of tensors in the list
   let results = (outs
     I32Tensor:$length
   );
+}
+
+def TF_TensorListPopBackOp : TF_Op<"TensorListPopBack", [NoSideEffect]> {
+  let summary = [{
+Returns the last element of the input list as well as a list with all but that element.
+  }];
+
+  let description = [{
+Fails if the list is empty.
+
+input_handle: the input list
+tensor: the withdrawn last element of the list
+element_dtype: the type of elements in the list
+element_shape: the shape of the output tensor
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    I32Tensor:$element_shape
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output_handle,
+    TF_Tensor:$tensor
+  );
+
+  TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<1>;
 }
 
 def TF_TensorListPushBackOp : TF_Op<"TensorListPushBack", [NoSideEffect]> {
@@ -7822,4 +7982,39 @@ def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, SameOperandsAndResultType
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF__TPUCompileMlirOp : TF_Op<"_TPUCompileMlir", []> {
+  let summary = [{
+Compiles a computations for execution on one or more TPU devices.
+  }];
+
+  let description = [{
+For the internal use of the distributed TPU compiler. Note that currently only
+single TPU device is supported.
+
+'mlir_module' is a serialized MLIR module with a `main` function that contains
+target computation.
+'dynamic_shapes' contains dynamic shapes of arguments whose shapes were not
+known statically at TPUReplication rewrite time.
+'metadata' is a serialized TPUCompileMetadataProto describing
+the shapes and types of the inputs to the computation, as well as a mapping onto
+the TPU pod topology.
+'program' output is a string key that is passed to the _TPUExecute op and
+used to look up the program in the compilation cache.
+  }];
+
+  let arguments = (ins
+    Variadic<I64Tensor>:$dynamic_shapes,
+
+    StrAttr:$mlir_module,
+    StrAttr:$metadata
+  );
+
+  let results = (outs
+    TF_StrTensor:$compilation_status,
+    TF_StrTensor:$program
+  );
+
+  TF_DerivedOperandSizeAttr NumDynamicShapes = TF_DerivedOperandSizeAttr<0>;
 }

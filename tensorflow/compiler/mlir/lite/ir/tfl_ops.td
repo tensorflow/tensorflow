@@ -534,7 +534,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
   let summary = "ArgMin operator";
 
   let description = [{
-    Returns the index with the smallest value across dimensions of a tensor."
+    Returns the index with the smallest value across dimensions of a tensor.
       a = [1, 10, 26.9, 2.8, 166.32, 62.3]
       b = tf.math.argmin(input = a)
       c = tf.keras.backend.eval(b)
@@ -3181,19 +3181,19 @@ def TFL_LSTMOp :
 Long short-term memory unit (LSTM) recurrent network layer.
 The default non-peephole implementation is based on:
 http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
-S. Hochreiter and J. Schmidhuber. "Long Short-Term Memory". Neural Computation,
+S. Hochreiter and J. Schmidhuber. 'Long Short-Term Memory'. Neural Computation,
 9(8):1735-1780, 1997.
 The peephole implementation is based on:
 https://research.google.com/pubs/archive/43905.pdf
-Hasim Sak, Andrew Senior, and Francoise Beaufays. "Long short-term memory
-recurrent neural network architectures for large scale acoustic modeling.
+Hasim Sak, Andrew Senior, and Francoise Beaufays. 'Long short-term memory
+recurrent neural network architectures for large scale acoustic modeling.'
 INTERSPEECH, 2014.
 The coupling of input and forget gate (CIFG) is based on:
 http://arxiv.org/pdf/1503.04069.pdf
-Greff et al. "LSTM: A Search Space Odyssey"
+Greff et al. 'LSTM: A Search Space Odyssey'
 The layer normalization is based on:
 https://arxiv.org/pdf/1607.06450.pdf
-Ba et al. “Layer Normalization”
+Ba et al. 'Layer Normalization'
   }];
 
   let arguments = (

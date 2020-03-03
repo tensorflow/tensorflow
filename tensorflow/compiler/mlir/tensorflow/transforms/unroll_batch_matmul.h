@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_UNROLL_BATCH_MATMUL_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_UNROLL_BATCH_MATMUL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_UNROLL_BATCH_MATMUL_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_UNROLL_BATCH_MATMUL_H_
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/Location.h"  // TF:llvm-project
@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/util/matmul_bcast.h"
 
 namespace mlir {
-namespace TFL {
+namespace TF {
 
 // Unroll tf.BatchMatMulV2 op into a sequence of TF ops. Since TFLite does not
 // support BatchMatMul operation, it unrolls a BatchMatMul op into tf.Reshape,
@@ -53,7 +53,7 @@ class ConvertTFBatchMatMulOp : public OpRewritePattern<BatchMatMulOpType> {
                                      PatternRewriter& rewriter) const override;
 };
 
-}  // namespace TFL
+}  // namespace TF
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_UNROLL_BATCH_MATMUL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_UNROLL_BATCH_MATMUL_H_

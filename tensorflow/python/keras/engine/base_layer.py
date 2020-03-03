@@ -2938,7 +2938,7 @@ class KerasHistory(
     layer: The Layer that produced the Tensor.
     node_index: The specific call to the Layer that produced this Tensor. Layers
       can be called multiple times in order to share weights. A new node is
-      created every time a Tensor is called.
+      created every time a Layer is called.
     tensor_index: The output index for this Tensor. Always zero if the Layer
       that produced this Tensor only has one output. Nested structures of
       Tensors are deterministically assigned an index via `nest.flatten`.

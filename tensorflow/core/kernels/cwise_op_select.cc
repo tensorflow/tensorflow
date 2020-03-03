@@ -348,8 +348,8 @@ struct SelectScalarHandler {
   }
 };
 
-// Specilization for CPU device. Forward input to output depending on the `cond`
-// value.
+// Specialization for CPU device. Forward input to output depending on the
+// `cond` value.
 // TODO(sjhwang): Consider specializing for GPUDevice as well by using
 // GPUDevice::memcpyDeviceToHost() to fetch bool value.
 template <typename T>

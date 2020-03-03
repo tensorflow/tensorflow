@@ -692,7 +692,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
 
   Value none = builder->create<mlir::ConstantOp>(
       func_op.getLoc(), builder->getNoneType(), builder->getUnitAttr());
-  auto lstm = builder->create<mlir::TFL::LSTMOp>(
+  auto lstm = builder->create<mlir::TFL::UnidirectionalSequenceLSTMOp>(
       func_op.getLoc(), result_type, /*input=*/input,
       /*input_to_input_weights=*/weights_array->getResult(0),
       /*input_to_forget_weights=*/weights_array->getResult(1),
@@ -718,7 +718,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       /*cell_layer_norm_coefficients=*/none,
       /*output_layer_norm_coefficients=*/none, builder->getStringAttr("TANH"),
       builder->getF32FloatAttr(10.0), builder->getF32FloatAttr(0.0),
-      builder->getStringAttr("FULL"));
+      builder->getBoolAttr(true));
 
   auto final_output = lstm.getResult();
   if (!time_majored) {

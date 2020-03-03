@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORRT_TENSORRT_INCLUDE_CONFIG_H_
-#define TENSORRT_TENSORRT_INCLUDE_CONFIG_H_
+#include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/op.h"
 
-#define TF_TENSORRT_VERSION "6"
+namespace tensorflow {
 
-#endif  // TENSORRT_TENSORRT_INCLUDE_CONFIG_H_
+REGISTER_OP("MlirLocalVarOp")
+    .Output("resource: resource")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"(Creates a handle to a in-scope variable.
+Used by internal passes for temporary representation of local state, which will
+be eventually removed.)");
+
+}  // namespace tensorflow

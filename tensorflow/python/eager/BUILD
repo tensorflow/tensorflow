@@ -242,7 +242,10 @@ py_test(
     srcs = ["profiler_client_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":profiler_client",
         ":test",

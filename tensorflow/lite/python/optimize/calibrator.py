@@ -109,3 +109,17 @@ class Calibrator(object):
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
         np.dtype(output_type.as_numpy_dtype()).num, allow_float, op_output_name)
+
+  def calibrate(self, dataset_gen):
+    """Calibrates the model with specified generator.
+
+    Returns:
+      A model with min and max calibration stats.
+
+    Args:
+      dataset_gen: A generator that generates calibration samples.
+    """
+    self._calibrator.Prepare()
+    for calibration_sample in dataset_gen():
+      self._calibrator.FeedTensor(calibration_sample)
+    return self._calibrator.calibrate()

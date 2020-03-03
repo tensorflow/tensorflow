@@ -127,7 +127,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
         if (current_element_iterator_) {
-          // We are currently precessing a mapped element, so try to get the
+          // We are currently processing a mapped element, so try to get the
           // next subelement.
           bool end_of_element;
           TF_RETURN_IF_ERROR(current_element_iterator_->GetNext(

@@ -1450,7 +1450,7 @@ def _postprocess_non_flat_outputs(outputs):
     # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
     # be rewritten away, leading to a runtime error.
     # TODO(phawkins): extend the rewrite to elide these nodes instead.
-    with ops.device(core(0)):
+    with ops.device(o.device if o.device else core(0)):
       o = array_ops.identity(o)
       # pylint: disable=protected-access
       o.op._set_attr("_tpu_output_identity", attr_value_pb2.AttrValue(b=True))

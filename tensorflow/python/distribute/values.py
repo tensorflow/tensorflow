@@ -728,31 +728,32 @@ class MirroredVariable(DistributedVariable, Mirrored):
     super(MirroredVariable, self).__init__(strategy, values)
     self._aggregation = aggregation
 
-  # The arguments to update() are automatically unwrapped so the update()
-  # function would normally see regular variables, not MirroredVariables.
-  # However, the update function can still operate on wrapped MirroredVariables
-  # through object members, captured arguments, etc. This is more likely in an
-  # update_non_slot() function (like OptimizerV2._finish), which can
-  # update several non-slot variables in one call.
-  def _assign_func(self, *args, **kwargs):
+  def _mirrored_update(self, update_fn, *args, **kwargs):
+    """Apply identical updates using `update_fn` to variables on each replica."""
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      f = kwargs.pop("f")
       if ds_context.in_cross_replica_context():
         update_replica_id = distribute_lib.get_update_replica_id()
         if update_replica_id is not None:
-          # We are calling an assign function on the mirrored variable in an
+          # We are calling an update function on the mirrored variable in an
           # update context.
-          return f(self._values[update_replica_id], *args, **kwargs)
+          #
+          # The arguments to update() are automatically unwrapped so the
+          # update() function would normally see regular variables, not
+          # MirroredVariables. However, the update function can still operate on
+          # wrapped MirroredVariables through object members, captured arguments
+          # , etc. This is more likely in an update_non_slot() function
+          # , which can update several non-slot variables in one call.
+          return update_fn(self._values[update_replica_id], *args, **kwargs)
 
-        # We are calling assign on the mirrored variable in cross replica
+        # We are calling update on the mirrored variable in cross replica
         # context, use `strategy.extended.update()` to update the variable.
         return self._distribute_strategy.extended.update(
-            self, f, args=args, kwargs=kwargs)
+            self, update_fn, args=args, kwargs=kwargs)
       else:
         _assert_replica_context(self._distribute_strategy)
-        # We are calling an assign function on the mirrored variable in replica
+        # We are calling an update function on the mirrored variable in replica
         # context.
-        # We reduce the value we want to assign/add/sub. More details about how
+        # We reduce the value we want to update. More details about how
         # we handle the different use cases can be found in the _reduce method.
         # We call the function on each of the mirrored variables with the
         # reduced value.
@@ -760,7 +761,8 @@ class MirroredVariable(DistributedVariable, Mirrored):
           raise ValueError(
               _aggregation_error_msg.format(variable_type="MirroredVariable"))
 
-        def merge_fn(strategy, value, *other_args, **other_kwargs):  # pylint: disable=missing-docstring
+        def merge_fn(strategy, value, *other_args, **other_kwargs):
+          """Aggregate across replicas and update MV with aggregated value."""
           # Don't allow MEAN with non float dtype, since it may cause unexpected
           # precision loss. Python3 and NumPy automatically upcast integers to
           # float in division, but we should always preserve the type.
@@ -778,22 +780,71 @@ class MirroredVariable(DistributedVariable, Mirrored):
 
           v = _apply_aggregation(strategy, value, self._aggregation, self)
           return strategy.extended.update(
-              self, f, args=(v,) + other_args, kwargs=other_kwargs)
+              self, update_fn, args=(v,) + other_args, kwargs=other_kwargs)
 
         return ds_context.get_replica_context().merge_call(
             merge_fn, args=args, kwargs=kwargs)
 
   def assign_sub(self, *args, **kwargs):
     assign_sub_fn = lambda var, *a, **kw: var.assign_sub(*a, **kw)
-    return self._assign_func(f=assign_sub_fn, *args, **kwargs)
+    return self._mirrored_update(assign_sub_fn, *args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
     assign_add_fn = lambda var, *a, **kw: var.assign_add(*a, **kw)
-    return self._assign_func(f=assign_add_fn, *args, **kwargs)
+    return self._mirrored_update(assign_add_fn, *args, **kwargs)
 
   def assign(self, *args, **kwargs):
     assign_fn = lambda var, *a, **kw: var.assign(*a, **kw)
-    return self._assign_func(f=assign_fn, *args, **kwargs)
+    return self._mirrored_update(assign_fn, *args, **kwargs)
+
+  def scatter_sub(self, *args, **kwargs):
+    scatter_sub_fn = lambda var, *a, **kw: var.scatter_sub(*a, **kw)
+    return self._mirrored_update(scatter_sub_fn, *args, **kwargs)
+
+  def scatter_add(self, *args, **kwargs):
+    scatter_add_fn = lambda var, *a, **kw: var.scatter_add(*a, **kw)
+    return self._mirrored_update(scatter_add_fn, *args, **kwargs)
+
+  def scatter_mul(self, *args, **kwargs):
+    scatter_mul_fn = lambda var, *a, **kw: var.scatter_mul(*a, **kw)
+    return self._mirrored_update(scatter_mul_fn, *args, **kwargs)
+
+  def scatter_div(self, *args, **kwargs):
+    scatter_div_fn = lambda var, *a, **kw: var.scatter_div(*a, **kw)
+    return self._mirrored_update(scatter_div_fn, *args, **kwargs)
+
+  def scatter_min(self, *args, **kwargs):
+    if (self._aggregation != vs.VariableAggregation.ONLY_FIRST_REPLICA and
+        self._aggregation != vs.VariableAggregation.NONE):
+      raise NotImplementedError("scatter_min is only supported for mirrored "
+                                "variable (variable created within certain "
+                                "`tf.distribute.Strategy` scope) with NONE or "
+                                "`ONLY_FIRST_REPLICA` aggregation, got: %s" %
+                                self._aggregation)
+    scatter_min_fn = lambda var, *a, **kw: var.scatter_min(*a, **kw)
+    return self._mirrored_update(scatter_min_fn, *args, **kwargs)
+
+  def scatter_max(self, *args, **kwargs):
+    if (self._aggregation != vs.VariableAggregation.ONLY_FIRST_REPLICA and
+        self._aggregation != vs.VariableAggregation.NONE):
+      raise NotImplementedError("scatter_max is only supported for mirrored "
+                                "variable (variable created within certain "
+                                "`tf.distribute.Strategy` scope) with NONE or "
+                                "`ONLY_FIRST_REPLICA` aggregation, got: %s" %
+                                self._aggregation)
+    scatter_max_fn = lambda var, *a, **kw: var.scatter_max(*a, **kw)
+    return self._mirrored_update(scatter_max_fn, *args, **kwargs)
+
+  def scatter_update(self, *args, **kwargs):
+    if (self._aggregation != vs.VariableAggregation.ONLY_FIRST_REPLICA and
+        self._aggregation != vs.VariableAggregation.NONE):
+      raise NotImplementedError("scatter_update is only supported for mirrored "
+                                "variable (variable created within certain "
+                                "`tf.distribute.Strategy` scope) with NONE or "
+                                "`ONLY_FIRST_REPLICA` aggregation, got: %s" %
+                                self._aggregation)
+    scatter_update_fn = lambda var, *a, **kw: var.scatter_update(*a, **kw)
+    return self._mirrored_update(scatter_update_fn, *args, **kwargs)
 
   @property
   def aggregation(self):
@@ -1020,8 +1071,17 @@ ops.register_tensor_conversion_function(SyncOnReadVariable,
                                         _tensor_conversion_sync_on_read)
 
 
-def regroup(values, wrap_class=PerReplica):
-  """Makes a nest per-replica into a nest of PerReplica/Mirrored values."""
+def regroup(values, wrap_class=PerReplica, always_wrap=False):
+  """Makes a nest per-replica into a nest of PerReplica/Mirrored values.
+
+  Args:
+    values: Values to regroup
+    wrap_class: Class that `values` be wrapped in.
+    always_wrap: Always wrap the `values` in `wrap_class` even if the values
+        are the same except for DistributeVariable.
+  Returns:
+    Wrapped `values`.
+  """
   v0 = values[0]
 
   if isinstance(v0, list):
@@ -1073,14 +1133,16 @@ def regroup(values, wrap_class=PerReplica):
   #   devices), we want to return it. We check DistributedVariable
   #   specifically since it can look like it has a
   #   _distributed_container member since its members do.
+  if same_id and isinstance(v0, DistributedVariable):
+    return v0
   # * If v0 is a member of a distributed variable, in which case
   #   hasattr(v0, "_distributed_container") is true, we want to
   #   return the DistributedVariable that contains it using the
   #   _distributed_container logic below. This case can trigger
   #   same_id when there is only one device.
-  # * In any other situation, same_id means we return v0.
-  if same_id and (isinstance(v0, DistributedVariable) or
-                  not hasattr(v0, "_distributed_container")):
+  # * In any other situation, same_id means we return v0 unless `always_wrap` is
+  #   true.
+  if same_id and not always_wrap and not hasattr(v0, "_distributed_container"):
     return v0
 
   # Detect the case where each device has a parallel component of the

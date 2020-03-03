@@ -1,6 +1,44 @@
---- ./absl/time/internal/cctz/BUILD.bazel	2019-09-23 13:20:52.000000000 -0700
-+++ ./absl/time/internal/cctz/BUILD.bazel.fixed	2019-09-23 13:20:48.000000000 -0700
-@@ -76,15 +76,6 @@
+diff -u -r old/absl/strings/string_view.h new/absl/strings/string_view.h
+--- old/absl/strings/string_view.h	2020-02-21 12:56:04.000000000 -0800
++++ new/absl/strings/string_view.h	2020-02-25 18:39:26.377782568 -0800
+@@ -292,11 +292,18 @@
+   // and an exception of type `std::out_of_range` will be thrown on invalid
+   // access.
+   constexpr const_reference at(size_type i) const {
++#if defined(__NVCC__)
++    // An nvcc bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function. This only happens when
++    // NDEBUG is not defined. This will be fixed in the CUDA 10.2 release.
++    return ptr_[i];
++#else
+     return ABSL_PREDICT_TRUE(i < size())
+                ? ptr_[i]
+                : ((void)base_internal::ThrowStdOutOfRange(
+                       "absl::string_view::at"),
+                   ptr_[i]);
++#endif
+   }
+ 
+   // string_view::front()
+@@ -519,7 +526,14 @@
+       (std::numeric_limits<difference_type>::max)();
+ 
+   static constexpr size_type CheckLengthInternal(size_type len) {
++#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__<10 || (__CUDACC_VER_MAJOR__==10 && __CUDACC_VER_MINOR__<2)) && !defined(NDEBUG)
++    // An nvcc bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function. This only happens when
++    // NDEBUG is not defined. This will be fixed in the CUDA 10.2 release.
++    return len;
++#else
+     return (void)ABSL_ASSERT(len <= kMaxSize), len;
++#endif
+   }
+ 
+   static constexpr size_type StrlenInternal(const char* str) {
+diff -u -r old/absl/time/internal/cctz/BUILD.bazel new/absl/time/internal/cctz/BUILD.bazel
+--- old/absl/time/internal/cctz/BUILD.bazel	2020-02-21 12:56:04.000000000 -0800
++++ new/absl/time/internal/cctz/BUILD.bazel	2020-02-25 15:19:29.013710932 -0800
+@@ -74,15 +74,6 @@
          "include/cctz/time_zone.h",
          "include/cctz/zone_info_source.h",
      ],
@@ -14,22 +52,5 @@
 -        "//conditions:default": [],
 -    }),
      visibility = ["//visibility:public"],
-     deps = [":civil_time"],
- )
---- ./absl/strings/string_view.h	2019-09-23 13:20:52.000000000 -0700
-+++ ./absl/strings/string_view.h.fixed	2019-09-23 13:20:48.000000000 -0700
-@@ -492,7 +492,14 @@
-       (std::numeric_limits<difference_type>::max)();
- 
-   static constexpr size_type CheckLengthInternal(size_type len) {
-+#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__<10 || (__CUDACC_VER_MAJOR__==10 && __CUDACC_VER_MINOR__<2)) && !defined(NDEBUG)
-+    // An nvcc bug treats the original return expression as a non-constant,
-+    // which is not allowed in a constexpr function. This only happens when
-+    // NDEBUG is not defined. This will be fixed in the CUDA 10.2 release.
-+    return len;
-+#else
-     return ABSL_ASSERT(len <= kMaxSize), len;
-+#endif
-   }
- 
-   const char* ptr_;
+     deps = [
+         ":civil_time",

@@ -17,13 +17,15 @@ py_library(
         "estimator/__init__.py",
         "keras_parameterized.py",
         "ops.py",
-        "testing_utils.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
         ":backend",
         ":engine",
+        # TODO(scottzhu): Stop exporting the test_utils after removing all
+        # callers that using it.
+        ":testing_utils",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/applications",
@@ -277,6 +279,27 @@ py_library(
     deps = [
         ":backend",
         "//tensorflow/python/keras/utils:engine_utils",
+    ],
+)
+
+py_library(
+    name = "testing_utils",
+    srcs = [
+        "testing_utils.py",
+    ],
+    deps = [
+        ":backend",
+        ":models",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/engine:base_layer_utils",
+        "//tensorflow/python/keras/layers",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//third_party/py/numpy",
     ],
 )
 

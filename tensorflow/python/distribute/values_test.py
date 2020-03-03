@@ -23,7 +23,10 @@ import itertools
 import os
 
 from absl.testing import parameterized
+import numpy as np
+
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import tf2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context
@@ -37,13 +40,16 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model.model_utils import mode_keys
@@ -53,7 +59,7 @@ from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 
 
-class DistributedValuesTest(test.TestCase):
+class DistributedValuesTest(test.TestCase, parameterized.TestCase):
 
   def testGetEager(self):
     one = constant_op.constant(1)
@@ -71,6 +77,202 @@ class DistributedValuesTest(test.TestCase):
       self.assertEqual(one, v._get())
       with distribute_lib.ReplicaContext(None, 1):
         self.assertEqual(two, v._get())
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies_minus_default,
+          mode=["eager"]
+      ))
+  def testMakeDistributedValueFromTensor(self, distribution):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+    single_value = constant_op.constant(1)
+    def value_fn(ctx):
+      del ctx
+      return single_value
+
+    distributed_values = (
+        distribution.experimental_distribute_values_from_function(value_fn))
+    self.assertAllEqual(
+        distribution.experimental_local_results(distributed_values),
+        constant_op.constant(1., shape=(distribution.num_replicas_in_sync)))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies_minus_default,
+          mode=["eager"]
+      ))
+  def testMakeDistributedValueSingleNumpyArrayConstant(self, distribution):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+    array_value = np.array([1., 2., 3.])
+    def value_fn(ctx):
+      del ctx
+      return array_value
+
+    distributed_values = (
+        distribution.experimental_distribute_values_from_function(value_fn))
+    local_results = distribution.experimental_local_results(distributed_values)
+    self.assertLen(local_results, distribution.num_replicas_in_sync)
+    for result in local_results:
+      self.assertAllEqual(result, [1., 2., 3.])
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies_minus_default,
+          mode=["eager"]
+      ))
+  def testMakeDistributedValueTupleConstant(self, distribution):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+    tuple_value = (1., 2., 3.)
+    def value_fn(ctx):
+      del ctx
+      return tuple_value
+    distributed_values = (
+        distribution.experimental_distribute_values_from_function(value_fn))
+    local_results = distribution.experimental_local_results(distributed_values)
+    for result in local_results:
+      self.assertAllEqual(result, (1., 2., 3.))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies_minus_default,
+          mode=["eager"]
+      ))
+  def testMakeDistributedValueNestedStructurePerReplica(self, distribution):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+    tuple_value = (1., 2., 3.)
+    def value_fn(ctx):
+      per_replica = []
+      for val in tuple_value:
+        per_replica.append(val * ctx.replica_id_in_sync_group)
+      return per_replica
+    distributed_values = (
+        distribution.experimental_distribute_values_from_function(value_fn))
+    for i in range(distribution.num_replicas_in_sync):
+      self.assertAllEqual(
+          values.select_replica(i, distributed_values),
+          (1. * i, 2. * i, 3. * i))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies_minus_default,
+          mode=["eager"]
+      ))
+  def testMakeDistributedValueSpareTensor(self, distribution):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+    def value_fn(ctx):
+      del ctx
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
+
+    distributed_values = (
+        distribution.experimental_distribute_values_from_function(value_fn))
+    local_results = distribution.experimental_local_results(distributed_values)
+    for i in range(distribution.num_replicas_in_sync):
+      self.assertAllEqual(
+          sparse_ops.sparse_tensor_to_dense(local_results[i]),
+          [[1, 0, 0, 0], [0, 0, 2, 0], [0, 0, 0, 0]])
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies_minus_default,
+          mode=["eager"]
+      ))
+  def testMakeDistributedValueExtractFromArray(self, distribution):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+    multiple_values = range(distribution.num_replicas_in_sync)
+    def value_fn(ctx):
+      return multiple_values[ctx.replica_id_in_sync_group]
+    distributed_values = (
+        distribution.experimental_distribute_values_from_function(value_fn))
+    local_results = distribution.experimental_local_results(distributed_values)
+    for i in range(distribution.num_replicas_in_sync):
+      self.assertAllEqual(local_results[i], i)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies_minus_default,
+          mode=["eager"]
+      ))
+  def testMakeDistributedValueAndRun(self, distribution):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+
+    @def_function.function
+    def run():
+      multiple_values = range(distribution.num_replicas_in_sync)
+      def value_fn(ctx):
+        return multiple_values[ctx.replica_id_in_sync_group]
+      distributed_values = (
+          distribution.experimental_distribute_values_from_function(value_fn))
+
+      def computation(x):
+        return math_ops.square(x)
+
+      outputs = distribution.experimental_local_results(
+          distribution.experimental_run_v2(computation,
+                                           args=(distributed_values,)))
+      return outputs
+
+    local_results = run()
+
+    for i in range(distribution.num_replicas_in_sync):
+      self.assertAllEqual(local_results[i], i**2)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["eager"]
+      ))
+  def testMakeDistributedValueDefaultDevicePlacement(self, distribution):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+    multiple_values = []
+    for i in range(distribution.num_replicas_in_sync):
+      multiple_values.append(constant_op.constant(1.0))
+
+    def value_fn(ctx):
+      return multiple_values[ctx.replica_id_in_sync_group]
+    distributed_values = (
+        distribution.experimental_distribute_values_from_function(value_fn))
+    for i in range(distribution.num_replicas_in_sync):
+      self.assertAllEqual(distributed_values._values[i].device,
+                          "/job:localhost/replica:0/task:0/device:CPU:0")
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["eager"]
+      ))
+  def testMakeDistributedValueExplicitDevicePlacement(self, distribution):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+    worker_devices = distribution.extended.worker_devices
+    multiple_values = []
+    for i in range(distribution.num_replicas_in_sync):
+      with ops.device(worker_devices[i]):
+        multiple_values.append(array_ops.identity(1.0))
+
+    def value_fn(ctx):
+      return multiple_values[ctx.replica_id_in_sync_group]
+    distributed_values = (
+        distribution.experimental_distribute_values_from_function(value_fn))
+    for i in range(distribution.num_replicas_in_sync):
+      self.assertAllEqual(distributed_values._values[i].device,
+                          worker_devices[i])
 
 
 class DistributedDelegateTest(test.TestCase):
@@ -807,6 +1009,241 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
             distribution.experimental_run_v2(assign)))
     # The per-replica values should always match the first replicas value.
     self.assertAllEqual([3, 3], per_replica_results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=["graph", "eager"]))
+  def testScatterSub(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          [0., 0., 0.], aggregation=variables_lib.VariableAggregation.MEAN)
+    self.evaluate(v.initializer)
+
+    @def_function.function
+    def scatter_sub():
+      ctx = distribution_strategy_context.get_replica_context()
+      replica_id = ctx.replica_id_in_sync_group
+      value = indexed_slices.IndexedSlices(
+          values=array_ops.stack([
+              math_ops.cast(replica_id, dtypes.float32),
+              math_ops.cast(replica_id + 1, dtypes.float32)
+          ]),
+          indices=array_ops.stack([replica_id, replica_id + 1]),
+          dense_shape=(3,))
+      return v.scatter_sub(value)
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(scatter_sub)))
+    self.assertAllEqual([[0., -1., -1.], [0., -1., -1.]], per_replica_results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=["graph", "eager"]))
+  def testScatterAdd(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          [0, 0, 0], aggregation=variables_lib.VariableAggregation.SUM)
+    self.evaluate(v.initializer)
+
+    @def_function.function
+    def scatter_add():
+      ctx = distribution_strategy_context.get_replica_context()
+      replica_id = ctx.replica_id_in_sync_group
+      value = indexed_slices.IndexedSlices(
+          values=array_ops.stack([replica_id, replica_id + 1]),
+          indices=array_ops.stack([replica_id, replica_id + 1]),
+          dense_shape=(3,))
+      return v.scatter_add(value)
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(scatter_add)))
+    self.assertAllEqual([[0, 2, 2], [0, 2, 2]], per_replica_results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=["graph", "eager"]))
+  def testScatterDiv(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          [1, 6, 1], aggregation=variables_lib.VariableAggregation.SUM)
+    self.evaluate(v.initializer)
+
+    @def_function.function
+    def scatter_div():
+      ctx = distribution_strategy_context.get_replica_context()
+      replica_id = ctx.replica_id_in_sync_group
+      value = indexed_slices.IndexedSlices(
+          values=array_ops.reshape(replica_id + 2, [1]),
+          indices=array_ops.reshape(replica_id, [1]),
+          dense_shape=(3,))
+      return v.scatter_div(value)
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(scatter_div)))
+    self.assertAllEqual([[0, 2, 1], [0, 2, 1]], per_replica_results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=["graph", "eager"]))
+  def testScatterMul(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          [2., 1., 1.], aggregation=variables_lib.VariableAggregation.MEAN)
+    self.evaluate(v.initializer)
+
+    @def_function.function
+    def scatter_mul():
+      ctx = distribution_strategy_context.get_replica_context()
+      replica_id = ctx.replica_id_in_sync_group
+      value = indexed_slices.IndexedSlices(
+          values=array_ops.reshape(
+              math_ops.cast(replica_id + 2, dtypes.float32), [1]),
+          indices=array_ops.reshape(replica_id, [1]),
+          dense_shape=(3,))
+      return v.scatter_mul(value)
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(scatter_mul)))
+    self.assertAllClose([[2., 1.5, 1.], [2., 1.5, 1.]], per_replica_results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=["graph", "eager"]))
+  def testScatterMin(self, distribution):
+    with distribution.scope():
+      v1 = variables_lib.Variable(
+          [0, 2, 0], aggregation=variables_lib.VariableAggregation.SUM)
+      v2 = variables_lib.Variable(
+          [0, 2, 0],
+          aggregation=variables_lib.VariableAggregation.ONLY_FIRST_REPLICA)
+    self.evaluate(variables_lib.global_variables_initializer())
+
+    @def_function.function
+    def scatter_min(v):
+      value = indexed_slices.IndexedSlices(
+          values=array_ops.identity([1]),
+          indices=array_ops.identity([1]),
+          dense_shape=(3,))
+      return v.scatter_min(value)
+
+    with self.assertRaisesRegex(NotImplementedError, "scatter_min.*"):
+      self.evaluate(
+          distribution.experimental_local_results(
+              distribution.experimental_run_v2(scatter_min, args=(v1,))))
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(scatter_min, args=(v2,))))
+    self.assertAllClose([[0, 1, 0], [0, 1, 0]], per_replica_results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=["graph", "eager"]))
+  def testScatterMax(self, distribution):
+    with distribution.scope():
+      v1 = variables_lib.Variable(
+          [0, 0, 0], aggregation=variables_lib.VariableAggregation.SUM)
+      v2 = variables_lib.Variable(
+          [0, 0, 0],
+          aggregation=variables_lib.VariableAggregation.ONLY_FIRST_REPLICA)
+    self.evaluate(variables_lib.global_variables_initializer())
+
+    @def_function.function
+    def scatter_max(v):
+      value = indexed_slices.IndexedSlices(
+          values=array_ops.identity([1]),
+          indices=array_ops.identity([0]),
+          dense_shape=(3,))
+      return v.scatter_max(value)
+
+    with self.assertRaisesRegex(NotImplementedError, "scatter_max.*"):
+      self.evaluate(
+          distribution.experimental_local_results(
+              distribution.experimental_run_v2(scatter_max, args=(v1,))))
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(scatter_max, args=(v2,))))
+    self.assertAllClose([[1, 0, 0], [1, 0, 0]], per_replica_results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=["graph", "eager"]))
+  def testScatterUpdate(self, distribution):
+    with distribution.scope():
+      v1 = variables_lib.Variable(
+          [0, 0, 0], aggregation=variables_lib.VariableAggregation.SUM)
+      v2 = variables_lib.Variable(
+          [0, 0, 0],
+          aggregation=variables_lib.VariableAggregation.ONLY_FIRST_REPLICA)
+    self.evaluate(variables_lib.global_variables_initializer())
+
+    @def_function.function
+    def scatter_update(v):
+      value = indexed_slices.IndexedSlices(
+          values=array_ops.identity([3]),
+          indices=array_ops.identity([1]),
+          dense_shape=(3,))
+      return v.scatter_update(value)
+
+    with self.assertRaisesRegex(NotImplementedError, "scatter_update.*"):
+      self.evaluate(
+          distribution.experimental_local_results(
+              distribution.experimental_run_v2(scatter_update, args=(v1,))))
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(
+            distribution.experimental_run_v2(scatter_update, args=(v2,))))
+    self.assertAllClose([[0, 3, 0], [0, 3, 0]], per_replica_results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=["graph", "eager"]))
+  def testScatterOpsInCrossReplicaContext(self, distribution):
+    with distribution.scope():
+      v1 = variables_lib.Variable(
+          [1, 1, 1], aggregation=variables_lib.VariableAggregation.SUM)
+      v2 = variables_lib.Variable([1, 1, 1])
+    self.evaluate(variables_lib.global_variables_initializer())
+
+    value = indexed_slices.IndexedSlices(
+        values=array_ops.identity([2]),
+        indices=array_ops.identity([0]),
+        dense_shape=(3,))
+    with distribution.scope():
+      self.evaluate(v1.scatter_add(value))
+      self.assertAllEqual([3, 1, 1], self.evaluate(v1.read_value()))
+
+      self.evaluate(v2.scatter_min(value))
+      self.assertAllEqual([1, 1, 1], self.evaluate(v2.read_value()))
 
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)

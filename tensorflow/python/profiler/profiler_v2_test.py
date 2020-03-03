@@ -21,10 +21,7 @@ from __future__ import print_function
 import os
 import socket
 
-from tensorflow.core.protobuf import trace_events_pb2
-from tensorflow.python.eager import profiler
 from tensorflow.python.eager import test
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
@@ -62,7 +59,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
         self.assertEqual(file_name, 'plugins')
       else:
         self.assertTrue(file_name.endswith('.profile-empty'))
-    profile_dir = os.path.join(logdir, 'plugins/profile/')
+    profile_dir = os.path.join(logdir, 'plugins', 'profile')
     run = gfile.ListDirectory(profile_dir)[0]
     hostname = socket.gethostname()
     overview_page = os.path.join(profile_dir, run,
@@ -74,19 +71,10 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     tensorflow_stats = os.path.join(profile_dir, run,
                                     hostname + '.tensorflow_stats.pb')
     self.assertTrue(gfile.Exists(tensorflow_stats))
-
-    trace_file = os.path.join(profile_dir, run, hostname + '.trace')
+    kernel_stats = os.path.join(profile_dir, run, hostname + '.kernel_stats.pb')
+    self.assertTrue(gfile.Exists(kernel_stats))
+    trace_file = os.path.join(profile_dir, run, hostname + '.trace.json.gz')
     self.assertTrue(gfile.Exists(trace_file))
-    with gfile.Open(trace_file, 'rb') as f:
-      profile_pb = trace_events_pb2.Trace()
-      profile_pb.ParseFromString(f.read())
-    devices = frozenset(device.name for device in profile_pb.devices.values())
-    self.assertIn('/host:CPU', devices)
-    if config.list_physical_devices('GPU'):
-      self.assertIn('/device:GPU:0', devices)
-    events = frozenset(event.name for event in profile_pb.trace_events)
-    self.assertIn('three_times_five', events)
-    self.assertIn('Mul:Mul', events)
 
 
 if __name__ == '__main__':

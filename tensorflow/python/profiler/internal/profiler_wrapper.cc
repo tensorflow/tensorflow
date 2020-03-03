@@ -36,12 +36,18 @@ tensorflow::string GetCurrentTimeStampAsString() {
                           absl::LocalTimeZone());
 }
 
-tensorflow::ProfileRequest MakeProfileRequest() {
+tensorflow::ProfileRequest MakeProfileRequest(
+    const tensorflow::string& logdir, const tensorflow::string& session_id,
+    const tensorflow::string& host) {
   tensorflow::ProfileRequest request;
+  request.add_tools("trace_viewer");
   request.add_tools("overview_page");
   request.add_tools("input_pipeline");
   request.add_tools("kernel_stats");
   request.add_tools("tensorflow_stats");
+  request.set_host_name(host);
+  request.set_repository_root(logdir);
+  request.set_session_id(session_id);
   return request;
 }
 
@@ -75,15 +81,17 @@ class ProfilerSessionWrapper {
       return;
     }
     tensorflow::ProfileResponse response;
-    tensorflow::profiler::ConvertXSpaceToProfileResponse(
-        xspace, MakeProfileRequest(), &response);
+    tensorflow::ProfileRequest request = MakeProfileRequest(
+        logdir_, GetCurrentTimeStampAsString(), tensorflow::port::Hostname());
+    tensorflow::profiler::ConvertXSpaceToProfileResponse(xspace, request,
+                                                         &response);
 
     std::stringstream ss;  // Record LOG messages.
     status = tensorflow::profiler::SaveTensorboardProfile(
-        logdir_, GetCurrentTimeStampAsString(), tensorflow::port::Hostname(),
+        request.repository_root(), request.session_id(), request.host_name(),
         response, &ss);
     LOG(INFO) << ss.str();
-    tensorflow::MaybeRaiseRegisteredFromStatus(tensorflow::Status::OK());
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
   }
 
  private:

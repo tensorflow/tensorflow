@@ -284,6 +284,60 @@ class FromConcreteFunctionTest(TestModels):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
+  def _getTrainingTimeQuantizedModel(self):
+    class QLinear(keras.layers.Layer):
+
+      def __init__(self, units=3, **kwargs):
+        super(QLinear, self).__init__(**kwargs)
+        self.units = units
+
+      def build(self, input_shape):
+        self.w = self.add_weight(shape=(input_shape[-1], self.units),
+                                 initializer='random_normal',
+                                 trainable=True)
+        self.min_var = self.add_weight(
+            'min',
+            initializer=keras.initializers.Constant(-6.0),
+            trainable=False)
+        self.max_var = self.add_weight(
+            'max',
+            initializer=keras.initializers.Constant(6.0),
+            trainable=False)
+
+      def call(self, inputs):
+        x = array_ops.fake_quant_with_min_max_vars(
+            inputs, self.min_var, self.max_var)
+
+        w_fq = array_ops.fake_quant_with_min_max_vars(
+            self.w, self.min_var, self.max_var)
+        x = math_ops.matmul(x, w_fq)
+
+        x = array_ops.fake_quant_with_min_max_vars(
+            x, self.min_var, self.max_var)
+
+        return x
+
+    return keras.Sequential(QLinear(3, input_shape=(2,)))
+
+  @test_util.run_v2_only
+  def testTrainingTimeQuantizeConversion(self):
+    model = self._getTrainingTimeQuantizedModel()
+
+    float_converter = lite.TFLiteConverterV2.from_keras_model(model)
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    quantized_converter = lite.TFLiteConverterV2.from_keras_model(model)
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
+    interpreter = Interpreter(model_content=quantized_tflite)
+    self.assertEqual(np.float32, interpreter.get_input_details()[0]['dtype'])
+
   @test_util.run_v2_only
   def testNewQuantizer(self):
     """Test the model quantized by the new converter."""
@@ -816,6 +870,7 @@ class UnknownShapes(TestModels):
 
   @test_util.run_v2_only
   def testMatMul(self):
+    self.skipTest('b/150489014')
     input_data = constant_op.constant(
         np.array(np.random.random_sample((10, 4)), dtype=np.float32))
 

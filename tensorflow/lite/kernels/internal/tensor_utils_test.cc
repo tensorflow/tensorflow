@@ -1878,16 +1878,6 @@ TEST(uKernels, BatchVectorBatchVectorDotProductIntegerTest) {
   EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({40, 85})));
 }
 
-TEST(uKernels, VectorShiftLeftTest) {
-  constexpr int kVectorSize = 5;
-  static float input[kVectorSize] = {0.0, -0.5, 1.0, -1.5, 2.0};
-  std::vector<float> result(kVectorSize);
-  VectorShiftLeft(input, kVectorSize, 3.0f);
-  result.assign(input, input + kVectorSize);
-  EXPECT_THAT(result,
-              ElementsAreArray(ArrayFloatNear({-0.5, 1.0, -1.5, 2.0, 3.0})));
-}
-
 TEST(uKernels, ReductionSumVectorTest) {
   constexpr int kInputVectorSize = 10;
   constexpr int kOutputVectorSize1 = 5;

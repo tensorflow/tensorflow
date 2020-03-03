@@ -1177,7 +1177,12 @@ class DataHandler(object):
          distribute_options.AutoShardPolicy.OFF)):
       # If the dataset would be auto-sharded, we should not infer a local
       # steps_per_epoch due to the possible inbalanced sharding between workers.
-      return None
+      raise ValueError("When dataset is sharded across workers, please "
+                       "specify a reasonable `steps_per_epoch` such that all "
+                       "workers will train the same number of steps and each "
+                       "step can get data from dataset without EOF. This is "
+                       "required for allreduce to succeed. We will handle the "
+                       "last partial batch in the future.")
 
     size = cardinality.cardinality(dataset)
     if size == cardinality.INFINITE and steps is None:
@@ -1256,7 +1261,8 @@ def expand_1d(data):
   """Expands 1-dimensional `Tensor`s into 2-dimensional `Tensor`s."""
 
   def _expand_single_1d_tensor(t):
-    if (hasattr(t, "shape") and
+    # Leaves `CompositeTensor`s as-is.
+    if (isinstance(t, ops.Tensor) and
         isinstance(t.shape, tensor_shape.TensorShape) and t.shape.rank == 1):
       return array_ops.expand_dims_v2(t, axis=-1)
     return t

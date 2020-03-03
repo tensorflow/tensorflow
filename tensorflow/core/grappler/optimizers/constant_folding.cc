@@ -1804,7 +1804,7 @@ void ConstantFolding::ReplaceOperationWithSnapshot(
     int input_to_forward, const GraphProperties& properties, NodeDef* node,
     GraphDef* graph) {
   // If the graph contains no ops that mutate their inputs, we can
-  // use Identity insted of Snapshot.
+  // use Identity instead of Snapshot.
   if (!graph_contains_assign_or_inplace_op_) {
     ReplaceOperationWithIdentity(input_to_forward, properties, node, graph);
     return;
@@ -3159,7 +3159,7 @@ bool ConstantFolding::ConstantPushDown(GraphProperties* properties,
       ctx.left_child_is_const ? node->input(1) : node->input(0);
   VLOG(1) << "input_c = " << input_c << "\ninput_x = " << input_x;
 
-  // Now we have identified the nodes to swap, updare the nodemap accordingly.
+  // Now we have identified the nodes to swap, update the nodemap accordingly.
   node_map_->UpdateInput(node->name(), input_c, input_x);
   node_map_->AddOutput(input_c, ctx.op_child->name());
   if (input_x != input_y) {

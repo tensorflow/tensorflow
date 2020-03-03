@@ -836,6 +836,23 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "xla_cpu_runtime_hdrs",
+    srcs = [
+        "eigen_contraction_kernel.h",
+        "eigen_convolution_helpers.h",
+        "eigen_spatial_convolutions.h",
+        "eigen_spatial_convolutions-inl.h",
+    ],
+)
+
+filegroup(
+    name = "xla_cpu_runtime_srcs",
+    srcs = [
+        "eigen_contraction_kernel.cc",
+    ],
+)
+
 cc_library(
     name = "redux_functor",
     hdrs = ["redux_functor.h"],
@@ -1377,6 +1394,7 @@ tf_kernel_library(
 cc_library(
     name = "ragged_ops",
     deps = [
+        ":ragged_cross_op",
         ":ragged_gather_op",
         ":ragged_range_op",
         ":ragged_tensor_from_variant_op",
@@ -1528,6 +1546,15 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_cross_op",
+    srcs = ["ragged_cross_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -8076,6 +8103,28 @@ tf_mkl_kernel_library(
     deps = NN_DEPS + mkl_deps(),
 )
 
+tf_cc_test_mkl(
+    name = "mkl_fused_batch_norm_op_test",
+    size = "small",
+    srcs = ["mkl_fused_batch_norm_op_test.cc"],
+    linkstatic = 1,
+    deps = [
+        ":mkl_fused_batch_norm_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_mkl_kernel_library(
     name = "mkl_aggregate_ops",
     prefix = "mkl_aggregate_ops",
@@ -8416,8 +8465,10 @@ exports_files([
     "cwise_op_gpu_less_equal.cu.cc",
     "cwise_op_gpu_logical_and.cu.cc",
     "cwise_op_gpu_logical_not.cu.cc",
+    "cwise_op_gpu_logical_or.cu.cc",
     "cwise_op_gpu_maximum.cu.cc",
     "cwise_op_gpu_minimum.cu.cc",
+    "cwise_op_gpu_mod.cu.cc",
     "cwise_op_gpu_mul.cu.cc",
     "cwise_op_gpu_neg.cu.cc",
     "cwise_op_gpu_not_equal_to.cu.cc",
@@ -8436,8 +8487,10 @@ exports_files([
     "cwise_op_less_equal.cc",
     "cwise_op_logical_and.cc",
     "cwise_op_logical_not.cc",
+    "cwise_op_logical_or.cc",
     "cwise_op_maximum.cc",
     "cwise_op_minimum.cc",
+    "cwise_op_mod.cc",
     "cwise_op_mul_1.cc",
     "cwise_op_mul_2.cc",
     "cwise_op_neg.cc",

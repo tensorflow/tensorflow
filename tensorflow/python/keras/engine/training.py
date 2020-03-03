@@ -25,7 +25,6 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import callbacks as callbacks_module
 from tensorflow.python.keras import optimizers
@@ -36,6 +35,7 @@ from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer as lso
 from tensorflow.python.keras.saving.saved_model import model_serialization
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
@@ -457,16 +457,13 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       y_pred = self(x, training=True)
       loss = self.compiled_loss(
           y, y_pred, sample_weight, regularization_losses=self.losses)
-      if isinstance(self.optimizer, lso.LossScaleOptimizer):
-        loss = self.optimizer.get_scaled_loss(loss)
-
-    trainable_variables = self.trainable_variables
-    gradients = tape.gradient(loss, trainable_variables)
-    if isinstance(self.optimizer, lso.LossScaleOptimizer):
-      gradients = self.optimizer.get_unscaled_gradients(gradients)
-    gradients = self.optimizer._clip_gradients(gradients)  # pylint: disable=protected-access
-    if trainable_variables:
-      self.optimizer.apply_gradients(zip(gradients, trainable_variables))
+    # For custom training steps, users can just write:
+    #   trainable_variables = self.trainable_variables
+    #   gradients = tape.gradient(loss, trainable_variables)
+    #   self.optimizer.apply_gradients(zip(gradients, trainable_variables))
+    # The _minimize call does a few extra steps unnecessary in most cases,
+    # such as loss scaling and gradient clipping.
+    _minimize(tape, self.optimizer, loss, self.trainable_variables)
 
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
     return {m.name: m.result() for m in self.metrics}
@@ -545,7 +542,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             of either `(inputs, targets)` or
             `(inputs, targets, sample_weights)`.
           - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
-            or `(inputs, targets, sample weights)`.
+            or `(inputs, targets, sample_weights)`.
           A more detailed description of unpacking behavior for iterator types
           (Dataset, generator, Sequence) is given below.
         y: Target data. Like the input data `x`,
@@ -1012,7 +1009,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               callbacks.on_test_batch_end(step, logs)
       callbacks.on_test_end()
 
-      logs = to_numpy(logs)
+      logs = tf_utils.to_numpy_or_python_type(logs)
       if return_dict:
         return logs
       else:
@@ -1202,7 +1199,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             callbacks.on_predict_batch_end(step, {'outputs': batch_outputs})
       callbacks.on_predict_end()
     all_outputs = nest.map_structure_up_to(batch_outputs, concat, outputs)
-    return to_numpy(all_outputs)
+    return tf_utils.to_numpy_or_python_type(all_outputs)
 
   def reset_metrics(self):
     """Resets the state of metrics."""
@@ -1268,7 +1265,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     if reset_metrics:
       self.reset_metrics()
-    logs = to_numpy(logs)
+    logs = tf_utils.to_numpy_or_python_type(logs)
     if return_dict:
       return logs
     else:
@@ -1326,7 +1323,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     if reset_metrics:
       self.reset_metrics()
-    logs = to_numpy(logs)
+    logs = tf_utils.to_numpy_or_python_type(logs)
     if return_dict:
       return logs
     else:
@@ -1355,7 +1352,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x)
       predict_function = self.make_predict_function()
       outputs = predict_function(iterator)
-    return to_numpy(outputs)
+    return tf_utils.to_numpy_or_python_type(outputs)
 
   @deprecation.deprecated(
       None, 'Please use Model.fit, which supports generators.')
@@ -1659,17 +1656,6 @@ def concat(tensors, axis=0):
   return array_ops.concat(tensors, axis=axis)
 
 
-def to_numpy(tensors):
-  """Converts a structure of `Tensor`s to `NumPy` arrays."""
-
-  def _to_single_numpy(t):
-    if isinstance(t, ops.Tensor):
-      return t.numpy()
-    return t  # Don't turn ragged or sparse tensors to NumPy.
-
-  return nest.map_structure(_to_single_numpy, tensors)
-
-
 def _is_tpu_multi_host(strategy):
   return (dist_utils.is_tpu_strategy(strategy) and
           strategy.extended.num_hosts > 1)
@@ -1688,3 +1674,47 @@ def _tpu_multi_host_concat(v, strategy):
   for replica_id in range(num_replicas_per_host):
     ordered_replicas += replicas[replica_id::num_replicas_per_host]
   return concat(ordered_replicas)
+
+
+def _minimize(tape, optimizer, loss, trainable_variables):
+  """Minimizes loss for one step by updating `trainable_variables`.
+
+  This is roughly equivalent to
+
+  ```python
+  gradients = tape.gradient(loss, trainable_variables)
+  self.optimizer.apply_gradients(zip(gradients, trainable_variables))
+  ```
+
+  However, this function also applies gradient clipping and loss scaling if the
+  optimizer is a LossScaleOptimizer.
+
+  Args:
+    tape: A gradient tape. The loss must have been computed under this tape.
+    optimizer: The optimizer used to minimize the loss.
+    loss: The loss tensor.
+    trainable_variables: The variables that will be updated in order to minimize
+      the loss.
+  """
+
+  with tape:
+    if isinstance(optimizer, lso.LossScaleOptimizer):
+      loss = optimizer.get_scaled_loss(loss)
+
+  gradients = tape.gradient(loss, trainable_variables)
+
+  if optimizer._HAS_ALL_REDUCE_SUM_GRAD:  # pylint: disable=protected-access
+    # We aggregate gradients before unscaling them, in case a subclass of
+    # LossScaleOptimizer all-reduces in fp16. All-reducing in fp16 can only be
+    # done on scaled gradients, not unscaled gradients, for numeric stability.
+    gradients = optimizer._aggregate_gradients(zip(gradients,  # pylint: disable=protected-access
+                                                   trainable_variables))
+  if isinstance(optimizer, lso.LossScaleOptimizer):
+    gradients = optimizer.get_unscaled_gradients(gradients)
+  gradients = optimizer._clip_gradients(gradients)  # pylint: disable=protected-access
+  if trainable_variables:
+    if optimizer._HAS_ALL_REDUCE_SUM_GRAD:  # pylint: disable=protected-access
+      optimizer.apply_gradients(zip(gradients, trainable_variables),
+                                all_reduce_sum_gradients=False)
+    else:
+      optimizer.apply_gradients(zip(gradients, trainable_variables))

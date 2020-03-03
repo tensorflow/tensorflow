@@ -107,13 +107,20 @@ tf_cuda_library(
         ":eager_executor",
         ":kernel_and_device",
         ":tensor_handle",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:platform_port",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
-    ],
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:platform_port",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:core_cpu_lib",
+        ],
+    }),
 )
 
 tf_cuda_library(
@@ -133,6 +140,7 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "@com_google_absl//absl/types:variant",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
             "//tensorflow/core/profiler/lib:traceme",

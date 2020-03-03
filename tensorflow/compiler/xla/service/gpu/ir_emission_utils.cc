@@ -520,7 +520,7 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
           EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
       b->CreateICmpEQ(
           b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)));
+          EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b)));
 }
 
 bool AreFusedReductionOutputsConsistent(

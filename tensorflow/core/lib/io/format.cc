@@ -80,7 +80,7 @@ Status Footer::DecodeFrom(StringPiece* input) {
 Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
                  BlockContents* result) {
   result->data = StringPiece();
-  result->cachable = false;
+  result->cacheable = false;
   result->heap_allocated = false;
 
   // Read the block contents as well as the type/crc footer.
@@ -126,11 +126,11 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
         delete[] buf;
         result->data = StringPiece(data, n);
         result->heap_allocated = false;
-        result->cachable = false;  // Do not double-cache
+        result->cacheable = false;  // Do not double-cache
       } else {
         result->data = StringPiece(buf, n);
         result->heap_allocated = true;
-        result->cachable = true;
+        result->cacheable = true;
       }
 
       // Ok
@@ -150,7 +150,7 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
       delete[] buf;
       result->data = StringPiece(ubuf, ulength);
       result->heap_allocated = true;
-      result->cachable = true;
+      result->cacheable = true;
       break;
     }
     default:

@@ -198,6 +198,7 @@ cc_library(
         "ir/tf_verifiers.h",
         "transforms/bridge.h",
         "transforms/passes.h",
+        "transforms/unroll_batch_matmul.h",
         "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.h",
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
@@ -297,6 +298,7 @@ cc_library(
         "transforms/shape_inference.cc",
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
+        "transforms/stack_ops_decomposition.cc",
         "transforms/test_side_effect_analysis.cc",
         "transforms/tf_device_assignment.cc",
         "transforms/tpu_cluster_formation.cc",
@@ -304,7 +306,9 @@ cc_library(
         "transforms/tpu_dynamic_padding_mapper.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",
+        "transforms/tpu_sharding_identification_pass.cc",
         "transforms/tpu_variable_runtime_reformatting.cc",
+        "transforms/unroll_batch_matmul.cc",
         "translate/breakup-islands.cc",
         "translate/control_to_executor_dialect.cc",
         "translate/executor_to_control_dialect.cc",
@@ -314,6 +318,7 @@ cc_library(
         "transforms/bridge.h",
         "transforms/passes.h",
         "transforms/shape_inference.h",
+        "transforms/unroll_batch_matmul.h",
     ],
     includes = ["include"],
     deps = [
@@ -335,6 +340,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -342,12 +348,14 @@ cc_library(
         "//tensorflow/core/platform:random",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -396,6 +404,7 @@ cc_library(
     deps = [
         ":convert_tensor",
         ":convert_type",
+        ":error_util",
         ":export_tf_dialect_op",
         ":export_utils",
         ":mangling_util",
@@ -963,6 +972,18 @@ tf_cc_test(
 cc_library(
     name = "mlir_passthrough_op",
     srcs = ["ops/mlir_passthrough_op.cc"],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "mlir_local_var_op",
+    srcs = ["ops/mlir_local_var_op.cc"],
     visibility = [
         "//visibility:public",
     ],

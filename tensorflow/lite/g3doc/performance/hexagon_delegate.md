@@ -77,8 +77,7 @@ dependencies {
 
 Note: You will need to accept the license agreement.
 
-Note: As of 27 Feb, 2020 you should use v1.10.3, v1.14 will be used in a future
-date.
+Note: As of 03/03/2020 you should use v1.14.
 
 Note: You must use the hexagon_nn libraries with the compatible version of
 interface library. Interface library is part of the AAR and fetched by bazel
@@ -183,8 +182,7 @@ dependencies {
 
 Note: You will need to accept the license agreement.
 
-Note: As of 27 Feb, 2020 you should use v1.10.3, v1.14 will be used in a future
-date.
+Note: As of 03/03/2020 you should use v1.14.
 
 Note: You must use the hexagon_nn libraries with the compatible version of
 interface library. Interface library is part of the AAR and fetched by bazel

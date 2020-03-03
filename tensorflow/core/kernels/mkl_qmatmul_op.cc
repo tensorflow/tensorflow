@@ -62,7 +62,7 @@ limitations under the License.
 // where, 1 denotes a row vector matching the outermost dim of Wf32.
 //
 // The QuantizedMatMulWithBias op calculates 32bit integer output as below:
-//  - with SCALE activation quantizaiton:
+//  - with SCALE activation quantization:
 //    Xs32 = Au8 * Ws8 + 1' * Bs32
 //         = Qa * Qw * Af32 * Wf32  + Qa * Qw * 1' * Bf32
 //         = Qa * Qw * (Af32 * Wf32 + 1' * Bf32) = Qa * Qw * Xf32,

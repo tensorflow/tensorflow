@@ -528,12 +528,22 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def from_tensors(tensors):
     """Creates a `Dataset` with a single element, comprising the given tensors.
 
+    `from_tensors` produces a dataset containing only a single element. To slice
+    the input tensor into multiple elements, use `from_tensor_slices` instead.
+
     >>> dataset = tf.data.Dataset.from_tensors([1, 2, 3])
     >>> list(dataset.as_numpy_iterator())
     [array([1, 2, 3], dtype=int32)]
     >>> dataset = tf.data.Dataset.from_tensors(([1, 2, 3], 'A'))
     >>> list(dataset.as_numpy_iterator())
     [(array([1, 2, 3], dtype=int32), b'A')]
+
+    >>> # You can use `from_tensors` to produce a dataset which repeats
+    >>> # the same example many times.
+    >>> example = tf.constant([1,2,3])
+    >>> dataset = tf.data.Dataset.from_tensors(example).repeat(2)
+    >>> list(dataset.as_numpy_iterator())
+    [array([1, 2, 3], dtype=int32), array([1, 2, 3], dtype=int32)]
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
@@ -688,7 +698,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> list(dataset.take(3).as_numpy_iterator())
     [(1, array([1])), (2, array([1, 1])), (3, array([1, 1, 1]))]
 
-    NOTE: The current implementation of `Dataset.from_generator()` uses
+    Note: The current implementation of `Dataset.from_generator()` uses
     `tf.numpy_function` and inherits the same constraints. In particular, it
     requires the `Dataset`- and `Iterator`-related operations to be placed
     on a device in the same process as the Python program that called
@@ -696,7 +706,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     serialized in a `GraphDef`, and you should not use this method if you
     need to serialize your model and restore it in a different environment.
 
-    NOTE: If `generator` depends on mutable global variables or other external
+    Note: If `generator` depends on mutable global variables or other external
     state, be aware that the runtime may invoke `generator` multiple times
     (in order to support repeating the `Dataset`) and at any time
     between the call to `Dataset.from_generator()` and the production of the
@@ -1014,17 +1024,20 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     filename with `list_files` may result in poor performance with remote
     storage systems.
 
-    NOTE: The default behavior of this method is to return filenames in
+    Note: The default behavior of this method is to return filenames in
     a non-deterministic random shuffled order. Pass a `seed` or `shuffle=False`
     to get results in a deterministic order.
 
     Example:
       If we had the following files on our filesystem:
+      
         - /path/to/dir/a.txt
         - /path/to/dir/b.py
         - /path/to/dir/c.py
+      
       If we pass "/path/to/dir/*.py" as the directory, the dataset
       would produce:
+      
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 
@@ -1078,7 +1091,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> list(dataset.as_numpy_iterator())
     [1, 2, 3, 1, 2, 3, 1, 2, 3]
 
-    NOTE: If this dataset is a function of global state (e.g. a random number
+    Note: If this dataset is a function of global state (e.g. a random number
     generator), then different repetitions may produce different elements.
 
     Args:
@@ -1332,6 +1345,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Raises:
       InvalidArgumentError: if `num_shards` or `index` are illegal values.
+      
         Note: error checking is done on a best-effort basis, and errors aren't
         guaranteed to be caught upon dataset creation. (e.g. providing in a
         placeholder tensor bypasses the early checking, and will instead result
@@ -1689,7 +1703,7 @@ name=None))
      5, 5, 5, 5,
      5, 5]
 
-    NOTE: The order of elements yielded by this transformation is
+    Note: The order of elements yielded by this transformation is
     deterministic, as long as `map_func` is a pure function and
     `deterministic=True`. If `map_func` contains any stateful operations, the
     order in which that state is accessed is undefined.
@@ -2353,7 +2367,7 @@ class DatasetV1(DatasetV2):
                                deterministic=None):
     """Maps `map_func` across the elements of this dataset.
 
-    NOTE: This is an escape hatch for existing uses of `map` that do not work
+    Note: This is an escape hatch for existing uses of `map` that do not work
     with V2 functions. New uses are strongly discouraged and existing uses
     should migrate to `map` as this method will be removed in V2.
 
@@ -2416,7 +2430,7 @@ class DatasetV1(DatasetV2):
   def filter_with_legacy_function(self, predicate):
     """Filters this dataset according to `predicate`.
 
-    NOTE: This is an escape hatch for existing uses of `filter` that do not work
+    Note: This is an escape hatch for existing uses of `filter` that do not work
     with V2 functions. New uses are strongly discouraged and existing uses
     should migrate to `filter` as this method will be removed in V2.
 
@@ -4493,18 +4507,12 @@ def _collect_resource_inputs(op):
     if op in seen_ops:
       return reads, writes
     seen_ops.add(op)
-    for t in op.inputs:
-      if t.dtype == dtypes.variant:
-        # Conservatively assume that any variant inputs are datasets.
-        op_queue.append(t.op)
-      elif t.dtype == dtypes.resource:
-        # TODO(b/150139257): This always returns True right now since we have
-        # not updated the functional ops to set the special attribute that ACD
-        # uses to figure out which of the op's inputs are read-only.
-        if acd_utils.op_writes_to_resource(t, op):
-          writes.append(t)
-        else:
-          reads.append(t)
+    # TODO(b/150139257): All resource inputs are in writes right now since we
+    # have not updated the functional ops to set the special attribute that ACD
+    # uses to figure out which of the op's inputs are read-only.
+    reads, writes = acd_utils.get_read_write_resource_inputs(op)
+    # Conservatively assume that any variant inputs are datasets.
+    op_queue.extend(t.op for t in op.inputs if t.dtype == dtypes.variant)
     return reads, writes
 
   op_queue = [op]

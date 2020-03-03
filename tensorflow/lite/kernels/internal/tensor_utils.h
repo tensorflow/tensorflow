@@ -562,15 +562,6 @@ void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
 void ClipVector(const float* vector, int v_size, float abs_limit,
                 float* result);
 
-// Shift left a vector in place with v_size size.
-template <typename T>
-void VectorShiftLeft(T* vector, int v_size, const T& shift_value) {
-  // When copying overlapping ranges, std::copy is appropriate when beginning of
-  // the destination range is outside the source range.
-  std::copy(vector + 1, vector + v_size, vector);
-  vector[v_size - 1] = shift_value;
-}
-
 // Reduce-sum on a float input vector:
 // input_vector: float pointer to input vector.
 // output_vector: float pointer to vector.

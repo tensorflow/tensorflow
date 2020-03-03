@@ -717,7 +717,10 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
 
 uint64 HloModule::Hash() const {
   uint64 result = entry_computation_layout().Hash();
-  for (auto* computation : MakeComputationPostOrder()) {
+  // Use MakeComputationSortedByContent() instead of MakeComputationPostOrder()
+  // because naming may affect the order of MakeComputationPostOrder() but not
+  // MakeComputationSortedByContent().
+  for (auto* computation : MakeComputationSortedByContent()) {
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
       result = tensorflow::Hash64Combine(result, instruction->Hash());
     }

@@ -221,7 +221,7 @@ class UntypedStreamingRPCState : public core::RefCounted {
     enum class TagType {
       kCallStarted,
       kRequestWriteCompleted,
-      kResponseReadCommpleted,
+      kResponseReadCompleted,
       kCallFinished,
     };
 
@@ -337,7 +337,7 @@ class ExchangeQueue {
 
   // Changes the state of the exchange that is current in kRequestWriteIssued
   // state to kRequestWriteCompleted state.
-  // REQUIRES: There is an exhange in kRequestWriteIssued state.
+  // REQUIRES: There is an exchange in kRequestWriteIssued state.
   void MarkRequestWriteCompleted();
 
   // Returns the exchange at the front of the queue.
@@ -536,7 +536,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
   void MarkDoneAndCompleteExchanges(Status status) EXCLUSIVE_LOCKS_REQUIRED(mu_)
       UNLOCK_FUNCTION(mu_) {
     call_state_ = State::kDone;
-    VLOG(2) << "Ending gRPC stremaing call on the client side due to "
+    VLOG(2) << "Ending gRPC streaming call on the client side due to "
             << status.ToString();
     // Swap the exchanges_ into a temporary ExchangeQueue so that we can
     // complete all exchanges without holding mu_ in case user callback
@@ -604,7 +604,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
   // Tags are immutable. No need to guard them.
   Tag call_started_tag_{this, Tag::TagType::kCallStarted};
   Tag request_write_completed_tag_{this, Tag::TagType::kRequestWriteCompleted};
-  Tag response_read_completed_tag_{this, Tag::TagType::kResponseReadCommpleted};
+  Tag response_read_completed_tag_{this, Tag::TagType::kResponseReadCompleted};
   Tag finished_tag_{this, Tag::TagType::kCallFinished};
 };
 

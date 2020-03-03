@@ -2156,9 +2156,9 @@ void IrEmitterUnnested::EmitPrologueForReduction(
         reduce_inst->shape().element_type(), module_);
     llvm::Type* buffer_type = [&] {
       if (reduction_info->IsRowReduction()) {
-        // Allocate __shared__ cache[num_partial_results][num_threads].
+        // Allocate __shared__ cache[num_partial_results][kWarpSize].
         return llvm::ArrayType::get(
-            llvm::ArrayType::get(primitive_type, num_threads_x),
+            llvm::ArrayType::get(primitive_type, kWarpSize),
             num_partial_results);
       } else {
         // Allocate __shared__

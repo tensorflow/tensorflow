@@ -81,6 +81,9 @@ table QuantizationParameters {
 }
 
 // Sparse tensors.
+// We use a modification of the TACO format.
+// Reference: http://tensor-compiler.org/kjolstad-oopsla17-tensor-compiler.pdf
+//
 // To encode a conceptual n-dimensional dense tensor with dims (d0, ..., dn-1),
 // potentially with a k-dimensional block (0 <= k <= n) with dims
 // (dn, ..., dn+k-1), the format needs to specify:

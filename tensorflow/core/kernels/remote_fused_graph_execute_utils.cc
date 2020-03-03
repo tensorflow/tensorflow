@@ -510,7 +510,7 @@ RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
         tensor_shape_map->emplace(node_name,
                                   std::make_pair(j, std::make_pair(dt, ts)));
       } else {
-        return errors::InvalidArgument("Graph contains unknow shapes");
+        return errors::InvalidArgument("Graph contains unknown shapes");
       }
     }
   }
