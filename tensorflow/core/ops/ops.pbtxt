@@ -18412,6 +18412,18 @@ op {
   }
 }
 op {
+  name: "InitializeTableFromDataset"
+  input_arg {
+    name: "table_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
   name: "InitializeTableFromTextFile"
   input_arg {
     name: "table_handle"
