@@ -45,8 +45,15 @@ function copy_xla_aot_runtime_sources() {
   local src_dir=$1
   local dst_dir=$2
 
+  local srcs_txt="tensorflow/tools/pip_package/xla_compiled_cpu_runtime_srcs.txt"
+
+  if [ ! -f "${src_dir}/${srcs_txt}" ]; then
+    echo Could not find source list file "${src_dir}/${srcs_txt}". 1>&2
+    return 0
+  fi
+
   pushd $src_dir
-  for file in $(cat tensorflow/tools/pip_package/xla_compiled_cpu_runtime_srcs.txt)
+  for file in $(cat "${srcs_txt}")
   do
     # Sometimes $file has a prefix bazel-out/host/ we want to remove.
     prefix=${file%%tensorflow/*}  # Find the location of "tensorflow/*"
@@ -134,7 +141,7 @@ function prepare_src() {
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
       "${EXTERNAL_INCLUDES}/"
     copy_xla_aot_runtime_sources \
-      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
+      bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow \
       "${XLA_AOT_RUNTIME_SOURCES}/"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
   else
