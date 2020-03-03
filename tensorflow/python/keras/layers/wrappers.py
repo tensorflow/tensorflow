@@ -362,9 +362,9 @@ class Bidirectional(Wrapper):
     The call arguments for this layer are the same as those of the wrapped RNN
       layer.
     Beware that when passing the `initial_state` argument during the call of this
-    layer, the first N elements in the `initial_state` list will be passed to the
-    forward RNN call and the last N elements will be passed to the backward RNN
-    call.
+    layer, the first half in the list of elements in the `initial_state` list will
+    be passed to the forward RNN call and the last half in the list of elements
+    will be passed to the backward RNN call.
 
   Raises:
     ValueError:
