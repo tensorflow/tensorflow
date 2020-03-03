@@ -24,10 +24,11 @@ limitations under the License.
 
 namespace mlir {
 namespace xla {
-
 namespace detail {
+
 /// A specialized dominator analysis that provided access to some private
 /// methods.
+///
 /// TODO(dfki): merge this functionality into the underlying MLIR core dominator
 /// analysis.
 template <bool IsPostDom>
@@ -72,7 +73,6 @@ class BufferAssignmentAliasAnalysis {
   /// Initializes the internal mappings.
   void build(MutableArrayRef<Region> regions);
 
- private:
   /// Maps values to all immediate aliases this value can have.
   llvm::DenseMap<Value, ValueSetT> aliases;
 };
@@ -135,17 +135,17 @@ struct BufferAssignmentPositions {
 ///   positions.insertAlloc<AllocOp>(...);
 ///   positions.insertDealloc<DeallocOp>(...);
 /// 1) Note that the function signatures and all types for which buffers should
-/// be allocated need to be converted in advance. 2) Note that it could happen
-/// that it is required to place a delloc after a ReturnOp. If this is required,
-/// you have to lower the ReturnOp into a "void return" and move it to the end
-/// of the block. 3) Note that the current implementation does not support
-/// loops.
+/// be allocated need to be converted in advance.
+/// 2) Note that it could happen that it is required to place a delloc after a
+/// ReturnOp. If this is required, you have to lower the ReturnOp into a "void
+/// return" and move it to the end of the block.
+/// 3) Note that the current implementation does not support loops.
 class BufferAssignment {
  public:
   /// Creates a new BufferAssignment analysis that computes liveness of values
   /// (including their aliases) accross block boundaries to place allocs and
   /// deallocs.
-  BufferAssignment(Operation* op);
+  explicit BufferAssignment(Operation* op);
 
   /// Returns the operation this analysis was constructed from.
   Operation* getOperation() const { return operation; }

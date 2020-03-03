@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,29 +21,32 @@ limitations under the License.
 // branches (and their associated block arguments) in general. For this purpose,
 // BufferAssignment firstly finds all possible aliases for a single value (using
 // the BufferAssignmentAliasAnalysis class). Consider the following example:
+//
 // ^bb0(%arg0):
 //   cond_br %cond, ^bb1, ^bb2
 // ^bb1:
 //   br ^exit(%arg0)
 // ^bb2:
-//   x = ...
+//   %new_value = ...
 //   br ^exit(x)
 // ^exit(%arg1):
 //   return %arg1;
+//
 // Using liveness information on its own would cause us to place the allocs and
-// deallocs in the wrong block. This is due to the fact that x will not be
-// liveOut of its block. Instead, we have to place the alloc for x in bb0 and
-// its associated dealloc in exit. Using the class
-// BufferAssignmentAliasAnalysis, we will find out that x has a poential alias
-// %arg1. In order to find the dealloc position we have to find all potential
-// aliases, iterate over their uses and find the common post-dominator block. In
-// this block we can safely be sure that x will die and can use liveness
-// information to determine the exact operation after which we have to insert
-// the dealloc. Finding the alloc position is highly similar and non obvious.
-// Again, we have to consider all potential aliases and find the common
-// dominator block to place the alloc.
+// deallocs in the wrong block. This is due to the fact that %new_value will not
+// be liveOut of its block. Instead, we have to place the alloc for %new_value
+// in bb0 and its associated dealloc in exit. Using the class
+// BufferAssignmentAliasAnalysis, we will find out that %new_value has a
+// potential alias %arg1. In order to find the dealloc position we have to find
+// all potential aliases, iterate over their uses and find the common
+// post-dominator block. In this block we can safely be sure that %new_value
+// will die and can use liveness information to determine the exact operation
+// after which we have to insert the dealloc. Finding the alloc position is
+// highly similar and non- obvious. Again, we have to consider all potential
+// aliases and find the common dominator block to place the alloc.
+//
 // TODO(dfki):
-// Note: the current implementation does not support loops. The only thing that
+// The current implementation does not support loops. The only thing that
 // is currently missing is a high-level loop analysis that allows us to move
 // allocs and deallocs outside of the loop blocks.
 
@@ -79,7 +82,9 @@ BufferAssignmentAliasAnalysis::ValueSetT BufferAssignmentAliasAnalysis::resolve(
 /// all newly found potential aliases in the given result set.
 void BufferAssignmentAliasAnalysis::resolveRecursive(Value value,
                                                      ValueSetT& result) const {
-  if (!result.insert(value).second) return;
+  if (!result.insert(value).second) {
+    return;
+  }
   auto it = aliases.find(value);
   if (it == aliases.end()) return;
   for (auto alias : it->second) {
@@ -92,29 +97,28 @@ void BufferAssignmentAliasAnalysis::resolveRecursive(Value value,
 /// that will be passed to the corresponding block arguments and inserts them
 /// into map.
 void BufferAssignmentAliasAnalysis::build(MutableArrayRef<Region> regions) {
-  for (Region& region : regions)
+  for (Region& region : regions) {
     for (Block& block : region) {
       // Iterate over all predecessor and get the mapped values to their
       // corresponding block arguments values.
       for (auto pred : block.getPredecessors()) {
         // Determine the current successor index of the current predecessor.
-        unsigned successorIndex = 0;
-        for (auto successor : llvm::enumerate(pred->getSuccessors())) {
-          if (successor.value() == &block) {
-            successorIndex = successor.index();
-            break;
-          }
-        }
+        unsigned successorIndex = std::distance(
+            pred->getSuccessors().begin(),
+            llvm::find_if(pred->getSuccessors(), [&](Block* successor) {
+              return successor == &block;
+            }));
         // Get the terminator and the values that will be passed to our block.
-        auto terminator = pred->getTerminator();
-        auto successorOps = terminator->getSuccessorOperands(successorIndex);
+        auto successorOps =
+            pred->getTerminator()->getSuccessorOperands(successorIndex);
         // Build the actual mapping of values to their immediate aliases.
         for (auto arg : block.getArguments()) {
-          auto value = successorOps[arg.getArgNumber()];
-          aliases[value].insert(arg);
+          Value predecessorArgValue = successorOps[arg.getArgNumber()];
+          aliases[predecessorArgValue].insert(arg);
         }
       }
     }
+  }
 }
 }  // namespace detail
 
@@ -175,8 +179,9 @@ static Operation* getAllocPosition(Value value, const Liveness& liveness,
     // whether it is before the current startOperation. If yes, this will be the
     // new startOperation.
     if (aliasStartOperation->getBlock() == placementBlock &&
-        aliasStartOperation->isBeforeInBlock(startOperation))
+        aliasStartOperation->isBeforeInBlock(startOperation)) {
       startOperation = aliasStartOperation;
+    }
   }
   // startOperation is the first operation before which we can safely store the
   // alloc taking all potential aliases into account.
@@ -206,8 +211,9 @@ static Operation* getDeallocPosition(Value value, const Liveness& liveness,
     // it is behind the current endOperation. If yes, this will be the new
     // endOperation.
     if (aliasEndOperation->getBlock() == placementBlock &&
-        endOperation->isBeforeInBlock(aliasEndOperation))
+        endOperation->isBeforeInBlock(aliasEndOperation)) {
       endOperation = aliasEndOperation;
+    }
   }
   // endOperation is the last operation behind which we can safely store the
   // dealloc taking all potential aliases into account.
@@ -227,9 +233,10 @@ BufferAssignment::BufferAssignment(Operation* op)
 BufferAssignmentPositions BufferAssignment::computeAllocAndDeallocPositions(
     Value value) const {
   // Check for an artifical case that a dead value is passed to this function
-  if (value.use_empty())
+  if (value.use_empty()) {
     return BufferAssignmentPositions(value.getDefiningOp(),
                                      value.getDefiningOp());
+  }
   // Get all possible aliases
   auto possibleValues = aliases.resolve(value);
   return BufferAssignmentPositions(
