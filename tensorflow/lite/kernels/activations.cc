@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/log_softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h"
 #include "tensorflow/lite/kernels/internal/reference/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -163,6 +162,7 @@ void EvalUsingLookupTable(struct OpData* data, const TfLiteTensor* input,
   const uint8_t* input_data = GetTensorData<uint8_t>(input);
   int i = 0;
 #if __aarch64__ && __clang__
+  // This code uses ARM64-only instructions.
   // TODO(b/143709993): Port to ARMv7
 
   // Load the tables into registers. (4*4 128-bit registers)
