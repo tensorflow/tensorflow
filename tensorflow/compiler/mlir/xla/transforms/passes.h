@@ -59,11 +59,6 @@ std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeToLhloPass();
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass();
 
-// Removes unnecessary LHLO copies which copy from the allocated buffers to the
-// block arguments. These copies have been created by replacing TensorStoreOp
-// with LHLO.CopyOp in HLO to LHLO lowering.
-std::unique_ptr<OpPassBase<FuncOp>> createLhloCopyRemovalPass();
-
 }  // namespace xla_hlo
 
 namespace xla_lhlo {
@@ -88,6 +83,12 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToGpuPass();
 // default.
 std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg(
     bool use_parallel_loops = false, ArrayRef<unsigned> tile_sizes = {});
+
+// Removes unnecessary LHLO copies which copy from the allocated buffers to the
+// block arguments. The block arguments are used instead of all uses of these
+// buffers. The buffers are freed. This pass only works in regions that contain
+// a single block.
+std::unique_ptr<Pass> createLhloCopyRemovalPass();
 
 }  // namespace xla_lhlo
 }  // namespace mlir

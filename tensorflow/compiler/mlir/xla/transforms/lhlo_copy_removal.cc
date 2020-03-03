@@ -16,27 +16,30 @@ limitations under the License.
 // This file implements a pass to remove redundant LHLO copy operations.
 
 #include "absl/memory/memory.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Operation.h"             // TF:llvm-project
 #include "mlir/Pass/Pass.h"                // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 namespace mlir {
-namespace xla_hlo {
+namespace xla_lhlo {
 namespace {
 
-/// Removes Lhlo.CopyOp that copies from an allocated buffer to the block
-/// argument. All uses of the buffer are replaced with the block argument.
-struct LhloCopyRemoval : mlir::FunctionPass<LhloCopyRemoval> {
-  void runOnFunction() override {
+// Removes LHLO copy operations that copy from allocated buffers to block
+// arguments. All uses of each buffer are replaced with the corresponding block
+// argument and the buffer is freed. Note that this pass only works in regions
+// with a single block.
+struct LhloCopyRemoval : mlir::OperationPass<LhloCopyRemoval> {
+  void runOnOperation() override {
     llvm::SmallVector<mlir::Operation*, 2> eraseList;
-    auto function = getFunction();
-    // This pass only supports single block functions.
-    if (function.getBody().getBlocks().size() > 1) {
-      return;
-    }
-    function.walk([&](mlir::xla_lhlo::CopyOp copyOp) {
+    auto operation = getOperation();  
+    operation->walk([&](mlir::xla_lhlo::CopyOp copyOp) {
+      // If this region contains more than one block, then ignore this copy operation.
+      if (copyOp.getParentRegion()->getBlocks().size() > 1) {
+        return;
+      }
+
       mlir::Value fromOperand = copyOp.operand();
       mlir::Value toOperand = copyOp.output();
 
@@ -88,13 +91,14 @@ struct LhloCopyRemoval : mlir::FunctionPass<LhloCopyRemoval> {
   };
 };
 
-std::unique_ptr<OpPassBase<FuncOp>> createLhloCopyRemovalPass() {
+}  // namespace
+
+std::unique_ptr<Pass> createLhloCopyRemovalPass() {
   return absl::make_unique<LhloCopyRemoval>();
 }
 
 static PassRegistration<LhloCopyRemoval> copy_removal_pass(
     "lhlo-copy-removal", "Removes redundant LHLO copy operations");
 
-}  // namespace
-}  // namespace xla_hlo
+}  // namespace xla_lhlo
 }  // namespace mlir
