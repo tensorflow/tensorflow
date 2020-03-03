@@ -530,8 +530,7 @@ Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
     }
 
     TensorHandle* tensor_handle = nullptr;
-    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
-        std::move(tensor), nullptr, nullptr, eager_context, &tensor_handle));
+    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(tensor, &tensor_handle));
     TensorHandle* copied_handle = nullptr;
     Device* device;
     TF_RETURN_IF_ERROR(eager_context->FindDeviceFromName(
