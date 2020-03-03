@@ -91,7 +91,11 @@ MICRO_LITE_EXAMPLE_TESTS := $(wildcard tensorflow/lite/micro/examples/*/Makefile
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/micro/*test.cc) \
 $(wildcard tensorflow/lite/micro/kernels/*test.cc) \
-$(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
+$(wildcard tensorflow/lite/micro/memory_planner/*test.cc) \
+$(wildcard tensorflow/lite/micro/testing/*.cc)
+
+MICROLITE_BENCHMARK_SRCS := \
+$(wildcard tensorflow/lite/micro/kernels/xtensa-hifimini/*benchmark.cc)
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
@@ -109,6 +113,7 @@ tensorflow/lite/kernels/internal/quantization_util.cc \
 tensorflow/lite/kernels/kernel_util.cc
 
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
+MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_BENCHMARK_SRCS), $(MICROLITE_CC_SRCS))
 
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/micro/*.h) \
