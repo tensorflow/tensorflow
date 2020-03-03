@@ -1388,7 +1388,7 @@ def resize_images_v2(images,
   The `method` argument expects an item from the `image.ResizeMethod` enum, or
   the string equivalent. The options are:
 
-  *   <b>`'bilinear'`</b>: [Bilinear interpolation.](
+  *   <b>`bilinear`</b>: [Bilinear interpolation.](
     https://en.wikipedia.org/wiki/Bilinear_interpolation) If `antialias` is
     true, becomes a hat/tent filter function with radius 1 when downsampling.
   *   <b>`lanczos3`</b>:  [Lanczos kernel](
