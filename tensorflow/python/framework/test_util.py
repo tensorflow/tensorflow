@@ -2474,6 +2474,13 @@ class TensorFlowTestCase(googletest.TestCase):
     `a` and `b` can be arbitrarily nested structures. A layer of a nested
     structure can be a `dict`, `namedtuple`, `tuple` or `list`.
 
+    Note: the implementation follows
+    [`numpy.allclose`](https://docs.scipy.org/doc/numpy/reference/generated/numpy.allclose.html)
+    (and numpy.testing.assert_allclose). It checks whether two arrays are
+    element-wise equal within a tolerance. The relative difference
+    (`rtol * abs(b)`) and the absolute difference `atol` are added together
+    to compare against the absolute difference between `a` and `b`.
+
     Args:
       a: The expected numpy `ndarray`, or anything that can be converted into a
         numpy `ndarray` (including Tensor), or any arbitrarily nested of
