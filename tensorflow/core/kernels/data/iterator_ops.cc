@@ -835,6 +835,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
     });
     opts.step_container = &step_container;
     opts.runner = ctx->runner();
+    opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
     Notification n;
     Status factory_status;
     std::vector<Tensor> return_values;

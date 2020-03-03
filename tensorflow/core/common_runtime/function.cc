@@ -532,6 +532,7 @@ class CallOp : public AsyncOpKernel {
     opts.step_container = ctx->step_container();
     opts.stats_collector = ctx->stats_collector();
     opts.runner = ctx->runner();
+    opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
     opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
@@ -1021,6 +1022,7 @@ void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
   }
   exec_args->collective_executor = run_opts.collective_executor;
   exec_args->call_frame = frame;
+  exec_args->run_all_kernels_inline = run_opts.run_all_kernels_inline;
 }
 
 void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,

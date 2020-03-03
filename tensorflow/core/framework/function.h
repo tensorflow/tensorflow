@@ -712,6 +712,10 @@ class FunctionLibraryRuntime {
     // If True, allow returning dead tensors.
     bool allow_dead_tensors = false;
 
+    // If True, hint that all kernels should be treated as "inexpensive", and
+    // hence executed on the scheduling thread.
+    bool run_all_kernels_inline = false;
+
     // Returns a human readable representation of this.
     string DebugString() const;
   };

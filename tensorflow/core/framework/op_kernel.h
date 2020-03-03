@@ -732,6 +732,7 @@ class OpKernelContext {
     std::function<void(std::function<void()>)>* runner = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
     GraphCollector* graph_collector = nullptr;
+    bool run_all_kernels_inline = false;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -866,6 +867,12 @@ class OpKernelContext {
 
   // If non-null, kernels should populate with any partition subgraphs created.
   GraphCollector* graph_collector() { return params_->graph_collector; }
+
+  // If True, hint that all kernels in functions called by this kernel, should
+  // be treated as "inexpensive", and hence executed on the scheduling thread.
+  bool run_all_kernels_inline() const {
+    return params_->run_all_kernels_inline;
+  }
 
   // Input to output forwarding.
 
