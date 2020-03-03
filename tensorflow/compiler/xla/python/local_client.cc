@@ -115,13 +115,15 @@ PyLocalClient::PyLocalClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::shared_ptr<Device>> devices, int host_id,
     std::unique_ptr<se::DeviceMemoryAllocator> allocator,
-    std::unique_ptr<tensorflow::Allocator> host_memory_allocator)
+    std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
+    std::unique_ptr<GpuExecutableRunOptions> gpu_run_options)
     : platform_name_(std::move(platform_name)),
       client_(client),
       devices_(std::move(devices)),
       host_id_(host_id),
       owned_allocator_(std::move(allocator)),
       host_memory_allocator_(std::move(host_memory_allocator)),
+      gpu_run_options_(std::move(gpu_run_options)),
       h2d_transfer_pool_(tensorflow::Env::Default(), "py_xla_h2d_transfer",
                          client->device_count()) {
   if (owned_allocator_ != nullptr) {
@@ -658,6 +660,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   options.set_device_assignment(device_assignment_.get());
   options.set_run_id(run_id);
   options.set_rng_seed(device_state->GetNewPrngSeed());
+  options.set_gpu_executable_run_options(client_->gpu_run_options());
 
   // The choice of where we wait is arbitrary; the reason for the wait is pacing
   // to avoid problems such as memory fragmentation and running ahead too far,

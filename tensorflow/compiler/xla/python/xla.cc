@@ -40,6 +40,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/cpu_device.h"
+#include "tensorflow/compiler/xla/python/distributed/client.h"
+#include "tensorflow/compiler/xla/python/distributed/distributed.h"
+#include "tensorflow/compiler/xla/python/distributed/service.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/local_client.h"
 #include "tensorflow/compiler/xla/python/nvidia_gpu_device.h"
@@ -913,7 +916,8 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def("get_cpu_client", &GetCpuClient, py::arg("asynchronous") = true);
   m.def("get_nvidia_gpu_client", &GetNvidiaGpuClient,
         py::arg("asynchronous") = true,
-        py::arg("allocator_config") = GpuAllocatorConfig());
+        py::arg("allocator_config") = GpuAllocatorConfig(),
+        py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
 
   py::class_<PyLocalBuffer> buffer(m, "PyLocalBuffer");
   buffer
@@ -1247,6 +1251,16 @@ PYBIND11_MODULE(xla_extension, m) {
 
   BuildOpsSubmodule(&m);
   BuildProfilerSubmodule(&m);
+
+  py::class_<DistributedRuntimeService,
+             std::unique_ptr<DistributedRuntimeService>>
+      distributed_runtime_service(m, "DistributedRuntimeService");
+  py::class_<DistributedRuntimeClient,
+             std::shared_ptr<DistributedRuntimeClient>>
+      distributed_runtime_client(m, "DistributedRuntimeClient");
+
+  m.def("get_distributed_runtime_service", &GetDistributedRuntimeService);
+  m.def("get_distributed_runtime_client", &GetDistributedRuntimeClient);
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla
