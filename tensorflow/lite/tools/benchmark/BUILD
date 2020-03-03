@@ -148,6 +148,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/ruy/profiler",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/tools/evaluation:utils",

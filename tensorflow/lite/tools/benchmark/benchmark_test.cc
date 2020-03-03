@@ -84,6 +84,8 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
   params.AddParam("max_delegated_partitions", BenchmarkParam::Create<int>(0));
   params.AddParam("profiling_output_csv_file",
                   BenchmarkParam::Create<std::string>(""));
+  params.AddParam("enable_platform_tracing",
+                  BenchmarkParam::Create<bool>(false));
   return params;
 }
 
