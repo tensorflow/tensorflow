@@ -140,6 +140,7 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "@com_google_absl//absl/types:variant",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
             "//tensorflow/core/profiler/lib:traceme",

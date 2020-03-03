@@ -20,39 +20,31 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/strings/substitute.h"
 #include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle_data.h"
 #include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle_data.h"
 #endif  // IS_MOBILE_PLATFORM
-#include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -64,7 +56,7 @@ const int32 kInvalidOutputNum = -1;
 }  // namespace
 
 void TensorHandle::SetResourceHandleDtypeAndShape(
-    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes) {
+    std::vector<DtypeAndPartialTensorShape>&& dtypes_and_shapes) {
   handle_dtypes_and_shapes_ = std::move(dtypes_and_shapes);
 }
 
@@ -86,250 +78,191 @@ Status TensorHandle::GetResourceHandleDtypesAndShapes(
   profiler::TraceMe activity(
       "TensorHandle::GetResourceHandleDtypesAndShapes WaitReady",
       profiler::TraceMeLevel::kInfo);
+  auto& data = absl::get<LocalTensorHandleData>(data_);
   TF_RETURN_IF_ERROR(
-      WaitReady("TensorHandle::GetResourceHandleDtypesAndShapes"));
+      data.WaitReady("TensorHandle::GetResourceHandleDtypesAndShapes"));
 
   *result = handle_dtypes_and_shapes_;
   return Status::OK();
 }
 
-Status TensorHandle::CreateLocalHandle(const class Tensor& t,
+Status TensorHandle::CreateLocalHandle(const tensorflow::Tensor& t,
                                        TensorHandle** h) {
   // TODO(b/136608821): Move away from nullptr
-  return CreateLocalHandle(t, /*d=*/static_cast<Device*>(nullptr),
+  tensorflow::Tensor tensor = t;
+  return CreateLocalHandle(std::move(tensor),
+                           /*d=*/nullptr,
                            /*op_device=*/nullptr,
                            /*ctx=*/nullptr, h);
 }
 
-Status TensorHandle::CreateLocalHandle(const class Tensor& t, Device* d,
-                                       EagerContext* ctx, TensorHandle** h) {
-  return CreateLocalHandle(t, d, d, ctx, h);
-}
-
-Status TensorHandle::CreateLocalHandle(const class Tensor& t, Device* d,
+Status TensorHandle::CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
                                        Device* op_device, EagerContext* ctx,
                                        TensorHandle** h) {
-  if (t.dtype() != DT_RESOURCE) {
-    *h = new TensorHandle(absl::make_unique<LocalTensorHandleData>(t),
-                          t.dtype(), d, op_device, ctx);
+  return CreateLocalHandle(std::move(t), d, op_device, nullptr, ctx, h);
+}
+
+Status TensorHandle::CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
+                                       Device* op_device,
+                                       Device* resource_device,
+                                       EagerContext* ctx, TensorHandle** h) {
+  if (t.dtype() == DT_RESOURCE && t.NumElements() > 0) {
+    *h = new TensorHandle(std::move(t), d, op_device, ctx);
   } else {
-    const ResourceHandle& resource_handle = t.flat<class ResourceHandle>()(0);
-    *h = new TensorHandle(absl::make_unique<LocalTensorHandleData>(t),
-                          resource_handle, d, op_device, ctx);
+    *h = new TensorHandle(std::move(t), d, op_device, resource_device, ctx);
   }
 
   return Status::OK();
 }
 
-Status TensorHandle::CreateLocalHandle(const class Tensor& t, CustomDevice* d,
+Status TensorHandle::CreateLocalHandle(tensorflow::Tensor&& t, CustomDevice* d,
                                        EagerContext* ctx, TensorHandle** h) {
-  *h = new TensorHandle(absl::make_unique<LocalTensorHandleData>(t), t.dtype(),
-                        d, ctx);
+  *h = new TensorHandle(std::move(t), d, ctx);
 
   return Status::OK();
 }
 
-TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
-                           DataType dtype, Device* d, Device* op_device,
-                           EagerContext* ctx)
-    : dtype(dtype),
+TensorHandle::TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
+                           Device* resource_device, EagerContext* ctx)
+    : dtype(t.dtype()),
       device_((!ctx || d == ctx->HostCPU()) ? nullptr : d),
       op_device_(op_device),
-      resource_device_(nullptr),
-#if !defined(IS_MOBILE_PLATFORM)
-      remote_op_id_(kInvalidOpId),
-      remote_output_num_(kInvalidOutputNum),
-#endif
+      resource_device_(resource_device),
       ctx_(ctx),
-      is_remote_(false),
-      is_async_(false),
       implicit_mirroring_(true),
-      is_ready_(true),
-      tensor_handle_data_(std::move(t)) {
+      data_(absl::in_place_type<LocalTensorHandleData>, std::move(t)) {
   DVLOG(3) << "Creating Local TensorHandle: " << this
-           << " device: " << VariantDeviceDebugString(device_);
+           << " device: " << VariantDeviceDebugString(device_)
+           << " tensor: " << t.DeviceSafeDebugString();
 }
 
-TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
-                           const ResourceHandle& resource_handle, Device* d,
-                           Device* op_device, EagerContext* ctx)
+TensorHandle::TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
+                           EagerContext* ctx)
     : dtype(DT_RESOURCE),
       device_((!ctx || d == ctx->HostCPU()) ? nullptr : d),
       op_device_(op_device),
-      resource_device_(GetResourceDevice(resource_handle, ctx)),
-#if !defined(IS_MOBILE_PLATFORM)
-      remote_op_id_(kInvalidOpId),
-      remote_output_num_(kInvalidOutputNum),
-#endif
+      resource_device_(
+          GetResourceDevice(t.flat<class ResourceHandle>()(0), ctx)),
       ctx_(ctx),
-      is_remote_(false),
-      is_async_(false),
       implicit_mirroring_(true),
-      is_ready_(true),
-      handle_dtypes_and_shapes_(resource_handle.dtypes_and_shapes()),
-      tensor_handle_data_(std::move(t)) {
+      handle_dtypes_and_shapes_(
+          t.flat<class ResourceHandle>()(0).dtypes_and_shapes()),
+      data_(absl::in_place_type<LocalTensorHandleData>, std::move(t)) {
   DVLOG(3) << "Creating Local TensorHandle: " << this
-           << " device: " << VariantDeviceDebugString(device_);
+           << " device: " << VariantDeviceDebugString(device_)
+           << " tensor: " << t.DeviceSafeDebugString();
 }
 
-TensorHandle::TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
-                           DataType dtype, CustomDevice* d, EagerContext* ctx)
-    : dtype(dtype),
+TensorHandle::TensorHandle(tensorflow::Tensor&& t, CustomDevice* d,
+                           EagerContext* ctx)
+    : dtype(t.dtype()),
       device_(d),
       op_device_(nullptr),
       resource_device_(nullptr),
-#if !defined(IS_MOBILE_PLATFORM)
-      remote_op_id_(kInvalidOpId),
-      remote_output_num_(kInvalidOutputNum),
-#endif
       ctx_(ctx),
-      is_remote_(false),
-      is_async_(false),
       implicit_mirroring_(true),
-      is_ready_(true),
-      tensor_handle_data_(std::move(t)) {
+      data_(absl::in_place_type<LocalTensorHandleData>, std::move(t)) {
   // TODO(allenl): Figure out a better op_device story for custom devices,
   // since always setting it to CPU=nullptr doesn't make much sense.
   DVLOG(3) << "Creating Local TensorHandle: " << this
-           << " custom device: " << VariantDeviceDebugString(device_);
+           << " custom device: " << VariantDeviceDebugString(device_)
+           << " tensor: " << t.DeviceSafeDebugString();
 }
 
-Status TensorHandle::CreateEmptyLocalHandle(bool async, Device* d,
-                                            Device* op_device,
+Status TensorHandle::CreateEmptyLocalHandle(Device* d, Device* op_device,
                                             Device* resource_device,
                                             DataType dtype, EagerContext* ctx,
                                             TensorHandle** h) {
-  *h = new TensorHandle(absl::make_unique<EmptyLocalTensorHandleData>(), async,
-                        d, op_device, resource_device, dtype, ctx);
+  *h = new TensorHandle(d, op_device, resource_device, dtype, ctx);
 
   return Status::OK();
 }
 
-TensorHandle::TensorHandle(std::unique_ptr<EmptyLocalTensorHandleData> t,
-                           bool async, Device* d, Device* op_device,
+TensorHandle::TensorHandle(Device* d, Device* op_device,
                            Device* resource_device, DataType dtype,
                            EagerContext* ctx)
     : dtype(dtype),
       device_((d == ctx->HostCPU()) ? nullptr : d),
       op_device_(op_device),
       resource_device_(resource_device),
-#if !defined(IS_MOBILE_PLATFORM)
-      remote_op_id_(kInvalidOpId),
-      remote_output_num_(kInvalidOutputNum),
-#endif
       ctx_(ctx),
-      is_remote_(false),
-      is_async_(async),
       implicit_mirroring_(true),
-      is_ready_(!async),
-      tensor_handle_data_(std::move(t)) {
+      data_(absl::in_place_type<LocalTensorHandleData>) {
   DVLOG(3) << "Creating empty Local TensorHandle: " << this
            << " device: " << VariantDeviceDebugString(device_);
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status TensorHandle::CreateRemoteHandle(
-    std::unique_ptr<RemoteTensorHandleData> t, DataType dtype, Device* d,
-    Device* resource_device, EagerContext* ctx, TensorHandle** h) {
-  *h = new TensorHandle(std::move(t), dtype, d, resource_device, ctx);
+Status TensorHandle::CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
+                                                const string& remote_task,
+                                                DataType dtype, Device* d,
+                                                EagerContext* ctx,
+                                                TensorHandle** h) {
+  *h = new TensorHandle(op_id, output_num, remote_task, dtype, d, ctx);
 
   return Status::OK();
 }
 
-Status TensorHandle::CreateRemoteHandle(int64 op_id, int output_num,
-                                        const TensorShape& shape,
-                                        const string& remote_task,
-                                        DataType dtype, Device* d,
-                                        Device* resource_device,
-                                        EagerContext* ctx, TensorHandle** h) {
-  *h = new TensorHandle(absl::make_unique<RemoteTensorHandleData>(
-                            op_id, output_num, shape, remote_task, ctx),
-                        dtype, d, resource_device, ctx);
-  return Status::OK();
-}
-
-TensorHandle::TensorHandle(std::unique_ptr<RemoteTensorHandleData> t,
-                           DataType dtype, Device* d, Device* resource_device,
+TensorHandle::TensorHandle(int64 op_id, int32 output_num,
+                           const string& remote_task, DataType dtype, Device* d,
                            EagerContext* ctx)
     : dtype(dtype),
       device_(d),
       op_device_(d),
-      resource_device_(resource_device),
-      remote_op_id_(t->op_id()),
-      remote_output_num_(t->output_num()),
+      resource_device_(dtype == DT_RESOURCE ? d : nullptr),
       ctx_(ctx),
-      is_remote_(true),
-      is_async_(false),
       implicit_mirroring_(true),
-      is_ready_(true),
-      tensor_handle_data_(std::move(t)) {
-  DVLOG(3) << "Creating Remote TensorHandle: " << this
+      data_(absl::in_place_type<RemoteTensorHandleData>, op_id, output_num,
+            remote_task, ctx) {
+  DVLOG(3) << "Creating Unshaped Remote TensorHandle: " << this
            << " device: " << VariantDeviceDebugString(device_);
 }
 
-Status TensorHandle::CreateUnshapedRemoteHandle(
-    std::unique_ptr<UnshapedRemoteTensorHandleData> t, DataType dtype,
-    Device* d, EagerContext* ctx, TensorHandle** h) {
-  *h = new TensorHandle(std::move(t), dtype, d, ctx);
+Status TensorHandle::CreateLazyRemoteHandle(int64 op_id, int32 output_num,
+                                            DataType dtype, Device* d,
+                                            EagerContext* ctx,
+                                            TensorHandle** h) {
+  *h = new TensorHandle(op_id, output_num, dtype, d, ctx);
 
   return Status::OK();
 }
 
-Status TensorHandle::CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
-                                                const string& remote_task,
-                                                DataType dtype, Device* device,
-                                                EagerContext* ctx,
-                                                TensorHandle** h) {
-  *h = new TensorHandle(absl::make_unique<UnshapedRemoteTensorHandleData>(
-                            op_id, output_num, remote_task, ctx),
-                        dtype, device, ctx);
-  return Status::OK();
-}
-
-TensorHandle::TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
-                           DataType dtype, Device* device, EagerContext* ctx)
+TensorHandle::TensorHandle(int64 op_id, int32 output_num, DataType dtype,
+                           Device* d, EagerContext* ctx)
     : dtype(dtype),
-      device_(device),
-      op_device_(device),
-      resource_device_(dtype == DT_RESOURCE ? device : nullptr),
-      remote_op_id_(t->op_id()),
-      remote_output_num_(t->output_num()),
+      device_(d),
+      op_device_(d),
+      resource_device_(dtype == DT_RESOURCE ? d : nullptr),
       ctx_(ctx),
-      is_remote_(true),
-      is_async_(true),
       implicit_mirroring_(true),
-      is_ready_(false),
-      tensor_handle_data_(std::move(t)) {
-  DVLOG(3) << "Creating Unshaped Remote TensorHandle: " << this
+      data_(absl::in_place_type<RemoteTensorHandleData>, op_id, output_num,
+            ctx->GetContextViewId()) {
+  DVLOG(3) << "Creating Lazy Remote TensorHandle: " << this
            << " device: " << VariantDeviceDebugString(device_);
 }
 #endif
 
 bool TensorHandle::IsReady() const {
-  // Avoid mutex acquisition for local sync handles
-  if (!is_async_ && !is_remote_) {
-    return true;
-  }
-
-  tf_shared_lock l(mu_);
-  return is_ready_;
+  return absl::visit([](auto& data) { return data.IsReady(); }, data_);
 }
 
-Status TensorHandle::WaitReady(const char* caller) const {
-  if (!IsReady()) {
-    profiler::TraceMe activity(absl::StrCat(caller, " WaitReady"),
-                               profiler::TraceMeLevel::kInfo);
-    tf_shared_lock l(mu_);
-    mu_.Await(Condition(&is_ready_));
-  }
-  return is_poisoned_;
+bool TensorHandle::IsRemote() const {
+#if !defined(IS_MOBILE_PLATFORM)
+  return data_.index() == 1;
+#else
+  return false;
+#endif
 }
 
 Status TensorHandle::Tensor(const tensorflow::Tensor** t) const {
   DVLOG(3) << "Tensor on TensorHandle: " << this;
 
-  TF_RETURN_IF_ERROR(WaitReady("TensorHandle::Tensor"));
-  return tensor_handle_data_->Tensor(t);
+  if (IsRemote()) {
+    return errors::Internal("Invalid Tensor call on remote handle: ", this);
+  }
+
+  auto& data = absl::get<LocalTensorHandleData>(data_);
+  return data.Tensor(t);
 }
 
 Status TensorHandle::TensorFromDevice(const Device* d,
@@ -337,12 +270,12 @@ Status TensorHandle::TensorFromDevice(const Device* d,
   DVLOG(3) << "TensorFromDevice on TensorHandle: " << this << " device: " << d;
 
   if (d == absl::get<Device*>(device_)) {
-    if (is_remote_) {
+    if (IsRemote()) {
       return errors::Internal("Invalid Tensor call on remote handle: ", this);
     }
 
-    TF_RETURN_IF_ERROR(WaitReady("TensorHandle::TensorFromDevice"));
-    return tensor_handle_data_->Tensor(t);
+    auto& data = absl::get<LocalTensorHandleData>(data_);
+    return data.Tensor(t);
   }
 
   tf_shared_lock l(mu_);
@@ -352,25 +285,21 @@ Status TensorHandle::TensorFromDevice(const Device* d,
                             " in Tensor call to handle: ", this);
   }
 
-  // Check if the handle is non-empty, else wait.
   auto& mirror = elem->second;
-  if (mirror.second == nullptr) {
-    TF_RETURN_IF_ERROR(
-        mirror.first->WaitReady("TensorHandle::TensorFromDevice"));
-  }
-
-  return mirror.second->Tensor(t);
+  return mirror.Tensor(t);
 }
 
-Status TensorHandle::TensorValue(tensorflow::TensorValue* t, const Device* d) {
+Status TensorHandle::TensorValue(const Device* d, tensorflow::TensorValue* t) {
+  DVLOG(3) << "TensorValue on TensorHandle: " << this << " device: " << d;
+
   if (d == absl::get<Device*>(device_)) {
-    if (is_remote_) {
+    if (IsRemote()) {
       return errors::Internal("Invalid TensorValue call on remote handle: ",
                               this);
     }
 
-    TF_RETURN_IF_ERROR(WaitReady("TensorHandle::TensorValue"));
-    return tensor_handle_data_->TensorValue(t);
+    auto& data = absl::get<LocalTensorHandleData>(data_);
+    return data.TensorValue(t);
   }
 
   tf_shared_lock l(mu_);
@@ -380,13 +309,8 @@ Status TensorHandle::TensorValue(tensorflow::TensorValue* t, const Device* d) {
                             " in TensorValue call to handle: ", this);
   }
 
-  // Check if the handle is non-empty, else wait.
   auto& mirror = elem->second;
-  if (mirror.second == nullptr) {
-    TF_RETURN_IF_ERROR(mirror.first->WaitReady("TensorHandle::TensorValue"));
-  }
-
-  return mirror.second->TensorValue(t);
+  return mirror.TensorValue(t);
 }
 
 TensorHandle::VariantDevice TensorHandle::DeviceOrHostCPU(
@@ -405,8 +329,8 @@ Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
     DCHECK(fill);
     return Status::OK();
   } else {
-    TF_RETURN_IF_ERROR(WaitReady("TensorHandle::Shape"));
-    return tensor_handle_data_->Shape(shape);
+    return absl::visit([shape](auto& data) { return data.Shape(shape); },
+                       data_);
   }
 }
 
@@ -480,8 +404,8 @@ Status TensorHandle::NumDims(int* num_dims) const {
     *num_dims = inference_shape_.dims();
     return Status::OK();
   } else {
-    TF_RETURN_IF_ERROR(WaitReady("TensorHandle::NumDims"));
-    return tensor_handle_data_->NumDims(num_dims);
+    return absl::visit(
+        [num_dims](auto& data) { return data.NumDims(num_dims); }, data_);
   }
 }
 
@@ -492,8 +416,9 @@ Status TensorHandle::Dim(int dim_index, int64* dim) const {
     *dim = inference_shape_.dim_size(dim_index);
     return Status::OK();
   } else {
-    TF_RETURN_IF_ERROR(WaitReady("TensorHandle::Dim"));
-    return tensor_handle_data_->Dim(dim_index, dim);
+    return absl::visit(
+        [dim_index, dim](auto& data) { return data.Dim(dim_index, dim); },
+        data_);
   }
 }
 
@@ -503,8 +428,9 @@ Status TensorHandle::NumElements(int64* num_elements) const {
     *num_elements = inference_shape_.num_elements();
     return Status::OK();
   } else {
-    TF_RETURN_IF_ERROR(WaitReady("TensorHandle::NumElements"));
-    return tensor_handle_data_->NumElements(num_elements);
+    return absl::visit(
+        [num_elements](auto& data) { return data.NumElements(num_elements); },
+        data_);
   }
 }
 
@@ -512,7 +438,8 @@ Status TensorHandle::Unprotect(const Device* d) {
   DVLOG(3) << "Unprotect on TensorHandle: " << this << " device: " << d;
 
   if (d == absl::get<Device*>(device_)) {
-    return tensor_handle_data_->Unprotect();
+    auto& data = absl::get<LocalTensorHandleData>(data_);
+    return data.Unprotect();
   }
 
   tf_shared_lock l(mu_);
@@ -524,11 +451,7 @@ Status TensorHandle::Unprotect(const Device* d) {
 
   // Check if the handle is non-empty
   auto& mirror = elem->second;
-  if (mirror.second == nullptr) {
-    return errors::Internal("Attempted to unprotect an empty mirror");
-  }
-
-  return mirror.second->Unprotect();
+  return mirror.Unprotect();
 }
 
 bool TensorHandle::HasLocalMirror(const Device* d) const {
@@ -551,8 +474,8 @@ Status TensorHandle::AddEmptyLocalMirror(const Device* d) {
     return errors::Internal("Attempted to duplicate a local mirror.");
   }
 
-  local_mirrors_[d] =
-      std::make_pair(std::make_unique<EmptyLocalTensorHandleData>(), nullptr);
+  local_mirrors_.emplace(std::piecewise_construct, std::forward_as_tuple(d),
+                         std::forward_as_tuple());
 
   return Status::OK();
 }
@@ -567,15 +490,8 @@ Status TensorHandle::RemoteAddress(const Device* d, int64* op_id,
     tf_shared_lock l(mu_);
     auto mirror = remote_mirrors_.find(d->name());
     if (mirror != remote_mirrors_.end()) {
-      *op_id = mirror->second->op_id();
-      *output_num = mirror->second->output_num();
-      return Status::OK();
-    }
-
-    auto unshaped_mirror = unshaped_remote_mirrors_.find(d->name());
-    if (unshaped_mirror != unshaped_remote_mirrors_.end()) {
-      *op_id = unshaped_mirror->second->op_id();
-      *output_num = unshaped_mirror->second->output_num();
+      *op_id = mirror->second.op_id();
+      *output_num = mirror->second.output_num();
       return Status::OK();
     }
 
@@ -583,14 +499,14 @@ Status TensorHandle::RemoteAddress(const Device* d, int64* op_id,
         "Could not find remote mirror for specified device");
   }
 
-  if (remote_op_id_ == kInvalidOpId ||
-      remote_output_num_ == kInvalidOutputNum) {
-    return errors::InvalidArgument("Remote handle (op_id:", remote_op_id_,
-                                   ", output_num:", remote_output_num_,
-                                   ") is not set.");
+  if (!IsRemote()) {
+    return errors::InvalidArgument("Primary device is not remote");
   }
-  *op_id = remote_op_id_;
-  *output_num = remote_output_num_;
+
+  auto& data = absl::get<RemoteTensorHandleData>(data_);
+  *op_id = data.op_id();
+  *output_num = data.output_num();
+
   return Status::OK();
 }
 
@@ -603,16 +519,7 @@ bool TensorHandle::HasRemoteMirror(const Device* d,
   auto mirror = remote_mirrors_.find(d->name());
   if (mirror != remote_mirrors_.end()) {
     // Check if mirror is stale
-    if (mirror->second->context_view_id() != context_view_id) {
-      return false;
-    }
-    return true;
-  }
-
-  auto unshaped_mirror = unshaped_remote_mirrors_.find(d->name());
-  if (unshaped_mirror != unshaped_remote_mirrors_.end()) {
-    // Check if mirror is stale
-    if (unshaped_mirror->second->context_view_id() != context_view_id) {
+    if (mirror->second.context_view_id() != context_view_id) {
       return false;
     }
     return true;
@@ -630,7 +537,7 @@ bool TensorHandle::HasResourceShapeMirror(const Device* d,
   auto mirror = resource_shape_mirrors_.find(d->name());
   if (mirror != resource_shape_mirrors_.end()) {
     // Check if mirror is stale
-    if (mirror->second->context_view_id() != context_view_id) {
+    if (mirror->second.context_view_id() != context_view_id) {
       return false;
     }
     return true;
@@ -638,45 +545,39 @@ bool TensorHandle::HasResourceShapeMirror(const Device* d,
   return false;
 }
 
-Status TensorHandle::AddUnshapedRemoteMirror(
-    std::unique_ptr<UnshapedRemoteTensorHandleData> t, const Device* d) {
+Status TensorHandle::AddUnshapedRemoteMirror(const Device* d, int64 op_id,
+                                             int output_num,
+                                             const string& remote_task,
+                                             EagerContext* ctx) {
   DVLOG(3) << "AddUnshapedRemoteMirror on TensorHandle: " << this
-           << " device: " << d << " " << d->name();
+           << " device: " << d << " " << d->name() << " op_id: " << op_id
+           << " output_num: " << output_num;
 
   mutex_lock l(mu_);
   auto remote_mirror = remote_mirrors_.find(d->name());
   if (remote_mirror != remote_mirrors_.end()) {
-    if (remote_mirror->second->context_view_id() == t->context_view_id()) {
+    if (remote_mirror->second.context_view_id() == ctx->GetContextId()) {
       return errors::Internal("Attempted to duplicate a remote mirror.");
     }
     // Remove stale mirror
     remote_mirrors_.erase(remote_mirror);
   }
 
-  auto unshaped_remote_mirror = unshaped_remote_mirrors_.find(d->name());
-  if (unshaped_remote_mirror != unshaped_remote_mirrors_.end()) {
-    if (unshaped_remote_mirror->second->context_view_id() ==
-        t->context_view_id()) {
-      return errors::Internal(
-          "Attempted to duplicate an unshaped remote mirror.");
-    }
-    // Remove stale mirror
-    unshaped_remote_mirrors_.erase(unshaped_remote_mirror);
-  }
-
-  unshaped_remote_mirrors_[d->name()] = std::move(t);
+  remote_mirrors_.emplace(
+      std::piecewise_construct, std::forward_as_tuple(d->name()),
+      std::forward_as_tuple(op_id, output_num, remote_task, ctx));
 
   return Status::OK();
 }
 
-Status TensorHandle::AddResourceShapeMirror(
-    std::unique_ptr<UnshapedRemoteTensorHandleData> t, const Device* d) {
+Status TensorHandle::AddResourceShapeMirror(const Device* d, int64 op_id,
+                                            int output_num, EagerContext* ctx) {
   DVLOG(3) << "AddResourceShapeMirror on TensorHandle: " << this;
 
   mutex_lock l(mu_);
   auto mirror = resource_shape_mirrors_.find(d->name());
   if (mirror != resource_shape_mirrors_.end()) {
-    if (mirror->second->context_view_id() == t->context_view_id()) {
+    if (mirror->second.context_view_id() == ctx->GetContextViewId()) {
       return errors::Internal(
           "Attempted to duplicate a resource shape mirror.");
     }
@@ -684,26 +585,9 @@ Status TensorHandle::AddResourceShapeMirror(
     resource_shape_mirrors_.erase(mirror);
   }
 
-  resource_shape_mirrors_[d->name()] = std::move(t);
-
-  return Status::OK();
-}
-
-Status TensorHandle::AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t,
-                                     const Device* d) {
-  DVLOG(3) << "AddRemoteMirror on TensorHandle: " << this << " device: " << d;
-
-  mutex_lock l(mu_);
-  auto mirror = remote_mirrors_.find(d->name());
-  if (mirror != remote_mirrors_.end()) {
-    if (mirror->second->context_view_id() == t->context_view_id()) {
-      return errors::Internal("Attempted to duplicate a remote mirror.");
-    }
-    // Remove stale mirror
-    remote_mirrors_.erase(mirror);
-  }
-
-  remote_mirrors_[d->name()] = std::move(t);
+  resource_shape_mirrors_.emplace(
+      std::piecewise_construct, std::forward_as_tuple(d->name()),
+      std::forward_as_tuple(op_id, output_num, ctx->GetContextViewId()));
 
   return Status::OK();
 }
@@ -717,53 +601,24 @@ Status TensorHandle::SetRemoteShape(const TensorShape& shape, const Device* d,
     mutex_lock l(mu_);
     auto remote_mirror = remote_mirrors_.find(d->name());
     if (remote_mirror != remote_mirrors_.end()) {
-      if (remote_mirror->second->context_view_id() == context_view_id) {
-        return errors::Internal(
-            "Attempted to set remote shape for existing mirror.");
+      auto& mirror = remote_mirror->second;
+      if (mirror.context_view_id() == context_view_id) {
+        return mirror.SetShape(shape);
       }
       remote_mirrors_.erase(remote_mirror);
     }
 
-    auto elem = unshaped_remote_mirrors_.find(d->name());
-    if (elem == unshaped_remote_mirrors_.end()) {
-      return errors::Internal(
-          "Attempted to set remote shape for non-waiting mirror.");
-    }
-
-    if (elem->second->context_view_id() != context_view_id) {
-      unshaped_remote_mirrors_.erase(elem);
-      return errors::Internal(
-          "Attempted to set remote shape for a stale mirror.");
-    }
-
-    auto& data = elem->second;
-    data->ReleaseRemoteTensorHandle();
-    remote_mirrors_[d->name()] = absl::make_unique<RemoteTensorHandleData>(
-        data->op_id(), data->output_num(), shape, data->remote_task(),
-        &data->ctx());
-    unshaped_remote_mirrors_.erase(elem);
-
     return Status::OK();
   }
 
-  DCHECK(is_remote_) << "SetRemoteShape is only called on remote handles.";
-  DCHECK(!IsReady()) << "SetRemoteShape is only called on non-ready handles.";
+  DCHECK(IsRemote()) << "SetRemoteShape is only called on remote handles.";
 
-  UnshapedRemoteTensorHandleData* p =
-      reinterpret_cast<UnshapedRemoteTensorHandleData*>(
-          tensor_handle_data_.get());
-  if (p->context_view_id() != context_view_id) {
+  auto& data = absl::get<RemoteTensorHandleData>(data_);
+  if (data.context_view_id() != context_view_id) {
     return errors::Internal("Attempted to set remote shape for an old handle.");
   }
 
-  p->ReleaseRemoteTensorHandle();
-  tensor_handle_data_ = absl::make_unique<RemoteTensorHandleData>(
-      remote_op_id_, remote_output_num_, shape, p->remote_task(), ctx_);
-  is_poisoned_ = Status::OK();
-  mutex_lock l(mu_);
-  is_ready_ = true;
-
-  return Status::OK();
+  return data.SetShape(shape);
 }
 
 void TensorHandle::PoisonRemote(Status status, const Device* d,
@@ -772,18 +627,16 @@ void TensorHandle::PoisonRemote(Status status, const Device* d,
            << " " << d->name();
 
   if (!VariantDeviceIsCustom(device_) && d == absl::get<Device*>(device_)) {
-    DCHECK(!is_async_ || !IsReady())
-        << "PoisonRemote can only be called on non-ready handle: " << this;
+    DCHECK(IsRemote()) << "Poison can only be on remote handles: " << this;
 
-    is_poisoned_ = status;
-    mutex_lock l(mu_);
-    is_ready_ = true;
+    auto& data = absl::get<RemoteTensorHandleData>(data_);
+    data.Poison(status);
   } else {
     tf_shared_lock l(mu_);
-    auto mirror = unshaped_remote_mirrors_.find(d->name());
-    if (mirror != unshaped_remote_mirrors_.end()) {
-      if (mirror->second->context_view_id() == context_view_id) {
-        mirror->second->Poison(status);
+    auto mirror = remote_mirrors_.find(d->name());
+    if (mirror != remote_mirrors_.end()) {
+      if (mirror->second.context_view_id() == context_view_id) {
+        mirror->second.Poison(status);
       }
     }
   }
@@ -798,9 +651,9 @@ Status TensorHandle::AddLocalMirror(tensorflow::Tensor&& tensor,
   }
 
   mutex_lock l(mu_);
-  auto elem = local_mirrors_.insert(std::make_pair(
-      d, std::make_pair(nullptr,
-                        std::make_unique<LocalTensorHandleData>(tensor))));
+  auto elem =
+      local_mirrors_.emplace(std::piecewise_construct, std::forward_as_tuple(d),
+                             std::forward_as_tuple(std::move(tensor)));
   if (!elem.second) {
     return errors::Internal("Attempted to set tensor for existing mirror.");
   }
@@ -808,24 +661,18 @@ Status TensorHandle::AddLocalMirror(tensorflow::Tensor&& tensor,
   return Status::OK();
 }
 
-Status TensorHandle::SetTensor(tensorflow::Tensor&& tensor, const Device* d) {
+Status TensorHandle::SetTensor(tensorflow::Tensor&& t, const Device* d) {
   DVLOG(3) << "SetTensor on TensorHandle: " << this << " device: " << d;
 
   if (d == absl::get<Device*>(device_)) {
-    DCHECK(!is_remote_) << "SetTensor is not called on remote handles.";
-    DCHECK(!is_async_ || !IsReady())
-        << "SetTensor is only called on non-ready handles.";
+    DCHECK(!IsRemote()) << "SetTensor is not called on remote handles.";
 
-    if (tensor.dtype() == DT_RESOURCE && tensor.NumElements() > 0) {
-      auto& resource_handle = tensor.flat<class ResourceHandle>()(0);
+    if (t.dtype() == DT_RESOURCE && t.NumElements() > 0) {
+      auto& resource_handle = t.flat<class ResourceHandle>()(0);
       handle_dtypes_and_shapes_ = resource_handle.dtypes_and_shapes();
     }
-    tensor_handle_data_ = absl::make_unique<LocalTensorHandleData>(tensor);
-    if (is_async_) {
-      is_poisoned_ = Status::OK();
-      mutex_lock l(mu_);
-      is_ready_ = true;
-    }
+    auto& data = absl::get<LocalTensorHandleData>(data_);
+    return data.SetTensor(std::move(t));
   } else {
     tf_shared_lock l(mu_);
     auto elem = local_mirrors_.find(d);
@@ -835,12 +682,7 @@ Status TensorHandle::SetTensor(tensorflow::Tensor&& tensor, const Device* d) {
     }
 
     auto& mirror = elem->second;
-    if (mirror.second != nullptr) {
-      return errors::Internal("Attempted to set tensor for existing mirror.");
-    }
-
-    mirror.second = absl::make_unique<LocalTensorHandleData>(tensor);
-    mirror.first->SetReady();
+    return mirror.SetTensor(std::move(t));
   }
 
   return Status::OK();
@@ -850,12 +692,10 @@ void TensorHandle::Poison(Status status, const Device* d) {
   DVLOG(3) << "Poison on TensorHandle: " << this << " device: " << d;
 
   if (!VariantDeviceIsCustom(device_) && d == absl::get<Device*>(device_)) {
-    DCHECK(!is_async_ || !IsReady())
-        << "Poison can only be called on non-ready handle: " << this;
+    DCHECK(!IsRemote()) << "Poison can only be on local handles: " << this;
 
-    is_poisoned_ = status;
-    mutex_lock l(mu_);
-    is_ready_ = true;
+    auto& data = absl::get<LocalTensorHandleData>(data_);
+    data.Poison(status);
   } else {
     tf_shared_lock l(mu_);
     auto elem = local_mirrors_.find(d);
@@ -864,9 +704,7 @@ void TensorHandle::Poison(Status status, const Device* d) {
         << " device: " << d;
 
     auto& mirror = elem->second;
-    DCHECK(mirror.second == nullptr) << "Attempted to poison existing mirror.";
-
-    mirror.first->Poison(status);
+    mirror.Poison(status);
   }
 }
 
@@ -977,8 +815,11 @@ string TensorHandle::DebugString() const {
       !VariantDeviceIsCustom(device_) && device_ != kVariantDeviceNull;
   // Consider supporting non-CPU tensors and CPU tensors with a device_ set to
   // non-NULL if needed.
-  strings::StrAppend(&out, ", Tensor: ",
-                     is_cpu ? tensor_handle_data_->DebugString() : "?", "\n");
+  strings::StrAppend(
+      &out, ", Tensor: ",
+      is_cpu ? absl::visit([](auto& data) { return data.DebugString(); }, data_)
+             : "?",
+      "\n");
   return out;
 }
 
