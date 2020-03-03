@@ -330,7 +330,7 @@ class KerasRegressor(BaseWrapper):
             Predictions.
     """
     kwargs = self.filter_sk_params(Sequential.predict, kwargs)
-    preds = np.array(self.model.predict(x, **kwargs))
+    preds = np.asarray(self.model.predict(x, **kwargs))
     if preds.shape[-1] == 1:
       return np.squeeze(preds, axis=-1)
     return preds
