@@ -50,7 +50,7 @@ class InterpreterExecutable : public Executable {
 
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+      std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override
       LOCKS_EXCLUDED(evaluator_lock_);
 
