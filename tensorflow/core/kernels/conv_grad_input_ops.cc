@@ -368,8 +368,8 @@ struct Conv2DCustomBackpropInputMatMulFunctor<float> {
         im2col_buf, filter_total_size * output_image_size * sizeof(T));
 
     mkldnn_status_t st =
-        mkldnn_sgemm(&transposeA, &transposeB, &m, &n, &k, &alpha, filter_data,
-                     &ldA, out_data, &ldB, &beta, im2col_buf, &ldC);
+        mkldnn_sgemm(&transposeA, &transposeB, &m, &n, &k, alpha, filter_data,
+                     &ldA, out_data, &ldB, beta, im2col_buf, &ldC);
 
     OP_REQUIRES(
         ctx, st == 0,

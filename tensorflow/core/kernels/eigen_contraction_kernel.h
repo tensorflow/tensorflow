@@ -164,8 +164,8 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
     const int ldC = static_cast<int>(output.stride());
 
     mkldnn_status_t st = mkldnn_sgemm(
-        &transposeA, &transposeB, &m, &n, &k, &alpha, blockA, &ldA, blockB,
-        &ldB, &beta, const_cast<ResScalar*>(output.data()), &ldC);
+        &transposeA, &transposeB, &m, &n, &k, alpha, blockA, &ldA, blockB,
+        &ldB, beta, const_cast<ResScalar*>(output.data()), &ldC);
     eigen_assert(st == 0);
 
 #if DYNAMIC_ANNOTATIONS_ENABLED == 1 || defined(MEMORY_SANITIZER)
