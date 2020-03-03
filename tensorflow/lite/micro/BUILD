@@ -78,7 +78,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/kernels/internal:compatibility",
     ],
 )
 

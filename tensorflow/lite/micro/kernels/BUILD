@@ -375,9 +375,9 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
+        ":micro_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -497,9 +497,9 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
+        ":micro_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -511,9 +511,9 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
+        ":micro_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
