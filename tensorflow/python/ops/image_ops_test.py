@@ -2759,6 +2759,11 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
     self._assertResizeCheckShape(
         x, x_shape, [250, 250], [10, 250, 250, 10], preserve_aspect_ratio=False)
 
+    x_shape = [10, 100, 80, 10]
+    x = np.random.uniform(size=x_shape)
+    self._assertResizeCheckShape(
+        x, x_shape, [250, 250], [10, 250, 200, 10], preserve_aspect_ratio=True)
+
   @test_util.run_deprecated_v1
   def testPreserveAspectRatioNoOp(self):
     x_shape = [10, 10, 10]
@@ -5224,15 +5229,6 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(list(image0.shape), [40, 20, 3])
       self.assertAllEqual(image0, image1)
 
-  def testResizeImageWithRatio(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/jpeg/testdata"
-      jpeg = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
-      image = image_ops.decode_image(jpeg, dtype=dtypes.float32)
-      shape = ops.convert_to_tensor([80, 80])
-      resized_image = image_ops.resize_images_v2(image, shape, preserve_aspect_ratio=True)
-      resized_image = sess.run(resized_image)
-      self.assertAllEqual(list(resized_image.shape), [80, 80, 3])
 
 if __name__ == "__main__":
   googletest.main()
