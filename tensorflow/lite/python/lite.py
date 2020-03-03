@@ -302,9 +302,7 @@ class TFLiteConverterBase(object):
     # Unknown dimensions are only allowed with the new converter.
     if not self.experimental_new_converter:
       return False
-
-    # TODO(b/150489014): Disable functionality for now.
-    return False
+    return True
 
   def _get_base_converter_args(self):
     """Returns the base converter args.

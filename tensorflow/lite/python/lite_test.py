@@ -427,7 +427,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
         str(error.exception))
 
   def testSizeNone(self):
-    self.skipTest('b/150489014')
     with ops.Graph().as_default():
       in_tensor = array_ops.placeholder(
           shape=[1, None, 16, 3], dtype=dtypes.float32)
