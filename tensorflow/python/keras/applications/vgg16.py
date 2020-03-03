@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
-"""VGG16 model for Keras."""
+"""VGG16 model for Keras.
+
+Reference paper:
+  - [Very Deep Convolutional Networks for Large-Scale Image Recognition]
+    (https://arxiv.org/abs/1409.1556) (ICLR 2015)
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -47,6 +52,10 @@ def VGG16(
     classifier_activation='softmax',
 ):
   """Instantiates the VGG16 model.
+
+  Reference paper:
+  - [Very Deep Convolutional Networks for Large-Scale Image Recognition](
+  https://arxiv.org/abs/1409.1556) (ICLR 2015)
 
   By default, it loads weights pre-trained on ImageNet. Check 'weights' for
   other options.
