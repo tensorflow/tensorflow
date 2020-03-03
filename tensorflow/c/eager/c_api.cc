@@ -1213,10 +1213,10 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   tensorflow::TensorHandle* ret_handle;
   if (custom_device == nullptr) {
     status->status = tensorflow::TensorHandle::CreateLocalHandle(
-        std::move(t), device, device, context, &ret_handle);
+        t, device, context, &ret_handle);
   } else {
     status->status = tensorflow::TensorHandle::CreateLocalHandle(
-        std::move(t), custom_device, context, &ret_handle);
+        t, custom_device, context, &ret_handle);
   }
   if (!status->status.ok()) {
     return nullptr;

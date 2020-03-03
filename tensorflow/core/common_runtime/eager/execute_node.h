@@ -77,7 +77,7 @@ class ExecuteNode : public EagerNode {
       EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4>& inputs,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
       const core::RefCountPtr<KernelAndDevice>& kernel,
-      GraphCollector* graph_collector,
+      GraphCollector* graph_collector, const DataTypeVector& output_dtypes,
       CancellationManager* cancellation_manager,
       absl::Span<TensorHandle*> retvals)
       : EagerNode(),
@@ -130,7 +130,7 @@ class AsyncExecuteNode : public EagerNode {
       EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4>& inputs,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
       core::RefCountPtr<KernelAndDevice> kernel,
-      GraphCollector* graph_collector,
+      GraphCollector* graph_collector, const DataTypeVector& output_dtypes,
       CancellationManager* cancellation_manager,
       absl::Span<TensorHandle*> retvals)
       : EagerNode(),

@@ -67,7 +67,6 @@ class EagerKernelArgs : public FunctionArgsInterface {
   ~EagerKernelArgs() override{};
 
   bool HasRemoteInputs() const override { return false; };
-  TensorValue* MutableInput(int i) { return &tensor_args_[i]; }
 
   Status GetLocalArg(const int index, Tensor* val) const override;
 

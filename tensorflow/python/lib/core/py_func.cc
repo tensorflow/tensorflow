@@ -91,11 +91,11 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
   Device* device = IsCPUDevice(call->device) ? nullptr : call->device;
   for (int64 i = 0; i < n; ++i) {
     PyObject* arg = nullptr;
+    const Tensor& t = call->ins[i];
     if (call->eager) {
       TensorHandle* handle;
-      Tensor t = call->ins[i];
       TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
-          std::move(t), ctx->CanonicalDevice(device), nullptr, ctx, &handle));
+          t, ctx->CanonicalDevice(device), nullptr, ctx, &handle));
       arg = EagerTensorFromHandle(new TFE_TensorHandle{
           std::make_unique<tensorflow::TensorHandleInterface>(handle)});
       if (arg == nullptr) {
@@ -103,7 +103,7 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
         return errors::Internal("Unable to procure EagerTensor from Tensor.");
       }
     } else {
-      Status s = TensorToNdarray(call->ins[i], &arg);
+      Status s = TensorToNdarray(t, &arg);
       if (!s.ok()) {
         Py_DECREF(lst);
         return s;
