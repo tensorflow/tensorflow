@@ -72,7 +72,8 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
   if (kernel_name.empty()) {
     kernel_name = GetTraceEventTypeName(event.type);
   }
-  XEventMetadata* event_metadata = plane->GetOrCreateEventMetadata(kernel_name);
+  XEventMetadata* event_metadata =
+      plane->GetOrCreateEventMetadata(std::move(kernel_name));
   XEventBuilder xevent = line->AddEvent(*event_metadata);
   xevent.SetTimestampNs(event.start_time_ns);
   xevent.SetEndTimestampNs(event.end_time_ns);
