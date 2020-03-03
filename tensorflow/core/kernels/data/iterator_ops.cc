@@ -902,9 +902,6 @@ class OneShotIteratorOp : public AsyncOpKernel {
 AsyncOpKernel* IteratorGetNextOp::AsAsync() {
   return type_string() == "IteratorGetNextSync" ? nullptr : this;
 }
-const AsyncOpKernel* IteratorGetNextOp::AsAsync() const {
-  return type_string() == "IteratorGetNextSync" ? nullptr : this;
-}
 
 Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   profiler::TraceMe traceme(
