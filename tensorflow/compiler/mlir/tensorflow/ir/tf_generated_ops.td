@@ -7020,6 +7020,38 @@ is the corresponding input gradient.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TensorListConcatV2Op : TF_Op<"TensorListConcatV2", [NoSideEffect]> {
+  let summary = "Concats all tensors in the list along the 0th dimension.";
+
+  let description = [{
+Requires that all tensors have the same shape except the first dimension.
+
+input_handle: The input list.
+element_shape: The shape of the uninitialized elements in the list. If the first
+  dimension is not -1, it is assumed that all list elements have the same
+  leading dim.
+leading_dims: The list of leading dims of uninitialized list elements. Used if
+  the leading dim of input_handle.element_shape or the element_shape input arg
+  is not already set.
+tensor: The concated result.
+lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    TF_I32OrI64Tensor:$element_shape,
+    I64Tensor:$leading_dims
+  );
+
+  let results = (outs
+    TF_Tensor:$tensor,
+    I64Tensor:$lengths
+  );
+
+  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_TensorListFromTensorOp : TF_Op<"TensorListFromTensor", [NoSideEffect]> {
   let summary = [{
 Creates a TensorList which, when stacked, has the value of `tensor`.
