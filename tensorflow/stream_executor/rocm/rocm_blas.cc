@@ -1899,23 +1899,21 @@ port::Status ReorganizeMemory(Stream* stream,
   }
   write_ops.push_back(memory_copy_op{src_ptr, dst_ptr, cur_stride_size});
 
+  bool misaligned = (write_ops[0].size & 3)
+    || (reinterpret_cast<uint64_t>(write_ops[0].dst_ptr) & 3)
+    || (reinterpret_cast<uint64_t>(write_ops[0].src_ptr) & 3)
+    || (write_ops.size()>1 
+      && (reinterpret_cast<uint64_t>(write_ops[1].dst_ptr) & 3))
+    ;
+
   // if the requested operation is reducible to a broadcast (copying the same
-  // buffer multiple times to N uniformly distributed destinations), it may be
+  // buffer multiple times to N uniformly distributed destinations), it's often
   // more efficient to launch a single broadcast kernel than to launch N
   // hipMemcpy's.
-  //
-  // The broadcast kernel is not guaranteed to be as optimized as hipMemcpy,
-  // therefore, only take the shortcut if we're expecting high launch overhead
-  // (TODO: benchmark this to pick the optimal parameters?)
-  //
-  // At present, broadcast is used if:
-  // * The default pathway would require more than 2 memcpy ops (high overhead)
-  // * And each memcpy op is sufficiently small (less than 8 MB)
-  // * And its size is multiple of 4 (because the kernel only supports 
-  //   multiples of 4) 
-  if (write_ops.size() > 2 
-    && write_ops[0].size < 8000000 
-    && !(write_ops[0].size & 3)) {
+  // On tested hardware, broadcast with N>1 is always faster than memcpy (since
+  // it needs fewer global loads), but the gains are highest with lots (>10) of
+  // small copies (<1MB each).
+  if ((write_ops.size() > 1) && !misaligned) {
     bool is_broadcast = true;
     int stride = write_ops[1].dst_ptr - write_ops[0].dst_ptr;
     for (int i = 1; i < write_ops.size(); i++) {
@@ -1937,7 +1935,6 @@ port::Status ReorganizeMemory(Stream* stream,
       return port::Status::OK();
     }
   }
-  //printf("Skip broadcast\n");
   for (auto& x : write_ops) {
     DeviceMemoryBase src_mem = DeviceMemoryBase(x.src_ptr, x.size);
     DeviceMemoryBase target_mem = DeviceMemoryBase(x.dst_ptr, x.size);
