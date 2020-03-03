@@ -534,8 +534,7 @@ class RNN(Layer):
       batch_index, time_step_index = (1, 0) if self.time_major else (0, 1)
       if not self.stateful:
         input_spec_shape[batch_index] = None
-      if not getattr(self, 'unroll', False):
-        input_spec_shape[time_step_index] = None
+      input_spec_shape[time_step_index] = None
       return InputSpec(shape=tuple(input_spec_shape))
 
     def get_step_input_shape(shape):
