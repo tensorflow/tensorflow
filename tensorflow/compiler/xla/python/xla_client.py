@@ -43,6 +43,9 @@ from tensorflow.compiler.xla.python.xla_extension import ops
 # pylint: disable=invalid-name
 
 
+profiler = _xla.profiler
+
+
 class Backend(object, metaclass=abc.ABCMeta):
   """Abstract base class for XLA backends."""
 
@@ -71,7 +74,7 @@ class Backend(object, metaclass=abc.ABCMeta):
     """Returns the integer ID of this host."""
 
   @abc.abstractmethod
-  def buffer_from_pyval(self, pyval, device=None):
+  def buffer_from_pyval(self, pyval, device=None, force_copy=False):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
   @abc.abstractmethod
@@ -129,10 +132,11 @@ class LocalBackend(Backend):
   def host_id(self):
     return self.client.host_id()
 
-  def buffer_from_pyval(self, pyval, device=None):
+  def buffer_from_pyval(self, pyval, device=None, force_copy=False):
     if device is None:
       device = self.local_devices()[0]
-    return _xla.PyLocalBuffer.from_python(pyval, self.client, device)
+    return _xla.PyLocalBuffer.from_python(pyval, self.client, device,
+                                          force_copy)
 
   def make_tuple(self, c_buffers, device):
     return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device)
@@ -169,10 +173,7 @@ xla_platform_names = {
 
 
 def _cpu_backend_factory():
-  client = _xla.LocalClient.Get(
-      platform='cpu',
-      xla_platform_id=xla_platform_names['cpu'],
-      asynchronous=True)
+  client = _xla.get_cpu_client(asynchronous=True)
   return LocalBackend(platform='cpu', client=client)
 
 
@@ -185,22 +186,19 @@ def _gpu_backend_factory():
     raise ValueError(
         'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", or '
         '"bfc", got "%s"' % allocator)
-  config = _xla.AllocatorConfig()
+  config = _xla.GpuAllocatorConfig()
   if allocator == 'default':
-    config.kind = _xla.AllocatorConfig.Kind.DEFAULT
+    config.kind = _xla.GpuAllocatorConfig.Kind.DEFAULT
   if allocator == 'platform':
-    config.kind = _xla.AllocatorConfig.Kind.PLATFORM
+    config.kind = _xla.GpuAllocatorConfig.Kind.PLATFORM
   if allocator == 'bfc':
-    config.kind = _xla.AllocatorConfig.Kind.BFC
+    config.kind = _xla.GpuAllocatorConfig.Kind.BFC
   if memory_fraction:
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  client = _xla.LocalClient.Get(
-      platform='gpu',
-      xla_platform_id=xla_platform_names['gpu'],
-      asynchronous=True,
-      allocator_config=config)
+  client = _xla.get_nvidia_gpu_client(asynchronous=True,
+                                      allocator_config=config)
   return LocalBackend(platform='gpu', client=client)
 
 
@@ -391,10 +389,10 @@ class Buffer(object):
   """
 
   @staticmethod
-  def from_pyval(pyval, device=None, backend=None):
+  def from_pyval(pyval, device=None, backend=None, force_copy=False):
     """Copies the `pyval` to a freshly allocated on-device buffer."""
     backend = backend or get_local_backend()
-    return backend.buffer_from_pyval(pyval, device)
+    return backend.buffer_from_pyval(pyval, device, force_copy=force_copy)
 
   @staticmethod
   def make_tuple(buffers, device, backend=None):
@@ -1191,12 +1189,12 @@ class ComputationBuilder(object):
     return ops.Call(self._builder, computation_to_apply.computation,
                     list(operands))
 
-  def CustomCall(self,
-                 call_target_name,
-                 operands,
-                 shape_with_layout,
-                 operand_shapes_with_layout,
-                 opaque=None):
+  def CustomCallWithLayout(self,
+                           call_target_name,
+                           operands,
+                           shape_with_layout,
+                           operand_shapes_with_layout,
+                           opaque=None):
     """Enqueues a custom call operation onto the computation.
 
     Args:
@@ -1215,6 +1213,10 @@ class ComputationBuilder(object):
     return ops.CustomCall(self._builder, call_target_name,
                           list(operands), shape_with_layout,
                           list(operand_shapes_with_layout), opaque)
+
+  # TODO(phawkins): remove CustomCall after callers are updated to use
+  # CustomCallWithLayout.
+  CustomCall = CustomCallWithLayout
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
@@ -1637,6 +1639,7 @@ FftType = _xla.FftType
 
 _UNARY_OPS = [
     'Not',
+    'PopulationCount',
     'Clz',
     'Abs',
     'Exp',
@@ -1700,6 +1703,7 @@ _BINARY_OPS = [
     'ShiftRightLogical',
     'Atan2',
     'Igamma',
+    'IgammaGradA',
     'Igammac',
     'Complex',
     'NextAfter',
@@ -1721,6 +1725,7 @@ _OTHER_OPS = [
     'Rev',
     'Select',
     'SliceInDim',
+    'TopK',
 ]
 
 

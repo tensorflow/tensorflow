@@ -382,7 +382,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   }
   void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
   if (ptr != nullptr) {
-    AddTraceMe("MemoryAllocation");
+    AddTraceMe("MemoryAllocation", num_bytes);
     return ptr;
   }
 
@@ -390,7 +390,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   if (Extend(unused_alignment, rounded_bytes)) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
     if (ptr != nullptr) {
-      AddTraceMe("MemoryAllocation");
+      AddTraceMe("MemoryAllocation", num_bytes);
       return ptr;
     }
   }
@@ -403,7 +403,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
     if (MergeTimestampedChunks(rounded_bytes)) {
       ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
       if (ptr != nullptr) {
-        AddTraceMe("MemoryAllocation");
+        AddTraceMe("MemoryAllocation", num_bytes);
         return ptr;
       }
     }
@@ -417,7 +417,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
       Extend(unused_alignment, rounded_bytes)) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
     if (ptr != nullptr) {
-      AddTraceMe("MemoryAllocation");
+      AddTraceMe("MemoryAllocation", num_bytes);
       return ptr;
     }
   }
@@ -441,7 +441,14 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   return nullptr;
 }
 
-void BFCAllocator::AddTraceMe(absl::string_view traceme_name) {
+void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
+                              int64 requested_bytes) {
+  // Internal users will see the memory profile with default trace level.
+  auto traceme_level = profiler::TraceMeLevel::kVerbose;
+#ifdef PLATFORM_GOOGLE
+  traceme_level = profiler::TraceMeLevel::kInfo;
+#endif
+
   tensorflow::profiler::TraceMe trace_me(
       [&]() EXCLUSIVE_LOCKS_REQUIRED(lock_) {
         AllocatorStats stats = stats_;
@@ -452,9 +459,13 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name) {
                             ",bytes_allocated=", stats.bytes_in_use,
                             ",bytes_available=", bytes_available,
                             ",peak_bytes_in_use=", stats.peak_bytes_in_use,
+                            ",requested_bytes=", requested_bytes,
+#ifdef TENSORFLOW_MEM_DEBUG
+                            ",tf_op=", pending_op_name, ",id=", pending_step_id,
+#endif
                             "#");
       },
-      /*level=*/profiler::TraceMeLevel::kInfo);
+      traceme_level);
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
@@ -589,6 +600,7 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle);
 
+  int64 requested_bytes = ChunkFromHandle(h)->requested_size;
   MarkFree(h);
 
   // Consider coalescing it.
@@ -603,7 +615,7 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
     LOG(INFO) << "F: " << RenderOccupancy();
   }
 
-  AddTraceMe("MemoryDeallocation");
+  AddTraceMe("MemoryDeallocation", -requested_bytes);
 }
 
 // Merges h1 and h2 when Chunk(h1)->next is h2 and Chunk(h2)->prev is c1.

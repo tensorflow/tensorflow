@@ -21,45 +21,19 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
-using ::tensorflow::profiler::CreateTfXPlaneVisitor;
-using ::tensorflow::profiler::GetHostEventTypeStr;
-using ::tensorflow::profiler::GetStatTypeStr;
-using ::tensorflow::profiler::HostEventType;
-using ::tensorflow::profiler::StatType;
-using ::tensorflow::profiler::XLineBuilder;
-using ::tensorflow::profiler::XPlane;
-using ::tensorflow::profiler::XPlaneBuilder;
-using ::tensorflow::profiler::XPlaneVisitor;
-
-void CreateXEvent(
-    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
-    HostEventType event_type, int64 offset_ps, int64 duration_ps,
-    const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats) {
-  auto event_builder =
-      line_builder->AddEvent(*plane_builder->GetOrCreateEventMetadata(
-          GetHostEventTypeStr(event_type)));
-  event_builder.SetOffsetPs(offset_ps);
-  event_builder.SetDurationPs(duration_ps);
-  for (const auto& stat_type_and_value : stats) {
-    event_builder.AddStatValue(*plane_builder->GetOrCreateStatMetadata(
-                                   GetStatTypeStr(stat_type_and_value.first)),
-                               stat_type_and_value.second);
-  }
-}
-
 // Test if events on the same thread are connected correctly according to the
 // nesting relationship.
 TEST(GroupEventsTest, ConnectIntraThreadTest) {
-  constexpr int64 kLineId = 0;
   XPlane plane;
   XPlaneBuilder plane_builder(&plane);
   plane_builder.ReserveLines(1);
-  auto line_builder = plane_builder.GetOrCreateLine(kLineId);
+  auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, HostEventType::kTraceContext, 0,
                100, {});
   CreateXEvent(&plane_builder, &line_builder, HostEventType::kFunctionRun, 10,
@@ -68,8 +42,7 @@ TEST(GroupEventsTest, ConnectIntraThreadTest) {
                190, {});
 
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(&plane);
-  EventNodeMap event_node_map(
-      {{HostEventType::kTraceContext, {}}, {HostEventType::kFunctionRun, {}}});
+  EventNodeMap event_node_map;
   ConnectIntraThread(plane_visitor, &plane, &event_node_map);
   EXPECT_EQ(event_node_map[HostEventType::kTraceContext].size(), 1);
   EXPECT_EQ(event_node_map[HostEventType::kFunctionRun].size(), 2);
@@ -102,8 +75,7 @@ TEST(GroupEventsTest, ConnectInterThreadTest) {
                {{StatType::kStepId, 1}});
 
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(&plane);
-  EventNodeMap event_node_map({{HostEventType::kFunctionRun, {}},
-                               {HostEventType::kExecutorStateProcess, {}}});
+  EventNodeMap event_node_map;
   ConnectIntraThread(plane_visitor, &plane, &event_node_map);
   std::vector<InterThreadConnectInfo> connect_info_list(
       {{HostEventType::kFunctionRun,
@@ -136,8 +108,9 @@ TEST(GroupEventsTest, ConnectInterThreadTest) {
 }
 
 TEST(GroupEventsTest, GroupGpuTraceTest) {
-  XPlane host_plane;
-  XPlaneBuilder host_plane_builder(&host_plane);
+  XSpace space;
+  XPlaneBuilder host_plane_builder(space.add_planes());
+  host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -150,39 +123,58 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
                {{StatType::kStepId, 0}});
-  CreateXEvent(&host_plane_builder, &tf_executor_thread,
-               HostEventType::kUnknownHostEventType, 30, 70,
-               {{StatType::kCorrelationId, 100}, {StatType::kDeviceId, 1}});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70,
+               {{StatType::kCorrelationId, 100}});
 
-  XPlane device_plane;
-  XPlaneBuilder device_plane_builder(&device_plane);
-  device_plane_builder.GetOrCreateStatMetadata(
-      GetStatTypeStr(StatType::kGroupId));
+  XPlane* device_plane = space.add_planes();
+  XPlaneBuilder device_plane_builder(device_plane);
   device_plane_builder.ReserveLines(1);
 
   auto stream = device_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&device_plane_builder, &stream,
-               HostEventType::kUnknownHostEventType, 200, 300,
+  CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
                {{StatType::kCorrelationId, 100}});
 
-  std::vector<InterThreadConnectInfo> connect_info_list(
-      {{HostEventType::kFunctionRun,
-        HostEventType::kExecutorStateProcess,
-        {StatType::kStepId}},
-       {HostEventType::kKernelLaunch,
-        HostEventType::kKernelExecute,
-        {StatType::kCorrelationId}}});
   EventGroupNameMap event_group_name_map;
-  GroupEvents(connect_info_list,
-              {HostEventType::kTraceContext, HostEventType::kFunctionRun},
-              &host_plane, {&device_plane}, &event_group_name_map);
-  XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(&device_plane);
-  EXPECT_EQ(device_plane.lines(0).events(0).stats_size(), 2);
+  GroupTfEvents(&space, &event_group_name_map);
+  XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
+  EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 2);
   EXPECT_EQ(device_plane_visitor.GetStatType(
-                device_plane.lines(0).events(0).stats(1)),
+                device_plane->lines(0).events(0).stats(1)),
             StatType::kGroupId);
   EXPECT_EQ(event_group_name_map.size(), 1);
   EXPECT_EQ(event_group_name_map[0], "123");
+}
+
+TEST(GroupEventsTest, GroupHostTrainingLoopTest) {
+  XSpace space;
+  XPlaneBuilder host_plane_builder(space.add_planes());
+  host_plane_builder.SetName(kHostThreads);
+  host_plane_builder.ReserveLines(1);
+
+  auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&host_plane_builder, &tf_executor_thread,
+               HostEventType::kExecutorStateProcess, 20, 80,
+               {{StatType::kStepId, 0}, {StatType::kIterNum, 10}});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70,
+               {{StatType::kCorrelationId, 100}});
+
+  XPlane* device_plane = space.add_planes();
+  XPlaneBuilder device_plane_builder(device_plane);
+  device_plane_builder.ReserveLines(1);
+
+  auto stream = device_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
+               {{StatType::kCorrelationId, 100}});
+
+  EventGroupNameMap event_group_name_map;
+  GroupTfEvents(&space, &event_group_name_map);
+  XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
+  EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 2);
+  EXPECT_EQ(device_plane_visitor.GetStatType(
+                device_plane->lines(0).events(0).stats(1)),
+            StatType::kGroupId);
+  EXPECT_EQ(event_group_name_map.size(), 1);
+  EXPECT_EQ(event_group_name_map[0], "10");
 }
 
 }  // namespace

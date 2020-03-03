@@ -31,8 +31,8 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::string GetResizeBilinearCode() {
-  return R"(
+std::string GetResizeBilinearCode(bool half_pixel_centers) {
+  std::string code = R"(
     #include <metal_stdlib>
     using namespace metal;
     $0
@@ -41,13 +41,20 @@ std::string GetResizeBilinearCode() {
                                 uint3 gid[[thread_position_in_grid]]) {
       if (int(gid.x) >= size.z || int(gid.y) >= size.w) {
         return;
-      }
-      const float2 tex_coord = float2(gid.xy) * scale;
-      int4 st;
+      })";
+  if (half_pixel_centers) {
+    code += "const float2 tex_coord = (float2(gid.xy) + 0.5f) * scale - 0.5f;";
+  } else {
+    code += "const float2 tex_coord = float2(gid.xy) * scale;";
+  }
+  code += R"(
+      const float2 tex_coord_floor = floor(tex_coord);
+      const int2 itex_coord_floor = int2(tex_coord_floor);
       const int2 borders = size.xy - int2(1, 1);
-      st.xy = clamp(int2(tex_coord), int2(0, 0), borders);
-      st.zw = min(st.xy + int2(1, 1), borders);
-      const float2 t = tex_coord - float2(st.xy); //interpolating factors
+      int4 st;
+      st.xy = max(itex_coord_floor, int2(0, 0));
+      st.zw = min(itex_coord_floor + int2(1, 1), borders);
+      const float2 t = tex_coord - tex_coord_floor; //interpolating factors
       const int src_index0 = (gid.z * size.y + st.y) * size.x + st.x;
       const int src_index1 = (gid.z * size.y + st.y) * size.x + st.z;
       const int src_index2 = (gid.z * size.y + st.w) * size.x + st.x;
@@ -64,6 +71,7 @@ std::string GetResizeBilinearCode() {
       output_buffer[linear_index] = value;
     }
   )";
+  return code;
 }
 
 std::string GetResizeNearestCode() {
@@ -95,7 +103,7 @@ std::vector<ComputeTaskDescriptorPtr> Resize(int id, ValueId input_id,
   desc->is_linkable = false;
   switch (attr.type) {
     case SamplingType::BILINEAR:
-      desc->shader_source = GetResizeBilinearCode();
+      desc->shader_source = GetResizeBilinearCode(attr.half_pixel_centers);
       break;
     case SamplingType::NEAREST:
       desc->shader_source = GetResizeNearestCode();

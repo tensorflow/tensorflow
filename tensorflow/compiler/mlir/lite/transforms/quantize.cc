@@ -46,14 +46,14 @@ static llvm::cl::opt<float> error_tolerance(
     "tfl-error-tolerance", llvm::cl::value_desc("float"),
     llvm::cl::desc("Error tolerance for numeric verify. Valid when "
                    "`-tfl-numeric-verify` is set."),
-    llvm::cl::init(1e-1f));
+    llvm::cl::init(5.0));
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> enable_single_layer_verify(
     "tfl-single-layer-verify", llvm::cl::value_desc("bool"),
     llvm::cl::desc("Whether verify numericals layer by layer. Valid when "
                    "`-tfl-numeric-verify` is set."),
-    llvm::cl::init(false));
+    llvm::cl::init(true));
 
 namespace mlir {
 namespace TFL {
@@ -65,8 +65,8 @@ namespace {
 
 // Full integer quantization rewrite pattern for TFLite.
 struct TFLFullQuantization
-    : public QuantizationPattern<TFLFullQuantization, QuantizeOp, DequantizeOp,
-                                 NumericVerifyOp> {
+    : public quant::QuantizationPattern<TFLFullQuantization, QuantizeOp,
+                                        DequantizeOp, NumericVerifyOp> {
   explicit TFLFullQuantization(MLIRContext* ctx, bool verify_numeric,
                                float tolerance, bool verify_single_layer)
       : BaseType(ctx, verify_numeric, tolerance, verify_single_layer) {}

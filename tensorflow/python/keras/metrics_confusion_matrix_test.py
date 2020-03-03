@@ -27,7 +27,9 @@ from scipy.special import expit
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
+from tensorflow.python.keras import models
 from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -955,9 +957,9 @@ class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
       self.evaluate(update_op)
 
     # Then verify idempotency.
-    initial_specificity = self.evaluate(s_obj.result())
+    initial_precision = self.evaluate(s_obj.result())
     for _ in range(10):
-      self.assertAlmostEqual(initial_specificity, self.evaluate(s_obj.result()),
+      self.assertAlmostEqual(initial_precision, self.evaluate(s_obj.result()),
                              1e-3)
 
   def test_unweighted_all_correct(self):
@@ -1014,6 +1016,121 @@ class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
   def test_invalid_num_thresholds(self):
     with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
       metrics.PrecisionAtRecall(0.4, num_thresholds=-1)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class RecallAtPrecisionTest(test.TestCase, parameterized.TestCase):
+
+  def test_config(self):
+    s_obj = metrics.RecallAtPrecision(
+        0.4, num_thresholds=100, name='recall_at_precision_1')
+    self.assertEqual(s_obj.name, 'recall_at_precision_1')
+    self.assertLen(s_obj.variables, 4)
+    self.assertEqual(s_obj.precision, 0.4)
+    self.assertEqual(s_obj.num_thresholds, 100)
+
+    # Check save and restore config
+    s_obj2 = metrics.RecallAtPrecision.from_config(s_obj.get_config())
+    self.assertEqual(s_obj2.name, 'recall_at_precision_1')
+    self.assertLen(s_obj2.variables, 4)
+    self.assertEqual(s_obj2.precision, 0.4)
+    self.assertEqual(s_obj2.num_thresholds, 100)
+
+  def test_value_is_idempotent(self):
+    s_obj = metrics.RecallAtPrecision(0.7)
+    y_pred = random_ops.random_uniform((10, 3),
+                                       maxval=1,
+                                       dtype=dtypes.float32,
+                                       seed=1)
+    y_true = random_ops.random_uniform((10, 3),
+                                       maxval=2,
+                                       dtype=dtypes.int64,
+                                       seed=1)
+    update_op = s_obj.update_state(y_true, y_pred)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+
+    # Run several updates.
+    for _ in range(10):
+      self.evaluate(update_op)
+
+    # Then verify idempotency.
+    initial_recall = self.evaluate(s_obj.result())
+    for _ in range(10):
+      self.assertAlmostEqual(initial_recall, self.evaluate(s_obj.result()),
+                             1e-3)
+
+  def test_unweighted_all_correct(self):
+    s_obj = metrics.RecallAtPrecision(0.7)
+    inputs = np.random.randint(0, 2, size=(100, 1))
+    y_pred = constant_op.constant(inputs, dtype=dtypes.float32)
+    y_true = constant_op.constant(inputs)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    self.assertAlmostEqual(1, self.evaluate(result))
+
+  def test_unweighted_high_precision(self):
+    s_obj = metrics.RecallAtPrecision(0.75)
+    pred_values = [
+        0.05, 0.1, 0.2, 0.3, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.9, 0.95
+    ]
+    label_values = [0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1]
+    # precisions: [1/2, 6/11, 1/2, 5/9, 5/8, 5/7, 2/3, 3/5, 3/5, 2/3, 1/2, 1].
+    # recalls:    [1,   1,    5/6, 5/6, 5/6, 5/6, 2/3, 1/2, 1/2, 1/3, 1/6, 1/6].
+    y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
+    y_true = constant_op.constant(label_values)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    # The precision 0.75 can be reached at thresholds 0.4<=t<0.45.
+    self.assertAlmostEqual(0.5, self.evaluate(result))
+
+  def test_unweighted_low_precision(self):
+    s_obj = metrics.RecallAtPrecision(2.0 / 3)
+    pred_values = [
+        0.05, 0.1, 0.2, 0.3, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.9, 0.95
+    ]
+    label_values = [0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1]
+    # precisions: [1/2, 6/11, 1/2, 5/9, 5/8, 5/7, 2/3, 3/5, 3/5, 2/3, 1/2, 1].
+    # recalls:    [1,   1,    5/6, 5/6, 5/6, 5/6, 2/3, 1/2, 1/2, 1/3, 1/6, 1/6].
+    y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
+    y_true = constant_op.constant(label_values)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    # The precision 5/7 can be reached at thresholds 00.3<=t<0.35.
+    self.assertAlmostEqual(5. / 6, self.evaluate(result))
+
+  @parameterized.parameters([dtypes.bool, dtypes.int32, dtypes.float32])
+  def test_weighted(self, label_dtype):
+    s_obj = metrics.RecallAtPrecision(0.75)
+    pred_values = [0.1, 0.2, 0.3, 0.5, 0.6, 0.9, 0.9]
+    label_values = [0, 1, 0, 0, 0, 1, 1]
+    weight_values = [1, 2, 1, 2, 1, 2, 1]
+    y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
+    y_true = math_ops.cast(label_values, dtype=label_dtype)
+    weights = constant_op.constant(weight_values)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred, sample_weight=weights)
+    self.assertAlmostEqual(0.6, self.evaluate(result))
+
+  def test_unachievable_precision(self):
+    s_obj = metrics.RecallAtPrecision(2.0 / 3)
+    pred_values = [0.1, 0.2, 0.3, 0.9]
+    label_values = [1, 1, 0, 0]
+    y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
+    y_true = constant_op.constant(label_values)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    # The highest possible precision is 1/2 which is below the required
+    # value, expect 0 recall.
+    self.assertAlmostEqual(0, self.evaluate(result))
+
+  def test_invalid_sensitivity(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 r'`precision` must be in the range \[0, 1\].'):
+      metrics.RecallAtPrecision(-1)
+
+  def test_invalid_num_thresholds(self):
+    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
+      metrics.RecallAtPrecision(0.4, num_thresholds=-1)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1507,6 +1624,23 @@ class MultiAUCTest(test.TestCase):
     # PR AUCs are 0.939 and 1.0 respectively
     self.assertAllClose(self.evaluate(good_result), (0.939 + 1.0) / 2.0,
                         1e-1)
+
+  def test_keras_model_compiles(self):
+    inputs = layers.Input(shape=(10,))
+    output = layers.Dense(3, activation='sigmoid')(inputs)
+    model = models.Model(inputs=inputs, outputs=output)
+    model.compile(
+        loss='binary_crossentropy',
+        metrics=[metrics.AUC(multi_label=True)]
+    )
+
+  def test_reset_states(self):
+    self.setup()
+    auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, multi_label=True)
+    self.evaluate(variables.variables_initializer(auc_obj.variables))
+    auc_obj(self.y_true_good, self.y_pred)
+    auc_obj.reset_states()
+    self.assertAllEqual(auc_obj.true_positives, np.zeros((5, 2)))
 
 
 if __name__ == '__main__':

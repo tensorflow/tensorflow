@@ -41,7 +41,7 @@ Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   *output = item.graph;
   for (NodeDef& node : *output->mutable_node()) {
-    if (IsAssert(node)) {
+    if (IsAssert(node) || node.op() == "PrintV2") {
       // Convert this node into a no-op.
       node.set_op("NoOp");
       node.clear_attr();
@@ -52,7 +52,7 @@ Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
           inp = AsControlDependency(NodeName(inp));
         }
       }
-    } else if (IsCheckNumerics(node) || IsPrint(node)) {
+    } else if (IsCheckNumerics(node) || node.op() == "Print") {
       // Replace with Identity op which will be pruned later.
       node.set_op("Identity");
       // Only preserve T attribute.

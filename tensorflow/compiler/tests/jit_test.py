@@ -648,4 +648,7 @@ class LazyCompilationTest(test.TestCase):
 if __name__ == "__main__":
   os.environ["TF_XLA_FLAGS"] = ("--tf_xla_enable_lazy_compilation=true " +
                                 os.environ.get("TF_XLA_FLAGS", ""))
+  # This test is using Tensorflow sessions which are not compatible with eager
+  # mode.
+  ops.disable_eager_execution()
   test.main()

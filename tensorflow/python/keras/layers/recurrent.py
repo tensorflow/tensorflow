@@ -34,6 +34,7 @@ from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
+from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -146,11 +147,14 @@ class StackedRNNCells(Layer):
         kwargs['training'] = training
       else:
         kwargs.pop('training', None)
+      # Use the __call__ function for callable objects, eg layers, so that it
+      # will have the proper name scopes for the ops, etc.
+      cell_call_fn = cell.__call__ if callable(cell) else cell.call
       if generic_utils.has_arg(cell.call, 'constants'):
-        inputs, states = cell.call(inputs, states, constants=constants,
-                                   **kwargs)
+        inputs, states = cell_call_fn(inputs, states,
+                                      constants=constants, **kwargs)
       else:
-        inputs, states = cell.call(inputs, states, **kwargs)
+        inputs, states = cell_call_fn(inputs, states, **kwargs)
       new_nested_states.append(states)
 
     return inputs, nest.pack_sequence_as(state_size,
@@ -161,9 +165,10 @@ class StackedRNNCells(Layer):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
     for cell in self.cells:
-      if isinstance(cell, Layer):
-        if not cell.built:
+      if isinstance(cell, Layer) and not cell.built:
+        with K.name_scope(cell.name):
           cell.build(input_shape)
+          cell.built = True
       if getattr(cell, 'output_size', None) is not None:
         output_dim = cell.output_size
       elif _is_multiple_state(cell.state_size):
@@ -521,6 +526,7 @@ class RNN(Layer):
     # do the tensor_shape to shapes here. The input could be single tensor, or a
     # nested structure of tensors.
     def get_input_spec(shape):
+      """Convert input shape to InputSpec."""
       if isinstance(shape, tensor_shape.TensorShape):
         input_spec_shape = shape.as_list()
       else:
@@ -528,7 +534,8 @@ class RNN(Layer):
       batch_index, time_step_index = (1, 0) if self.time_major else (0, 1)
       if not self.stateful:
         input_spec_shape[batch_index] = None
-      input_spec_shape[time_step_index] = None
+      if not getattr(self, 'unroll', False):
+        input_spec_shape[time_step_index] = None
       return InputSpec(shape=tuple(input_spec_shape))
 
     def get_step_input_shape(shape):
@@ -561,10 +568,11 @@ class RNN(Layer):
             nest.map_structure(get_input_spec, input_shape))
       step_input_shape = nest.map_structure(get_step_input_shape, input_shape)
 
-    # allow cell (if layer) to build before we set or validate state_spec
-    if isinstance(self.cell, Layer):
-      if not self.cell.built:
+    # allow cell (if layer) to build before we set or validate state_spec.
+    if isinstance(self.cell, Layer) and not self.cell.built:
+      with K.name_scope(self.cell.name):
         self.cell.build(step_input_shape)
+        self.cell.built = True
 
     # set or validate state_spec
     if _is_multiple_state(self.cell.state_size):
@@ -749,6 +757,9 @@ class RNN(Layer):
 
     # TF RNN cells expect single tensor as state instead of list wrapped tensor.
     is_tf_rnn_cell = getattr(self.cell, '_is_tf_rnn_cell', None) is not None
+    # Use the __call__ function for callable objects, eg layers, so that it
+    # will have the proper name scopes for the ops, etc.
+    cell_call_fn = self.cell.__call__ if callable(self.cell) else self.cell.call
     if constants:
       if not generic_utils.has_arg(self.cell.call, 'constants'):
         raise ValueError('RNN cell does not support constants')
@@ -758,7 +769,7 @@ class RNN(Layer):
         states = states[:-self._num_constants]  # pylint: disable=invalid-unary-operand-type
 
         states = states[0] if len(states) == 1 and is_tf_rnn_cell else states
-        output, new_states = self.cell.call(
+        output, new_states = cell_call_fn(
             inputs, states, constants=constants, **kwargs)
         if not nest.is_sequence(new_states):
           new_states = [new_states]
@@ -767,11 +778,10 @@ class RNN(Layer):
 
       def step(inputs, states):
         states = states[0] if len(states) == 1 and is_tf_rnn_cell else states
-        output, new_states = self.cell.call(inputs, states, **kwargs)
+        output, new_states = cell_call_fn(inputs, states, **kwargs)
         if not nest.is_sequence(new_states):
           new_states = [new_states]
         return output, new_states
-
     last_output, outputs, states = K.rnn(
         step,
         inputs,
@@ -854,7 +864,7 @@ class RNN(Layer):
                        'make sure that there is no mask passed in by upstream '
                        'layers.')
     if self.unroll:
-      raise ValueError('The input received constains RaggedTensors and does '
+      raise ValueError('The input received contains RaggedTensors and does '
                        'not support unrolling. Disable unrolling by passing '
                        '`unroll=False` in the RNN Layer constructor.')
 
@@ -963,6 +973,10 @@ class RNN(Layer):
     layer = cls(cell, **config)
     layer._num_constants = num_constants
     return layer
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return layer_serialization.RNNSavedModelSaver(self)
 
 
 @keras_export('keras.layers.AbstractRNNCell')
@@ -1080,10 +1094,9 @@ class DropoutRNNCellMixin(object):
     # RNN could be created with `unroll=True`. In that case, the `cell.call()`
     # function will be invoked multiple times, and we want to ensure same mask
     # is used every time.
-    self._dropout_mask = None
-    self._recurrent_dropout_mask = None
-    self._eager_dropout_mask = None
-    self._eager_recurrent_dropout_mask = None
+    self._dropout_mask_cache = K.ContextValueCache(self._create_dropout_mask)
+    self._recurrent_dropout_mask_cache = K.ContextValueCache(
+        self._create_recurrent_dropout_mask)
     super(DropoutRNNCellMixin, self).__init__(*args, **kwargs)
 
   def reset_dropout_mask(self):
@@ -1095,8 +1108,7 @@ class DropoutRNNCellMixin(object):
     be cached between batches. Otherwise it will introduce unreasonable bias
     against certain index of data within the batch.
     """
-    self._dropout_mask = None
-    self._eager_dropout_mask = None
+    self._dropout_mask_cache.clear()
 
   def reset_recurrent_dropout_mask(self):
     """Reset the cached recurrent dropout masks if any.
@@ -1107,8 +1119,21 @@ class DropoutRNNCellMixin(object):
     be cached between batches. Otherwise it will introduce unreasonable bias
     against certain index of data within the batch.
     """
-    self._recurrent_dropout_mask = None
-    self._eager_recurrent_dropout_mask = None
+    self._recurrent_dropout_mask_cache.clear()
+
+  def _create_dropout_mask(self, inputs, training, count=1):
+    return _generate_dropout_mask(
+        array_ops.ones_like(inputs),
+        self.dropout,
+        training=training,
+        count=count)
+
+  def _create_recurrent_dropout_mask(self, inputs, training, count=1):
+    return _generate_dropout_mask(
+        array_ops.ones_like(inputs),
+        self.recurrent_dropout,
+        training=training,
+        count=count)
 
   def get_dropout_mask_for_cell(self, inputs, training, count=1):
     """Get the dropout mask for RNN cell's input.
@@ -1128,23 +1153,8 @@ class DropoutRNNCellMixin(object):
     """
     if self.dropout == 0:
       return None
-    if (not context.executing_eagerly() and self._dropout_mask is None
-        or context.executing_eagerly() and self._eager_dropout_mask is None):
-      # Generate new mask and cache it based on context.
-      dp_mask = _generate_dropout_mask(
-          array_ops.ones_like(inputs),
-          self.dropout,
-          training=training,
-          count=count)
-      if context.executing_eagerly():
-        self._eager_dropout_mask = dp_mask
-      else:
-        self._dropout_mask = dp_mask
-    else:
-      # Reuse the existing mask.
-      dp_mask = (self._eager_dropout_mask
-                 if context.executing_eagerly() else self._dropout_mask)
-    return dp_mask
+    init_kwargs = dict(inputs=inputs, training=training, count=count)
+    return self._dropout_mask_cache.setdefault(kwargs=init_kwargs)
 
   def get_recurrent_dropout_mask_for_cell(self, inputs, training, count=1):
     """Get the recurrent dropout mask for RNN cell.
@@ -1164,25 +1174,8 @@ class DropoutRNNCellMixin(object):
     """
     if self.recurrent_dropout == 0:
       return None
-    if (not context.executing_eagerly() and self._recurrent_dropout_mask is None
-        or context.executing_eagerly()
-        and self._eager_recurrent_dropout_mask is None):
-      # Generate new mask and cache it based on context.
-      rec_dp_mask = _generate_dropout_mask(
-          array_ops.ones_like(inputs),
-          self.recurrent_dropout,
-          training=training,
-          count=count)
-      if context.executing_eagerly():
-        self._eager_recurrent_dropout_mask = rec_dp_mask
-      else:
-        self._recurrent_dropout_mask = rec_dp_mask
-    else:
-      # Reuse the existing mask.
-      rec_dp_mask = (self._eager_recurrent_dropout_mask
-                     if context.executing_eagerly()
-                     else self._recurrent_dropout_mask)
-    return rec_dp_mask
+    init_kwargs = dict(inputs=inputs, training=training, count=count)
+    return self._recurrent_dropout_mask_cache.setdefault(kwargs=init_kwargs)
 
 
 @keras_export('keras.layers.SimpleRNNCell')

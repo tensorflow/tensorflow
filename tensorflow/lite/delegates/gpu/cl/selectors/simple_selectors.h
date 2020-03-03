@@ -27,10 +27,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
-                     const BHWC& mask_shape,
-                     std::unique_ptr<GPUOperation>* ptr);
-
 void SelectLSTM(const OperationDef& op_def, std::unique_ptr<GPUOperation>* ptr);
 
 void SelectReLU(const CreationContext& creation_context,
@@ -73,7 +69,7 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
 Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
                   std::unique_ptr<GPUOperation>* ptr);
 
-Status SelectMultiplyScalar(const MultiplyScalarAttributes& attr,
+Status SelectMultiplyScalar(const MultiplyAttributes& attr,
                             const CreationContext& creation_context,
                             const OperationDef& op_def,
                             std::unique_ptr<GPUOperation>* ptr);
@@ -86,9 +82,23 @@ Status SelectBroadcastAdd(const AddAttributes& attr,
 void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr);
 
+void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
+                        const OperationDef& op_def,
+                        std::unique_ptr<GPUOperation>* ptr);
+
 void SelectTranspose(const TransposeAttributes& attr,
                      const OperationDef& op_def,
                      std::unique_ptr<GPUOperation>* ptr);
+
+Status SelectWinograd4x4To36(const CreationContext& creation_context,
+                             const Padding2D& padding,
+                             const OperationDef& op_def,
+                             std::unique_ptr<GPUOperation>* ptr);
+
+Status SelectWinograd36To4x4(
+    const CreationContext& creation_context, const OperationDef& op_def,
+    const ::tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
+    std::unique_ptr<GPUOperation>* ptr);
 
 }  // namespace cl
 }  // namespace gpu

@@ -39,6 +39,10 @@ limitations under the License.
 namespace tensorflow {
 
 class AsyncEagerNode;
+class AsyncRemoteExecuteNode;
+namespace eager {
+class EagerClient;
+}
 
 // A unit of execution for the EagerExecutor class below. Example subclasses
 // encapsulate execution of a TFE_Op, or copying a TFE_TensorHandle from one
@@ -65,8 +69,12 @@ class EagerNode {
 
   // Returns nullptr iff this Eager node is synchronous.
   virtual AsyncEagerNode* AsAsync() { return nullptr; }
+  virtual AsyncRemoteExecuteNode* AsAsyncRemoteExecuteNode() { return nullptr; }
 
   virtual string DebugString() const = 0;
+
+  // Indicates whether a node failure should make the executor unusable.
+  virtual bool Fatal() const { return true; }
 };
 
 class AsyncEagerNode : public EagerNode {
@@ -81,6 +89,16 @@ class AsyncEagerNode : public EagerNode {
   Status Run() final {
     return errors::Unimplemented("Don't call AsyncEagerNode::Run().");
   }
+};
+
+class AsyncRemoteExecuteNode : public AsyncEagerNode {
+ public:
+  AsyncRemoteExecuteNode* AsAsyncRemoteExecuteNode() final { return this; }
+
+  virtual const eager::EagerClient* eager_client() const = 0;
+  virtual bool needs_remote_inputs() const = 0;
+  virtual bool allow_multiple_pending_requests() const = 0;
+  virtual Status SyncExecutors() = 0;
 };
 
 // A class for handling async execution (see TFE_ContextSetAsync).
@@ -172,7 +190,7 @@ class EagerExecutor {
   void NotifyWaiters(uint64 id) EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   // Starts execution of pending EagerNodes. This function loops till executor
-  // state_ is set to kShutDown. If any errors are encontered, these are set
+  // state_ is set to kShutDown. If any errors are encountered, these are set
   // inside `status_`. The loop blocks anytime there are no pending nodes, or if
   // `status_` is not ok.
   void Run();
@@ -225,6 +243,11 @@ class EagerExecutor {
   // Thread object that calls the `Run` method in async mode.This thread runs
   // until state_ is set to kShuttingDown. It is `nullptr` in sync mode.
   const std::unique_ptr<Thread> thread_;
+
+  // Last device where remote function with remote inputs was executed.
+  const eager::EagerClient* last_eager_client_;
+
+  const bool enable_async_wait_for_remote_function_;
 };
 
 inline bool EagerExecutor::Async() const { return thread_ != nullptr; }

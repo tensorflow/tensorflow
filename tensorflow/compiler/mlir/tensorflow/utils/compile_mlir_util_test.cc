@@ -45,6 +45,9 @@ TEST(CompileSerializedMlirToXlaHloTest, InvalidSerializedMlirModule) {
                                            TestShapeRepresentation,
                                            &compilation_result);
   EXPECT_EQ(s.code(), tensorflow::errors::Code::INVALID_ARGUMENT);
+  EXPECT_EQ(s.ToString(),
+            "Invalid argument: could not parse MLIR module<stdin>: error: "
+            "custom op 'totally' is unknown\n");
 }
 
 TEST(CompileSerializedMlirToXlaHloTest, Success) {

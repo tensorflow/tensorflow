@@ -24,14 +24,21 @@ import numpy as np
 
 from tensorflow.python import keras
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers.preprocessing import categorical_encoding
 from tensorflow.python.keras.layers.preprocessing import categorical_encoding_v1
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
@@ -42,6 +49,344 @@ def get_layer_class():
     return categorical_encoding_v1.CategoricalEncoding
 
 
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class CategoricalEncodingInputTest(
+    keras_parameterized.TestCase,
+    preprocessing_test_utils.PreprocessingLayerTest):
+
+  def test_dense_input_sparse_output(self):
+    input_array = constant_op.constant([[1, 2, 3], [3, 3, 0]])
+
+    # The expected output should be (X for missing value):
+    # [[X, 1, 1, 1]
+    #  [1, X, X, X]
+    #  [X, X, X, 2]]
+    expected_indices = [[0, 1], [0, 2], [0, 3], [1, 0], [1, 3]]
+    expected_values = [1, 1, 1, 1, 2]
+    max_tokens = 6
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
+    layer = get_layer_class()(
+        max_tokens=max_tokens,
+        output_mode=categorical_encoding.COUNT,
+        sparse=True)
+    int_data = layer(input_data)
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    sp_output_dataset = model.predict(input_array, steps=1)
+    self.assertAllEqual(expected_values, sp_output_dataset.values)
+    self.assertAllEqual(expected_indices, sp_output_dataset.indices)
+
+    # Assert sparse output is same as dense output.
+    layer = get_layer_class()(
+        max_tokens=max_tokens,
+        output_mode=categorical_encoding.COUNT,
+        sparse=False)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array, steps=1)
+    self.assertAllEqual(
+        sparse_ops.sparse_tensor_to_dense(sp_output_dataset, default_value=0),
+        output_dataset)
+
+  def test_sparse_input(self):
+    input_array = np.array([[1, 2, 3, 0], [0, 3, 1, 0]], dtype=np.int64)
+    sparse_tensor_data = sparse_ops.from_dense(input_array)
+
+    # pyformat: disable
+    expected_output = [[0, 1, 1, 1, 0, 0],
+                       [0, 1, 0, 1, 0, 0]]
+    # pyformat: enable
+    max_tokens = 6
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
+
+    layer = get_layer_class()(
+        max_tokens=max_tokens, output_mode=categorical_encoding.BINARY)
+    int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(sparse_tensor_data, steps=1)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_sparse_input_sparse_output(self):
+    sp_inp = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 1], [2, 0], [2, 1], [3, 1]],
+        values=[0, 2, 1, 1, 0],
+        dense_shape=[4, 2])
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
+
+    # The expected output should be (X for missing value):
+    # [[1, X, X, X]
+    #  [X, X, 1, X]
+    #  [X, 2, X, X]
+    #  [1, X, X, X]]
+    expected_indices = [[0, 0], [1, 2], [2, 1], [3, 0]]
+    expected_values = [1, 1, 2, 1]
+    max_tokens = 6
+
+    layer = get_layer_class()(
+        max_tokens=max_tokens,
+        output_mode=categorical_encoding.COUNT,
+        sparse=True)
+    int_data = layer(input_data)
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    sp_output_dataset = model.predict(sp_inp, steps=1)
+    self.assertAllEqual(expected_values, sp_output_dataset.values)
+    self.assertAllEqual(expected_indices, sp_output_dataset.indices)
+
+    # Assert sparse output is same as dense output.
+    layer = get_layer_class()(
+        max_tokens=max_tokens,
+        output_mode=categorical_encoding.COUNT,
+        sparse=False)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(sp_inp, steps=1)
+    self.assertAllEqual(
+        sparse_ops.sparse_tensor_to_dense(sp_output_dataset, default_value=0),
+        output_dataset)
+
+  def test_ragged_input(self):
+    input_array = ragged_factory_ops.constant([[1, 2, 3], [3, 1]])
+
+    # pyformat: disable
+    expected_output = [[0, 1, 1, 1, 0, 0],
+                       [0, 1, 0, 1, 0, 0]]
+    # pyformat: enable
+    max_tokens = 6
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
+
+    layer = get_layer_class()(
+        max_tokens=max_tokens, output_mode=categorical_encoding.BINARY)
+    int_data = layer(input_data)
+
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array, steps=1)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_ragged_input_sparse_output(self):
+    input_array = ragged_factory_ops.constant([[1, 2, 3], [3, 3]])
+
+    # The expected output should be (X for missing value):
+    # [[X, 1, 1, 1]
+    #  [X, X, X, 2]]
+    expected_indices = [[0, 1], [0, 2], [0, 3], [1, 3]]
+    expected_values = [1, 1, 1, 2]
+    max_tokens = 6
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
+    layer = get_layer_class()(
+        max_tokens=max_tokens,
+        output_mode=categorical_encoding.COUNT,
+        sparse=True)
+    int_data = layer(input_data)
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    sp_output_dataset = model.predict(input_array, steps=1)
+    self.assertAllEqual(expected_values, sp_output_dataset.values)
+    self.assertAllEqual(expected_indices, sp_output_dataset.indices)
+
+    # Assert sparse output is same as dense output.
+    layer = get_layer_class()(
+        max_tokens=max_tokens,
+        output_mode=categorical_encoding.COUNT,
+        sparse=False)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array, steps=1)
+    self.assertAllEqual(
+        sparse_ops.sparse_tensor_to_dense(sp_output_dataset, default_value=0),
+        output_dataset)
+
+  # Keras functional model doesn't support dense layer stacked with sparse out.
+  def DISABLED_test_sparse_output_and_dense_layer(self):
+    input_array = constant_op.constant([[1, 2, 3], [3, 3, 0]])
+
+    max_tokens = 4
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
+    encoding_layer = get_layer_class()(
+        max_tokens=max_tokens,
+        output_mode=categorical_encoding.COUNT,
+        sparse=True)
+    int_data = encoding_layer(input_data)
+    output_data = math_ops.cast(int_data, dtypes.float32)
+    weights = variables.Variable([[.1], [.2], [.3], [.4]], dtype=dtypes.float32)
+    weights_mult = lambda x: sparse_ops.sparse_tensor_dense_matmul(x, weights)
+    output_data = keras.layers.Lambda(weights_mult)(output_data)
+
+    model = keras.Model(inputs=input_data, outputs=output_data)
+    _ = model.predict(input_array, steps=1)
+
+
+@keras_parameterized.run_all_keras_modes
+class CategoricalEncodingAdaptTest(
+    keras_parameterized.TestCase,
+    preprocessing_test_utils.PreprocessingLayerTest):
+
+  def test_sparse_adapt(self):
+    vocab_data = sparse_ops.from_dense(
+        np.array([[1, 1, 0, 1, 1, 2, 2, 0, 2, 3, 3, 0, 4]], dtype=np.int64))
+    vocab_dataset = dataset_ops.Dataset.from_tensors(vocab_data)
+    input_array = sparse_ops.from_dense(
+        np.array([[1, 2, 3, 0], [0, 3, 1, 0]], dtype=np.int64))
+
+    # pyformat: disable
+    expected_output = [[0, 1, 1, 1, 0],
+                       [0, 1, 0, 1, 0]]
+    # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
+    layer = get_layer_class()(
+        max_tokens=None, output_mode=categorical_encoding.BINARY)
+    layer.adapt(vocab_dataset)
+    int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array, steps=1)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_ragged_adapt(self):
+    vocab_data = ragged_factory_ops.constant(
+        np.array([[1, 1, 0, 1, 1], [2, 2], [0, 2, 3], [0, 4]]))
+    vocab_dataset = dataset_ops.Dataset.from_tensors(vocab_data)
+    input_array = ragged_factory_ops.constant([[1, 2, 3], [3, 1]])
+
+    # pyformat: disable
+    expected_output = [[0, 1, 1, 1, 0],
+                       [0, 1, 0, 1, 0]]
+    # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
+
+    layer = get_layer_class()(
+        max_tokens=None, output_mode=categorical_encoding.BINARY)
+    layer.adapt(vocab_dataset)
+    int_data = layer(input_data)
+
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array, steps=1)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_adapt_after_build(self):
+    vocab_data = np.array([[1, 1, 1, 1, 2, 2, 2, 3, 3, 4]])
+    input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
+
+    # pyformat: disable
+    expected_output = [[0, 1, 1, 1, 0],
+                       [1, 1, 0, 1, 0]]
+    # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
+    layer = get_layer_class()(
+        max_tokens=max_tokens, output_mode=categorical_encoding.BINARY)
+    int_data = layer(input_data)
+    layer.adapt(vocab_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_hard_maximum_set_state_variables_after_build(self):
+    state_variables = {categorical_encoding._NUM_ELEMENTS_NAME: 5}
+    input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
+
+    # pyformat: disable
+    expected_output = [[0, 1, 1, 1, 0],
+                       [1, 1, 0, 1, 0]]
+    # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
+    layer = get_layer_class()(
+        max_tokens=max_tokens, output_mode=categorical_encoding.BINARY)
+    int_data = layer(input_data)
+    layer._set_state_variables(state_variables)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_soft_maximum_set_state_after_build(self):
+    input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
+
+    # pyformat: disable
+    expected_output = [[0, 1, 1, 1, 0],
+                       [1, 1, 0, 1, 0]]
+    # pyformat: enable
+    max_tokens = 5
+    expected_output_shape = [None, max_tokens]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
+    layer = get_layer_class()(
+        max_tokens=None, output_mode=categorical_encoding.BINARY)
+    layer.build(input_data.shape)
+    layer.set_num_elements(max_tokens)
+    int_data = layer(input_data)
+    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
+
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_set_weights_fails_on_wrong_size_weights(self):
+    tfidf_data = [.05, .5, .25, .2, .125]
+    layer = get_layer_class()(
+        max_tokens=6, output_mode=categorical_encoding.TFIDF)
+
+    with self.assertRaisesRegex(ValueError, ".*Layer weight shape.*"):
+      layer.set_weights([np.array(tfidf_data)])
+
+  def test_set_num_elements_after_call_fails(self):
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
+    layer = get_layer_class()(
+        max_tokens=None, output_mode=categorical_encoding.BINARY)
+    _ = layer(input_data)
+    with self.assertRaisesRegex(RuntimeError, "num_elements cannot be changed"):
+      layer.set_num_elements(5)
+
+  def test_adapt_after_call_fails(self):
+    vocab_data = np.array([1, 1, 1, 1, 2, 2, 2, 3, 3, 4])
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
+    layer = get_layer_class()(
+        max_tokens=None, output_mode=categorical_encoding.BINARY)
+    _ = layer(input_data)
+    with self.assertRaisesRegex(RuntimeError, "can't be adapted"):
+      layer.adapt(vocab_data)
+
+  def test_set_state_variables_after_call_fails(self):
+    state_variables = {categorical_encoding._NUM_ELEMENTS_NAME: 5}
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
+    layer = get_layer_class()(
+        max_tokens=None, output_mode=categorical_encoding.BINARY)
+    _ = layer(input_data)
+    with self.assertRaisesRegex(RuntimeError, "num_elements cannot be changed"):
+      layer._set_state_variables(state_variables)
+
+
+@keras_parameterized.run_all_keras_modes
 @keras_parameterized.run_all_keras_modes
 class CategoricalEncodingOutputTest(
     keras_parameterized.TestCase,
@@ -178,110 +523,7 @@ class CategoricalEncodingOutputTest(
     output_dataset = model.predict(input_array)
     self.assertAllClose(expected_output, output_dataset)
 
-  def test_tfidf_hard_maximum_set_weights_fails_on_wrong_size_weights(self):
-    tfidf_data = [.05, .5, .25, .2, .125]
-    layer = get_layer_class()(
-        max_tokens=6, output_mode=categorical_encoding.TFIDF)
 
-    with self.assertRaisesRegex(ValueError, ".*Layer weight shape.*"):
-      layer.set_weights([np.array(tfidf_data)])
-
-  def test_tfidf_output_hard_maximum_adapt_after_build(self):
-    vocab_data = np.array([[1, 1, 1, 1, 2, 2, 2, 3, 3, 4]])
-    input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
-
-    # pyformat: disable
-    expected_output = [[0, 1, 1, 1, 0],
-                       [1, 1, 0, 1, 0]]
-    # pyformat: enable
-    max_tokens = 5
-    expected_output_shape = [None, max_tokens]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=categorical_encoding.BINARY)
-    int_data = layer(input_data)
-    layer.adapt(vocab_data)
-    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
-
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
-
-  def test_tfidf_output_hard_maximum_set_state_variables_after_build(self):
-    state_variables = {categorical_encoding._NUM_ELEMENTS_NAME: 5}
-    input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
-
-    # pyformat: disable
-    expected_output = [[0, 1, 1, 1, 0],
-                       [1, 1, 0, 1, 0]]
-    # pyformat: enable
-    max_tokens = 5
-    expected_output_shape = [None, max_tokens]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=max_tokens, output_mode=categorical_encoding.BINARY)
-    int_data = layer(input_data)
-    layer._set_state_variables(state_variables)
-    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
-
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
-
-  def test_binary_output_soft_maximum_set_state_after_build(self):
-    input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
-
-    # pyformat: disable
-    expected_output = [[0, 1, 1, 1, 0],
-                       [1, 1, 0, 1, 0]]
-    # pyformat: enable
-    max_tokens = 5
-    expected_output_shape = [None, max_tokens]
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.BINARY)
-    layer.build(input_data.shape)
-    layer.set_num_elements(max_tokens)
-    int_data = layer(input_data)
-    self.assertAllEqual(expected_output_shape, int_data.shape.as_list())
-
-    model = keras.Model(inputs=input_data, outputs=int_data)
-    output_dataset = model.predict(input_array)
-    self.assertAllEqual(expected_output, output_dataset)
-
-  def test_tfidf_output_soft_maximum_set_num_elements_after_call_fails(self):
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.BINARY)
-    _ = layer(input_data)
-    with self.assertRaisesRegex(RuntimeError, "num_elements cannot be changed"):
-      layer.set_num_elements(5)
-
-  def test_tfidf_output_soft_maximum_adapt_after_call_fails(self):
-    vocab_data = np.array([1, 1, 1, 1, 2, 2, 2, 3, 3, 4])
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.BINARY)
-    _ = layer(input_data)
-    with self.assertRaisesRegex(RuntimeError, "can't be adapted"):
-      layer.adapt(vocab_data)
-
-  def test_tfidf_output_soft_maximum_set_state_variables_after_call_fails(self):
-    state_variables = {categorical_encoding._NUM_ELEMENTS_NAME: 5}
-
-    input_data = keras.Input(shape=(None,), dtype=dtypes.int32)
-    layer = get_layer_class()(
-        max_tokens=None, output_mode=categorical_encoding.BINARY)
-    _ = layer(input_data)
-    with self.assertRaisesRegex(RuntimeError, "num_elements cannot be changed"):
-      layer._set_state_variables(state_variables)
-
-
-@keras_parameterized.run_all_keras_modes
 class CategoricalEncodingModelBuildingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):

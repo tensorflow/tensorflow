@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/mlir_gpu/hlo_dialect_emitter.h"
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/Types.h"  // TF:llvm-project
@@ -64,6 +64,8 @@ StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
       return {func_builder.create<hlo::DivOp>(loc, rets, args, attrs)};
     case HloOpcode::kExp:
       return {func_builder.create<hlo::ExpOp>(loc, rets, args, attrs)};
+    case HloOpcode::kLog:
+      return {func_builder.create<hlo::LogOp>(loc, rets, args, attrs)};
     case HloOpcode::kMaximum:
       return {func_builder.create<hlo::MaxOp>(loc, rets, args, attrs)};
     case HloOpcode::kMinimum:
@@ -74,6 +76,8 @@ StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
       return {func_builder.create<hlo::NegOp>(loc, rets, args, attrs)};
     case HloOpcode::kRemainder:
       return {func_builder.create<hlo::RemOp>(loc, rets, args, attrs)};
+    case HloOpcode::kRsqrt:
+      return {func_builder.create<hlo::RsqrtOp>(loc, rets, args, attrs)};
     case HloOpcode::kSelect:
       return {func_builder.create<hlo::SelectOp>(loc, rets, args, attrs)};
     case HloOpcode::kSign:

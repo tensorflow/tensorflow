@@ -321,7 +321,7 @@ cc_library(
     }),
     visibility = ["//visibility:public"],
     deps = [
-        "@zlib_archive//:zlib",
+        "@zlib",
     ] + select({
         "@org_tensorflow//tensorflow:ios": [],
         "@org_tensorflow//tensorflow:windows": [],

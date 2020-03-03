@@ -23,6 +23,7 @@ limitations under the License.
 #define TF_OP_BASE
 
 include "mlir/IR/OpBase.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TensorFlow dialect definitions
@@ -57,6 +58,10 @@ TODO: Make invariants more structured so that we can reference them in ops.
 def TF_OperandsSameAsResultsTypeOrRef : NativeOpTrait<
   "TF::OperandsSameAsResultsTypeOrRef">;
 
+// Layout agnostic operations do not depend on the operands data layout (data
+// format), as an example all element wise operations are layout agnostic.
+def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
+
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
 //===----------------------------------------------------------------------===//
@@ -70,7 +75,7 @@ class TF_Op<string mnemonic, list<OpTrait> traits = []> :
 
 // Any tensor element type defined in the TensorFlow dialect
 def TF_TFDialectType :
-    Type<CPred<"$_self.isa<TensorFlowType>()">, "TensorFlow type">;
+    Type<CPred<"$_self.isa<mlir::TF::TensorFlowType>()">, "TensorFlow type">;
 
 // Class for any TensorFlow dialect specific type
 class TF_TensorFlowType <string name, string description> :
@@ -80,7 +85,7 @@ class TF_TensorFlowType <string name, string description> :
 
 // Any tensor element type allowed in TensorFlow ops
 def TF_ElementType : Type<Or<[AnyFloat.predicate,
-                              AnyInteger.predicate,
+                              AnySignlessInteger.predicate,
                               AnyComplex.predicate,
                               TF_TFDialectType.predicate]>,
                           "tf.dtype">;

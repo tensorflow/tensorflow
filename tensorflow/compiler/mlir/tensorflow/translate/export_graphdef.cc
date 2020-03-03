@@ -28,7 +28,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -184,7 +185,8 @@ class Exporter {
   // converted to the library functions in that graph.
   static Status Convert(mlir::ModuleOp module, const GraphExportConfig& configs,
                         std::unique_ptr<Graph>* graph,
-                        FunctionLibraryDefinition* flib_def);
+                        FunctionLibraryDefinition* flib_def,
+                        absl::flat_hash_set<Node*>* control_ret_nodes);
 
   // Converts a given FuncOp to a FunctionDef and adds it to the function
   // definition library
@@ -543,19 +545,9 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
 
   // Extract version info.
-  auto version_attr = function.getParentOfType<mlir::ModuleOp>()
-                          .getAttrOfType<mlir::DictionaryAttr>("tf.versions");
-  if (version_attr) {
-    VersionDef versions;
-    versions.set_producer(
-        version_attr.get("producer").cast<mlir::IntegerAttr>().getInt());
-    versions.set_min_consumer(
-        version_attr.get("min_consumer").cast<mlir::IntegerAttr>().getInt());
-    for (auto bad_consumer :
-         version_attr.get("bad_consumers").cast<mlir::ArrayAttr>()) {
-      versions.mutable_bad_consumers()->Add(
-          bad_consumer.cast<mlir::IntegerAttr>().getInt());
-    }
+  VersionDef versions;
+  auto module = function.getParentOfType<mlir::ModuleOp>();
+  if (mlir::succeeded(ExtractTfVersions(module, &versions))) {
     graph->set_versions(versions);
   }
 
@@ -790,7 +782,8 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
 Status Exporter::Convert(mlir::ModuleOp module,
                          const GraphExportConfig& configs,
                          std::unique_ptr<Graph>* graph,
-                         FunctionLibraryDefinition* flib_def) {
+                         FunctionLibraryDefinition* flib_def,
+                         absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::Identifier entry_func_id =
       mlir::Identifier::get("main", module.getContext());
   absl::optional<mlir::FuncOp> entry_func;
@@ -812,10 +805,9 @@ Status Exporter::Convert(mlir::ModuleOp module,
     return errors::FailedPrecondition("entry function `main` must be present");
 
   // Updates the graph and the function library definition.
-  absl::flat_hash_set<Node*> control_ret_nodes;
   TF_ASSIGN_OR_RETURN(
       *graph, Exporter::Convert(configs, tf_dialect, entry_func.value(), &flib,
-                                &control_ret_nodes));
+                                control_ret_nodes));
   for (auto& func_def : flib.function()) {
     TF_RETURN_IF_ERROR(flib_def->AddFunctionDef(func_def));
   }
@@ -829,9 +821,19 @@ Status Exporter::Convert(mlir::ModuleOp module,
 Status ConvertMlirToGraph(mlir::ModuleOp module,
                           const GraphExportConfig& configs,
                           std::unique_ptr<Graph>* graph,
-                          FunctionLibraryDefinition* flib_def) {
+                          FunctionLibraryDefinition* flib_def,
+                          absl::flat_hash_set<Node*>* control_ret_nodes) {
   TF_RETURN_IF_ERROR(HasSingleGraphSingleOpIslandsFunctions(module));
-  return Exporter::Convert(module, configs, graph, flib_def);
+  return Exporter::Convert(module, configs, graph, flib_def, control_ret_nodes);
+}
+
+Status ConvertMlirToGraph(mlir::ModuleOp module,
+                          const GraphExportConfig& configs,
+                          std::unique_ptr<Graph>* graph,
+                          FunctionLibraryDefinition* flib_def) {
+  absl::flat_hash_set<Node*> control_ret_nodes;
+  return ConvertMlirToGraph(module, configs, graph, flib_def,
+                            &control_ret_nodes);
 }
 
 StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(

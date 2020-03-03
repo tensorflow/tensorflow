@@ -963,6 +963,22 @@ absl::optional<string> MarkForCompilationPassImpl::GetXlaScope(Node* node) {
   return absl::nullopt;
 }
 
+// Returns true iff the attribute `attr_name` is attached to either the node or
+// to it's callee.
+static bool GetNodeOrFuncAttr(Node* node, FunctionLibraryDefinition* flib_def,
+                              const char* attr_name) {
+  bool out = false;
+  bool attr_value;
+  if (TryGetNodeAttr(node->attrs(), attr_name, &attr_value)) {
+    out |= attr_value;
+  }
+
+  if (flib_def->GetAttr(*node, attr_name, &attr_value).ok()) {
+    out |= attr_value;
+  }
+  return out;
+}
+
 Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
   auto ignore_resource_ops = [&](const Node& n, bool* ignore) {
     return IgnoreResourceOpForSafetyAnalysis(&device_info_cache_, n, ignore);
@@ -1016,16 +1032,9 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
       resource_var_operation_node_id = node->id();
     }
 
-    bool is_xla_compile_attr_true = false;
-
-    bool xla_compile_attr;
-    if (TryGetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr)) {
-      is_xla_compile_attr_true |= xla_compile_attr;
-    }
-
-    if (flib_def_->GetAttr(*node, kXlaCompileAttr, &xla_compile_attr).ok()) {
-      is_xla_compile_attr_true |= xla_compile_attr;
-    }
+    bool is_xla_compile_attr_true =
+        GetNodeOrFuncAttr(node, flib_def_, kXlaCompileAttr) ||
+        GetNodeOrFuncAttr(node, flib_def_, kXlaMustCompileAttr);
 
     DeviceSet devices;
     devices.Insert(device);
@@ -1874,6 +1883,8 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "EmptyTensorList",
                                      "ExtractImagePatches",
                                      "Igamma",
+                                     "IgammaGradA",
+                                     "RandomGammaGrad",
                                      "Igammac",
                                      "FFT",
                                      "FFT2D",
@@ -1996,6 +2007,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "StatelessRandomNormal",
                                      "StatelessRandomUniform",
                                      "StatelessRandomUniformInt",
+                                     "StatelessRandomUniformFullInt",
                                      "StatelessTruncatedNormal",
                                      "StatelessWhile",
                                      "Svd",

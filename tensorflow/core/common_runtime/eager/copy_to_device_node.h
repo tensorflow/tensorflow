@@ -27,15 +27,25 @@ namespace tensorflow {
 class CopyToDeviceNode : public EagerNode {
  public:
   CopyToDeviceNode(TensorHandle* src, TensorHandle* dst, Device* dstd,
-                   const EagerContext& ctx)
-      : EagerNode(), src_(src), dst_(dst), dstd_(dstd), ctx_(ctx) {
-    src_->Ref();
-    dst_->Ref();
+                   const EagerContext& ctx, bool async, bool mirror)
+      : EagerNode(),
+        src_(src),
+        dst_(dst),
+        dstd_(dstd),
+        ctx_(ctx),
+        async_(async),
+        mirror_(mirror) {
+    if (async_) {
+      src_->Ref();
+      dst_->Ref();
+    }
   }
 
   ~CopyToDeviceNode() override {
-    src_->Unref();
-    dst_->Unref();
+    if (async_) {
+      src_->Unref();
+      dst_->Unref();
+    }
   }
 
   Status Run() override {
@@ -43,16 +53,20 @@ class CopyToDeviceNode : public EagerNode {
     MEMDEBUG_CACHE_OP(MEMDEBUG_CACHE_VAL ? MEMDEBUG_CACHE_VAL
                                          : "eager::CopyToDeviceNode");
     TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &tensor));
-    return dst_->SetTensor(std::move(tensor));
+    if (!async_ && mirror_) {
+      return dst_->AddLocalMirror(std::move(tensor), dstd_);
+    } else {
+      return dst_->SetTensor(std::move(tensor), dstd_);
+    }
   }
 
-  void Abort(Status status) override { dst_->Poison(status); }
+  void Abort(Status status) override { dst_->Poison(status, dstd_); }
 
   string DebugString() const override {
     string out = "[CopyToDeviceNode]";
     strings::StrAppend(&out, " src_tensor: ", src_->DebugString());
     strings::StrAppend(&out, ", dst_tensor: ", dst_->DebugString());
-    strings::StrAppend(&out, ", dst_device: ", dstd_->name());
+    strings::StrAppend(&out, ", dst_device: ", dstd_ ? dstd_->name() : "[]");
     return out;
   }
 
@@ -63,6 +77,8 @@ class CopyToDeviceNode : public EagerNode {
   TensorHandle* dst_;
   Device* dstd_;
   const EagerContext& ctx_;
+  bool async_;
+  bool mirror_;
 };
 
 }  // namespace tensorflow

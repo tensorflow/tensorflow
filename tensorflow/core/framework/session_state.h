@@ -36,7 +36,7 @@ class SessionState {
   // Store a tensor in the session state.
   Status AddTensor(const string& handle, const Tensor& tensor);
 
-  // Delete a tensdor from the session state.
+  // Delete a tensor from the session state.
   Status DeleteTensor(const string& handle);
 
   int64 GetNewId();

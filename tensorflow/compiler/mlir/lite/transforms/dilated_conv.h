@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -80,6 +81,17 @@ class ConvertTFDilatedConvOp : public OpRewritePattern<Conv2dOpTy> {
 template <typename Conv2dOpTy>
 PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     Conv2dOpTy op, PatternRewriter& rewriter) const {
+  // Make sure Conv2D has 'VALID' padding.
+  if (op.template getAttrOfType<StringAttr>("padding").getValue() != "VALID") {
+    return Pattern::matchFailure();
+  }
+  // Make sure dilations are all ones if set.
+  const ArrayAttr& dilations =
+      op.template getAttrOfType<ArrayAttr>("dilations");
+  if (dilations && !TFIntListIsAllOnes(dilations)) {
+    return Pattern::matchFailure();
+  }
+
   // Check if the ConvOp is preceded by a `Expand` op and succeeded by a
   // `Squeeze` op.
   Operation* prev_op = op.getOperation()->getPrevNode();
@@ -90,6 +102,7 @@ PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
 
   TF::ExpandDimsOp expand_op;
   TF::SqueezeOp squeeze_op;
+  int64_t expand_axis;
   // Expand + Squeeze op.
   if (llvm::isa<TF::ExpandDimsOp>(prev_op)) {
     if (!llvm::isa<TF::SqueezeOp>(next_op)) {
@@ -98,6 +111,22 @@ PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     }
     expand_op = llvm::cast<TF::ExpandDimsOp>(prev_op);
     squeeze_op = llvm::cast<TF::SqueezeOp>(next_op);
+
+    // Make sure that the axis in `expand_op` is constant.
+    if (auto const_op =
+            llvm::dyn_cast<TF::ConstOp>(expand_op.dim().getDefiningOp())) {
+      expand_axis =
+          (*const_op.value().cast<DenseElementsAttr>().getIntValues().begin())
+              .getSExtValue();
+    } else {
+      return Pattern::matchFailure();
+    }
+    // Make sure that the `squeeze_dims` is equal to `expand_axis`.
+    auto squeeze_dims = squeeze_op.squeeze_dims();
+    if (squeeze_dims.size() != 1 ||
+        squeeze_dims[0].cast<IntegerAttr>().getInt() != expand_axis) {
+      return Pattern::matchFailure();
+    }
 
     // Update previous/next op pointer.
     prev_op = prev_op->getPrevNode();
@@ -108,10 +137,14 @@ PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
 
   // SpaceToBatchND op.
   if (!llvm::isa<TF::SpaceToBatchNDOp>(prev_op)) return Pattern::matchFailure();
+  // TODO(b/149936532): Check `padding` input, currently ignored.
   TF::SpaceToBatchNDOp stb_op = llvm::cast<TF::SpaceToBatchNDOp>(prev_op);
 
   // Pad op.
   TF::PadOp pad_op;
+  // TODO(b/149936532): Currently we just ignore the PadOp. However note that
+  // in real scenarios this may not always be correct: user can put a PadOp here
+  // with non-trivial consequences.
   if (llvm::isa<TF::PadOp>(next_op)) {
     pad_op = llvm::cast<TF::PadOp>(next_op);
     next_op = next_op->getNextNode();
@@ -119,6 +152,7 @@ PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   }
 
   // BatchToSpaceND + BiasAdd.
+  // TODO(b/149936532): Check the `crops` input, currently ignored.
   TF::BatchToSpaceNDOp bts_op;
   TF::BiasAddOp biasadd_op;
   bool final_op_is_bts = true;
@@ -146,14 +180,10 @@ PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   if (!dilations_attr.hasValue()) return Pattern::matchFailure();
   op.setAttr("dilations", dilations_attr.getValue());
 
-  // Here we need to set the correct padding for Conv op. In TF, the conv op
-  // inserted after 'SpaceToBatch' always has 'VALID' padding. This might
-  // become a problem here if the original Conv op has 'SAME' padding. When
-  // the original conv has 'SAME' padding, TF will set a non-zero padding for
-  // the 'SpaceToBatch' op, so we rely on this information to check if we need
-  // to change the padding from 'VALID' to 'SAME' (a.k.a when we see non-zero
-  // values in `stb_op.paddings`, we change the current Conv's padding to
-  // 'SAME').
+  // Padding is set to 'SAME' when `stb_op` has non-zero paddings.
+  // TODO(b/149936532): This assumption only holds when the input width & height
+  // is multiple of dilation width & height. We should fix it in order to
+  // support other use cases.
   auto stb_paddings = stb_op.paddings();
   ElementsAttr stb_paddings_attr;
   if (matchPattern(stb_paddings, m_Constant(&stb_paddings_attr))) {
@@ -175,7 +205,8 @@ PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     auto input_shape = stb_op.input().getType().cast<ShapedType>().getShape();
     SmallVector<int64_t, 4> expand_shape(input_shape.begin(),
                                          input_shape.end());
-    expand_shape.push_back(1);
+    expand_shape.insert(expand_shape.begin() + expand_axis, 1);
+
     auto expand_result_type = RankedTensorType::get(
         expand_shape, getElementTypeOrSelf(stb_op.input()));
     expand_op.getResult().setType(expand_result_type);
@@ -208,7 +239,7 @@ ConvertTFDilatedConvOp<Conv2dOpTy>::ExtractDilationsAttrFromBlockShape(
   ElementsAttr stb_bs_attr, bts_bs_attr;
   if (!matchPattern(stb_block_shape, m_Constant(&stb_bs_attr)) ||
       !matchPattern(bts_block_shape, m_Constant(&bts_bs_attr))) {
-    // Returns failure status if block shape is not a constant.
+    // Returns failure status if block_shape is not a constant.
     return {};
   }
   // Check that the block_shape of `stb_op` and `bts_op` are equal.
@@ -217,6 +248,8 @@ ConvertTFDilatedConvOp<Conv2dOpTy>::ExtractDilationsAttrFromBlockShape(
     if (stb_bs_attr.getValue({i}) != bts_bs_attr.getValue({i})) return {};
   }
 
+  // Set dilation factor.
+  if (stb_bs_attr.getNumElements() < 2) return {};
   int dilation_h_factor =
       stb_bs_attr.getValue({0}).cast<IntegerAttr>().getInt();
   int dilation_w_factor =

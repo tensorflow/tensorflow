@@ -14,6 +14,10 @@ package_group(
     includes = [
         "//tensorflow/compiler/tf2xla:internal",
     ],
+    packages = [
+        "//tensorflow/compiler/tests/...",
+        "//tensorflow/python/...",
+    ],
 )
 
 package_group(
@@ -159,7 +163,9 @@ XLA_DEVICE_DEPS = [
     ":common",
     ":xla_launch_util",
     ":xla_tensor",
+    "@com_google_absl//absl/base",
     "@com_google_absl//absl/memory",
+    "@com_google_absl//absl/strings",
     "@com_google_absl//absl/synchronization",
     "@com_google_absl//absl/types:optional",
     "//tensorflow/compiler/jit/ops:xla_ops",

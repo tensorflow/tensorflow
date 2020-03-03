@@ -33,8 +33,8 @@ from six.moves import map
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.python import _pywrap_utils
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import pywrap_tfe
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
@@ -358,7 +358,7 @@ def add_function_callback(function_callback):
 
   wherein `function` is the just-created _EagerDefinedFunction.
   The callback is invoked immediately after a new `_EagerDefinedFunction`
-  is created. The return value(s) of the callback fucntion (if any) is ignored.
+  is created. The return value(s) of the callback function (if any) is ignored.
 
   Repeated registration of the same callback function is idempotent.
   After a callback is added, it can be removed with the
@@ -482,7 +482,7 @@ class _EagerDefinedFunction(object):
         output_names = []
     else:
       output_names = []
-    fn = pywrap_tensorflow.TF_GraphToFunction_wrapper(
+    fn = pywrap_tf_session.TF_GraphToFunction_wrapper(
         graph._c_graph,  # pylint: disable=protected-access
         compat.as_str(name),
         False,
@@ -499,14 +499,14 @@ class _EagerDefinedFunction(object):
       serialized = attr_value.SerializeToString()
       # TODO(iga): this creates and deletes a new TF_Status for every attr.
       # It might be worth creating a convenient way to re-use status.
-      pywrap_tensorflow.TF_FunctionSetAttrValueProto(
-          fn, compat.as_str(name), serialized)
+      pywrap_tf_session.TF_FunctionSetAttrValueProto(fn, compat.as_str(name),
+                                                     serialized)
 
     # TODO(apassos) avoid creating a FunctionDef (specially to grab the
     # signature, but also in general it's nice not to depend on it.
     with c_api_util.tf_buffer() as buffer_:
-      pywrap_tensorflow.TF_FunctionToFunctionDef(fn, buffer_)
-      proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
+      pywrap_tf_session.TF_FunctionToFunctionDef(fn, buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
     self._name = compat.as_bytes(function_def.signature.name)
@@ -539,10 +539,10 @@ class _EagerDefinedFunction(object):
     if not g and context.executing_eagerly():
       context.context().add_function_def(self.definition)
     else:
-      if self.name not in g._functions:
+      if not g._is_function(self.name):
         g._add_function(self)
       for f in self.graph._functions.values():
-        if f.name not in g._functions:
+        if not g._is_function(f.name):
           g._add_function(f)
     # pylint: enable=protected-access
 
@@ -850,7 +850,7 @@ class _DelayedRewriteGradientFunctions(object):
     higher-order symbolic gradients (tf.gradients).
 
     Args:
-      flat_outputs: The restult of running `forward`.
+      flat_outputs: The result of running `forward`.
       inference_args: A flat list of Tensors with inference inputs to the
         operation.
       input_tangents: A flat list of Tensors with input tangents consumed by the
@@ -981,7 +981,7 @@ class _TapeGradientFunctions(object):
         self._func_graph.outputs,
         forward_function_attr)
 
-    if not self._func_graph.outputs or not input_tangents:
+    if not input_tangents:
       # There is no need to special-case forwardprop, so we can return the
       # forward+backward pair we've created without further wrapping.
       return (forward_function, self._func_graph, backward_function,
@@ -1085,6 +1085,11 @@ class _TapeGradientFunctions(object):
              "StatefulPartitionedCall": gradient_function}):
           forward_outputs = forward_function.call(context.context(),
                                                   forward_inputs)
+          if isinstance(forward_outputs, ops.Operation):
+            # _wrapped_backward_function expects a list, but if the function has
+            # no outputs its call() returns an Operation. We need to undo that
+            # so we don't cause problems later.
+            forward_outputs = []
         py_backward, _ = self._wrap_backward_function(
             self._func_graph, backward_function, forward_outputs)
       # We will never request backward tape gradients for this operation
@@ -1314,7 +1319,7 @@ class _TapeGradientFunctions(object):
     have produced tangents which need to be recorded.
 
     Args:
-      flat_outputs: The restult of running `forward`.
+      flat_outputs: The result of running `forward`.
       inference_args: A flat list of Tensors with inference inputs to the
         operation.
       input_tangents: A flat list of Tensors with input tangents consumed by the
@@ -1757,7 +1762,7 @@ class ConcreteFunction(object):
     return self._build_call_outputs(flat_outputs)
 
   def _experimental_with_cancellation_manager(self, cancellation_manager):
-    """Returns a callable that invokes a cancelable version of this function.
+    """Returns a callable that invokes a cancellable version of this function.
 
     Args:
       cancellation_manager: A `CancellationManager` object that can be used to
@@ -2271,7 +2276,8 @@ def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
     flatten_inputs = nest.flatten_up_to(
         input_signature,
         inputs[:len(input_signature)],
-        expand_composites=True)
+        expand_composites=True,
+        check_types=False)  # lists are convert to tuples for `tf.data`.
   except ValueError:
     raise ValueError("Structure of Python function inputs does not match "
                      "input_signature:\n%s" %
@@ -2376,7 +2382,7 @@ class Function(object):
         `when autograph=True`. See https://www.tensorflow.org/guide/autograph
         for more information.
       experimental_relax_shapes: When true, argument shapes may be relaxed to
-        avoid unecessary retracing.
+        avoid unnecessary retracing.
       capture_by_value: Experimental. Whether to capture resource variables by
         value or reference. If None, will inherit from a parent context or
         default to False.
@@ -2668,7 +2674,7 @@ class Function(object):
     return graph_function
 
   def _define_function_with_shape_relaxation(self, args, kwargs):
-    """Define a function, relaxing arg shapes to avoid unecessary retracing."""
+    """Define a function, relaxing arg shapes to avoid unnecessary retracing."""
 
     rank_only_cache_key = self._cache_key(
         args, kwargs, include_tensor_ranks_only=True)
@@ -2824,7 +2830,7 @@ def defun(func=None,
   the values of its non-Tensor Python objects.
 
   When eager execution is enabled, the ability to create graphs from Python
-  functions makes it possible to incrementally trade off debugability and
+  functions makes it possible to incrementally trade off debuggability and
   interactivity for performance.  Functions compiled with `defun` cannot be
   inspected with `pdb`; however, executing a graph
   generated by `defun` sometimes takes less time and memory than eagerly
@@ -3130,7 +3136,7 @@ def defun(func=None,
       of tensorflow.autograph.Feature values) to control behavior when
       autograph=True.
     experimental_relax_shapes: When true, argument shapes may be relaxed to
-      avoid unecessary retracing.
+      avoid unnecessary retracing.
 
   Returns:
      If `func` is not None, returns a callable that will execute the compiled

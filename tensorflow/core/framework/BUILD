@@ -51,6 +51,7 @@ exports_files(
         "node_def_builder.h",
         "numeric_op.h",
         "op_kernel.h",
+        "op_requires.h",
         "op_segment.h",
         "ops_util.h",
         "partial_tensor_shape.h",
@@ -129,6 +130,7 @@ exports_files(
         "attr_value_util.h",
         "common_shape_fns.h",
         "node_def_util.h",
+        "node_properties.h",
         "op.h",
         "op_def_builder.h",
         "op_def_util.h",
@@ -172,12 +174,14 @@ filegroup(
         "model.h",
         "node_def_builder.h",
         "node_def_util.h",
+        "node_properties.h",
         "numeric_op.h",
         "numeric_types.h",
         "op.h",
         "op_def_builder.h",
         "op_def_util.h",
         "op_kernel.h",
+        "op_requires.h",
         "op_segment.h",
         "ops_util.h",
         "partial_tensor_shape.h",
@@ -268,6 +272,7 @@ filegroup(
         "log_memory.cc",
         "log_memory.h",
         "numeric_types.h",
+        "op_requires.h",
         "register_types.h",
         "resource_handle.cc",
         "resource_handle.h",
@@ -338,6 +343,8 @@ filegroup(
         "node_def_builder.h",
         "node_def_util.cc",
         "node_def_util.h",
+        "node_properties.cc",
+        "node_properties.h",
         "numeric_op.h",
         "op.cc",
         "op.h",
@@ -588,7 +595,10 @@ cc_library(
 cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/compiler:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/platform:types",
@@ -613,7 +623,10 @@ cc_library(
         "partial_tensor_shape.h",
         "tensor_shape.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/tfrt_delegate:__pkg__",
+    ],
     deps = [
         ":bounds_check",
         ":tensor_shape_proto_cc",
@@ -777,6 +790,7 @@ cc_library(
         "//tensorflow/core/util:padding",
         "//tensorflow/core/util:tensor_format",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -855,7 +869,23 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/util:padding",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "node_properties",
+    srcs = ["node_properties.cc"],
+    hdrs = ["node_properties.h"],
+    deps = [
+        ":node_def_proto_cc",
+        ":node_def_util",
+        ":op",
+        ":op_def_proto_cc",
+        ":tensor",
+        ":types_proto_cc",
+        "//tensorflow/core/lib/core:status",
     ],
 )
 
@@ -907,6 +937,12 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
     ],
+)
+
+cc_library(
+    name = "op_requires",
+    hdrs = ["op_requires.h"],
+    deps = ["//tensorflow/core/platform:macros"],
 )
 
 # Files whose users still need to be migrated from core:framework to the
@@ -964,6 +1000,7 @@ tf_cc_tests(
         "model_test.cc",
         "node_def_builder_test.cc",
         "node_def_util_test.cc",
+        "node_properties_test.cc",
         "op_compatibility_test.cc",
         "op_def_builder_test.cc",
         "op_def_util_test.cc",

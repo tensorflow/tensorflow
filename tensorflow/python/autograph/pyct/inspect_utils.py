@@ -166,7 +166,11 @@ def getnamespace(f):
   freevars = six.get_function_code(f).co_freevars
   if freevars and closure:
     for name, cell in zip(freevars, closure):
-      namespace[name] = cell.cell_contents
+      try:
+        namespace[name] = cell.cell_contents
+      except ValueError:
+        # Cell contains undefined variable, omit it from the namespace.
+        pass
   return namespace
 
 

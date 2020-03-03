@@ -72,8 +72,6 @@ std::string ToString(enum OperationType op) {
       return "abs";
     case OperationType::ADD:
       return "add";
-    case OperationType::APPLY_MASK:
-      return "apply_mask";
     case OperationType::BATCH_NORMALIZATION:
       return "batch_normalization";
     case OperationType::BATCH_TO_SPACE:
@@ -92,6 +90,8 @@ std::string ToString(enum OperationType op) {
       return "depthwise_convolution";
     case OperationType::DIV:
       return "div";
+    case OperationType::EXP:
+      return "exp";
     case OperationType::FULLY_CONNECTED:
       return "fully_connected";
     case OperationType::HARD_SWISH:
@@ -100,14 +100,16 @@ std::string ToString(enum OperationType op) {
       return "log";
     case OperationType::LSTM:
       return "lstm";
+    case OperationType::MAXIMUM:
+      return "maximum";
     case OperationType::MAX_UNPOOLING_2D:
       return "max_unpooling";
     case OperationType::MEAN:
       return "mean";
+    case OperationType::MINIMUM:
+      return "minimum";
     case OperationType::MUL:
       return "mul";
-    case OperationType::MULTIPLY_SCALAR:
-      return "multiply_scalar";
     case OperationType::PAD:
       return "pad";
     case OperationType::POOLING_2D:
@@ -134,6 +136,8 @@ std::string ToString(enum OperationType op) {
       return "softmax";
     case OperationType::SPACE_TO_BATCH:
       return "space_to_batch";
+    case OperationType::SPACE_TO_DEPTH:
+      return "space_to_depth";
     case OperationType::SQRT:
       return "sqrt";
     case OperationType::SQUARE:
@@ -157,7 +161,6 @@ OperationType OperationTypeFromString(const std::string& name) {
       new std::unordered_map<std::string, OperationType>({
           {"abs", OperationType::ABS},
           {"add", OperationType::ADD},
-          {"apply_mask", OperationType::APPLY_MASK},
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
           {"concat", OperationType::CONCAT},
           {"const", OperationType::CONST},
@@ -166,14 +169,16 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"cos", OperationType::COS},
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
           {"div", OperationType::DIV},
+          {"exp", OperationType::EXP},
           {"fully_connected", OperationType::FULLY_CONNECTED},
           {"hard_swish", OperationType::HARD_SWISH},
           {"log", OperationType::LOG},
           {"lstm", OperationType::LSTM},
+          {"maximum", OperationType::MAXIMUM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
           {"mean", OperationType::MEAN},
+          {"minimum", OperationType::MINIMUM},
           {"mul", OperationType::MUL},
-          {"multiply_scalar", OperationType::MULTIPLY_SCALAR},
           {"pad", OperationType::PAD},
           {"pooling_2d", OperationType::POOLING_2D},
           {"pow", OperationType::POW},
@@ -186,6 +191,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"sin", OperationType::SIN},
           {"slice", OperationType::SLICE},
           {"softmax", OperationType::SOFTMAX},
+          {"space_to_depth", OperationType::SPACE_TO_DEPTH},
           {"sqrt", OperationType::SQRT},
           {"square", OperationType::SQUARE},
           {"squared_diff", OperationType::SQUARED_DIFF},
@@ -500,6 +506,14 @@ BHWC CalculateOutputShape(const BHWC& input, const PadAttributes& attr) {
 BHWC CalculateOutputShape(const BHWC& input,
                           const FullyConnectedAttributes& attr) {
   return BHWC(input.b, 1, 1, attr.weights.shape.o);
+}
+
+BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr) {
+  const int b = attr.dims.find(Axis::BATCH) == attr.dims.end() ? input.b : 1;
+  const int h = attr.dims.find(Axis::HEIGHT) == attr.dims.end() ? input.h : 1;
+  const int w = attr.dims.find(Axis::WIDTH) == attr.dims.end() ? input.w : 1;
+  const int c = attr.dims.find(Axis::CHANNELS) == attr.dims.end() ? input.c : 1;
+  return BHWC(b, h, w, c);
 }
 
 Status CalculateOutputShape(const std::vector<BHWC>& input,

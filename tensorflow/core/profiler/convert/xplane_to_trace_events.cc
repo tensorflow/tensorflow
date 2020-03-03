@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 
-#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
+
 Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
   Device device;
   device.set_name(std::string(plane.Name()));
@@ -35,15 +35,46 @@ Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
   });
   return device;
 }
+
+// Returns true if the given stat shouldn't be shown in the trace viewer.
+bool IsInternalStat(StatType stat_type) {
+  switch (stat_type) {
+    case StatType::kKernelDetails:
+    case StatType::kLevel0:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
 
-void ConvertXSpaceToTraceEvents(uint64 profile_start_time_ns,
-                                uint64 profile_end_time_ns,
-                                const XSpace& xspace, Trace* trace) {
+void MaybeDropEventsForTraceViewer(Trace* trace, uint32 limit) {
+  auto* trace_events = trace->mutable_trace_events();
+  size_t trace_event_size = trace_events->size();
+  if (trace_event_size <= limit) return;  // Nothing to do.
+  // Sort the events according to start time.
+  std::vector<uint64> timestamps;
+  timestamps.reserve(trace_event_size);
+  for (const auto& event : *trace_events) {
+    timestamps.push_back(event.timestamp_ps());
+  }
+  std::partial_sort(timestamps.begin(), timestamps.begin() + limit,
+                    timestamps.end(), std::less<uint64>());
+  uint64 cutoff_timestamp = timestamps[limit - 1];
+  trace_events->erase(std::remove_if(trace_events->begin(), trace_events->end(),
+                                     [&](const TraceEvent& event) {
+                                       return event.timestamp_ps() >
+                                              cutoff_timestamp;
+                                     }),
+                      trace_events->end());
+}
+
+void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
   auto* trace_devices = trace->mutable_devices();
 
   for (const auto& raw_plane : xspace.planes()) {
-    XPlaneVisitor xplane(&raw_plane);
+    XPlaneVisitor xplane = CreateTfXPlaneVisitor(&raw_plane);
     // Convert devices and resources.
     int64 device_id = xplane.Id();
     (*trace_devices)[device_id] = BuildDeviceAndResource(xplane);
@@ -52,28 +83,32 @@ void ConvertXSpaceToTraceEvents(uint64 profile_start_time_ns,
     xplane.ForEachLine([&](const XLineVisitor& xline) {
       int64 resource_id = xline.Id();  // Either thread id or CUDA stream id.
       xline.ForEachEvent([&](const XEventVisitor& xevent) {
-        if (xevent.TimestampNs() < profile_start_time_ns ||
-            xevent.TimestampNs() + xevent.DurationNs() > profile_end_time_ns) {
-          return;
-        }
         auto* event = trace->add_trace_events();
         auto& args = *event->mutable_args();
         event->set_device_id(device_id);
         event->set_resource_id(resource_id);
-        event->set_name(string(xevent.DisplayName().empty()
-                                   ? xevent.Name()
-                                   : xevent.DisplayName()));
-        event->set_timestamp_ps((xevent.TimestampNs() - profile_start_time_ns) *
-                                EnvTime::kNanosToPicos);
-        event->set_duration_ps(xevent.DurationNs() * EnvTime::kNanosToPicos);
+        if (xevent.HasDisplayName()) {
+          event->set_name(string(xevent.DisplayName()));
+          args["long_name"] = string(xevent.Name());
+        } else {
+          event->set_name(string(xevent.Name()));
+        }
+        event->set_timestamp_ps(xevent.TimestampPs());
+        event->set_duration_ps(xevent.DurationPs());
 
         xevent.ForEachStat([&](const XStatVisitor& stat) {
           if (stat.ValueCase() == XStat::VALUE_NOT_SET) return;
-          args[std::string(stat.Name())] = stat.ToString();
+          if (stat.Type() && IsInternalStat(StatType(*stat.Type()))) return;
+          args[string(stat.Name())] = stat.ToString();
         });
       });
     });
   }
+
+  // Trace viewer (non-streaming) has scalability issues, we need to drop
+  // events to avoid loading failure for trace viewer.
+  constexpr uint64 kMaxEvents = 1000000;
+  MaybeDropEventsForTraceViewer(trace, kMaxEvents);
 }
 
 }  // namespace profiler

@@ -22,6 +22,7 @@ from __future__ import print_function
 import functools
 import itertools
 import threading
+import unittest
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -29,6 +30,13 @@ import numpy as np
 
 from tensorflow.compiler.xla.python import custom_call_for_test
 from tensorflow.compiler.xla.python import xla_client
+
+# pylint: disable=g-import-not-at-top
+try:
+  import portpicker
+except ImportError:
+  portpicker = None
+# pylint: enable=g-import-not-at-top
 
 bfloat16 = xla_client.bfloat16
 
@@ -99,7 +107,8 @@ class ComputationPrinting(absltest.TestCase):
     builder = xla_client.ComputationBuilder("acomputation")
     p0 = builder.ParameterFromNumpy(np.float32(0))
     p1 = builder.ParameterFromNumpy(np.zeros((4,), np.float32))
-    builder.Mul(p0, p1)
+    x = builder.Mul(p0, p1)
+    builder.Add(x, x)
     return builder.Build()
 
   def testComputationToHloText(self):
@@ -111,6 +120,26 @@ class ComputationPrinting(absltest.TestCase):
     computation = self.ExampleComputation()
     hlo_dot_graph = computation.GetHloDotGraph()
     self.assertTrue(hlo_dot_graph.startswith("digraph "))
+
+  def testHloModuleToHloText(self):
+    computation = self.ExampleComputation()
+    hlo_text = computation.computation.get_hlo_module().to_string()
+    self.assertTrue(hlo_text.startswith("HloModule acomputation"))
+
+  def testHloModuleToHloGraph(self):
+    computation = self.ExampleComputation()
+    hlo_dot_graph = xla_client._xla.hlo_module_to_dot_graph(
+        computation.computation.get_hlo_module())
+    self.assertTrue(hlo_dot_graph.startswith("digraph "))
+
+  def testCompiledHloModuleToHloText(self):
+    computation = self.ExampleComputation()
+    executable = computation.Compile()
+    hlo_modules = executable.get_hlo_modules()
+    self.assertLen(hlo_modules, 1)
+    hlo_text = hlo_modules[0].to_string()
+    self.assertTrue(hlo_text.startswith("HloModule acomputation"))
+    self.assertIn("fusion", hlo_text)
 
 
 class ComputationHashTest(absltest.TestCase):
@@ -471,15 +500,16 @@ class BufferTest(ComputationTest):
       compiled_c.Execute([arg_buffer])
 
   def testDestructureTupleEmpty(self):
-    t = ()
-    local_buffer = xla_client.Buffer.from_pyval(t)
+    device = xla_client.get_local_backend().devices()[0]
+    local_buffer = xla_client.Buffer.make_tuple((), device=device)
     pieces = local_buffer.destructure()
     self.assertFalse(local_buffer.is_deleted())
     self.assertEmpty(pieces)
 
   def testDestructureTupleOneArrayElement(self):
-    t = (np.array([1, 2, 3, 4], dtype=np.int32),)
-    local_buffer = xla_client.Buffer.from_pyval(t)
+    device = xla_client.get_local_backend().devices()[0]
+    t = xla_client.Buffer.from_pyval(np.array([1, 2, 3, 4], dtype=np.int32))
+    local_buffer = xla_client.Buffer.make_tuple((t,), device)
     pieces = local_buffer.destructure()
     self.assertFalse(local_buffer.is_deleted())
     self.assertLen(pieces, 1)
@@ -489,11 +519,13 @@ class BufferTest(ComputationTest):
     np.testing.assert_equal(want, got)
 
   def testDestructureTupleTwoArrayElementDifferentType(self):
+    device = xla_client.get_local_backend().devices()[0]
     t = (
-        np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
-        np.array([2, 3, 4, 5], dtype=np.int32),
+        xla_client.Buffer.from_pyval(
+            np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)),
+        xla_client.Buffer.from_pyval(np.array([2, 3, 4, 5], dtype=np.int32)),
     )
-    local_buffer = xla_client.Buffer.from_pyval(t)
+    local_buffer = xla_client.Buffer.make_tuple(t, device)
     # Run the test twice to verify that the original tuple buffer remains valid
     # even after destructuring.
     for _ in range(2):
@@ -509,8 +541,12 @@ class BufferTest(ComputationTest):
       np.testing.assert_equal(want, got)
 
   def testDestructureTupleNested(self):
-    t = ((NumpyArrayF32([1.0, 2.0]), NumpyArrayS32([3, 4])), NumpyArrayS32([5]))
-    local_buffer = xla_client.Buffer.from_pyval(t)
+    device = xla_client.get_local_backend().devices()[0]
+    t = xla_client.Buffer.make_tuple(
+        (xla_client.Buffer.from_pyval(NumpyArrayF32([1.0, 2.0])),
+         xla_client.Buffer.from_pyval(NumpyArrayS32([3, 4]))), device)
+    local_buffer = xla_client.Buffer.make_tuple(
+        (t, xla_client.Buffer.from_pyval(NumpyArrayS32([5]))), device)
     pieces = local_buffer.destructure()
     self.assertFalse(local_buffer.is_deleted())
     self.assertLen(pieces, 2)
@@ -932,6 +968,12 @@ class SingleOpTest(ComputationTest):
     arr = NumpyArrayBool([True, False, True])
     c.Not(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=~arr)
+
+  def testPopulationCount(self):
+    c = self._NewComputation()
+    arr = NumpyArrayS32([3, 0, 1])
+    c.PopulationCount(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=np.array([2, 0, 1]))
 
   def testCountLeadingZeros(self):
     c = self._NewComputation()
@@ -2049,23 +2091,41 @@ class SetShardingTest(ComputationTest):
     np.testing.assert_allclose(ans, 4.14)
 
 
-dlpack_dtypes = [
+int_dtypes = [
     np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32,
-    np.uint64, np.float16, np.float32, np.float64, bfloat16
+    np.uint64
 ]
+float_dtypes = [np.float16, np.float32, np.float64]
+complex_dtypes = [np.complex64, np.complex128]
+dlpack_dtypes = int_dtypes + float_dtypes + [bfloat16]
+standard_dtypes = int_dtypes + float_dtypes + complex_dtypes + [np.bool_]
+
+testcase_shapes = [
+    (),
+    (1,),
+    (2, 3),
+    (2, 0),
+    (0, 7),
+    (4, 1, 2),
+    (2, 1, 3),
+    (2, 4, 1),
+    (3, 1),
+    (1, 3),
+]
+
+
+def FormatShapeAndDtype(shape, dtype):
+  return "_{}[{}]".format(np.dtype(dtype).name, ",".join(map(str, shape)))
 
 
 class DLPackTest(parameterized.TestCase):
 
   # pylint: disable=g-complex-comprehension
   @parameterized.named_parameters({
-      "testcase_name":
-          "_{}[{}]".format(dtype.__name__, ",".join(map(str, shape))),
-      "dtype":
-          dtype,
-      "shape":
-          shape
-  } for dtype in dlpack_dtypes for shape in [(), (1,), (2, 3), (4, 1, 2)])
+      "testcase_name": FormatShapeAndDtype(shape, dtype),
+      "dtype": dtype,
+      "shape": shape
+  } for dtype in dlpack_dtypes for shape in testcase_shapes)
   def testRoundTrip(self, dtype, shape):
     x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
     backend = xla_client.get_local_backend()
@@ -2089,6 +2149,64 @@ class DLPackTest(parameterized.TestCase):
     self.assertRaisesRegex(RuntimeError,
                            ".*a DLPack tensor may be consumed at most once.*",
                            ConsumeDLPackTensor)
+
+
+class BufferProtocolTest(parameterized.TestCase):
+
+  # pylint: disable=g-complex-comprehension
+  @parameterized.named_parameters({
+      "testcase_name": FormatShapeAndDtype(shape, dtype),
+      "dtype": dtype,
+      "shape": shape
+  } for dtype in standard_dtypes for shape in testcase_shapes)
+  def testRoundTrip(self, dtype, shape):
+    x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
+    x_ptr = x.__array_interface__["data"][0]
+    backend = xla_client.get_local_backend("cpu")
+    buffer = xla_client.Buffer.from_pyval(x, backend=backend)
+    y = np.array(buffer, copy=False)
+    y_ptr = y.__array_interface__["data"][0]
+    np.testing.assert_array_equal(x, y)
+    # If the input was sufficiently aligned, the input and output should alias.
+    self.assertTrue((x_ptr & 63) != 0 or x_ptr == y_ptr)
+    self.assertEqual(y_ptr, buffer.unsafe_buffer_pointer())
+
+    buffer2 = xla_client.Buffer.from_pyval(x, backend=backend, force_copy=True)
+    z = np.array(buffer2, copy=False)
+    self.assertNotEqual(x.__array_interface__["data"][0],
+                        z.__array_interface__["data"][0])
+
+  def testDeleteWithActiveView(self):
+    x = np.random.randn(20, 10)
+    backend = xla_client.get_local_backend("cpu")
+    buffer = xla_client.Buffer.from_pyval(x, backend=backend)
+    buffer_ptr = buffer.unsafe_buffer_pointer()
+    y = np.array(buffer, copy=False)
+    buffer.delete()
+    # It is still legal to access `y`; the array view must keep it alive.
+    np.testing.assert_array_equal(x, y)
+    self.assertEqual(y.__array_interface__["data"][0], buffer_ptr)
+
+
+class ProfilerTest(absltest.TestCase):
+
+  def testTraceMe(self):
+    # TODO(phawkins): These tests just check that the TraceMe context manager
+    # acts like a context manager and doesn't explode. Ideally we'd check that
+    # the profiler saw the traceme too.
+    with xla_client.profiler.TraceMe("test1"):
+      pass
+    with xla_client.profiler.TraceMe("test2", foo=123):
+      pass
+    with self.assertRaises(ValueError):
+      with xla_client.profiler.TraceMe("test3"):
+        raise ValueError("test")
+
+  @unittest.skipIf(portpicker is None, "Test requires portpicker")
+  def testStartServer(self):
+    port = portpicker.pick_unused_port()
+    server = xla_client.profiler.start_server(port)
+    del server
 
 
 if __name__ == "__main__":

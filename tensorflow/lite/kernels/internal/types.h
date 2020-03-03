@@ -128,9 +128,9 @@ struct Dims {
 
 class RuntimeShape {
  public:
-  // Shapes with dimensions up to 4 are stored directly in the structure, while
+  // Shapes with dimensions up to 5 are stored directly in the structure, while
   // larger shapes are separately allocated.
-  static constexpr int kMaxSmallSize = 4;
+  static constexpr int kMaxSmallSize = 5;
 
   RuntimeShape& operator=(RuntimeShape const&) = delete;
 
@@ -207,8 +207,8 @@ class RuntimeShape {
   inline const int32* DimsData() const {
     return size_ > kMaxSmallSize ? dims_pointer_ : dims_;
   }
-  // The caller must ensure that the shape is no bigger than 4-D.
-  inline const int32* DimsDataUpTo4D() const { return dims_; }
+  // The caller must ensure that the shape is no bigger than 5-D.
+  inline const int32* DimsDataUpTo5D() const { return dims_; }
 
   inline void Resize(int dimensions_count) {
     if (size_ > kMaxSmallSize) {
@@ -378,7 +378,7 @@ inline size_t ReducedOutputOffset(const int num_dims, const int* dims,
 
 inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3) {
   TFLITE_DCHECK_EQ(shape.DimensionsCount(), 4);
-  const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo4D());
+  const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo5D());
   TFLITE_DCHECK(i0 >= 0 && i0 < dims_data[0]);
   TFLITE_DCHECK(i1 >= 0 && i1 < dims_data[1]);
   TFLITE_DCHECK(i2 >= 0 && i2 < dims_data[2]);
@@ -854,6 +854,8 @@ struct DepthwiseParams {
   // float activation params.
   float float_activation_min;
   float float_activation_max;
+  const int32* output_multiplier_per_channel;
+  const int32* output_shift_per_channel;
 };
 
 struct DequantizationParams {
@@ -1047,11 +1049,11 @@ struct SqueezeParams {
 
 struct StridedSliceParams {
   int8 start_indices_count;
-  int32 start_indices[4];
+  int32 start_indices[5];
   int8 stop_indices_count;
-  int32 stop_indices[4];
+  int32 stop_indices[5];
   int8 strides_count;
-  int32 strides[4];
+  int32 strides[5];
 
   int16 begin_mask;
   int16 ellipsis_mask;

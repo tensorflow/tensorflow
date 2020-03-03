@@ -68,9 +68,7 @@ inline void FullyConnected(
     const int8_t* filter_data, const RuntimeShape& bias_shape,
     const int64_t* bias_data, const RuntimeShape& output_shape,
     int16_t* output_data) {
-  const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;
-  const int32 output_offset = params.output_offset;
   const int32 output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
   const int32 output_activation_min = params.quantized_activation_min;
@@ -90,14 +88,13 @@ inline void FullyConnected(
       for (int d = 0; d < accum_depth; ++d) {
         int32 input_val = input_data[b * accum_depth + d];
         int32 filter_val = filter_data[out_c * accum_depth + d];
-        acc += (filter_val + filter_offset) * (input_val + input_offset);
+        acc += (filter_val + filter_offset) * input_val;
       }
       if (bias_data) {
         acc += bias_data[out_c];
       }
       int32_t acc_scaled =
           MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
-      acc_scaled += output_offset;
       acc_scaled = std::max(acc_scaled, output_activation_min);
       acc_scaled = std::min(acc_scaled, output_activation_max);
       output_data[out_c + output_depth * b] = static_cast<int16_t>(acc_scaled);

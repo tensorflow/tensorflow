@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/platform.h"
@@ -519,72 +520,6 @@ TFE_TensorHandle* TFE_DequeueVariantTensor(TF_Session* session, int tensor_id,
   return createTFEDequeue(ctx, TF_VARIANT, queue, status);
 }
 
-void TFE_TensorHandlePrintDebugString(TFE_TensorHandle* handle) {
-  auto* status = TF_NewStatus();
-  TF_Tensor* t = TFE_TensorHandleResolve(handle, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-
-  tensorflow::Tensor dst;
-  TF_CHECK_OK(TF_TensorToTensor(t, &dst));
-  LOG(INFO) << dst.DebugString();
-
-  TF_DeleteTensor(t);
-  TF_DeleteStatus(status);
-}
-
-void TFE_OpPrintDebugString(TFE_Op* op) {
-  VLOG(1) << "TFE_OpPrintDebugString() over " << op;
-  LOG(INFO) << op->operation.DebugString();
-}
-
-struct TFE_ExecuteOpNotification {
-  TFE_ExecuteOpNotification() : status(TF_NewStatus(), TF_DeleteStatus) {}
-  tensorflow::Notification n;
-  std::unique_ptr<tensorflow::Thread> thread;
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status;
-};
-
-TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(TFE_Op* op,
-                                                    TFE_TensorHandle** retvals,
-                                                    int* num_retvals,
-                                                    TF_Status* status) {
-  TFE_ExecuteOpNotification* n = new TFE_ExecuteOpNotification;
-
-  n->thread.reset(op->operation.EagerContext().TFEnv()->StartThread(
-      tensorflow::ThreadOptions(), "ExecuteOpThread",
-      [op, retvals, num_retvals, n]() {
-        TFE_Execute(op, retvals, num_retvals, n->status.get());
-        n->n.Notify();
-      }));
-
-  return n;
-}
-
-void TFE_ExecuteOpNotificationWaitAndDelete(
-    TFE_ExecuteOpNotification* notification, TF_Status* status) {
-  if (notification == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Passed in notification is a nullptr.");
-
-    return;
-  }
-  if (notification->thread == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Passed in notification didn't start a thread correctly. Cleaning up "
-        "this notification. Please re-execute the operation to get a new "
-        "notification.");
-
-    delete notification;
-    return;
-  }
-
-  notification->n.WaitForNotification();
-
-  status->status = notification->status->status;
-
-  delete notification;
-}
-
 void TF_MakeInternalErrorStatus(TF_Status* status, const char* errMsg) {
   status->status = tensorflow::errors::Internal(errMsg);
 }
@@ -882,12 +817,15 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
 
   const int num_inputs = input_shapes->num_items;
   NodeDef node_def;
-  node_def.set_name(tfe_op->operation.Name());
-  node_def.set_op(tfe_op->operation.Name());
+  node_def.set_name(tfe_op->operation->Name());
+  node_def.set_op(tfe_op->operation->Name());
   for (int i = 0; i < num_inputs; ++i) {
     node_def.add_input("dummy_input");
   }
-  tfe_op->operation.Attrs().FillAttrValueMap(node_def.mutable_attr());
+  tensorflow::down_cast<tensorflow::OperationInterface*>(
+      tfe_op->operation.get())
+      ->Attrs()
+      .FillAttrValueMap(node_def.mutable_attr());
 
   const tensorflow::OpRegistrationData* op_reg_data;
   status->status =

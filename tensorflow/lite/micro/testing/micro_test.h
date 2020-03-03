@@ -54,6 +54,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_
 #define TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_
 
+#include <stdint.h>
+
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 
 namespace micro_test {
@@ -72,7 +74,7 @@ extern tflite::ErrorReporter* reporter;
   bool did_test_fail;                          \
   tflite::ErrorReporter* reporter;             \
   }                                            \
-  _Pragma ("stackcalls 15000")              \
+                                               \
   int main(int argc, char** argv) {            \
     micro_test::tests_passed = 0;              \
     micro_test::tests_failed = 0;              \
@@ -92,7 +94,7 @@ extern tflite::ErrorReporter* reporter;
 
 // TODO(petewarden): I'm going to hell for what I'm doing to this poor for loop.
 #define TF_LITE_MICRO_TEST(name)                                           \
-  micro_test::reporter->Report("Testing %s", #name);                       \
+  micro_test::reporter->Report("Testing " #name);                          \
   for (micro_test::is_test_complete = false,                               \
       micro_test::did_test_fail = false;                                   \
        !micro_test::is_test_complete; micro_test::is_test_complete = true, \
@@ -211,6 +213,17 @@ extern tflite::ErrorReporter* reporter;
   do {                                                                 \
     micro_test::reporter->Report("FAIL: %s", msg, __FILE__, __LINE__); \
     micro_test::did_test_fail = true;                                  \
+  } while (false)
+
+#define TF_LITE_MICRO_EXPECT_STRING_EQ(string1, string2)                   \
+  do {                                                                     \
+    for (int i = 0; string1[i] != '\0' && string2[i] != '\0'; i++) {       \
+      if (string1[i] != string2[i]) {                                      \
+        micro_test::reporter->Report("FAIL: %s did not match %s", string1, \
+                                     string2, __FILE__, __LINE__);         \
+        micro_test::did_test_fail = true;                                  \
+      }                                                                    \
+    }                                                                      \
   } while (false)
 
 #endif  // TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_

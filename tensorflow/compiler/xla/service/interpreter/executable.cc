@@ -39,10 +39,17 @@ namespace interpreter {
 
 InterpreterExecutable::InterpreterExecutable(
     std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloEvaluator> evaluator)
+    std::unique_ptr<HloEvaluator> evaluator,
+    absl::optional<DynamicDimensionInference> dynamic_dymension_inference)
     : Executable(std::move(hlo_module), /*hlo_profile_printer_data=*/nullptr,
                  /*hlo_profile_index_map=*/nullptr),
-      evaluator_(std::move(evaluator)) {}
+      evaluator_(std::move(evaluator)),
+      dynamic_dimension_inference_(std::move(dynamic_dymension_inference)) {
+  if (dynamic_dimension_inference_.has_value()) {
+    evaluator_->set_dynamic_dimension_inference(
+        &dynamic_dimension_inference_.value());
+  }
+}
 
 InterpreterExecutable::~InterpreterExecutable() {}
 
@@ -59,9 +66,10 @@ StatusOr<ExecutionOutput> InterpreterExecutable::ExecuteAsyncOnStream(
   std::vector<ShapedBuffer> argument_buffers;
   argument_buffers.reserve(arguments.size());
   for (const ShapeTree<MaybeOwningDeviceMemory>& arg : arguments) {
-    argument_buffers.push_back(ShapedBuffer(arg.shape(), arg.shape(),
-                                            /*platform=*/nullptr,
-                                            /*device_ordinal=*/0));
+    argument_buffers.push_back(
+        ShapedBuffer(arg.shape(), arg.shape(),
+                     /*platform=*/platform,
+                     /*device_ordinal=*/executor->device_ordinal()));
     auto in_it = arg.begin();
     auto out_it = argument_buffers.back().buffers().begin();
     for (; in_it != arg.end(); ++in_it, ++out_it) {

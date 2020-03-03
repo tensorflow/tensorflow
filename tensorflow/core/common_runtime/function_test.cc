@@ -90,11 +90,12 @@ class FunctionTest : public ::testing::Test {
     const int version = g->versions().producer();
     LocalExecutorParams params;
     params.device = device_.get();
-    params.create_kernel = [this, version](const NodeDef& ndef,
-                                           OpKernel** kernel) {
-      return CreateNonCachedKernel(device_.get(), nullptr, ndef, version,
-                                   kernel);
-    };
+    params.create_kernel =
+        [this, version](const std::shared_ptr<const NodeProperties>& props,
+                        OpKernel** kernel) {
+          return CreateNonCachedKernel(device_.get(), nullptr, props, version,
+                                       kernel);
+        };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
@@ -1311,7 +1312,7 @@ int GetConstantFoldingCounter() {
       return counter;
     }
   }
-  LOG(FATAL) << "Should have found a node that replcaed add";
+  LOG(FATAL) << "Should have found a node that replaced add";
 }
 
 TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
@@ -2128,7 +2129,7 @@ TEST(OptimizationTest, RemoveListArrayConverter) {
   }
 }
 
-TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
+TEST(OptimizationTest, RemoveListArrayConverter_WithControlDeps) {
   auto func = FDH::Create(
       // Name
       "Test",

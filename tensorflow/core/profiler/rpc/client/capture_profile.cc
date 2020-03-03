@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -59,27 +58,42 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
     request.set_repository_root(repository_root);
     request.set_session_id(session_id);
   }
+  request.add_tools("trace_viewer");
   request.add_tools("op_profile");
   request.add_tools("input_pipeline");
+  request.add_tools("kernel_stats");
   request.add_tools("memory_viewer");
   request.add_tools("overview_page");
   request.add_tools("pod_viewer");
+  request.add_tools("tensorflow_stats");
   *request.mutable_opts() = opts;
   return request;
 }
 
-bool ShouldRetryTracing(Status status) {
+inline Status FromGrpcStatus(const ::grpc::Status& s) {
+  return s.ok() ? Status::OK()
+                : Status(static_cast<error::Code>(s.error_code()),
+                         s.error_message());
+}
+
+inline bool ShouldRetryTracing(Status status) {
   return status.code() == error::Code::UNAVAILABLE ||
-         status.code() == error::Code::ALREADY_EXISTS;
+         status.code() == error::Code::ALREADY_EXISTS ||
+         // When auto-reconnecting to a remote TensorFlow worker after it
+         // restarts, gRPC can return an UNKNOWN error code with a "Stream
+         // removed" error message. This should not be treated as an
+         // unrecoverable error.
+         (status.code() == error::Code::UNKNOWN &&
+          status.error_message() == "Stream removed");
 }
 
 // Returns whether the returned trace is empty.
 // Failure are handled by CHECK, i.e. abort()
 Status Profile(const string& service_addr, const string& logdir,
-               int duration_ms, const string& repository_root,
-               const string& session_id, const ProfileOptions& opts) {
+               int duration_ms, const string& session_id,
+               const ProfileOptions& opts) {
   ProfileRequest request =
-      PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
+      PopulateProfileRequest(duration_ms, logdir, session_id, opts);
 
   ::grpc::ClientContext context;
   ::grpc::ChannelArguments channel_args;
@@ -95,7 +109,7 @@ Status Profile(const string& service_addr, const string& logdir,
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->Profile(&context, request, &response)));
 
-  if (!response.encoded_trace().empty()) {
+  if (!response.empty_trace()) {
     TF_CHECK_OK(
         SaveTensorboardProfile(logdir, session_id, "", response, &std::cout));
     // Print this at the end so that it's not buried in irrelevant LOG messages.
@@ -107,7 +121,7 @@ Status Profile(const string& service_addr, const string& logdir,
         << std::endl;
   }
 
-  if (response.encoded_trace().empty()) {
+  if (response.empty_trace()) {
     return Status(error::Code::UNAVAILABLE, "No trace event is collected");
   }
   return Status::OK();
@@ -116,10 +130,9 @@ Status Profile(const string& service_addr, const string& logdir,
 // Start a new profiling session that include all the hosts included in
 // hostnames, for the time interval of duration_ms. Possibly save the profiling
 // result in the directory specified by repository_root and session_id.
-Status NewSession(const string& service_addr,
+Status NewSession(const string& service_addr, const string& repository_root,
                   const std::vector<string>& hostnames, int duration_ms,
-                  const string& repository_root, const string& session_id,
-                  const ProfileOptions& opts) {
+                  const string& session_id, const ProfileOptions& opts) {
   NewProfileSessionRequest new_session_request;
   *new_session_request.mutable_request() =
       PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
@@ -137,8 +150,8 @@ Status NewSession(const string& service_addr,
   // TODO(jiesun): GRPC support following relevant naming scheme:
   // 1. dns:///host:port
   // 2. ipv4:host:port or ipv6:[host]:port
-  // We might need to change the prefix which depends on what TPU name resolver
-  // will give us.
+  // We might need to change the prefix which depends on what cluster name
+  // resolver will give us.
   std::unique_ptr<grpc::ProfileAnalysis::Stub> stub =
       grpc::ProfileAnalysis::NewStub(::grpc::CreateCustomChannel(
           "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
@@ -153,23 +166,6 @@ Status NewSession(const string& service_addr,
     return Status(error::Code::UNAVAILABLE, "No trace event is collected");
   }
   return Status::OK();
-}
-
-// Creates an empty event file if not already exists, which indicates that we
-// have a plugins/profile/ directory in the current logdir.
-Status MaybeCreateEmptyEventFile(const string& logdir) {
-  // Suffix for an empty event file.  it should be kept in sync with
-  // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
-  constexpr char kProfileEmptySuffix[] = ".profile-empty";
-  std::vector<string> children;
-  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));
-  for (const string& child : children) {
-    if (absl::EndsWith(child, kProfileEmptySuffix)) {
-      return Status::OK();
-    }
-  }
-  EventsWriter event_writer(io::JoinPath(logdir, "events"));
-  return event_writer.InitWithSuffix(kProfileEmptySuffix);
 }
 
 MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level,
@@ -196,7 +192,7 @@ Status ValidateHostPortPair(const string& host_port) {
   return Status::OK();
 }
 
-// Starts tracing on a single or multiple TPU hosts and saves the result in the
+// Starts tracing on a single or multiple hosts and saves the result in the
 // given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts.
 Status Trace(const string& service_addr, const string& logdir,
@@ -204,28 +200,22 @@ Status Trace(const string& service_addr, const string& logdir,
              int duration_ms, int num_tracing_attempts) {
   // Use the current timestamp as the run name.
   tensorflow::string session_id = GetCurrentTimeStampAsString();
-  constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-  string repository_root = io::JoinPath(logdir, kProfilePluginDirectory);
   std::vector<string> hostnames;
   if (!workers_list.empty()) {
     hostnames = absl::StrSplit(workers_list, ',');
   }
-
-  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
 
   Status status = Status::OK();
   int remaining_attempts = num_tracing_attempts;
   ProfileOptions opts;
   opts.set_include_dataset_ops(include_dataset_ops);
   while (true) {
-    std::cout << "Starting to profile TPU traces for " << duration_ms << " ms. "
+    std::cout << "Starting to trace for " << duration_ms << " ms. "
               << "Remaining attempt(s): " << --remaining_attempts << std::endl;
     if (hostnames.empty()) {
-      status = Profile(service_addr, logdir, duration_ms, repository_root,
-                       session_id, opts);
+      status = Profile(service_addr, logdir, duration_ms, session_id, opts);
     } else {
-      string tpu_master = service_addr;
-      status = NewSession(tpu_master, hostnames, duration_ms, repository_root,
+      status = NewSession(service_addr, logdir, hostnames, duration_ms,
                           session_id, opts);
     }
     if (remaining_attempts <= 0 || status.ok() || !ShouldRetryTracing(status))

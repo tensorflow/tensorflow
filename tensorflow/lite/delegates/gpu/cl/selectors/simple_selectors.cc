@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/add.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/apply_mask.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_z.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/lstm.h"
@@ -36,20 +35,15 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax1x1.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/strided_slice.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/transpose.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/winograd.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
-                     const BHWC& mask_shape,
-                     std::unique_ptr<GPUOperation>* ptr) {
-  ApplyMask operation = CreateApplyMask(op_def, src_shape, mask_shape);
-  *ptr = absl::make_unique<ApplyMask>(std::move(operation));
-}
 
 void SelectLSTM(const OperationDef& op_def,
                 std::unique_ptr<GPUOperation>* ptr) {
@@ -133,6 +127,13 @@ void SelectReshape(int src_channels, int dst_channels,
   }
 }
 
+void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
+                        const OperationDef& op_def,
+                        std::unique_ptr<GPUOperation>* ptr) {
+  SpaceToDepth operation = CreateSpaceToDepth(op_def, attr);
+  *ptr = absl::make_unique<SpaceToDepth>(std::move(operation));
+}
+
 void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr) {
   Padding operation = CreatePadding(op_def, attr);
@@ -155,7 +156,7 @@ Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
   return OkStatus();
 }
 
-Status SelectMultiplyScalar(const MultiplyScalarAttributes& attr,
+Status SelectMultiplyScalar(const MultiplyAttributes& attr,
                             const CreationContext& creation_context,
                             const OperationDef& op_def,
                             std::unique_ptr<GPUOperation>* ptr) {
@@ -193,6 +194,28 @@ void SelectTranspose(const TransposeAttributes& attr,
                      std::unique_ptr<GPUOperation>* ptr) {
   Transpose operation = CreateTranspose(op_def, attr);
   *ptr = absl::make_unique<Transpose>(std::move(operation));
+}
+
+Status SelectWinograd4x4To36(const CreationContext& creation_context,
+                             const Padding2D& padding,
+                             const OperationDef& op_def,
+                             std::unique_ptr<GPUOperation>* ptr) {
+  Winograd4x4To36 operation;
+  RETURN_IF_ERROR(
+      CreateWinograd4x4To36(creation_context, op_def, padding, &operation));
+  *ptr = absl::make_unique<Winograd4x4To36>(std::move(operation));
+  return OkStatus();
+}
+
+Status SelectWinograd36To4x4(
+    const CreationContext& creation_context, const OperationDef& op_def,
+    const ::tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
+    std::unique_ptr<GPUOperation>* ptr) {
+  Winograd36To4x4 operation;
+  RETURN_IF_ERROR(
+      CreateWinograd36To4x4(creation_context, op_def, biases, &operation));
+  *ptr = absl::make_unique<Winograd36To4x4>(std::move(operation));
+  return OkStatus();
 }
 
 }  // namespace cl
