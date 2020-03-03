@@ -1082,6 +1082,46 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertTrue(len(quantized_tflite) < len(float_tflite))
 
+  @parameterized.named_parameters(
+      ('InferenceType_INT8', lite_constants.INT8),
+      ('InferenceType_QUANTIZED_INT8', lite_constants.QUANTIZED_UINT8))
+  def testRequiresInputStatsForTrainingTimeQuantization(self, quantized_type):
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = array_ops.fake_quant_with_min_max_args(
+          in_tensor + in_tensor, min=0., max=1.)
+      sess = session.Session()
+
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [in_tensor], [out_tensor])
+
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.inference_type = quantized_type
+      quantized_converter.convert()
+    self.assertEqual(
+        'std_dev and mean must be defined when inference_type or '
+        'inference_input_type is QUANTIZED_UINT8 or INT8.',
+        str(error.exception))
+
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.inference_type = lite_constants.FLOAT
+      quantized_converter.inference_input_type = quantized_type
+      quantized_converter.convert()
+    self.assertEqual(
+        'std_dev and mean must be defined when inference_type or '
+        'inference_input_type is QUANTIZED_UINT8 or INT8.',
+        str(error.exception))
+
+    quantized_converter.inference_type = quantized_type
+    quantized_converter.inference_input_type = quantized_type
+
+    input_arrays = quantized_converter.get_input_arrays()
+    quantized_converter.quantized_input_stats = {
+        input_arrays[0]: (0., 1.)
+    }
+    quantized_converter.convert()
+
   def testFloatTocoConverter(self):
     """Tests deprecated test TocoConverter."""
     with ops.Graph().as_default():
