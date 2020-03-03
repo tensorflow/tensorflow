@@ -132,7 +132,7 @@ tensorflow/lite/tools/make/downloads/fft2d/fftsg2d.c \
 tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp
 CORE_CC_ALL_SRCS += \
 	$(shell find tensorflow/lite/tools/make/downloads/absl/absl/ \
-	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization | grep -v debugging | grep -v hash | grep -v flags)
+	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization | grep -v debugging | grep -v hash | grep -v flags | grep -v random)
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
