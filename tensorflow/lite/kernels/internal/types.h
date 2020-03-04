@@ -1081,8 +1081,14 @@ struct UnpackParams {
 
 struct LeakyReluParams {
   float alpha;
-  int32 input_offset;
+};
+
+
+struct LeakyReluParamsQuant {
+  uint8_t q_alpha;
+  uint8_t q_identity;
   int32 alpha_offset;
+  int32 input_offset;
   int32 output_offset;
   int32 output_multiplier;
   int output_shift;

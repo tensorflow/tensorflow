@@ -76,7 +76,9 @@ struct LogSoftmaxOpData : public OpData {
 };
 
 struct LeakyReluOpData : public OpData {
-  uint8_t q_alpha;
+  uint8_t q_alpha = 1;
+  uint8_t q_identity = 1;
+  uint8_t zero_point = 0;
   int32_t output_multiplier = 0;
   int output_shift = 0;
 };
@@ -363,23 +365,30 @@ TfLiteStatus LeakyReluPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   LeakyReluOpData* data = reinterpret_cast<LeakyReluOpData*>(node->user_data);
 
-  if (output->type == kTfLiteUInt8) {
-    const auto* params =
-        reinterpret_cast<TfLiteLeakyReluParams*>(node->builtin_data);
-    // Quantize the alpha with same zero-point and scale as of input
-    data->q_alpha = static_cast<uint8_t>(std::max<float>(
-        std::numeric_limits<uint8_t>::min(),
-        std::min<float>(std::numeric_limits<uint8_t>::max(),
-                        std::round(input->params.zero_point +
-                                   (params->alpha / input->params.scale)))));
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
+    const auto* params = reinterpret_cast<TfLiteLeakyReluParams*>(node->builtin_data);
+    // Quantize the alpha with predetermined ZOOM_FACTOR and ZERO_POINT.
+    // Since in most cases 0 < alpha < 1, by setting ZOOM_FACTOR to be 200,
+    // quantized alpha can fit in INT8 range, and preserve most precision.
+    TF_LITE_ENSURE(context, params->alpha >= 0);
+    TF_LITE_ENSURE(context, params->alpha < 1);
+    static const uint8_t ZOOM_FACTOR = 200;
+    static const uint8_t ZERO_POINT = 0;
+    auto q_alpha = std::round(ZERO_POINT + params->alpha * ZOOM_FACTOR);
+    // Make sure quantized alpha is within INT8 range.
+    TF_LITE_ENSURE(context, q_alpha >= std::numeric_limits<uint8_t>::min());
+    TF_LITE_ENSURE(context, q_alpha <= std::numeric_limits<uint8_t>::max());
+    // q_alpha will be stored as uint8_t. It won't affect the input
+    data->q_alpha = q_alpha;
+    std::cout << "Quantized Q alpha value is: " << int(data->q_alpha) << '\n';
+    // q_identity is used to make sure those>0 get correct value after dequantization.
+    data->q_identity = ZOOM_FACTOR;
+    data->zero_point = ZERO_POINT;
 
-    double real_multiplier =
-        input->params.scale * input->params.scale / output->params.scale;
-    QuantizeMultiplierSmallerThanOneExp(
-        real_multiplier, &data->output_multiplier, &data->output_shift);
-  }
-  return context->ResizeTensor(context, output,
-                               TfLiteIntArrayCopy(input->dims));
+    double real_multiplier = input->params.scale / (output->params.scale * ZOOM_FACTOR);
+    QuantizeMultiplierSmallerThanOneExp(real_multiplier, &data->output_multiplier, &data->output_shift);
+    }
+  return context->ResizeTensor(context, output, TfLiteIntArrayCopy(input->dims));
 }
 
 template <KernelType kernel_type>
@@ -1087,23 +1096,6 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
-namespace {
-template <typename T>
-void QLeakyRelu(const TfLiteTensor* input, TfLiteTensor* output, float alpha,
-                const LeakyReluOpData* data) {
-  LeakyReluParams op_params;
-  op_params.input_offset = input->params.zero_point;
-  op_params.alpha_offset = input->params.zero_point;
-  op_params.output_offset = output->params.zero_point;
-
-  op_params.output_multiplier = data->output_multiplier;
-  op_params.output_shift = data->output_shift;
-
-  reference_ops::QuantizeLeakyRelu(
-      op_params, data->q_alpha, GetTensorShape(input), GetTensorData<T>(input),
-      GetTensorShape(output), GetTensorData<T>(output));
-}
-}  // namespace
 
 TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
@@ -1113,22 +1105,51 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
   const LeakyReluOpData* data =
       reinterpret_cast<LeakyReluOpData*>(node->user_data);
 
-  LeakyReluParams op_params;
-  op_params.alpha = params->alpha;
   switch (input->type) {
     case kTfLiteFloat32: {
+      LeakyReluParams op_params{params->alpha};
       optimized_ops::LeakyRelu(
           op_params, GetTensorShape(input), GetTensorData<float>(input),
           GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
     } break;
-    case kTfLiteUInt8: {
-      QLeakyRelu<uint8_t>(input, output, params->alpha, data);
+    case kTfLiteUInt8:
+    {
+      LeakyReluParamsQuant op_params{data->q_alpha,
+                                     data->q_identity,
+                                     data->zero_point,
+                                     input->params.zero_point,
+                                     output->params.zero_point,
+                                     data->output_multiplier,
+                                     data->output_shift};
+      reference_ops::QuantizeLeakyRelu(
+          op_params,
+          GetTensorShape(input),
+          GetTensorData<uint8_t >(input),
+          GetTensorShape(output),
+          GetTensorData<uint8_t >(output));
+      return kTfLiteOk;
+    } break;
+    case kTfLiteInt8:
+      {
+      LeakyReluParamsQuant op_params{data->q_alpha,
+                                     data->q_identity,
+                                     data->zero_point,
+                                     input->params.zero_point,
+                                     output->params.zero_point,
+                                     data->output_multiplier,
+                                     data->output_shift};
+      reference_ops::QuantizeLeakyRelu(
+          op_params,
+          GetTensorShape(input),
+          GetTensorData<int8_t >(input),
+          GetTensorShape(output),
+          GetTensorData<int8_t >(output));
       return kTfLiteOk;
     } break;
     default:
       context->ReportError(
-          context, "Only float32 and uint8 is supported currently, got %s.",
+          context, "Only float32, int8 and uint8 is supported currently, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
