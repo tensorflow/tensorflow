@@ -2002,7 +2002,8 @@ void IrEmitterUnnested::EmitTile(
       /*step=*/constant(1), [&](llvm::Value* y_indvar) {
         llvm::Value* y_loc = b_.CreateAdd(
             thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
-        auto unroll = [&](bool add_if, int64 vector_size) {
+        auto unroll = [&](bool add_index_boundary_condition,
+                          int64 vector_size) {
           for (int64 j = 0; j < x_num_steps / vector_size; j++) {
             // Prep some values. If we do not do this, LLVM doesn't vectorize.
             llvm::Value* x_loc_base =
@@ -2025,7 +2026,7 @@ void IrEmitterUnnested::EmitTile(
               auto emit_element = [&] {
                 return emit_elem_function(source_idx_x, y_loc, x_loc, old_j);
               };
-              if (add_if) {
+              if (add_index_boundary_condition) {
                 ksl->If(loop_name + "_x_in_tile",
                         b_.CreateICmpULT(x_loc, tile_width), emit_element);
               } else {
@@ -2048,10 +2049,14 @@ void IrEmitterUnnested::EmitTile(
                   // it will be the exact number of elements left.
                   b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeX()),
                                   tile_width),
-                  [&] { unroll(/*add_if=*/false, vector_size); },
-                  [&] { unroll(/*add_if=*/true, vector_size); });
+                  [&] {
+                    unroll(/*add_index_boundary_condition=*/false, vector_size);
+                  },
+                  [&] {
+                    unroll(/*add_index_boundary_condition=*/true, vector_size);
+                  });
         } else {
-          unroll(/*add_if=*/!x_tile_fits, vector_size);
+          unroll(/*add_index_boundary_condition=*/!x_tile_fits, vector_size);
         }
       });
 }
