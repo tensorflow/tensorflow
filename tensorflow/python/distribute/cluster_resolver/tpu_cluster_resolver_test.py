@@ -156,6 +156,7 @@ class TPUClusterResolverTest(test.TestCase):
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
             'ipAddress': '10.1.2.3',
             'port': '8470',
+            'state': 'READY',
             'health': 'HEALTHY'
         }
     }
@@ -189,6 +190,7 @@ class TPUClusterResolverTest(test.TestCase):
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
             'ipAddress': '10.1.2.3',
             'port': '8470',
+            'state': 'READY',
             'health': 'HEALTHY'
         }
     }
@@ -235,6 +237,7 @@ class TPUClusterResolverTest(test.TestCase):
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
             'ipAddress': '10.1.2.3',
             'port': '8470',
+            'state': 'READY',
             'health': 'HEALTHY'
         }
     }
@@ -282,6 +285,7 @@ class TPUClusterResolverTest(test.TestCase):
   def testNewNetworkEndpointFormat(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'state': 'READY',
             'health': 'HEALTHY',
             'networkEndpoints': [{
                 'ipAddress': '10.2.3.4',
@@ -312,6 +316,7 @@ class TPUClusterResolverTest(test.TestCase):
   def testPodResolution(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'state': 'READY',
             'health':
                 'HEALTHY',
             'networkEndpoints': [
@@ -361,6 +366,7 @@ class TPUClusterResolverTest(test.TestCase):
   def testPodResolutionNoCoordinator(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'state': 'READY',
             'health':
                 'HEALTHY',
             'networkEndpoints': [
@@ -504,6 +510,7 @@ class TPUClusterResolverTest(test.TestCase):
   def testOverrideTaskTypeAndIndexAndGetMaster(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'state': 'READY',
             'health':
                 'HEALTHY',
             'networkEndpoints': [
@@ -626,6 +633,7 @@ class TPUClusterResolverTest(test.TestCase):
 
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'state': 'READY',
             'health':
                 'HEALTHY',
             'networkEndpoints': [

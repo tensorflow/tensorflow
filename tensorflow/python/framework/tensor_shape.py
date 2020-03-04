@@ -556,7 +556,7 @@ class Dimension(object):
   def __mod__(self, other):
     """Returns `self` modulo `other`.
 
-    Dimension moduli are computed as follows:
+    Dimension modulo are computed as follows:
 
     ```python
     tf.compat.v1.Dimension(m)    % tf.compat.v1.Dimension(n)     ==

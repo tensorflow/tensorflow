@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
+#include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
@@ -98,13 +98,20 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
         "A valid FunctionLibraryRuntime must be provided when running ops "
         "based on OpKernel.");
   }
-  TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
+  std::shared_ptr<const NodeProperties> props;
+  TF_RETURN_IF_ERROR(NodeProperties::CreateFromNodeDef(
+      ndef, flr_->GetFunctionLibraryDefinition(), &props));
+  TF_RETURN_IF_ERROR(flr_->CreateKernel(props, &k));
   kernel_.reset(k);
 
   input_alloc_attrs_.resize(kernel_->num_inputs());
+  input_devices_.resize(kernel_->num_inputs(), device_);
   for (size_t i = 0; i < input_alloc_attrs_.size(); ++i) {
-    input_alloc_attrs_[i].set_on_host(kernel_->input_memory_types()[i] ==
-                                      tensorflow::HOST_MEMORY);
+    bool host = kernel_->input_memory_types()[i] == tensorflow::HOST_MEMORY;
+    input_alloc_attrs_[i].set_on_host(host);
+    if (host) {
+      input_devices_[i] = host_cpu_device_;
+    }
   }
   output_alloc_attrs_.resize(kernel_->num_outputs());
   for (size_t i = 0; i < output_alloc_attrs_.size(); ++i) {
@@ -133,7 +140,7 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
   if (function_def != nullptr) {
     op_def = &(function_def->signature());
   } else {
-    TF_RETURN_IF_ERROR(OpDefForOp(ndef.op().c_str(), &op_def));
+    TF_RETURN_IF_ERROR(OpDefForOp(ndef.op(), &op_def));
   }
   TF_RETURN_IF_ERROR(
       InOutTypesForNode(ndef, *op_def, &input_dtypes_, &output_dtypes_));
@@ -279,15 +286,11 @@ Status KernelAndDeviceOp::Run(
   OpKernelContext context(&params);
 
   {
-    absl::string_view op_name = kernel_->name_view();
-    // 'ScopedActivity' will trace the OpKernel scheduling time on host.
-    profiler::TraceMe activity(
-        [&] { return absl::StrCat(op_name, ":", kernel_->type_string_view()); },
+    // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
+    // time on device of the OpKernel.
+    profiler::AnnotatedTraceMe activity(
+        [&] { return kernel_->TraceString(&context, /*verbose=*/false); },
         profiler::TraceMeLevel::kInfo);
-    // 'ScopedAnnotation' will trace the OpKernel execution time on device.
-    profiler::ScopedAnnotation annotation([&]() {
-      return absl::StrCat(op_name, ":", kernel_->type_string_view());
-    });
     device_->Compute(kernel_.get(), &context);
   }
 
@@ -327,7 +330,7 @@ Status KernelAndDeviceFunc::Run(
   } else {
     opts = absl::make_unique<FunctionLibraryRuntime::Options>();
     if (get_op_id_ && is_cross_process_) {
-      // If the function is a cross-process function and the remote excution
+      // If the function is a cross-process function and the remote execution
       // goes through eager service, create an eager op id for the function.
       opts->op_id = get_op_id_();
     }
@@ -405,19 +408,8 @@ tensorflow::Device* KernelAndDeviceFunc::OutputResourceDevice(int idx) const {
   return nullptr;
 }
 
-DataType KernelAndDeviceOp::input_type(int i) const {
-  return kernel_->input_type(i);
-}
-
-DataType KernelAndDeviceFunc::input_type(int i) const {
-  return input_dtypes_[i];
-}
-
 Device* KernelAndDeviceOp::InputDevice(int i) const {
-  if (kernel_->input_memory_types()[i] == HOST_MEMORY) {
-    return host_cpu_device_;
-  }
-  return device_;
+  return input_devices_[i];
 }
 
 Device* KernelAndDeviceFunc::InputDevice(int i) const {

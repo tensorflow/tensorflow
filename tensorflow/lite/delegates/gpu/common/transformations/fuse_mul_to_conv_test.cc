@@ -46,7 +46,7 @@ TEST(MergeConvolutionWithMulTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> mul_tensor;
   mul_tensor.shape = Linear(16);
   mul_tensor.data.resize(16);
-  MultiplyScalarAttributes mul_attr;
+  MultiplyAttributes mul_attr;
   mul_attr.param = mul_tensor;
 
   auto conv_node = graph.NewNode();
@@ -87,7 +87,7 @@ TEST(MergeMulWithConvolutionTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> mul_tensor;
   mul_tensor.shape = Linear(8);
   mul_tensor.data.resize(8);
-  MultiplyScalarAttributes mul_attr;
+  MultiplyAttributes mul_attr;
   mul_attr.param = mul_tensor;
 
   Convolution2DAttributes conv_attr;
@@ -140,7 +140,7 @@ TEST(FuseMulAfterConvolution2DTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> mul_tensor;
   mul_tensor.shape = Linear(2);
   mul_tensor.data = {0.5f, 2.0f};
-  MultiplyScalarAttributes mul_attr;
+  MultiplyAttributes mul_attr;
   mul_attr.param = mul_tensor;
 
   FuseConvolution2DWithMultiply(mul_attr, &attr);
@@ -161,7 +161,7 @@ TEST(FuseMulAfterDepthwiseConvolution2DTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> mul_tensor;
   mul_tensor.shape = Linear(4);
   mul_tensor.data = {0.5f, 2.0f, 4.0f, 0.25f};
-  MultiplyScalarAttributes mul_attr;
+  MultiplyAttributes mul_attr;
   mul_attr.param = mul_tensor;
 
   FuseDepthwiseConvolution2DWithMultiply(mul_attr, &attr);
@@ -183,7 +183,7 @@ TEST(FuseMulAfterConvolutionTransposedTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> mul_tensor;
   mul_tensor.shape = Linear(2);
   mul_tensor.data = {0.5f, 2.0f};
-  MultiplyScalarAttributes mul_attr;
+  MultiplyAttributes mul_attr;
   mul_attr.param = mul_tensor;
 
   FuseConvolutionTransposedWithMultiply(mul_attr, &attr);
@@ -204,7 +204,7 @@ TEST(FuseMulAfterFullyConnectedTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> mul_tensor;
   mul_tensor.shape = Linear(2);
   mul_tensor.data = {0.5f, 2.0f};
-  MultiplyScalarAttributes mul_attr;
+  MultiplyAttributes mul_attr;
   mul_attr.param = mul_tensor;
 
   FuseFullyConnectedWithMultiply(mul_attr, &attr);
@@ -224,7 +224,7 @@ TEST(FuseMulBeforeConvolution2DTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> mul_tensor;
   mul_tensor.shape = Linear(2);
   mul_tensor.data = {0.5f, 2.0f};
-  MultiplyScalarAttributes mul_attr;
+  MultiplyAttributes mul_attr;
   mul_attr.param = mul_tensor;
 
   FuseMultiplyWithConvolution2D(mul_attr, &attr);
@@ -245,7 +245,7 @@ TEST(FuseMulBeforeDepthwiseConvolution2DTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> mul_tensor;
   mul_tensor.shape = Linear(4);
   mul_tensor.data = {0.5f, 2.0f, 4.0f, 0.25f};
-  MultiplyScalarAttributes mul_attr;
+  MultiplyAttributes mul_attr;
   mul_attr.param = mul_tensor;
 
   FuseMultiplyWithDepthwiseConvolution2D(mul_attr, &attr);
@@ -267,7 +267,7 @@ TEST(FuseMulBeforeConvolutionTransposedTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> mul_tensor;
   mul_tensor.shape = Linear(2);
   mul_tensor.data = {0.5f, 2.0f};
-  MultiplyScalarAttributes mul_attr;
+  MultiplyAttributes mul_attr;
   mul_attr.param = mul_tensor;
 
   FuseMultiplyWithConvolutionTransposed(mul_attr, &attr);
@@ -288,7 +288,7 @@ TEST(FuseMulBeforeFullyConnectedTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> mul_tensor;
   mul_tensor.shape = Linear(2);
   mul_tensor.data = {0.5f, 2.0f};
-  MultiplyScalarAttributes mul_attr;
+  MultiplyAttributes mul_attr;
   mul_attr.param = mul_tensor;
 
   FuseMultiplyWithFullyConnected(mul_attr, &attr);

@@ -238,7 +238,7 @@ void LogFusedConvForwardAutotuneResults(
     se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results);
 
 // Returns the best algorithms for the config, one is the fastest, the other is
-// other is fastest with 0 scracth space. Unsuccessful autotuning results are
+// other is fastest with 0 scratch space. Unsuccessful autotuning results are
 // allowed and ignored.
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
                               se::dnn::AlgorithmConfig* algo);

@@ -31,16 +31,16 @@ class LinearMemoryPlanner : public MemoryPlanner {
   TfLiteStatus AddBuffer(tflite::ErrorReporter* error_reporter, int size,
                          int first_time_used, int last_time_used) override;
 
-  int GetMaximumMemorySize() override;
+  size_t GetMaximumMemorySize() override;
   int GetBufferCount() override;
   TfLiteStatus GetOffsetForBuffer(tflite::ErrorReporter* error_reporter,
                                   int buffer_index, int* offset) override;
 
  private:
   static constexpr int kMaxBufferCount = 1024;
-  int buffer_offsets_[kMaxBufferCount];
+  size_t buffer_offsets_[kMaxBufferCount];
   int current_buffer_count_;
-  int next_free_offset_;
+  size_t next_free_offset_;
 
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };

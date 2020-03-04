@@ -50,6 +50,8 @@ class Var;
 
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
+Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index);
+Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index);
 }  // namespace batch_util
 
 /// @ingroup core
@@ -599,6 +601,7 @@ class Tensor {
   ///
   /// REQUIRES: `DataTypeCanUseMemcpy(dtype())`.
   StringPiece tensor_data() const;
+  void* data() const;
 
   /// Copy the other tensor into this tensor, reshape it and reinterpret the
   /// buffer's datatype. If Status::OK() is returned, the two tensors now share
@@ -662,6 +665,12 @@ class Tensor {
   friend class ScopedAllocator;       // For access to buf_.
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
+      int64 index);  // For access to base<T>().
+  friend Status batch_util::CopySliceToElement(
+      const Tensor& parent, Tensor* element,
+      int64 index);  // For access to base<T>().
+  friend Status batch_util::MaybeMoveSliceToElement(
+      Tensor* parent, Tensor* element,
       int64 index);  // For access to base<T>().
 
   bool CanUseDMA() const;
@@ -854,32 +863,21 @@ typename TTypes<T, NDIMS>::UnalignedConstTensor Tensor::unaligned_shaped(
 
 template <typename T>
 typename TTypes<T>::Scalar Tensor::scalar() {
+  static_assert(
+      !std::is_same<T, std::string>::value,
+      "std::string is no longer a scalar type, use tensorflow::tstring");
   CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::Scalar(base<T>());
 }
 
-#ifdef USE_TSTRING
-template <>
-inline typename TTypes<std::string>::Scalar Tensor::scalar<std::string>() {
-  LOG(FATAL)
-      << "std::string is no longer a scalar type, use tensorflow::tstring";
-}
-#endif  // USE_TSTRING
-
 template <typename T>
 typename TTypes<T>::ConstScalar Tensor::scalar() const {
+  static_assert(
+      !std::is_same<T, std::string>::value,
+      "std::string is no longer a scalar type, use tensorflow::tstring");
   CheckIsAlignedAndSingleElement();
   return typename TTypes<T>::ConstScalar(base<T>());
 }
-
-#ifdef USE_TSTRING
-template <>
-inline typename TTypes<std::string>::ConstScalar Tensor::scalar<std::string>()
-    const {
-  LOG(FATAL)
-      << "std::string is no longer a scalar type, use tensorflow::tstring";
-}
-#endif  // USE_TSTRING
 
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::flat_inner_dims() {

@@ -73,6 +73,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -104,7 +105,7 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
   } else if (ctx->op_device_context() != nullptr) {
     // TODO(apassos): remove the down_cast by just returning Device* from
     // OpKernelContext
-    Device* device = static_cast<Device*>(ctx->device());
+    Device* device = down_cast<Device*>(ctx->device());
     ctx->op_device_context()->CopyTensorInSameDevice(
         t, device, output, [&n, &status](const Status& s) {
           status = s;
@@ -719,7 +720,7 @@ class ResourceGatherOp : public OpKernel {
   }
 
  private:
-  // Add the batch offset derrived from params to each batch of indices.
+  // Add the batch offset derived from params to each batch of indices.
   // Example: batch_dims = 1, indices = [[0, 1, 2], [0, 1, 2]]
   // If indexing into a params dimension of size 4, then the indices will become
   // [0, 1, 2, 4, 5, 6]

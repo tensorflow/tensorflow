@@ -109,6 +109,7 @@ struct ComputeTaskDescriptor {
   // calculate new parameters for GPU compute task dispatching. A leading
   // unlinkable task must provide this.
   DispatchParamsFunction resize_function;
+  std::string description;
 };
 
 using ComputeTaskDescriptorPtr = std::shared_ptr<ComputeTaskDescriptor>;

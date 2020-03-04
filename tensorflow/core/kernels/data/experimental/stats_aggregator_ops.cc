@@ -185,7 +185,7 @@ class StatsAggregatorImplV2 : public StatsAggregator {
       // If we create stats_aggregator twice in a program, we would end up with
       // already existing resource. In this case emitting an error if a
       // `summary_writer_resource` is present is not the intended behavior, we
-      // could either Unref the existing sumary_writer_resource or not set the
+      // could either Unref the existing summary_writer_resource or not set the
       // new resource at all.
     }
     summary_writer_interface_ = summary_writer_interface;
@@ -287,11 +287,11 @@ class StatsAggregatorSetSummaryWriterOp : public OpKernel {
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(summary_resource_handle_t.shape()),
                 errors::InvalidArgument("resource_handle must be a scalar"));
-    core::RefCountPtr<SummaryWriterInterface> sumamry_resource;
+    core::RefCountPtr<SummaryWriterInterface> summary_resource;
     OP_REQUIRES_OK(
-        ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &sumamry_resource));
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &summary_resource));
     TF_CHECK_OK(
-        resource->stats_aggregator()->SetSummaryWriter(sumamry_resource.get()));
+        resource->stats_aggregator()->SetSummaryWriter(summary_resource.get()));
   }
 };
 

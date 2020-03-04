@@ -50,6 +50,12 @@ Status CreateFileForDumping(llvm::StringRef name,
 std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
                              llvm::StringRef dirname = "");
 
+// Reads the directory to dump the MLIR module from environment variables.
+// Default is reading from TF_DUMP_GRAPH_PREFIX, and if the string is 'sponge'
+// read from TEST_UNDECLARED_OUTPUTS_DIR. Returns nullptr if the directory
+// cannot be determined and generates a warning message.
+std::string GetDumpDirFromEnvVar();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DUMP_MLIR_UTIL_H_

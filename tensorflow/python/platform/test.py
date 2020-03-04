@@ -13,13 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Testing.
-
-See the [Testing](https://tensorflow.org/api_docs/python/tf/test) guide.
-
-Note: `tf.compat.v1.test.mock` is an alias to the python `mock` or
-`unittest.mock` depending on the python version.
-"""
+"""Testing."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -106,3 +100,9 @@ def is_built_with_rocm():
 def is_built_with_gpu_support():
   """Returns whether TensorFlow was built with GPU (i.e. CUDA or ROCm) support."""
   return is_built_with_cuda() or is_built_with_rocm()
+
+
+@tf_export('test.is_built_with_xla')
+def is_built_with_xla():
+  """Returns whether TensorFlow was built with XLA support."""
+  return _test_util.IsBuiltWithXLA()

@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,30 +35,51 @@ class RMSprop(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the RMSprop algorithm.
 
   A detailed description of rmsprop.
-
     - maintain a moving (discounted) average of the square of gradients
     - divide gradient by the root of this average
 
-  $$mean_square_t = rho * mean_square{t-1} + (1-rho) * gradient ** 2$$
-  $$mom_t = momentum * mom_{t-1} + learning_rate * gradient / \sqrt{ /
-      mean_square_t + \epsilon}$$
-  $$variable_t := variable_{t-1} - mom_t$$
+  The default settings does not use momentum:
+
+  $$rms_t = \rho * rms_{t-1} + (1-\rho) * g_t^2$$
+  $$\theta_t = \theta_{t-1} - \mathrm{learning\_rate} *
+                              g_t / \sqrt{rms_t + \epsilon}$$
+
+  Since  $x/x^2 = sign(x)$, this  is an smoothed approximation of:
+
+  $$ \theta_t = \theta_{t-1} - \mathrm{learning\_rate} * sign(g_t) $$
+
+  With momentum the update is:
+
+  $$rms_t = \rho * rms_{t-1} + (1-\rho) * g_t^2$$
+  $$mom_t = \mathrm{momentum} * mom_{t-1} + g_t / \sqrt{rms_t + \epsilon}$$
+  $$\theta_t = \theta_{t-1} - \mathrm{learning\_rate} * mom_t$$
 
   This implementation of RMSprop uses plain momentum, not Nesterov momentum.
 
   The centered version additionally maintains a moving average of the
   gradients, and uses that average to estimate the variance:
 
-  $$mean_grad_t = rho * mean_grad_{t-1} + (1-rho) * gradient$$
-  $$mean_square_t = rho * mean_square_{t-1} + (1-rho) * gradient ** 2$$
-  $$mom_t = momentum * mom_{t-1} + learning_rate * gradient /
-      sqrt(mean_square_t - mean_grad_t**2 + epsilon)$$
-  $$variable_t := variable_{t-1} - mom_t$$
+  $$mg_t = \rho * mg_{t-1} + (1-\rho) * g_t$$
+  $$rms_t = \rho * rms_{t-1} + (1-\rho) * g_t^2$$
+  $$mom_t = \mathrm{momentum} * mom_{t-1} +
+      \mathrm{learning\_rate} * g_t / sqrt(rms_t - mg_t^2 + \epsilon)$$
+  $$\theta_t = \theta_{t-1} - mom_t$$
+
+  Usage:
+
+  >>> opt = tf.keras.optimizers.RMSprop(learning_rate=0.1)
+  >>> var1 = tf.Variable(10.0)
+  >>> loss = lambda: (var1 ** 2)/2.0                # d(loss)/d(var1) = var1
+  >>> step_count = opt.minimize(loss, [var1]).numpy()
+  >>> var1.numpy()
+  9.683772
 
   References
     See ([pdf]
       http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
   """
+
+  _HAS_ALL_REDUCE_SUM_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
@@ -84,14 +105,19 @@ class RMSprop(optimizer_v2.OptimizerV2):
 
     Args:
       learning_rate: A `Tensor`, floating point value, or a schedule that is a
-        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
-      rho: Discounting factor for the history/coming gradient
-      momentum: A scalar tensor.
-      epsilon: Small value to avoid zero denominator.
-      centered: If True, gradients are normalized by the estimated variance of
-        the gradient; if False, by the uncentered second moment. Setting this to
-        True may help with training, but is slightly more expensive in terms of
-        computation and memory. Defaults to False.
+        `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
+        that takes no arguments and returns the actual value to use. The
+        learning rate. Defeaults to 0.001.
+      rho: Discounting factor for the history/coming gradient. Defaults to 0.9.
+      momentum: A scalar or a scalar `Tensor`. Defaults to 0.0.
+      epsilon: A small constant for numerical stability. This epsilon is
+        "epsilon hat" in the Kingma and Ba paper (in the formula just before
+        Section 2.1), not the epsilon in Algorithm 1 of the paper. Defaults to
+        1e-7.
+      centered: Boolean. If `True`, gradients are normalized by the estimated
+        variance of the gradient; if False, by the uncentered second moment.
+        Setting this to `True` may help with training, but is slightly more
+        expensive in terms of computation and memory. Defaults to `False`.
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "RMSprop".  @compatibility(eager) When eager
         execution is enabled, `learning_rate`, `decay`, `momentum`, and
@@ -133,13 +159,13 @@ class RMSprop(optimizer_v2.OptimizerV2):
     super(RMSprop, self)._prepare_local(var_device, var_dtype, apply_state)
 
     rho = array_ops.identity(self._get_hyper("rho", var_dtype))
-    apply_state[(var_device, var_dtype)].update(dict(
-        neg_lr_t=-apply_state[(var_device, var_dtype)]["lr_t"],
-        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
-        rho=rho,
-        momentum=array_ops.identity(self._get_hyper("momentum", var_dtype)),
-        one_minus_rho=1. - rho
-    ))
+    apply_state[(var_device, var_dtype)].update(
+        dict(
+            neg_lr_t=-apply_state[(var_device, var_dtype)]["lr_t"],
+            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            rho=rho,
+            momentum=array_ops.identity(self._get_hyper("momentum", var_dtype)),
+            one_minus_rho=1. - rho))
 
   def _resource_apply_dense(self, grad, var, apply_state=None):
     var_device, var_dtype = var.device, var.dtype.base_dtype

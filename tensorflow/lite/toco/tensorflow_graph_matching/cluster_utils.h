@@ -20,7 +20,7 @@ limitations under the License.
 namespace toco {
 
 // Check if string x includes string search_pattern.
-bool StrContains(const string& x, const string& search_pattern);
+bool StrContains(const std::string& x, const std::string& search_pattern);
 
 // Transpose a 2D tensor of size row * col pointed by "tensor" and return the
 // results in "transposed_tensor". "transposed_tensor" must be pre-allocated

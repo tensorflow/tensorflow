@@ -49,6 +49,17 @@ public class TensorImage {
   private final ImageContainer container;
 
   /**
+   * Initialize a TensorImage object.
+   *
+   * Note: The data type of this TensorImage is UINT8, which means it could naturally accept Bitmaps
+   * whose pixel value range is [0, 255]. However, any image with float value pixels will not be
+   * loaded correctly. In those cases, please use {@link TensorImage(DataType)}.
+   */
+  public TensorImage() {
+    this(DataType.UINT8);
+  }
+
+  /**
    * Initializes a TensorImage object with data type specified.
    *
    * <p>Note: The shape of a TensorImage is not fixed. It is determined when {@code load} methods

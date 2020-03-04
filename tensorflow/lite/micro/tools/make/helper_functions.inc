@@ -2,6 +2,9 @@
 # Reverses a space-separated list of words.
 reverse = $(if $(1),$(call reverse,$(wordlist 2,$(words $(1)),$(1)))) $(firstword $(1))
 
+# Get macros only (i.e. the ones starting with -D) from two lists and remove duplicates
+getmacros = $(patsubst -D%,%,$(filter -D%,$(sort $(filter -D%, $(1)) $(filter -D%, $(2)))))
+
 # Look for platform or target-specific implementation files to replace reference
 # implementations with, given a tag. These are expected to occur in subfolders
 # of a directory where a reference implementation exists, and have the same
@@ -92,6 +95,12 @@ $(PRJDIR)$(3)/$(1)/.vscode/tasks.json : tensorflow/lite/micro/tools/make/templat
 	@cp $$< $$@
 
 generate_$(3)_$(1)_project: $(addprefix $(PRJDIR)$(3)/$(1)/, $(4) $(5) $(2))
+ifeq (mbed, $(1))
+	$(eval macrolist := $(call getmacros, $7, $8))
+	$(eval jsonfilename := $(PRJDIR)$(3)/$(1)/mbed_app)
+	@awk 'FNR==NR{ if (/}/) p=NR; next} 1; FNR==(p-1){ n=split("$(macrolist)",a," "); print("    ,\"macros\": [");for (i=1; i <= n; i++){ printf("        \"%s\"", a[i]); if(i<n){printf(",\n")}}printf("\n    ]\n")}' \
+        $(jsonfilename).json $(jsonfilename).json > $(jsonfilename).tmp && mv $(jsonfilename).tmp $(jsonfilename).json
+endif
 
 list_$(3)_$(1)_files:
 	@echo $(4) $(5)
@@ -284,7 +293,19 @@ $(PRJDIR)$(2)/esp-idf/LICENSE: LICENSE
 	@mkdir -p $$(dir $$@)
 	@cp $$< $$@
 
+$(PRJDIR)$(2)/esp-idf/%: tensorflow/lite/micro/examples/$(2)/esp/%
+	@mkdir -p $$(dir $$@)
+	@cp $$< $$@
+
 $(PRJDIR)$(2)/esp-idf/main/%.cc: tensorflow/lite/micro/examples/$(2)/%.cc
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/micro/tools/make/transform_source.py \
+        --platform=esp \
+        --is_example_source \
+        --source_path="$$<" \
+        < $$< > $$@
+
+$(PRJDIR)$(2)/esp-idf/main/%.h: tensorflow/lite/micro/examples/$(2)/%.h
 	@mkdir -p $$(dir $$@)
 	@python tensorflow/lite/micro/tools/make/transform_source.py \
         --platform=esp \
@@ -304,11 +325,20 @@ $(PRJDIR)$(2)/esp-idf/components/tfmicro/third_party/%: tensorflow/lite/micro/to
 	@mkdir -p $$(dir $$@)
 	@cp $$< $$@
 
+$(PRJDIR)$(2)/esp-idf/sdkconfig.defaults: tensorflow/lite/micro/examples/$(2)/esp/sdkconfig.defaults
+	@mkdir -p $$(dir $$@)
+	@cp $$< $$@
+
 $(PRJDIR)$(2)/esp-idf/%: tensorflow/lite/micro/tools/make/templates/esp/%.tpl
-	$(eval MAIN_SRCS_RELATIVE := $(patsubst tensorflow/lite/micro/examples/$(2)/%,%,$(5)))
+# Split the sources into 2 components:
+# - Main component contains only the example's sources, relative from its dir.
+# - TFL Micro component contains everything but the example sources.
+  $(eval MAIN_SRCS := $(filter tensorflow/lite/micro/examples/%,$(5)))
+  $(eval MAIN_SRCS_RELATIVE := $(patsubst tensorflow/lite/micro/examples/$(2)/%,%,$(MAIN_SRCS)))
+  $(eval TFLM_SRCS := $(filter-out tensorflow/lite/micro/examples/%,$(5)) $(3))
 
 	@mkdir -p $$(dir $$@)
-	@sed -E 's#\%\{COMPONENT_SRCS\}\%#$(3)#g' $$< | \
+	@sed -E 's#\%\{COMPONENT_SRCS\}\%#$(TFLM_SRCS)#g' $$< | \
 	sed -E 's#\%\{MAIN_SRCS\}\%#$(MAIN_SRCS_RELATIVE)#g' | \
 	sed -E 's#\%\{EXECUTABLE\}\%#$(2)#g' | \
 	sed -E 's#\%\{COMPONENT_INCLUDES\}\%#$(10)#g' | \
@@ -371,6 +401,7 @@ test_$(1): $$($(1)_BINARY)
 	$$(TEST_SCRIPT) $$($(1)_BINARY) '~~~ALL TESTS PASSED~~~'
 ifneq (,$(findstring _test,$(1)))
   MICROLITE_TEST_TARGETS += test_$(1)
+  MICROLITE_BUILD_TARGETS += $$($(1)_BINARY)
 endif
 $(eval $(call generate_microlite_projects,$(1),$(call specialize,$(2)),$(3)))
 endef
@@ -398,3 +429,9 @@ $(word 3, $(subst !, ,$(1))):
 	tensorflow/lite/micro/tools/make/download_and_extract.sh $(subst !, ,$(1))
 THIRD_PARTY_TARGETS += $(word 3, $(subst !, ,$(1)))
 endef
+
+# Recursively find all files of given pattern
+# Arguments are:
+# 1 - Starting path
+# 2 - File pattern, e.g: *.h
+recursive_find = $(wildcard $(1)$(2)) $(foreach dir,$(wildcard $(1)*),$(call recursive_find,$(dir)/,$(2)))

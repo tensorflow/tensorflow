@@ -190,8 +190,10 @@ cc_library(
     deps = [
         ":destroy_tensor_handle_node",
         ":eager_client",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime/eager:tensor_handle_data",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 
@@ -218,7 +220,7 @@ cc_library(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "eager_client.h",
         "remote_tensor_handle.h",

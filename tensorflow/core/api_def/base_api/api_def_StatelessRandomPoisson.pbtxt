@@ -1,0 +1,41 @@
+op {
+  graph_op_name: "StatelessRandomPoisson"
+  visibility: HIDDEN
+  in_arg {
+    name: "shape"
+    description: <<END
+The shape of the output tensor.
+END
+  }
+  in_arg {
+    name: "seed"
+    description: <<END
+2 seeds (shape [2]).
+END
+  }
+  in_arg {
+    name: "lam"
+    description: <<END
+The rate of the Poisson distribution. Shape must match the rightmost dimensions
+of `shape`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Random values with specified shape.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of the output.
+END
+  }
+  summary: "Outputs deterministic pseudorandom random numbers from a Poisson distribution."
+  description: <<END
+Outputs random values from a Poisson distribution.
+
+The outputs are a deterministic function of `shape`, `seed`, and `lam`.
+END
+}

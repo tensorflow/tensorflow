@@ -37,15 +37,16 @@ class LoaderTest(test.TestCase):
       a = True
       b = ''
       if a:
-        b = x + 1
+        b = (x + 1)
       return b
 
     node, _ = parser.parse_entity(test_fn, future_features=())
     module, _, _ = loader.load_ast(node)
 
+    # astunparse uses fixed 4-space indenting.
     self.assertEqual(
         textwrap.dedent(tf_inspect.getsource(test_fn)),
-        tf_inspect.getsource(module.test_fn))
+        tf_inspect.getsource(module.test_fn).replace('    ', '  '))
 
   def test_load_ast(self):
     node = gast.FunctionDef(
@@ -81,7 +82,7 @@ class LoaderTest(test.TestCase):
     expected_source = """
       # coding=utf-8
       def f(a):
-        return a + 1
+          return (a + 1)
     """
     self.assertEqual(
         textwrap.dedent(expected_source).strip(),

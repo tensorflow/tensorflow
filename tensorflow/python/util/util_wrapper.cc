@@ -141,6 +141,24 @@ PYBIND11_MODULE(_pywrap_utils, m) {
         True if `instance` is a `collections.Mapping`.
     )pbdoc");
   m.def(
+      "IsMutableMapping",
+      [](const py::handle& o) {
+        bool result = tensorflow::swig::IsMutableMapping(o.ptr());
+        if (PyErr_Occurred()) {
+          throw py::error_already_set();
+        }
+        return result;
+      },
+      R"pbdoc(
+      Returns True if `instance` is a `collections.MutableMapping`.
+
+      Args:
+        instance: An instance of a Python object.
+
+      Returns:
+        True if `instance` is a `collections.MutableMapping`.
+    )pbdoc");
+  m.def(
       "IsMappingView",
       [](const py::handle& o) {
         bool result = tensorflow::swig::IsMappingView(o.ptr());

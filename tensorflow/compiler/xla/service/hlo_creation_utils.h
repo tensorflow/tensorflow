@@ -27,6 +27,11 @@ namespace xla {
 // ergonomic.  We don't have a complete set of helpers yet -- I expect we'll
 // expand this interface as needed on an ad-hoc basis.
 
+// Creates a unary HLO instruction and adds it to the computation containing
+// `operand`.
+StatusOr<HloInstruction*> MakeUnaryHlo(HloOpcode opcode,
+                                       HloInstruction* operand);
+
 // Creates a binary HLO instruction and adds it to the computation containing
 // `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
@@ -75,6 +80,9 @@ StatusOr<HloInstruction*> MakeReshapeHlo(
 // Creates a dynamic-slice HLO instruction and adds it to the computation
 // containing `operand` and `start_indices` (`operand` and `start_indices` must
 // be in the same computation).
+StatusOr<HloInstruction*> MakeDynamicSliceHlo(
+    HloInstruction* operand, absl::Span<HloInstruction* const> start_indices,
+    absl::Span<const int64> slice_sizes);
 StatusOr<HloInstruction*> MakeDynamicSliceHlo(
     HloInstruction* operand, HloInstruction* start_indices,
     absl::Span<const int64> slice_sizes);
@@ -134,8 +142,18 @@ StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
 // the given module. binary_opcode should represent a binary operation.
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
+                                        absl::Span<const int64> dimensions,
+                                        HloOpcode binary_opcode);
+
+StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
+                                        HloInstruction* init_value,
                                         HloOpcode binary_opcode,
                                         HloModule* module);
+
+// Creates a Reverse HLO instruction and adds it to the computation containing
+// `operand`.
+StatusOr<HloInstruction*> MakeReverseHlo(HloInstruction* operand,
+                                         absl::Span<const int64> dimensions);
 
 // Creates a Select HLO instruction and adds it to the computation containing
 // the predicate. The on_true and on_false instructions must also be contained

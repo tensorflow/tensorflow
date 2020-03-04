@@ -20,6 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import time
+
+from six.moves.urllib import request
 
 from tensorflow.python.platform import test
 from tensorflow.python.tpu.client import client
@@ -45,7 +48,13 @@ class MockRequestClass(object):
 
   def execute(self):
     if self._name in self._tpu_map:
-      return self._tpu_map[self._name]
+      tpu_dict = self._tpu_map[self._name].copy()
+      if isinstance(tpu_dict.get('health'), list):
+        # Do extraction of health list to a single health string based on time.
+        time_now = time.time()
+        health_now = tpu_dict.get('health')[time_now]
+        tpu_dict['health'] = health_now
+      return tpu_dict
     else:
       raise KeyError('Resource %s was not found' % self._name)
 
@@ -67,6 +76,13 @@ class CloudTpuClientTest(test.TestCase):
       del os.environ['TPU_API_DISCOVERY_URL']
     if 'TPU_NAME' in os.environ:
       del os.environ['TPU_NAME']
+    self._time_now = 0
+
+  def _mock_time(self, *args, **kwargs):
+    return self._time_now
+
+  def _mock_sleep(self, secs):
+    self._time_now += secs
 
   def mock_service_client(self, tpu_map=None):
     if tpu_map is None:
@@ -147,13 +163,29 @@ class CloudTpuClientTest(test.TestCase):
 
   @mock.patch.object(client, '_request_compute_metadata',
                      mock_request_compute_metadata)
+  def testNetworkEndpointsNotReadyWithApi(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+        }
+    }
+    c = client.Client(
+        tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
+    self.assertRaisesRegex(
+        RuntimeError, 'TPU .* is not yet ready; state: "None"',
+        c.network_endpoints)
+
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
   def testInitializeNoArgumentsWithEnvironmentVariable(self):
     os.environ['TPU_NAME'] = 'tpu_name'
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
             'ipAddress': '10.1.2.3',
             'port': '8470',
-            'health': 'HEALTHY'
+            'state': 'READY',
+            'health': 'HEALTHY',
         }
     }
     c = client.Client(
@@ -167,7 +199,8 @@ class CloudTpuClientTest(test.TestCase):
         'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
             'ipAddress': '10.1.2.3',
             'port': '8470',
-            'health': 'HEALTHY'
+            'state': 'READY',
+            'health': 'HEALTHY',
         }
     }
     c = client.Client(
@@ -246,6 +279,57 @@ class CloudTpuClientTest(test.TestCase):
         tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
     self.assertEqual(False, c.recoverable())
 
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
+  def testHealthApi(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'state': 'PREEMPTED',
+            'health': 'HEALTHY',
+            'acceleratorType': 'v3-8',
+            'tensorflowVersion': 'nightly',
+        }
+    }
+    c = client.Client(
+        tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
+    self.assertEqual('HEALTHY', c.health())
+
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
+  def testRuntimeVersionApi(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'state': 'PREEMPTED',
+            'health': 'HEALTHY',
+            'acceleratorType': 'v3-8',
+            'tensorflowVersion': 'nightly',
+        }
+    }
+    c = client.Client(
+        tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
+    self.assertEqual('nightly', c.runtime_version())
+
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
+  def testAcceleratorTypeApi(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'state': 'PREEMPTED',
+            'health': 'HEALTHY',
+            'acceleratorType': 'v3-8',
+            'tensorflowVersion': 'nightly',
+        }
+    }
+    c = client.Client(
+        tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
+    self.assertEqual('v3-8', c.accelerator_type())
+
   def testHandlesByteStrings(self):
     self.assertEqual(
         client.Client(
@@ -253,6 +337,94 @@ class CloudTpuClientTest(test.TestCase):
         client.Client(
             tpu=b'tpu_name', zone=b'zone', project=b'project')._full_name(),
     )
+
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
+  def testWaitForHealthy(self):
+    time_mock = mock.patch.object(time, 'time', autospec=True).start()
+    time_mock.side_effect = self._mock_time
+    sleep_mock = mock.patch.object(time, 'sleep', autospec=True).start()
+    sleep_mock.side_effect = self._mock_sleep
+
+    health_timeseries = (['UNHEALTHY_MAINTENANCE']*30 + ['TIMEOUT']*10
+                         + [None]*20 + ['HEALTHY']*30)
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'state': 'READY',
+            'health': health_timeseries,
+        },
+    }
+
+    c = client.Client(
+        tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
+
+    # Doesn't throw RuntimeError as TPU becomes HEALTHY before timeout
+    timeout = 80
+    interval = 5
+    return_time = 60
+    c.wait_for_healthy(timeout_s=timeout, interval=interval)
+    self.assertEqual(time.time(), return_time)
+    self.assertEqual(sleep_mock.call_count, return_time/interval)
+
+  @mock.patch.object(client, '_request_compute_metadata',
+                     mock_request_compute_metadata)
+  def testWaitForHealthyRaisesError(self):
+    time_mock = mock.patch.object(time, 'time', autospec=True).start()
+    time_mock.side_effect = self._mock_time
+    sleep_mock = mock.patch.object(time, 'sleep', autospec=True).start()
+    sleep_mock.side_effect = self._mock_sleep
+
+    # Mock timeseries where takes longer than timeout.
+    health_timeseries = ['UNHEALTHY_MAINTENANCE']*50 + ['TIMEOUT']*50
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'state': 'READY',
+            'health': health_timeseries,
+        },
+    }
+
+    c = client.Client(
+        tpu='tpu_name', service=self.mock_service_client(tpu_map=tpu_map))
+
+    # Doesn't throw RuntimeError as TPU becomes HEALTHY before timeout
+    with self.assertRaisesRegex(
+        RuntimeError,
+        'Timed out waiting for TPU .* to become healthy'):
+      c.wait_for_healthy(timeout_s=80, interval=5)
+
+  @mock.patch.object(request, 'urlopen')
+  def testConfigureTpuVersion(self, urlopen):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/tpu_name': {
+            'state':
+                'READY',
+            'networkEndpoints': [
+                {
+                    'ipAddress': '1.2.3.4'
+                },
+                {
+                    'ipAddress': '5.6.7.8'
+                },
+            ]
+        }
+    }
+    c = client.Client(
+        tpu='tpu_name',
+        project='test-project',
+        zone='us-central1-c',
+        service=self.mock_service_client(tpu_map=tpu_map))
+    c.configure_tpu_version('1.15')
+
+    paths = [call[0][0].full_url for call in urlopen.call_args_list]
+
+    self.assertEqual([
+        'http://1.2.3.4:8475/requestversion/1.15',
+        'http://5.6.7.8:8475/requestversion/1.15'
+    ], sorted(paths))
 
 
 if __name__ == '__main__':

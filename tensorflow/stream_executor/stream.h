@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
 
 namespace stream_executor {
@@ -236,12 +236,11 @@ class Stream {
       const DeviceMemory<float> &estimated_variance,
       const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<float> *y,
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
       bool is_training,
-      std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var,
       ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
@@ -262,12 +261,11 @@ class Stream {
       const DeviceMemory<float> &estimated_variance,
       const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
       bool is_training,
-      std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var,
       ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
@@ -1912,6 +1910,18 @@ class Stream {
                           ScratchAllocator *workspace_allocator,
                           dnn::ProfileResult *output_profile_result);
 
+  // Enqueue a CTCLoss operation onto the stream.
+  // See DnnSupport::DoCtcLoss for more details.
+  Stream &ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
+                      const DeviceMemory<float> &probs_data,
+                      absl::Span<const int> labels_data,
+                      absl::Span<const int> labels_lengths_data,
+                      absl::Span<const int> input_lengths_data,
+                      DeviceMemory<float> *costs_data,
+                      const dnn::RnnStateTensorDescriptor &grads_desc,
+                      DeviceMemory<float> *grads_data,
+                      ScratchAllocator *workspace_allocator);
+
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.
   Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
@@ -2004,7 +2014,7 @@ class Stream {
   internal::TemporaryMemoryManager *temporary_memory_manager();
 
   // Returns a debugging string "[stream=0x...,impl=0x...]".
-  string DebugStreamPointers() const;
+  std::string DebugStreamPointers() const;
 
  private:
   friend class host::HostBlas;  // for parent_.

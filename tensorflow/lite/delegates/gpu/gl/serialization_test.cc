@@ -176,7 +176,7 @@ TEST(Smoke, Read) {
   std::vector<Object> objects;
   objects.push_back(MakeReadonlyBuffer(std::vector<float>{1, 2, 3, 4}));
   objects.push_back(Object{AccessType::WRITE, DataType::FLOAT32,
-                           ObjectType::TEXTURE, 5, uint3(1, 2, 3), 100});
+                           ObjectType::TEXTURE, 5, uint3(1, 2, 3), 100u});
   objects.push_back(Object{AccessType::READ_WRITE, DataType::INT8,
                            ObjectType::BUFFER, 6, uint2(2, 1),
                            std::vector<uint8_t>{7, 9}});

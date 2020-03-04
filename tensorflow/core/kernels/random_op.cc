@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/random_op_cpu.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -56,7 +57,7 @@ namespace {
 static Status AllocateOutputWithShape(OpKernelContext* ctx, const Tensor& shape,
                                       int index, Tensor** output) {
   TensorShape tensor_shape;
-  TF_RETURN_IF_ERROR(ctx->op_kernel().MakeShape(shape, &tensor_shape));
+  TF_RETURN_IF_ERROR(tensor::MakeShape(shape, &tensor_shape));
   return ctx->allocate_output(index, tensor_shape, output);
 }
 
@@ -166,7 +167,7 @@ class RandomGammaOp : public OpKernel {
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(vec.data(), vec.size(),
                                                       &samples_shape));
     }
-    const int64 num_samples = samples_shape.num_elements();
+    const int64 samples_per_alpha = samples_shape.num_elements();
 
     samples_shape.AppendShape(alpha_t.shape());
     // Allocate output samples.
@@ -198,13 +199,13 @@ class RandomGammaOp : public OpKernel {
                     num_alphas));
     auto samples_flat = samples_t->flat<T>().data();
     PhiloxRandom rng = generator_.ReserveRandomOutputs(
-        num_samples * num_alphas, kReservedSamplesPerOutput);
+        samples_per_alpha * num_alphas, kReservedSamplesPerOutput);
 
     // We partition work first across alphas then across samples-per-alpha to
     // avoid a couple flops which can be done on a per-alpha basis.
 
-    auto DoWork = [num_samples, num_alphas, &rng, samples_flat, alpha_flat](
-                      int start_output, int limit_output) {
+    auto DoWork = [samples_per_alpha, num_alphas, &rng, samples_flat,
+                   alpha_flat](int start_output, int limit_output) {
       using Eigen::numext::exp;
       using Eigen::numext::log;
       using Eigen::numext::pow;
@@ -219,7 +220,7 @@ class RandomGammaOp : public OpKernel {
       typename Uniform::ResultType uniform_result;
       for (int64 output_idx = start_output; output_idx < limit_output;
            /* output_idx incremented within inner loop below */) {
-        int64 alpha_idx = output_idx / num_samples;
+        int64 alpha_idx = output_idx / samples_per_alpha;
 
         // Instead of +alpha_idx for each sample, we offset the pointer once.
         T* const samples_alpha_offset = samples_flat + alpha_idx;
@@ -231,8 +232,8 @@ class RandomGammaOp : public OpKernel {
         if (alpha == static_cast<double>(1.0)) {
           ENABLE_FLOAT_EQUALITY_WARNING
           // Sample from an exponential distribution.
-          for (int64 sample_idx = output_idx % num_samples;
-               sample_idx < num_samples && output_idx < limit_output;
+          for (int64 sample_idx = output_idx % samples_per_alpha;
+               sample_idx < samples_per_alpha && output_idx < limit_output;
                sample_idx++, output_idx++) {
             // As we want data stable regardless of sharding
             // (including eventually on GPU), we skip on a per-sample basis.
@@ -258,8 +259,8 @@ class RandomGammaOp : public OpKernel {
           const double c = 1.0 / 3 / sqrt(d);
 
           // Compute the rest of the samples for the current alpha value.
-          for (int64 sample_idx = output_idx % num_samples;
-               sample_idx < num_samples && output_idx < limit_output;
+          for (int64 sample_idx = output_idx % samples_per_alpha;
+               sample_idx < samples_per_alpha && output_idx < limit_output;
                sample_idx++, output_idx++) {
             // Since each sample may use a variable number of normal/uniform
             // samples, and we want data stable regardless of sharding
@@ -316,7 +317,7 @@ class RandomGammaOp : public OpKernel {
                                     3 * PhiloxRandom::kElementCost;
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers,
-          num_alphas * num_samples, kElementCost, DoWork);
+          num_alphas * samples_per_alpha, kElementCost, DoWork);
   }
 
  private:
@@ -363,7 +364,13 @@ class RandomGammaOp : public OpKernel {
       Name("RandomGamma").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),        \
       RandomGammaOp<TYPE>)
 
+#define REGISTER_FULL_INT(IntType)           \
+  template struct functor::FillPhiloxRandom< \
+      CPUDevice,                             \
+      random::UniformFullIntDistribution<random::PhiloxRandom, IntType>>
+
 #define REGISTER_INT(IntType)                                                 \
+  REGISTER_FULL_INT(IntType);                                                 \
   template struct functor::FillPhiloxRandom<                                  \
       CPUDevice, random::UniformDistribution<random::PhiloxRandom, IntType>>; \
   REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")                            \
@@ -380,9 +387,12 @@ TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 TF_CALL_int32(REGISTER_INT);
 TF_CALL_int64(REGISTER_INT);
+TF_CALL_uint32(REGISTER_FULL_INT);
+TF_CALL_uint64(REGISTER_FULL_INT);
 
 #undef REGISTER
 #undef REGISTER_INT
+#undef REGISTER_FULL_INT
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -414,7 +424,13 @@ TF_CALL_int64(REGISTER_INT);
           random::TruncatedNormalDistribution<                                 \
               random::SingleSampleAdapter<random::PhiloxRandom>, TYPE>>);
 
+#define REGISTER_FULL_INT(IntType)           \
+  template struct functor::FillPhiloxRandom< \
+      GPUDevice,                             \
+      random::UniformFullIntDistribution<random::PhiloxRandom, IntType>>
+
 #define REGISTER_INT(IntType)                                                 \
+  REGISTER_FULL_INT(IntType);                                                 \
   template struct functor::FillPhiloxRandom<                                  \
       GPUDevice, random::UniformDistribution<random::PhiloxRandom, IntType>>; \
   REGISTER_KERNEL_BUILDER(Name("RandomUniformInt")                            \
@@ -431,9 +447,12 @@ TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 TF_CALL_int32(REGISTER_INT);
 TF_CALL_int64(REGISTER_INT);
+TF_CALL_uint32(REGISTER_FULL_INT);
+TF_CALL_uint64(REGISTER_FULL_INT);
 
 #undef REGISTER
 #undef REGISTER_INT
+#undef REGISTER_FULL_INT
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -471,7 +471,7 @@ def _filter_top_k(x, k):
   """
   _, top_k_idx = nn_ops.top_k(x, k, sorted=False)
   top_k_mask = math_ops.reduce_sum(
-      array_ops.one_hot(top_k_idx, x.shape[-1], axis=-1), axis=-2)
+      array_ops.one_hot(top_k_idx, array_ops.shape(x)[-1], axis=-1), axis=-2)
   return x * top_k_mask + NEG_INF * (1 - top_k_mask)
 
 
@@ -507,7 +507,7 @@ def ragged_assert_compatible_and_get_flat_values(values, mask=None):
       values = [values]
       to_be_stripped = True
 
-    # NOTE: we leave the flat_values compatiblity to
+    # NOTE: we leave the flat_values compatibility to
     # tf.TensorShape `assert_is_compatible_with`
     # check if both dynamic dimensions are equal and then use the flat_values.
     nested_row_split_list = [rt.nested_row_splits for rt in values]

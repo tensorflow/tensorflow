@@ -157,7 +157,7 @@ class BaseGPUDevice : public LocalDevice {
   int32 pending_cap_ = 0;
   bool timestamped_allocator_ = false;
 
-  // Initialize scractch buffers used by Eigen.
+  // Initialize scratch buffers used by Eigen.
   Status InitScratchBuffers();
 
   void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
