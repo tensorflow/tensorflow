@@ -96,7 +96,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}};
       property.arbitrary_outputs = true;
       property.restrict_same_input_output_scale = true;
-      property.version = 1;
+      property.version = 2;
       break;
     case BuiltinOperator_CONCATENATION:
       property.arbitrary_inputs = true;

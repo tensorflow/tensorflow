@@ -306,6 +306,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_PADV2:
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_SPACE_TO_DEPTH:
+    case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_MEAN:
     case BuiltinOperator_SUM:
     case BuiltinOperator_REDUCE_MAX:

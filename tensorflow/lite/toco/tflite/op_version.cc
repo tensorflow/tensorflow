@@ -145,7 +145,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kSplit, 1}, "1.5.0"},
           {{OperatorType::kSplit, 2}, "1.14.0"},
           {{OperatorType::kSplit, 3}, "1.14.0"},
-          {{OperatorType::kSplitV, 1}, "1.13.1"},
+          {{OperatorType::kSplitV, 2}, kPendingReleaseOpVersion},
           {{OperatorType::kStridedSlice, 1}, "1.6.0"},
           {{OperatorType::kStridedSlice, 2}, "1.14.0"},
           {{OperatorType::kStridedSlice, 3}, "2.1.0"},
