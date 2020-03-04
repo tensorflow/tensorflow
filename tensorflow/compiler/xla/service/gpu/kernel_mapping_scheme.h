@@ -76,17 +76,16 @@ namespace gpu {
 class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
-  // TODO: rename Dilated to Strided?
   // LinearIndexing mean each thread reads consecutive elements.
-  // DilatedIndexingX mean each thread reads Dilated(Strided)
-  //   elements. This conserve memory coalescing.
-  // LinearDilatedIndexingX mean each thread read a few consecutive
+  // StridedIndexingX mean each thread reads strided elements.
+  //   This conserve memory coalescing.
+  // LinearStridedIndexingX mean each thread read a few consecutive
   //   elements then take a bigger step. The goal is to trigger
   //   vectorized reads and keep memory coalescing.
   enum IndexingOrder {
     LinearIndexingX,
-    DilatedIndexingX,
-    LinearDilatedIndexingX
+    StridedIndexingX,
+    LinearStridedIndexingX
   };
 
   KernelMappingScheme(absl::Span<const int64> dims_in_elems,
@@ -103,7 +102,7 @@ class KernelMappingScheme {
     CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
     VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
     if (indexing_order != LinearIndexingX) {
-      // DilatedIndexingX, and LinearDilatedIndexingX
+      // StridedIndexingX, and LinearStridedIndexingX
       // is for the purpose of vectorization, which requires
       // GetTileSizeFor(DimX) to be a multiplier of num_threads_x_.
       CHECK_EQ(GetTileSizeFor(DimX) % num_threads_x_, 0);
