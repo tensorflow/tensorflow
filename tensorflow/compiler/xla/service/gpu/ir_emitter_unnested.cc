@@ -2015,13 +2015,9 @@ void IrEmitterUnnested::EmitTile(
 
             for (int i = 0; i < vector_size; i++) {
               int old_j = j * vector_size + i;
-              llvm::Value* x_loc = x_loc_base;
-              IrArray::Index source_idx_x = source_idx_x_base;
-              if (i > 0) {
-                x_loc = b_.CreateAdd(constant(i), x_loc_base, "x_loc");
-                source_idx_x =
-                    source_idx_x_base.AddOffsetToDim(constant(i), kDimX, &b_);
-              }
+              llvm::Value* x_loc = b_.CreateAdd(constant(i), x_loc_base, "x_loc");
+              IrArray::Index source_idx_x =
+                  source_idx_x_base.AddOffsetToDim(constant(i), kDimX, &b_);
               auto emit_element = [&] {
                 return emit_elem_function(source_idx_x, y_loc, x_loc, old_j);
               };
