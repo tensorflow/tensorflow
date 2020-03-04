@@ -221,9 +221,11 @@ Status GetEngineInfo(const Graph* g,
       }
       if (edge->IsControlEdge()) {
         // Control output.
-        info->connections.emplace_back(output_node->name(), output_node->id(),
-                                       node_name, node_id,
-                                       /*input_edge=*/false);
+        if (node->type_string() != "Const") {
+          info->connections.emplace_back(output_node->name(), output_node->id(),
+                                         node_name, node_id,
+                                         /*input_edge=*/false);
+        }
       } else {
         // Data output.
         int port = Graph::kControlSlot - 1;
