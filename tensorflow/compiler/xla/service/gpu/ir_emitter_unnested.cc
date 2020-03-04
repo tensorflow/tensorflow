@@ -1865,14 +1865,13 @@ namespace {
 
 // Returns true if the fusion contains any instruction that is likely
 // translated to complex LLVM IR, such as loops, and prevent vectorization.
-bool MayPreventVectorization(const HloInstruction& hlo,
-                             bool tolerate_reduce = false) {
+bool MayPreventVectorization(const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kFusion) {
     return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
                           [&](const HloInstruction* instr) {
                             switch (instr->opcode()) {
                               case HloOpcode::kReduce:
-                                return !tolerate_reduce;
+                                return false;
                               case HloOpcode::kReduceWindow:
                               case HloOpcode::kSort:
                               case HloOpcode::kDot:
@@ -1900,7 +1899,7 @@ bool MayPreventVectorization(const HloInstruction& hlo,
         return false;
     }
   } else if (hlo.opcode() == HloOpcode::kReduce) {
-    return !tolerate_reduce;
+    return false;
   }
   return true;
 }
@@ -3213,7 +3212,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
     if (reduction_dimensions.dimensions[2] % 2 == 0 &&
         // As XLA unroll and suppose LLVM will vectorize,
         // disable the unroll for case that LLVM doesn't vectorize.
-        !MayPreventVectorization(*unnested_hlo, /*tolerate_reduce*/ true)) {
+        !MayPreventVectorization(*unnested_hlo)) {
       vector_size = 2;
     } else {
       indexing_order = kStridedIndexingX;
