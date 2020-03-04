@@ -24,7 +24,7 @@ namespace tensorflow {
 
 #if TENSORFLOW_USE_ROCM
 TEST(RocmRocdlPathTest, ROCDLPath) {
-  VLOG(2) << "ROCm-Deivce-Libs root = " << RocdlRoot();
+  VLOG(2) << "ROCm-Device-Libs root = " << RocdlRoot();
   std::vector<string> rocdl_files;
   TF_EXPECT_OK(Env::Default()->GetMatchingPaths(
       io::JoinPath(RocdlRoot(), "*.amdgcn.bc"), &rocdl_files));

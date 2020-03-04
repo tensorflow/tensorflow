@@ -457,8 +457,8 @@ def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable
   """Split elements of `input` based on `sep` into a `RaggedTensor`.
 
   Let N be the size of `input` (typically N will be the batch size). Split each
-  element of `input` based on `sep` and return a `SparseTensor` or
-  `RaggedTensor` containing the split tokens. Empty tokens are ignored.
+  element of `input` based on `sep` and return a `RaggedTensor` containing the 
+  split tokens. Empty tokens are ignored.
 
   Example:
 
@@ -678,6 +678,13 @@ def ngrams(data,
   width. In that case, no ngrams will be generated for that sequence. This can
   be prevented by setting `preserve_short_sequences`, which will cause the op
   to always generate at least one ngram per non-empty sequence.
+
+  Examples:
+
+  >>> tf.strings.ngrams(["A", "B", "C", "D"], 2).numpy()
+  array([b'A B', b'B C', b'C D'], dtype=object)
+  >>> tf.strings.ngrams(["TF", "and", "keras"], 1).numpy()
+  array([b'TF', b'and', b'keras'], dtype=object)
 
   Args:
     data: A Tensor or RaggedTensor containing the source data for the ngrams.

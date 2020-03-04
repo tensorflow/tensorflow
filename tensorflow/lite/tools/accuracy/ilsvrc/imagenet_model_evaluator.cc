@@ -210,8 +210,12 @@ TfLiteStatus ImagenetModelEvaluator::EvaluateModel() const {
       tflite::evaluation::GetSortedFileNames(data_path, &image_files));
   std::vector<string> ground_truth_image_labels;
   if (!tflite::evaluation::ReadFileLines(params_.ground_truth_labels_path,
-                                         &ground_truth_image_labels))
+                                         &ground_truth_image_labels)) {
+    LOG(ERROR) << "Unable to read ground truth labels from: "
+               << params_.ground_truth_labels_path
+               << " Perhaps file doesn't exist or is unreadable.";
     return kTfLiteError;
+  }
   if (image_files.size() != ground_truth_image_labels.size()) {
     LOG(ERROR) << "Images and ground truth labels don't match";
     return kTfLiteError;

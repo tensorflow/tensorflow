@@ -1584,7 +1584,6 @@ DeadnessAnalysis::~DeadnessAnalysis() {}
 absl::flat_hash_map<TensorId, string, TensorId::Hasher>
 DeadnessAnalysisImpl::PredicateMapAsString() const {
   absl::flat_hash_map<TensorId, string, TensorId::Hasher> result;
-  std::vector<TensorId> tensor_ids;
   for (const auto& kv_pair : predicate_map_) {
     CHECK(result.insert({kv_pair.first, kv_pair.second->ToString()}).second);
   }

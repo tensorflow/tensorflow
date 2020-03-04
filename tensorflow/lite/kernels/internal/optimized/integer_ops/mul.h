@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_MUL_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_MUL_H_
 
-#include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/mul.h"
@@ -29,7 +29,7 @@ namespace optimized_integer_ops {
 inline void MulElementwise(int size, const ArithmeticParams& params,
                            const int8* input1_data, const int8* input2_data,
                            int8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("MulElementwiseInt8/8bit");
+  ruy::profiler::ScopeLabel label("MulElementwiseInt8/8bit");
   int i = 0;
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_LT(params.input1_offset, 256);
@@ -103,7 +103,7 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
 inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
                                const int8 broadcast_value,
                                const int8* input2_data, int8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadMulSimpleBroadcastInt8/8bit");
+  ruy::profiler::ScopeLabel label("BroadMulSimpleBroadcastInt8/8bit");
   const int16 input1_val = params.input1_offset + broadcast_value;
 
   int i = 0;
@@ -174,7 +174,7 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& output_shape, int8* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
-  gemmlowp::ScopedProfilingLabel label("MulInt8/8bit");
+  ruy::profiler::ScopeLabel label("MulInt8/8bit");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
@@ -188,7 +188,7 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  const int8* unswitched_input2_data,
                                  const RuntimeShape& output_shape,
                                  int8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastMulFivefoldInt8/8bit");
+  ruy::profiler::ScopeLabel label("BroadcastMulFivefoldInt8/8bit");
 
   ArithmeticParams switched_params = unswitched_params;
   switched_params.input1_offset = unswitched_params.input2_offset;

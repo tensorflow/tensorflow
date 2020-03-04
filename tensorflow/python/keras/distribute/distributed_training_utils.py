@@ -343,13 +343,12 @@ def validate_per_replica_inputs(distribution_strategy, x):
   per_replica_list = nest.flatten(x, expand_composites=True)
   x_values_list = []
   for x in per_replica_list:
-    if not tensor_util.is_tensor(x):
-      raise ValueError('Dataset input to the model should be tensors instead '
-                       'they are of type {}'.format(type(x)))
-
-    # At this point both x and y contain tensors in the `DistributedValues`
-    # structure.
+    # At this point x should contain only tensors.
     x_values = distribution_strategy.unwrap(x)
+    for value in x_values:
+      if not tensor_util.is_tensor(value):
+        raise ValueError('Dataset input to the model should be tensors instead '
+                         'they are of type {}'.format(type(value)))
 
     if not context.executing_eagerly():
       # Validate that the shape and dtype of all the elements in x are the same.
@@ -591,7 +590,7 @@ def get_iterator(dataset, distribution_strategy):
 
 def initialize_iterator(iterator, distribution_strategy):
   with distribution_strategy.scope():
-    init_op = control_flow_ops.group(iterator.initialize())
+    init_op = control_flow_ops.group(iterator.initializer)
     if not context.executing_eagerly():
       K.get_session((init_op,)).run(init_op)
 
@@ -712,7 +711,7 @@ def _build_network_on_replica(model, mode, inputs=None, targets=None):
   placeholders for the input and the output that are not accessible till we
   call iterator.get_next() inside the step_fn for `fit`/`evaluate`/`predict`.
 
-  The sharing of weights and layers between the old and the new model gaurantee
+  The sharing of weights and layers between the old and the new model guarantee
   that we're using Strategy variables and any updates on either model are
   reflected correctly in callbacks and loop iterations.
 
@@ -936,7 +935,7 @@ def _make_execution_function_with_cloning(model, mode):
     distributed_model = get_distributed_model(model, mode)
   assert distributed_model
 
-  # Also create an execution fuction on that distributed model.
+  # Also create an execution function on that distributed model.
   if context.executing_eagerly():
     distributed_function = _make_eager_execution_function(model, mode)
   else:

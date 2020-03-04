@@ -241,6 +241,7 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
   // TODO(akshayka): Consider selecting a runner on a per-device basis,
   // i.e., using device-specific threadpools when available.
   run_opts.runner = ctx->runner();
+  run_opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
   run_opts.source_device =
       lib->device() == nullptr ? "" : lib->device()->name();
   run_opts.allow_dead_tensors = true;

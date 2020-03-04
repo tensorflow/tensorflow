@@ -165,7 +165,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt64:
       TF_LITE_CONCATENATION(int64_t);
       break;
-
+    case kTfLiteInt16:
+      TF_LITE_CONCATENATION(int16_t);
+      break;
     default:
       context->ReportError(context, "Type '%s' is not supported currently.",
                            TfLiteTypeGetName(output->type));

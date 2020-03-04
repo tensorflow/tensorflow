@@ -104,8 +104,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return SplitImpl<int32_t>(context, node, input, axis_value);
     }
     default:
-      context->ReportError(context, "Type %s currently not supported.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s currently not supported.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_SPLIT
@@ -116,7 +116,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace split
 
 TfLiteRegistration* Register_SPLIT() {
-  static TfLiteRegistration r = {nullptr, nullptr, split::Prepare, split::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = split::Prepare;
+  r.invoke = split::Eval;
   return &r;
 }
 

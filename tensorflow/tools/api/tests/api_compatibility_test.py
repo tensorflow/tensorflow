@@ -79,10 +79,30 @@ _VERBOSE_DIFFS_HELP = """
      false, only print which libraries have differences.
 """
 
-_API_GOLDEN_FOLDER_V1 = 'tensorflow/tools/api/golden/v1'
-_API_GOLDEN_FOLDER_V2 = 'tensorflow/tools/api/golden/v2'
-_TEST_README_FILE = 'tensorflow/tools/api/tests/README.txt'
-_UPDATE_WARNING_FILE = 'tensorflow/tools/api/tests/API_UPDATE_WARNING.txt'
+# Initialized with _InitPathConstants function below.
+_API_GOLDEN_FOLDER_V1 = None
+_API_GOLDEN_FOLDER_V2 = None
+
+
+def _InitPathConstants():
+  global _API_GOLDEN_FOLDER_V1
+  global _API_GOLDEN_FOLDER_V2
+  root_golden_path_v2 = os.path.join(
+      resource_loader.get_data_files_path(), '..', 'golden', 'v2',
+      'tensorflow.pbtxt')
+
+  if FLAGS.update_goldens:
+    root_golden_path_v2 = os.path.realpath(root_golden_path_v2)
+  # Get API directories based on the root golden file. This way
+  # we make sure to resolve symbolic links before creating new files.
+  _API_GOLDEN_FOLDER_V2 = os.path.dirname(root_golden_path_v2)
+  _API_GOLDEN_FOLDER_V1 = os.path.normpath(
+      os.path.join(_API_GOLDEN_FOLDER_V2, '..', 'v1'))
+
+
+_TEST_README_FILE = resource_loader.get_path_to_datafile('README.txt')
+_UPDATE_WARNING_FILE = resource_loader.get_path_to_datafile(
+    'API_UPDATE_WARNING.txt')
 
 _NON_CORE_PACKAGES = ['estimator']
 
@@ -437,6 +457,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--verbose_diffs', type=bool, default=True, help=_VERBOSE_DIFFS_HELP)
   FLAGS, unparsed = parser.parse_known_args()
+  _InitPathConstants()
 
   # Now update argv, so that unittest library does not get confused.
   sys.argv = [sys.argv[0]] + unparsed

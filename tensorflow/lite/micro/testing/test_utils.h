@@ -96,6 +96,12 @@ inline int32_t F2Q32(const float value, const float scale) {
 }
 
 // TODO(b/141330728): Move this method elsewhere as part clean up.
+void PopulateContext(TfLiteTensor* tensors, int tensors_size,
+                     ErrorReporter* error_reporter, TfLiteContext* context);
+
+// This method cannot be put in test_utils.cc since it contains a reference to
+// micro_test::reporter, which the linker cannot find.
+// TODO(b/150642515): remove this method and all references to it.
 inline void PopulateContext(TfLiteTensor* tensors, int tensors_size,
                             TfLiteContext* context) {
   context->tensors_size = tensors_size;
@@ -117,6 +123,7 @@ inline void PopulateContext(TfLiteTensor* tensors, int tensors_size,
     }
   }
 }
+
 inline TfLiteTensor CreateFloatTensor(std::initializer_list<float> data,
                                       TfLiteIntArray* dims, const char* name,
                                       bool is_variable = false) {

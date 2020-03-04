@@ -196,7 +196,7 @@ class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
 
       // data_flat index
       int32 idx = 0;
-      // sum of indices_inputs[i].NumElements() for compute indicies_flat value.
+      // sum of indices_inputs[i].NumElements() for compute indices_flat value.
       int32 base_size = 0;
       for (int i = 0; i < indices_inputs.size(); ++i) {
         auto indices_vec = indices_inputs[i].flat<int32>();

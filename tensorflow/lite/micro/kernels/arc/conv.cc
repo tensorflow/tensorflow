@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 
+#include "mli_api.h"  // NOLINT
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -24,7 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
-#include "tensorflow/lite/micro/mli_tf_utils.h"
+#include "tensorflow/lite/micro/kernels/arc/mli_tf_utils.h"
 
 #include "mli_api.h"
 
@@ -168,8 +169,10 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     mli_conv2d_cfg cfg = {};
 
     // reuse space allocated for OpData parameters
-    mli_weights.el_params.asym.scale.pi16 = (int16_t*)data->per_channel_output_multiplier;
-    mli_bias.el_params.asym.scale.pi16 = (int16_t*)data->per_channel_output_shift;
+    mli_weights.el_params.asym.scale.pi16 =
+        (int16_t*)data->per_channel_output_multiplier;
+    mli_bias.el_params.asym.scale.pi16 =
+        (int16_t*)data->per_channel_output_shift;
 
     int16_t filter_zero_point = 0;
     int16_t bias_zero_point = 0;
@@ -347,8 +350,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                     nullptr, output);
       break;
     default:
-      context->ReportError(context, "Type %s (%d) not supported.",
-                           TfLiteTypeGetName(input->type), input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_3x3.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_3x3_thin.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_4x4.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/convolution_transposed_thin.h"
@@ -66,6 +67,12 @@ Status SelectConvolutionTransposedPowerVR(
     RETURN_IF_ERROR(CreateConvolutionTransposed3x3Thin(creation_context, op_def,
                                                        attr, &conv));
     *ptr = absl::make_unique<ConvolutionTransposed3x3Thin>(std::move(conv));
+  } else if (IsConvolutionTransposed3x3Supported(*creation_context.device,
+                                                 op_def, attr)) {
+    ConvolutionTransposed3x3 conv;
+    RETURN_IF_ERROR(
+        CreateConvolutionTransposed3x3(creation_context, op_def, attr, &conv));
+    *ptr = absl::make_unique<ConvolutionTransposed3x3>(std::move(conv));
   } else if (IsConvolutionTransposed4x4Supported(*creation_context.device,
                                                  op_def, attr)) {
     ConvolutionTransposed4x4 conv;
@@ -103,6 +110,7 @@ Status SelectConvolutionTransposed(const ConvolutionTransposedAttributes& attr,
                                                ptr);
     case Vendor::POWERVR:
     case Vendor::NVIDIA:
+    case Vendor::AMD:
       return SelectConvolutionTransposedPowerVR(attr, creation_context, op_def,
                                                 ptr);
     case Vendor::MALI:

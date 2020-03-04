@@ -38,7 +38,6 @@ class ConvolutionTransposed4x4 : public GPUOperation {
  public:
   ConvolutionTransposed4x4() = default;
   Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
   Status Compile(const CreationContext& creation_context) override;
 
   // Move only
@@ -51,6 +50,7 @@ class ConvolutionTransposed4x4 : public GPUOperation {
     LOCAL_MEM_ASYNC,
     LOCAL_MEM_BY_THREADS,
     GLOBAL_MEM,
+    CONSTANT_MEM,
   };
 
  private:

@@ -75,9 +75,10 @@ def init_var_from_numpy(input_var, numpy_input, session):
 
 def one_host_numpy_dataset(numpy_input, colocate_with, session):
   """Create a dataset on `colocate_with` from `numpy_input`."""
-  def create_colocated_variable(next_creator, *args, **kwargs):
+
+  def create_colocated_variable(next_creator, **kwargs):
     kwargs["colocate_with"] = colocate_with
-    return next_creator(*args, **kwargs)
+    return next_creator(**kwargs)
 
   numpy_flat = nest.flatten(numpy_input)
   with variable_scope.variable_creator_scope(create_colocated_variable):

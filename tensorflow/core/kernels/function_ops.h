@@ -64,6 +64,8 @@ class RemoteCallOp : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
+  string TraceString(OpKernelContext* ctx, bool verbose) override;
+
  private:
   NameAttrList func_;
   DataTypeVector input_dtypes_;

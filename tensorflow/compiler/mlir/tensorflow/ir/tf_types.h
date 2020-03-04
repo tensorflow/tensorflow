@@ -141,20 +141,16 @@ class TensorFlowRefType : public TensorFlowType {
   static TensorFlowType get(Type type);
   static TensorFlowType getChecked(Type type, MLIRContext* context,
                                    Location loc) {
-    if (failed(verifyConstructionInvariants(loc, context, type))) {
+    if (failed(verifyConstructionInvariants(loc, type))) {
       return TensorFlowRefType();
     }
     return get(type);
   }
 
-  static LogicalResult verifyConstructionInvariants(
-      llvm::Optional<Location> loc, MLIRContext* context, Type type) {
+  static LogicalResult verifyConstructionInvariants(Location loc, Type type) {
     // type should be a valid TensorFlow type.
     if (!IsValidTFTensorType(type)) {
-      if (loc) {
-        emitError(*loc) << "invalid TensorFlow type: " << type;
-      }
-      return failure();
+      return emitError(loc) << "invalid TensorFlow type: " << type;
     }
     return success();
   }
@@ -230,7 +226,7 @@ class TypeWithSubtypeImpl
 
   static Derived getChecked(ArrayRef<TensorType> subtypes, MLIRContext* context,
                             Location loc) {
-    return Base::getChecked(loc, context, Derived::getTypeKind(), subtypes);
+    return Base::getChecked(loc, Derived::getTypeKind(), subtypes);
   }
 
   static Derived get(MLIRContext* context) { return get({}, context); }
@@ -239,16 +235,12 @@ class TypeWithSubtypeImpl
   static bool kindof(unsigned kind) { return kind == Derived::getTypeKind(); }
 
   static LogicalResult verifyConstructionInvariants(
-      llvm::Optional<Location> loc, MLIRContext* context,
-      ArrayRef<TensorType> subtypes) {
+      Location loc, ArrayRef<TensorType> subtypes) {
     // Each of the subtypes should be a valid TensorFlow type.
     for (TensorType subtype : subtypes) {
       if (!IsValidTFTensorType(subtype)) {
-        if (loc) {
-          emitError(*loc) << "invalid " << Derived::getTypeName()
-                          << " subtype: " << subtype;
-        }
-        return failure();
+        return emitError(loc) << "invalid " << Derived::getTypeName()
+                              << " subtype: " << subtype;
       }
     }
     return success();

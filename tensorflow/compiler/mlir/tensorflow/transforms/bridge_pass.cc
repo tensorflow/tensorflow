@@ -27,6 +27,13 @@ mlir::PassPipelineRegistration<> tpu_pipeline(
     "tf-tpu-bridge",
     "Run all the passes involved in transforming the graph before execution so "
     "that it is suitable for targeting TPUs.",
-    mlir::TFTPU::CreateTPUBridge);
+    mlir::TFTPU::CreateTPUBridgePipeline);
+
+// Registers an existing pipeline builder function.
+mlir::PassPipelineRegistration<> tpu_pipeline_v1(
+    "tf-tpu-bridge-v1",
+    "Run all the passes involved in transforming a TensorFlow V1 graph before "
+    "execution so that it is suitable for targeting TPUs.",
+    mlir::TFTPU::CreateTPUBridgePipelineV1);
 
 }  // anonymous namespace

@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <stdint.h>
+
 #include <atomic>
 #include <limits>
 #include <memory>
@@ -25,6 +26,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -47,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -103,7 +104,7 @@ struct ComputeOptions {
                         static_cast<int64>(num_dense_features) <=
                     std::numeric_limits<int>::max(),
                 errors::InvalidArgument(
-                    strings::Printf("Too many feature groups: %lld > %d",
+                    absl::StrFormat("Too many feature groups: %d > %d",
                                     static_cast<int64>(num_sparse_features) +
                                         static_cast<int64>(num_dense_features),
                                     std::numeric_limits<int>::max())));

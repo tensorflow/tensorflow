@@ -54,7 +54,7 @@ extern "C" {
 
 TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
     TFE_TensorHandle* h, TF_Status* status) {
-  return h->handle.TensorDebugInfo(&status->status);
+  return h->handle->TensorDebugInfo(&status->status);
 }
 
 TFE_TensorDebugInfo* tensorflow::TensorHandleInterface::TensorDebugInfo(
@@ -66,7 +66,7 @@ TFE_TensorDebugInfo* tensorflow::TensorHandleInterface::TensorDebugInfo(
   }
 
 #ifdef TENSORFLOW_EAGER_USE_XLA
-  tensorflow::Device* device = handle_->device();
+  tensorflow::Device* device = absl::get<Device*>(handle_->device());
 
   // If tensor resides on an XLA device, use XLA device's PaddedShapeFn.
   tensorflow::XlaDevice* xla_device =

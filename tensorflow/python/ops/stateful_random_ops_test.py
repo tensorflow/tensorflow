@@ -715,9 +715,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
         return t
       results = strat.extended.call_for_each_replica(
           fn=f, args=gens)
-      values = results.values
-      self.assertAllEqual(2, len(values))
-      self.assertAllDifferent(values)
+      local_results = strat.experimental_local_results(results)
+      self.assertAllEqual(2, len(local_results))
+      self.assertAllDifferent(local_results)
 
 
 if __name__ == "__main__":

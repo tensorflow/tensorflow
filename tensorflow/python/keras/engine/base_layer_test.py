@@ -32,7 +32,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
@@ -102,7 +101,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   def test_dynamic_layer_error_running_in_graph_mode(self):
-    with context.graph_mode():
+    with ops.get_default_graph().as_default():
       model = testing_utils.get_model_from_layers([DynamicLayer(dynamic=True)],
                                                   input_shape=(3,))
       self.assertEqual(model.dynamic, True)
@@ -188,7 +187,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model.compile(rmsprop.RMSprop(0.001), loss='mse')
     self.assertEqual(model.run_eagerly, True)
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
-    self.assertEqual(model.outputs, [None])
+    self.assertEqual(model.outputs, None)
 
   def test_dynamic_subclassed_model_with_shape_inference(self):
 
@@ -206,14 +205,15 @@ class BaseLayerTest(keras_parameterized.TestCase):
           return self.layer2(inputs)
 
       def compute_output_shape(self, input_shape):
-        return tensor_shape.TensorShape(
-            tuple(input_shape[:-1].as_list()) + (3,))
+        return tuple(input_shape[:-1].as_list()) + (3,)
 
     model = MyModel()
     self.assertEqual(model.dynamic, True)
     model.compile(rmsprop.RMSprop(0.001), loss='mse')
-    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
-    self.assertEqual(model.outputs[0].shape.as_list(), [None, 3])
+    x, y = np.random.random((2, 3)), np.random.random((2, 3))
+    model.train_on_batch(x, y)
+    outputs = model(x)
+    self.assertEqual(outputs.shape.as_list(), [2, 3])
 
   def test_deepcopy(self):
     with context.eager_mode():
@@ -314,8 +314,6 @@ class BaseLayerTest(keras_parameterized.TestCase):
     def get_learning_phase_value():
       model = keras.models.Sequential([LearningPhaseLayer(input_shape=(1,))])
       model._run_eagerly = testing_utils.should_run_eagerly()
-      model._experimental_run_tf_function = (
-          testing_utils.should_run_tf_function())
       return np.sum(model(np.ones((1, 1))))
 
     self.assertEqual(get_learning_phase_value(), 0)
@@ -330,42 +328,6 @@ class BaseLayerTest(keras_parameterized.TestCase):
     # Test setting.
     keras.backend.set_learning_phase(1)
     self.assertEqual(get_learning_phase_value(), 1)
-    keras.backend.set_learning_phase(0)
-    self.assertEqual(get_learning_phase_value(), 0)
-
-  @keras_parameterized.run_all_keras_modes
-  def test_learning_phase_freezing_for_layers_in_predict(self):
-    if not (testing_utils.should_run_eagerly() or
-            testing_utils.should_run_tf_function()):
-      self.skipTest('Predict fails to override the outer learning phase in'
-                    'the FuncGraph path.')
-
-    class LearningPhaseLayer(keras.layers.Layer):
-
-      def call(self, inputs):
-        return keras.backend.in_train_phase(
-            lambda: array_ops.ones_like(inputs),
-            lambda: array_ops.zeros_like(inputs))
-
-    def get_learning_phase_value():
-      model = keras.models.Sequential([LearningPhaseLayer(input_shape=(1,))])
-      model._run_eagerly = testing_utils.should_run_eagerly()
-      model._experimental_run_tf_function = (
-          testing_utils.should_run_tf_function())
-      return np.sum(model.predict(np.ones((1, 1))))
-
-    self.assertEqual(get_learning_phase_value(), 0)
-
-    # Test scope.
-    with keras.backend.learning_phase_scope(1):
-      self.assertEqual(get_learning_phase_value(), 0)
-
-    # The effects of the scope end after exiting it.
-    self.assertEqual(get_learning_phase_value(), 0)
-
-    # Test setting.
-    keras.backend.set_learning_phase(1)
-    self.assertEqual(get_learning_phase_value(), 0)
     keras.backend.set_learning_phase(0)
     self.assertEqual(get_learning_phase_value(), 0)
 
@@ -449,8 +411,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     x, y = np.ones((10, 10)), np.ones((10, 10))
     # Checks that variables get initialized.
     model.fit(x, y, batch_size=2, epochs=2)
@@ -502,8 +463,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     inputs = np.random.random((3, 10))
     out = model.predict(inputs)
     self.assertAllClose(model.layers[-1].get_weights()[0], kernel_value)
@@ -537,7 +497,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
     # `__init__` includes kwargs but `get_config` is not overridden, so
     # an error should be thrown:
-    with self.assertRaises(NotImplementedError):
+    with self.assertRaisesRegexp(NotImplementedError, 'Layer MyLayer has'):
       MyLayer('custom').get_config()
 
     class MyLayerNew(keras.layers.Layer):
@@ -581,6 +541,73 @@ class BaseLayerTest(keras_parameterized.TestCase):
     dense = keras.layers.Dense(16, input_dim=4)
     model = keras.Sequential(dense)
     self.assertEqual(model.count_params(), 16 * 4 + 16)
+
+  def test_super_not_called(self):
+
+    class CustomLayerNotCallingSuper(keras.layers.Layer):
+
+      def __init__(self):
+        pass
+
+    layer = CustomLayerNotCallingSuper()
+    with self.assertRaisesRegexp(RuntimeError, 'You must call `super()'):
+      layer(np.random.random((10, 2)))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_first_arg_not_called_inputs(self):
+    x, y = array_ops.ones((10, 1)), array_ops.ones((10, 1))
+
+    class ArgLayer(keras.layers.Layer):
+
+      def call(self, x, y):
+        return x + y
+
+    layer = ArgLayer()
+    out = self.evaluate(layer(x=x, y=y))
+    self.assertAllClose(out, 2 * np.ones((10, 1)))
+
+    class KwargLayer(keras.layers.Layer):
+
+      def call(self, x=None, y=None):
+        return x + y
+
+    layer = KwargLayer()
+    out = self.evaluate(layer(x=x, y=y))
+    self.assertAllClose(out, 2 * np.ones((10, 1)))
+
+    with self.assertRaisesRegexp(ValueError, 'must always be passed'):
+      layer(y=y)
+
+    class TFFunctionLayer(keras.layers.Layer):
+
+      @def_function.function
+      def call(self, x, y=None):
+        if y is None:
+          return x
+        return x + y
+
+    layer = TFFunctionLayer()
+    out = self.evaluate(layer(x=x, y=y))
+    self.assertAllClose(out, 2 * np.ones((10, 1)))
+
+  def test_build_input_shape(self):
+    class CustomLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.add_weight('w', shape=input_shape[1:])
+        super(CustomLayer, self).build(input_shape)
+
+    layer = CustomLayer()
+    self.assertFalse(layer.built)
+
+    layer.build([None, 1, 2, 3])
+    self.assertTrue(layer.built)
+    self.assertEqual([None, 1, 2, 3], layer._build_input_shape)
+
+    layer = CustomLayer()
+    layer(keras.Input((3,)))
+    self.assertTrue(layer.built)
+    self.assertEqual([None, 3], layer._build_input_shape.as_list())
 
 
 class SymbolicSupportTest(test.TestCase):
@@ -869,6 +896,33 @@ class NestedTrackingTest(test.TestCase):
     self.assertEqual(defun_layer._call_fn_args,
                      ['x', 'mask', 'a', 'training', 'b'])
 
+  def test_sequential_model(self):
+    model = keras.Sequential([keras.layers.Dense(10, input_shape=(10,)),
+                              keras.layers.Dense(5)])
+    self.assertLen(model.layers, 2)
+    self.assertLen(model.weights, 4)
+
+    # Make sure a subclass model also works when it is called 'Sequential'.
+    class Sequential(keras.Model):
+
+      def __init__(self):
+        super(Sequential, self).__init__()
+        self.dense_layers = [keras.layers.Dense(10),
+                             keras.layers.Dense(5)]
+
+      def call(self, inputs):
+        x = inputs
+        for d in self.dense_layers:
+          x = d(x)
+        return x
+
+    s = Sequential()
+    self.assertLen(s.layers, 2)
+    self.assertLen(s.weights, 0)
+
+    s(keras.Input((10,)))
+    self.assertLen(s.weights, 4)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class NameScopingTest(keras_parameterized.TestCase):
@@ -897,7 +951,7 @@ class NameScopingTest(keras_parameterized.TestCase):
     self.assertEqual(sublayer.active_name_scope, 'MyName2/Sublayer')
 
   def test_name_scope_tf_tensor(self):
-    x = ops.convert_to_tensor(np.ones((10, 10)))
+    x = ops.convert_to_tensor_v2(np.ones((10, 10)))
     layer = keras.layers.Dense(
         10, activation=keras.layers.ReLU(name='MyAct'), name='MyName3')
     layer(x)
@@ -941,8 +995,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     train_loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
     self.assertEqual(train_loss, 0.)
     test_loss = model.test_on_batch(np.ones((2, 3)), np.ones((2, 3)))
@@ -966,8 +1019,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     train_loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
     self.assertEqual(train_loss, 2 * 3)
     test_loss = model.test_on_batch(np.ones((2, 3)), np.ones((2, 3)))
@@ -991,8 +1043,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     for _ in range(3):
       _, train_metric = model.train_on_batch(np.ones((2, 3)),
                                              np.ones((2, 3)))
@@ -1025,8 +1076,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
     self.assertEqual(keras.backend.get_value(layer.counter), 1.)
 
@@ -1059,8 +1109,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
       model.compile(
           'sgd',
           'mse',
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
       self.assertEqual(keras.backend.get_value(layer.counter), 6.)
     else:
@@ -1095,8 +1144,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
       model.compile(
           'sgd',
           'mse',
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
       self.assertEqual(loss, 2 * 3)
     else:
@@ -1110,7 +1158,6 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
             1, kernel_regularizer=keras.regularizers.l2(1e-4), input_shape=(1,))
     ])
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     def assert_graph(t):
       if not context.executing_eagerly():
@@ -1152,8 +1199,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
       model.compile(
           'sgd',
           'mse',
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       history = model.fit(np.ones((2, 3)), np.ones((2, 3)))
       self.assertEqual(history.history['sum'][-1], 2 * 3)
     else:
@@ -1181,8 +1227,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.ones(shape=(10, 1))
     y = np.ones(shape=(10, 2))
@@ -1215,8 +1260,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.ones(shape=(10, 3, 4))
     y = np.ones(shape=(10, 3, 2))

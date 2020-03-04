@@ -20,15 +20,18 @@ from __future__ import division
 from __future__ import print_function
 
 from absl import logging
+import enum
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import auto_control_deps
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -204,6 +207,39 @@ def _enclosing_tpu_device_assignment():
   return strategy.extended._device_assignment  # pylint: disable=protected-access
 
 
+@auto_control_deps.register_acd_resource_resolver
+def tpu_replicated_input_resolver(op, resource_reads, resource_writes):
+  """Replaces TPUReplicatedInput outputs with its inputs in resource_inputs."""
+  # Ignore TPUReplicatedInput for ACD purposes since we will be directly adding
+  # control deps on the replicated inputs.
+  if op.type == "TPUReplicatedInput":
+    if resource_reads or resource_writes:
+      resource_reads.clear()
+      resource_writes.clear()
+      return True
+    else:
+      return False
+  # Replace tensors in `resource_inputs` which are outputs of TPUReplicatedInput
+  # with the actual replicated inputs. This allows ACD to correct add control
+  # deps when there are multiple calls to `experimental_run_v2` in a
+  # `tf.function`.
+  def replace_with_unreplicated_resources(resource_inputs):
+    """Replaces handles in `resource_inputs` with their unreplicated inputs."""
+    to_remove = []
+    to_add = []
+    for resource in resource_inputs:
+      if resource.op.type == "TPUReplicatedInput":
+        to_remove.append(resource)
+        to_add.extend(resource.op.inputs)
+    for t in to_remove:
+      resource_inputs.discard(t)
+    resource_inputs.update(to_add)
+    return to_add or to_remove
+
+  return (replace_with_unreplicated_resources(resource_reads) or
+          replace_with_unreplicated_resources(resource_writes))
+
+
 class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   """A `ControlFlowContext` for nodes inside a TPU computation.
 
@@ -218,16 +254,6 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   `with ops.control_dependencies(None)` to build the variable's definition
   outside the replicated computation.
   """
-
-  class _TFBufferWrapper(object):
-    """An internal class to help manage the TF_Buffer lifetime."""
-
-    def __init__(self, buf_string):
-      self._buffer = pywrap_tensorflow.TF_NewBufferFromString(
-          compat.as_bytes(buf_string))
-
-    def __del__(self):
-      pywrap_tensorflow.TF_DeleteBuffer(self._buffer)
 
   def __init__(self, name, num_replicas, pivot):
     """Builds a new TPUReplicateContext.
@@ -253,7 +279,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._host_compute_core = []
     self._name = name
     self._name_as_bytes = compat.as_bytes(name)
-    self._tpu_relicate_attr_buf = self._TFBufferWrapper(
+    self._tpu_relicate_attr_buf = c_api_util.ScopedTFBuffer(
         attr_value_pb2.AttrValue(s=self._name_as_bytes).SerializeToString())
     self._unsupported_ops = []
     self._pivot = pivot
@@ -282,19 +308,24 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       return handle
 
     if device_assignment is not None:
+      # Find a variable copy for each replica in the device assignment.
+      # Note that the order of devices for replicas for the variable and the
+      # device assignment might not match.
       job_name = pydev.DeviceSpec.from_string(vars_[0].device).job
-
-      tpu_devices = set()
+      devices_to_vars = {v.device: v for v in vars_}
+      replicated_vars = []
       for replica_id in range(device_assignment.num_replicas):
         for logical_core in range(device_assignment.num_cores_per_replica):
-          tpu_devices.add(
-              device_util.canonicalize(
-                  device_assignment.tpu_device(
-                      replica=replica_id,
-                      logical_core=logical_core,
-                      job=job_name)))
-
-      replicated_vars = [v for v in vars_ if v.device in tpu_devices]
+          device = device_util.canonicalize(
+              device_assignment.tpu_device(
+                  replica=replica_id, logical_core=logical_core, job=job_name))
+          if device in devices_to_vars:
+            replicated_vars.append(devices_to_vars[device])
+            break
+        else:
+          raise ValueError(
+              "Failed to find a variable on any device in replica {} for "
+              "current device assignment".format(replica_id))
     else:
       replicated_vars = vars_
 
@@ -497,8 +528,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         "_cloned" not in op.node_def.attr):
       raise ValueError("TPU computations cannot be nested on op (%s)" %
                        op)
-    op._set_attr_with_buf(
-        _TPU_REPLICATE_ATTR, self._tpu_relicate_attr_buf._buffer)
+    op._set_attr_with_buf(_TPU_REPLICATE_ATTR,
+                          self._tpu_relicate_attr_buf.buffer)
     if self._outside_compilation_cluster:
       op._set_attr(
           _OUTSIDE_COMPILATION_ATTR,
@@ -637,6 +668,9 @@ def outside_compilation(computation, *args, **kwargs):
   ops on CPU's. Below usage of outside compilation will place ops in
   `computation_with_string_ops` on CPU.
 
+  Example usage:
+
+  ```python
   def computation_with_string_ops(x):
     # strings types are not supported on TPU's and below ops must
     # run on CPU instead.
@@ -646,6 +680,7 @@ def outside_compilation(computation, *args, **kwargs):
   def tpu_computation():
     # Expected output is 11.
     output = tf.tpu.outside_compilation(computation_with_string_ops, 1)
+  ```
 
   Outside compilation should be called inside TPUReplicateContext. That is,
   `tf.tpu.outside_compilation()` should be called inside a function that is
@@ -745,14 +780,57 @@ def outside_compilation(computation, *args, **kwargs):
   return retval
 
 
+@tf_export(v1=["tpu.PaddingSpec"])
+class PaddingSpec(enum.IntEnum):
+  """Represents the type of padding policies for tpu.replicate."""
+  # By default the policy is set to AUTO, the dynamic input shape dimension will
+  # be pad to maximum of all the replicas.
+  AUTO = 0
+  # Bucketize the dynamic input shape dimension into a power of 2.
+  POWER_OF_TWO = 1
+
+
 @tf_export(v1=["tpu.replicate"])
 def replicate(computation,
               inputs=None,
               infeed_queue=None,
               device_assignment=None,
               name=None,
-              maximum_shapes=None):
+              maximum_shapes=None,
+              padding_spec=None):
   """Builds a graph operator that runs a replicated TPU computation.
+
+  Example for the basic usage that `inputs` has static shape:
+
+  ```python
+
+  def computation(x):
+    x = x + 1
+    return tf.math.reduce_mean(x)
+
+  x = tf.convert_to_tensor([1., 2., 3.])
+  y = tf.convert_to_tensor([4., 5., 6.])
+  tf.compat.v1.tpu.replicate(computation, inputs=[[x], [y]])
+  ```
+
+  If the `inputs` has dynamic shapes and you would like to automatically
+  bucketize the inputs to avoid XLA recompilation. See the advanced example
+  below:
+
+  ```python
+
+  def computation(x):
+    x = x + 1
+    return tf.math.reduce_mean(x)
+
+  # Assume input tensors in two replicas `x` and `y` both have dynamic shape
+  # ([None, 2]).
+  tf.compat.v1.tpu.replicate(
+    computation,
+    inputs=[x, y],
+    maximum_shapes=[tf.TensorShape([None, None])],
+    padding_spec=tf.compat.v1.tpu.PaddingSpec.POWER_OF_TWO)
+  ```
 
   Args:
     computation: A Python function that builds the computation to replicate.
@@ -779,6 +857,11 @@ def replicate(computation,
       object) will be padded to the maximum size of that dimension over all
       replicas. The structure of `maximum_shapes` needs to be the same as
       `inputs[0]`.
+    padding_spec: An enum specified by `tpu.PaddingSpec`. This describes the
+      padding policy when the `inputs` to `tpu.replicate` is dynamic.
+      One usage is to enable automatic bucketizing on the inputs by setting the
+      value to `tpu.PaddingSpec.POWER_OF_TWO`, which can help to reduce the
+      recompilation in the XLA side.
   Returns:
     A list of outputs, indexed by `[replica_num]` each output can be a nested
     structure same as what computation() returns with a few exceptions.
@@ -806,10 +889,21 @@ def replicate(computation,
       infeed_queue,
       device_assignment,
       name,
-      maximum_shapes=maximum_shapes)[1]
+      maximum_shapes=maximum_shapes,
+      padding_spec=padding_spec)[1]
 
 
-def _pad_all_input(inputs, padded_shapes):
+def _ceil_to_pow_of_n(x, n):
+  """Ceil input `x` to power of `n`."""
+  x = math_ops.cast(x, dtypes.float32)
+  lognx = math_ops.log(x) / math_ops.log(n * 1.0)
+  lognx = math_ops.ceil(lognx)
+  result = math_ops.pow(n * 1.0, lognx)
+  result = math_ops.cast(result, dtypes.int32)
+  return result
+
+
+def _pad_all_input(inputs, padded_shapes, padding_spec):
   """Pad all input tensors given padded_shapes.
 
   The real shape tensors will be concatenated with the padded original inputs.
@@ -817,6 +911,11 @@ def _pad_all_input(inputs, padded_shapes):
   Args:
     inputs: The original inputs.
     padded_shapes: A list of padded shapes for each input.
+    padding_spec: An enum specified by `tpu.PaddingSpec`. This describes the
+      padding policy when the `inputs` to `tf.tpu.replicate` is dynamic.
+      One usage is to enable automatic bucketizing on the inputs by setting the
+      value to `tpu.PaddingSpec.POWER_OF_TWO`, which can help to reduce the
+      recompilation in the XLA side.
 
   Returns:
     The padded inputs and a PaddingMap list which maps the padded input
@@ -894,6 +993,8 @@ def _pad_all_input(inputs, padded_shapes):
               # among all the cores.
               max_dim_size = math_ops.maximum(maximum_shapes[idx][i],
                                               minimum_dynamic_dim_size)
+              if padding_spec == PaddingSpec.POWER_OF_TWO:
+                max_dim_size = _ceil_to_pow_of_n(max_dim_size, 2)
             # Pad to the given maximum value.
             padding = [0, max_dim_size - input_shape_tensor[i]]
           else:
@@ -933,7 +1034,8 @@ def split_compile_and_replicate(computation,
                                 device_assignment=None,
                                 name=None,
                                 use_tpu=True,
-                                maximum_shapes=None):
+                                maximum_shapes=None,
+                                padding_spec=None):
   """Builds graph operators that runs compilation and replicated computation.
 
   This is a lower level interface than replicate that returns a separate compile
@@ -970,6 +1072,11 @@ def split_compile_and_replicate(computation,
       object) will be padded to the maximum size of that dimension over all
       replicas. The structure of `maximum_shapes` needs to be the same as
       `inputs[0]`.
+    padding_spec: An enum specified by `tf.tpu.PaddingSpec`. This describes the
+      padding policy when the `inputs` to `tf.tpu.replicate` is dynamic.
+      One usage is to enable automatic bucketizing on the inputs by setting the
+      value to `tpu.PaddingSpec.POWER_OF_TWO`, which can help to reduce the
+      recompilation in the XLA side.
 
   Returns:
     A list of lists with the first list corresponding to the compile op and the
@@ -1069,7 +1176,8 @@ def split_compile_and_replicate(computation,
         tensor_shape.TensorShape(s) for s in flat_maximum_shapes
     ]
 
-    flat_inputs, padding_maps = _pad_all_input(flat_inputs, flat_maximum_shapes)
+    flat_inputs, padding_maps = _pad_all_input(flat_inputs, flat_maximum_shapes,
+                                               padding_spec)
 
     serialized_padding_maps = []
     for padding_map in padding_maps:
@@ -1342,7 +1450,7 @@ def _postprocess_non_flat_outputs(outputs):
     # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
     # be rewritten away, leading to a runtime error.
     # TODO(phawkins): extend the rewrite to elide these nodes instead.
-    with ops.device(core(0)):
+    with ops.device(o.device if o.device else core(0)):
       o = array_ops.identity(o)
       # pylint: disable=protected-access
       o.op._set_attr("_tpu_output_identity", attr_value_pb2.AttrValue(b=True))
@@ -1664,7 +1772,7 @@ def rewrite(computation,
     inputs: A list of input tensors or `None` (equivalent to an empty list).
       Each input can be a nested structure containing values that are
       convertible to tensors. Note that passing an N-dimension list of
-      compatible values will result in a N-dimention list of scalar tensors
+      compatible values will result in a N-dimension list of scalar tensors
       rather than a single Rank-N tensors. If you need different behavior,
       convert part of inputs to tensors with `tf.convert_to_tensor`.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple

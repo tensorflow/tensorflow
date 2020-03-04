@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
 
+#include "mli_api.h"  // NOLINT
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
-#include "tensorflow/lite/micro/mli_tf_utils.h"
+#include "tensorflow/lite/micro/kernels/arc/mli_tf_utils.h"
 
 #include "mli_api.h"
 
@@ -105,10 +106,10 @@ TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
   // Run Average Pooling MLI kernel
   // MLI optimized version only supports int8 dataype and no fused Relu
   // TODO: subject to add mli_saturate kernel
-  if (input->type == kTfLiteInt8 && params->activation == kTfLiteActNone){
-    mli_tensor mli_in = { 0 };
-    mli_tensor mli_out = { 0 };
-    mli_pool_cfg cfg = { 0 };
+  if (input->type == kTfLiteInt8 && params->activation == kTfLiteActNone) {
+    mli_tensor mli_in = {0};
+    mli_tensor mli_out = {0};
+    mli_pool_cfg cfg = {0};
 
     ConvertToMliTensor<int8_t>(input, &mli_in);
     ConvertToMliTensor<int8_t>(output, &mli_out);
@@ -146,7 +147,8 @@ TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
 	bool in_is_local = in_local.data == sub_mli_in.data;
 	bool out_is_local = out_local.data == sub_mli_out.data;
 
-    const int batches = MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
+    const int batches =
+        MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
 
     for (int i = 0; i < batches; i++) {
       mli_mov_tensor_sync(&sub_mli_in, &copy_config, &in_local);
@@ -165,8 +167,8 @@ TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
     }
   } else {
     int32_t activation_min, activation_max;
-  (void)CalculateActivationRangeQuantized(context, params->activation, output,
-                                          &activation_min, &activation_max);
+    (void)CalculateActivationRangeQuantized(context, params->activation, output,
+                                            &activation_min, &activation_max);
     PoolParams op_params;
     op_params.stride_height = params->stride_height;
     op_params.stride_width = params->stride_width;
@@ -177,8 +179,8 @@ TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
     op_params.quantized_activation_min = activation_min;
     op_params.quantized_activation_max = activation_max;
     reference_integer_ops::AveragePool(
-      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-      GetTensorShape(output), GetTensorData<int8_t>(output));
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(output), GetTensorData<int8_t>(output));
   }
   return kTfLiteOk;
 }
@@ -258,8 +260,8 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
       return AverageEvalInt8(context, node, params, &data, input, output);
       break;
     default:
-      context->ReportError(context, "Input type %s is not currently supported",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Input type %s is not currently supported",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -282,8 +284,8 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
       MaxEvalQuantizedUInt8(context, node, params, &data, input, output);
       break;
     default:
-      context->ReportError(context, "Type %s not currently supported.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
