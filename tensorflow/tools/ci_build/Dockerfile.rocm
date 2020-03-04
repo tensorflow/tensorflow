@@ -3,8 +3,8 @@
 FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/3.0/
-ARG ROCM_PATH=/opt/rocm
+ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/3.1/
+ARG ROCM_PATH=/opt/rocm-3.1.0
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
@@ -71,7 +71,7 @@ ENV PATH="$ROCM_PATH/bin:${PATH}"
 ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
 # Add target file to help determine which device(s) to build for
-RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
+RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> ${ROCM_PATH}/bin/target.lst'
 
 RUN wget https://www.dropbox.com/s/jixaw2y20vhw4uf/MIOpen-HIP-2.2.0.7630-f38e87a-ubuntu-16.04_amd64.deb && dpkg -i MIOpen*.deb && rm MIOpen*.deb
 
