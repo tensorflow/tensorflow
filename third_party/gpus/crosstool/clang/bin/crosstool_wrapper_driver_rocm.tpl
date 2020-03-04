@@ -173,6 +173,13 @@ def InvokeHipcc(argv, log=False):
   out = ' -o ' + out_file[0]
 
   hipccopts = ' '
+  # In hip-clang environment, we need to make sure that hip header is included
+  # before some standard math header like <complex> is included in any source.
+  # Otherwise, we get build error.
+  # Also we need to retain warning about uninitialised shared variable as
+  # warning only, even when -Werror option is specified.
+  if HIPCC_IS_HIPCLANG:
+    hipccopts += ' --include=hip/hip_runtime.h -Wno-error=cuda-shared-init '
   hipccopts += ' ' + hipcc_compiler_options
   # Use -fno-gpu-rdc by default for early GPU kernel finalization
   # This flag would trigger GPU kernels be generated at compile time, instead
