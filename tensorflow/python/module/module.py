@@ -84,7 +84,7 @@ class Module(tracking.AutoTrackable):
       self.layers = []
       with self.name_scope:
         for size in sizes:
-          self.layers.append(Dense(input_size=input_size, output_size=size))
+          self.layers.append(Dense(in_features=input_size, out_features=size))
           input_size = size
 
     @tf.Module.with_name_scope
