@@ -1,6 +1,122 @@
 # Release 2.2.0
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+## Major Features and Improvements
+
+## Breaking Changes
+
+## Bug Fixes and Other Changes
+
+* tf.data:
+  * Removed autotune_algorithm from experimental optimization options.
+* Other:
+  * Add source, destination name to _send traceme to allow easier debugging
+  * Set as much partial shape as we can infer statically within the gradient impl of the gather op.
+  * add dropout micro benchmark
+  * add a fast path for default random_uniform
+  * No onboard impact.
+  * RandomBinomial broadcasts and appends the sample shape to the left rather than the right.
+  * AutoGraph no longer converts functions passed to `tf.py_function`, `tf.py_func` and `tf.numpy_function`.
+  * Allow `pathlib.Path` paths for loading models via Keras API.
+  * Add traceme event to fastpathexecute
+  * Restore op compatibility for older models.
+  * You can now iterate over RaggedTensors using a for loop inside tf.function.
+  * dropout optimization
+  * Allow batch_dims==rank(indices) in tf.gather.
+  * Move "tensorflow/core:framework/*_pyclif" rules to "tensorflow/core/framework:*_pyclif".
+  * Refactor TpuClusterResolver.
+  * Migrated the TFLite C inference API out of experimental into lite/c.
+  * Refactors NnApiMock to extract a class to be used to do failure injection on NNAPI in native tests. This is preparatory work for the child CL.
+  * Add an option to disallow NNAPI CPU / partial acceleration on Android 10
+  * random_seed documentation improvement
+  * Refactors NnApiMock to extract a class to be used to do failure injection on NNAPI in native tests. This is preparatory work for the child CL.
+  * Add change guards to constants copied in linter.proto
+  * AutoGraph is now available in ReplicaContext.merge_call, Strategy.extended.update and Strategy.extended.update_non_slot.
+  * TensorFlow Lite Android AARs now include the C headers and APIs required to use TFLite from native code.
+  * Microcontroller and embedded code moved from experimental to main TensorFlow Lite folder
+  * TFLite now supports tf.math.reciprocal op by lowering to tf.div op.
+  * AutoGraph error messages now exclude frames corresponding to APIs internal to AutoGraph.
+  * Create pip scripts for cloud tpu client.
+  * bug fixes BEGIN_PUBLIC Fix GPU delegate crash with C++17
+  * Support back_prop=False in while_v2 but mark it as deprecated.
+  * Refactors NnApiMock to extract a class to be used to do failure injection on NNAPI in native tests. This is preparatory work for the child CL.
+  * Add tf.linalg.LinearOperatorTridiag
+  * Experimental support for shape invariants has no been enabled in tf.function. See the API docs for tf.autograph.experimental.set_loop_options for more info.
+  * Fixes the TF upgrade script to not delete files when there is a parsing error and the output mode is `in-place`
+  * Moving eager C++ to Python code and functionality from swig to pybind11.
+  * Add tf.math.sobol_sample op.
+  * Remove expired forward compatible check
+  * Tensorflow Lite's unpack op now supports boolean tensor inputs. TEST=blaze test //third_party/tensorflow/lite/experimental/mlir/testing:zip_test_unpack && blaze test //third_party/tensorflow/lite/testing:zip_test_unpack
+  * "Check for large TF lite tensors."
+  * Increasing minimum bazel version to build TF to 1.2.1 to use Bazel's `cc_experimental_shared_library`.
+  * Add tf.math.xlog1py
+  * Add a Modified Discrete Cosine Transform (MDCT) and its inverse to tf.signal.
+  * TensorFlow now requires gast version 0.3.2 and is no longer compatible with 0.2.2.
+  * tf.math.invert_permutation broadcasts.
+  * If a target accelerator is specified, use its feature level to determine operations to delegate instead of SDK version.
+  * Tpu driver changes.
+  * Add broadcasting support to tf.linalg.triangular_solve.
+  * Add check for memory alignment to MemoryAllocation::MemoryAllocation() on 32-bit ARM
+  * Fix execution order of multiple stateful calls to experimental_run_v2 in tf.function.
+  * "saved_model_cli aot_compile_cpu" allows you to compile saved models to XLA header+object files and include them in your C++ programs.
+  * If a target accelerator is specified, use its feature level to determine operations to delegate instead of SDK version.
+  * Refactors the delegate and delegate kernel sources to allow usage in the linter.
+  * Enable Igamma, Igammac for XLA
+  * Gradient of tf.while_loop emits StatelessWhile op if cond and body functions are stateless. This allows multiple gradient while ops to run in parallel under diststrat.
+  * Update libtpu path.
+  * Refactor tests to have all NNAPI stub based tests in the same build target with correct platform targeting flags.
+  * Add broadcasting support to tf.linalg.triangular_solve.
+  * Limit delegated ops to actually supported ones if a device name is specified or NNAPI CPU Fallback is disabled.
+  * Improve shape inference for tf.function input arguments to unlock more Grappler optimizations in TensorFlow 2.
+  * Limit delegated ops to actually supported ones if a device name is specified or NNAPI CPU Fallback is disabled.
+  * Add LinearOperatorBlockLowerTriangular. go/tfp-rfh-blockwise-linop
+  * Cleaned up old code related to legacy scalars and vectors in TensorFlow.
+  * Add tf.math.special.{dawsn,expi,fresnel_cos,fresnel_sin,spence}
+  * Moving TF Session C++ to Python code and functionality from swig to pybind11.
+  * Do not accumulate the forward tensor if we only need it for reduction ops like Shape, Rank and Size. Reduces the memory computation when building gradient of tf.while_loop.
+  * Allowed TPU embedding weight decay factor to be multiplied by learning rate.
+  * Add support for bfloat16 in tf.print
+  * Speed up GradientTape in eager mode by auto-generating list of op inputs/outputs which are unused and hence not cached for gradient functions.
+  * Support embedding_column with variable-length input feature for `MultiWorkerMirroredStrategy`.
+  * Added `tf.random.stateless_binomial`
+  * Added `tf.random.stateless_gamma`
+  * Add RaggedTensor.numpy()
+  * Update `tf.embedding_lookup` to use `partition_strategy` and `max_norm` when `ids` is ragged.
+  * Removing tensorflow.i and base.i SWIG files from the tensorflow repos.
+  * Allow Injection of NnApi in NnApiDelegateKernel instead of referencing singleton NnApiInstance()
+  * Added `tf.random.stateless_poisson`
+  * Fixes an issue with AUC.reset_states for multi-label AUC.
+  * For `tf.Tensor` & `tf.Variable`, `.experimental_ref()` is no longer experimental and is available as simply `.ref()`.
+  * Support matrix inverse and solves in pfor/vectorized_map.
+  * Update tf.expand_dims to always insert the new dimension as a non-ragged dimension.
+  * Fixes error in delegation of DEPTH_TO_SPACE to NNAPI causing op not to be accelerated.
+  * Fix segmentation fault when running a model with LSTM nodes using NNAPI Delegate
+  * Support configuring TPU software version from cloud tpu client.
+  * Fix typo in docstring for custom_gradient.
+  * `tf.random.stateless_uniform` now supports unbounded sampling of int types
+  * Update RaggedTensor.__getitem__ to preserve uniform dimensions & allow indexing into uniform dimensions.
+  * The error message when attempting to use None in data-dependent control flow is now more helpful.
+  * Update RaggedTensor.__getitem__ to preserve uniform dimensions & allow indexing into uniform dimensions.
+  * Expose option to limit the number of partitions that will be delegated to NNAPI
+  * Update RaggedTensor.__getitem__ to preserve uniform dimensions & allow indexing into uniform dimensions.
+  * Breaking change - in `tf.keras.applications` the name of the "top" layer has been standardized to "predictions". This is only a problem if your code relies on the exact name of the layer.
+  * Enable TFLite experimental new converter by default.
+  * XLA now builds and works on windows. All prebuilt packages come with XLA available.
+  * Added all_reduce_sum_gradients argument to tf.keras.optimizer.Optimizer.apply_gradients. This allows custom gradient aggregation and processing aggregated gradients in custom training loop.
+  * Make automatic control dependencies less strict about variable reads.
+  * Add options to execute benchmarks excluding NNAPI CPU and/or limiting partitions delegated to NNAPI
+  * internal refactoring
+  * Add 5D support to TFLite strided_slice
+  * Fix NNAPI delegate failure when an operand for Maximum/Minimum operation is a scalar
+  * Fix NNAPI delegate failure when Axis input for reduce operation is a scalar TEST: reduce_test
+  * Add standalone XLA AOT runtime target + relevant .cc sources to pip package.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+372046933, 8bitmp3, aaronhma, Abin Shahab, Aditya Patwardhan, Agoniii, Ahti Kitsik, Alan Yee, Albin Joy, Alex Hoffman, Alexander Grund, Alexandre E. Eichenberger, Amit Kumar Jaiswal, amoitra, Andrew Anderson, Angus-Luo, Anthony Barbier, Anton Kachatkou, Anuj Rawat, archis, Arpan-Dhatt, Arvind Sundararajan, Ashutosh Hathidara, autoih, Bairen Yi, Balint Cristian, Bas Aarts, BashirSbaiti, Basit Ayantunde, Ben Barsdell, Benjamin Gaillard, boron, Brett Koonce, Bryan Cutler, Christian Goll, Christian Sachs, Clayne Robison, comet, Daniel Falbel, Daria Zhuravleva, darsh8200, David Truby, Dayananda-V, deepakm, Denis Khalikov, Devansh Singh, Dheeraj R Reddy, Diederik Van Liere, Diego Caballero, Dominic Jack, dothinking, Douman, Drake Gens, Duncan Riach, Ehsan Toosi, ekuznetsov139, Elena Zhelezina, elzino, Ending2015a, Eric Schweitz, Erik Zettel, Ethan Saadia, Eugene Kuznetsov, Evgeniy Zheltonozhskiy, Ewout Ter Hoeven, exfalso, FAIJUL, Fangjun Kuang, Fei Hu, Frank Laub, Frederic Bastien, Fredrik Knutsson, frreiss, Frédéric Rechtenstein, fsx950223, Gaurav Singh, gbaned, George Grzegorz Pawelczak, George Sterpu, Gian Marco Iodice, Giorgio Arena, Hans Gaiser, Hans Pabst, Haoyu Wu, Harry Slatyer, hsahovic, Hugo, Hugo Sjöberg, IrinaM21, jacco, Jake Tae, Jean-Denis Lesage, Jean-Michel Gorius, Jeff Daily, Jens Elofsson, Jerry Shih, jerryyin, Jin Mingjian, Jinjing Zhou, JKIsaacLee, jojimonv, Jonathan Dekhtiar, Jose Ignacio Gomez, Joseph-Rance, Judd, Julian Gross, Kaixi Hou, Kaustubh Maske Patil, Keunwoo Choi, Kevin Hanselman, Khor Chean Wei, Kilaru Yasaswi Sri Chandra Gandhi, Koan-Sin Tan, Koki Ibukuro, Kristian Holsheimer, kurileo, Lakshay Tokas, Lee Netherton, leike666666, Leslie-Fang-Intel, Li, Guizi, LIUJIAN435, Lukas Geiger, Lyo Nguyen, madisetti, Maher Jendoubi, Mahmoud Abuzaina, Manuel Freiberger, Marcel Koester, Marco Jacopo Ferrarotti, Markus Franke, marload, Mbah-Javis, mbhuiyan, Meng Zhang, Michael Liao, MichaelKonobeev, Michal Tarnowski, Milan Straka, minoring, Mohamed Nour Abouelseoud, MoussaMM, Mrinal Jain, mrTsjolder, Måns Nilsson, Namrata Bhave, Nicholas Gao, Niels Ole Salscheider, nikochiko, Niranjan Hasabnis, Nishidha Panpaliya, nmostafa, Noah Trenaman, nuka137, Officium, Owen L - Sfe, Pallavi G, Paul Andrey, Peng Sun, Peng Wu, Phil Pearl, PhilipMay, pingsutw, Pooya Davoodi, PragmaTwice, pshiko, Qwerty71, R Gomathi, Rahul Huilgol, Richard Xiao, Rick Wierenga, Roberto Rosmaninho, ruchit2801, Rushabh Vasani, Sami, Sana Damani, Sarvesh Dubey, Sasan Jafarnejad, Sergii Khomenko, Shane Smiskol, Shaochen Shi, sharkdtu, Shawn Presser, ShengYang1, Shreyash Patodia, Shyam Sundar Dhanabalan, Siju Samuel, Somyajit Chakraborty Sam, Srihari Humbarwadi, srinivasan.narayanamoorthy, Srishti Yadav, Steph-En-M, Stephan Uphoff, Stephen Mugisha, SumanSudhir, Taehun Kim, Tamas Bela Feher, TengLu, Tetragramm, Thierry Herrmann, Tian Jin, tigertang, Tom Carchrae, Tom Forbes, Trent Lo, Victor Peng, vijayphoenix, Vincent Abriou, Vishal Bhola, Vishnuvardhan Janapati, vladbataev, VoVAllen, Wallyss Lima, Wen-Heng (Jack) Chung, wenxizhu, William D. Irons, William Zhang, Xiaoming (Jason) Cui, Xiaoquan Kong, Xinan Jiang, Yasir Modak, Yasuhiro Matsumoto, Yaxun (Sam) Liu, Yong Tang, Ytyt-Yt, yuan, Yuan Mingshuai, Yuan Tang, Yuki Ueda, Yusup, zhangshijin, zhuwenxi
+
+
 
 # Release 2.0.1
 
