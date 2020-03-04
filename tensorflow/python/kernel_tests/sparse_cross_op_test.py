@@ -23,8 +23,10 @@ import numpy
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
@@ -409,6 +411,52 @@ class SparseCrossOpTest(test.TestCase):
         constant_op.constant(indices, dtypes.int64, [len(indices), 2]),
         constant_op.constant(values, value_type, [len(indices)]),
         constant_op.constant(shape, dtypes.int64))
+
+  def test_invalid_sparse_tensors(self):
+    # Test validation of invalid SparseTensors.  The SparseTensor constructor
+    # prevents us from creating invalid SparseTensors (eps. in eager mode),
+    # so we create valid SparseTensors and then modify them to be invalid.
+
+    st1 = sparse_tensor.SparseTensor([[0, 0]], [0], [2, 2])
+    st1._indices = array_ops.zeros([], dtypes.int64)
+    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
+                                 'Input indices should be a matrix'):
+      self.evaluate(sparse_ops.sparse_cross([st1]))
+
+    st2 = sparse_tensor.SparseTensor([[0, 0]], [0], [2, 2])
+    st2._values = array_ops.zeros([], dtypes.int64)
+    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
+                                 'Input values should be a vector'):
+      self.evaluate(sparse_ops.sparse_cross([st2]))
+
+    st3 = sparse_tensor.SparseTensor([[0, 0]], [0], [2, 2])
+    st3._dense_shape = array_ops.zeros([], dtypes.int64)
+    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
+                                 'Input shapes should be a vector'):
+      self.evaluate(sparse_ops.sparse_cross([st3]))
+
+  def test_bad_tensor_shapes(self):
+    # All inputs must be 2D.
+    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
+                                 'Expected D2 of index to be 2'):
+      st = sparse_tensor.SparseTensor([[0]], [0], [10])  # 1D SparseTensor
+      self.evaluate(sparse_ops.sparse_cross([st]))
+
+    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
+                                 'Dense inputs should be a matrix'):
+      dt = array_ops.zeros([0])  # 1D DenseTensor.
+      self.evaluate(sparse_ops.sparse_cross([dt]))
+
+  def test_batch_size_mismatch(self):
+    st1 = sparse_tensor.SparseTensor([[0, 0]], [0], [10, 10])  # batch size 10
+    st2 = sparse_tensor.SparseTensor([[0, 0]], [0], [7, 10])  # batch size 7
+    dt = array_ops.zeros([5, 0])  # batch size 5
+    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
+                                 'Expected batch size'):
+      self.evaluate(sparse_ops.sparse_cross([st1, dt]))
+    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
+                                 'Expected batch size'):
+      self.evaluate(sparse_ops.sparse_cross([st1, st2]))
 
 
 if __name__ == '__main__':

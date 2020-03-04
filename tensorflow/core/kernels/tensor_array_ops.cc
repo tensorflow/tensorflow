@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/split_lib.h"
@@ -331,8 +332,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     TensorShape shape_to_prepend;
     auto element_shape = PartialTensorShape();
     if (ctx->num_inputs() > 2) {
-      TF_RETURN_IF_ERROR(
-          ctx->op_kernel().MakeShape(ctx->input(2), &shape_to_prepend));
+      TF_RETURN_IF_ERROR(tensor::MakeShape(ctx->input(2), &shape_to_prepend));
       auto ta_element_shape = tensor_array->ElemShape();
       if (!ta_element_shape.unknown_rank()) {
         std::vector<int64> dims;

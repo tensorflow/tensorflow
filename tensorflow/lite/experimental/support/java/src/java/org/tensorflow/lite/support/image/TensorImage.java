@@ -49,6 +49,17 @@ public class TensorImage {
   private final ImageContainer container;
 
   /**
+   * Initialize a TensorImage object.
+   *
+   * Note: The data type of this TensorImage is UINT8, which means it could naturally accept Bitmaps
+   * whose pixel value range is [0, 255]. However, any image with float value pixels will not be
+   * loaded correctly. In those cases, please use {@link TensorImage(DataType)}.
+   */
+  public TensorImage() {
+    this(DataType.UINT8);
+  }
+
+  /**
    * Initializes a TensorImage object with data type specified.
    *
    * <p>Note: The shape of a TensorImage is not fixed. It is determined when {@code load} methods
@@ -263,8 +274,8 @@ public class TensorImage {
       // Create a new bitmap and reallocate memory for it.
       if (bitmapImage == null || bitmapImage.getAllocationByteCount() < requiredAllocation) {
         int[] shape = bufferImage.getShape();
-        int w = shape[0];
-        int h = shape[1];
+        int h = shape[0];
+        int w = shape[1];
         bitmapImage = Bitmap.createBitmap(w, h, Config.ARGB_8888);
       }
       ImageConversions.convertTensorBufferToBitmap(bufferImage, bitmapImage);

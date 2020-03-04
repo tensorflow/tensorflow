@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -715,9 +716,16 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
 }
 
 uint64 HloModule::Hash() const {
-  return tensorflow::Hash64Combine(
-      entry_computation_layout().Hash(),
-      entry_computation()->root_instruction()->Hash());
+  uint64 result = entry_computation_layout().Hash();
+  // Use MakeComputationSortedByContent() instead of MakeComputationPostOrder()
+  // because naming may affect the order of MakeComputationPostOrder() but not
+  // MakeComputationSortedByContent().
+  for (auto* computation : MakeComputationSortedByContent()) {
+    for (auto* instruction : computation->MakeInstructionPostOrder()) {
+      result = tensorflow::Hash64Combine(result, instruction->Hash());
+    }
+  }
+  return result;
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

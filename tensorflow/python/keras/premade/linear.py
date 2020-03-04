@@ -64,7 +64,7 @@ class LinearModel(training.Model):
                units=1,
                activation=None,
                use_bias=True,
-               kernel_initializer='glorot_uniform',
+               kernel_initializer='zeros',
                bias_initializer='zeros',
                kernel_regularizer=None,
                bias_regularizer=None,
@@ -97,7 +97,7 @@ class LinearModel(training.Model):
 
   def build(self, input_shape):
     self.dense_layers = []
-    if isinstance(input_shape, list):
+    if isinstance(input_shape, (tuple, list)):
       for shape in input_shape:
         layer = core.Dense(
             units=self.units,

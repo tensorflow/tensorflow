@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
-#include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "mlir/Transforms/Passes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -43,6 +43,16 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
       quant_specs.inference_type != quant_specs.inference_input_type;
   pass_manager->addPass(
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+
+  if (quant_specs.default_ranges.first.hasValue() ||
+      quant_specs.default_ranges.second.hasValue()) {
+    pass_manager->addPass(mlir::TFL::CreateDefaultQuantParamsPass(
+        quant_specs.default_ranges.first.getValueOr(0.0),
+        quant_specs.default_ranges.second.getValueOr(0.0)));
+    pass_manager->addPass(mlir::TFL::CreateQuantizePass());
+    pass_manager->addPass(
+        mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
+  }
 }
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
@@ -70,10 +80,6 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   }
 
   if (pass_config.lower_tensor_list_ops) {
-    // Execute this pass before `CanonicalizerPass` in case some TensorList
-    // ops are constant folded into variant types.
-    // TODO(b/137125056): Move this pass after `CanonicalizerPass` after we
-    // handle constant ops that produce `TensorList`.
     // TODO(haoliang): Add this pass by default.
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
   }
@@ -98,6 +104,16 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
   }
 
+  // Legalize while early to allow further constant folding.
+  // TODO(jpienaar): This may not actually matter as we do canonicalization
+  // after the legalize below, for now it needs to be below the above passes
+  // that work on TF dialect and before inliner so that the function calls in
+  // body and cond are inlined for optimization.
+  if (pass_config.legalize_tf_while) {
+    pass_manager->addNestedPass<mlir::FuncOp>(
+        mlir::TFL::CreateLegalizeTFWhilePass());
+  }
+
   // TODO(jpienaar): Revise post dialect constants.
   pass_manager->addPass(mlir::TF::CreateDecodeConstantPass());
   // Canonicalization includes const folding, which is utilized here to optimize
@@ -115,7 +131,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   if (pass_config.emit_builtin_tflite_ops) {
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
-    pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
+    pass_manager->addPass(
+        mlir::TFL::CreatePrepareTFPass(pass_config.unfold_batch_matmul));
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());

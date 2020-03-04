@@ -8,6 +8,16 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "topological_sort.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "scc",
     srcs = ["scc.cc"],
@@ -386,17 +396,11 @@ cc_library(
     hdrs = ["transitive_fanin.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:utils",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:protos_all_cc",
-        ],
-    }),
+    ],
 )
 
 tf_cc_test(

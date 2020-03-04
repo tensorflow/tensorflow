@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow/lite/micro:build_def.bzl", "flatbuffer_cc_library")
 
 package(
     default_visibility = [
@@ -61,10 +61,10 @@ exports_files([
     "schema_v3.fbs",
 ])
 
-# Generic schema for inference on device.
 flatbuffer_cc_library(
     name = "schema_fbs",
     srcs = ["schema.fbs"],
+    build_for_embedded = True,
 )
 
 # Generic schema for flatbuffer converter (but with mutable makes bigger).

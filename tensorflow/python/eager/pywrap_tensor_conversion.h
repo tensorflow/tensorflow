@@ -76,7 +76,7 @@ struct TFE_TensorHandleCache {
                            absl::string_view device_name) const;
 
   void Insert(PyObject* value, tensorflow::DataType dtype,
-              absl::string_view device_name, TFE_TensorHandle* handle);
+              absl::string_view device_name, TFE_TensorHandle* h);
 
   void Clear();
 
@@ -87,13 +87,13 @@ struct TFE_TensorHandleCache {
   void DecrefUnrefAll() {
     for (const auto& p : cache) {
       Py_DECREF(static_cast<PyObject*>(std::get<0>(p.first)));
-      p.second->Unref();
+      TFE_DeleteTensorHandle(p.second);
     }
   }
 
   // Not guarded by a mutex because the code is only used while the
   // GIL is held.
-  absl::flat_hash_map<Key, tensorflow::TensorHandle*> cache;
+  absl::flat_hash_map<Key, TFE_TensorHandle*> cache;
 };
 
 }  // namespace tensorflow

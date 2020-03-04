@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -41,14 +42,6 @@ namespace tensorrt {
 
 namespace convert {
 using ::stream_executor::port::StatusOr;
-
-#define IS_TRT_VERSION_GE(major, minor, patch, build)           \
-  ((NV_TENSORRT_MAJOR > major) ||                               \
-   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || \
-   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
-    NV_TENSORRT_PATCH > patch) ||                               \
-   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
-    NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
 
 struct EngineConnection {
   // Constructs a non-control edge.
@@ -100,7 +93,8 @@ struct EngineInfo {
       : engine_type(EngineType::TRTStatic),
         max_workspace_size_bytes(0),
         precision_mode(TrtPrecisionMode::FP32),
-        use_calibration(true) {}
+        use_calibration(true),
+        allow_build_at_runtime(true) {}
 
   string engine_name;
   string device;
@@ -117,6 +111,7 @@ struct EngineInfo {
   int maximum_cached_engines;
   TrtPrecisionMode precision_mode;
   bool use_calibration;
+  bool allow_build_at_runtime;
 };
 
 // Constructs a graphdef from the segment in the given graph. Adds _Arg
@@ -141,9 +136,9 @@ Status ConvertSegmentToGraphDef(
 // Converts given subgraph to a TRT engine saved in 'engine'. Returns ok iff
 // 'builder' successfully build the engine. If the result is not ok, 'engine'
 // will be set to nullptr
-// Once returned, 'builder' is not needed any more and can be safely detroyed.
+// Once returned, 'builder' is not needed any more and can be safely destroyed.
 //
-// - convert_successfully: indicates whether the converson to TensorRT network
+// - convert_successfully: indicates whether the conversion to TensorRT network
 //   is successful. This is different than successfully building the engine:
 //   building can still fail afterwards.
 Status ConvertGraphDefToEngine(
@@ -153,7 +148,8 @@ Status ConvertGraphDefToEngine(
     nvinfer1::ILogger* logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
-    bool* convert_successfully);
+    const bool use_implicit_batch, bool* convert_successfully,
+    TrtShapeOptimizationProfile* profiles);
 
 // Helper class for the segmenter to determine whether an output edge from the
 // TRT segment is valid.
@@ -164,11 +160,6 @@ class OutputEdgeValidator {
   bool operator()(const Edge* out_edge) const;
 };
 
-string DebugString(const nvinfer1::DimensionType type);
-string DebugString(const nvinfer1::DataType trt_dtype);
-string DebugString(const nvinfer1::Dims& dims);
-string DebugString(const nvinfer1::Permutation& permutation, int len);
-string DebugString(const nvinfer1::ITensor& tensor);
 int64_t TrtWeightDimsNumElements(const nvinfer1::Dims& dims);
 int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims);
 
@@ -340,6 +331,9 @@ class TRT_TensorOrWeights {
   // is that currently it cannot convert a graph that doesn't have the batch
   // size represented in the shapes or the batch sizes are different. See
   // b/118387490 for more details.
+  //
+  // If use_implicit_batch is false, batch_size_ is unused and
+  // tensor_->getDimensions() will contain the entire shape (A,B,C).
   int batch_size_ = -1;
 
   TRT_ShapedWeights weights_;
@@ -358,7 +352,8 @@ struct OpConverterParams {
                     const std::vector<TRT_TensorOrWeights>& inputs,
                     std::vector<TRT_TensorOrWeights>* outputs,
                     TrtWeightStore* weight_store,
-                    TrtPrecisionMode precision_mode, bool use_calibration);
+                    TrtPrecisionMode precision_mode, bool use_calibration,
+                    bool use_implicit_batch);
 
   // Constructor used for conversion.
   OpConverterParams(Converter* converter, const NodeDef& node_def,
@@ -374,6 +369,7 @@ struct OpConverterParams {
   TrtWeightStore* weight_store;
   const TrtPrecisionMode precision_mode;
   const bool use_calibration;
+  const bool use_implicit_batch;
 };
 
 using OpConverter = std::function<Status(OpConverterParams*)>;
@@ -385,7 +381,8 @@ class TrtNodeValidator {
   // checked by IsTensorRTCandidate() later. It is used to get the shape and
   // data type information of a tensor for validation purpose.
   TrtNodeValidator(const grappler::GraphProperties& graph_properties,
-                   TrtPrecisionMode precision_mode, bool use_calibration);
+                   TrtPrecisionMode precision_mode, bool use_calibration,
+                   bool use_implicit_batch);
 
   // Returns OK iff 'node' is a TF-TRT conversion candidate, which will be added
   // to TRT subgraph and later converted into TRT engine.
@@ -425,6 +422,8 @@ class TrtNodeValidator {
 
   const bool use_calibration_;
 
+  const bool use_implicit_batch_;
+
   friend class ValidatorTest;
   friend class OpConverterTest;
 };
@@ -447,7 +446,7 @@ class Converter {
 
   static StatusOr<std::unique_ptr<Converter>> Create(
       TrtPrecisionMode precision_mode, bool use_calibration,
-      nvinfer1::ILogger* trt_logger);
+      nvinfer1::ILogger* trt_logger, const bool use_implicit_batch);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by the TRT engine builder to build a TRT network from a TF
@@ -470,7 +469,8 @@ class Converter {
   Status BuildCudaEngine(TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
                          int max_batch_size, size_t max_workspace_size_bytes,
                          nvinfer1::IGpuAllocator* allocator,
-                         TRTInt8Calibrator* calibrator);
+                         TRTInt8Calibrator* calibrator,
+                         TrtShapeOptimizationProfile* profiles);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by op converters to convert individual TF node and add layers
@@ -485,6 +485,9 @@ class Converter {
 
   // Calibration will be or was previously performed on this network?
   bool use_calibration() const { return use_calibration_; }
+
+  // Whether implicit batch mode is enabled
+  bool use_implicit_batch() const { return use_implicit_batch_; }
 
   // This should be called on the inputs and outputs of any layer we create
   // where we know that the quantization range does not change during that
@@ -510,6 +513,7 @@ class Converter {
   // dimension which should always be 0.
   Status TransposeTensor(nvinfer1::ITensor* input_tensor,
                          const std::vector<int>& order_with_batch_dim,
+                         absl::string_view name,
                          nvinfer1::ITensor** output_tensor);
 
   // Converts 'input' into 'tensor' with shape specified by 'dims' (which
@@ -523,6 +527,15 @@ class Converter {
                                const bool validation_only,
                                nvinfer1::ITensor** tensor);
 
+  // Helper function to add a squeeze op to the network.
+  //
+  // The trt_axes argument lists those axes that need to be squeezed. Each axis
+  // in the list is numbered according to TRT convention (see ConvertAxis for
+  // details).
+  Status SqueezeTensor(nvinfer1::ITensor* input,
+                       const std::vector<int>& trt_axes,
+                       nvinfer1::ITensor** output);
+
   // Creates an IConstantLayer using 'weights' whose dimensions are specified by
   // 'dims', and returns the output ITensor.
   nvinfer1::ITensor* CreateConstantLayer(const TRT_ShapedWeights& weights,
@@ -530,7 +543,7 @@ class Converter {
 
  private:
   Converter(TrtPrecisionMode precision_mode, bool use_calibration,
-            nvinfer1::ILogger* trt_logger);
+            nvinfer1::ILogger* trt_logger, const bool use_implicit_batch);
 
   Status Init(nvinfer1::ILogger* trt_logger);
 
@@ -591,6 +604,10 @@ class Converter {
 
   const bool use_calibration_;
 
+  // If this is false, all dimensions including the batch dimension are
+  // set explicitely.
+  const bool use_implicit_batch_;
+
   // Batch size of inputs to trt_network_ added by AddInputTensor(). During
   // network construction it will update this, use it to verify the batch
   // size of all inputs are compatible, and make sure individual TF node is
@@ -607,6 +624,7 @@ class Converter {
 Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
                             const TRT_TensorOrWeights& operand_r,
                             const bool check_feasibility,
+                            const bool use_implicit_batch,
                             nvinfer1::Dims* operand_l_new_dims,
                             nvinfer1::Dims* operand_r_new_dims);
 

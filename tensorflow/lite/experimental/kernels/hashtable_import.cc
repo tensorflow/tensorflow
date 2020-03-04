@@ -40,13 +40,11 @@ TfLiteStatus PrepareHashtableImport(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input_resource_id_tensor, 0), 1);
 
   const TfLiteTensor* key_tensor = GetInput(context, node, kKeyTensor);
-  TF_LITE_ENSURE(context, (key_tensor->type == kTfLiteInt32 ||
-                           key_tensor->type == kTfLiteString));
-
   const TfLiteTensor* value_tensor = GetInput(context, node, kValueTensor);
-  TF_LITE_ENSURE(context, (value_tensor->type == kTfLiteInt32 ||
-                           value_tensor->type == kTfLiteString ||
-                           value_tensor->type == kTfLiteFloat32));
+  TF_LITE_ENSURE(context, (key_tensor->type == kTfLiteInt64 &&
+                           value_tensor->type == kTfLiteString) ||
+                              (key_tensor->type == kTfLiteString &&
+                               value_tensor->type == kTfLiteInt64));
   // TODO(b/144731295): Tensorflow lookup ops support 1-D vector in storing
   // values.
   TF_LITE_ENSURE(context, HaveSameShapes(key_tensor, value_tensor));
@@ -69,7 +67,8 @@ TfLiteStatus EvalHashtableImport(TfLiteContext* context, TfLiteNode* node) {
       lookup->CheckKeyAndValueTypes(context, key_tensor, value_tensor));
   // The hashtable resource will only be initialized once, attempting to
   // initialize it multiple times will be a no-op.
-  return lookup->Import(context, key_tensor, value_tensor);
+  auto result = lookup->Import(context, key_tensor, value_tensor);
+  return result;
 }
 
 }  // namespace hashtable
@@ -78,9 +77,7 @@ TfLiteRegistration* Register_HASHTABLE_IMPORT() {
   static TfLiteRegistration r = {/*init=*/nullptr,
                                  /*free=*/nullptr,
                                  hashtable::PrepareHashtableImport,
-                                 hashtable::EvalHashtableImport,
-                                 nullptr,
-                                 BuiltinOperator_CUSTOM};
+                                 hashtable::EvalHashtableImport};
   return &r;
 }
 

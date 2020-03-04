@@ -15,9 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 
-#include <memory>
-#include <vector>
-
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -61,7 +58,7 @@ class ProfilerInterface {
   // Stops profiling.
   virtual Status Stop() = 0;
 
-  // Saves collected profile data into step_stats_collector.
+  // Saves collected profile data into run_metadata.
   // After this or the overload below are called once, subsequent calls might
   // return empty data.
   virtual Status CollectData(RunMetadata* run_metadata) = 0;
@@ -76,16 +73,6 @@ class ProfilerInterface {
 };
 
 }  // namespace profiler
-
-using ProfilerFactory = std::unique_ptr<profiler::ProfilerInterface> (*)(
-    const profiler::ProfilerOptions&);
-
-void RegisterProfilerFactory(ProfilerFactory factory);
-
-void CreateProfilers(
-    const profiler::ProfilerOptions& options,
-    std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_

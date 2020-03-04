@@ -40,7 +40,7 @@ TfLiteStatus PrepareHashtableSize(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output_tensor = GetOutput(context, node, kOutputTensor);
   TF_LITE_ENSURE(context, output_tensor != nullptr);
-  TF_LITE_ENSURE_EQ(context, output_tensor->type, kTfLiteInt32);
+  TF_LITE_ENSURE_EQ(context, output_tensor->type, kTfLiteInt64);
   TfLiteIntArray* outputSize = TfLiteIntArrayCreate(1);
   outputSize->data[0] = 1;
   return context->ResizeTensor(context, output_tensor, outputSize);
@@ -52,7 +52,7 @@ TfLiteStatus EvalHashtableSize(TfLiteContext* context, TfLiteNode* node) {
   int resource_id = input_resource_id_tensor->data.i32[0];
 
   TfLiteTensor* output_tensor = GetOutput(context, node, kOutputTensor);
-  auto* output_data = GetTensorData<int>(output_tensor);
+  auto* output_data = GetTensorData<std::int64_t>(output_tensor);
 
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
   auto& resources = subgraph->resources();
@@ -69,9 +69,7 @@ TfLiteRegistration* Register_HASHTABLE_SIZE() {
   static TfLiteRegistration r = {/*init=*/nullptr,
                                  /*free=*/nullptr,
                                  hashtable::PrepareHashtableSize,
-                                 hashtable::EvalHashtableSize,
-                                 nullptr,
-                                 BuiltinOperator_CUSTOM};
+                                 hashtable::EvalHashtableSize};
   return &r;
 }
 

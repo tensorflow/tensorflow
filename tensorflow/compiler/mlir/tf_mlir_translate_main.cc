@@ -21,11 +21,11 @@ limitations under the License.
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
-#include "mlir/Support/ToolUtilities.h"  // TF:local_config_mlir
-#include "mlir/Support/TranslateClParser.h"  // TF:local_config_mlir
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/Support/FileUtilities.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Support/ToolUtilities.h"  // TF:llvm-project
+#include "mlir/Support/TranslateClParser.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
@@ -55,6 +55,12 @@ static llvm::cl::opt<bool> import_saved_model(
     llvm::cl::value_desc("dir"));
 
 // NOLINTNEXTLINE
+static llvm::cl::opt<bool> import_saved_model_v1(
+    "savedmodel-v1-to-mlir",
+    llvm::cl::desc("Import a saved model V1 to its MLIR representation"),
+    llvm::cl::value_desc("dir"));
+
+// NOLINTNEXTLINE
 static llvm::cl::opt<std::string> saved_model_tags(
     "tf-savedmodel-tags",
     llvm::cl::desc("Tags used to indicate which MetaGraphDef to import, "
@@ -77,10 +83,11 @@ int main(int argc, char** argv) {
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF MLIR translation driver\n");
 
-  if (!import_saved_model && !requested_translation) {
+  if (!import_saved_model && !import_saved_model_v1 && !requested_translation) {
     llvm::errs() << "error: need to specify one translation to perform\n";
     return 1;
-  } else if (import_saved_model && requested_translation) {
+  } else if (import_saved_model && import_saved_model_v1 &&
+             requested_translation) {
     llvm::errs()
         << "error: cannot specify more than one translation to perform\n";
     return 1;
@@ -103,6 +110,16 @@ int main(int argc, char** argv) {
     auto module = tensorflow::SavedModelToMlirImport(
         input_filename, tags, absl::Span<std::string>(exported_names),
         &context);
+    if (!module) return 1;
+
+    module->print(output->os());
+  } else if (import_saved_model_v1) {
+    std::unordered_set<std::string> tags =
+        absl::StrSplit(saved_model_tags, ',');
+    mlir::MLIRContext context;
+
+    auto module =
+        tensorflow::SavedModelV1ToMlirImport(input_filename, tags, &context);
     if (!module) return 1;
 
     module->print(output->os());

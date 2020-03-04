@@ -20,10 +20,12 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -87,7 +89,6 @@ class CuDNNTest(keras_parameterized.TestCase):
     self.assertEqual(len(state), num_states)
     model = keras.models.Model(inputs, state[0])
     model.run_eagerly = testing_utils.should_run_eagerly()
-    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     inputs = np.random.random((num_samples, timesteps, input_size))
     state = model.predict(inputs)
@@ -147,8 +148,7 @@ class CuDNNTest(keras_parameterized.TestCase):
     model.compile(
         loss='categorical_crossentropy',
         optimizer=RMSprop(learning_rate=0.001),
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.random.random((num_samples, timesteps, input_size))
     initial_state = [
@@ -164,33 +164,33 @@ class CuDNNGraphOnlyTest(keras_parameterized.TestCase):
       ('cudnngru', keras.layers.CuDNNGRU),
       ('cudnnlstm', keras.layers.CuDNNLSTM),
   )
-  @test_util.run_deprecated_v1
   @test_util.run_gpu_only
   def test_regularizer(self, layer_class):
     input_size = 10
     timesteps = 6
     units = 2
     num_samples = 32
-    layer = layer_class(
-        units,
-        return_sequences=False,
-        input_shape=(timesteps, input_size),
-        kernel_regularizer=keras.regularizers.l1(0.01),
-        recurrent_regularizer=keras.regularizers.l1(0.01),
-        bias_regularizer='l2')
-    layer.build((None, None, input_size))
-    self.assertEqual(len(layer.losses), 3)
+    with ops.Graph().as_default():
+      layer = layer_class(
+          units,
+          return_sequences=False,
+          input_shape=(timesteps, input_size),
+          kernel_regularizer=keras.regularizers.l1(0.01),
+          recurrent_regularizer=keras.regularizers.l1(0.01),
+          bias_regularizer='l2')
+      layer.build((None, None, input_size))
+      self.assertEqual(len(layer.losses), 3)
 
-    layer = layer_class(
-        units,
-        return_sequences=False,
-        input_shape=(timesteps, input_size),
-        activity_regularizer='l2')
-    self.assertTrue(layer.activity_regularizer)
-    x = keras.backend.variable(
-        np.ones((num_samples, timesteps, input_size)))
-    layer(x)
-    self.assertEqual(len(layer.get_losses_for(x)), 1)
+      layer = layer_class(
+          units,
+          return_sequences=False,
+          input_shape=(timesteps, input_size),
+          activity_regularizer='l2')
+      self.assertTrue(layer.activity_regularizer)
+      x = keras.backend.variable(
+          np.ones((num_samples, timesteps, input_size)))
+      layer(x)
+      self.assertEqual(len(layer.get_losses_for(x)), 1)
 
   @parameterized.named_parameters(
       ('cudnngru', keras.layers.CuDNNGRU),
@@ -460,7 +460,7 @@ class CuDNNV1OnlyTest(keras_parameterized.TestCase):
     input_shape = (3, 5)
 
     def gru(cudnn=False, **kwargs):
-      layer_class = keras.layers.CuDNNGRU if cudnn else keras.layers.GRU
+      layer_class = keras.layers.CuDNNGRU if cudnn else keras.layers.GRUV1
       return layer_class(2, input_shape=input_shape, **kwargs)
 
     def get_layer_weights(layer):

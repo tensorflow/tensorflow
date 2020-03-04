@@ -60,7 +60,6 @@ class GenericTransferManager : public TransferManager {
 
   int64 GetByteSizeRequirement(const Shape& shape) const override;
 
- protected:
   Status WriteSingleTupleIndexTable(
       se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) override;

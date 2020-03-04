@@ -189,7 +189,7 @@ TEST(PadOpTest, TooManyDimensions) {
       PadOpConstModel({TensorType_FLOAT32, {1, 2, 3, 4, 5, 6, 7, 8, 9}}, {9, 2},
                       {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9},
                       {TensorType_FLOAT32}),
-      "dims <= 4");
+      "dims <= reference_ops::PadKernelMaxDimensionCount()");
 }
 
 TEST(PadOpTest, UnequalDimensions) {
@@ -426,7 +426,7 @@ TEST(PadV2OpTest, TooManyDimensions) {
   EXPECT_DEATH(f({TensorType_FLOAT32, {1, 2, 3, 4, 5, 6, 7, 8, 9}}, {9, 2},
                  {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9}, 0.0,
                  {TensorType_FLOAT32}),
-               "dims <= 4");
+               "dims <= reference_ops::PadKernelMaxDimensionCount()");
 }
 
 TEST(PadV2OpTest, UnequalDimensions) {

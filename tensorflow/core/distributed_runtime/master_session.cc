@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
-#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -473,8 +472,8 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     c->req.set_session_handle(session_handle_);
     c->req.set_create_worker_session_called(!should_deregister_);
     c->req.mutable_graph_def()->Swap(&graph_partitions[part.name]);
-    StripDefaultAttributes(*OpRegistry::Global(),
-                           c->req.mutable_graph_def()->mutable_node());
+    // TODO(b/146354085): Default attributes should be stripped here from
+    // c->req.graph_def(), but this causes some TFX pipelines to fail.
     *c->req.mutable_config_proto() = session_opts_.config;
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
     *c->req.mutable_debug_options() =
@@ -589,7 +588,7 @@ class RunManyGraphs {
   void ReportBadStatus(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     VLOG(1) << "Master received error status " << s;
     if (!cancel_issued_ && !StatusGroup::IsDerived(s)) {
-      // Only start cancelling other workers upon receiveing a non-derived
+      // Only start cancelling other workers upon receiving a non-derived
       // error
       cancel_issued_ = true;
 
@@ -1320,11 +1319,22 @@ Status MasterSession::CreateWorkerSessions(
     workers[i].name = &worker_names[i];
     workers[i].worker = worker_cache->GetOrCreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
-    if (session_opts_.config.experimental()
+    if (session_opts_.config.share_cluster_devices_in_session() ||
+        session_opts_.config.experimental()
             .share_cluster_devices_in_session()) {
       for (const auto& remote_dev : devices_->devices()) {
         *workers[i].request.add_cluster_device_attributes() =
             remote_dev->attributes();
+      }
+
+      if (!session_opts_.config.share_cluster_devices_in_session() &&
+          session_opts_.config.experimental()
+              .share_cluster_devices_in_session()) {
+        LOG(WARNING)
+            << "ConfigProto.Experimental.share_cluster_devices_in_session has "
+               "been promoted to a non-experimental API. Please use "
+               "ConfigProto.share_cluster_devices_in_session instead. The "
+               "experimental option will be removed in the future.";
       }
     }
 

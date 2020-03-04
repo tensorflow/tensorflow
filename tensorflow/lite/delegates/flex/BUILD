@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_lite_protos")
 
 #
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
@@ -15,6 +15,7 @@ cc_library(
     name = "buffer_map",
     srcs = ["buffer_map.cc"],
     hdrs = ["buffer_map.h"],
+    copts = tf_opts_nortti_if_lite_protos(),
     deps = [
         ":util",
         "//tensorflow/lite/c:common",

@@ -252,9 +252,10 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
   // stream executor.
   port::StatusOr<Stream *> GetStream(int device_ordinal) override;
 
- private:
+  // Gets the stream executor for given device ordinal.
   port::StatusOr<StreamExecutor *> GetStreamExecutor(int device_ordinal) const;
 
+ private:
   // Available stream executors. Each stream executor has a different device
   // ordinal.
   std::vector<StreamExecutor *> stream_executors_;

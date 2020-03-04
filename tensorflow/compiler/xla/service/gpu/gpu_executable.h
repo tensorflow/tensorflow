@@ -84,7 +84,7 @@ class GpuExecutable : public Executable {
   // doesn't match the compute capability passed to this object's constructor.
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+      std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   std::shared_ptr<const BufferAssignment> GetBufferAssignment() const {
@@ -118,7 +118,7 @@ class GpuExecutable : public Executable {
   // Computes annotations for each thunk and store them in thunk_annotations_.
   void ComputeThunkAnnotations();
 
-  // GpuExecutable check with either AMD's ISA version, or Nvdia's major minor
+  // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
   Status CheckCompatibilityWithServiceExecutableRunOptions(
       const ServiceExecutableRunOptions* run_options);

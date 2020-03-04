@@ -68,6 +68,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -124,13 +125,12 @@ cc_library(
     hdrs = ["bundle_v2.h"],
     deps = [
         ":constants",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/util/tensor_bundle",
-    ] + if_not_mobile([
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ]),
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/util/tensor_bundle",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
 )
 
 tf_cc_test(
@@ -216,6 +216,18 @@ py_binary(
 filegroup(
     name = "saved_model_half_plus_two",
     srcs = glob([
+        "testdata/half_plus_two_pbtxt/**",
+        "testdata/half_plus_two_main_op/**",
+        "testdata/half_plus_two/**",
+        "testdata/half_plus_two_v2/**",
+        "testdata/x_plus_y_v2_debuginfo/**",
+        "testdata/CyclicModule/**",
+        "testdata/VarsAndArithmeticObjectGraph/**",
+    ]),
+)
+
+exports_files(
+    glob([
         "testdata/half_plus_two_pbtxt/**",
         "testdata/half_plus_two_main_op/**",
         "testdata/half_plus_two/**",

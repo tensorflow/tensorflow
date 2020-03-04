@@ -32,6 +32,7 @@ from __future__ import print_function
 
 import collections
 import functools
+
 import six
 
 from tensorflow.core.protobuf import struct_pb2

@@ -103,12 +103,51 @@ void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
   quantization->type = kTfLiteNoQuantization;
 }
 
+void TfLiteSparsityFree(TfLiteSparsity* sparsity) {
+  if (sparsity == NULL) {
+    return;
+  }
+
+  if (sparsity->traversal_order) {
+    TfLiteIntArrayFree(sparsity->traversal_order);
+    sparsity->traversal_order = NULL;
+  }
+
+  if (sparsity->block_map) {
+    TfLiteIntArrayFree(sparsity->block_map);
+    sparsity->block_map = NULL;
+  }
+
+  if (sparsity->dim_metadata) {
+    for (int i = 0; i < sparsity->dim_metadata_size; i++) {
+      TfLiteDimensionMetadata metadata = sparsity->dim_metadata[i];
+      if (metadata.format == kTfLiteDimSparseCSR) {
+        TfLiteIntArrayFree(metadata.array_segments);
+        metadata.array_segments = NULL;
+        TfLiteIntArrayFree(metadata.array_indices);
+        metadata.array_indices = NULL;
+      }
+    }
+    free(sparsity->dim_metadata);
+    sparsity->dim_metadata = NULL;
+  }
+
+  free(sparsity);
+}
+
 void TfLiteTensorFree(TfLiteTensor* t) {
   TfLiteTensorDataFree(t);
   if (t->dims) TfLiteIntArrayFree(t->dims);
   t->dims = NULL;
 
+  if (t->dims_signature) {
+    TfLiteIntArrayFree((TfLiteIntArray *) t->dims_signature);
+  }
+  t->dims_signature = NULL;
+
   TfLiteQuantizationFree(&t->quantization);
+  TfLiteSparsityFree(t->sparsity);
+  t->sparsity = NULL;
 }
 
 void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
@@ -135,6 +174,7 @@ void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   if (tensor->allocation_type != kTfLiteDynamic) {
     return;
   }
+  // TODO(b/145340303): Tensor data should be aligned.
   if (!tensor->data.raw) {
     tensor->data.raw = malloc(num_bytes);
   } else if (num_bytes > tensor->bytes) {

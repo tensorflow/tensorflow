@@ -106,7 +106,7 @@ class CompositeObserver : public ImagenetModelEvaluator::Observer {
 };
 
 /*static*/ TfLiteStatus ImagenetModelEvaluator::Create(
-    int argc, char* argv[], int num_threads,
+    int* argc, char* argv[], int num_threads,
     std::unique_ptr<ImagenetModelEvaluator>* model_evaluator) {
   Params params;
   params.number_of_images = 100;
@@ -147,7 +147,7 @@ class CompositeObserver : public ImagenetModelEvaluator::Observer {
                                "Generates the top-1 to top-k accuracy values"
                                "where k = num_ranks. Default: 10"),
   };
-  tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
+  tflite::Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
 
   if (params.number_of_images < 0) {
     LOG(ERROR) << "Invalid: num_examples";
@@ -210,8 +210,12 @@ TfLiteStatus ImagenetModelEvaluator::EvaluateModel() const {
       tflite::evaluation::GetSortedFileNames(data_path, &image_files));
   std::vector<string> ground_truth_image_labels;
   if (!tflite::evaluation::ReadFileLines(params_.ground_truth_labels_path,
-                                         &ground_truth_image_labels))
+                                         &ground_truth_image_labels)) {
+    LOG(ERROR) << "Unable to read ground truth labels from: "
+               << params_.ground_truth_labels_path
+               << " Perhaps file doesn't exist or is unreadable.";
     return kTfLiteError;
+  }
   if (image_files.size() != ground_truth_image_labels.size()) {
     LOG(ERROR) << "Images and ground truth labels don't match";
     return kTfLiteError;

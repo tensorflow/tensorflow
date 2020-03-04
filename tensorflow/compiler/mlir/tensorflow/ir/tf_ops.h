@@ -19,18 +19,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OPS_H_
 
-#include "mlir/Analysis/CallInterfaces.h"  // TF:local_config_mlir
-#include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Dialect.h"  // TF:local_config_mlir
-#include "mlir/IR/Matchers.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
+#include "mlir/Analysis/CallInterfaces.h"  // TF:llvm-project
+#include "mlir/Dialect/Traits.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Dialect.h"  // TF:llvm-project
+#include "mlir/IR/Matchers.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_verifiers.h"
 
 namespace mlir {
 namespace TF {
@@ -82,6 +83,7 @@ class TensorFlowDialect : public Dialect {
 // both mutex.h and this header file.
 #undef mutex_lock
 
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h.inc"
 

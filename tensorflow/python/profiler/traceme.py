@@ -47,3 +47,15 @@ class TraceMe(object):
   def __exit__(self, exc_type, exc_val, exc_tb):
     if self._traceme:
       self._traceme.Exit()
+
+
+def traceme_wrapper(func):
+  name = getattr(func, '__qualname__', None)
+  if not name:
+    name = func.__name__
+
+  def wrapper(*args, **kwargs):
+    with TraceMe(name):
+      return func(*args, **kwargs)
+  return wrapper
+

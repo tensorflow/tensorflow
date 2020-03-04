@@ -17,17 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
@@ -37,8 +38,7 @@ from tensorflow.python.platform import test
 # NOTE(mrry): These tests are based on the tests in bucket_ops_test.py.
 # Currently, they use a constant batch size, though should be made to use a
 # different batch size per key.
-@test_util.run_all_in_graph_and_eager_modes
-class GroupByWindowTest(test_base.DatasetTestBase):
+class GroupByWindowTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _dynamicPad(self, bucket, window, window_size):
     # TODO(mrry): To match `tf.contrib.training.bucket()`, implement a
@@ -51,6 +51,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
              32, (tensor_shape.TensorShape([]), tensor_shape.TensorShape(
                  [None]), tensor_shape.TensorShape([3])))))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSingleBucket(self):
 
     def _map_fn(v):
@@ -80,6 +81,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     self.assertAllEqual(expected_unk_int64, bucketed_values[1])
     self.assertAllEqual(expected_vec3_str, bucketed_values[2])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testEvenOddBuckets(self):
 
     def _map_fn(v):
@@ -132,6 +134,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     self.assertAllEqual(expected_unk_int64, bucketed_values_odd[1])
     self.assertAllEqual(expected_vec3_str, bucketed_values_odd[2])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testEvenOddBucketsFilterOutAllOdd(self):
 
     def _map_fn(v):
@@ -173,6 +176,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     self.assertAllEqual(
         np.arange(64, 128, 2, dtype=np.int64), bucketed_values_even1["x"])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDynamicWindowSize(self):
     components = np.arange(100).astype(np.int64)
 
@@ -202,6 +206,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
 
     self.assertEqual(batches, 15)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSimple(self):
     components = np.random.randint(100, size=(200,)).astype(np.int64)
     dataset = dataset_ops.Dataset.from_tensor_slices(
@@ -222,6 +227,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     self.assertGreaterEqual(num_full_batches, 24)
     self.assertTrue(all(c == 4 for c in counts[:num_full_batches]))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testImmediateOutput(self):
     components = np.array(
         [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0], dtype=np.int64)
@@ -240,6 +246,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
       self.assertAllEqual([2, 2, 2, 2], self.evaluate(get_next()))
       self.assertAllEqual([0, 0, 0, 0], self.evaluate(get_next()))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSmallGroups(self):
     components = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0], dtype=np.int64)
     dataset = dataset_ops.Dataset.from_tensor_slices(components).apply(
@@ -252,6 +259,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     self.assertAllEqual([0, 0, 0], self.evaluate(get_next()))
     self.assertAllEqual([1], self.evaluate(get_next()))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testEmpty(self):
     dataset = dataset_ops.Dataset.range(4).apply(
         grouping.group_by_window(lambda _: 0, lambda _, xs: xs, 0))
@@ -262,6 +270,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
         "Window size must be greater than zero, but got 0."):
       print(self.evaluate(get_next()))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testReduceFuncError(self):
     components = np.random.randint(100, size=(200,)).astype(np.int64)
 
@@ -280,6 +289,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConsumeWindowDatasetMoreThanOnce(self):
     components = np.random.randint(50, size=(200,)).astype(np.int64)
 
@@ -311,6 +321,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
         counts.append(tight_result.shape[0])
     self.assertEqual(len(components), sum(counts))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testShortCircuit(self):
 
     dataset = dataset_ops.Dataset.range(10)

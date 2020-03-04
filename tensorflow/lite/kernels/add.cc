@@ -118,15 +118,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplierSmallerThanOneExp(
         real_output_multiplier, &data->output_multiplier, &data->output_shift);
 
-    if (output->type == kTfLiteUInt8) {
-      CalculateActivationRangeUint8(params->activation, output,
-                                    &data->output_activation_min,
-                                    &data->output_activation_max);
-    } else {
-      CalculateActivationRangeInt8(params->activation, output,
-                                   &data->output_activation_min,
-                                   &data->output_activation_max);
-    }
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, params->activation, output, &data->output_activation_min,
+        &data->output_activation_max));
   } else if (output->type == kTfLiteInt16) {
     // 16bit -> 16bit special quantized path, supporting only a rather
     // narrow case of quantization parameters: zero_points must all be 0
@@ -164,9 +158,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, data->input1_shift <= 0);
     TF_LITE_ENSURE(context, data->input2_shift <= 0);
 
-    CalculateActivationRangeQuantized(context, params->activation, output,
-                                      &data->output_activation_min,
-                                      &data->output_activation_max);
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, params->activation, output, &data->output_activation_min,
+        &data->output_activation_max));
   }
 
   return context->ResizeTensor(context, output, output_size);

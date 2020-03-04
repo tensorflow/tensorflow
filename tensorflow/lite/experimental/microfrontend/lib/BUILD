@@ -1,7 +1,7 @@
 # Library for generating feature vectors from audio data
 
 load(
-    "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",
+    "//tensorflow/lite/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
 )
 
@@ -128,7 +128,7 @@ tflite_micro_cc_test(
     srcs = ["fft_test.cc"],
     deps = [
         ":fft",
-        "//tensorflow/lite/experimental/micro/testing:micro_test",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
@@ -137,7 +137,7 @@ tflite_micro_cc_test(
     srcs = ["filterbank_test.cc"],
     deps = [
         ":filterbank",
-        "//tensorflow/lite/experimental/micro/testing:micro_test",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
@@ -146,7 +146,7 @@ tflite_micro_cc_test(
     srcs = ["frontend_test.cc"],
     deps = [
         ":frontend",
-        "//tensorflow/lite/experimental/micro/testing:micro_test",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
@@ -155,7 +155,7 @@ tflite_micro_cc_test(
     srcs = ["log_scale_test.cc"],
     deps = [
         ":log_scale",
-        "//tensorflow/lite/experimental/micro/testing:micro_test",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
@@ -164,7 +164,7 @@ tflite_micro_cc_test(
     srcs = ["noise_reduction_test.cc"],
     deps = [
         ":noise_reduction",
-        "//tensorflow/lite/experimental/micro/testing:micro_test",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
@@ -173,7 +173,7 @@ tflite_micro_cc_test(
     srcs = ["pcan_gain_control_test.cc"],
     deps = [
         ":pcan_gain_control",
-        "//tensorflow/lite/experimental/micro/testing:micro_test",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
 
@@ -182,6 +182,6 @@ tflite_micro_cc_test(
     srcs = ["window_test.cc"],
     deps = [
         ":window",
-        "//tensorflow/lite/experimental/micro/testing:micro_test",
+        "//tensorflow/lite/micro/testing:micro_test",
     ],
 )

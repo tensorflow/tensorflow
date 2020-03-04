@@ -259,7 +259,9 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllReduce) {
   HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
       ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), {a, b}, reduction,
       /*replica_groups=*/{},
-      /*channel_id=*/absl::nullopt));
+      /*constrain_layout=*/false,
+      /*channel_id=*/absl::nullopt,
+      /*use_global_device_ids=*/false));
   builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, crs, 1));
 

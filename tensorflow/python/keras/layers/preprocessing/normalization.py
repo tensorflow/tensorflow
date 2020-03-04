@@ -63,9 +63,7 @@ class Normalization(CombinerPreprocessingLayer):
     dtype = dtype or K.floatx()
 
     super(Normalization, self).__init__(
-        combiner=Normalization._NormalizingCombiner(axis),
-        dtype=dtype,
-        **kwargs)
+        combiner=_NormalizingCombiner(axis), dtype=dtype, **kwargs)
 
     if axis == 0:
       raise ValueError('The argument \'axis\' may not be 0.')
@@ -96,7 +94,7 @@ class Normalization(CombinerPreprocessingLayer):
         name=_VARIANCE_NAME,
         shape=mean_and_var_shape,
         dtype=K.floatx(),
-        initializer=init_ops.zeros_initializer)
+        initializer=init_ops.ones_initializer)
     self.count = self._add_state_variable(
         name=_COUNT_NAME,
         shape=(),
@@ -129,112 +127,116 @@ class Normalization(CombinerPreprocessingLayer):
       weights.append(np.array(0))
     super(Normalization, self).set_weights(weights)
 
-  class _NormalizingCombiner(Combiner):
-    """Combiner for the Normalization preprocessing layer.
 
-    This class encapsulates the computations for finding the mean and variance
-    of a set of data in a stable and numerically correct way. Its associated
-    accumulator is a namedtuple('count', 'mean', 'variance').
+class _NormalizingAccumulator(
+    collections.namedtuple('_NormalizingAccumulator',
+                           ['count', 'mean', 'variance'])):
+  pass
 
-    Attributes:
-      axis: The axis to compute mean and var over.
-    """
 
-    def __init__(self, axis):
-      self.axis = axis
+class _NormalizingCombiner(Combiner):
+  """Combiner for the Normalization preprocessing layer.
 
-    def compute(self, values, accumulator=None):
-      """Compute a step in this computation, returning a new accumulator."""
+  This class encapsulates the computations for finding the mean and variance
+  of a set of data in a stable and numerically correct way. Its associated
+  accumulator is a namedtuple('count', 'mean', 'variance').
 
-      # This is the shape of all reduced axes (not specified in 'axis').
-      reduction_counts = np.delete(values.shape, self.axis)
-      # We get the number of elements that will be reduced by multiplying all
-      # values of 'shape' corresponding to the reduced axes.
-      count = np.prod(reduction_counts, dtype=np.int32)
+  Attributes:
+    axis: The axis to compute mean and var over.
+  """
 
-      # We want to reduce across dimensions except those specified in 'axis'
-      # when using np.mean or np.variance; create the tuple of axes to reduce
-      # over here.
-      reduction_axes = tuple(np.delete(range(values.ndim), self.axis))
-      mean = np.mean(values, axis=reduction_axes, dtype=np.float64)
-      variance = np.var(values, axis=reduction_axes, dtype=np.float64)
+  def __init__(self, axis):
+    self.axis = axis
 
-      # Create an accumulator with our new data and either return it or combine
-      # it with the passed accumulator.
-      sanitized_accumulator = self._create_accumulator(count, mean, variance)
-      if accumulator is None:
-        return sanitized_accumulator
-      else:
-        return self.merge([accumulator, sanitized_accumulator])
+  def compute(self, values, accumulator=None):
+    """Compute a step in this computation, returning a new accumulator."""
 
-    def merge(self, accumulators):
-      """Merge several accumulators to a single accumulator."""
-      # Combine accumulators and return the result.
-      combined_count = np.sum(
-          [accumulator.count for accumulator in accumulators])
+    # This is the shape of all reduced axes (not specified in 'axis').
+    reduction_counts = np.delete(values.shape, self.axis)
+    # We get the number of elements that will be reduced by multiplying all
+    # values of 'shape' corresponding to the reduced axes.
+    count = np.prod(reduction_counts, dtype=np.int32)
 
-      # To combine accumulator means, we weight each accumulator's mean by the
-      # number of elements that were accumulated, and then divide by the
-      # total number of elements.
-      combined_mean = np.add.reduce([
-          accumulator.mean * accumulator.count for accumulator in accumulators
-      ]) / combined_count
+    # We want to reduce across dimensions except those specified in 'axis'
+    # when using np.mean or np.variance; create the tuple of axes to reduce
+    # over here.
+    reduction_axes = tuple(np.delete(range(values.ndim), self.axis))
+    mean = np.mean(values, axis=reduction_axes, dtype=np.float64)
+    variance = np.var(values, axis=reduction_axes, dtype=np.float64)
 
-      # The variance is computed using the lack-of-fit sum of squares
-      # formula (see https://en.wikipedia.org/wiki/Lack-of-fit_sum_of_squares).
-      def variance_contribution(accumulator):
-        return accumulator.count * (
-            accumulator.variance + np.square(accumulator.mean - combined_mean))
+    # Create an accumulator with our new data and either return it or combine
+    # it with the passed accumulator.
+    sanitized_accumulator = self._create_accumulator(count, mean, variance)
+    if accumulator is None:
+      return sanitized_accumulator
+    else:
+      return self.merge([accumulator, sanitized_accumulator])
 
-      combined_variance = np.add.reduce([
-          variance_contribution(accumulator) for accumulator in accumulators
-      ]) / combined_count
+  def merge(self, accumulators):
+    """Merge several accumulators to a single accumulator."""
+    # Combine accumulators and return the result.
+    combined_count = np.sum([accumulator.count for accumulator in accumulators])
 
-      return self._create_accumulator(combined_count, combined_mean,
-                                      combined_variance)
+    # To combine accumulator means, we weight each accumulator's mean by the
+    # number of elements that were accumulated, and then divide by the
+    # total number of elements.
+    combined_mean = np.add.reduce([
+        accumulator.mean * accumulator.count for accumulator in accumulators
+    ]) / combined_count
 
-    def extract(self, accumulator):
-      """Convert an accumulator into a dict of output values."""
-      return {
-          _COUNT_NAME: accumulator.count,
-          _MEAN_NAME: accumulator.mean,
-          _VARIANCE_NAME: accumulator.variance
-      }
+    # The variance is computed using the lack-of-fit sum of squares
+    # formula (see https://en.wikipedia.org/wiki/Lack-of-fit_sum_of_squares).
+    def variance_contribution(accumulator):
+      return accumulator.count * (
+          accumulator.variance + np.square(accumulator.mean - combined_mean))
 
-    def restore(self, output):
-      """Create an accumulator based on 'output'."""
-      # There is no special internal state here, so we just return the relevant
-      # internal value.
-      count = output[_COUNT_NAME]
-      mean = output[_MEAN_NAME]
-      var = output[_VARIANCE_NAME]
-      if (count == 0 and (mean.any() != 0.0 or var.any() != 0.0)):
-        raise RuntimeError(
-            'The mean and/or variance of a Normalization preprocessing layer '
-            "were set without also setting 'count'. If 'count' is not also set,"
-            " 'adapt' cannot be called unless the 'reset_state' arg is True.")
-      return self._create_accumulator(output[_COUNT_NAME], output[_MEAN_NAME],
-                                      output[_VARIANCE_NAME])
+    combined_variance = np.add.reduce([
+        variance_contribution(accumulator) for accumulator in accumulators
+    ]) / combined_count
 
-    def serialize(self, accumulator):
-      """Serialize an accumulator for a remote call."""
-      output_dict = {
-          _COUNT_NAME: accumulator.count.tolist(),
-          _MEAN_NAME: accumulator.mean.tolist(),
-          _VARIANCE_NAME: accumulator.variance.tolist()
-      }
-      return compat.as_bytes(json.dumps(output_dict))
+    return self._create_accumulator(combined_count, combined_mean,
+                                    combined_variance)
 
-    def deserialize(self, encoded_accumulator):
-      """Deserialize an accumulator received from 'serialize()'."""
-      value_dict = json.loads(compat.as_text(encoded_accumulator))
-      return self._create_accumulator(
-          np.array(value_dict[_COUNT_NAME]), np.array(value_dict[_MEAN_NAME]),
-          np.array(value_dict[_VARIANCE_NAME]))
+  def extract(self, accumulator):
+    """Convert an accumulator into a dict of output values."""
+    return {
+        _COUNT_NAME: accumulator.count,
+        _MEAN_NAME: accumulator.mean,
+        _VARIANCE_NAME: accumulator.variance
+    }
 
-    def _create_accumulator(self, count, mean, variance):
-      """Convert any 'nan' values in the given accumulator to numeric values."""
-      return collections.namedtuple(
-          'Accumulator', ['count', 'mean', 'variance'])(np.array(count),
-                                                        np.nan_to_num(mean),
-                                                        np.nan_to_num(variance))
+  def restore(self, output):
+    """Create an accumulator based on 'output'."""
+    # There is no special internal state here, so we just return the relevant
+    # internal value.
+    count = output[_COUNT_NAME]
+    mean = output[_MEAN_NAME]
+    var = output[_VARIANCE_NAME]
+    if (count == 0 and (mean.any() != 0.0 or var.any() != 0.0)):
+      raise RuntimeError(
+          'The mean and/or variance of a Normalization preprocessing layer '
+          "were set without also setting 'count'. If 'count' is not also set,"
+          " 'adapt' cannot be called unless the 'reset_state' arg is True.")
+    return self._create_accumulator(output[_COUNT_NAME], output[_MEAN_NAME],
+                                    output[_VARIANCE_NAME])
+
+  def serialize(self, accumulator):
+    """Serialize an accumulator for a remote call."""
+    output_dict = {
+        _COUNT_NAME: accumulator.count.tolist(),
+        _MEAN_NAME: accumulator.mean.tolist(),
+        _VARIANCE_NAME: accumulator.variance.tolist()
+    }
+    return compat.as_bytes(json.dumps(output_dict))
+
+  def deserialize(self, encoded_accumulator):
+    """Deserialize an accumulator received from 'serialize()'."""
+    value_dict = json.loads(compat.as_text(encoded_accumulator))
+    return self._create_accumulator(
+        np.array(value_dict[_COUNT_NAME]), np.array(value_dict[_MEAN_NAME]),
+        np.array(value_dict[_VARIANCE_NAME]))
+
+  def _create_accumulator(self, count, mean, variance):
+    """Convert any 'nan' values in the given accumulator to numeric values."""
+    return _NormalizingAccumulator(
+        np.array(count), np.nan_to_num(mean), np.nan_to_num(variance))

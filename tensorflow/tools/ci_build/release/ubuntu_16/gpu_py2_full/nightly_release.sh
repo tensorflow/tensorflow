@@ -18,11 +18,9 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-set_bazel_outdir
-
 install_ubuntu_16_pip_deps pip2.7
 
-update_bazel_linux
+install_bazelisk
 
 python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 
@@ -31,7 +29,7 @@ export TF_NEED_GCP=1
 export TF_NEED_HDFS=1
 export TF_NEED_S3=1
 export TF_NEED_CUDA=1
-export TF_CUDA_VERSION=10.1
+export TF_CUDA_VERSION=10
 export TF_CUDNN_VERSION=7
 export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
 export TF_NEED_TENSORRT=1

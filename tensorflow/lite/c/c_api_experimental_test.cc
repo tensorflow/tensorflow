@@ -18,6 +18,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace {

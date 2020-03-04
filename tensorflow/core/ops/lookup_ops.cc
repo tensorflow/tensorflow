@@ -505,4 +505,14 @@ REGISTER_OP("InitializeTableFromTextFileV2")
       return Status::OK();
     });
 
+REGISTER_OP("InitializeTableFromDataset")
+    .Input("table_handle: resource")
+    .Input("dataset: variant")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &handle));
+      return Status::OK();
+    });
+
 }  // namespace tensorflow

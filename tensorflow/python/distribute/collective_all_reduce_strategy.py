@@ -63,7 +63,7 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
 
   When 'TF_CONFIG' environment variable is set, it parses cluster_spec,
   task_type and task_id from 'TF_CONFIG' and turns into a multi-worker strategy
-  which mirrores models on GPUs of all machines in a cluster. In the current
+  which mirrored models on GPUs of all machines in a cluster. In the current
   implementation, it uses all GPUs in a cluster and it assumes all workers have
   the same number of GPUs.
 
@@ -95,6 +95,7 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
         TFConfigClusterResolver which is instantiated from the TF_CONFIG env
         var.
     """
+    # TODO(b/150151677): consider move communication to CollectiveHints.
     super(CollectiveAllReduceStrategy, self).__init__(
         CollectiveAllReduceExtended(
             self,
@@ -111,7 +112,7 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
 
   @classmethod
   def _from_local_devices(cls, devices):
-    """A convenience method to create an obejct with a list of devices."""
+    """A convenience method to create an object with a list of devices."""
     obj = cls()
     obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
     return obj
@@ -209,6 +210,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         local_devices = tuple("/device:GPU:%d" % i for i in range(num_gpus))
       else:
         local_devices = ("/device:CPU:0",)
+
     self._worker_device = device_util.canonicalize("/device:CPU:0")
     self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
 
@@ -327,7 +329,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
     self._input_workers = input_lib.InputWorkers(
-        self._device_map, [(self._worker_device, self.worker_devices)])
+        [(self._worker_device, self.worker_devices)])
 
     # Add a default device so that ops without specified devices will not end up
     # on other workers.
@@ -504,7 +506,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     return updated_config
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.Mirrored) and
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
@@ -523,9 +525,12 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       # replicas in which case `value` would be a single value or value could
       # be 0.
       return cross_device_ops_lib.reduce_non_distributed_value(
-          reduce_op, self._device_map, value, destinations)
+          reduce_op, value, destinations, len(self.worker_devices))
     return self._get_cross_device_ops().reduce(
-        reduce_op, value, destinations=destinations)
+        reduce_op,
+        value,
+        destinations=destinations,
+        experimental_hints=experimental_hints)
 
   def _warn_nccl_no_gpu(self):
     if ((self._communication ==

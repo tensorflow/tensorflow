@@ -107,6 +107,7 @@ cc_library(
         "remove_device.cc",
         "remove_nodes.cc",
         "rename_attribute.cc",
+        "rename_node.cc",
         "rename_op.cc",
         "round_weights.cc",
         "set_device.cc",
@@ -182,6 +183,7 @@ tf_cc_test(
         "remove_device_test.cc",
         "remove_nodes_test.cc",
         "rename_attribute_test.cc",
+        "rename_node_test.cc",
         "rename_op_test.cc",
         "round_weights_test.cc",
         "set_device_test.cc",
@@ -339,7 +341,9 @@ tf_py_test(
     name = "transform_graph_py_test",
     size = "small",
     srcs = ["python/transform_graph_test.py"],
-    additional_deps = [
+    main = "python/transform_graph_test.py",
+    tags = ["v1only"],
+    deps = [
         ":transform_graph_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -347,6 +351,4 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
-    main = "python/transform_graph_test.py",
-    tags = ["v1only"],
 )

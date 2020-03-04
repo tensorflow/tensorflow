@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/aot/aot_only_var_handle_op.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -62,9 +63,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   std::vector<XlaCompiler::Argument> xla_args;
   TF_RETURN_IF_ERROR(CreateXlaArgs(*graph, &xla_args));
 
-  std::vector<xla::XlaBuilder::InputOutputAlias> xla_aliases;
-  PopulateXlaArgsAndXlaAlias(config, &xla_args, &xla_aliases);
-
+  PopulateXlaArgs(config, &xla_args);
   // Compile the graph into an XLA computation.
   XlaCompiler::Options compiler_options;
   compiler_options.client = client;
@@ -74,12 +73,15 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   compiler_options.allow_cpu_custom_calls = true;
   compiler_options.custom_fake_quant_op_calls =
       config.conversion_options().custom_fake_quant_op_calls();
+
   XlaCompiler compiler(compiler_options);
 
   XlaCompiler::CompilationResult result;
-  TF_RETURN_IF_ERROR(compiler.CompileGraph(XlaCompiler::CompileOptions(),
-                                           "tfcompile", std::move(graph),
-                                           xla_args, xla_aliases, &result));
+
+  XlaCompiler::CompileOptions options;
+  options.alias_resource_update = true;
+  TF_RETURN_IF_ERROR(compiler.CompileGraph(
+      options, "tfcompile", std::move(graph), xla_args, &result));
   *computation = std::move(*result.computation);
 
   int num_const_results = 0;
@@ -126,12 +128,28 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   return Status::OK();
 }
 
+void ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
+  for (auto& node : *graph_def->mutable_node()) {
+    if (node.op() == "VarHandleOp") {
+      node.set_op(tfcompile::kXlaAotOnlyVarHandleOp);
+    }
+  }
+  for (auto& fn : *graph_def->mutable_library()->mutable_function()) {
+    for (auto& node : *fn.mutable_node_def()) {
+      if (node.op() == "VarHandleOp") {
+        node.set_op(tfcompile::kXlaAotOnlyVarHandleOp);
+      }
+    }
+  }
+}
+
 }  // namespace
 
-Status ConvertGraphDefToXla(const GraphDef& graph_def,
-                            const tf2xla::Config& config, xla::Client* client,
+Status ConvertGraphDefToXla(GraphDef graph_def, const tf2xla::Config& config,
+                            xla::Client* client,
                             xla::XlaComputation* computation) {
   std::unique_ptr<Graph> graph;
+  ConvertVarHandlesToAotVarHandles(&graph_def);
   TF_RETURN_IF_ERROR(InitGraph(graph_def, config, &graph));
   TF_RETURN_IF_ERROR(
       ConvertGraphToXla(std::move(graph), config, client, computation));

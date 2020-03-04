@@ -114,7 +114,6 @@ class ParseExampleTest(test.TestCase):
           self.assertEqual(out[k].values.shape.as_list(), [None])
           self.assertEqual(out[k].dense_shape.shape.as_list(), [2])
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testEmptySerializedWithAllDefaults(self):
     sparse_name = "st_a"
     a_name = "a"
@@ -136,32 +135,33 @@ class ParseExampleTest(test.TestCase):
         c_name: np.array(2 * [c_default]),
     }
 
-    self._test({
-        "example_names": np.empty((0,), dtype=bytes),
-        "serialized": ops.convert_to_tensor(["", ""]),
-        "features": {
-            sparse_name:
-                parsing_ops.VarLenFeature(dtypes.int64),
-            a_name:
-                parsing_ops.FixedLenFeature(
-                    (1, 3), dtypes.int64, default_value=a_default),
-            b_name:
-                parsing_ops.FixedLenFeature(
-                    (3, 3), dtypes.string, default_value=b_default),
-            c_name:
-                parsing_ops.FixedLenFeature(
-                    (2,), dtypes.float32, default_value=c_default),
-        }
-    }, expected_output)
+    self._test(
+        {
+            "example_names": np.empty((0,), dtype=bytes),
+            "serialized": ops.convert_to_tensor(["", ""]),
+            "features": {
+                sparse_name:
+                    parsing_ops.VarLenFeature(dtypes.int64),
+                a_name:
+                    parsing_ops.FixedLenFeature(
+                        (1, 3), dtypes.int64, default_value=a_default),
+                b_name:
+                    parsing_ops.FixedLenFeature(
+                        (3, 3), dtypes.string, default_value=b_default),
+                c_name:
+                    parsing_ops.FixedLenFeature(
+                        (2,), dtypes.float32, default_value=c_default),
+            }
+        }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testEmptySerializedWithoutDefaultsShouldFail(self):
     input_features = {
         "st_a":
             parsing_ops.VarLenFeature(dtypes.int64),
         "a":
-            parsing_ops.FixedLenFeature(
-                (1, 3), dtypes.int64, default_value=[0, 42, 0]),
+            parsing_ops.FixedLenFeature((1, 3),
+                                        dtypes.int64,
+                                        default_value=[0, 42, 0]),
         "b":
             parsing_ops.FixedLenFeature(
                 (3, 3),
@@ -195,7 +195,6 @@ class ParseExampleTest(test.TestCase):
             errors_impl.OpError,
             "Name: in1, Feature: c \\(data type: float\\) is required"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testDenseNotMatchingShapeShouldFail(self):
     original = [
         example(features=features({
@@ -220,7 +219,6 @@ class ParseExampleTest(test.TestCase):
         expected_err=(errors_impl.OpError,
                       "Name: failing, Key: a, Index: 1.  Number of float val"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testDenseDefaultNoShapeShouldFail(self):
     original = [
         example(features=features({
@@ -240,12 +238,9 @@ class ParseExampleTest(test.TestCase):
         },
         expected_err=(ValueError, "Missing shape for feature a"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingSparse(self):
     original = [
-        example(features=features({
-            "st_c": float_feature([3, 4])
-        })),
+        example(features=features({"st_c": float_feature([3, 4])})),
         example(
             features=features({
                 "st_c": float_feature([]),  # empty float list
@@ -277,15 +272,15 @@ class ParseExampleTest(test.TestCase):
         "st_d": expected_st_d,
     }
 
-    self._test({
-        "serialized": ops.convert_to_tensor(serialized),
-        "features": {
-            "st_c": parsing_ops.VarLenFeature(dtypes.float32),
-            "st_d": parsing_ops.VarLenFeature(dtypes.string)
-        }
-    }, expected_output)
+    self._test(
+        {
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                "st_c": parsing_ops.VarLenFeature(dtypes.float32),
+                "st_d": parsing_ops.VarLenFeature(dtypes.string)
+            }
+        }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingSparseFeature(self):
     original = [
         example(
@@ -322,15 +317,16 @@ class ParseExampleTest(test.TestCase):
         "sp": expected_sp,
     }
 
-    self._test({
-        "serialized": ops.convert_to_tensor(serialized),
-        "features": {
-            "sp":
-                parsing_ops.SparseFeature(["idx"], "val", dtypes.float32, [13])
-        }
-    }, expected_output)
+    self._test(
+        {
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                "sp":
+                    parsing_ops.SparseFeature(["idx"], "val", dtypes.float32,
+                                              [13])
+            }
+        }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingSparseFeatureReuse(self):
     original = [
         example(
@@ -349,32 +345,37 @@ class ParseExampleTest(test.TestCase):
     serialized = [m.SerializeToString() for m in original]
 
     expected_sp1 = (  # indices, values, shape
-        np.array([[0, 5], [0, 10]], dtype=np.int64),
-        np.array([3.0, 4.0], dtype=np.float32), np.array(
-            [2, 13], dtype=np.int64))  # batch == 2, max_elems = 13
+        np.array([[0, 5], [0, 10]],
+                 dtype=np.int64), np.array([3.0, 4.0], dtype=np.float32),
+        np.array([2, 13], dtype=np.int64))  # batch == 2, max_elems = 13
 
     expected_sp2 = (  # indices, values, shape
-        np.array([[0, 5], [0, 10]], dtype=np.int64),
-        np.array([5.0, 6.0], dtype=np.float32), np.array(
-            [2, 7], dtype=np.int64))  # batch == 2, max_elems = 13
+        np.array([[0, 5], [0, 10]],
+                 dtype=np.int64), np.array([5.0, 6.0], dtype=np.float32),
+        np.array([2, 7], dtype=np.int64))  # batch == 2, max_elems = 13
 
     expected_output = {
         "sp1": expected_sp1,
         "sp2": expected_sp2,
     }
 
-    self._test({
-        "serialized": ops.convert_to_tensor(serialized),
-        "features": {
-            "sp1":
-                parsing_ops.SparseFeature("idx", "val1", dtypes.float32, 13),
-            "sp2":
-                parsing_ops.SparseFeature(
-                    "idx", "val2", dtypes.float32, size=7, already_sorted=True)
-        }
-    }, expected_output)
+    self._test(
+        {
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                "sp1":
+                    parsing_ops.SparseFeature("idx", "val1", dtypes.float32,
+                                              13),
+                "sp2":
+                    parsing_ops.SparseFeature(
+                        "idx",
+                        "val2",
+                        dtypes.float32,
+                        size=7,
+                        already_sorted=True)
+            }
+        }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContaining3DSparseFeature(self):
     original = [
         example(
@@ -406,9 +407,8 @@ class ParseExampleTest(test.TestCase):
 
     expected_sp = (
         # indices
-        np.array(
-            [[0, 5, 0], [0, 10, 2], [3, 0, 1], [3, 3, 2], [3, 9, 0]],
-            dtype=np.int64),
+        np.array([[0, 5, 0], [0, 10, 2], [3, 0, 1], [3, 3, 2], [3, 9, 0]],
+                 dtype=np.int64),
         # values
         np.array([3.0, 4.0, 1.0, -1.0, 2.0], dtype=np.float32),
         # shape batch == 4, max_elems = 13
@@ -418,16 +418,16 @@ class ParseExampleTest(test.TestCase):
         "sp": expected_sp,
     }
 
-    self._test({
-        "serialized": ops.convert_to_tensor(serialized),
-        "features": {
-            "sp":
-                parsing_ops.SparseFeature(["idx0", "idx1"], "val",
-                                          dtypes.float32, [13, 3])
-        }
-    }, expected_output)
+    self._test(
+        {
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                "sp":
+                    parsing_ops.SparseFeature(["idx0", "idx1"], "val",
+                                              dtypes.float32, [13, 3])
+            }
+        }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingDense(self):
     aname = "a"
     bname = "b*has+a:tricky_name"
@@ -454,19 +454,21 @@ class ParseExampleTest(test.TestCase):
     }
 
     # No defaults, values required
-    self._test({
-        "serialized": ops.convert_to_tensor(serialized),
-        "features": {
-            aname:
-                parsing_ops.FixedLenFeature((1, 2, 1), dtype=dtypes.float32),
-            bname:
-                parsing_ops.FixedLenFeature((1, 1, 1, 1), dtype=dtypes.string),
-        }
-    }, expected_output)
+    self._test(
+        {
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                aname:
+                    parsing_ops.FixedLenFeature(
+                        (1, 2, 1), dtype=dtypes.float32),
+                bname:
+                    parsing_ops.FixedLenFeature(
+                        (1, 1, 1, 1), dtype=dtypes.string),
+            }
+        }, expected_output)
 
   # This test is identical as the previous one except
   # for the creation of 'serialized'.
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingDenseWithConcat(self):
     aname = "a"
     bname = "b*has+a:tricky_name"
@@ -504,17 +506,19 @@ class ParseExampleTest(test.TestCase):
     }
 
     # No defaults, values required
-    self._test({
-        "serialized": ops.convert_to_tensor(serialized),
-        "features": {
-            aname:
-                parsing_ops.FixedLenFeature((1, 2, 1), dtype=dtypes.float32),
-            bname:
-                parsing_ops.FixedLenFeature((1, 1, 1, 1), dtype=dtypes.string),
-        }
-    }, expected_output)
+    self._test(
+        {
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                aname:
+                    parsing_ops.FixedLenFeature(
+                        (1, 2, 1), dtype=dtypes.float32),
+                bname:
+                    parsing_ops.FixedLenFeature(
+                        (1, 1, 1, 1), dtype=dtypes.string),
+            }
+        }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingDenseScalar(self):
     original = [
         example(features=features({
@@ -530,16 +534,16 @@ class ParseExampleTest(test.TestCase):
             np.array([[1], [-1]], dtype=np.float32)  # 2x1 (column vector)
     }
 
-    self._test({
-        "serialized": ops.convert_to_tensor(serialized),
-        "features": {
-            "a":
-                parsing_ops.FixedLenFeature(
-                    (1,), dtype=dtypes.float32, default_value=-1),
-        }
-    }, expected_output)
+    self._test(
+        {
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                "a":
+                    parsing_ops.FixedLenFeature(
+                        (1,), dtype=dtypes.float32, default_value=-1),
+            }
+        }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingDenseWithDefaults(self):
     original = [
         example(features=features({
@@ -548,44 +552,44 @@ class ParseExampleTest(test.TestCase):
         example(features=features({
             "b": bytes_feature([b"b1"]),
         })),
-        example(features=features({
-            "b": feature()
-        })),
+        example(features=features({"b": feature()})),
     ]
 
     serialized = [m.SerializeToString() for m in original]
 
     expected_output = {
         "a":
-            np.array([[1, 1], [3, -3], [3, -3]], dtype=np.float32).reshape(
-                3, 1, 2, 1),
+            np.array([[1, 1], [3, -3], [3, -3]],
+                     dtype=np.float32).reshape(3, 1, 2, 1),
         "b":
-            np.array(["tmp_str", "b1", "tmp_str"], dtype=bytes).reshape(
-                3, 1, 1, 1, 1),
+            np.array(["tmp_str", "b1", "tmp_str"],
+                     dtype=bytes).reshape(3, 1, 1, 1, 1),
     }
 
-    self._test({
-        "serialized": ops.convert_to_tensor(serialized),
-        "features": {
-            "a":
-                parsing_ops.FixedLenFeature(
-                    (1, 2, 1), dtype=dtypes.float32, default_value=[3.0, -3.0]),
-            "b":
-                parsing_ops.FixedLenFeature(
-                    (1, 1, 1, 1), dtype=dtypes.string, default_value="tmp_str"),
-        }
-    }, expected_output)
+    self._test(
+        {
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                "a":
+                    parsing_ops.FixedLenFeature((1, 2, 1),
+                                                dtype=dtypes.float32,
+                                                default_value=[3.0, -3.0]),
+                "b":
+                    parsing_ops.FixedLenFeature((1, 1, 1, 1),
+                                                dtype=dtypes.string,
+                                                default_value="tmp_str"),
+            }
+        }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingSparseAndSparseFeatureAndDenseWithNoDefault(self):
     expected_st_a = (  # indices, values, shape
         np.empty((0, 2), dtype=np.int64),  # indices
         np.empty((0,), dtype=np.int64),  # sp_a is DT_INT64
         np.array([2, 0], dtype=np.int64))  # batch == 2, max_elems = 0
     expected_sp = (  # indices, values, shape
-        np.array([[0, 0], [0, 3], [1, 7]], dtype=np.int64),
-        np.array(["a", "b", "c"], dtype="|S"), np.array(
-            [2, 13], dtype=np.int64))  # batch == 4, max_elems = 13
+        np.array([[0, 0], [0, 3], [1, 7]],
+                 dtype=np.int64), np.array(["a", "b", "c"], dtype="|S"),
+        np.array([2, 13], dtype=np.int64))  # batch == 4, max_elems = 13
 
     original = [
         example(
@@ -637,16 +641,15 @@ class ParseExampleTest(test.TestCase):
         },
         expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingSparseAndSparseFeatureWithReuse(self):
     expected_idx = (  # indices, values, shape
-        np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.int64),
-        np.array([0, 3, 7, 1]),
+        np.array([[0, 0], [0, 1], [1, 0], [1, 1]],
+                 dtype=np.int64), np.array([0, 3, 7, 1]),
         np.array([2, 2], dtype=np.int64))  # batch == 4, max_elems = 2
 
     expected_sp = (  # indices, values, shape
-        np.array([[0, 0], [0, 3], [1, 1], [1, 7]], dtype=np.int64),
-        np.array(["a", "b", "d", "c"], dtype="|S"),
+        np.array([[0, 0], [0, 3], [1, 1], [1, 7]],
+                 dtype=np.int64), np.array(["a", "b", "d", "c"], dtype="|S"),
         np.array([2, 13], dtype=np.int64))  # batch == 4, max_elems = 13
 
     original = [
@@ -670,16 +673,18 @@ class ParseExampleTest(test.TestCase):
         "sp": expected_sp,
     }
 
-    self._test({
-        "example_names": names,
-        "serialized": ops.convert_to_tensor(serialized),
-        "features": {
-            "idx":
-                parsing_ops.VarLenFeature(dtypes.int64),
-            "sp":
-                parsing_ops.SparseFeature(["idx"], "val", dtypes.string, [13]),
-        }
-    }, expected_output)
+    self._test(
+        {
+            "example_names": names,
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                "idx":
+                    parsing_ops.VarLenFeature(dtypes.int64),
+                "sp":
+                    parsing_ops.SparseFeature(["idx"], "val", dtypes.string,
+                                              [13]),
+            }
+        }, expected_output)
 
   def _testSerializedContainingVarLenDenseLargerBatch(self, batch_size):
     # During parsing, data read from the serialized proto is stored in buffers.
@@ -725,31 +730,31 @@ class ParseExampleTest(test.TestCase):
 
     serialized = [m.SerializeToString() for m in original]
 
-    self._test({
-        "serialized": ops.convert_to_tensor(serialized, dtype=dtypes.string),
-        "features": {
-            "a":
-                parsing_ops.FixedLenSequenceFeature(
-                    shape=(),
-                    dtype=dtypes.int64,
-                    allow_missing=True,
-                    default_value=-1),
-            "b":
-                parsing_ops.FixedLenSequenceFeature(
-                    shape=[],
-                    dtype=dtypes.string,
-                    allow_missing=True,
-                    default_value="default"),
-        }
-    }, expected_output)
+    self._test(
+        {
+            "serialized":
+                ops.convert_to_tensor(serialized, dtype=dtypes.string),
+            "features": {
+                "a":
+                    parsing_ops.FixedLenSequenceFeature(
+                        shape=(),
+                        dtype=dtypes.int64,
+                        allow_missing=True,
+                        default_value=-1),
+                "b":
+                    parsing_ops.FixedLenSequenceFeature(
+                        shape=[],
+                        dtype=dtypes.string,
+                        allow_missing=True,
+                        default_value="default"),
+            }
+        }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingVarLenDenseLargerBatch(self):
     np.random.seed(3456)
     for batch_size in (1, 10, 20, 100, 256):
       self._testSerializedContainingVarLenDenseLargerBatch(batch_size)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingVarLenDense(self):
     aname = "a"
     bname = "b"
@@ -781,75 +786,74 @@ class ParseExampleTest(test.TestCase):
 
     expected_output = {
         aname:
-            np.array(
-                [
-                    [0, 0, 0, 0],
-                    [1, 1, 0, 0],
-                    [-1, -1, 2, 2],
-                    [0, 0, 0, 0],
-                ],
-                dtype=np.float32).reshape(4, 2, 2, 1),
+            np.array([
+                [0, 0, 0, 0],
+                [1, 1, 0, 0],
+                [-1, -1, 2, 2],
+                [0, 0, 0, 0],
+            ],
+                     dtype=np.float32).reshape(4, 2, 2, 1),
         bname:
-            np.array(
-                [["", ""], ["b0_str", "b1_str"], ["b1", ""], ["", ""]],
-                dtype=bytes).reshape(4, 2, 1, 1, 1),
+            np.array([["", ""], ["b0_str", "b1_str"], ["b1", ""], ["", ""]],
+                     dtype=bytes).reshape(4, 2, 1, 1, 1),
         cname:
             np.array([2, 0, 0, 3], dtype=np.int64).reshape(4, 1),
         dname:
             np.empty(shape=(4, 0), dtype=bytes),
     }
 
-    self._test({
-        "example_names": example_names,
-        "serialized": ops.convert_to_tensor(serialized),
-        "features": {
-            aname:
-                parsing_ops.FixedLenSequenceFeature(
-                    (2, 1), dtype=dtypes.float32, allow_missing=True),
-            bname:
-                parsing_ops.FixedLenSequenceFeature(
-                    (1, 1, 1), dtype=dtypes.string, allow_missing=True),
-            cname:
-                parsing_ops.FixedLenSequenceFeature(
-                    shape=[], dtype=dtypes.int64, allow_missing=True),
-            dname:
-                parsing_ops.FixedLenSequenceFeature(
-                    shape=[], dtype=dtypes.string, allow_missing=True),
-        }
-    }, expected_output)
+    self._test(
+        {
+            "example_names": example_names,
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                aname:
+                    parsing_ops.FixedLenSequenceFeature(
+                        (2, 1), dtype=dtypes.float32, allow_missing=True),
+                bname:
+                    parsing_ops.FixedLenSequenceFeature(
+                        (1, 1, 1), dtype=dtypes.string, allow_missing=True),
+                cname:
+                    parsing_ops.FixedLenSequenceFeature(
+                        shape=[], dtype=dtypes.int64, allow_missing=True),
+                dname:
+                    parsing_ops.FixedLenSequenceFeature(
+                        shape=[], dtype=dtypes.string, allow_missing=True),
+            }
+        }, expected_output)
 
     # Test with padding values.
     expected_output_custom_padding = dict(expected_output)
-    expected_output_custom_padding[aname] = np.array(
-        [
-            [-2, -2, -2, -2],
-            [1, 1, -2, -2],
-            [-1, -1, 2, 2],
-            [-2, -2, -2, -2],
-        ],
-        dtype=np.float32).reshape(4, 2, 2, 1)
+    expected_output_custom_padding[aname] = np.array([
+        [-2, -2, -2, -2],
+        [1, 1, -2, -2],
+        [-1, -1, 2, 2],
+        [-2, -2, -2, -2],
+    ],
+                                                     dtype=np.float32).reshape(
+                                                         4, 2, 2, 1)
 
-    self._test({
-        "example_names": example_names,
-        "serialized": ops.convert_to_tensor(serialized),
-        "features": {
-            aname:
-                parsing_ops.FixedLenSequenceFeature(
-                    (2, 1),
-                    dtype=dtypes.float32,
-                    allow_missing=True,
-                    default_value=-2.0),
-            bname:
-                parsing_ops.FixedLenSequenceFeature(
-                    (1, 1, 1), dtype=dtypes.string, allow_missing=True),
-            cname:
-                parsing_ops.FixedLenSequenceFeature(
-                    shape=[], dtype=dtypes.int64, allow_missing=True),
-            dname:
-                parsing_ops.FixedLenSequenceFeature(
-                    shape=[], dtype=dtypes.string, allow_missing=True),
-        }
-    }, expected_output_custom_padding)
+    self._test(
+        {
+            "example_names": example_names,
+            "serialized": ops.convert_to_tensor(serialized),
+            "features": {
+                aname:
+                    parsing_ops.FixedLenSequenceFeature((2, 1),
+                                                        dtype=dtypes.float32,
+                                                        allow_missing=True,
+                                                        default_value=-2.0),
+                bname:
+                    parsing_ops.FixedLenSequenceFeature(
+                        (1, 1, 1), dtype=dtypes.string, allow_missing=True),
+                cname:
+                    parsing_ops.FixedLenSequenceFeature(
+                        shape=[], dtype=dtypes.int64, allow_missing=True),
+                dname:
+                    parsing_ops.FixedLenSequenceFeature(
+                        shape=[], dtype=dtypes.string, allow_missing=True),
+            }
+        }, expected_output_custom_padding)
 
     # Change number of required values so the inputs are not a
     # multiple of this size.
@@ -876,11 +880,10 @@ class ParseExampleTest(test.TestCase):
             "serialized": ops.convert_to_tensor(serialized),
             "features": {
                 aname:
-                    parsing_ops.FixedLenSequenceFeature(
-                        (2, 1),
-                        dtype=dtypes.float32,
-                        allow_missing=True,
-                        default_value=[]),
+                    parsing_ops.FixedLenSequenceFeature((2, 1),
+                                                        dtype=dtypes.float32,
+                                                        allow_missing=True,
+                                                        default_value=[]),
                 bname:
                     parsing_ops.FixedLenSequenceFeature(
                         (2, 1, 1), dtype=dtypes.string, allow_missing=True),
@@ -943,7 +946,6 @@ class ParseExampleTest(test.TestCase):
                       "Unsupported: FixedLenSequenceFeature requires "
                       "allow_missing to be True."))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingRaggedFeatureWithNoPartitions(self):
     original = [
         example(features=features({"rt_c": float_feature([3, 4])})),
@@ -1002,7 +1004,6 @@ class ParseExampleTest(test.TestCase):
             "features": test_features
         }, batch_expected_out)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingRaggedFeature(self):
     original = [
         example(
@@ -1121,7 +1122,6 @@ class ParseExampleTest(test.TestCase):
         "features": test_features
     }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingNestedRaggedFeature(self):
     """Test RaggedFeature with 3 partitions."""
     original = [
@@ -1203,7 +1203,6 @@ class ParseSingleExampleTest(test.TestCase):
           self.assertEqual(tuple(out[k].values.shape.as_list()), (None,))
           self.assertEqual(tuple(out[k].dense_shape.shape.as_list()), (1,))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSingleExampleWithSparseAndSparseFeatureAndDense(self):
     original = example(
         features=features({
@@ -1272,7 +1271,6 @@ class ParseSingleExampleTest(test.TestCase):
             "features": test_features,
         }, expected_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSingleExampleWithAllFeatureTypes(self):
     original = example(
         features=features({
@@ -1532,8 +1530,8 @@ class ParseSequenceExampleTest(test.TestCase):
           new_values[k] = np.expand_dims(v, axis=0)
         else:
           # Sparse tensor.
-          new_values[k] = (np.insert(v[0], 0, 0, axis=1), v[1],
-                           np.insert(v[2], 0, 1))
+          new_values[k] = (np.insert(v[0], 0, 0,
+                                     axis=1), v[1], np.insert(v[2], 0, 1))
       expected_context_values = new_values
 
     expected_length_values = {}
@@ -1550,8 +1548,8 @@ class ParseSequenceExampleTest(test.TestCase):
           new_values[k] = np.expand_dims(v, axis=0)
         else:
           # Sparse tensor.
-          new_values[k] = (np.insert(v[0], 0, 0, axis=1), v[1],
-                           np.insert(v[2], 0, 1))
+          new_values[k] = (np.insert(v[0], 0, 0,
+                                     axis=1), v[1], np.insert(v[2], 0, 1))
       expected_feat_list_values = new_values
 
     self._test(
@@ -1562,7 +1560,6 @@ class ParseSequenceExampleTest(test.TestCase):
         expected_err=expected_err,
         batch=True)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithSparseAndDenseContext(self):
     original = sequence_example(
         context=features({
@@ -1606,7 +1603,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_context_values=expected_context_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithMultipleSizeFeatureLists(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1670,7 +1666,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithoutDebugName(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1728,7 +1723,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithSparseAndDenseFeatureLists(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1787,7 +1781,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithEmptyFeatureInFeatureLists(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1820,7 +1813,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         expected_feat_list_values=expected_feature_list_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithInconsistentDataFails(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1841,12 +1833,10 @@ class ParseSequenceExampleTest(test.TestCase):
         expected_err=(errors_impl.OpError, "Feature list: a, Index: 1."
                       "  Data types don't match. Expected type: int64"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithWrongDataTypeFails(self):
     original = sequence_example(
-        feature_lists=feature_lists({
-            "a": feature_list([float_feature([2, 3])])
-        }))
+        feature_lists=feature_lists(
+            {"a": feature_list([float_feature([2, 3])])}))
 
     serialized = original.SerializeToString()
 
@@ -1862,7 +1852,6 @@ class ParseSequenceExampleTest(test.TestCase):
                       "Feature list: a, Index: 0.  Data types don't match."
                       " Expected type: int64"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithWrongSparseDataTypeFails(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1888,7 +1877,6 @@ class ParseSequenceExampleTest(test.TestCase):
                       "Name: in1, Feature list: a, Index: 2."
                       "  Data types don't match. Expected type: int64"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithWrongShapeFails(self):
     original = sequence_example(
         feature_lists=feature_lists({
@@ -1918,7 +1906,6 @@ class ParseSequenceExampleTest(test.TestCase):
             r"Total values size: 5 is not consistent with output "
             r"shape: \[\?,2\]"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleListWithWrongShapeFails2(self):
     # This exercises a different code path for FastParseSequenceExample than
     # testSequenceExampleListWithWrongShapeFails (in that test, we can tell that
@@ -1944,7 +1931,6 @@ class ParseSequenceExampleTest(test.TestCase):
                       r"  Number of (int64 )?values != expected."
                       r"  values size: 1 but output shape: \[2\]"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleWithMissingFeatureListFails(self):
     original = sequence_example(feature_lists=feature_lists({}))
 
@@ -1965,7 +1951,6 @@ class ParseSequenceExampleTest(test.TestCase):
             " feature_list_dense_missing_assumed_empty or"
             " feature_list_dense_defaults?"))
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSequenceExampleBatch(self):
     first = sequence_example(
         feature_lists=feature_lists({
@@ -2046,7 +2031,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         batch=True)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingRaggedFeatureWithNoPartitions(self):
     original = [
         sequence_example(
@@ -2147,7 +2131,6 @@ class ParseSequenceExampleTest(test.TestCase):
         batch_feature_list_expected_out,
         batch=True)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingNestedRaggedFeature(self):
     """Test RaggedFeatures with nested partitions."""
     original = [
@@ -2271,7 +2254,6 @@ class ParseSequenceExampleTest(test.TestCase):
         },
         batch=False)
 
-  @test_util.with_forward_compatibility_horizons(None, [2019, 10, 31])
   def testSerializedContainingMisalignedNestedRaggedFeature(self):
     """FeatureList with 2 value tensors but only one splits tensor."""
     original = sequence_example(
@@ -2410,41 +2392,25 @@ class DecodeJSONExampleTest(test.TestCase):
 
   def testDenseFeaturesScalar(self):
     self._testRoundTrip(
-        example(features=features({
-            "a": float_feature([1, 1, 3])
-        })))
+        example(features=features({"a": float_feature([1, 1, 3])})))
 
   def testDenseFeaturesVector(self):
     self._testRoundTrip([
-        example(features=features({
-            "a": float_feature([1, 1, 3])
-        })),
-        example(features=features({
-            "a": float_feature([-1, -1, 2])
-        })),
+        example(features=features({"a": float_feature([1, 1, 3])})),
+        example(features=features({"a": float_feature([-1, -1, 2])})),
     ])
 
   def testDenseFeaturesMatrix(self):
     self._testRoundTrip([
-        [example(features=features({
-            "a": float_feature([1, 1, 3])
-        }))],
-        [example(features=features({
-            "a": float_feature([-1, -1, 2])
-        }))],
+        [example(features=features({"a": float_feature([1, 1, 3])}))],
+        [example(features=features({"a": float_feature([-1, -1, 2])}))],
     ])
 
   def testSparseFeatures(self):
     self._testRoundTrip([
-        example(features=features({
-            "st_c": float_feature([3, 4])
-        })),
-        example(features=features({
-            "st_c": float_feature([])
-        })),
-        example(features=features({
-            "st_d": feature()
-        })),
+        example(features=features({"st_c": float_feature([3, 4])})),
+        example(features=features({"st_c": float_feature([])})),
+        example(features=features({"st_d": feature()})),
         example(
             features=features({
                 "st_c": float_feature([1, 2, -1]),

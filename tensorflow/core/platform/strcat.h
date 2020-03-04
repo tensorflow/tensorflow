@@ -124,12 +124,8 @@ class AlphaNum {
   AlphaNum(const StringPiece &pc) : piece_(pc) {}  // NOLINT(runtime/explicit)
   AlphaNum(const tensorflow::string &str)          // NOLINT(runtime/explicit)
       : piece_(str) {}
-#ifdef USE_TSTRING
-  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
-  // migration.
   AlphaNum(const tensorflow::tstring &str)  // NOLINT(runtime/explicit)
       : piece_(str) {}
-#endif
   template <typename A>
   AlphaNum(const std::basic_string<char, std::char_traits<char>, A> &str)
       : piece_(str) {}  // NOLINT(runtime/explicit)

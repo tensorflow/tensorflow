@@ -240,6 +240,18 @@ class Env {
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   Status IsDirectory(const string& fname);
 
+  /// \brief Returns whether the given path is on a file system
+  /// that has atomic move capabilities. This can be used
+  /// to determine if there needs to be a temp location to safely write objects.
+  /// The second boolean argument has_atomic_move contains this information.
+  ///
+  /// Returns one of the following status codes (not guaranteed exhaustive):
+  ///  * OK - The path is on a recognized file system,
+  ///         so has_atomic_move holds the above information.
+  ///  * UNIMPLEMENTED - The file system of the path hasn't been implemented in
+  ///  TF
+  Status HasAtomicMove(const string& path, bool* has_atomic_move);
+
   /// Stores the size of `fname` in `*file_size`.
   Status GetFileSize(const string& fname, uint64* file_size);
 
@@ -431,6 +443,15 @@ class Thread {
   TF_DISALLOW_COPY_AND_ASSIGN(Thread);
 };
 
+/// \brief Cross-platform setenv.
+///
+/// Since setenv() is not available on windows, we provide an
+/// alternative with platform specific implementations here.
+int setenv(const char* name, const char* value, int overwrite);
+
+/// Cross-platform unsetenv.
+int unsetenv(const char* name);
+
 /// \brief Options to configure a Thread.
 ///
 /// Note that the options are all hints, and the
@@ -471,6 +492,12 @@ Status WriteTextProto(Env* env, const string& fname,
 
 /// Read contents of named file and parse as text encoded proto data
 /// and store into `*proto`.
+template <typename T, typename std::enable_if<!std::is_base_of<
+                          protobuf::Message, T>::value>::type* = nullptr>
+Status ReadTextProto(Env* env, const string& fname, T* proto) {
+  return errors::Unimplemented("Can't parse text protos with protolite.");
+}
+
 Status ReadTextProto(Env* env, const string& fname,
                      ::tensorflow::protobuf::Message* proto);
 

@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import tempfile
+
 import numpy as np
 from six.moves import range
 import tensorflow as tf
@@ -220,8 +221,8 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     """
     converter = tf.lite.TFLiteConverter.from_session(sess, [input_tensor],
                                                      [output_tensor])
-    tflite = converter.convert()
     converter.experimental_new_converter = use_mlir_converter
+    tflite = converter.convert()
 
     interpreter = tf.lite.Interpreter(model_content=tflite)
 
@@ -257,6 +258,10 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, False)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
+    # Test MLIR-Converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, True)
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
+
   @test_util.enable_control_flow_v2
   def testDynamicRnnMultiRnnCell(self):
     sess = tf.compat.v1.Session(config=CONFIG)
@@ -275,6 +280,10 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
 
     # Test Toco-converted model.
     result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, False)
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
+
+    # Test MLIR-converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, True)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
 

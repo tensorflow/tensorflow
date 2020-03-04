@@ -255,10 +255,10 @@ class BoundedTensorSpec(TensorSpec):
       raise ValueError("maximum is not compatible with shape. "
                        "Message: {!r}.".format(exception))
 
-    self._minimum = np.array(minimum, dtype=self.dtype.as_numpy_dtype())
+    self._minimum = np.array(minimum, dtype=self.dtype.as_numpy_dtype)
     self._minimum.setflags(write=False)
 
-    self._maximum = np.array(maximum, dtype=self.dtype.as_numpy_dtype())
+    self._maximum = np.array(maximum, dtype=self.dtype.as_numpy_dtype)
     self._maximum.setflags(write=False)
 
   @classmethod

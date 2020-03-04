@@ -128,6 +128,9 @@ Vendor ParseVendor(const std::string& device_name,
   } else if (d_name.find("nvidia") != std::string::npos ||
              v_name.find("nvidia") != std::string::npos) {
     return Vendor::NVIDIA;
+  } else if (d_name.find("advanced micro devices") != std::string::npos ||
+             v_name.find("advanced micro devices") != std::string::npos) {
+    return Vendor::AMD;
   } else {
     return Vendor::UNKNOWN;
   }
@@ -135,7 +138,7 @@ Vendor ParseVendor(const std::string& device_name,
 
 // check that gpu_version belong to range min_version-max_version
 // min_version is included and max_version is excluded.
-bool isGPUVersionInRange(int gpu_version, int min_version, int max_version) {
+bool IsGPUVersionInRange(int gpu_version, int min_version, int max_version) {
   return gpu_version >= min_version && gpu_version < max_version;
 }
 }  // namespace
@@ -184,6 +187,8 @@ std::string VendorToString(Vendor v) {
       return "PowerVR";
     case Vendor::NVIDIA:
       return "NVIDIA";
+    case Vendor::AMD:
+      return "AMD";
     case Vendor::UNKNOWN:
       return "unknown vendor";
   }
@@ -262,20 +267,57 @@ DeviceInfo::DeviceInfo(cl_device_id id)
   extensions =
       absl::StrSplit(GetDeviceInfo<std::string>(id, CL_DEVICE_EXTENSIONS), ' ');
   supports_fp16 = false;
+  supports_image3d_writes = false;
   for (const auto& ext : extensions) {
     if (ext == "cl_khr_fp16") {
       supports_fp16 = true;
     }
+    if (ext == "cl_khr_3d_image_writes") {
+      supports_image3d_writes = true;
+    }
   }
+
+  f32_config =
+      GetDeviceInfo<cl_device_fp_config>(id, CL_DEVICE_SINGLE_FP_CONFIG);
+  supports_fp32_rtn = f32_config & CL_FP_ROUND_TO_NEAREST;
+
+  if (supports_fp16) {
+    auto status = GetDeviceInfo<cl_device_fp_config>(
+        id, CL_DEVICE_HALF_FP_CONFIG, &f16_config);
+    // AMD supports cl_khr_fp16 but CL_DEVICE_HALF_FP_CONFIG is empty.
+    if (status.ok() && vendor != Vendor::AMD) {
+      supports_fp16_rtn = f16_config & CL_FP_ROUND_TO_NEAREST;
+    } else {  // happens on PowerVR
+      f16_config = f32_config;
+      supports_fp16_rtn = supports_fp32_rtn;
+    }
+  } else {
+    f16_config = 0;
+    supports_fp16_rtn = false;
+  }
+
   if (vendor == Vendor::POWERVR && !supports_fp16) {
     // PowerVR doesn't have full support of fp16 and so doesn't list this
     // extension. But it can support fp16 in MADs and as buffers/textures types,
     // so we will use it.
     supports_fp16 = true;
+    f16_config = f32_config;
+    supports_fp16_rtn = supports_fp32_rtn;
+  }
+
+  if (!supports_image3d_writes &&
+      ((vendor == Vendor::QUALCOMM &&
+        IsGPUVersionInRange(adreno_info.gpu_version, 400, 500)) ||
+       vendor == Vendor::NVIDIA)) {
+    // in local tests Adreno 430 can write in image 3d, at least on small sizes,
+    // but it doesn't have cl_khr_3d_image_writes in list of available
+    // extensions
+    // The same for NVidia
+    supports_image3d_writes = true;
   }
   compute_units_count = GetDeviceInfo<cl_uint>(id, CL_DEVICE_MAX_COMPUTE_UNITS);
-  image2d_max_width = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_HEIGHT);
-  image2d_max_height = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_WIDTH);
+  image2d_max_width = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_WIDTH);
+  image2d_max_height = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_HEIGHT);
   buffer_max_size = GetDeviceInfo<cl_ulong>(id, CL_DEVICE_MAX_MEM_ALLOC_SIZE);
   if (cl_version >= OpenCLVersion::CL_1_2) {
     image_buffer_max_size =
@@ -283,6 +325,9 @@ DeviceInfo::DeviceInfo(cl_device_id id)
     image_array_max_layers =
         GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE_MAX_ARRAY_SIZE);
   }
+  image3d_max_width = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE3D_MAX_WIDTH);
+  image3d_max_height = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE2D_MAX_HEIGHT);
+  image3d_max_depth = GetDeviceInfo<size_t>(id, CL_DEVICE_IMAGE3D_MAX_DEPTH);
   GetDeviceWorkDimsSizes(id, &max_work_group_sizes);
 }
 
@@ -292,6 +337,14 @@ bool DeviceInfo::SupportsTextureArray() const {
 
 bool DeviceInfo::SupportsImageBuffer() const {
   return cl_version >= OpenCLVersion::CL_1_2;
+}
+
+bool DeviceInfo::SupportsImage3D() const {
+  if (vendor == Vendor::MALI) {
+    // On Mali T880 read_imageh doesn't compile with image3d_t
+    return false;
+  }
+  return supports_image3d_writes;
 }
 
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
@@ -347,6 +400,12 @@ bool CLDevice::SupportsImageBuffer() const {
   return info_.SupportsImageBuffer();
 }
 
+bool CLDevice::SupportsImage3D() const { return info_.SupportsImage3D(); }
+
+bool CLDevice::SupportsFP32RTN() const { return info_.supports_fp32_rtn; }
+
+bool CLDevice::SupportsFP16RTN() const { return info_.supports_fp16_rtn; }
+
 std::string CLDevice::GetPlatformVersion() const {
   return GetPlatformInfo(platform_id_, CL_PLATFORM_VERSION);
 }
@@ -355,22 +414,22 @@ bool CLDevice::IsAdreno() const { return info_.vendor == Vendor::QUALCOMM; }
 
 bool CLDevice::IsAdreno3xx() const {
   return IsAdreno() &&
-         isGPUVersionInRange(info_.adreno_info.gpu_version, 300, 400);
+         IsGPUVersionInRange(info_.adreno_info.gpu_version, 300, 400);
 }
 
 bool CLDevice::IsAdreno4xx() const {
   return IsAdreno() &&
-         isGPUVersionInRange(info_.adreno_info.gpu_version, 400, 500);
+         IsGPUVersionInRange(info_.adreno_info.gpu_version, 400, 500);
 }
 
 bool CLDevice::IsAdreno5xx() const {
   return IsAdreno() &&
-         isGPUVersionInRange(info_.adreno_info.gpu_version, 500, 600);
+         IsGPUVersionInRange(info_.adreno_info.gpu_version, 500, 600);
 }
 
 bool CLDevice::IsAdreno6xx() const {
   return IsAdreno() &&
-         isGPUVersionInRange(info_.adreno_info.gpu_version, 600, 700);
+         IsGPUVersionInRange(info_.adreno_info.gpu_version, 600, 700);
 }
 
 bool CLDevice::IsAdreno6xxOrHigher() const {
@@ -382,6 +441,8 @@ bool CLDevice::IsPowerVR() const { return info_.vendor == Vendor::POWERVR; }
 bool CLDevice::IsNvidia() const { return info_.vendor == Vendor::NVIDIA; }
 
 bool CLDevice::IsMali() const { return info_.vendor == Vendor::MALI; }
+
+bool CLDevice::IsAMD() const { return info_.vendor == Vendor::AMD; }
 
 bool CLDevice::SupportsOneLayerTextureArray() const {
   return !IsAdreno() || info_.adreno_info.support_one_layer_texture_array;
@@ -400,17 +461,18 @@ Status CreateDefaultGPUDevice(CLDevice* result) {
   std::vector<cl_platform_id> platforms(num_platforms);
   clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
 
+  cl_platform_id platform_id = platforms[0];
   cl_uint num_devices;
-  clGetDeviceIDs(platforms[0], CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
+  clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
   if (num_devices == 0) {
     return UnknownError("No GPU on current platform.");
   }
 
   std::vector<cl_device_id> devices(num_devices);
-  clGetDeviceIDs(platforms[0], CL_DEVICE_TYPE_GPU, num_devices, devices.data(),
+  clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, num_devices, devices.data(),
                  nullptr);
 
-  *result = CLDevice(devices[0], platforms[0]);
+  *result = CLDevice(devices[0], platform_id);
   return OkStatus();
 }
 

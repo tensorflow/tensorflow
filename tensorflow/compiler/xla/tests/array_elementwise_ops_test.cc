@@ -43,7 +43,7 @@ namespace {
 class ArrayElementwiseOpTest : public ClientLibraryTestBase {
  public:
   ErrorSpec error_spec_{0.0001, 0.0001};
-  ErrorSpec strict_error_spec_{0x1p-48, 0x1p-48};
+  ErrorSpec strict_error_spec_{3.6e-15, 3.6e-15};
 };
 
 class ArrayElementwiseOpTestParamCount
@@ -231,8 +231,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantU64s) {
                           0,
                           0x7FFFFFFFFFFFFFFFLL,
                           0x7FFFFFFFFFFFFFFLL,
-                          0x8000000000000000LL,
-                          0x8000000000000000LL,
+                          0x8000000000000000ULL,
+                          0x8000000000000000ULL,
                           1};
   Literal lhs_literal = LiteralUtil::CreateR1<uint64>({lhs});
   auto lhs_param = Parameter(&b, 0, lhs_literal.shape(), "lhs_param");
@@ -242,12 +242,12 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantU64s) {
   std::vector<uint64> rhs{1,
                           0x7FFFFFFFFFFFFFFLL,
                           0x7FFFFFFFFFFFFFFFLL,
-                          0x8000000000000000LL,
+                          0x8000000000000000ULL,
                           0,
                           static_cast<uint64>(-1),
                           0,
                           1,
-                          0x8000000000000000LL};
+                          0x8000000000000000ULL};
   Literal rhs_literal = LiteralUtil::CreateR1<uint64>({rhs});
   auto rhs_param = Parameter(&b, 1, rhs_literal.shape(), "rhs_param");
   std::unique_ptr<GlobalData> rhs_data =
@@ -3009,7 +3009,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, NonIdentityBroadcastOfSameRankIsDisallowed) {
 
 // Regression test for b/31927799. "slice - y" is fused and requires implicit
 // broadcast.
-XLA_TEST_F(ArrayElementwiseOpTest, ImplictBroadcastInFusedExpressions) {
+XLA_TEST_F(ArrayElementwiseOpTest, ImplicitBroadcastInFusedExpressions) {
   XlaBuilder builder(TestName());
   auto x_literal = LiteralUtil::CreateR1<float>({1, 2, 3});
   auto y_literal = LiteralUtil::CreateR1<float>({4, 5});

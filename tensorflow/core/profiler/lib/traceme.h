@@ -15,24 +15,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 
-#include <string>
-
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#endif
 
 namespace tensorflow {
 namespace profiler {
-
-// This is specifically used for instrumenting Tensorflow ops.
-// Takes input as whether a TF op is expensive or not and returns the TraceMe
-// level to be assigned to trace that particular op. Assigns level 2 for
-// expensive ops (these are high-level details and shown by default in profiler
-// UI). Assigns level 3 for cheap ops (low-level details not shown by default).
-inline int GetTFTraceMeLevel(bool is_expensive) { return is_expensive ? 2 : 3; }
 
 // Predefined levels:
 // - Level 1 (kCritical) is the default and used only for user instrumentation.
@@ -45,6 +39,15 @@ enum TraceMeLevel {
   kInfo = 2,
   kVerbose = 3,
 };
+
+// This is specifically used for instrumenting Tensorflow ops.
+// Takes input as whether a TF op is expensive or not and returns the TraceMe
+// level to be assigned to trace that particular op. Assigns level 2 for
+// expensive ops (these are high-level details and shown by default in profiler
+// UI). Assigns level 3 for cheap ops (low-level details not shown by default).
+inline int GetTFTraceMeLevel(bool is_expensive) {
+  return is_expensive ? kInfo : kVerbose;
+}
 
 // This class permits user-specified (CPU) tracing activities. A trace activity
 // is started when an object of this class is created and stopped when the
@@ -80,12 +83,12 @@ class TraceMe {
   // out their host traces based on verbosity.
   explicit TraceMe(absl::string_view activity_name, int level = 1) {
     DCHECK_GE(level, 1);
+#if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       new (&no_init_.name) string(activity_name);
       start_time_ = EnvTime::NowNanos();
-    } else {
-      start_time_ = kUntracedActivity;
     }
+#endif
   }
 
   // string&& constructor to prevent an unnecessary string copy, e.g. when a
@@ -95,12 +98,12 @@ class TraceMe {
   // constructor so we avoid copying them when tracing is disabled.
   explicit TraceMe(string &&activity_name, int level = 1) {
     DCHECK_GE(level, 1);
+#if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       new (&no_init_.name) string(std::move(activity_name));
       start_time_ = EnvTime::NowNanos();
-    } else {
-      start_time_ = kUntracedActivity;
     }
+#endif
   }
 
   // Do not allow passing strings by reference or value since the caller
@@ -125,12 +128,12 @@ class TraceMe {
   template <typename NameGeneratorT>
   explicit TraceMe(NameGeneratorT name_generator, int level = 1) {
     DCHECK_GE(level, 1);
+#if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       new (&no_init_.name) string(name_generator());
       start_time_ = EnvTime::NowNanos();
-    } else {
-      start_time_ = kUntracedActivity;
     }
+#endif
   }
 
   // Stop tracing the activity. Called by the destructor, but exposed to allow
@@ -145,6 +148,7 @@ class TraceMe {
     //   spuriously record the event. This is extremely rare, and acceptable as
     //   event will be discarded when its start timestamp fall outside of the
     //   start/stop session timestamp.
+#if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
         TraceMeRecorder::Record({kCompleteActivity, std::move(no_init_.name),
@@ -153,6 +157,7 @@ class TraceMe {
       no_init_.name.~string();
       start_time_ = kUntracedActivity;
     }
+#endif
   }
 
   ~TraceMe() { Stop(); }
@@ -162,6 +167,7 @@ class TraceMe {
   // Record the start time of an activity.
   // Returns the activity ID, which is used to stop the activity.
   static uint64 ActivityStart(absl::string_view name, int level = 1) {
+#if !defined(IS_MOBILE_PLATFORM)
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       uint64 activity_id = TraceMeRecorder::NewActivityId();
       TraceMeRecorder::Record({activity_id, string(name),
@@ -169,21 +175,30 @@ class TraceMe {
                                /*end_time=*/0});
       return activity_id;
     }
+#endif
     return kUntracedActivity;
   }
 
   // Record the end time of an activity started by ActivityStart().
   static void ActivityEnd(uint64 activity_id) {
-    // We don't check the level again (see ~TraceMe()).
+#if !defined(IS_MOBILE_PLATFORM)
+    // We don't check the level again (see TraceMe::Stop()).
     if (TF_PREDICT_FALSE(activity_id != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
         TraceMeRecorder::Record({activity_id, /*name=*/"", /*start_time=*/0,
                                  /*end_time=*/EnvTime::NowNanos()});
       }
     }
+#endif
   }
 
-  static bool Active(int level = 1) { return TraceMeRecorder::Active(level); }
+  static bool Active(int level = 1) {
+#if !defined(IS_MOBILE_PLATFORM)
+    return TraceMeRecorder::Active(level);
+#else
+    return false;
+#endif
+  }
 
  private:
   // Activity ID or start time used when tracing is disabled.
@@ -201,8 +216,14 @@ class TraceMe {
     string name;
   } no_init_;
 
-  uint64 start_time_;
+  uint64 start_time_ = kUntracedActivity;
 };
+
+// Whether OpKernel::TraceString will populate additional information for
+// profiler, such as tensor shapes.
+inline bool TfOpDetailsEnabled() {
+  return TraceMe::Active(TraceMeLevel::kVerbose);
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

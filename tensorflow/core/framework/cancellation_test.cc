@@ -108,6 +108,7 @@ TEST(Cancellation, IsCancelled) {
     w.Schedule([n, cm]() {
       while (!cm->IsCancelled()) {
       }
+      ASSERT_FALSE(cm->IsCancelling());
       n->Notify();
     });
   }
@@ -117,6 +118,30 @@ TEST(Cancellation, IsCancelled) {
     done[i].WaitForNotification();
   }
   delete cm;
+}
+
+TEST(Cancellation, IsCancelling) {
+  CancellationManager cm;
+  Notification started_cancelling;
+  Notification can_finish_cancel;
+  Notification cancel_done;
+  thread::ThreadPool w(Env::Default(), "test", 1);
+  auto token = cm.get_cancellation_token();
+  ASSERT_TRUE(
+      cm.RegisterCallback(token, [&started_cancelling, &can_finish_cancel]() {
+        started_cancelling.Notify();
+        can_finish_cancel.WaitForNotification();
+      }));
+  w.Schedule([&cm, &cancel_done]() {
+    cm.StartCancel();
+    cancel_done.Notify();
+  });
+  started_cancelling.WaitForNotification();
+  ASSERT_TRUE(cm.IsCancelling());
+  can_finish_cancel.Notify();
+  cancel_done.WaitForNotification();
+  ASSERT_FALSE(cm.IsCancelling());
+  ASSERT_TRUE(cm.IsCancelled());
 }
 
 TEST(Cancellation, TryDeregisterWithoutCancel) {

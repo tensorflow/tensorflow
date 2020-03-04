@@ -11,6 +11,17 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "graph_optimizer.h",
+        "meta_optimizer.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "static_schedule",
     srcs = ["static_schedule.cc"],
@@ -102,6 +113,7 @@ cc_library(
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:symbolic_shapes",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -146,6 +158,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
+        "//tensorflow/compiler/jit:common",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",

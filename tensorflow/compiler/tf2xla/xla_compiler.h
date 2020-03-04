@@ -213,6 +213,12 @@ class XlaCompiler {
 
     // True when we should add XLA input & output to the graph/function.
     bool add_token_input_output = false;
+
+    // Resource updates are converted into input / output of xla. The two
+    // buffers are aliased with other if this option is true.
+    //
+    // Currently only supports TPU.
+    bool alias_resource_update = false;
   };
 
   struct OutputDescription {
@@ -367,7 +373,6 @@ class XlaCompiler {
   Status CompileGraph(
       const CompileOptions& options, string const& name,
       std::unique_ptr<Graph> graph, absl::Span<const Argument> args,
-      absl::Span<const xla::XlaBuilder::InputOutputAlias> user_aliases,
       CompilationResult* result);
 
   // Compiles a single Op, given by `node_def`, into an
@@ -381,8 +386,10 @@ class XlaCompiler {
   // Returns the shape of the XLA parameter for an argument 'arg'.
   // See the class comment for more details about the argument passing
   // convention.
-  Status XLAShapeForArgument(const Argument& arg, bool is_entry_computation,
-                             xla::Shape* xla_shape) const;
+  Status XLAShapeForArgument(
+      const Argument& arg, bool is_entry_computation,
+      const absl::optional<xla::HloSharding>& arg_sharding,
+      xla::Shape* xla_shape) const;
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.

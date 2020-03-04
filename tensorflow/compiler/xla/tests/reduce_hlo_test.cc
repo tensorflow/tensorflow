@@ -106,7 +106,10 @@ XLA_TEST_P(ReduceWithLayoutTest, Reduce) {
          {-0.241772294, -0.245131493, -0.160247207},
          {-0.179881215, -0.23383224, -0.121976733}}}});
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
+  auto reduce_input_relaid =
+      reduce_input.Relayout(reduce_input_shape->layout());
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), {&reduce_input_relaid}, ErrorSpec(1e-5)));
 }
 
 INSTANTIATE_TEST_CASE_P(ReduceWithLayoutTest_Instantiation,

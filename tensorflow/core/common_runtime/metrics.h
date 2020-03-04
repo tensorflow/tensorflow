@@ -32,6 +32,12 @@ void RecordTFDataAutotune(const string& name);
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
 void RecordTFDataBytesRead(const string& name, int64 num_bytes);
 
+// Records the number of bytes fetched from tf.data.Dataset iterator.
+void RecordTFDataBytesFetched(int64 num_bytes);
+
+// Records the time spent in ItertatorResource::GetNext() in microseconds.
+void RecordTFDataGetNextDuration(uint64 duration_us);
+
 // Records the number of elements produced by a tf.data.Dataset.
 //
 // The `name` argument identifies the Dataset type (e.g. "Batch" or "Map").
@@ -47,7 +53,7 @@ void RecordTFDataFingerprint(const string& name);
 // Records the number of independent graph changes resulting from the
 // application of a tf.data optimization.
 //
-// The `name` argument identifies the optimization (e.g. "noop_eliminiation").
+// The `name` argument identifies the optimization (e.g. "noop_elimination").
 void RecordTFDataOptimization(const string& name, int64 num_changes);
 
 // Records parsing of dense tensor features.
@@ -64,6 +70,9 @@ void RecordGraphInputTensors(const size_t size);
 void RecordGraphOutputTensors(const size_t size);
 
 void UpdateGraphExecTime(const uint64 running_time_usecs);
+
+// Records that one output of an op of type `op_name` was unused.
+void RecordUnusedOutput(const string& op_name);
 
 // Updates the metrics stored about time spent building graphs.
 //

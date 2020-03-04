@@ -26,7 +26,7 @@ tf_module {
   }
   member_method {
     name: "experimental_connect_to_cluster"
-    argspec: "args=[\'cluster_spec_or_resolver\', \'job_name\', \'task_index\', \'protocol\', \'make_master_device_default\'], varargs=None, keywords=None, defaults=[\'localhost\', \'0\', \'None\', \'True\'], "
+    argspec: "args=[\'cluster_spec_or_resolver\', \'job_name\', \'task_index\', \'protocol\', \'make_master_device_default\', \'cluster_device_filters\'], varargs=None, keywords=None, defaults=[\'localhost\', \'0\', \'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "experimental_connect_to_host"

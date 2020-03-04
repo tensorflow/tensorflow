@@ -15,21 +15,24 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 
-#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "mlir/IR/Function.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/Parser.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
-#include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Parser.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -47,10 +50,15 @@ Status ParseMlirModule(llvm::StringRef mlir_module_string,
       << "unexpected empty serialized MLIR module string";
   TF_RET_CHECK(mlir_module) << "unexpected null MLIR module pointer";
 
+  // Make sure we catch any error reported by MLIR and forward it to the TF
+  // error reporting system.
+  mlir::StatusScopedDiagnosticHandler error_handler(mlir_context);
+
   // Parse the module.
   *mlir_module = mlir::parseSourceString(mlir_module_string, mlir_context);
   if (!*mlir_module) {
-    return errors::InvalidArgument("could not parse MLIR module");
+    return error_handler.Combine(
+        errors::InvalidArgument("could not parse MLIR module"));
   }
 
   return Status::OK();
@@ -58,7 +66,7 @@ Status ParseMlirModule(llvm::StringRef mlir_module_string,
 
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
 Status GetXlaInputShapes(
-    mlir::ModuleOp module, absl::Span<TensorShape> arg_shapes,
+    mlir::ModuleOp module, llvm::ArrayRef<TensorShape> arg_shapes,
     const xla::CustomShapeRepresentationFn shape_representation_fn,
     std::vector<xla::Shape>* xla_input_shapes) {
   xla_input_shapes->clear();
@@ -150,17 +158,11 @@ void GetInputMappingForMlir(int num_inputs, std::vector<int>* input_mapping) {
 }
 
 // Refine MLIR types based on new shape information.
-Status RefineShapes(absl::Span<TensorShape> arg_shapes, mlir::ModuleOp module) {
-  auto versions = module.getAttrOfType<::mlir::DictionaryAttr>("tf.versions");
-  if (!versions) {
-    return errors::Internal(
-        "Missing 'tf.versions' attribute on the module, abort.\n");
-  }
-  auto producer = versions.get("producer").dyn_cast<mlir::IntegerAttr>();
-  if (!producer) {
-    return errors::Internal(
-        "Missing 'producer' attribute on the module, abort.\n");
-  }
+Status RefineShapes(llvm::ArrayRef<TensorShape> arg_shapes,
+                    mlir::ModuleOp module) {
+  auto producer_or = GetTfGraphProducerVersion(module);
+  if (!producer_or.ok()) return producer_or.status();
+  int64_t producer_version = producer_or.ValueOrDie();
 
   llvm::SmallVector<int64_t, 16> shape_backing;
   llvm::SmallVector<llvm::ArrayRef<int64_t>, 4> arg_shapes_copy;
@@ -192,7 +194,7 @@ Status RefineShapes(absl::Span<TensorShape> arg_shapes, mlir::ModuleOp module) {
 
   mlir::StatusScopedDiagnosticHandler error_handler(module.getContext());
   mlir::LogicalResult result = mlir::TF::InferShapeForFunction(
-      main_func, arg_shapes_copy, producer.getInt());
+      main_func, arg_shapes_copy, producer_version);
 
   if (failed(result)) {
     return error_handler.Combine(
@@ -208,19 +210,34 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    bool use_tuple_args, bool return_tuple) {
   mlir::PassManager tf2xla(module_op.getContext());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass());
+  tf2xla.addPass(mlir::TF::CreateStackOpsDecompositionPass());
+  tf2xla.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
+  tf2xla.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
+  // LegalizeTFControlFlow encapsulates arguments for control flow operations
+  // with a tuple argument which break the assumption of resource lifting
+  // inside PromoteResourcesToArgs.
+  tf2xla.addPass(mlir::xla_hlo::createLegalizeTFControlFlowPass());
+  // We need to run LegalizeTFPass 2 times because first
+  // LegalizeTFPass(allow_partial_conversion=true) can expose more graph pruning
+  // and canonicalization opportunities that are necessary for the second
+  // LegalizeTFPass(allow_partial_conversion=false) invocation.
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass(true));
+  tf2xla.addPass(mlir::tf_executor::CreateTFExecutorGraphPruningPass());
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  tf2xla.addNestedPass<mlir::FuncOp>(
+      mlir::xla_hlo::createLegalizeTFPass(false));
 
-  {
-    // Make sure we catch any error reported by MLIR and forward it to the TF
-    // error reporting system. Report a generic error if pass manager failed
-    // without emitting a diagnostic.
-    mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
+  if (VLOG_IS_ON(1))
+    tf2xla.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>());
 
-    mlir::LogicalResult result = tf2xla.run(module_op);
-    if (failed(result)) {
-      return error_handler.Combine(
-          errors::Internal("MLIR TF to XLA legalization failed"));
-    }
+  // Make sure we catch any error reported by MLIR and forward it to the TF
+  // error reporting system. Report a generic error if pass manager failed
+  // without emitting a diagnostic.
+  mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
+
+  if (failed(tf2xla.run(module_op))) {
+    return error_handler.Combine(
+        errors::Internal("MLIR TF to XLA legalization failed"));
   }
 
   if (VLOG_IS_ON(1))
@@ -234,7 +251,7 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
 }
 
 Status CompileSerializedMlirToXlaHlo(
-    llvm::StringRef mlir_module_string, absl::Span<TensorShape> arg_shapes,
+    llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     XlaCompiler::CompilationResult* compilation_result) {
   mlir::MLIRContext mlir_context;

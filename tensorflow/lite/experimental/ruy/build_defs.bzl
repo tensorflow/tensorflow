@@ -27,3 +27,19 @@ def ruy_copts_skylake():
 # Used for targets that are compiled with extra features that are skipped at runtime if unavailable.
 def ruy_copts_avx2():
     return []
+
+# TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete / placeholder.
+# Optimization is not finished. In particular the dimensions of the kernel
+# blocks can be changed as desired.
+#
+# Used for targets that are compiled with extra features that are skipped at runtime if unavailable.
+def ruy_copts_sse42():
+    return []
+
+# TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete / placeholder.
+# Optimization is not finished. In particular the dimensions of the kernel
+# blocks can be changed as desired.
+#
+# Used for targets that are compiled with extra features that are skipped at runtime if unavailable.
+def ruy_copts_avxvnni():
+    return []

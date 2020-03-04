@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api.h"
 
+#include <stdarg.h>
+#include <stdint.h>
+
 #include <array>
 #include <fstream>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace {

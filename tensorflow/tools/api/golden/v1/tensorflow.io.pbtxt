@@ -42,7 +42,7 @@ tf_module {
   }
   member {
     name: "TFRecordWriter"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "VarLenFeature"

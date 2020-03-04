@@ -26,7 +26,8 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenSingleThreadedFft(
     const void* run_options_ptr, void* out, void* operand, int32 fft_type,
     int32 fft_rank, int64 input_batch, int64 fft_length0, int64 fft_length1,
     int64 fft_length2) {
-  tensorflow::xla::EigenFftImpl(Eigen::DefaultDevice(), out, operand, fft_type,
+  tensorflow::xla::EigenFftImpl(Eigen::DefaultDevice(), out, operand,
+                                static_cast<tensorflow::xla::FftType>(fft_type),
                                 fft_rank, input_batch, fft_length0, fft_length1,
                                 fft_length2);
 }

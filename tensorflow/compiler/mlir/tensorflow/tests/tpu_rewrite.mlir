@@ -431,16 +431,21 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: NumDynamicShapes = 1
-    // CHECK-SAME: device = "/job:worker/replica:0/task:0/device:CPU:0"
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
-    // CHECK-SAME: device = "/job:worker/replica:0/task:0/device:TPU:0"
+    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:0"
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -468,19 +473,24 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK-SAME: ([%[[A_OUTPUT]], %[[ARG_0]]] as %[[RI_0:[a-z0-9]*]]: tensor<?xi32>)
-    // CHECK-SAME: devices = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]
+    // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]}
     // CHECK-SAME: n = 2
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
       // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[RI_0]])
-      // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
+      // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
       // CHECK-SAME: NumDynamicShapes = 1
-      // CHECK-SAME: device = "/job:worker/replica:0/task:0/device:CPU:0"
       // CHECK-SAME: metadata
       // CHECK-SAME: mlir_module
       // CHECK-SAME: func @main
       // CHECK-SAME: tf.B
       // CHECK-NOT: func = @tpu0_func
-      // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[RI_0]], %[[COMPILE_OUTPUT]]#1)
+      // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+      // CHECK: "tf_device.launch"
+      // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+      // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+      // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT: "tf.TPUExecute"(%[[RI_0]], %[[COMPILE_OUTPUT]]#1)
       %2 = "tf_device.launch_func"(%ri_0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
 
       // CHECK: tf_device.return %[[EXECUTE_OUTPUT]]
@@ -539,7 +549,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: NumDynamicShapes = 1
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
@@ -548,7 +559,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @nested_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:0"
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -582,7 +599,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: NumDynamicShapes = 1
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
@@ -591,7 +609,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @referenced_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -624,7 +645,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: NumDynamicShapes = 1
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
@@ -635,7 +657,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: @referenced_func2
     // CHECK-SAME: tf.E
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -674,7 +699,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: NumDynamicShapes = 1
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
@@ -684,7 +710,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-COUNT-1: func @referenced_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -718,25 +747,33 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func0, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE0_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
+    // CHECK: %[[COMPILE0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: NumDynamicShapes = 1
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func0
-    // CHECK: %[[EXECUTE0_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE0_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE0_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE0_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE0_OUTPUT]]#1)
 
     %2 = "tf_device.launch_func"(%1) {_tpu_replicate = "cluster1", device = "", func = @tpu0_func1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[EXECUTE0_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[EXECUTE0_OUTPUT]])
-    // CHECK: %[[COMPILE1_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[EXECUTE0_SHAPE_OUTPUT]])
+    // CHECK: %[[COMPILE1_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[EXECUTE0_SHAPE_OUTPUT]])
     // CHECK-SAME: NumDynamicShapes = 1
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func1
-    // CHECK: %[[EXECUTE1_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[EXECUTE0_OUTPUT]], %[[COMPILE1_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE1_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE1_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[EXECUTE0_OUTPUT]], %[[COMPILE1_OUTPUT]]#1)
 
     %3 = "tf.C"(%2) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE1_OUTPUT]])
@@ -768,25 +805,33 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE0_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
+    // CHECK: %[[COMPILE0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: NumDynamicShapes = 1
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE0_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE0_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE0_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE0_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE0_OUTPUT]]#1)
 
     %2 = "tf_device.launch_func"(%1) {_tpu_replicate = "cluster1", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[EXECUTE0_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[EXECUTE0_OUTPUT]])
-    // CHECK: %[[COMPILE1_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[EXECUTE0_SHAPE_OUTPUT]])
+    // CHECK: %[[COMPILE1_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[EXECUTE0_SHAPE_OUTPUT]])
     // CHECK-SAME: NumDynamicShapes = 1
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE1_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[EXECUTE0_OUTPUT]], %[[COMPILE1_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE1_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE1_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[EXECUTE0_OUTPUT]], %[[COMPILE1_OUTPUT]]#1)
 
     %3 = "tf.C"(%2) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE1_OUTPUT]])
@@ -814,7 +859,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: NumDynamicShapes = 1
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
@@ -828,7 +874,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.G
     // CHECK-SAME: func @referenced_func0
     // CHECK-SAME: tf.F
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -873,8 +922,12 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // CHECK-LABEL: func @tpu_compilation_result
   func @tpu_compilation_result(%arg0: tensor<?xi32>) -> (tensor<?xi32>, tensor<!tf.string>, tensor<!tf.string>) {
 
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"
     %1 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<?xi32>) -> tensor<?xi32>
 
     %compile_result = "tf.TPUCompilationResult"() {_tpu_replicate = "cluster0"} : () -> tensor<!tf.string>

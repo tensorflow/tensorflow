@@ -1,5 +1,9 @@
 path: "tensorflow.math"
 tf_module {
+  member {
+    name: "special"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "abs"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
@@ -421,6 +425,10 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "sobol_sample"
+    argspec: "args=[\'dim\', \'num_results\', \'skip\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
     name: "softmax"
     argspec: "args=[\'logits\', \'axis\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
@@ -490,6 +498,10 @@ tf_module {
   }
   member_method {
     name: "xdivy"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xlog1py"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {

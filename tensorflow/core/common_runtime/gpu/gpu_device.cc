@@ -805,17 +805,20 @@ int64 MinSystemMemory(int64 available_memory) {
   // We use the following heuristic for now:
   //
   // If the available_memory is < 2GiB, we allocate 225MiB to system memory.
-  // Otherwise, allocate max(300MiB, 0.05 * available_memory) to system memory.
+  // Otherwise, allocate max(300MiB, kMinSystemMemoryFraction *
+  // available_memory) to system memory.
   //
   // In the future we could be more sophisticated by using a table of devices.
   int64 min_system_memory;
+  constexpr float kMinSystemMemoryFraction = 0.06;
   if (available_memory < (1LL << 31)) {
     // 225MiB
     min_system_memory = 225 * 1024 * 1024;
   } else {
-    // max(300 MiB, 0.05 * available_memory)
-    min_system_memory =
-        std::max(int64{314572800}, static_cast<int64>(available_memory * 0.05));
+    // max(300 MiB, kMinSystemMemoryFraction * available_memory)
+    min_system_memory = std::max(
+        int64{314572800},
+        static_cast<int64>(available_memory * kMinSystemMemoryFraction));
   }
 #if defined(__GNUC__) && defined(__OPTIMIZE__)
 // Do nothing
@@ -833,6 +836,9 @@ int64 MinSystemMemory(int64 available_memory) {
   // RAM and Video RAM
   min_system_memory = 1 << 30;
 #endif
+
+  VLOG(5) << "available_memory = " << available_memory;
+  VLOG(5) << "min_system_memory = " << min_system_memory;
   return min_system_memory;
 }
 
@@ -1186,7 +1192,7 @@ static string GetShortDeviceDescription(PlatformGpuId platform_gpu_id,
                          ", name: ", desc.name(),
                          ", pci bus id: ", desc.pci_bus_id(),
                          ", compute capability: ", cc_major, ".", cc_minor);
-  // LINT.ThenChange(//tensorflow/python/platform/test.py)
+  // LINT.ThenChange(//tensorflow/python/framework/gpu_util.py)
 #elif TENSORFLOW_USE_ROCM
   return strings::StrCat("device: ", platform_gpu_id.value(),
                          ", name: ", desc.name(),
@@ -1834,7 +1840,7 @@ void GPUKernelTracker::RecordTerminated(uint64 queued_count) {
   // advance the completed frontier to the just-completed PendingKernel.  In
   // practice we occasionally see the termination callbacks arrive out of
   // order probably because of thread scheduling.  Eventually we may support
-  // out-of- order completion involving multple compute streams so here we
+  // out-of- order completion involving multiple compute streams so here we
   // follow a conservative approach and wait for every single callback to
   // arrive before advancing the frontier.
   while (true) {

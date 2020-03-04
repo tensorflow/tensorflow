@@ -42,7 +42,7 @@ def string_to_codes(cmd):
 
 def codes_to_string(cmd_code):
   # Omit non-ASCII key codes.
-  return "".join([chr(code) for code in cmd_code if code < 256])
+  return "".join(chr(code) for code in cmd_code if code < 256)
 
 
 class MockCursesUI(curses_ui.CursesUI):

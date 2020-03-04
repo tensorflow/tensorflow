@@ -40,8 +40,11 @@ struct GraphImportConfig {
       llvm::MapVector<string, ArrayInfo, llvm::StringMap<unsigned>>;
   // Maps input node names to node data types and shapes.
   InputArrays inputs;
-  // name:index strings for the output as specified on the command line.
+  // name:index strings for the data outputs.
   std::vector<string> outputs;
+  // name strings for the control outputs. This is currently only used when
+  // `graph_as_function` is set.
+  std::vector<string> control_outputs;
   // Setting prune_unused_nodes to true, would prune unreachable nodes if
   // output_arrays is specified.
   bool prune_unused_nodes = false;

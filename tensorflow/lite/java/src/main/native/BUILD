@@ -31,6 +31,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/tflite_api_dispatcher:tflite_api_dispatcher_with_kernels",
         "//tensorflow/lite/java/jni",
     ],
     alwayslink = 1,

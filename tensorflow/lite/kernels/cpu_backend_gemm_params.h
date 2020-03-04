@@ -47,6 +47,10 @@ struct MatrixParams {
   // The zero_point, i.e. which Scalar value is to be interpreted as zero.
   // When Scalar is floating-point, this must be 0.
   Scalar zero_point = 0;
+  // Indicate whether the underlying data will remain unchanged for
+  // some period of time. Defaults to false, but should be set to true
+  // for unchanging data (e.g. weights buffers in many cases)
+  bool cacheable = false;
 };
 
 // Enumeration of broad categories of Gemm.

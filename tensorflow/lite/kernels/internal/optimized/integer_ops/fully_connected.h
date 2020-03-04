@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_FULLY_CONNECTED_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_FULLY_CONNECTED_H_
 
-#include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
@@ -31,7 +31,7 @@ inline void FullyConnected(
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
     CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("FullyConnectedInt8/8bit");
+  ruy::profiler::ScopeLabel label("FullyConnectedInt8/8bit");
 
   const int32 input_offset = params.input_offset;
   const int32 filter_offset = params.weights_offset;

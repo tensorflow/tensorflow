@@ -26,11 +26,13 @@ from tensorflow.python.autograph.pyct import origin_info
 class FrameInfo(
     collections.namedtuple(
         'FrameInfo',
-        ('filename', 'lineno', 'function_name', 'code', 'converted'))):
-  pass
+        ('filename', 'lineno', 'function_name', 'code', 'is_converted',
+         'is_whitelisted'))):
+
+  __slots__ = ()
 
 
-def _stack_trace_inside_mapped_code(tb, source_map):
+def _stack_trace_inside_mapped_code(tb, source_map, converter_filename):
   """Summarizes inner traceback frames up to the call to a given function.
 
   This functions locates the innermost (i.e. most recent) frame that corresponds
@@ -67,10 +69,14 @@ def _stack_trace_inside_mapped_code(tb, source_map):
         raise ...
 
   Args:
-    tb: List[Tuple], the traceback corresponding to an error; typically,
-      the output of traceback.extract_tb.
+    tb: traceback.FrameSummary, The traceback corresponding to an error.
+      Typically, the output of traceback.Summary.extract(capture_locals=True).
     source_map: Dict[LineLocation, OriginInfo], a source map as created by
       origin_info.create_source_map.
+    converter_filename: str, the file path of the converted module. Call frames
+      corresponding to this module are elided and their preceding frames are
+      marked as whitelisted. Note that frames enclosing converted code are
+      dropped using a different mechanism.
 
   Returns:
     List[FrameInfo]
@@ -81,21 +87,37 @@ def _stack_trace_inside_mapped_code(tb, source_map):
     loc = origin_info.LineLocation(filename=filename, lineno=line_number)
     if loc in source_map:
       origin = source_map[loc]
-      origin_frame_info = FrameInfo(
+      fi = FrameInfo(
           filename=origin.loc.filename,
           lineno=origin.loc.lineno,
           function_name=origin.function_name,
           code=origin.source_code_line,
-          converted=True)
-      result_frames.append(origin_frame_info)
+          is_converted=True,
+          is_whitelisted=False)
+      result_frames.append(fi)
       break
+
+    if filename == converter_filename:
+      if result_frames:
+        prev = result_frames[-1]
+        assert not prev.is_converted  # See the if above.
+        fi = FrameInfo(
+            filename=prev.filename,
+            lineno=prev.lineno,
+            function_name=prev.function_name,
+            code=prev.code,
+            is_converted=False,
+            is_whitelisted=True)
+        result_frames[-1] = fi
+      continue
 
     fi = FrameInfo(
         filename=filename,
         lineno=line_number,
         function_name=function_name,
         code=text,
-        converted=False)
+        is_converted=False,
+        is_whitelisted=False)
     result_frames.append(fi)
 
   return tuple(result_frames)
@@ -129,15 +151,19 @@ MultilineMessageKeyError.__name__ = KeyError.__name__
 
 
 class ErrorMetadataBase(object):
-  """Container objects attached to exceptions in converted code.
+  """Container objects attached to exceptions raised in user code.
 
   This metadata allows re-raising exceptions that occur in generated code, with
   a custom error message that includes a stack trace relative to user-readable
   code from which the generated code originated.
   """
 
-  def __init__(self, callsite_tb, cause_metadata, cause_message, source_map):
-    translated_stack = _stack_trace_inside_mapped_code(callsite_tb, source_map)
+  __slots__ = ('translated_stack', 'cause_message')
+
+  def __init__(self, callsite_tb, cause_metadata, cause_message, source_map,
+               converter_filename):
+    translated_stack = _stack_trace_inside_mapped_code(
+        callsite_tb, source_map, converter_filename)
 
     if cause_metadata is None:
       self.translated_stack = translated_stack
@@ -152,16 +178,19 @@ class ErrorMetadataBase(object):
     """Returns the message for the underlying exception."""
     lines = []
 
-    lines.append('in converted code:')
+    lines.append('in user code:')
     lines.append('')
 
     for frame_info in reversed(self.translated_stack):
-      lines.append('    {}:{} {}{}'.format(
-          frame_info.filename,
-          frame_info.lineno,
-          frame_info.function_name,
-          '  *' if frame_info.converted else '',
-      ))
+      formatted_line = '    {}:{} {}'.format(frame_info.filename,
+                                             frame_info.lineno,
+                                             frame_info.function_name)
+      if frame_info.is_converted:
+        formatted_line += '  *'
+      elif frame_info.is_whitelisted:
+        formatted_line += '  **'
+      lines.append(formatted_line)
+
       if frame_info.code is None:
         code_snippet = '<source unavailable>'
       else:
