@@ -3133,7 +3133,6 @@ cc_library(
     hdrs = ["hlo_dce.h"],
     deps = [
         ":hlo",
-        ":hlo_casting_utils",
         ":hlo_pass",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",

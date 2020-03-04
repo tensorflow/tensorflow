@@ -21,10 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -37,8 +35,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> HloDCE::RunOnComputation(
-    HloComputation* computation, bool remove_cross_partition_collective_ops) {
+StatusOr<bool> HloDCE::RunOnComputation(HloComputation* computation) {
   bool changed = false;
   VLOG(3) << "Before dce:";
   XLA_VLOG_LINES(3, computation->ToString());
@@ -50,12 +47,7 @@ StatusOr<bool> HloDCE::RunOnComputation(
     if (instruction != computation->root_instruction() &&
         instruction->user_count() == 0 &&
         computation->IsSafelyRemovable(instruction) &&
-        (!instruction->HasSideEffect() ||
-         (remove_cross_partition_collective_ops &&
-          ((instruction->opcode() == HloOpcode::kAllReduce &&
-            !Cast<HloAllReduceInstruction>(instruction)->constrain_layout()) ||
-           instruction->opcode() == HloOpcode::kCollectivePermute ||
-           instruction->opcode() == HloOpcode::kAllToAll)))) {
+        !instruction->HasSideEffect()) {
       dead_roots.push_back(instruction);
     }
   }
@@ -82,9 +74,8 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
 
   // Run DCE on each computation.
   for (auto* computation : module->MakeComputationPostOrder()) {
-    TF_ASSIGN_OR_RETURN(
-        bool changed_for_computation,
-        RunOnComputation(computation, remove_cross_partition_collective_ops_));
+    TF_ASSIGN_OR_RETURN(bool changed_for_computation,
+                        RunOnComputation(computation));
     changed |= changed_for_computation;
   }
 
