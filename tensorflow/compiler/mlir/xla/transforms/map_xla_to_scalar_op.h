@@ -380,6 +380,23 @@ struct MapXlaCompareSelectOpToStdScalarOp<SupportedType, StdCompareOp,
 };
 
 template <>
+inline Value MapXlaOpToStdScalarOp<xla_lhlo::LogOp>(xla_lhlo::LogOp xla_op,
+                                                    ArrayRef<Type> result_types,
+                                                    ArrayRef<Value> args,
+                                                    OpBuilder* b) {
+  return MapXlaOpToStdScalarOpImpl<FloatType, ::mlir::LogOp>{}(
+      xla_op.getLoc(), result_types, args, b);
+}
+template <>
+inline Value MapXlaOpToStdScalarOp<xla_hlo::LogOp>(xla_hlo::LogOp xla_op,
+                                                   ArrayRef<Type> result_types,
+                                                   ArrayRef<Value> args,
+                                                   OpBuilder* b) {
+  return MapXlaOpToStdScalarOpImpl<FloatType, ::mlir::LogOp>{}(
+      xla_op.getLoc(), result_types, args, b);
+}
+
+template <>
 inline Value MapXlaOpToStdScalarOp<xla_lhlo::MaxOp>(xla_lhlo::MaxOp xla_op,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,

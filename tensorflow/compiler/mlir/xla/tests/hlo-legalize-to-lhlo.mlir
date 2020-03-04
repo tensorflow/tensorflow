@@ -111,6 +111,18 @@ func @exp(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @log
+func @log(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xf32>
+  %tensor_result = "xla_hlo.log"(%tensor_operand)
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT: "xla_lhlo.log"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @select
 func @select(%pred: memref<2x2xi1>, %lhs: memref<2x2xf32>,
              %rhs: memref<2x2xf32>, %result: memref<2x2xf32>) {
