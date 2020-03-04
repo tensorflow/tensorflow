@@ -804,6 +804,11 @@ def _cross_internal(inputs,
     else:
       out_row_splits_type = dtypes.int64
 
+    # Convert hash_key from uint64 -> int64, since we need to pass it via
+    # an int64 attr.
+    if hash_key > 2**63:
+      hash_key -= 2**64
+
     values_out, splits_out = gen_ragged_array_ops.ragged_cross(
         ragged_values=[rt.values for rt in ragged_inputs],
         ragged_row_splits=[rt.row_splits for rt in ragged_inputs],
@@ -815,8 +820,8 @@ def _cross_internal(inputs,
         hashed_output=hashed_output,
         num_buckets=num_buckets,
         hash_key=hash_key,
-        out_values_type=out_values_type,
-        out_row_splits_type=out_row_splits_type,
+        out_values_type=out_values_type.as_datatype_enum,
+        out_row_splits_type=out_row_splits_type.as_datatype_enum,
         name=name)
 
     return ragged_tensor.RaggedTensor.from_row_splits(
