@@ -1,9 +1,7 @@
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "if_nccl")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
@@ -298,7 +296,7 @@ cc_library(
     name = "nvidia_gpu_device",
     srcs = ["nvidia_gpu_device.cc"],
     hdrs = ["nvidia_gpu_device.h"],
-    copts = if_nccl(["-DNCCL_ENABLED=1"]),
+    copts = if_cuda(["-DNCCL_ENABLED=1"]),
     deps = [
         ":local_client",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
@@ -310,7 +308,7 @@ cc_library(
         "//tensorflow/core:bfc_allocator",
         "//tensorflow/core:gpu_mem_allocator",
         "//tensorflow/stream_executor:tf_allocator_adapter",
-    ] + if_nccl(["@local_config_nccl//:nccl"]),
+    ] + if_cuda(["@local_config_nccl//:nccl"]),
 )
 
 config_setting(
