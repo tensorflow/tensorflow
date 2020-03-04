@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -33,10 +34,6 @@ limitations under the License.
 namespace mlir {
 namespace TFTPU {
 namespace {
-
-constexpr char kXlaShardingAttr[] = "_XlaSharding";
-constexpr char kInputShardingAttr[] = "input_sharding_configuration";
-constexpr char kOutputShardingAttr[] = "output_sharding_configuration";
 
 struct TPUShardingIdentificationPass
     : public ModulePass<TPUShardingIdentificationPass> {
@@ -68,13 +65,6 @@ void GetAdjacentToXlaShardingOp(
   }
 }
 
-llvm::Optional<StringRef> ParseShardingAttribute(Operation* operation) {
-  const auto& sharding_attr =
-      operation->getAttrOfType<StringAttr>(kXlaShardingAttr);
-  if (!sharding_attr) return llvm::Optional<StringRef>();
-  return sharding_attr.getValue();
-}
-
 // Parse XlaSharding op connected to input args. If Input to
 // tf_device.LaunchFunc op is of resource type, then XlaSharding op
 // will be connected to following ReadVariable op.
@@ -97,7 +87,7 @@ llvm::Optional<StringRef> ParseInputSharding(const FuncOp func,
   }
 
   if (!parsed_sharding_op) return llvm::Optional<StringRef>();
-  return ParseShardingAttribute(parsed_sharding_op->getOperation());
+  return tensorflow::ParseShardingAttribute(parsed_sharding_op->getOperation());
 }
 
 // If operand of return value of tf_device.LaunchFunc op is directly from
@@ -107,7 +97,7 @@ llvm::Optional<StringRef> ParseReturnValueSharding(FuncOp func,
                                                    const OpOperand& operand) {
   if (auto sharding_op =
           llvm::dyn_cast<TF::XlaShardingOp>(operand.get().getDefiningOp())) {
-    return ParseShardingAttribute(sharding_op.getOperation());
+    return tensorflow::ParseShardingAttribute(sharding_op.getOperation());
   }
 
   return llvm::Optional<StringRef>();
@@ -153,8 +143,8 @@ void IdentifyXlaShardingForTPUComputation(tf_device::LaunchFuncOp launch_func) {
     if (!input_arg_sharding.hasValue()) continue;
     sharding_for_args[arg_index] = input_arg_sharding->str();
   }
-  SetShardingConfigurationAsAttribute(launch_func, kInputShardingAttr,
-                                      sharding_for_args);
+  SetShardingConfigurationAsAttribute(
+      launch_func, tensorflow::kInputShardingAttr, sharding_for_args);
 
   // By default return values from logical core 0 is used if no sharding
   // configuration is defined.
@@ -176,8 +166,8 @@ void IdentifyXlaShardingForTPUComputation(tf_device::LaunchFuncOp launch_func) {
       sharding_for_return_values[return_value_index] =
           return_val_sharding->str();
   }
-  SetShardingConfigurationAsAttribute(launch_func, kOutputShardingAttr,
-                                      sharding_for_return_values);
+  SetShardingConfigurationAsAttribute(
+      launch_func, tensorflow::kOutputShardingAttr, sharding_for_return_values);
 }
 
 void TPUShardingIdentificationPass::runOnModule() {

@@ -337,6 +337,7 @@ cc_library(
         ":tensorflow_types",
         ":tpu_rewrite_device_util",
         ":translate_utils",
+        ":xla_sharding_util",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -1152,5 +1153,21 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "xla_sharding_util",
+    srcs = [
+        "utils/xla_sharding_util.cc",
+    ],
+    hdrs = [
+        "utils/xla_sharding_util.h",
+    ],
+    deps = [
+        ":tensorflow",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
 )
