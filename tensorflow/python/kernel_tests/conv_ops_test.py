@@ -836,9 +836,8 @@ class Conv2DTest(test.TestCase):
     x2 = self._CreateNumpyTensor(output_sizes)
     dilations = list(dilations)
     with test_util.device(use_gpu):
-      if len(input_sizes) == 4:
-        if data_format == "NCHW":
-          input_sizes = test_util.NHWCToNCHW(input_sizes)
+      if data_format == "NCHW":
+        input_sizes = test_util.NHWCToNCHW(input_sizes)
       t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
       t1 = constant_op.constant(x1, shape=filter_sizes)
       t2 = constant_op.constant(x2, shape=output_sizes)
@@ -999,21 +998,6 @@ class Conv2DTest(test.TestCase):
     for (data_format, use_gpu) in GetTestConfigs():
       self._RunAndVerifyBackpropInput(
           input_sizes=[1, 2, 2, 1],
-          filter_sizes=[2, 2, 1, 2],
-          output_sizes=[1, 1, 1, 2],
-          strides=[1, 1],
-          padding="VALID",
-          expected=expected_output,
-          data_format=data_format,
-          use_gpu=use_gpu,
-          err=1e-5)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testConv2DInputSizesContainsOnlySpatialDimensionsBackpropInput(self):
-    expected_output = [5.0, 11.0, 17.0, 23.0]
-    for (data_format, use_gpu) in GetTestConfigs():
-      self._RunAndVerifyBackpropInput(
-          input_sizes=[2, 2],
           filter_sizes=[2, 2, 1, 2],
           output_sizes=[1, 1, 1, 2],
           strides=[1, 1],
