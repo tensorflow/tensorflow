@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/hlo_shape_derivation.h"
+#include "tensorflow/compiler/mlir/xla/transforms/map_hlo_to_lhlo_op.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
@@ -117,7 +118,7 @@ Value InsertAllocAndDealloc(Location loc, Value result,
   return alloc;
 }
 
-template <typename HloOpTy, typename LhloOpTy>
+template <typename HloOpTy>
 class HloToLhloOpConverter : public ConversionPattern {
  public:
   explicit HloToLhloOpConverter(MLIRContext* context)
@@ -147,14 +148,14 @@ class HloToLhloOpConverter : public ConversionPattern {
             op->getLoc(), result.value(), shape_value, &rewriter));
       }
     }
-    rewriter.create<LhloOpTy>(op->getLoc(), llvm::None, buffer_args,
-                              op->getAttrs());
+    rewriter.create<xla_hlo::HloToLhloOp<HloOpTy>>(op->getLoc(), llvm::None,
+                                                   buffer_args, op->getAttrs());
     rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
     return matchSuccess();
   }
 };
 
-struct HloToLHloDynamicBroadcastInDimOpConverter
+struct HloToLhloDynamicBroadcastInDimOpConverter
     : public OpConversionPattern<xla_hlo::DynamicBroadcastInDimOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -178,7 +179,7 @@ struct HloToLHloDynamicBroadcastInDimOpConverter
   }
 };
 
-struct HloToLHloReduceOpConverter
+struct HloToLhloReduceOpConverter
     : public OpConversionPattern<xla_hlo::ReduceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -438,36 +439,35 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
                                         OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<
-      HloToLHloDynamicBroadcastInDimOpConverter,
+      HloToLhloDynamicBroadcastInDimOpConverter,
       HloToLhloFuncOpConverter,
-      HloToLhloOpConverter<xla_hlo::AbsOp, xla_lhlo::AbsOp>,
-      HloToLhloOpConverter<xla_hlo::AddOp, xla_lhlo::AddOp>,
-      HloToLhloOpConverter<xla_hlo::AndOp, xla_lhlo::AndOp>,
-      HloToLhloOpConverter<xla_hlo::BroadcastInDimOp,
-                           xla_lhlo::BroadcastInDimOp>,
-      HloToLhloOpConverter<xla_hlo::CeilOp, xla_lhlo::CeilOp>,
-      HloToLhloOpConverter<xla_hlo::CompareOp, xla_lhlo::CompareOp>,
-      HloToLhloOpConverter<xla_hlo::ConstOp, xla_lhlo::ConstOp>,
-      HloToLhloOpConverter<xla_hlo::ConvertOp, xla_lhlo::ConvertOp>,
-      HloToLhloOpConverter<xla_hlo::CopyOp, xla_lhlo::CopyOp>,
-      HloToLhloOpConverter<xla_hlo::CosOp, xla_lhlo::CosOp>,
-      HloToLhloOpConverter<xla_hlo::DivOp, xla_lhlo::DivOp>,
-      HloToLhloOpConverter<xla_hlo::ExpOp, xla_lhlo::ExpOp>,
-      HloToLhloOpConverter<xla_hlo::IotaOp, xla_lhlo::IotaOp>,
-      HloToLhloOpConverter<xla_hlo::LogOp, xla_lhlo::LogOp>,
-      HloToLhloOpConverter<xla_hlo::MaxOp, xla_lhlo::MaxOp>,
-      HloToLhloOpConverter<xla_hlo::MinOp, xla_lhlo::MinOp>,
-      HloToLhloOpConverter<xla_hlo::MulOp, xla_lhlo::MulOp>,
-      HloToLhloOpConverter<xla_hlo::NegOp, xla_lhlo::NegOp>,
-      HloToLhloOpConverter<xla_hlo::RemOp, xla_lhlo::RemOp>,
-      HloToLhloOpConverter<xla_hlo::SelectOp, xla_lhlo::SelectOp>,
-      HloToLhloOpConverter<xla_hlo::SignOp, xla_lhlo::SignOp>,
-      HloToLhloOpConverter<xla_hlo::SubOp, xla_lhlo::SubOp>,
-      HloToLhloOpConverter<xla_hlo::TanhOp, xla_lhlo::TanhOp>,
-      HloToLHloReduceOpConverter,
-      StdToLhloReturnOpConverter,
+      HloToLhloOpConverter<xla_hlo::AbsOp>,
+      HloToLhloOpConverter<xla_hlo::AddOp>,
+      HloToLhloOpConverter<xla_hlo::AndOp>,
+      HloToLhloOpConverter<xla_hlo::BroadcastInDimOp>,
+      HloToLhloOpConverter<xla_hlo::CeilOp>,
+      HloToLhloOpConverter<xla_hlo::CompareOp>,
+      HloToLhloOpConverter<xla_hlo::ConstOp>,
+      HloToLhloOpConverter<xla_hlo::ConvertOp>,
+      HloToLhloOpConverter<xla_hlo::CopyOp>,
+      HloToLhloOpConverter<xla_hlo::CosOp>,
+      HloToLhloOpConverter<xla_hlo::DivOp>,
+      HloToLhloOpConverter<xla_hlo::ExpOp>,
+      HloToLhloOpConverter<xla_hlo::IotaOp>,
+      HloToLhloOpConverter<xla_hlo::LogOp>,
+      HloToLhloOpConverter<xla_hlo::MaxOp>,
+      HloToLhloOpConverter<xla_hlo::MinOp>,
+      HloToLhloOpConverter<xla_hlo::MulOp>,
+      HloToLhloOpConverter<xla_hlo::NegOp>,
+      HloToLhloOpConverter<xla_hlo::RemOp>,
+      HloToLhloOpConverter<xla_hlo::SelectOp>,
+      HloToLhloOpConverter<xla_hlo::SignOp>,
+      HloToLhloOpConverter<xla_hlo::SubOp>,
+      HloToLhloOpConverter<xla_hlo::TanhOp>,
+      HloToLhloReduceOpConverter,
       HloToLhloTensorLoadOpConverter,
-      HloToLhloTensorStoreOpConverter
+      HloToLhloTensorStoreOpConverter,
+      StdToLhloReturnOpConverter
   >(context);
   // clang-format on
 }

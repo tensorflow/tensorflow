@@ -149,8 +149,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     rewriter.setInsertionPointToEnd(block);
     // TODO(ravishankarm) : For now use the method in xla_lhlo namespace. That
     // method needs to be moved out of there.
-    Value opResult = xla_lhlo::MapXlaOpToStdScalarOp<OpTy>(
-        llvm::cast<OpTy>(op), bodyResultTypes, bodyArgs, &rewriter);
+    Value opResult = xla_lhlo::XlaOpToStdScalarOp::map<OpTy>(
+        op, bodyResultTypes, bodyArgs, &rewriter);
     if (!opResult) {
       return ConversionPattern::matchFailure();
     }
@@ -180,9 +180,9 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
     auto lhs = rewriter.create<LoadOp>(loc, lhlo_op.lhs());
     auto rhs = rewriter.create<LoadOp>(loc, lhlo_op.rhs());
     // TODO(ravishankarm) : Move this method out of xla_lhlo namespace.
-    Value opResult = xla_lhlo::MapXlaOpToStdScalarOp<LhloOp>(
-        llvm::cast<LhloOp>(lhlo_op), argType.getElementType(),
-        llvm::ArrayRef<Value>{lhs, rhs}, &rewriter);
+    Value opResult = xla_lhlo::XlaOpToStdScalarOp::map<LhloOp>(
+        lhlo_op, argType.getElementType(), llvm::ArrayRef<Value>{lhs, rhs},
+        &rewriter);
     rewriter.create<StoreOp>(loc, opResult, lhlo_op.out());
     rewriter.eraseOp(lhlo_op);
     return ConversionPattern::matchSuccess();
