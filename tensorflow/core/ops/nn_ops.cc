@@ -357,13 +357,7 @@ REGISTER_OP("Conv2DBackpropInput")
     .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
-      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
-      c->set_output(0, s);
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::Conv2DBackpropInputShape);
 
 // TODO(jeff): Instead of 'use_cudnn_for_gpu', maybe we should have a
 // more general string attribute ('kernel_impl'?) that can be used to
