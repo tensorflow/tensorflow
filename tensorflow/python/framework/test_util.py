@@ -2626,10 +2626,10 @@ class TensorFlowTestCase(googletest.TestCase):
       msg: Optional message to report on failure.
     """
     try:
-      self.assertAllEqual(a, b, msg)
+      self.assertAllEqual(a, b)
     except AssertionError:
       return
-    raise AssertionError("The two values are equal at all elements")
+    raise AssertionError("The two values are equal at all elements. %s" % msg)
 
   @py_func_if_in_function
   def assertAllGreater(self, a, comparison_target):
