@@ -149,6 +149,19 @@ py_library(
 )
 
 py_library(
+    name = "combinations",
+    srcs = [
+        "combinations.py",
+    ],
+    deps = [
+        ":testing_utils",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python:framework_test_combinations_lib",
+        "//tensorflow/python:tf2",
+    ],
+)
+
+py_library(
     name = "callbacks_v1",
     srcs = [
         "callbacks_v1.py",
@@ -313,6 +326,22 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "combinations_test",
+    size = "small",
+    srcs = ["combinations_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":combinations",
+        ":testing_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/eager:context",
         "@absl_py//absl/testing:parameterized",
     ],
 )
