@@ -76,15 +76,14 @@ namespace gpu {
 class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
-  // LinearIndexing mean each thread reads consecutive elements.
-  // StridedIndexingX mean each thread reads strided elements.
-  //   This conserve memory coalescing.
-  // LinearStridedIndexingX mean each thread read a few consecutive
-  //   elements then take a bigger step. The goal is to trigger
-  //   vectorized reads and keep memory coalescing.
   enum IndexingOrder {
+  // Threads read consecutive elements.
     LinearIndexingX,
+  // Threads read strided elements while keeping memory coalescing.
     StridedIndexingX,
+  // Threads read a few consecutive elements then take a strided
+  // step. This can trigger vectorized reads and keep memory
+  // coalescing.
     LinearStridedIndexingX
   };
 
