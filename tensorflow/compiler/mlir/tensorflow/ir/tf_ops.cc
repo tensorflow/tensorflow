@@ -1496,6 +1496,15 @@ void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// ReadVariableOp
+//===----------------------------------------------------------------------===//
+
+void ReadVariableOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ReadVariableOfCast>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // LogicalNotOp
 //===----------------------------------------------------------------------===//
 
