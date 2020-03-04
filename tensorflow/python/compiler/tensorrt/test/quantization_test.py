@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
+from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import get_linked_tensorrt_version
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
