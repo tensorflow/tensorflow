@@ -40,14 +40,14 @@
   * Support back_prop=False in while_v2 but mark it as deprecated.
   * Refactors NnApiMock to extract a class to be used to do failure injection on NNAPI in native tests. This is preparatory work for the child CL.
   * Add tf.linalg.LinearOperatorTridiag
-  * Experimental support for shape invariants has no been enabled in tf.function. See the API docs for tf.autograph.experimental.set_loop_options for more info.
+  * Experimental support for shape invariants has not been enabled in tf.function. See the API docs for tf.autograph.experimental.set_loop_options for more info.
   * Fixes the TF upgrade script to not delete files when there is a parsing error and the output mode is `in-place`
   * Moving eager C++ to Python code and functionality from swig to pybind11.
   * Add tf.math.sobol_sample op.
   * Remove expired forward compatible check
   * Tensorflow Lite's unpack op now supports boolean tensor inputs. TEST=blaze test //third_party/tensorflow/lite/experimental/mlir/testing:zip_test_unpack && blaze test //third_party/tensorflow/lite/testing:zip_test_unpack
   * "Check for large TF lite tensors."
-  * Increasing minimum bazel version to build TF to 1.2.1 to use Bazel's `cc_experimental_shared_library`.
+  * Increasing the minimum bazel version to build TF to 1.2.1 to use Bazel's `cc_experimental_shared_library`.
   * Add tf.math.xlog1py
   * Add a Modified Discrete Cosine Transform (MDCT) and its inverse to tf.signal.
   * TensorFlow now requires gast version 0.3.2 and is no longer compatible with 0.2.2.
@@ -61,7 +61,7 @@
   * If a target accelerator is specified, use its feature level to determine operations to delegate instead of SDK version.
   * Refactors the delegate and delegate kernel sources to allow usage in the linter.
   * Enable Igamma, Igammac for XLA
-  * Gradient of tf.while_loop emits StatelessWhile op if cond and body functions are stateless. This allows multiple gradient while ops to run in parallel under diststrat.
+  * Gradient of tf.while_loop emits StatelessWhile op if cond and body functions are stateless. This allows multiple gradients while ops to run in parallel under diststrat.
   * Update libtpu path.
   * Refactor tests to have all NNAPI stub based tests in the same build target with correct platform targeting flags.
   * Add broadcasting support to tf.linalg.triangular_solve.
