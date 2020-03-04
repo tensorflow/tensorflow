@@ -4266,11 +4266,14 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
       buffer_size = -1  # This is the sentinel for auto-tuning.
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
-    variant_tensor = gen_dataset_ops.prefetch_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        buffer_size=self._buffer_size,
-        slack_period=slack_period,
-        **self._flat_structure)
+   
+    with ops.device(input_dataset._variant_tensor.device):
+      variant_tensor = gen_dataset_ops.prefetch_dataset(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          buffer_size=self._buffer_size,
+          slack_period=slack_period,
+          **self._flat_structure)
+    
     super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
 
 
