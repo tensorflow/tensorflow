@@ -2004,20 +2004,15 @@ void IrEmitterUnnested::EmitTile(
         auto unroll = [&](bool add_index_boundary_condition,
                           int64 vector_size) {
           for (int64 j = 0; j < x_num_steps / vector_size; j++) {
-            // Prep some values. If we do not do this, LLVM doesn't vectorize.
-            llvm::Value* x_loc_base =
-                b_.CreateAdd(constant(j * step_x * vector_size), start_offset_x,
-                             "x_loc_base");
-            IrArray::Index source_idx_x_base =
-                source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
-                    .AddOffsetToDim(constant(j * step_x * vector_size), kDimX,
-                                    &b_);
-
             for (int i = 0; i < vector_size; i++) {
               int old_j = j * vector_size + i;
-              llvm::Value* x_loc = b_.CreateAdd(constant(i), x_loc_base, "x_loc");
+              llvm::Value* x_loc =
+                  b_.CreateAdd(constant(j * step_x * vector_size + i),
+                               start_offset_x, "x_loc");
               IrArray::Index source_idx_x =
-                  source_idx_x_base.AddOffsetToDim(constant(i), kDimX, &b_);
+                  source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
+                      .AddOffsetToDim(constant(j * step_x * vector_size + i),
+                                      kDimX, &b_);
               auto emit_element = [&] {
                 return emit_elem_function(source_idx_x, y_loc, x_loc, old_j);
               };
