@@ -63,7 +63,7 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
 
   When 'TF_CONFIG' environment variable is set, it parses cluster_spec,
   task_type and task_id from 'TF_CONFIG' and turns into a multi-worker strategy
-  which mirrores models on GPUs of all machines in a cluster. In the current
+  which mirrored models on GPUs of all machines in a cluster. In the current
   implementation, it uses all GPUs in a cluster and it assumes all workers have
   the same number of GPUs.
 
@@ -95,6 +95,7 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
         TFConfigClusterResolver which is instantiated from the TF_CONFIG env
         var.
     """
+    # TODO(b/150151677): consider move communication to CollectiveHints.
     super(CollectiveAllReduceStrategy, self).__init__(
         CollectiveAllReduceExtended(
             self,
@@ -111,7 +112,7 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
 
   @classmethod
   def _from_local_devices(cls, devices):
-    """A convenience method to create an obejct with a list of devices."""
+    """A convenience method to create an object with a list of devices."""
     obj = cls()
     obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
     return obj
@@ -505,7 +506,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     return updated_config
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.Mirrored) and
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
@@ -526,7 +527,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, len(self.worker_devices))
     return self._get_cross_device_ops().reduce(
-        reduce_op, value, destinations=destinations)
+        reduce_op,
+        value,
+        destinations=destinations,
+        experimental_hints=experimental_hints)
 
   def _warn_nccl_no_gpu(self):
     if ((self._communication ==

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
+#include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
@@ -68,6 +69,8 @@ constexpr double kHighlyKernelLaunchBoundThresholdInPercent = 15;
 // all-other bound; else if it is considered HIGHLY all-other bound.
 constexpr double kModeratelyAllOtherBoundThresholdInPercent = 3;
 constexpr double kHighlyAllOtherBoundThresholdInPercent = 15;
+// Section number of the host-analysis section in the input-pipeline analysis.
+constexpr int kHostAnalysisSectionNumber = 3;
 
 template <class Collection>
 double GetTimeInMs(const Collection& type_ps, EventType event_type) {
@@ -185,7 +188,8 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
     details.set_host_to_device_ms(GetTimeInMs(type_ps, HOST_TO_DEVICE) +
                                   GetTimeInMs(type_ps, DEVICE_WAIT_HOST));
     details.set_output_ms(GetTimeInMs(type_ps, DEVICE_TO_HOST));
-    details.set_device_compute_ms(GetTimeInMs(type_ps, DEVICE_COMPUTE));
+    details.set_device_compute_ms(GetTimeInMs(type_ps, DEVICE_COMPUTE_16) +
+                                  GetTimeInMs(type_ps, DEVICE_COMPUTE_32));
     details.set_device_to_device_ms(GetTimeInMs(type_ps, DEVICE_TO_DEVICE) +
                                     GetTimeInMs(type_ps, DEVICE_WAIT_DEVICE));
     details.set_host_compute_ms(GetTimeInMs(type_ps, HOST_COMPUTE));
@@ -340,20 +344,20 @@ double RatioOfHostToDeviceTimeToStepTime(
   return 0.0;
 }
 
-void KernelLaunchAnalysis(double kernel_launch_percent, int* observation_index,
+void KernelLaunchAnalysis(double kernel_launch_percent,
                           string* kernel_launch_classification,
                           string* kernel_launch_statement) {
   string percent_str = absl::StrFormat("%.1lf", kernel_launch_percent);
   if (kernel_launch_percent >= kHighlyKernelLaunchBoundThresholdInPercent) {
     *kernel_launch_classification = "high";
     *kernel_launch_statement = absl::StrCat(
-        "(", ++*observation_index, ") ", percent_str,
+        percent_str,
         " % of the total step time sampled is spent on Kernel Launch.");
   } else if (kernel_launch_percent >=
              kModeratelyKernelLaunchBoundThresholdInPercent) {
     *kernel_launch_classification = "moderate";
     *kernel_launch_statement = absl::StrCat(
-        "(", ++*observation_index, ") ", percent_str,
+        percent_str,
         " % of the total step time sampled is spent on Kernel Launch.");
   } else {
     *kernel_launch_classification = "no";
@@ -361,24 +365,44 @@ void KernelLaunchAnalysis(double kernel_launch_percent, int* observation_index,
   }
 }
 
-void AllOtherAnalysis(double all_other_percent, int* observation_index,
+void AllOtherAnalysis(double all_other_percent,
                       string* all_other_classification,
                       string* all_other_statement) {
   string percent_str = absl::StrFormat("%.1lf", all_other_percent);
   if (all_other_percent >= kHighlyAllOtherBoundThresholdInPercent) {
     *all_other_classification = "high";
     *all_other_statement = absl::StrCat(
-        "(", ++*observation_index, ") ", percent_str,
+        percent_str,
         " % of the total step time sampled is spent on All Others time.");
   } else if (all_other_percent >= kModeratelyAllOtherBoundThresholdInPercent) {
     *all_other_classification = "moderate";
     *all_other_statement = absl::StrCat(
-        "(", ++*observation_index, ") ", percent_str,
+        percent_str,
         " % of the total step time sampled is spent on All Others time.");
   } else {
     *all_other_classification = "no";
     *all_other_statement = "";
   }
+}
+
+// Tests if tf.data API is in use.
+bool TfDataInUse(const InputTimeBreakdown& breakdown) {
+  // Do not include enqueue_us because the "enqueue" Op that Xprof recognizes is
+  // not part of tf.data.
+  return breakdown.demanded_file_read_us() > 0 ||
+         breakdown.advanced_file_read_us() > 0 ||
+         breakdown.preprocessing_us() > 0;
+}
+
+// Returns a HTML link with the given text.
+std::string MakeDocLink(absl::string_view doc_link, absl::string_view text) {
+  return absl::StrCat("<a href=\"", doc_link, "\" target=\"_blank\">", text,
+                      "</a>");
+}
+
+// Returns the HTML link to the introduction to the tf.data API.
+std::string DatasetIntroDoc() {
+  return "https://www.tensorflow.org/guide/data";
 }
 
 }  // namespace
@@ -465,7 +489,7 @@ InputPipelineAnalysisRecommendation GenerateRecommendation() {
       " or preprocess the data OFFLINE.");
   *recommendation.add_details() = absl::StrCat(
       "Reading data from files in advance: you may tune parameters in the "
-      "following Dataset API (",
+      "following tf.data API (",
       AnchorElement(absl::StrCat(kDatasetTopic, "prefetch"), "prefetch size"),
       ", ",
       AnchorElement(absl::StrCat(kDatasetTopic, "interleave"),
@@ -473,14 +497,15 @@ InputPipelineAnalysisRecommendation GenerateRecommendation() {
       ", ", AnchorElement(kTfRecordDataset, "reader buffer_size"), ")");
   *recommendation.add_details() = absl::StrCat(
       "Reading data from files on demand: you should read data IN ADVANCE "
-      "using the following Dataset API (",
+      "using the following tf.data API (",
       AnchorElement(absl::StrCat(kDatasetTopic, "prefetch"), "prefetch"), ", ",
       AnchorElement(absl::StrCat(kDatasetTopic, "interleave"), "interleave"),
       ", ", AnchorElement(kTfRecordDataset, "reader buffer"), ")");
   *recommendation.add_details() = absl::StrCat(
       "Other data reading or processing: you may consider using the ",
-      AnchorElement(kDatasetIntro, "Dataset API"),
+      AnchorElement(kDatasetIntro, "tf.data API"),
       " (if you are not using it now)");
+
   return recommendation;
 }
 
@@ -509,28 +534,34 @@ InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
   InputPipelineAnalysisResult result =
       ComputeGenericInputPipelineAnalysisResult(
           op_stats.step_db().step_sequence());
-  result.set_hardware_type(hardware_type);
+  result.set_hardware_type(HardwareType_Name(hardware_type));
   GenerateHostResult(op_stats.host_op_metrics_db(), &result);
-  *result.mutable_recommendation() = GenerateRecommendation();
+
+  InputPipelineAnalysisRecommendation recommendation = GenerateRecommendation();
+  BottleneckAnalysis bottleneck_analysis =
+      ComputeBottleneckAnalysis(result.step_details());
+  recommendation.mutable_bottleneck_analysis()->PackFrom(bottleneck_analysis);
+  *recommendation.mutable_summary_next_step() =
+      GetSummaryNextStep(bottleneck_analysis.input_classification(),
+                         result.input_time_breakdown());
+
+  *result.mutable_recommendation() = recommendation;
   return result;
 }
 
-void InfeedAnalysis(HardwareType hardware_type, double infeed_percent,
-                    int* observation_index, string* input_classification,
+void InfeedAnalysis(double infeed_percent, string* input_classification,
                     string* input_statement) {
   absl::string_view non_input_time = "other time";
   string infeed_percent_str = absl::StrFormat("%.1lf", infeed_percent);
   if (infeed_percent >= kHighlyInfeedBoundThresholdInPercent) {
     *input_classification = "host";
     *input_statement = absl::StrCat(
-        "(", ++*observation_index, ") ",
         "Your program is HIGHLY input-bound because ", infeed_percent_str,
-        "% of the total step time sampled is waiting for input. Therefore, "
-        "you should first focus on reducing the input time.");
+        "% of the total step time sampled is waiting for input. Therefore, you "
+        "should first focus on reducing the input time.");
   } else if (infeed_percent >= kModeratelyInfeedBoundThresholdInPercent) {
     *input_classification = "both";
     *input_statement = absl::StrCat(
-        "(", ++*observation_index, ") ",
         "Your program is MODERATELY input-bound because ", infeed_percent_str,
         "% of the total step time sampled is waiting for input. Therefore, "
         "you would need to reduce both the input time and ",
@@ -538,7 +569,6 @@ void InfeedAnalysis(HardwareType hardware_type, double infeed_percent,
   } else {
     *input_classification = "device";
     *input_statement = absl::StrCat(
-        "(", ++*observation_index, ") ",
         "Your program is NOT input-bound because only ", infeed_percent_str,
         "% of the total step time sampled is waiting for "
         "input. Therefore, you should focus on "
@@ -547,8 +577,9 @@ void InfeedAnalysis(HardwareType hardware_type, double infeed_percent,
   }
 }
 
-GenericBottleneck GenericOverallBottleneck(
-    const InputPipelineAnalysisResult& result) {
+BottleneckAnalysis ComputeBottleneckAnalysis(
+    const ::tensorflow::protobuf::RepeatedPtrField<::google::protobuf::Any>&
+        any_step_details) {
   double total_step_time_ms = 0;
   double total_input_ms = 0;
   double total_output_ms = 0;
@@ -557,7 +588,8 @@ GenericBottleneck GenericOverallBottleneck(
   double total_host_compile_ms = 0;
   double total_device_to_device_ms = 0;
   double total_unknown_ms = 0;
-  for (const google::protobuf::Any& step_details : result.step_details()) {
+
+  for (const google::protobuf::Any& step_details : any_step_details) {
     PerGenericStepDetails details;
     bool success = step_details.UnpackTo(&details);
     if (!success && !step_details.type_url().empty()) {
@@ -575,43 +607,69 @@ GenericBottleneck GenericOverallBottleneck(
     total_host_compile_ms += details.host_compile_ms();
     total_unknown_ms += details.unknown_time_ms();
   }
+
   if (total_step_time_ms == 0) {
-    return {{"unknown",
-             "No step time measured. Therefore we cannot tell where the "
-             "performance bottleneck is."},
-            "no",
-            "",
-            "no",
-            ""};
+    BottleneckAnalysis analysis;
+    analysis.set_input_classification("unknown");
+    analysis.set_input_statement(
+        "No step time measured. Therefore we cannot tell where the "
+        "performance bottleneck is.");
+    analysis.set_kernel_launch_classification("no");
+    analysis.set_kernel_launch_statement("");
+    analysis.set_all_other_classification("no");
+    analysis.set_all_other_statement("");
+    return analysis;
   }
   double input_percent = 100.0 * total_input_ms / total_step_time_ms;
   double kernel_launch_percent =
       100.0 * total_host_prepare_ms / total_step_time_ms;
   double all_other_percent = 100.0 * total_unknown_ms / total_step_time_ms;
-  int observation_index = 0;
   string input_classification;
   string input_statement;
-  InfeedAnalysis(result.hardware_type(), input_percent, &observation_index,
-                 &input_classification, &input_statement);
+  InfeedAnalysis(input_percent, &input_classification, &input_statement);
 
   string kernel_launch_classification;
   string kernel_launch_statement;
-  KernelLaunchAnalysis(kernel_launch_percent, &observation_index,
-                       &kernel_launch_classification, &kernel_launch_statement);
+  KernelLaunchAnalysis(kernel_launch_percent, &kernel_launch_classification,
+                       &kernel_launch_statement);
 
   string all_other_classification;
   string all_other_statement;
-  AllOtherAnalysis(all_other_percent, &observation_index,
-                   &all_other_classification, &all_other_statement);
+  AllOtherAnalysis(all_other_percent, &all_other_classification,
+                   &all_other_statement);
 
-  return {{
-              input_classification,
-              input_statement,
-          },
-          kernel_launch_classification,
-          kernel_launch_statement,
-          all_other_classification,
-          all_other_statement};
+  BottleneckAnalysis analysis;
+  analysis.set_input_classification(input_classification);
+  analysis.set_input_statement(input_statement);
+  analysis.set_kernel_launch_classification(kernel_launch_classification);
+  analysis.set_kernel_launch_statement(kernel_launch_statement);
+  analysis.set_all_other_classification(all_other_classification);
+  analysis.set_all_other_statement(all_other_statement);
+  return analysis;
+}
+
+string GetSummaryNextStep(absl::string_view input_classification,
+                          const InputTimeBreakdown& breakdown) {
+  string summary_next_step;
+  if (input_classification == "host" || input_classification == "both") {
+    if (!TfDataInUse(breakdown)) {
+      summary_next_step = absl::StrCat(
+          "Consider using ", MakeDocLink(DatasetIntroDoc(), "the tf.data API"),
+          " to enable profiler's host-side analysis for input pipeline. "
+          "Profiler currently does not support custom input pipeline (please "
+          "ignore "
+          "Section ",
+          kHostAnalysisSectionNumber, " below).");
+    } else {
+      summary_next_step =
+          absl::StrCat("Look at Section ", kHostAnalysisSectionNumber,
+                       " for the breakdown of input time on the host.");
+    }
+  } else {
+    summary_next_step = "You may skip the rest of this page.";
+  }
+
+  return summary_next_step;
 }
 
 }  // namespace profiler

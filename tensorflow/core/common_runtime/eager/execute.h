@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EXECUTE_H_
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace tensorflow {
 
@@ -48,7 +48,7 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
 // Low-level utility to execute the kernel specified by `kernel` on
 // `kernel->device()`, with the inputs op_inputs, in the context 'ctx'.
 Status EagerKernelExecute(
-    EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
+    EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4>& op_inputs,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
     const core::RefCountPtr<KernelAndDevice>& kernel,
     GraphCollector* graph_collector, CancellationManager* cancellation_manager,

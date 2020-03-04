@@ -78,11 +78,12 @@ def load_data(path='imdb.npz',
   Returns:
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
 
-      x_train, x_test: lists of sequences, which are lists of indexes
+      **x_train, x_test**: lists of sequences, which are lists of indexes
         (integers). If the num_words argument was specific, the maximum
         possible index value is num_words-1. If the `maxlen` argument was
         specified, the largest possible sequence length is `maxlen`.
-      y_train, y_test: lists of integer labels (1 or 0).
+
+      **y_train, y_test**: lists of integer labels (1 or 0).
 
   Raises:
       ValueError: in case `maxlen` is so low

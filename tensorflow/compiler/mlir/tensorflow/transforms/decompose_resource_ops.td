@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 // Here, the element type can be any integer or float type. But, note that only
@@ -224,4 +224,17 @@ def DecomposeResourceGather : Pat<
     $indices,
     (TF_ConstOp $batch_dims), // axis
     $batch_dims
+  )>;
+
+// Pattern to decompose tf.ResourceScatterUpdate into tf.ReadVariable,
+// tf.TensorScatterUpdate, and tf.AssignVariable.
+def DecomposeResourceScatterUpdate : Pat<
+  (TF_ResourceScatterUpdateOp:$src_op $resource, $indices, $updates),
+  (TF_AssignVariableOp
+    $resource,
+    (TF_TensorScatterUpdateOp
+      (CreateTFReadVariableOp $src_op, $updates, $resource),
+      $indices,
+      $updates
+    )
   )>;

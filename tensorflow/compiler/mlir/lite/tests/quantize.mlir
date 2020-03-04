@@ -2,39 +2,44 @@
 // RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize -tfl-numeric-verify | FileCheck --check-prefix=DEBUG %s
 
 // CHECK-LABEL: QuantizeFloatConst
-func @QuantizeFloatConst() -> tensor<f32> {
+func @QuantizeFloatConst() -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>> {
   %0 = constant dense<-0.1> : tensor<2x2xf32>
-  %1 = "tfl.quantize"(%0) {qtype = tensor<!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>} : (tensor<2x2xf32>) -> tensor<!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>
-  %2 = "tfl.dequantize"(%1) : (tensor<!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>) -> tensor<f32>
-  return %2 : tensor<f32>
+  %1 = "tfl.quantize"(%0) {qtype = tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>} : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>
+  return %1 : tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>
 
-// CHECK:  %[[cst:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>, value = dense<0> : tensor<2x2xi8>}
-// CHECK:  %[[dq:.*]] = "tfl.dequantize"(%[[cst]])
-// CHECK:  return %[[dq]] : tensor<f32>
+// CHECK:  %[[cst:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>, value = dense<0> : tensor<2x2xi8>}
+// CHECK:  return %[[cst]]
 }
 
 // CHECK-LABEL: QuantizeDenseFloatConst
-func @QuantizeDenseFloatConst() -> tensor<2x2xf32> {
+func @QuantizeDenseFloatConst() -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>> {
   %0 = constant dense<[[-0.1, 1.0], [1.0, 3.0]]> : tensor<2x2xf32>
   %1 = "tfl.quantize"(%0) {qtype = tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>} : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>
-  %2 = "tfl.dequantize"(%1) : (tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>) -> tensor<2x2xf32>
-  return %2 : tensor<2x2xf32>
+  return %1 : tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>
 
 // CHECK:  %[[cst:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>, value = dense<{{\[\[}}0, -1], {{\[}}-1, -1]]> : tensor<2x2xi8>}
-// CHECK:  %[[dq:.*]] = "tfl.dequantize"(%[[cst]])
-// CHECK:  return %[[dq]] : tensor<2x2xf32>
+// CHECK:  return %[[cst]]
 }
 
 // CHECK-LABEL: QuantizeSplatFloatConst
-func @QuantizeSplatFloatConst() -> tensor<2x2xf32> {
+func @QuantizeSplatFloatConst() -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>> {
   %0 = constant dense<3.0> : tensor<2x2xf32>
+  %1 = "tfl.quantize"(%0) {qtype = tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>} : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>
+  return %1 : tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>
+
+// CHECK:  %[[cst:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>, value = dense<-1> : tensor<2x2xi8>}
+// CHECK:  return %[[cst]]
+}
+
+// CHECK-LABEL: NotQuantizeFloatConst
+func @NotQuantizeFloatConst() -> tensor<2x2xf32> {
+  %0 = constant dense<-0.1> : tensor<2x2xf32>
   %1 = "tfl.quantize"(%0) {qtype = tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>} : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>
   %2 = "tfl.dequantize"(%1) : (tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>) -> tensor<2x2xf32>
   return %2 : tensor<2x2xf32>
 
-// CHECK:  %[[cst:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>, value = dense<-1> : tensor<2x2xi8>}
-// CHECK:  %[[dq:.*]] = "tfl.dequantize"(%[[cst]])
-// CHECK:  return %[[dq]] : tensor<2x2xf32>
+// CHECK:  %[[cst:.*]] = constant dense<-1.000000e-01> : tensor<2x2xf32>
+// CHECK:  return %[[cst]] : tensor<2x2xf32>
 }
 
 // CHECK-LABEL: DequantizeAndQuantize
@@ -71,7 +76,7 @@ func @QuantizeConv2D(tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>
 // DEBUG: %[[act:.*]] = "tfl.dequantize"(%arg0) : (tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>) -> tensor<1x224x224x3xf32>
 // DEBUG: %[[f_conv:.*]] = "tfl.conv_2d"(%[[act]], %[[wt]], %[[bias]])
 // DEBUG: %[[q_conv:.*]] = "tfl.conv_2d"
-// DEBUG: "tfl.NumericVerify"(%[[q_conv]], %[[f_conv]]) {tolerance = 1.000000e-01 : f32}
+// DEBUG: "tfl.NumericVerify"(%[[q_conv]], %[[f_conv]]) {tolerance = 5.000000e+00 : f32}
 // DEBUG: return %[[q_conv]] : tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
 }
 
@@ -236,8 +241,8 @@ func @QuantizeSplit(%arg: tensor<4x!quant.uniform<u8:f32, 1.0>>, %cst: tensor<i3
 
 // DEUBG: %[[f_split:.*]]:2 = "tfl.split"
 // DEUBG: %[[q_split:.*]]:2 = "tfl.split"
-// DEUBG: "tfl.NumericVerify"(%[[q_split]]#1, %[[f_split]]#1) {tolerance = 1.000000e-01 : f32}
-// DEUBG: "tfl.NumericVerify"(%[[q_split]]#0, %[[f_split]]#0) {tolerance = 1.000000e-01 : f32}
+// DEUBG: "tfl.NumericVerify"(%[[q_split]]#1, %[[f_split]]#1) {tolerance = 5.000000e+00 : f32}
+// DEUBG: "tfl.NumericVerify"(%[[q_split]]#0, %[[f_split]]#0) {tolerance = 5.000000e+00 : f32}
 }
 
 // CHECK-LABEL: QuantizeSplitUnusedResults

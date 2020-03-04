@@ -25,7 +25,7 @@ tf_class {
   }
   member_method {
     name: "apply_gradients"
-    argspec: "args=[\'self\', \'grads_and_vars\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'grads_and_vars\', \'name\', \'all_reduce_sum_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
     name: "from_config"

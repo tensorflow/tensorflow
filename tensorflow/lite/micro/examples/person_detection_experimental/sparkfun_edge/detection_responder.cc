@@ -49,6 +49,6 @@ void RespondToDetection(tflite::ErrorReporter* error_reporter,
     am_hal_gpio_output_set(AM_BSP_GPIO_LED_YELLOW);
   }
 
-  error_reporter->Report("Person score: %d No person score: %d", person_score,
-                         no_person_score);
+  TF_LITE_REPORT_ERROR(error_reporter, "Person score: %d No person score: %d",
+                       person_score, no_person_score);
 }

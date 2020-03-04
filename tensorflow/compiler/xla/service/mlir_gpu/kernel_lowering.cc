@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // TF:llvm-project
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // TF:llvm-project
 #include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // TF:llvm-project
 #include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"  // TF:llvm-project
@@ -30,7 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // TF:llvm-project
 #include "mlir/Dialect/LoopOps/LoopOps.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -275,8 +276,10 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   pm.addPass(absl::make_unique<FusionToLhloConverter>());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
+  // Remove unnecessary Lhlo copies.
+  pm.addPass(::mlir::xla_hlo::createLhloCopyRemovalPass());
   // Transform lhlo operations to LinAlg.
-  pm.addPass(::mlir::xla_lhlo::createLegalizeToLinalgPass());
+  pm.addPass(::mlir::xla_lhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations. This will yield a single tiled loop nest where
   // the inner loops are single trip.
   pm.addPass(::mlir::xla_lhlo::createLhloFuseLinalg());
@@ -324,13 +327,13 @@ class LowerToNVVMPass
     ::mlir::gpu::GPUModuleOp m = getOperation();
 
     ::mlir::OwningRewritePatternList patterns;
-    ::mlir::LinalgTypeConverter converter(m.getContext());
+    ::mlir::LLVMTypeConverter converter(m.getContext());
     ::mlir::populateStdToLLVMConversionPatterns(converter, patterns);
     // TODO(b/145824979) Remove linalg once sliceop is in std.
     ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,
                                                    &getContext());
     ::mlir::populateGpuToNVVMConversionPatterns(converter, patterns);
-
+    ::mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
     ::mlir::ConversionTarget target(getContext());
     target.addIllegalDialect<::mlir::gpu::GPUDialect>();
     target.addIllegalOp<::mlir::LLVM::ExpOp>();
@@ -339,7 +342,7 @@ class LowerToNVVMPass
     // TODO(csigg): Remove once we support replacing non-root ops.
     target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
                       ::mlir::gpu::YieldOp>();
-    if (failed(applyPartialConversion(m, target, patterns, &converter))) {
+    if (failed(mlir::applyFullConversion(m, target, patterns, &converter))) {
       signalPassFailure();
     }
   }
@@ -359,6 +362,7 @@ Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   // Some basic cleanup.
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  kernelPm.addPass(::mlir::createStripDebugInfoPass());
 
   if (failed(pm.run(module))) {
     return InternalError("Lowering to NVVM IR failed.");

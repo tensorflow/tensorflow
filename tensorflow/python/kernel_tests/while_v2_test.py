@@ -38,6 +38,7 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import map_fn
@@ -339,14 +340,24 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def Fn():
+
+      def Body1(v):
+        x.assign(x)
+        return v * x
+
       ret1 = while_loop_v2(
           lambda v: v < 4.,
-          lambda v: v * x, [c],
+          Body1, [c],
           return_same_structure=False,
           name="while_1")  # 2x
+
+      def Body2(v):
+        x.assign(x)
+        return v * x * x
+
       ret2 = while_loop_v2(
           lambda v: v < 16.,
-          lambda v: v * x * x, [c],
+          Body2, [c],
           return_same_structure=False,
           name="while_2")  # 4x
       return ret1, ret2
@@ -367,24 +378,44 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def Fn():
+
+      def Body1(v):
+        x1.assign(x1)
+        return v * x1
+
       ret1 = while_loop_v2(
           lambda v: v < 4.,
-          lambda v: v * x1, [c],
+          Body1, [c],
           return_same_structure=False,
           name="while_1")  # 2x
+
+      def Body2(v):
+        x1.assign(x1)
+        return v * x1 * x1
+
       ret2 = while_loop_v2(
           lambda v: v < 16.,
-          lambda v: v * x1 * x1, [c],
+          Body2, [c],
           return_same_structure=False,
           name="while_2")  # 4x
+
+      def Body3(v):
+        x2.assign(x2)
+        return v * x2
+
       ret3 = while_loop_v2(
           lambda v: v < 4.,
-          lambda v: v * x2, [c],
+          Body3, [c],
           return_same_structure=False,
           name="while_3")  # 3x
+
+      def Body4(v):
+        x2.assign(x2)
+        return v * x2 * x2
+
       ret4 = while_loop_v2(
           lambda v: v < 16.,
-          lambda v: v * x2 * x2, [c],
+          Body4, [c],
           return_same_structure=False,
           name="while_4")  # 9x
       ret5 = while_loop_v2(
@@ -714,7 +745,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # Skip over Identity.
     while_op = r.op.inputs[0].op
     # We can't directly use while_op.inputs.index() because Tensors are not
-    # hashshable.
+    # hashable.
     index = GetInputIndex(while_op, v)
     self._assertNotAccumulated(while_op, index)
 
@@ -1106,6 +1137,43 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # Gradient of `Mul` requires accumulating both its inputs. But since one
     # of those is a Const (2.0), we should have just one accumulator.
     self.assertLen(push_back_nodes, 1)
+
+  def testDoNotAccumulateForwardTensorsForReductionOps(self):
+
+    @def_function.function
+    def Fn():
+      with backprop.GradientTape() as tape:
+        x = constant_op.constant(2.)
+        tape.watch(x)
+
+        def Body(i, x):
+          forward_graph = ops.get_default_graph()
+
+          @custom_gradient.custom_gradient
+          def SquaredWithZeroGrad(x):
+
+            def Grad(unused_g, variables=None):  # pylint: disable=redefined-outer-name
+              del variables
+              gradient_graph = ops.get_default_graph()
+              shape = gen_array_ops.shape(x)
+              assert shape.graph is forward_graph
+              rank = gen_array_ops.rank(x)
+              assert rank.graph is forward_graph
+              size = gen_array_ops.size(x)
+              assert size.graph is forward_graph
+              zeros = array_ops.zeros(shape)
+              assert zeros.graph is gradient_graph
+              return zeros
+
+            return x * 2, Grad
+
+          return i + 1, SquaredWithZeroGrad(x)
+
+        _, result = while_loop_v2(lambda i, _: i < 2, Body, [0, x])
+      grad = tape.gradient(result, x)
+      return grad
+
+    Fn()
 
 
 def ScalarShape():

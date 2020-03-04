@@ -38,9 +38,19 @@ namespace xla {
 // emitters: PadToStatic and SliceToDynamic.
 class DynamicPadder : public HloModulePass {
  public:
+  // If `slice_dynamic_output` is true, insert 'slice_to_dynamic' ops to all
+  // outputs that are inferred to be dynamic.
+  explicit DynamicPadder(bool slice_dynamic_output = true)
+      : slice_dynamic_output_(slice_dynamic_output) {}
+
   absl::string_view name() const override { return "dynamic_padder"; }
 
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  // Insert 'slice_to_dynamic' ops to all outputs that are inferred to be
+  // dynamic.
+  bool slice_dynamic_output_;
 };
 
 }  // namespace xla

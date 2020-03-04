@@ -6,7 +6,7 @@ load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
-    "tf_exec_compatible_with",
+    "tf_exec_properties",
 )
 
 def all_backends():
@@ -113,7 +113,7 @@ def tf_xla_py_test(
             data = data + backend_data,
             deps = deps + backend_deps,
             tags = test_tags,
-            exec_compatible_with = tf_exec_compatible_with({"tags": test_tags}),
+            exec_properties = tf_exec_properties({"tags": test_tags}),
             **kwargs
         )
         test_names.append(test_name)

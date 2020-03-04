@@ -279,3 +279,22 @@ func @decompose_resource_gather_op(%indices : tensor<5xi32>) -> tensor<2x5x16xi3
 
   return %0: tensor<2x5x16xi32>
 }
+
+// -----
+
+// Tests that composite tf.ResourceScatterUpdate operation is decomposed.
+
+
+// CHECK-LABEL: @decompose_resource_scatter_update_op
+// CHECK-SAME: ([[INDEX:%.+]]: tensor<2x?xi32>, [[UPDATE:%.+]]: tensor<?x?x?xi32>)
+func @decompose_resource_scatter_update_op(%indices : tensor<2x?xi32>, %updates: tensor<?x?x?xi32>) {
+  // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
+  %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // CHECK: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
+  // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterUpdate"([[READ]], [[INDEX]], [[UPDATE]]) : (tensor<*xi32>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
+  // CHECK: "tf.AssignVariableOp"([[VAR]], [[TENSOR]])
+  "tf.ResourceScatterUpdate"(%resource, %indices, %updates) : (tensor<*x!tf.resource>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> ()
+
+  return
+}

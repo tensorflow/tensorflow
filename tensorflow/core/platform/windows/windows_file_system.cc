@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/windows/windows_file_system.h"
+
 #include <Shlwapi.h>
 #include <Windows.h>
 #include <direct.h>
@@ -30,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/windows/error_windows.h"
 #include "tensorflow/core/platform/windows/wide_char.h"
-#include "tensorflow/core/platform/windows/windows_file_system.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 // TODO(mrry): Prevent this Windows.h #define from leaking out of our headers.
@@ -45,9 +47,11 @@ namespace {
 const auto CloseHandleFunc = [](HANDLE h) { ::CloseHandle(h); };
 typedef std::unique_ptr<void, decltype(CloseHandleFunc)> UniqueCloseHandlePtr;
 
-inline Status IOErrorFromWindowsError(const string& context, DWORD err) {
+inline Status IOErrorFromWindowsError(const string& context) {
+  auto last_error = ::GetLastError();
   return IOError(
-      context + string(" : ") + internal::GetWindowsErrorMessage(err), err);
+      context + string(" : ") + internal::WindowsGetLastErrorMessage(),
+      last_error);
 }
 
 // PLEASE NOTE: hfile is expected to be an async handle
@@ -166,8 +170,7 @@ class WindowsWritableFile : public WritableFile {
     BOOL write_result =
         ::WriteFile(hfile_, data.data(), data_size, &bytes_written, NULL);
     if (FALSE == write_result) {
-      return IOErrorFromWindowsError("Failed to WriteFile: " + filename_,
-                                     ::GetLastError());
+      return IOErrorFromWindowsError("Failed to WriteFile: " + filename_);
     }
 
     assert(size_t(bytes_written) == data.size());
@@ -183,8 +186,8 @@ class WindowsWritableFile : public WritableFile {
     *position = SetFilePointer(hfile_, 0, NULL, FILE_CURRENT);
 
     if (*position == INVALID_SET_FILE_POINTER) {
-      return IOErrorFromWindowsError(
-          "Tell(SetFilePointer) failed for: " + filename_, ::GetLastError());
+      return IOErrorFromWindowsError("Tell(SetFilePointer) failed for: " +
+                                     filename_);
     }
 
     return Status::OK();
@@ -199,8 +202,7 @@ class WindowsWritableFile : public WritableFile {
     }
 
     if (FALSE == ::CloseHandle(hfile_)) {
-      return IOErrorFromWindowsError("CloseHandle failed for: " + filename_,
-                                     ::GetLastError());
+      return IOErrorFromWindowsError("CloseHandle failed for: " + filename_);
     }
 
     hfile_ = INVALID_HANDLE_VALUE;
@@ -209,8 +211,8 @@ class WindowsWritableFile : public WritableFile {
 
   Status Flush() override {
     if (FALSE == ::FlushFileBuffers(hfile_)) {
-      return IOErrorFromWindowsError(
-          "FlushFileBuffers failed for: " + filename_, ::GetLastError());
+      return IOErrorFromWindowsError("FlushFileBuffers failed for: " +
+                                     filename_);
     }
     return Status::OK();
   }
@@ -278,7 +280,7 @@ Status WindowsFileSystem::NewRandomAccessFile(
 
   if (INVALID_HANDLE_VALUE == hfile) {
     string context = "NewRandomAccessFile failed to Create/Open: " + fname;
-    return IOErrorFromWindowsError(context, ::GetLastError());
+    return IOErrorFromWindowsError(context);
   }
 
   result->reset(new WindowsRandomAccessFile(translated_fname, hfile));
@@ -298,7 +300,7 @@ Status WindowsFileSystem::NewWritableFile(
 
   if (INVALID_HANDLE_VALUE == hfile) {
     string context = "Failed to create a NewWriteableFile: " + fname;
-    return IOErrorFromWindowsError(context, ::GetLastError());
+    return IOErrorFromWindowsError(context);
   }
 
   result->reset(new WindowsWritableFile(translated_fname, hfile));
@@ -318,7 +320,7 @@ Status WindowsFileSystem::NewAppendableFile(
 
   if (INVALID_HANDLE_VALUE == hfile) {
     string context = "Failed to create a NewAppendableFile: " + fname;
-    return IOErrorFromWindowsError(context, ::GetLastError());
+    return IOErrorFromWindowsError(context);
   }
 
   UniqueCloseHandlePtr file_guard(hfile, CloseHandleFunc);
@@ -326,7 +328,7 @@ Status WindowsFileSystem::NewAppendableFile(
   DWORD file_ptr = ::SetFilePointer(hfile, NULL, NULL, FILE_END);
   if (INVALID_SET_FILE_POINTER == file_ptr) {
     string context = "Failed to create a NewAppendableFile: " + fname;
-    return IOErrorFromWindowsError(context, ::GetLastError());
+    return IOErrorFromWindowsError(context);
   }
 
   result->reset(new WindowsWritableFile(translated_fname, hfile));
@@ -356,8 +358,7 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
 
   if (INVALID_HANDLE_VALUE == hfile) {
     return IOErrorFromWindowsError(
-        "NewReadOnlyMemoryRegionFromFile failed to Create/Open: " + fname,
-        ::GetLastError());
+        "NewReadOnlyMemoryRegionFromFile failed to Create/Open: " + fname);
   }
 
   UniqueCloseHandlePtr file_guard(hfile, CloseHandleFunc);
@@ -383,7 +384,7 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
           "Failed to create file mapping for "
           "NewReadOnlyMemoryRegionFromFile: " +
           fname;
-      return IOErrorFromWindowsError(context, ::GetLastError());
+      return IOErrorFromWindowsError(context);
     }
 
     UniqueCloseHandlePtr map_guard(hmap, CloseHandleFunc);
@@ -400,7 +401,7 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
           "Failed to MapViewOfFile for "
           "NewReadOnlyMemoryRegionFromFile: " +
           fname;
-      return IOErrorFromWindowsError(context, ::GetLastError());
+      return IOErrorFromWindowsError(context);
     }
 
     result->reset(new WinReadOnlyMemoryRegion(fname, hfile, hmap, mapped_region,
@@ -439,7 +440,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
   HANDLE find_handle = ::FindFirstFileW(pattern.c_str(), &find_data);
   if (find_handle == INVALID_HANDLE_VALUE) {
     string context = "FindFirstFile failed for: " + translated_dir;
-    return IOErrorFromWindowsError(context, ::GetLastError());
+    return IOErrorFromWindowsError(context);
   }
 
   do {
@@ -452,7 +453,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
 
   if (!::FindClose(find_handle)) {
     string context = "FindClose failed for: " + translated_dir;
-    return IOErrorFromWindowsError(context, ::GetLastError());
+    return IOErrorFromWindowsError(context);
   }
 
   return Status::OK();
@@ -501,7 +502,7 @@ Status WindowsFileSystem::GetFileSize(const string& fname, uint64* size) {
     *size = file_size.QuadPart;
   } else {
     string context = "Can not get size for: " + fname;
-    result = IOErrorFromWindowsError(context, ::GetLastError());
+    result = IOErrorFromWindowsError(context);
   }
   return result;
 }
@@ -524,7 +525,7 @@ Status WindowsFileSystem::RenameFile(const string& src, const string& target) {
   if (!::MoveFileExW(ws_translated_src.c_str(), ws_translated_target.c_str(),
                      MOVEFILE_REPLACE_EXISTING)) {
     string context(strings::StrCat("Failed to rename: ", src, " to: ", target));
-    result = IOErrorFromWindowsError(context, ::GetLastError());
+    result = IOErrorFromWindowsError(context);
   }
   return result;
 }
@@ -545,6 +546,12 @@ Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
     std::replace(result.begin(), result.end(), '/', '\\');
   }
   return Status::OK();
+}
+
+bool WindowsFileSystem::Match(const string& filename, const string& pattern) {
+  std::wstring ws_path(Utf8ToWideChar(filename));
+  std::wstring ws_pattern(Utf8ToWideChar(pattern));
+  return PathMatchSpecW(ws_path.c_str(), ws_pattern.c_str()) == TRUE;
 }
 
 Status WindowsFileSystem::Stat(const string& fname, FileStatistics* stat) {

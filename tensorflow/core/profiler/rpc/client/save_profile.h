@@ -22,6 +22,11 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+string GetCurrentTimeStampAsString();
+
+// Returns the profile plugin directory given a logdir to TensorBoard.
+string GetTensorBoardProfilePluginDir(const string& logdir);
+
 // Saves all profiling tool data in a profile to a TensorBoard log directory
 // with the given run name. This writes user-facing log messages to `os`.
 // Note: this function creates a directory even when all fields in
@@ -30,6 +35,13 @@ Status SaveTensorboardProfile(const string& logdir, const string& run,
                               const string& host,
                               const ProfileResponse& response,
                               std::ostream* os);
+
+// Gzip the data and save to the specified filepath.
+Status SaveGzippedToolDataToTensorboardProfile(const string& logdir,
+                                               const string& run,
+                                               const string& host,
+                                               const string& tool_name,
+                                               const string& data);
 
 }  // namespace profiler
 }  // namespace tensorflow

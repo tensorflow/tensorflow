@@ -77,6 +77,16 @@ TEST(DensifyOpTest, Float) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(dense_values));
 }
 
+TEST(DensifyOpTest, Float3D) {
+  std::initializer_list<float> dense_values = {6, 0, 9, 8, 0, 0,
+                                               0, 0, 5, 0, 0, 7};
+  std::initializer_list<float> sparse_values = {6, 9, 8, 5, 7};
+  DensifyOpModel<float> m(TensorType_FLOAT32, {3, 2, 2}, dense_values);
+  m.Invoke();
+  EXPECT_THAT(m.GetInput(), ElementsAreArray(sparse_values));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(dense_values));
+}
+
 TEST(DensifyOpTest, Int8) {
   std::initializer_list<int8_t> dense_values = {6, 0, 9, 8, 0, 0,
                                                 0, 0, 5, 0, 0, 7};

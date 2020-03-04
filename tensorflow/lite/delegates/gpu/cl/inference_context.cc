@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/operation_selector.h"
+#include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
@@ -109,69 +110,43 @@ void AddUsage(ValueId id, int task_index,
   }
 }
 
-TensorStorageType SelectBestStorageType(const CLContext& context,
-                                        const CLDevice& device,
-                                        const BHWC& shape,
-                                        const TensorStorageType& desired,
-                                        const DataType& data_type,
-                                        const Layout& layout) {
-  if (CanCreateTensorWithShape(context, device, shape,
-                               TensorDescriptor{data_type, desired, layout})) {
-    return desired;
-  }
-  auto GetBestTypeAfterTextureArray = [&]() {
-    if (device.SupportsImageBuffer() &&
-        CanCreateTensorWithShape(
-            context, device, shape,
-            TensorDescriptor{data_type, TensorStorageType::IMAGE_BUFFER,
-                             layout})) {
-      return TensorStorageType::IMAGE_BUFFER;
-    } else {
-      return TensorStorageType::BUFFER;
-    }
-  };
-  auto GetBestTypeAfterTexture2D = [&]() {
-    if (device.SupportsTextureArray() &&
-        CanCreateTensorWithShape(
-            context, device, shape,
-            TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY,
-                             layout})) {
-      return TensorStorageType::TEXTURE_ARRAY;
-    } else {
-      return GetBestTypeAfterTextureArray();
-    }
-  };
-  auto GetBestTypeAfterTexture3D = [&]() {
-    if (CanCreateTensorWithShape(
-            context, device, shape,
-            TensorDescriptor{data_type, TensorStorageType::TEXTURE_2D,
-                             layout})) {
-      return TensorStorageType::TEXTURE_2D;
-    } else {
-      return GetBestTypeAfterTexture2D();
-    }
-  };
-  switch (desired) {
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return GetBestTypeAfterTexture2D();
-    case TensorStorageType::TEXTURE_ARRAY:
-      return GetBestTypeAfterTextureArray();
-    case TensorStorageType::TEXTURE_3D:
-      return GetBestTypeAfterTexture3D();
-    case TensorStorageType::IMAGE_BUFFER:
-    case TensorStorageType::BUFFER:
-      return TensorStorageType::BUFFER;
-    default:
-      return TensorStorageType::BUFFER;
-  }
-}
-
 // returns true if actual memory for this storage type will be allocated with
 // clCreateBuffer.
 bool IsBufferBased(const TensorStorageType& type) {
   return type == TensorStorageType::BUFFER ||
          type == TensorStorageType::IMAGE_BUFFER;
+}
+
+// Generic add is add that have several runtime inputs and they are not
+// broadcasted, i.e. pointwise add for N tensors where N > 1.
+bool IsGenericAdd(const Node& node,
+                  const std::vector<Value<TensorRef<BHWC>>*>& inputs,
+                  const std::vector<Value<TensorRef<BHWC>>*>& outputs) {
+  if (inputs.size() == 1) {
+    return false;
+  }
+  const OperationType op_type = OperationTypeFromString(node.operation.type);
+  if (op_type != OperationType::ADD) {
+    return false;
+  }
+
+  const auto dst_shape = outputs[0]->tensor.shape;
+  for (int i = 0; i < inputs.size(); ++i) {
+    const auto src_shape = inputs[i]->tensor.shape;
+    if (dst_shape.b != src_shape.b && src_shape.b == 1) {
+      return false;
+    }
+    if (dst_shape.h != src_shape.h && src_shape.h == 1) {
+      return false;
+    }
+    if (dst_shape.w != src_shape.w && src_shape.w == 1) {
+      return false;
+    }
+    if (dst_shape.c != src_shape.c && src_shape.c == 1) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace
@@ -304,8 +279,7 @@ Status InferenceContext::ConvertOperations(
     // ADD can be linked.
     // In current approach "linking" tensor can be only latest written
     // tensor(during linear order of execution) among input tensors.
-    const OperationType op_type = OperationTypeFromString(node.operation.type);
-    if (inputs.size() > 1 && op_type == OperationType::ADD) {
+    if (IsGenericAdd(node, inputs, outputs)) {
       int latest_written_tensor_index = 0;
       int last_usage = tensor_usages[inputs[0]->id];
       for (int j = 1; j < inputs.size(); ++j) {

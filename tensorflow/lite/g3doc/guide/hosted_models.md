@@ -15,11 +15,6 @@ models to find the optimal balance between size, performance, and accuracy.
 For more information about image classification, see
 <a href="../models/image_classification/overview.md">Image classification</a>.
 
-## Question and Answer
-
-For more information about text classification with Mobile BERT, see
-<a href="../models/bert_qa/overview.md">Question And Answer</a>.
-
 ### Quantized models
 
 <a href="../performance/post_training_quantization">Quantized</a> image
@@ -54,8 +49,8 @@ Inception_V4_quant          | [paper](https://arxiv.org/abs/1602.07261), [tflite
 Note: The model files include both TF Lite FlatBuffer and Tensorflow frozen
 Graph.
 
-Note: Performance numbers were benchmarked on Pixel-2 using single thread large
-core. Accuracy numbers were computed using the
+Note: Performance numbers were benchmarked on Pixel-3 (Android 10).
+Accuracy numbers were computed using the
 [TFLite accuracy tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/accuracy/ilsvrc).
 
 ### Floating point models
@@ -110,8 +105,9 @@ MnasNet_1.0_192  | [paper](https://arxiv.org/abs/1807.11626), [tflite&pb](https:
 MnasNet_1.0_224  | [paper](https://arxiv.org/abs/1807.11626), [tflite&pb](https://storage.cloud.google.com/download.tensorflow.org/models/tflite/mnasnet_1.0_224_09_07_2018.tgz)  | 17 Mb      | 74.08%         | 91.75%         | 19.4 ms        | 8.7 ms  | 19 ms
 MnasNet_1.3_224  | [paper](https://arxiv.org/abs/1807.11626), [tflite&pb](https://storage.cloud.google.com/download.tensorflow.org/models/tflite/mnasnet_1.3_224_09_07_2018.tgz)  | 24 Mb      | 75.24%         | 92.55%         | 27.9 ms        | 10.6 ms | 22.0 ms
 
-Note: Performance numbers were benchmarked on Pixel-1 using single thread large
-BIG core.
+Note: Performance numbers were benchmarked on Pixel-3 (Android 10).
+Accuracy numbers were computed using the
+[TFLite accuracy tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/accuracy/ilsvrc).
 
 ## Object detection
 
@@ -144,6 +140,11 @@ The image segmentation model we currently host is **deeplabv3_257_mv_gpu**.
 
 <a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/deeplabv3_257_mv_gpu.tflite">Download
 model</a>
+
+## Question and Answer
+
+For more information about text classification with Mobile BERT, see
+<a href="../models/bert_qa/overview.md">Question And Answer</a>.
 
 ## Smart reply
 

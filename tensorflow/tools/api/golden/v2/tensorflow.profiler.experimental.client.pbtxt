@@ -1,0 +1,11 @@
+path: "tensorflow.profiler.experimental.client"
+tf_module {
+  member_method {
+    name: "monitor"
+    argspec: "args=[\'service_addr\', \'duration_ms\', \'level\'], varargs=None, keywords=None, defaults=[\'1\'], "
+  }
+  member_method {
+    name: "trace"
+    argspec: "args=[\'service_addr\', \'logdir\', \'duration_ms\', \'worker_list\', \'num_tracing_attempts\'], varargs=None, keywords=None, defaults=[\'\', \'3\'], "
+  }
+}

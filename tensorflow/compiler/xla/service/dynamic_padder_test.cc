@@ -227,8 +227,9 @@ class ExecutionTest : public HloTestBase {
     return module;
   }
   Literal PadAndExecute(std::unique_ptr<HloModule> module,
-                        absl::Span<Literal* const> arguments) {
-    DynamicPadder padder;
+                        absl::Span<Literal* const> arguments,
+                        bool slice_dynamic_output = true) {
+    DynamicPadder padder(slice_dynamic_output);
     TF_CHECK_OK(padder.Run(module.get()).status());
     HloGetDimensionSizeRewriter rewriter;
     TF_CHECK_OK(rewriter.Run(module.get()).status());
@@ -849,17 +850,16 @@ ENTRY main {
   size = s32[] constant(3)
   param_dynamic_size = s32[4] set-dimension-size(param, size),
     dimensions={0}
-  sort = s32[4]{0} sort(s32[4]{0} %param_dynamic_size),
+  ROOT sort = s32[4]{0} sort(s32[4]{0} %param_dynamic_size),
     dimensions={0}, is_stable=false, to_apply=%compare-greater-than
-  full_size = s32[] constant(4)
-  ROOT result = s32[4] set-dimension-size(sort, full_size), dimensions={0}    
 }
 )";
 
   Literal operand = LiteralUtil::CreateR1<int32>({1, 4, 3, 2});
   auto module = GetHloModule(hlo_text);
 
-  Literal result = PadAndExecute(std::move(module), {&operand});
+  Literal result = PadAndExecute(std::move(module), {&operand},
+                                 /*slice_dynamic_output=*/false);
   Literal expected = LiteralUtil::CreateR1<int32>({4, 3, 1, 2});
 
   EXPECT_EQ(result, expected);
@@ -891,17 +891,16 @@ ENTRY main {
   sort = (s32[3]{0}, s32[3]{0}) sort(s32[3]{0} %param_dynamic_size,
                                      s32[3]{0} %param_dynamic_size),
     dimensions={0}, is_stable=true, to_apply=%compare-greater-than
-  get-tuple-element = s32[3]{0} get-tuple-element((s32[3]{0}, s32[3]{0}) %sort),
+  ROOT get-tuple-element = s32[3]{0} get-tuple-element((s32[3]{0}, s32[3]{0}) %sort),
     index=0
-  full_size = s32[] constant(3)
-  ROOT result = s32[3] set-dimension-size(get-tuple-element, full_size), dimensions={0}
 }
 )";
 
   Literal operand = LiteralUtil::CreateR1<int32>({0, 4, 2});
   auto module = GetHloModule(hlo_text);
 
-  Literal result = PadAndExecute(std::move(module), {&operand});
+  Literal result = PadAndExecute(std::move(module), {&operand},
+                                 /*slice_dynamic_output=*/false);
   Literal expected = LiteralUtil::CreateR1<int32>({4, 0, 2});
 
   EXPECT_EQ(result, expected);

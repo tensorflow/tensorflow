@@ -81,7 +81,7 @@ class TpuBackend(xla_client.Backend):
   def host_id(self):
     return self.client.host_id()
 
-  def buffer_from_pyval(self, pyval, device=None):
+  def buffer_from_pyval(self, pyval, device=None, force_copy=False):
     if device is None:
       device = self.client.local_devices()[0]
     return _tpu_client.PyTpuBuffer.from_python(pyval, self.client, device)

@@ -61,8 +61,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
 
-#include "tensorflow/core/protobuf/tensor_bundle.pb.h"
-
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -72,12 +70,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/io/cache.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/table.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 #include "tensorflow/core/util/tensor_slice_set.h"
 
@@ -149,8 +149,9 @@ class BundleWriter {
   Env* const env_;  // Not owned.
   const Options options_;
   const string prefix_;
-  const string tmp_metadata_path_;
-  const string tmp_data_path_;
+  string metadata_path_;
+  string data_path_;
+  bool use_temp_file_;
   std::unique_ptr<FileOutputBuffer> out_;
   int64 size_;  // Number of bytes written into out_.
   std::map<string, BundleEntryProto> entries_;
@@ -288,6 +289,7 @@ class BundleReader {
   Status status_;
   RandomAccessFile* metadata_;  // Owned.
   table::Table* table_;
+  table::Cache* index_cache_;
   table::Iterator* iter_;
   // Owned the InputBuffer objects and their underlying RandomAccessFile's.
   std::unordered_map<int32, io::InputBuffer*> data_;

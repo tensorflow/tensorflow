@@ -48,11 +48,11 @@ class MyMeanAbsoluteError(losses.LossFunctionWrapper):
                reduction=losses_utils.ReductionV2.AUTO,
                name='mean_absolute_error'):
     super(MyMeanAbsoluteError, self).__init__(
-        _my_mae, name=name, reduction=reduction)
+        my_mae, name=name, reduction=reduction)
 
 
 # Custom loss function
-def _my_mae(y_true, y_pred):
+def my_mae(y_true, y_pred):
   return keras.backend.mean(math_ops.abs(y_pred - y_true), axis=-1)
 
 
@@ -70,7 +70,7 @@ def _get_multi_io_model():
     dict(testcase_name='string', value='mae'),
     dict(testcase_name='built_in_fn', value=losses.mae),
     dict(testcase_name='built_in_class', value=losses.MeanAbsoluteError()),
-    dict(testcase_name='custom_fn', value=_my_mae),
+    dict(testcase_name='custom_fn', value=my_mae),
     dict(testcase_name='custom_class', value=MyMeanAbsoluteError()),
     dict(testcase_name='list_of_strings', value=['mae', 'mae']),
     dict(testcase_name='list_of_built_in_fns', value=[losses.mae, losses.mae]),
@@ -78,7 +78,7 @@ def _get_multi_io_model():
         testcase_name='list_of_built_in_classes',
         value=[losses.MeanAbsoluteError(),
                losses.MeanAbsoluteError()]),
-    dict(testcase_name='list_of_custom_fns', value=[_my_mae, _my_mae]),
+    dict(testcase_name='list_of_custom_fns', value=[my_mae, my_mae]),
     dict(
         testcase_name='list_of_custom_classes',
         value=[MyMeanAbsoluteError(),
@@ -104,8 +104,8 @@ def _get_multi_io_model():
     dict(
         testcase_name='dict_of_custom_fn',
         value={
-            'output': _my_mae,
-            'output_1': _my_mae
+            'output': my_mae,
+            'output_1': my_mae
         }),
     dict(
         testcase_name='dict_of_custom_class',
@@ -128,15 +128,14 @@ class LossesSerialization(keras_parameterized.TestCase):
   def test_serializing_model_with_loss_with_custom_object_scope(self, value):
     with generic_utils.custom_object_scope({
         'MyMeanAbsoluteError': MyMeanAbsoluteError,
-        '_my_mae': _my_mae,
+        'my_mae': my_mae,
         'Bias': testing_utils.Bias,
     }):
       model = _get_multi_io_model()
       model.compile(
           optimizer_v2.gradient_descent.SGD(0.1),
           loss=value,
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       history = model.fit([self.x, self.x], [self.y, self.y],
                           batch_size=3,
                           epochs=3,
@@ -163,8 +162,7 @@ class LossesSerialization(keras_parameterized.TestCase):
     model.compile(
         optimizer_v2.gradient_descent.SGD(0.1),
         loss=value,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit([self.x, self.x], [self.y, self.y],
                         batch_size=3,
                         epochs=3,
@@ -182,7 +180,7 @@ class LossesSerialization(keras_parameterized.TestCase):
         self.model_filename,
         custom_objects={
             'MyMeanAbsoluteError': MyMeanAbsoluteError,
-            '_my_mae': _my_mae,
+            'my_mae': my_mae,
             'Bias': testing_utils.Bias,
         })
     loaded_model.predict([self.x, self.x])

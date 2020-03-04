@@ -14,6 +14,7 @@ ARG CONFIG_V2_DISABLE=""
 ARG CONFIG_BFLOAT16_BUILD=""
 ARG ENABLE_SECURE_BUILD
 ARG BAZEL_VERSION=""
+ARG ENABLE_DNNL1=""
 
 # Upgrade Bazel version if argument is passed
 RUN if [ "${BAZEL_VERSION}" != "" ]; then \
@@ -39,7 +40,7 @@ ENV CI_BUILD_PYTHON ${PYTHON}
 # compiler flags based on parameters
 ADD set-build-env.py .
 RUN ${PYTHON} set-build-env.py -p ${TARGET_PLATFORM} -f /root/.mkl.bazelrc \
-    ${CONFIG_V2_DISABLE} ${ENABLE_SECURE_BUILD} ${CONFIG_BFLOAT16_BUILD}
+    ${CONFIG_V2_DISABLE} ${ENABLE_SECURE_BUILD} ${CONFIG_BFLOAT16_BUILD} ${ENABLE_DNNL1}
 
 # Pull the compiler flags we just wrote into root user's .bazelrc file
 RUN echo "import /root/.mkl.bazelrc" >>/root/.bazelrc

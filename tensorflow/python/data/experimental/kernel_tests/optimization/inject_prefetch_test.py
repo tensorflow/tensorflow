@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -36,8 +37,11 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testParallelMap(self):
     dataset = dataset_ops.Dataset.range(100)
+    parallel_map = "ParallelMap"
+    if compat.forward_compatible(2020, 3, 6):
+      parallel_map = "ParallelMapV2"
     dataset = dataset.apply(
-        testing.assert_next(["ParallelMap", "Prefetch", "FiniteTake"]))
+        testing.assert_next([parallel_map, "Prefetch", "FiniteTake"]))
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset.take(50)
@@ -58,11 +62,15 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset, [list(range(i + 1, i + 11)) for i in range(0, 50, 10)])
 
   @combinations.generate(test_base.default_test_combinations())
-  def testParallelInterleaveV2(self):
+  def testParallelInterleave(self):
     dataset = dataset_ops.Dataset.range(100)
+    parallel_interleave = "ParallelInterleaveV2"
+    if compat.forward_compatible(2020, 2, 20):
+      parallel_interleave = "ParallelInterleaveV3"
+    if compat.forward_compatible(2020, 3, 6):
+      parallel_interleave = "ParallelInterleaveV4"
     dataset = dataset.apply(
-        testing.assert_next(
-            ["ParallelInterleaveV2", "Prefetch", "FiniteTake"]))
+        testing.assert_next([parallel_interleave, "Prefetch", "FiniteTake"]))
     dataset = dataset.interleave(
         lambda x: dataset_ops.Dataset.from_tensors(x + 1),
         num_parallel_calls=dataset_ops.AUTOTUNE)
@@ -73,9 +81,17 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testChainedParallelDatasets(self):
     dataset = dataset_ops.Dataset.range(100)
+    parallel_interleave = "ParallelInterleaveV2"
+    if compat.forward_compatible(2020, 2, 20):
+      parallel_interleave = "ParallelInterleaveV3"
+    if compat.forward_compatible(2020, 3, 6):
+      parallel_interleave = "ParallelInterleaveV4"
+    parallel_map = "ParallelMap"
+    if compat.forward_compatible(2020, 3, 6):
+      parallel_map = "ParallelMapV2"
     dataset = dataset.apply(
         testing.assert_next([
-            "ParallelMap", "Prefetch", "ParallelInterleaveV2", "Prefetch",
+            parallel_map, "Prefetch", parallel_interleave, "Prefetch",
             "MapAndBatch", "Prefetch", "FiniteTake"
         ]))
     dataset = dataset.map(
@@ -97,6 +113,7 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda x: x + 1).take(50)
     dataset = self._enable_autotune_buffers(dataset)
     self.assertDatasetProduces(dataset, range(1, 51))
+
 
 if __name__ == "__main__":
   test.main()

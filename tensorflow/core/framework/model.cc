@@ -667,8 +667,8 @@ std::shared_ptr<Node> MakeUnknownNode(Node::Args args) {
   return std::make_shared<Unknown>(std::move(args));
 }
 
-std::shared_ptr<Node> Model::AddNode(Node::Factory factory, const string& name,
-                                     const string& output_name) {
+void Model::AddNode(Node::Factory factory, const string& name,
+                    const string& output_name, Node** out_node) {
   // The name captures the sequence of iterators joined by `::`. We use the full
   // sequence as the key in the lookup table, but only the last element of the
   // sequence as the name node.
@@ -700,7 +700,7 @@ std::shared_ptr<Node> Model::AddNode(Node::Factory factory, const string& name,
   collect_resource_usage_ =
       collect_resource_usage_ || node->has_tunable_parameters();
   lookup_table_.insert(std::make_pair(name, node));
-  return node;
+  *out_node = node.get();
 }
 
 void Model::AddProcessingTime(const string& name, int64 delta) {
@@ -786,7 +786,7 @@ std::map<string, std::shared_ptr<Parameter>> Model::CollectTunableParameters(
 
 std::map<string, std::shared_ptr<Parameter>> Model::CollectEssentialParallelism(
     std::shared_ptr<Node> node) {
-  // Parallelism parameter is considered to be essential if the coressponding
+  // Parallelism parameter is considered to be essential if the corresponding
   // transformations's processing time is greater than essential rate times the
   // average transformation self processing time.
   constexpr double kEssentialRate = 0.3L;

@@ -258,9 +258,8 @@ TEST_F(CopyInsertionTest, BitcastConstant) {
   HloInstruction* constant =
       builder.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR1<float>({1.0, 42.0})));
-  HloInstruction* bitcast =
-      builder.AddInstruction(HloInstruction::CreateBitcast(
-          ShapeUtil::MakeShape(F32, {2, 2}), constant));
+  HloInstruction* bitcast = builder.AddInstruction(
+      HloInstruction::CreateBitcast(ShapeUtil::MakeShape(F32, {2}), constant));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
@@ -2273,6 +2272,70 @@ ENTRY TestComputation {
   EXPECT_EQ(CountCopies(*module), 1);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::While(op::Copy(op::Parameter())));
+}
+
+TEST_F(CopyInsertionTest, FixpointComputationRequired) {
+  const string& hlo_string = R"(
+HloModule Module
+
+fused_computation {
+  param0 = f32[3,3,96,1] parameter(0)
+  param1 = f32[] parameter(1)
+  broadcast = f32[3,3,96,1] broadcast(f32[] param1), dimensions={}
+  ROOT %add.0 = f32[3,3,96,1] add(f32[3,3,96,1] param0, f32[3,3,96,1] broadcast)
+}
+
+ENTRY entry_computation {
+  arg0 = f32[3,3,96,1] parameter(0)
+  arg1 = f32[] parameter(1)
+  fusion = f32[3,3,96,1] fusion(f32[3,3,96,1] arg0, f32[] arg1),
+    kind=kLoop, calls=fused_computation
+  negate = f32[] negate(f32[] arg1)
+  ROOT tuple = (f32[3,3,96,1], f32[3,3,96,1], f32[], f32[]) tuple(
+    f32[3,3,96,1] fusion,
+    f32[3,3,96,1] arg0,
+    f32[] negate,
+    f32[] arg1)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  // Set up the aliasing manually which normally would be set by
+  // alias_passthrough_params pass.
+  ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
+      /*output_index=*/{1},
+      /*param_number=*/0,
+      /*param_index=*/{}, HloInputOutputAliasConfig::AliasKind::kUserAlias));
+  ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
+      /*output_index=*/{3},
+      /*param_number=*/1,
+      /*param_index=*/{}, HloInputOutputAliasConfig::AliasKind::kUserAlias));
+
+  InsertCopies(module.get());
+
+  // There should be no copies inserted.
+  EXPECT_EQ(CountCopies(*module), 0);
+}
+
+TEST_F(CopyInsertionTest, NoAliasCheckViolation) {
+  const string& hlo_string = R"(
+HloModule cluster
+
+ENTRY Entry {
+  %arg = f32[8,28,28,1] parameter(0)
+  %bitcast.2 = f32[8,1,28,28] bitcast(f32[8,28,28,1] %arg)
+  ROOT %tuple.1 = (f32[8,1,28,28], f32[8,28,28,1]) tuple(f32[8,1,28,28] %bitcast.2, f32[8,28,28,1] %arg)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
+      /*output_index=*/{1},
+      /*param_number=*/0,
+      /*param_index=*/{}, HloInputOutputAliasConfig::AliasKind::kUserAlias));
+  InsertCopies(module.get());
+  EXPECT_EQ(CountCopies(*module), 1);
 }
 
 }  // namespace

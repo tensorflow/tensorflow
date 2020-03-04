@@ -150,7 +150,8 @@ central_storage_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
     required_gpus=1)
 
 gradient_descent_optimizer_v1_fn = combinations.NamedObject(
-    "GradientDescentV1", lambda: gradient_descent.GradientDescentOptimizer(0.2))
+    "GradientDescentV1",
+    lambda: gradient_descent.GradientDescentOptimizer(0.001))
 adagrad_optimizer_v1_fn = combinations.NamedObject(
     "AdagradV1", lambda: adagrad.AdagradOptimizer(0.001))
 adam_optimizer_v1_fn = combinations.NamedObject(
@@ -179,7 +180,7 @@ nadam_optimizer_keras_v2_fn = combinations.NamedObject(
 ftrl_optimizer_keras_v2_fn = combinations.NamedObject(
     "FtrlKerasV2", lambda: ftrl_keras_v2.Ftrl(0.001))
 gradient_descent_optimizer_keras_v2_fn = combinations.NamedObject(
-    "GradientDescentKerasV2", lambda: gradient_descent_keras_v2.SGD(0.2))
+    "GradientDescentKerasV2", lambda: gradient_descent_keras_v2.SGD(0.001))
 rmsprop_optimizer_keras_v2_fn = combinations.NamedObject(
     "RmsPropKerasV2", lambda: rmsprop_keras_v2.RMSprop(0.001))
 
@@ -254,11 +255,18 @@ strategies_minus_tpu = [
     mirrored_strategy_with_gpu_and_cpu, mirrored_strategy_with_two_gpus
 ]
 
+strategies_minus_default_and_tpu = [
+    one_device_strategy, one_device_strategy_gpu,
+    mirrored_strategy_with_gpu_and_cpu, mirrored_strategy_with_two_gpus
+]
+
 tpu_strategies = [
     tpu_strategy,  # steps_per_run=2
     tpu_strategy_one_step,
     cloud_tpu_strategy,
 ]
+
+all_strategies_minus_default = strategies_minus_default_and_tpu + tpu_strategies
 
 all_strategies = strategies_minus_tpu + tpu_strategies
 

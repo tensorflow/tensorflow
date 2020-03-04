@@ -36,6 +36,8 @@ limitations under the License.
 
 namespace xla {
 
+constexpr char kTpuPlatform[] = "tpu";
+
 class TpuDevice : public Device {
  public:
   TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
@@ -126,9 +128,9 @@ struct TpuSharedBuffer final {
   TpuSharedBuffer(tpu_driver::TpuDriver* driver,
                   std::unique_ptr<tpu_driver::BufferHandle> handle,
                   std::vector<std::shared_ptr<tpu_driver::Event>> wait_for_use,
-                  int device_id)
+                  std::shared_ptr<Device> src_device)
       : driver(driver),
-        device_id(device_id),
+        device(std::move(src_device)),
         handle(std::move(handle)),
         wait_for_use(std::move(wait_for_use)) {}
 
@@ -141,7 +143,7 @@ struct TpuSharedBuffer final {
   }
 
   tpu_driver::TpuDriver* const driver;
-  const int device_id;
+  const std::shared_ptr<Device> device;
 
   std::unique_ptr<tpu_driver::BufferHandle> handle;
   std::vector<std::shared_ptr<tpu_driver::Event>> wait_for_use;
@@ -160,12 +162,12 @@ class PyTpuBuffer {
   static StatusOr<std::unique_ptr<PyTpuBuffer>> FromLiterals(
       std::vector<BorrowingLiteral> leaves_literals, const Shape& tuple_shape,
       std::shared_ptr<void> leaves_reference,
-      std::shared_ptr<PyTpuClient> client, int device_id);
+      std::shared_ptr<PyTpuClient> client, std::shared_ptr<Device> device);
 
   // Supports nested tuple creation.
   static StatusOr<std::unique_ptr<PyTpuBuffer>> MakeTuple(
       const std::vector<PyTpuBuffer*> buffers,
-      std::shared_ptr<PyTpuClient> client, int device_id);
+      std::shared_ptr<PyTpuClient> client, std::shared_ptr<Device> device);
 
   PyTpuBuffer() = delete;
   PyTpuBuffer(Shape on_host_shape,
@@ -179,7 +181,7 @@ class PyTpuBuffer {
   PyTpuBuffer& operator=(PyTpuBuffer&&) = delete;
 
   const Shape& on_host_shape() const { return on_host_shape_; }
-  int device_id() const { return device_id_; }
+  std::shared_ptr<Device> device() const { return device_; }
   const std::string& platform_name() const { return client_->platform_name(); }
   std::shared_ptr<PyTpuClient> client() const { return client_; }
 
@@ -205,8 +207,10 @@ class PyTpuBuffer {
   // Destructures a tuple-valued PyTpuBuffer into its constituent elements.
   StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> DestructureTuple();
 
-  // Copies the buffer to device `dst_device_id`.
-  StatusOr<std::unique_ptr<PyTpuBuffer>> CopyToDevice(int dst_device_id);
+  // Copies the buffer to target device `dst_device` and returns a PyTpuBuffer
+  // object holding the context to the target device buffer.
+  StatusOr<std::unique_ptr<PyTpuBuffer>> CopyToDevice(
+      std::shared_ptr<Device> dst_device);
 
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.
@@ -215,7 +219,8 @@ class PyTpuBuffer {
   // Allocates uninitialized buffers on device `device_id`. If `shape` is a
   // tuple, the returned buffer corresponds to the root tuple buffer.
   static StatusOr<std::unique_ptr<PyTpuBuffer>> AllocateBuffer(
-      const Shape& shape, std::shared_ptr<PyTpuClient> client, int device_id);
+      const Shape& shape, std::shared_ptr<PyTpuClient> client,
+      std::shared_ptr<Device> device);
 
  private:
   // Initializes a just allocated device buffer. The returned event will be
@@ -226,11 +231,11 @@ class PyTpuBuffer {
   static StatusOr<std::unique_ptr<PyTpuBuffer>> CreateBuffer(
       const Shape& non_tuple_shape,
       absl::optional<BufferInitializer> initializer,
-      std::shared_ptr<PyTpuClient> client, int device_id);
+      std::shared_ptr<PyTpuClient> client, std::shared_ptr<Device> device);
 
   const std::shared_ptr<PyTpuClient> client_;
   const Shape on_host_shape_;
-  const int device_id_;
+  const std::shared_ptr<Device> device_;
 
   // If this is a tuple, `device_buffer_` stores the tuple buffer and
   // `child_buffers_` stores the child buffers; else, `device_buffer_` stores
@@ -258,6 +263,15 @@ class PyTpuBuffer {
 class PyTpuExecutable {
  public:
   // Compiles a computation to an executable.
+  static StatusOr<std::unique_ptr<PyTpuExecutable>> CompileForDevices(
+      const XlaComputation& computation,
+      absl::optional<std::vector<Shape>> argument_layouts,
+      const ExecutableBuildOptions* build_options,
+      std::shared_ptr<PyTpuClient> client,
+      const std::vector<std::vector<std::shared_ptr<Device>>>&
+          device_assignment);
+
+  // TODO(phawkins): remove after changing callers to use the first overload.
   static StatusOr<std::unique_ptr<PyTpuExecutable>> Compile(
       const XlaComputation& computation,
       absl::optional<std::vector<Shape>> argument_layouts,
@@ -290,6 +304,10 @@ class PyTpuExecutable {
 
   const DeviceAssignment& device_assignment() const {
     return device_assignment_;
+  }
+
+  const std::vector<std::pair<int, int>>& local_logical_device_ids() const {
+    return local_logical_device_ids_;
   }
 
   const std::vector<std::shared_ptr<Device>>& local_devices() const {
@@ -336,13 +354,13 @@ class PyTpuExecutable {
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas
-  // (i.e. local_logical_devices_[i] = (i, 0)), but this may not be the case on
-  // multi-host platforms.
+  // (i.e. local_logical_device_ids_[i] = (i, 0)), but this may not be the case
+  // on multi-host platforms.
   // If there are 4 replicas and 2 partitions on a single host platform, size of
-  // local_logical_devices_ is 4*2 = 8.
-  std::vector<std::pair<int, int>> local_logical_devices_;
+  // local_logical_device_ids_ is 4*2 = 8.
+  std::vector<std::pair<int, int>> local_logical_device_ids_;
 
-  // local_devices_[i] is the Device to which local_logical_devices_[i] is
+  // local_devices_[i] is the Device to which local_logical_device_ids_[i] is
   // assigned.
   // shared_ptrs instead of unique_ptrs to play well with the Python bindings
   // (see xla.cc).

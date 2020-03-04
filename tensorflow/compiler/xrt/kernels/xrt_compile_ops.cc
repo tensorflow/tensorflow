@@ -128,12 +128,11 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
   }
 
   VLOG(1) << "Building executable";
-  auto compile_result =
-      client->Compile(computation, argument_layout_ptrs, build_options);
-  if (!compile_result.ok()) {
-    return compile_result.status();
-  }
-  *program = std::move(compile_result.ValueOrDie());
+  TF_ASSIGN_OR_RETURN(
+      auto executables,
+      client->Compile(computation, argument_layout_ptrs, build_options));
+  TF_RET_CHECK(executables.size() == 1);
+  *program = std::move(executables[0]);
   return Status::OK();
 }
 
@@ -149,11 +148,11 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
               errors::Internal("computation input should be a string scalar"));
 
   xrt::XLAComputation computation_proto;
-  OP_REQUIRES(
-      ctx,
-      computation_proto.ParseFromString(computation_input.scalar<tstring>()()),
-      errors::InvalidArgument(
-          "Unable to parse computation input to XLAComputation"));
+  OP_REQUIRES(ctx,
+              ParseFromTString(computation_input.scalar<tstring>()(),
+                               &computation_proto),
+              errors::InvalidArgument(
+                  "Unable to parse computation input to XLAComputation"));
 
   string key;
   OP_REQUIRES_OK(ctx, CompilationCacheKey(computation_proto, &key));

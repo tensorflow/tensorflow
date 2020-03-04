@@ -4389,7 +4389,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadLow) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Reshape(m::Constant())));
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfPadHigh) {
@@ -4410,7 +4410,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadHigh) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Reshape(m::Constant())));
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfPadMidNonScalar) {
@@ -4429,7 +4429,31 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidNonScalar) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Slice(m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfPad) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[3,4] parameter(0)
+      constant = f32[] constant(0.0)
+      pad = f32[8,10] pad(f32[3,4] param, f32[] constant), padding=3_2x1_5
+      ROOT slice = f32[2,3] slice(f32[8,10] pad), slice={[4:6],[2:5]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Slice(m::Parameter(0))));
+  EXPECT_THAT(root->slice_starts(), ElementsAre(1, 1));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfPadMidScalarConstant) {
@@ -4450,7 +4474,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidScalarConstant) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Reshape(m::Constant())));
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfPadMidScalar) {
@@ -4494,7 +4518,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadSomeDimsInPadding) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Reshape(m::ConstantScalar(-7.0))));
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::ConstantScalar(-7.0))));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfConcatScalarInput) {
@@ -5935,6 +5959,32 @@ TEST_F(AlgebraicSimplifierTest, SqrtOfSelfMultiply) {
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Abs(m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceOfBatchDotToContractingDimension) {
+  const char* kModuleStr = R"(
+    HloModule m
+    a {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+    test {
+      p0 = f32[32,8,5,6] parameter(0)
+      p1 = f32[32,8,6,7] parameter(1)
+      d = f32[32,8,5,7] dot(p0, p1),
+        lhs_batch_dims={0,1},
+        rhs_batch_dims={0,1},
+        rhs_contracting_dims={2},
+        lhs_contracting_dims={3}
+     c = f32[] constant(0)
+     ROOT r = f32[8,5,7] reduce(d,c), dimensions={0}, to_apply=a
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Parameter(0), m::Parameter(1))));
 }
 
 TEST_F(AlgebraicSimplifierTest, RsqrtOfRPower) {

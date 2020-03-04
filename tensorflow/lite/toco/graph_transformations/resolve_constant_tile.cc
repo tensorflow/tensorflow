@@ -64,8 +64,9 @@ std::pair<int, int> TileOneDimension(const Shape& in_dimensions,
   CopyMultipleTimes(out_data, total_tiled_stride_size,
                     multipliers[dimension] - 1,
                     out_data + total_tiled_stride_size);
-  return std::make_pair(total_stride_size,
-                        total_tiled_stride_size * multipliers[dimension]);
+  return std::make_pair(
+      total_stride_size,
+      static_cast<int>(total_tiled_stride_size * multipliers[dimension]));
 }
 
 template <ArrayDataType Type>

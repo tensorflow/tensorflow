@@ -435,8 +435,14 @@ Returns `x` + `y` element-wise.
 )doc");
 #endif  // INTEL_MKL
 
-REGISTER_OP("Sub").BINARY_MORE().SetShapeFn(
-    shape_inference::BroadcastBinaryOpShapeFn);
+REGISTER_OP("Sub")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr(
+        "T: {bfloat16, half, float, double, uint8, int8, uint16, int16, int32, "
+        "int64, complex64, complex128, uint32}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("_MklSub")
     .BINARY_FEWER()
@@ -1918,7 +1924,7 @@ REGISTER_OP("SobolSample")
     .Input("dim: int32")
     .Input("num_results: int32")
     .Input("skip: int32")
-    .Attr("dtype: {float, double} = DT_DOUBLE")
+    .Attr("dtype: {float, double} = DT_FLOAT")
     .Output("samples: dtype")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       ShapeHandle unused;

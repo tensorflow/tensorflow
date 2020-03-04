@@ -32,13 +32,13 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
-#include "tensorflow/lite/profiling/buffered_profiler.h"
-#include "tensorflow/lite/profiling/profile_summarizer.h"
+#include "tensorflow/lite/profiling/platform_profiler.h"
+#include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
-#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
+#include "tensorflow/lite/tools/benchmark/profiling_listener.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
@@ -60,34 +60,18 @@ constexpr int kOpProfilingEnabledDefault = true;
 constexpr int kOpProfilingEnabledDefault = false;
 #endif
 
-// Dumps profiling events if profiling is enabled.
-class ProfilingListener : public BenchmarkListener {
+// Dumps platform-wide tracing files via a platform-based profiler that's built
+// upon platform tracing tools, like ATrace on Android etc.
+class PlatformProfilingListener : public BenchmarkListener {
  public:
-  ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
-      : interpreter_(interpreter), profiler_(max_num_entries) {
+  explicit PlatformProfilingListener(Interpreter* interpreter) {
     TFLITE_BENCHMARK_CHECK(interpreter);
-    interpreter_->SetProfiler(&profiler_);
-
-    // We start profiling here in order to catch events that are recorded during
-    // the benchmark run preparation stage where TFLite interpreter is
-    // initialized and model graph is prepared.
-    profiler_.Reset();
-    profiler_.StartProfiling();
+    platform_profiler_ = profiling::CreatePlatformProfiler();
+    interpreter->SetProfiler(platform_profiler_.get());
   }
 
-  void OnBenchmarkStart(const BenchmarkParams& params) override;
-
-  void OnSingleRunStart(RunType run_type) override;
-
-  void OnSingleRunEnd() override;
-
-  void OnBenchmarkEnd(const BenchmarkResults& results) override;
-
  private:
-  Interpreter* interpreter_;
-  profiling::BufferedProfiler profiler_;
-  profiling::ProfileSummarizer run_summarizer_;
-  profiling::ProfileSummarizer init_summarizer_;
+  std::unique_ptr<tflite::Profiler> platform_profiler_;
 };
 
 // Dumps ruy profiling events if the ruy profiler is enabled.
@@ -100,41 +84,6 @@ class RuyProfileListener : public BenchmarkListener {
  private:
   std::unique_ptr<ruy::profiler::ScopeProfile> ruy_profile_;
 };
-
-void ProfilingListener::OnBenchmarkStart(const BenchmarkParams& params) {
-  // At this point, we have completed the prepration for benchmark runs
-  // including TFLite interpreter initialization etc. So we are going to process
-  // profiling events recorded during this stage.
-  profiler_.StopProfiling();
-  auto profile_events = profiler_.GetProfileEvents();
-  init_summarizer_.ProcessProfiles(profile_events, *interpreter_);
-  profiler_.Reset();
-}
-
-void ProfilingListener::OnSingleRunStart(RunType run_type) {
-  if (run_type == REGULAR) {
-    profiler_.Reset();
-    profiler_.StartProfiling();
-  }
-}
-
-void ProfilingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
-  if (init_summarizer_.HasProfiles()) {
-    TFLITE_LOG(INFO) << "Profiling Info for Benchmark Initialization:";
-    TFLITE_LOG(INFO) << init_summarizer_.GetOutputString();
-  }
-  if (run_summarizer_.HasProfiles()) {
-    TFLITE_LOG(INFO)
-        << "Operator-wise Profiling Info for Regular Benchmark Runs:";
-    TFLITE_LOG(INFO) << run_summarizer_.GetOutputString();
-  }
-}
-
-void ProfilingListener::OnSingleRunEnd() {
-  profiler_.StopProfiling();
-  auto profile_events = profiler_.GetProfileEvents();
-  run_summarizer_.ProcessProfiles(profile_events, *interpreter_);
-}
 
 void RuyProfileListener::OnBenchmarkStart(const BenchmarkParams& params) {
   ruy_profile_.reset(new ruy::profiler::ScopeProfile);
@@ -165,9 +114,79 @@ void FillRandomString(tflite::DynamicBuffer* buffer,
   }
 }
 
+int FindLayerInfoIndex(std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info,
+                       const std::string& input_name,
+                       const string& names_string) {
+  for (int i = 0; i < info->size(); ++i) {
+    if (info->at(i).name == input_name) {
+      return i;
+    }
+  }
+  TFLITE_LOG(FATAL) << "Cannot find the corresponding input_layer name("
+                    << input_name << ") in --input_layer as " << names_string;
+  return -1;
+}
+
+TfLiteStatus PopulateInputValueRanges(
+    const std::string& names_string, const std::string& value_ranges_string,
+    std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
+  std::vector<std::string> value_ranges = Split(value_ranges_string, ':');
+  for (const auto& val : value_ranges) {
+    std::vector<std::string> name_range = Split(val, ',');
+    if (name_range.size() != 3) {
+      TFLITE_LOG(ERROR) << "Wrong input value range item specified: " << val;
+      return kTfLiteError;
+    }
+
+    // Ensure the specific input layer name exists.
+    int layer_info_idx = FindLayerInfoIndex(info, name_range[0], names_string);
+
+    // Parse the range value.
+    int low, high;
+    bool has_low = absl::SimpleAtoi(name_range[1], &low);
+    bool has_high = absl::SimpleAtoi(name_range[2], &high);
+    if (!has_low || !has_high || low > high) {
+      TFLITE_LOG(ERROR)
+          << "Wrong low and high value of the input value range specified: "
+          << val;
+      return kTfLiteError;
+    }
+    info->at(layer_info_idx).has_value_range = true;
+    info->at(layer_info_idx).low = low;
+    info->at(layer_info_idx).high = high;
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus PopulateInputValueFiles(
+    const std::string& names_string, const std::string& value_files_string,
+    std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
+  std::vector<std::string> value_files = Split(value_files_string, ',');
+  for (const auto& val : value_files) {
+    std::vector<std::string> name_file = Split(val, ':');
+    if (name_file.size() != 2) {
+      TFLITE_LOG(ERROR) << "Wrong input value file item specified: " << val;
+      return kTfLiteError;
+    }
+
+    // Ensure the specific input layer name exists.
+    int layer_info_idx = FindLayerInfoIndex(info, name_file[0], names_string);
+    if (info->at(layer_info_idx).has_value_range) {
+      TFLITE_LOG(WARN)
+          << "The input_name:" << info->at(layer_info_idx).name
+          << " appears both in input_layer_value_files and "
+             "input_layer_value_range. The input_layer_value_range of the "
+             "input_name will be ignored.";
+    }
+    info->at(layer_info_idx).input_file_path = name_file[1];
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus PopulateInputLayerInfo(
     const std::string& names_string, const std::string& shapes_string,
     const std::string& value_ranges_string,
+    const std::string& value_files_string,
     std::vector<BenchmarkTfLiteModel::InputLayerInfo>* info) {
   info->clear();
   std::vector<std::string> names = Split(names_string, ',');
@@ -204,40 +223,12 @@ TfLiteStatus PopulateInputLayerInfo(
   }
 
   // Populate input value range if it's specified.
-  std::vector<std::string> value_ranges = Split(value_ranges_string, ':');
-  for (const auto& val : value_ranges) {
-    std::vector<std::string> name_range = Split(val, ',');
-    if (name_range.size() != 3) {
-      TFLITE_LOG(FATAL) << "Wrong input value range item specified: " << val;
-    }
+  TF_LITE_ENSURE_STATUS(
+      PopulateInputValueRanges(names_string, value_ranges_string, info));
 
-    // Ensure the specific input layer name exists.
-    const std::string& input_name = name_range[0];
-    int layer_info_idx = -1;
-    for (int i = 0; i < info->size(); ++i) {
-      if (info->at(i).name == input_name) {
-        layer_info_idx = i;
-        break;
-      }
-    }
-    TFLITE_BENCHMARK_CHECK((layer_info_idx != -1))
-        << "Cannot find the corresponding input_layer name(" << input_name
-        << ") in --input_layer as " << names_string;
-
-    // Parse the range value.
-    int low, high;
-    bool has_low = absl::SimpleAtoi(name_range[1], &low);
-    bool has_high = absl::SimpleAtoi(name_range[2], &high);
-    if (!has_low || !has_high || low > high) {
-      TFLITE_LOG(FATAL)
-          << "Wrong low and high value of the input value range specified: "
-          << val;
-    }
-
-    info->at(layer_info_idx).has_value_range = true;
-    info->at(layer_info_idx).low = low;
-    info->at(layer_info_idx).high = high;
-  }
+  // Populate input value files if it's specified.
+  TF_LITE_ENSURE_STATUS(
+      PopulateInputValueFiles(names_string, value_files_string, info));
 
   return kTfLiteOk;
 }
@@ -251,6 +242,13 @@ std::vector<int> TfLiteIntArrayToVector(const TfLiteIntArray* int_array) {
   return values;
 }
 
+std::shared_ptr<profiling::ProfileSummaryFormatter>
+CreateProfileSummaryFormatter(bool format_as_csv) {
+  return format_as_csv
+             ? std::make_shared<profiling::ProfileSummaryCSVFormatter>()
+             : std::make_shared<profiling::ProfileSummaryDefaultFormatter>();
+}
+
 }  // namespace
 
 BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
@@ -262,6 +260,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("input_layer_value_range",
                           BenchmarkParam::Create<std::string>(""));
+  default_params.AddParam("input_layer_value_files",
+                          BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_legacy_nnapi",
                           BenchmarkParam::Create<bool>(false));
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
@@ -272,6 +272,12 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
       BenchmarkParam::Create<bool>(kOpProfilingEnabledDefault));
   default_params.AddParam("max_profiling_buffer_entries",
                           BenchmarkParam::Create<int32_t>(1024));
+  default_params.AddParam("profiling_output_csv_file",
+                          BenchmarkParam::Create<std::string>(""));
+  default_params.AddParam("max_delegated_partitions",
+                          BenchmarkParam::Create<int32_t>(0));
+  default_params.AddParam("enable_platform_tracing",
+                          BenchmarkParam::Create<bool>(false));
 
   for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
     delegate_util->AddParams(&default_params);
@@ -304,13 +310,30 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "layers. Each item is separated by ':', and the item value consists "
           "of input layer name and integer-only range values (both low and "
           "high are inclusive) separated by ',', e.g. input1,1,2:input2,0,254"),
+      CreateFlag<std::string>(
+          "input_layer_value_files", &params_,
+          "A map-like string representing value file. Each item is separated "
+          "by ',', and the item value consists "
+          "of input layer name and value file path separated by ':', e.g. "
+          "input1:file_path1,input2:file_path2. If the input_name appears both "
+          "in input_layer_value_range and input_layer_value_files, "
+          "input_layer_value_range of the input_name will be ignored."),
       CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
       CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
       CreateFlag<bool>("require_full_delegation", &params_,
                        "require delegate to run the entire graph"),
       CreateFlag<bool>("enable_op_profiling", &params_, "enable op profiling"),
       CreateFlag<int32_t>("max_profiling_buffer_entries", &params_,
-                          "max profiling buffer entries")};
+                          "max profiling buffer entries"),
+      CreateFlag<std::string>(
+          "profiling_output_csv_file", &params_,
+          "File path to export profile data as CSV, if not set "
+          "prints to stdout."),
+      CreateFlag<int>("max_delegated_partitions", &params_,
+                      "Max partitions to be delegated."),
+      CreateFlag<bool>("enable_platform_tracing", &params_,
+                       "enable platform-wide tracing, only meaningful when "
+                       "--enable_op_profiling is set to true.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -332,6 +355,9 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "Input value ranges: ["
                    << params_.Get<std::string>("input_layer_value_range")
                    << "]";
+  TFLITE_LOG(INFO) << "Input layer values files: ["
+                   << params_.Get<std::string>("input_layer_value_files")
+                   << "]";
 #if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Use legacy nnapi : ["
                    << params_.Get<bool>("use_legacy_nnapi") << "]";
@@ -345,6 +371,13 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "Max profiling buffer entries: ["
                    << params_.Get<int32_t>("max_profiling_buffer_entries")
                    << "]";
+  TFLITE_LOG(INFO) << "CSV File to export profiling data to: ["
+                   << params_.Get<std::string>("profiling_output_csv_file")
+                   << "]";
+  TFLITE_LOG(INFO) << "Max number of delegated partitions : ["
+                   << params_.Get<int32_t>("max_delegated_partitions") << "]";
+  TFLITE_LOG(INFO) << "Enable platform-wide tracing: ["
+                   << params_.Get<bool>("enable_platform_tracing") << "]";
 
   for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
     delegate_util->LogParams(params_);
@@ -361,7 +394,8 @@ TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
   return PopulateInputLayerInfo(
       params_.Get<std::string>("input_layer"),
       params_.Get<std::string>("input_layer_shape"),
-      params_.Get<std::string>("input_layer_value_range"), &inputs_);
+      params_.Get<std::string>("input_layer_value_range"),
+      params_.Get<std::string>("input_layer_value_files"), &inputs_);
 }
 
 uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
@@ -380,46 +414,62 @@ int64_t BenchmarkTfLiteModel::MayGetModelFileSize() {
   return in_file.tellg();
 }
 
-TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
-  auto interpreter_inputs = interpreter_->inputs();
-  const size_t input_size = interpreter_inputs.size();
-  CleanUp();
-
-  // Note the corresponding relation between 'interpreter_inputs' and 'inputs_'
-  // (i.e. the specified input layer info) has been checked in
-  // BenchmarkTfLiteModel::Init() before calling this function. So, we simply
-  // use the corresponding input layer info to initializethe input data value
-  // properly.
-
-  for (int j = 0; j < input_size; ++j) {
-    int i = interpreter_inputs[j];
-    TfLiteTensor* t = interpreter_->tensor(i);
-    bool has_value_range = false;
-    int low_range = 0;
-    int high_range = 0;
-    // For tflite files that are benchmarked without input layer parameters
-    // inputs_ is empty.
-    if (!inputs_.empty()) {
-      has_value_range = inputs_[j].has_value_range;
-      low_range = inputs_[j].low;
-      high_range = inputs_[j].high;
+BenchmarkTfLiteModel::InputTensorData BenchmarkTfLiteModel::LoadInputTensorData(
+    const TfLiteTensor& t, const std::string& input_file_path) {
+  InputTensorData t_data;
+  if (t.type == kTfLiteString) {
+    // TODO(b/149184079): Will update string type logic.
+  } else {
+    t_data.bytes = t.bytes;
+    std::ifstream value_file(input_file_path, std::ios::binary | std::ios::ate);
+    if (!value_file.good()) {
+      TFLITE_LOG(FATAL) << "Failed to read the input_layer_value_file:"
+                        << input_file_path;
     }
-    std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
-    int num_elements = 1;
-    for (int i = 0; i < sizes.size(); ++i) {
-      num_elements *= sizes[i];
+    if (value_file.tellg() != t.bytes) {
+      TFLITE_LOG(FATAL) << "The size of " << input_file_path << " is "
+                        << value_file.tellg() << " bytes. It should be "
+                        << t.bytes << " bytes.";
     }
-    InputTensorData t_data;
-    if (t->type == kTfLiteFloat32) {
-      t_data = CreateInputTensorData<float>(
+    // Now initialize the type-erased unique_ptr (with custom deleter).
+    t_data.data = std::unique_ptr<void, void (*)(void*)>(
+        static_cast<void*>(new char[t.bytes]),
+        [](void* ptr) { delete[] static_cast<char*>(ptr); });
+    value_file.clear();
+    value_file.seekg(0, std::ios_base::beg);
+    value_file.read(static_cast<char*>(t_data.data.get()), t.bytes);
+  }
+  return t_data;
+}
+
+BenchmarkTfLiteModel::InputTensorData
+BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
+                                             const InputLayerInfo* layer_info) {
+  bool has_value_range = false;
+  int low_range = 0;
+  int high_range = 0;
+  if (layer_info) {
+    has_value_range = layer_info->has_value_range;
+    low_range = layer_info->low;
+    high_range = layer_info->high;
+  }
+  std::vector<int> sizes = TfLiteIntArrayToVector(t.dims);
+  int num_elements = 1;
+  for (int i = 0; i < sizes.size(); ++i) {
+    num_elements *= sizes[i];
+  }
+  switch (t.type) {
+    case kTfLiteFloat32: {
+      return CreateInputTensorData<float>(
           num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
-    } else if (t->type == kTfLiteFloat16) {
-// TODO(b/138843274): Remove this preprocessor guard when bug is fixed.
+    }
+    case kTfLiteFloat16: {
+      // TODO(b/138843274): Remove this preprocessor guard when bug is fixed.
 #if TFLITE_ENABLE_FP16_CPU_BENCHMARKS
 #if __GNUC__ && \
     (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
       // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
-      t_data = CreateInputTensorData<__fp16>(
+      return CreateInputTensorData<__fp16>(
           num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
 #else
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
@@ -430,42 +480,77 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
       // compiler that supports __fp16 type. Note: when using Clang and *not*
       // linking with compiler-rt, a defintion of __gnu_h2f_ieee and
       // __gnu_f2h_ieee must be supplied.
-      TFLITE_LOG(FATAL) << "Populating the tensor " << t->name
+      TFLITE_LOG(FATAL) << "Populating the tensor " << t.name
                         << " of type FLOAT16 is disabled.";
 #endif  // TFLITE_ENABLE_FP16_CPU_BENCHMARKS
-    } else if (t->type == kTfLiteInt64) {
+      break;
+    }
+    case kTfLiteInt64: {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;
-      t_data = CreateInputTensorData<int64_t>(
+      return CreateInputTensorData<int64_t>(
           num_elements, std::uniform_int_distribution<int64_t>(low, high));
-    } else if (t->type == kTfLiteInt32) {
+    }
+    case kTfLiteInt32: {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;
-      t_data = CreateInputTensorData<int32_t>(
+      return CreateInputTensorData<int32_t>(
           num_elements, std::uniform_int_distribution<int32_t>(low, high));
-    } else if (t->type == kTfLiteInt16) {
+    }
+    case kTfLiteInt16: {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;
-      t_data = CreateInputTensorData<int16_t>(
+      return CreateInputTensorData<int16_t>(
           num_elements, std::uniform_int_distribution<int16_t>(low, high));
-    } else if (t->type == kTfLiteUInt8) {
+    }
+    case kTfLiteUInt8: {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 254;
       // std::uniform_int_distribution is specified not to support char types.
-      t_data = CreateInputTensorData<uint8_t>(
+      return CreateInputTensorData<uint8_t>(
           num_elements, std::uniform_int_distribution<uint32_t>(low, high));
-    } else if (t->type == kTfLiteInt8) {
+    }
+    case kTfLiteInt8: {
       int low = has_value_range ? low_range : -127;
       int high = has_value_range ? high_range : 127;
       // std::uniform_int_distribution is specified not to support char types.
-      t_data = CreateInputTensorData<int8_t>(
+      return CreateInputTensorData<int8_t>(
           num_elements, std::uniform_int_distribution<int32_t>(low, high));
-    } else if (t->type == kTfLiteString) {
+    }
+    case kTfLiteString: {
       // TODO(haoliang): No need to cache string tensors right now.
+      break;
+    }
+    default: {
+      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t.name
+                        << " of type " << t.type;
+    }
+  }
+  return InputTensorData();
+}
+
+TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
+  CleanUp();
+
+  // Note the corresponding relation between 'interpreter_inputs' and 'inputs_'
+  // (i.e. the specified input layer info) has been checked in
+  // BenchmarkTfLiteModel::Init() before calling this function. So, we simply
+  // use the corresponding input layer info to initializethe input data value
+  // properly.
+  auto interpreter_inputs = interpreter_->inputs();
+  for (int i = 0; i < interpreter_inputs.size(); ++i) {
+    int tensor_index = interpreter_inputs[i];
+    const TfLiteTensor& t = *(interpreter_->tensor(tensor_index));
+    const InputLayerInfo* input_layer_info = nullptr;
+    // Note that when input layer parameters (i.e. --input_layer,
+    // --input_layer_shape) are not specified, inputs_ is empty.
+    if (!inputs_.empty()) input_layer_info = &inputs_[i];
+
+    InputTensorData t_data;
+    if (input_layer_info && !input_layer_info->input_file_path.empty()) {
+      t_data = LoadInputTensorData(t, input_layer_info->input_file_path);
     } else {
-      TFLITE_LOG(ERROR) << "Don't know how to populate tensor " << t->name
-                        << " of type " << t->type;
-      return kTfLiteError;
+      t_data = CreateRandomTensorData(t, input_layer_info);
     }
     inputs_data_.push_back(std::move(t_data));
   }
@@ -621,9 +706,17 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
 std::unique_ptr<BenchmarkListener>
 BenchmarkTfLiteModel::MayCreateProfilingListener() const {
   if (!params_.Get<bool>("enable_op_profiling")) return nullptr;
+
+  if (params_.Get<bool>("enable_platform_tracing")) {
+    return std::unique_ptr<BenchmarkListener>(
+        new PlatformProfilingListener(interpreter_.get()));
+  }
+
   return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
-      interpreter_.get(),
-      params_.Get<int32_t>("max_profiling_buffer_entries")));
+      interpreter_.get(), params_.Get<int32_t>("max_profiling_buffer_entries"),
+      params_.Get<std::string>("profiling_output_csv_file"),
+      CreateProfileSummaryFormatter(
+          !params_.Get<std::string>("profiling_output_csv_file").empty())));
 }
 
 TfLiteStatus BenchmarkTfLiteModel::RunImpl() { return interpreter_->Invoke(); }

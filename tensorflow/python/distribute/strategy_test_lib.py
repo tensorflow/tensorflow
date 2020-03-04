@@ -39,7 +39,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import core
+from tensorflow.python.keras.layers import core
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
@@ -688,9 +688,9 @@ class RemoteSingleWorkerMirroredStrategyBase(DistributionTestBase):
 
   def _testDeviceScope(self, distribution):
     with distribution.scope():
-      a = constant_op.constant(1.)
+      a = array_ops.identity(1.)
       with ops.device("/cpu:0"):
-        b = constant_op.constant(1.)
+        b = array_ops.identity(1.)
       if context.executing_eagerly():
         device = "/job:worker/replica:0/task:0/device:CPU:0"
       else:

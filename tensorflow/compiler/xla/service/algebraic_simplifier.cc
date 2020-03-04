@@ -3204,53 +3204,6 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
     return false;
   }
 
-  if (slice->operand(0)->opcode() == HloOpcode::kPad) {
-    VLOG(10) << "Trying to simplify scalar slice of pad";
-    // Check there's no internal padding. Again, we could handle that too, since
-    // everything is statically known, but it's not worth it.
-    auto pad = Cast<HloPadInstruction>(slice->mutable_operand(0));
-    auto padding_config = pad->padding_config();
-    int64 rank = padding_config.dimensions_size();
-    if (HasInteriorPadding(padding_config)) {
-      VLOG(10) << "Not folding scalar slice of pad, pad has interior padding";
-      return false;
-    }
-
-    // Check whether the scalar we're slicing out falls into the padding.
-    bool in_padding = [&]() {
-      for (int64 i = 0; i < rank; ++i) {
-        int64 start = slice->slice_starts(i);
-        int64 low = padding_config.dimensions(i).edge_padding_low();
-        int64 data = pad->operand(0)->shape().dimensions(i);
-        if (start < low || start >= low + data) {
-          return true;
-        }
-      }
-      return false;
-    }();
-
-    if (in_padding) {
-      VLOG(10) << "Folding scalar slice of pad into padding value";
-      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
-          slice, HloInstruction::CreateReshape(slice->shape(),
-                                               pad->mutable_padding_value())));
-      return true;
-    } else {
-      // We already know the output of the slice is scalar. If the padded
-      // value is scalar, and it's not in the padding, then it's exactly the
-      // output value.
-      bool replaced =
-          ReplaceInstructionIfSameShape(slice, pad->mutable_operand(0));
-      if (replaced) {
-        VLOG(10) << "Folding scalar slice of pad into padded value";
-      } else {
-        VLOG(10) << "Not folding scalar slice of pad into padded value as they "
-                    "have different shapes.";
-      }
-      return replaced;
-    }
-  }
-
   if (slice->operand(0)->opcode() == HloOpcode::kConcatenate) {
     VLOG(10) << "Trying to simplify scalar slice of concat";
     // Only do this for R1, there's no chance of this being useful otherwise.
@@ -3356,19 +3309,53 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   HloInstruction* pad;
   HloInstruction* pad_operand;
   if (Match(slice, m::Slice(m::Pad(&pad, m::Op(&pad_operand), m::Op())))) {
+    // Is the result of the slice the pad operand.
     bool slice_undoes_pad = true;
+    // Can the slice be moved to the pad_operand without any padding being read.
+    bool slice_inside_pad = true;
+    // Does this slice slice out pading only.
+    bool slice_in_padding = false;
+    std::vector<int64> new_starts = slice->slice_starts();
+    std::vector<int64> new_limits = slice->slice_limits();
     for (int64 i = 0; i < slice->shape().rank(); ++i) {
-      if (slice->slice_starts(i) !=
-          pad->padding_config().dimensions(i).edge_padding_low()) {
+      const int64 start = slice->slice_starts(i);
+      const int64 stride = slice->slice_strides(i);
+      const int64 limit = slice->slice_limits(i);
+      const int64 size = pad->shape().dimensions(i);
+
+      const auto& dim = pad->padding_config().dimensions(i);
+      const int64 low = dim.edge_padding_low();
+      const int64 high = dim.edge_padding_high();
+      const int64 interior = dim.interior_padding();
+      const int64 edge = size - high;
+
+      if (limit <= low || start >= edge) {
+        slice_in_padding = true;
+        break;
+      }
+
+      if (start != low || stride - 1 != interior) {
         slice_undoes_pad = false;
       }
-      if (slice->slice_strides(i) - 1 !=
-          pad->padding_config().dimensions(i).interior_padding()) {
-        slice_undoes_pad = false;
+
+      if (start < low || limit > edge || interior != 0 || stride != 1) {
+        slice_inside_pad = false;
       }
+      new_starts[i] -= low;
+      new_limits[i] -= low;
+    }
+    if (slice_in_padding) {
+      return ReplaceInstruction(
+          slice, MakeBroadcastHlo(pad->mutable_operand(1), {}, slice->shape()));
     }
     if (slice_undoes_pad && ReplaceInstructionIfSameShape(slice, pad_operand)) {
       return Status::OK();
+    }
+    if (slice_inside_pad) {
+      TF_ASSIGN_OR_RETURN(HloInstruction * new_slice,
+                          MakeSliceHlo(pad_operand, new_starts, new_limits,
+                                       slice->slice_strides()));
+      return ReplaceInstruction(slice, new_slice);
     }
   }
 
@@ -3550,7 +3537,6 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
 Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
   bool multi_output_reduce = reduce->shape().IsTuple();
-
   // For tuple reduce, we require all reduce shapes to be the same, up to the
   // element types, so we can just the first operand and the first result as a
   // representative.
@@ -3578,6 +3564,10 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
           reduce,
           HloInstruction::CreateBroadcast(reduce_result_shape, init_value, {}));
     }
+  }
+
+  if (options_.is_layout_sensitive()) {
+    return Status::OK();
   }
 
   // If the reduction results in the same number of elements, then the only
@@ -3718,6 +3708,56 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
       old_reduce = new_reduce;
     }
     return ReplaceInstruction(reduce, old_reduce);
+  }
+
+  HloInstruction *dot, *lhs, *rhs;
+  // Convert Reduce(Dot(X,Y)) to Dot(X,Y) if any of the dimensions reduced were
+  // batch dimensions of the dot. The transformation supports reducing other
+  // dimensions as well.
+  if (options_.enable_dot_strength_reduction() &&
+      Match(arg, m::Dot(&dot, m::Op(&lhs), m::Op(&rhs)).WithOneUser()) &&
+      Match(reduce->to_apply()->root_instruction(),
+            m::Add(m::Parameter(), m::Parameter())) &&
+      absl::c_any_of(reduce->dimensions(), [&](int64 dim) {
+        return dim < dot->dot_dimension_numbers().lhs_batch_dimensions_size();
+      })) {
+    const auto& dnums = dot->dot_dimension_numbers();
+    DotDimensionNumbers new_dnums = dnums;
+    new_dnums.clear_lhs_batch_dimensions();
+    new_dnums.clear_rhs_batch_dimensions();
+    int64 removed_dims = 0;
+    for (int64 batch_dim = 0; batch_dim < dnums.lhs_batch_dimensions_size();
+         ++batch_dim) {
+      if (absl::c_linear_search(reduce->dimensions(), batch_dim)) {
+        new_dnums.add_rhs_contracting_dimensions(
+            dnums.rhs_batch_dimensions(batch_dim));
+        new_dnums.add_lhs_contracting_dimensions(
+            dnums.rhs_batch_dimensions(batch_dim));
+        ++removed_dims;
+      } else {
+        new_dnums.add_rhs_batch_dimensions(
+            dnums.rhs_batch_dimensions(batch_dim));
+        new_dnums.add_lhs_batch_dimensions(
+            dnums.rhs_batch_dimensions(batch_dim));
+      }
+    }
+    std::vector<int64> reduce_dims;
+    for (int64 dim : reduce->dimensions()) {
+      if (dim >= dnums.lhs_batch_dimensions_size()) {
+        reduce_dims.push_back(dim - removed_dims);
+      }
+    }
+    TF_ASSIGN_OR_RETURN(
+        auto new_dot, MakeDotHlo(lhs, rhs, new_dnums, dot->precision_config()));
+    dot->SetupDerivedInstruction(new_dot);
+    if (reduce_dims.empty()) {
+      return ReplaceInstruction(hlo, new_dot);
+    }
+    TF_ASSIGN_OR_RETURN(
+        auto new_reduce,
+        MakeReduceHlo(new_dot, init_value, reduce_dims, HloOpcode::kAdd));
+    reduce->SetupDerivedInstruction(new_reduce);
+    return ReplaceInstruction(hlo, new_reduce);
   }
   return Status::OK();
 }

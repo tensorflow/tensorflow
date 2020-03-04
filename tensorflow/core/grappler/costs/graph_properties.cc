@@ -524,7 +524,7 @@ bool IsWhiteListedOpTypeForEvaluateNode(const string& op_type) {
           "TruncateDiv",
           "TruncateMod",
           "RealDiv",
-          // N-ary arithemtic ops
+          // N-ary arithmetic ops
           "AddN",
           // Others
           "StridedSlice",
@@ -664,14 +664,9 @@ class SymbolicShapeRefiner {
         }
       }
 
-      // Turn _Arg node into a Placeholder. _Arg node is a system op without a
-      // valid shape function.
-      *attr_output_shape.mutable_shape() = proto;
-      fun_node->set_op("Placeholder");
-      (*fun_node->mutable_attr())["dtype"] = (*fun_node->mutable_attr())["T"];
-      (*fun_node->mutable_attr()).erase("index");
-      (*fun_node->mutable_attr()).erase("T");
-      (*fun_node->mutable_attr())["shape"] = attr_output_shape;
+      AttrValue output_attr;
+      output_attr.mutable_list()->add_shape()->Swap(&proto);
+      (*fun_node->mutable_attr())["_output_shapes"] = output_attr;
     }
 
     // Replace input nodes with Consts, if values are known. Note that
@@ -1318,7 +1313,7 @@ class SymbolicShapeRefiner {
     return true;
   }
 
-  // Create input tensors from the NodeConext.
+  // Create input tensors from the NodeContext.
   void CreateInputTensors(NodeContext* c,
                           std::vector<Tensor>* input_tensor_vector,
                           TensorVector* inputs) {
@@ -1367,7 +1362,7 @@ class SymbolicShapeRefiner {
 
     // Input to EvaluateNode()
     TensorVector inputs;
-    // Container for temporaily created tensor object.
+    // Container for temporarily created tensor object.
     std::vector<Tensor> input_tensor_vector(ic->num_inputs());
     CreateInputTensors(c, &input_tensor_vector, &inputs);
 
@@ -2397,14 +2392,25 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
   return InferFromCostGraph(metadata.cost_graph());
 }
 
-Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def) const {
+Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def,
+                                             bool allow_symbolic_shapes) const {
   *output_graph_def = item_.graph;
   for (int i = 0; i < output_graph_def->node_size(); i++) {
     auto node = output_graph_def->mutable_node(i);
     AttrValue attr_output_shape;
     auto tensor_properties = GetOutputProperties(node->name());
     for (const auto& tensor_property : tensor_properties) {
-      *attr_output_shape.mutable_list()->add_shape() = tensor_property.shape();
+      TensorShapeProto* proto = attr_output_shape.mutable_list()->add_shape();
+      *proto = tensor_property.shape();
+      if (!allow_symbolic_shapes) {
+        // There may be dim.size < -1 in SymbolicShapeRefiner. Change those to
+        // -1.
+        for (int i = 0; i < proto->dim_size(); i++) {
+          if (proto->dim(i).size() < -1) {
+            proto->mutable_dim(i)->set_size(-1);
+          }
+        }
+      }
     }
     (*node->mutable_attr())["_output_shapes"] = attr_output_shape;
   }

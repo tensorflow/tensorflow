@@ -1,7 +1,3 @@
-package(
-    default_visibility = ["//visibility:public"],
-)
-
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE.txt"])
@@ -11,7 +7,6 @@ licenses(["notice"])
 config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
-    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -27,6 +22,7 @@ cc_library(
     hdrs = ["//:public_headers"],
     linkstatic = 1,
     strip_include_prefix = "/include",
+    visibility = ["//visibility:public"],
     deps = ["//src:flatbuffers"],
 )
 
@@ -47,12 +43,14 @@ filegroup(
         "include/flatbuffers/stl_emulation.h",
         "include/flatbuffers/util.h",
     ],
+    visibility = ["//:__subpackages__"],
 )
 
 # Public flatc compiler library.
 cc_library(
     name = "flatc_library",
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [
         "@flatbuffers//src:flatc_library",
     ],
@@ -71,6 +69,7 @@ cc_binary(
             "-ldl",
         ],
     }),
+    visibility = ["//visibility:public"],
     deps = [
         "@flatbuffers//src:flatc",
     ],
@@ -96,6 +95,7 @@ cc_library(
     ],
     linkstatic = 1,
     strip_include_prefix = "/include",
+    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -114,4 +114,5 @@ filegroup(
 py_library(
     name = "runtime_py",
     srcs = [":runtime_py_srcs"],
+    visibility = ["//visibility:public"],
 )

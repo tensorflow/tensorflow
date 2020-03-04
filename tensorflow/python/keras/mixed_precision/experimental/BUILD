@@ -94,7 +94,7 @@ py_library(
     srcs = ["get_layer_policy.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python/keras:base_layer",
+        "//tensorflow/python/keras/engine:base_layer",
     ],
 )
 
@@ -211,13 +211,13 @@ cuda_py_test(
     size = "medium",
     srcs = ["keras_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 10,
     tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
     deps = [
         ":test_util",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:central_storage_strategy",
         "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],

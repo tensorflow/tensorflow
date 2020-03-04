@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/IR/Identifier.h"  // TF:llvm-project
@@ -136,7 +136,7 @@ Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
 }
 
 Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
-  value->mutable_func()->set_name(attr.getValue());
+  value->mutable_func()->set_name(std::string(attr.getValue()));
   return Status::OK();
 }
 
@@ -291,7 +291,7 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   }
 
   node_def->set_name(name.str());
-  node_def->set_op(op_name.str());
+  node_def->set_op(std::string(op_name.str()));
 
   // Add inputs to the NodeDef based on the number of operands. This is required
   // as later when edges are added to the Node using Graph::AddEdge the
@@ -300,7 +300,7 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
     node_def->add_input();
   }
   if (auto attr = inst->getAttrOfType<mlir::StringAttr>("device")) {
-    node_def->set_device(attr.getValue());
+    node_def->set_device(std::string(attr.getValue()));
   }
 
   // Add the node attributes.
@@ -343,7 +343,7 @@ Status ConvertAttributes(
     switch (attr.getKind()) {
       case mlir::StandardAttributes::SymbolRef: {
         auto func_attr = attr.cast<mlir::FlatSymbolRefAttr>();
-        value.mutable_func()->set_name(func_attr.getValue());
+        value.mutable_func()->set_name(std::string(func_attr.getValue()));
         func_call_attrs[string(name)] = value;
         continue;
       }

@@ -112,7 +112,7 @@ def op_priority(op_type):
   """
   if op_type in ('Const', 'Shape', 'BroadcastGradientArgs', 'Range',
                  'VariableShape', 'Fill', 'OneHot', 'ShapeN'):
-    # Lowest priority ops, e.g., constant ops accross different steps,
+    # Lowest priority ops, e.g., constant ops across different steps,
     # They will be traced only if trace_level>=7
     return 7
 
@@ -566,7 +566,7 @@ class TensorTracer(object):
       Cache update operation.
     """
     # state_ops.scatter_update allows updates only along the first dimension.
-    # Make a compact array by concantating different signatures, and update
+    # Make a compact array by concatenating different signatures, and update
     # them all together.
     sorted_update = []
     if self._num_signature_dimensions() > 1:

@@ -90,11 +90,12 @@ class FunctionTest : public ::testing::Test {
     const int version = g->versions().producer();
     LocalExecutorParams params;
     params.device = device_.get();
-    params.create_kernel = [this, version](const NodeDef& ndef,
-                                           OpKernel** kernel) {
-      return CreateNonCachedKernel(device_.get(), nullptr, ndef, version,
-                                   kernel);
-    };
+    params.create_kernel =
+        [this, version](const std::shared_ptr<const NodeProperties>& props,
+                        OpKernel** kernel) {
+          return CreateNonCachedKernel(device_.get(), nullptr, props, version,
+                                       kernel);
+        };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
@@ -1311,7 +1312,7 @@ int GetConstantFoldingCounter() {
       return counter;
     }
   }
-  LOG(FATAL) << "Should have found a node that replcaed add";
+  LOG(FATAL) << "Should have found a node that replaced add";
 }
 
 TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
@@ -1871,6 +1872,67 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
                               TensorShape({})));
 }
 
+class AreAllKernelsInlineOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &output));
+    output->scalar<bool>()() = ctx->run_all_kernels_inline();
+  }
+};
+
+REGISTER_OP("AreAllKernelsInline").Output("result : bool").SetIsStateful();
+REGISTER_KERNEL_BUILDER(Name("AreAllKernelsInline").Device(DEVICE_CPU),
+                        AreAllKernelsInlineOp);
+
+TEST_F(FunctionLibraryRuntimeTest, RunAllKernelsInline) {
+  // Create a function "F" that includes an AreAllKernelsInline op, and a
+  // function "G" that calls "F".
+  auto f = FDH::Create(
+      // Name
+      "F",
+      // Args
+      {},
+      // Return values
+      {"ret: bool"},
+      // Attrs
+      {},
+      // Nodes
+      {// y = AreAllKernelsInline()
+       {{"y"}, "AreAllKernelsInline", {}, {}}},
+      {{"ret", "y:result:0"}});
+
+  auto g = FDH::Create(
+      // Name
+      "G",
+      // Args
+      {},
+      // Return values
+      {"ret: bool"},
+      // Attrs
+      {},
+      // Nodes
+      {// y = F()
+       {{"y"}, "F", {}, {}}},
+      {{"ret", "y:ret:0"}});
+
+  Init({f, g});
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "G", {}, &handle));
+
+  // Test that the `run_all_kernels_inline` flag is inherited by the kernel
+  // running inside the called function.
+  for (bool inline_option : {false, true}) {
+    FunctionLibraryRuntime::Options opts;
+    opts.run_all_kernels_inline = inline_option;
+    Tensor result;
+    TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&result}, true));
+    EXPECT_EQ(result.scalar<bool>()(), inline_option);
+  }
+}
+
 namespace {
 
 bool DoNothing(Graph* g) { return false; }
@@ -2128,7 +2190,7 @@ TEST(OptimizationTest, RemoveListArrayConverter) {
   }
 }
 
-TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
+TEST(OptimizationTest, RemoveListArrayConverter_WithControlDeps) {
   auto func = FDH::Create(
       // Name
       "Test",

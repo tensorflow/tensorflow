@@ -42,7 +42,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.layers import core
+from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
@@ -186,7 +186,7 @@ class ParameterServerStrategyTestBase(
           g = e + 1.0
         self.assertEqual(g.device, worker_device + '/device:CPU:1')
 
-        # Ths ops.colocate_with will be ignored when defining a variale but not
+        # Ths ops.colocate_with will be ignored when defining a variable but not
         # for a normal tensor.
         with ops.colocate_with(x):
           u = variable_scope.get_variable('u', initializer=30.0)
@@ -340,7 +340,7 @@ class ParameterServerStrategyTestBase(
           g = e + 1.0
         self.assertEqual(g.device, device_util.canonicalize('/device:CPU:1'))
 
-        # Ths ops.colocate_with will be ignored when defining a variale but not
+        # Ths ops.colocate_with will be ignored when defining a variable but not
         # for a normal tensor.
         with ops.colocate_with(x):
           u = variable_scope.get_variable('u', initializer=30.0)
@@ -723,6 +723,15 @@ class ParameterServerStrategyTest(
     # Verify isolate_session_state
     self.assertTrue(new_config.isolate_session_state)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testInMultiWorkerMode(self):
+    strategy, _, _ = create_test_objects(
+        cluster_spec=self._cluster_spec,
+        task_type='worker',
+        task_id=1,
+        num_gpus=0)
+    self.assertTrue(strategy.extended._in_multi_worker_mode())
+
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                                            parameterized.TestCase):
@@ -800,6 +809,11 @@ class CentralStorageStrategyTest(strategy_test_lib.DistributionTestBase,
   def testNumpyDataset(self):
     strategy, _, _ = create_test_objects(num_gpus=2)
     self._test_numpy_dataset(strategy)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testInMultiWorkerMode(self):
+    strategy, _, _ = create_test_objects(num_gpus=0)
+    self.assertFalse(strategy.extended._in_multi_worker_mode())
 
 
 if __name__ == '__main__':

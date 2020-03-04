@@ -512,10 +512,11 @@ struct LegacyPerChannelDepthwiseConvWorkerTask : public gemmlowp::Task {
         thread_dim_(thread_dim) {}
 
   void Run() override {
+    CpuBackendContext backend_context;
     optimized_integer_ops::DepthwiseConvImpl(
         params_, output_multiplier_, output_shift_, input_shape_, input_data_,
         filter_shape_, filter_data_, bias_shape_, bias_data_, output_shape_,
-        output_data_, thread_start_, thread_end_, thread_dim_);
+        output_data_, thread_start_, thread_end_, thread_dim_, backend_context);
   }
 
  private:
@@ -568,11 +569,12 @@ inline void DepthwiseConvPerChannel(
   thread_count = std::max(1, std::min(thread_count, max_threads));
 
   if (thread_count == 1) {
+    CpuBackendContext backend_context;
     optimized_integer_ops::DepthwiseConvImpl(
         params, output_multiplier, output_shift, input_shape, input_data,
         filter_shape, filter_data, bias_shape, bias_data, output_shape,
         output_data, /*thread_start=*/0,
-        /*thread_end=*/output_rows, /*thread_dim=*/1);
+        /*thread_end=*/output_rows, /*thread_dim=*/1, backend_context);
   } else {
     std::vector<gemmlowp::Task*> tasks(thread_count);
     int thread_start = 0;

@@ -22,7 +22,6 @@ import collections
 import re
 
 from tensorflow.core.framework import function_pb2
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.framework import func_graph as func_graph_lib
@@ -78,7 +77,7 @@ def _call_concrete_function(function, inputs):
 def _try_convert_to_tensor_spec(arg, dtype_hint):
   """Returns None or TensorSpec obtained if `arg` is converted to tensor."""
   try:
-    # Note: try conversion in a FuncGraph to avoid poluting current context.
+    # Note: try conversion in a FuncGraph to avoid polluting current context.
     with func_graph_lib.FuncGraph(name="guess_conversion").as_default():
       result = ops.convert_to_tensor(arg, dtype_hint=dtype_hint)
       return tensor_spec.TensorSpec(shape=result.shape, dtype=result.dtype)
@@ -298,6 +297,19 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   functions = {}
   renamed_functions = {}
 
+  # Our graph building code currently requires functions to be registered with
+  # some tf.Graph in order to import functions using the
+  # op-name-is-function-name calling convention. To avoid leaking memory into
+  # the global default graph when executing eagerly, we create a temporary
+  # Graph.
+  #
+  # TODO(allenl): Make this Graph creation unnecessary when executing eagerly by
+  # fixing function_def_to_graph_def.
+  if ops.executing_eagerly_outside_functions():
+    graph = ops.Graph()
+  else:
+    graph = ops.get_default_graph()
+
   if load_shared_name_suffix is None:
     load_shared_name_suffix = "_load_{}".format(ops.uid())
   for fdef in _sort_function_defs(library, library_function_names):
@@ -308,18 +320,22 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     # extra function definitions are a no-op since they already imported as a
     # function before and passed in explicitly (due to the topologic sort
     # import).
-    func_graph = function_def_lib.function_def_to_graph(copy)
+    with graph.as_default():
+      func_graph = function_def_lib.function_def_to_graph(copy)
     _restore_gradient_functions(func_graph, renamed_functions)
 
     for dep in _list_function_deps(fdef, library_function_names):
       functions[dep].add_to_graph(func_graph)
     func = function_lib.ConcreteFunction(func_graph)
-    func.add_to_graph()
-    if context.executing_eagerly():
-      func.add_to_graph(ops.get_default_graph())
+    func.add_to_graph(graph)
 
     functions[fdef.signature.name] = func
     renamed_functions[func.name] = func
+    if any(op.type == "TRTEngineOp" for op in func_graph.get_operations()):
+      # TODO(b/150708051): Remove this hack once TensorRT SavedModel integration
+      # is fixed. Currently it's leaking memory to maintain bug compatibility
+      # with previous behavior.
+      func.add_to_graph(ops.get_default_graph())
 
   return functions
 
@@ -446,15 +462,15 @@ def _list_function_deps(fdef, library_function_names):
   return deps
 
 
-_FUNCTION_WARPPER_NAME_REGEX = r"^%s(.*)_\d+$" % (
-    function_lib._INFERENCE_PREFIX)  # pylint:disable=protected-access
+_FUNCTION_WRAPPER_NAME_REGEX = r"^%s(.*)_\d+$" % (function_lib._INFERENCE_PREFIX
+                                                 )  # pylint:disable=protected-access
 
 
 def _clean_function_name(name):
   """Vanity function to keep the function names comprehensible."""
   # Note: each time a function is wrapped into `function_lib.ConcreteFunction`
   # its name becomes "__inference_<orig>_xyz".
-  match = re.search(_FUNCTION_WARPPER_NAME_REGEX, name)
+  match = re.search(_FUNCTION_WRAPPER_NAME_REGEX, name)
   if match:
     return match.group(1)
   else:

@@ -36,6 +36,8 @@ REGISTER_SYCL_KERNEL(complex128);
 #if GOOGLE_CUDA
 REGISTER5(BinaryOp, GPU, "Xlogy", functor::xlogy, float, Eigen::half, double,
           complex64, complex128);
-#endif  // GOOGLE_CUDA
+#elif TENSORFLOW_USE_ROCM
+REGISTER3(BinaryOp, GPU, "Xlogy", functor::xlogy, float, Eigen::half, double);
+#endif
 
 }  // namespace tensorflow

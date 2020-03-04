@@ -22,7 +22,7 @@ tf_module {
   }
   member_method {
     name: "embedding_column"
-    argspec: "args=[\'categorical_column\', \'dimension\', \'combiner\', \'initializer\', \'max_sequence_length\', \'learning_rate_fn\', \'embedding_lookup_device\', \'tensor_core_shape\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'0\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'categorical_column\', \'dimension\', \'combiner\', \'initializer\', \'max_sequence_length\', \'learning_rate_fn\', \'embedding_lookup_device\', \'tensor_core_shape\', \'use_safe_embedding_lookup\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'0\', \'None\', \'None\', \'None\', \'True\'], "
   }
   member_method {
     name: "initialize_tpu_system"
@@ -30,7 +30,7 @@ tf_module {
   }
   member_method {
     name: "shared_embedding_columns"
-    argspec: "args=[\'categorical_columns\', \'dimension\', \'combiner\', \'initializer\', \'shared_embedding_collection_name\', \'max_sequence_lengths\', \'learning_rate_fn\', \'embedding_lookup_device\', \'tensor_core_shape\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'categorical_columns\', \'dimension\', \'combiner\', \'initializer\', \'shared_embedding_collection_name\', \'max_sequence_lengths\', \'learning_rate_fn\', \'embedding_lookup_device\', \'tensor_core_shape\', \'use_safe_embedding_lookup\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'True\'], "
   }
   member_method {
     name: "shutdown_tpu_system"

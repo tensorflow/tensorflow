@@ -40,7 +40,7 @@ class MultiplyAdd : public ElementwiseOperation {
   MultiplyAdd(const MultiplyAdd&) = delete;
   MultiplyAdd& operator=(const MultiplyAdd&) = delete;
 
-  Status UploadMul(const MultiplyScalarAttributes& attr,
+  Status UploadMul(const MultiplyAttributes& attr,
                    CalculationsPrecision scalar_precision, CLContext* context);
   Status UploadAdd(const AddAttributes& attr,
                    CalculationsPrecision scalar_precision, CLContext* context);
@@ -61,7 +61,7 @@ class MultiplyAdd : public ElementwiseOperation {
 
   friend Status CreateMultiplyAdd(const CreationContext& creation_context,
                                   const OperationDef& definition,
-                                  const MultiplyScalarAttributes& attr,
+                                  const MultiplyAttributes& attr,
                                   MultiplyAdd* result);
 
   friend Status CreateMultiplyAdd(const CreationContext& creation_context,
@@ -71,7 +71,7 @@ class MultiplyAdd : public ElementwiseOperation {
 
   friend Status CreateMultiplyAdd(const CreationContext& creation_context,
                                   const OperationDef& definition,
-                                  const MultiplyScalarAttributes& mul_attr,
+                                  const MultiplyAttributes& mul_attr,
                                   const AddAttributes& add_attr,
                                   MultiplyAdd* result);
 
@@ -91,8 +91,7 @@ class MultiplyAdd : public ElementwiseOperation {
 
 Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
-                         const MultiplyScalarAttributes& attr,
-                         MultiplyAdd* result);
+                         const MultiplyAttributes& attr, MultiplyAdd* result);
 
 Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
@@ -100,7 +99,7 @@ Status CreateMultiplyAdd(const CreationContext& creation_context,
 
 Status CreateMultiplyAdd(const CreationContext& creation_context,
                          const OperationDef& definition,
-                         const MultiplyScalarAttributes& mul_attr,
+                         const MultiplyAttributes& mul_attr,
                          const AddAttributes& add_attr, MultiplyAdd* result);
 
 template <DataType T>
