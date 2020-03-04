@@ -795,3 +795,14 @@ def validate_kwargs(kwargs,
 def validate_config(config):
   """Determines whether config appears to be a valid layer config."""
   return isinstance(config, dict) and _LAYER_UNDEFINED_CONFIG_KEY not in config
+
+
+def default(method):
+  """Decorates a method to detect overrides in subclasses."""
+  method._is_default = True  # pylint: disable=protected-access
+  return method
+
+
+def is_default(method):
+  """Check if a method is decorated with the `default` wrapper."""
+  return getattr(method, '_is_default', False)

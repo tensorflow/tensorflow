@@ -254,7 +254,7 @@ class Layer(base_layer.Layer):
     self._auto_track_sub_layers = True
 
   @trackable.no_automatic_dependency_tracking
-  @base_layer_utils.default
+  @generic_utils.default
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
 
@@ -467,7 +467,7 @@ class Layer(base_layer.Layer):
         self._non_trainable_weights.append(variable)
     return variable
 
-  @base_layer_utils.default
+  @generic_utils.default
   def get_config(self):
     """Returns the config of the layer.
 
@@ -605,7 +605,7 @@ class Layer(base_layer.Layer):
         lambda s: tensor_spec.TensorSpec(dtype=dtype, shape=s),
         output_shape)
 
-  @base_layer_utils.default
+  @generic_utils.default
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
 
