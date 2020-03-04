@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "absl/time/time.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/types.h"
@@ -30,11 +29,6 @@ limitations under the License.
 namespace py = ::pybind11;
 
 namespace {
-
-tensorflow::string GetCurrentTimeStampAsString() {
-  return absl::FormatTime("%E4Y-%m-%d_%H:%M:%S", absl::Now(),
-                          absl::LocalTimeZone());
-}
 
 tensorflow::ProfileRequest MakeProfileRequest(
     const tensorflow::string& logdir, const tensorflow::string& session_id,
@@ -82,7 +76,8 @@ class ProfilerSessionWrapper {
     }
     tensorflow::ProfileResponse response;
     tensorflow::ProfileRequest request = MakeProfileRequest(
-        logdir_, GetCurrentTimeStampAsString(), tensorflow::port::Hostname());
+        logdir_, tensorflow::profiler::GetCurrentTimeStampAsString(),
+        tensorflow::port::Hostname());
     tensorflow::profiler::ConvertXSpaceToProfileResponse(xspace, request,
                                                          &response);
 
