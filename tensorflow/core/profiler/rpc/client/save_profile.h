@@ -22,6 +22,8 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+string GetCurrentTimeStampAsString();
+
 // Returns the profile plugin directory given a logdir to TensorBoard.
 string GetTensorBoardProfilePluginDir(const string& logdir);
 

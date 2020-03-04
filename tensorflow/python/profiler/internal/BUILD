@@ -125,7 +125,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/python:pybind11_status",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/time",
         "@pybind11",
     ],
 )

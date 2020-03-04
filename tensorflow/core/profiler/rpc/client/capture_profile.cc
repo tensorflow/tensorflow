@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 
-#include <cstdio>
-#include <ctime>
 #include <vector>
 
 #include "grpcpp/grpcpp.h"
@@ -36,14 +34,6 @@ namespace profiler {
 namespace {
 
 constexpr uint64 kMaxEvents = 1000000;
-
-string GetCurrentTimeStampAsString() {
-  char s[128];
-  std::time_t t = std::time(nullptr);
-  auto result = std::strftime(s, sizeof(s), "%F_%T", std::localtime(&t));
-  DCHECK_NE(result, 0);
-  return s;
-}
 
 ProfileRequest PopulateProfileRequest(int duration_ms,
                                       const string& repository_root,
