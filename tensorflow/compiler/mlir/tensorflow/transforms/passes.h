@@ -46,6 +46,9 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 // Optional pass which will unroll BatchMatMul and use only MatMul
 std::unique_ptr<OpPassBase<FuncOp>> CreateUnrollBatchMatMulPassPass();
 
+// Optional pass which will map TF BatchMatMul to TF Einsum
+std::unique_ptr<OpPassBase<FuncOp>> CreateBatchMatMulToEinsumPass();
+
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 

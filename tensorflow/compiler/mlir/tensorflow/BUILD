@@ -268,6 +268,7 @@ cc_library(
     name = "tensorflow_passes",
     srcs = [
         "transforms/annotate_parameter_replication.cc",
+        "transforms/batchmatmul_to_einsum.cc",
         "transforms/bridge.cc",
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
@@ -315,6 +316,7 @@ cc_library(
         "translate/tf_functional_to_executor.cc",
     ],
     hdrs = [
+        "transforms/batchmatmul_to_einsum.h",
         "transforms/bridge.h",
         "transforms/passes.h",
         "transforms/shape_inference.h",
