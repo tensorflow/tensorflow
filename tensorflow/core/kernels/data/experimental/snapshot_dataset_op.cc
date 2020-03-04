@@ -62,19 +62,11 @@ namespace data {
 namespace experimental {
 namespace {
 
-enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
-
 // Defaults to 10 GiB per shard.
 const int64 kDefaultShardSizeBytes = 10LL * 1024 * 1024 * 1024;
 
 const int64 kCurrentVersion = 1;
 
-constexpr char kModeAuto[] = "auto";
-constexpr char kModeWrite[] = "write";
-constexpr char kModeRead[] = "read";
-constexpr char kModePassthrough[] = "passthrough";
-
-constexpr char kSnapshotFilename[] = "snapshot.metadata";
 constexpr char kSnapshotReaderWorkerPool[] = "snapshot_reader_worker_pool";
 constexpr char kSnapshotWriterWorkerPool[] = "snapshot_writer_worker_pool";
 constexpr char kSeparator[] = "::";
@@ -103,90 +95,6 @@ constexpr char kEndOfSequence[] = "end_of_sequence";
 constexpr char kBuffer[] = "buffer";
 constexpr char kNumElementsWritten[] = "num_elements_written";
 constexpr char kNextElem[] = "next_elem";
-
-Status WriteMetadataFile(const string& hash_dir,
-                         const experimental::SnapshotMetadataRecord& metadata) {
-  string metadata_filename = io::JoinPath(hash_dir, kSnapshotFilename);
-  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(hash_dir));
-  std::string tmp_filename =
-      absl::StrCat(metadata_filename, "-tmp-", random::New64());
-  TF_RETURN_IF_ERROR(WriteBinaryProto(Env::Default(), tmp_filename, metadata));
-  return Env::Default()->RenameFile(tmp_filename, metadata_filename);
-}
-
-Status ReadMetadataFile(const string& hash_dir,
-                        experimental::SnapshotMetadataRecord* metadata) {
-  string metadata_filename = io::JoinPath(hash_dir, kSnapshotFilename);
-  TF_RETURN_IF_ERROR(Env::Default()->FileExists(metadata_filename));
-  return ReadBinaryProto(Env::Default(), metadata_filename, metadata);
-}
-
-Status DumpDatasetGraph(const std::string& path, uint64 hash,
-                        const GraphDef& graph) {
-  std::string hash_hex =
-      strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
-  std::string graph_file =
-      io::JoinPath(path, absl::StrCat(hash_hex, "-graph.pbtxt"));
-
-  LOG(INFO) << "Graph hash is " << hash_hex << ", writing to " << graph_file;
-  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(path));
-  return WriteTextProto(Env::Default(), graph_file, graph);
-}
-
-Status DetermineOpState(const std::string& mode_string,
-                        const Status& file_status,
-                        const experimental::SnapshotMetadataRecord& metadata,
-                        const uint64 pending_snapshot_expiry_seconds,
-                        SnapshotMode* mode) {
-  if (mode_string == kModeRead) {
-    // In read mode, we should expect a metadata file is written.
-    if (errors::IsNotFound(file_status)) {
-      return file_status;
-    }
-    LOG(INFO) << "Overriding mode to reader.";
-    *mode = READER;
-    return Status::OK();
-  }
-
-  if (mode_string == kModeWrite) {
-    LOG(INFO) << "Overriding mode to writer.";
-    *mode = WRITER;
-    return Status::OK();
-  }
-
-  if (mode_string == kModePassthrough) {
-    LOG(INFO) << "Overriding mode to passthrough.";
-    *mode = PASSTHROUGH;
-    return Status::OK();
-  }
-
-  if (errors::IsNotFound(file_status)) {
-    *mode = WRITER;
-    return Status::OK();
-  }
-
-  if (!file_status.ok()) {
-    return file_status;
-  }
-
-  if (metadata.finalized()) {
-    // File found, snapshot has been finalized.
-    *mode = READER;
-    return Status::OK();
-  }
-
-  if (metadata.creation_timestamp() >=
-      (static_cast<int64>(EnvTime::NowMicros()) -
-       pending_snapshot_expiry_seconds * 1000000)) {
-    // Someone else is already writing and time has not expired.
-    *mode = PASSTHROUGH;
-    return Status::OK();
-  } else {
-    // Time has expired, we write regardless.
-    *mode = WRITER;
-    return Status::OK();
-  }
-}
 
 class SnapshotDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -217,7 +125,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("seed", &seed_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("seed2", &seed2_));
 
-    mode_ = kModeAuto;
+    mode_ = kSnapshotModeAuto;
     if (ctx->HasAttr("mode")) {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_));
     }
@@ -252,12 +160,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument(
             "pending_snapshot_expiry_seconds must be at least 1 second."));
 
-    OP_REQUIRES(ctx,
-                mode_ == kModeAuto || mode_ == kModeRead ||
-                    mode_ == kModeWrite || mode_ == kModePassthrough,
-                errors::InvalidArgument("mode must be either '", kModeAuto,
-                                        "', '", kModeRead, "', '", kModeWrite,
-                                        "', or '", kModePassthrough, "'."));
+    OP_REQUIRES(
+        ctx,
+        mode_ == kSnapshotModeAuto || mode_ == kSnapshotModeRead ||
+            mode_ == kSnapshotModeWrite || mode_ == kSnapshotModePassthrough,
+        errors::InvalidArgument("mode must be either '", kSnapshotModeAuto,
+                                "', '", kSnapshotModeRead, "', '",
+                                kSnapshotModeWrite, "', or '",
+                                kSnapshotModePassthrough, "'."));
   }
 
  protected:
@@ -280,7 +190,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     uint64 hash;
     OP_REQUIRES_OK(ctx, ComputeDatasetHash(graph_def, path, &hash));
 
-    Status dump_status = DumpDatasetGraph(path, hash, graph_def);
+    Status dump_status = SnapshotDumpDatasetGraph(path, hash, &graph_def);
     if (!dump_status.ok()) {
       LOG(WARNING) << "Unable to write graphdef to disk, error: "
                    << dump_status.ToString();
@@ -466,9 +376,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         if (iterator_ == nullptr) {
           experimental::SnapshotMetadataRecord metadata;
-          Status s = ReadMetadataFile(hash_dir_, &metadata);
-          TF_RETURN_IF_ERROR(DetermineOpState(
-              dataset()->mode_, s, metadata,
+          Status s = SnapshotReadMetadataFile(hash_dir_, &metadata);
+          TF_RETURN_IF_ERROR(SnapshotDetermineOpState(
+              dataset()->mode_, s, &metadata,
               dataset()->pending_snapshot_expiry_seconds_, &state_));
           VLOG(2) << "Snapshot state: " << state_;
           TF_RETURN_IF_ERROR(InitializeIterator(ctx, metadata));
@@ -504,7 +414,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           state_ = SnapshotMode(temp);
         }
         experimental::SnapshotMetadataRecord metadata;
-        TF_RETURN_IF_ERROR(ReadMetadataFile(hash_dir_, &metadata));
+        TF_RETURN_IF_ERROR(SnapshotReadMetadataFile(hash_dir_, &metadata));
         TF_RETURN_IF_ERROR(InitializeIterator(ctx, metadata));
         VLOG(2) << "Restoring Snapshot iterator: " << state_;
         return RestoreInput(ctx, reader, iterator_);
@@ -1041,7 +951,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                   metadata.add_dtype(output_dtype);
                 }
                 metadata.set_finalized(false);
-                TF_RETURN_IF_ERROR(WriteMetadataFile(hash_dir_, metadata));
+                TF_RETURN_IF_ERROR(
+                    SnapshotWriteMetadataFile(hash_dir_, &metadata));
               }
               for (int i = 0; i < dataset()->num_writer_threads_; ++i) {
                 ++num_active_threads_;
@@ -1416,11 +1327,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             mutex_lock l(mu_);
             if (!written_final_metadata_file_) {
               experimental::SnapshotMetadataRecord metadata;
-              TF_RETURN_IF_ERROR(ReadMetadataFile(hash_dir_, &metadata));
+              TF_RETURN_IF_ERROR(
+                  SnapshotReadMetadataFile(hash_dir_, &metadata));
 
               if (metadata.run_id() == run_id_) {
                 metadata.set_finalized(true);
-                TF_RETURN_IF_ERROR(WriteMetadataFile(hash_dir_, metadata));
+                TF_RETURN_IF_ERROR(
+                    SnapshotWriteMetadataFile(hash_dir_, &metadata));
               } else {
                 // TODO(frankchn): We lost the race, remove all snapshots.
               }

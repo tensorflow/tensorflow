@@ -442,6 +442,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:coding",
+        "//tensorflow/core/platform:random",
         "//tensorflow/core/profiler/lib:traceme",
     ],
 )

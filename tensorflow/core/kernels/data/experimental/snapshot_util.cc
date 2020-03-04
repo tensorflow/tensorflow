@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -26,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/coding.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
 
@@ -388,6 +391,90 @@ Status SnapshotReader::ReadRecord(absl::Cord* record) {
   }
 }
 #endif
+
+Status SnapshotWriteMetadataFile(
+    const string& hash_dir,
+    const experimental::SnapshotMetadataRecord* metadata) {
+  string metadata_filename = io::JoinPath(hash_dir, kSnapshotFilename);
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(hash_dir));
+  std::string tmp_filename =
+      absl::StrCat(metadata_filename, "-tmp-", random::New64());
+  TF_RETURN_IF_ERROR(WriteBinaryProto(Env::Default(), tmp_filename, *metadata));
+  return Env::Default()->RenameFile(tmp_filename, metadata_filename);
+}
+
+Status SnapshotReadMetadataFile(
+    const string& hash_dir, experimental::SnapshotMetadataRecord* metadata) {
+  string metadata_filename = io::JoinPath(hash_dir, kSnapshotFilename);
+  TF_RETURN_IF_ERROR(Env::Default()->FileExists(metadata_filename));
+  return ReadBinaryProto(Env::Default(), metadata_filename, metadata);
+}
+
+Status SnapshotDumpDatasetGraph(const std::string& path, uint64 hash,
+                                const GraphDef* graph) {
+  std::string hash_hex =
+      strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
+  std::string graph_file =
+      io::JoinPath(path, absl::StrCat(hash_hex, "-graph.pbtxt"));
+
+  LOG(INFO) << "Graph hash is " << hash_hex << ", writing to " << graph_file;
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(path));
+  return WriteTextProto(Env::Default(), graph_file, *graph);
+}
+
+Status SnapshotDetermineOpState(
+    const std::string& mode_string, const Status& file_status,
+    const experimental::SnapshotMetadataRecord* metadata,
+    const uint64 pending_snapshot_expiry_seconds, SnapshotMode* mode) {
+  if (mode_string == kSnapshotModeRead) {
+    // In read mode, we should expect a metadata file is written.
+    if (errors::IsNotFound(file_status)) {
+      return file_status;
+    }
+    LOG(INFO) << "Overriding mode to reader.";
+    *mode = READER;
+    return Status::OK();
+  }
+
+  if (mode_string == kSnapshotModeWrite) {
+    LOG(INFO) << "Overriding mode to writer.";
+    *mode = WRITER;
+    return Status::OK();
+  }
+
+  if (mode_string == kSnapshotModePassthrough) {
+    LOG(INFO) << "Overriding mode to passthrough.";
+    *mode = PASSTHROUGH;
+    return Status::OK();
+  }
+
+  if (errors::IsNotFound(file_status)) {
+    *mode = WRITER;
+    return Status::OK();
+  }
+
+  if (!file_status.ok()) {
+    return file_status;
+  }
+
+  if (metadata->finalized()) {
+    // File found, snapshot has been finalized.
+    *mode = READER;
+    return Status::OK();
+  }
+
+  if (metadata->creation_timestamp() >=
+      (static_cast<int64>(EnvTime::NowMicros()) -
+       pending_snapshot_expiry_seconds * 1000000)) {
+    // Someone else is already writing and time has not expired.
+    *mode = PASSTHROUGH;
+    return Status::OK();
+  } else {
+    // Time has expired, we write regardless.
+    *mode = WRITER;
+    return Status::OK();
+  }
+}
 
 }  // namespace experimental
 }  // namespace data
