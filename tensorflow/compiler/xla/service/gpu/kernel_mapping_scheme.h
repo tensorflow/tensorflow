@@ -158,7 +158,7 @@ class KernelMappingScheme {
   // vector_size_ only supported for row reduction.
   // Must be a divisor of tile_sizes_[2]/num_threads_x.
   // Interesting values are 2 and 4 to trigger vectorized loads on GPUs
-  // While keeping memory coalescing.
+  // while keeping memory coalescing.
   const int vector_size_;
 };
 

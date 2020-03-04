@@ -1866,10 +1866,10 @@ namespace {
 // Returns true if the fusion contains any instruction that is likely
 // translated to complex LLVM IR, such as loops, and prevent vectorization.
 bool MayPreventVectorization(const HloInstruction& hlo,
-                             const bool tolerate_reduce = false) {
+                             bool tolerate_reduce = false) {
   if (hlo.opcode() == HloOpcode::kFusion) {
     return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
-                          [tolerate_reduce](const HloInstruction* instr) {
+                          [&](const HloInstruction* instr) {
                             switch (instr->opcode()) {
                               case HloOpcode::kReduce:
                                 return !tolerate_reduce;
@@ -2002,7 +2002,7 @@ void IrEmitterUnnested::EmitTile(
       /*step=*/constant(1), [&](llvm::Value* y_indvar) {
         llvm::Value* y_loc = b_.CreateAdd(
             thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
-        auto unroll = [&](bool add_if, int64 max_element, int64 vector_size) {
+        auto unroll = [&](bool add_if, int64 vector_size) {
           for (int64 j = 0; j < x_num_steps / vector_size; j++) {
             // Prep some values. If we do not do this, LLVM doesn't vectorize.
             llvm::Value* x_loc_base =
@@ -2046,12 +2046,12 @@ void IrEmitterUnnested::EmitTile(
                   // if (block fully fit) {fast path} else {slow path}
                   // tile_width is always exact. For the last block,
                   // it will be the exact number of elements left.
-                  b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeFor(2)),
+                  b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeX()),
                                   tile_width),
-                  [&] { unroll(false, x_num_steps, vector_size); },
-                  [&] { unroll(true, x_num_steps, vector_size); });
+                  [&] { unroll(/*add_if=*/false, vector_size); },
+                  [&] { unroll(/*add_if=*/true, vector_size); });
         } else {
-          unroll(!x_tile_fits, x_num_steps, vector_size);
+          unroll(/*add_if=*/!x_tile_fits, vector_size);
         }
       });
 }
@@ -2722,7 +2722,7 @@ void IrEmitterUnnested::EmitHlo021Tile(
                                      /*num_threads_y=*/kNumRows,
                                      /*num_threads_x=*/kWarpSize,
                                      /*indexing_order=*/kLinearIndexingX,
-                                     /*vector_size*/ 1);
+                                     /*vector_size=*/1);
   LaunchDimensions launch_dimensions(mapping_scheme.GetNumberOfBlocks(),
                                      mapping_scheme.GetThreadsPerBlock());
   llvm::Type* index_type =
