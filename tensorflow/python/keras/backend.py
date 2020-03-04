@@ -5653,6 +5653,13 @@ def random_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
 
   Returns:
       A tensor with normal distribution of values.
+
+  Example:
+
+  >>> kvar = tf.keras.backend.random_normal((2,3), 0, 1)
+  >>> kvar
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
+  dtype=float32)>
   """
   if dtype is None:
     dtype = floatx()
@@ -5677,6 +5684,13 @@ def random_uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
 
   Returns:
       A tensor.
+
+  Example:
+
+  >>> kvar = tf.keras.backend.random_uniform((2,3), 0, 1)
+  >>> kvar
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
+  dtype=float32)>
   """
   if dtype is None:
     dtype = floatx()
@@ -5702,6 +5716,13 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
 
   Returns:
       A tensor.
+
+  Example:
+
+  >>> kvar = tf.keras.backend.random_binomial((2,3), 0.5)
+  >>> kvar
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
+  dtype=float32)>
   """
   if dtype is None:
     dtype = floatx()
