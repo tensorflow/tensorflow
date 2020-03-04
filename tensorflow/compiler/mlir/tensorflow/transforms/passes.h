@@ -52,6 +52,9 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateBatchMatMulToEinsumPass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
+// Performs specific fusion for GPU targets.
+std::unique_ptr<OpPassBase<FuncOp>> CreateGpuOpFusionPass();
+
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
   Option<std::string> force_data_format{
