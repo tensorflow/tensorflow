@@ -37,8 +37,10 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_list_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import test
 
@@ -1628,6 +1630,16 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           outer_l, element_dtype=dtypes.variant)
       t = list_ops.tensor_list_stack(inner_l, element_dtype=dtypes.float32)
       self.assertAllEqual(t, [1.0, 2.0, 3.0])
+
+  def testTensorListStrings(self):
+    self.skipTest("b/150742232")
+
+    @def_function.function
+    def f():
+      return map_fn.map_fn(string_ops.string_upper,
+                           constant_op.constant(["a", "b", "c"]))
+
+    self.assertAllEqual(f(), ["A", "B", "C"])
 
 
 if __name__ == "__main__":
