@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -472,8 +473,8 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     c->req.set_session_handle(session_handle_);
     c->req.set_create_worker_session_called(!should_deregister_);
     c->req.mutable_graph_def()->Swap(&graph_partitions[part.name]);
-    // TODO(b/146354085): Default attributes should be stripped here from
-    // c->req.graph_def(), but this causes some TFX pipelines to fail.
+    StripDefaultAttributes(*OpRegistry::Global(),
+                           c->req.mutable_graph_def()->mutable_node());
     *c->req.mutable_config_proto() = session_opts_.config;
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
     *c->req.mutable_debug_options() =
