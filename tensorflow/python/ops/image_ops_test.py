@@ -2712,7 +2712,8 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
       feed_dict = {}
 
     y = image_ops.resize_images(
-        x_tensor, target_max, preserve_aspect_ratio=preserve_aspect_ratio)
+        x_tensor, ops.convert_to_tensor(target_max),
+        preserve_aspect_ratio=preserve_aspect_ratio)
 
     with self.cached_session(use_gpu=True):
       return y.eval(feed_dict=feed_dict)
