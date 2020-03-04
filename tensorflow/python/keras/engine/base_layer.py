@@ -2052,7 +2052,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           "Layer {self.name} is casting an input tensor from dtype "
           "{input_dtype} to the layer's dtype of {layer_dtype}, which is new "
           "behavior in TensorFlow 2.  The layer has dtype {layer_dtype} "
-          "because it's dtype defaults to floatx.\n\n"
+          'because its dtype defaults to floatx.\n\n'
           ""
           "If you intended to run this layer in {layer_dtype}, you can safely "
           "ignore this warning. If in doubt, this warning is likely only an "
