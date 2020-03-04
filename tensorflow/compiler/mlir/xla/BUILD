@@ -20,6 +20,7 @@ package_group(
         "//tensorflow/compiler/xla/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
+        "//third_party/tf_runtime/tools/tf_kernel_gen/...",
     ],
 )
 
