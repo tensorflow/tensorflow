@@ -48114,6 +48114,7 @@ op {
         type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
+        type: DT_UINT32
       }
     }
   }
