@@ -50,6 +50,7 @@ tf_cc_test(
         "rsqrt.hlo",
         "select.hlo",
         "sign.hlo",
+        "sqrt.hlo",
         "tanh.hlo",
     ],
     tags = tf_cuda_tests_tags() + ["no_rocm"],

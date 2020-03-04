@@ -353,6 +353,14 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::SignOp>(
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<xla_lhlo::SqrtOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::SqrtOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<xla_lhlo::TanhOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
     OpBuilder* b) {
