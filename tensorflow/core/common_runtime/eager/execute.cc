@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
-#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -188,31 +187,35 @@ Status ValidateInputTypeAndPlacement(
   }
   const bool skip_remote_copy =
       ctx->LazyCopyFunctionRemoteInputs() && kernel->IsFunction();
-  for (int i = 0; i < n_inputs; ++i) {
-    TensorHandle* handle = op->Inputs()[i];
-    Device* expected_device = kernel->InputDevice(i);
-    auto handle_device_variant = handle->DeviceOrHostCPU(*ctx);
-    if (VariantDeviceIsCustom(handle_device_variant)) {
-      return errors::Unimplemented(
-          "Custom devices and remote execution are not yet supported "
-          "together.");
-    }
-    Device* handle_device = absl::get<Device*>(handle_device_variant);
-    const bool maybe_copy = !skip_remote_copy || !handle->IsRemote();
-    // If the input is already on the right device, then nothing to do.
-    if (expected_device != handle_device && maybe_copy) {
-      TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(ctx, op, kernel->device(),
-                                                   handle, i, handle_device,
-                                                   expected_device, &handle));
-      op->UpdateInput(i, handle);
-      // Unref handle since it has a ref as an input now
-      handle->Unref();
-    }
-    if (handle->dtype != kernel->input_type(i)) {
-      return errors::InvalidArgument(
-          "cannot compute ", op->Name(), " as input #", i, "(zero-based)",
-          " was expected to be a ", DataTypeString(kernel->input_type(i)),
-          " tensor but is a ", DataTypeString(handle->dtype), " tensor");
+  if (n_inputs > 0) {
+    const DataType* input_types = &kernel->input_dtypes()[0];
+    TensorHandle* const* handles = &op->Inputs()[0];
+    for (int i = 0; i < n_inputs; ++i) {
+      TensorHandle* handle = handles[i];
+      Device* expected_device = kernel->InputDevice(i);
+      auto handle_device_variant = handle->DeviceOrHostCPU(*ctx);
+      if (VariantDeviceIsCustom(handle_device_variant)) {
+        return errors::Unimplemented(
+            "Custom devices and remote execution are not yet supported "
+            "together.");
+      }
+      Device* handle_device = absl::get<Device*>(handle_device_variant);
+      const bool maybe_copy = !skip_remote_copy || !handle->IsRemote();
+      // If the input is already on the right device, then nothing to do.
+      if (expected_device != handle_device && maybe_copy) {
+        TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(ctx, op, kernel->device(),
+                                                     handle, i, handle_device,
+                                                     expected_device, &handle));
+        op->UpdateInput(i, handle);
+        // Unref handle since it has a ref as an input now
+        handle->Unref();
+      }
+      if (handle->dtype != input_types[i]) {
+        return errors::InvalidArgument(
+            "cannot compute ", op->Name(), " as input #", i, "(zero-based)",
+            " was expected to be a ", DataTypeString(input_types[i]),
+            " tensor but is a ", DataTypeString(handle->dtype), " tensor");
+      }
     }
   }
   return Status::OK();
@@ -721,7 +724,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         } else {
           serialize_resource_dtype_and_shape =
               (input->dtype == DT_RESOURCE) &&
-              (!input->HasResourceShapeMirror(op_device));
+              (!input->HasResourceShapeMirror(op_device,
+                                              ctx.GetContextViewId()));
         }
       }
       auto* input_handle = remote_op->add_inputs();
@@ -732,7 +736,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         auto tensor_handle_data =
             absl::make_unique<UnshapedRemoteTensorHandleData>(
                 input_handle->op_id(), input_handle->output_num(), remote_task,
-                context_id, &ctx);
+                &ctx);
         TF_RETURN_IF_ERROR(input->AddResourceShapeMirror(
             std::move(tensor_handle_data), op_device));
       }
@@ -765,13 +769,14 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     // to copy this tensor to this process, the remote end will know the
     // correct device of this handle.
     Status status = TensorHandle::CreateUnshapedRemoteHandle(
-        id, i, remote_task, context_id, output_dtypes[i], op_device, &ctx,
-        &retvals[i]);
+        id, i, remote_task, output_dtypes[i], op_device, &ctx, &retvals[i]);
     if (!status.ok()) {
       for (int j = 0; j < i; ++j) {
-        retvals[j]->Poison(errors::Internal(
-            "Failed to construct unshaped remote tensor handle at index ", i,
-            " for op ", op->Name()));
+        retvals[j]->PoisonRemote(
+            errors::Internal(
+                "Failed to construct unshaped remote tensor handle at index ",
+                i, " for op ", op->Name()),
+            op_device, ctx.GetContextViewId());
       }
       return status;
     }
@@ -796,7 +801,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
            << " (is async?: " << executor.Async() << ").";
 
   std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
-      std::move(request), op_device, eager_client.get(),
+      &op->EagerContext(), std::move(request), op_device,
+      ctx.GetContextViewId(), eager_client.get(),
       op->MutableAttrs()->BuildNodeDef(), op->EagerContext().FuncLibDef(),
       op->Inputs(), {retvals, num_outputs}));
   Status s = executor.AddOrExecute(std::move(node));
@@ -841,14 +847,7 @@ bool IsPinnableOp(const string& op_type) {
 // (int32/int64). This can be disabled by setting the environment variable
 // "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
 Status MaybeUpdateOpDevice(EagerOperation* op) {
-  const auto& exempt_ops = InputColocationExemptionRegistry::Global()->Get();
-  if (op->is_function() || exempt_ops.find(op->Name()) != exempt_ops.end()) {
-    // Don't update the device of direct function calls.
-    // Particularly, if the user did not explicitly request any device for this
-    // function, picking a device would result in this device being the default
-    // for nodes inside the function. This is undesirable for multi-device
-    // functions since the not-explicitly-placed nodes inside the body will all
-    // end up on this default device.
+  if (op->colocation_exempt()) {
     return Status::OK();
   }
   EagerContext& ctx = op->EagerContext();
@@ -1057,8 +1056,15 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     return Status::OK();
   }
 
+  bool async = executor->Async();
   if (mirror) {
-    TF_RETURN_IF_ERROR(h->AddEmptyLocalMirror(d));
+    // We don't bother adding an empty local mirror in sync mode since we'll be
+    // executing the operation directly and be calling AddLocalMirror. A
+    // reference count is still needed which will be removed if the operation
+    // fails.
+    if (async) {
+      TF_RETURN_IF_ERROR(h->AddEmptyLocalMirror(d));
+    }
     h->Ref();
     *result = h;
   } else {
@@ -1066,10 +1072,18 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
         true, d, dstd, h->resource_device(), h->dtype, ctx, result));
   }
 
-  // Note that `h` may not be currently ready. However execution order will
-  // make sure that `h` is ready before the copy is actually done.
-  std::unique_ptr<EagerNode> node(new CopyToDeviceNode(h, *result, dstd, *ctx));
-  Status s = executor->AddOrExecute(std::move(node));
+  Status s;
+  if (async) {
+    // Note that `h` may not be currently ready. However execution order will
+    // make sure that `h` is ready before the copy is actually done.
+    std::unique_ptr<EagerNode> node(
+        new CopyToDeviceNode(h, *result, d, *ctx, async, mirror));
+    s = executor->AddOrExecute(std::move(node));
+  } else {
+    CopyToDeviceNode node(h, *result, d, *ctx, async, mirror);
+    s = executor->SyncExecute(&node);
+  }
+
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.
   if (!s.ok()) {
@@ -1091,7 +1105,7 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
   }
   bool sender_is_local = absl::get<Device*>(send_device)->IsLocal();
 
-  bool recver_is_local = device->IsLocal();
+  bool receiver_is_local = device->IsLocal();
 
   if (!executor->Async()) {
     // In sync mode, always clear error to maintain the same behavior as before.
@@ -1099,27 +1113,42 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     executor->ClearError();
   }
 
-  if (sender_is_local && recver_is_local) {
+  if (sender_is_local && receiver_is_local) {
     return LocalEagerCopyToDevice(h, ctx, executor, device, mirror, result);
   } else {
 #if defined(IS_MOBILE_PLATFORM)
     return errors::Unimplemented(
         "Eager's remote execution is not available on mobile devices.");
 #else   // !IS_MOBILE_PLATFORM
-    if (mirror) {
-      if (h->HasRemoteMirror(device)) {
+    uint64 recv_op_id = 0;
+    if (receiver_is_local) {
+      Device* d = ctx->CanonicalDevice(device);
+      if (mirror && h->HasLocalMirror(d)) {
         h->Ref();
         *result = h;
         return Status::OK();
       }
-    }
-    uint64 recv_op_id = 0;
-    if (recver_is_local) {
-      TF_RETURN_IF_ERROR(TensorHandle::CreateEmptyLocalHandle(
-          true, /* d= */ ctx->CanonicalDevice(device), /* op_device= */ device,
-          /*resource_device=*/nullptr, h->dtype, ctx, result));
+
+      // TODO(gjn): Need to add support for async execution. Note if receiver
+      // is local, we need to first add support in TensorHandle to wait on local
+      // mirrors.
+      if (mirror) {
+        TF_RETURN_IF_ERROR(h->AddEmptyLocalMirror(d));
+        h->Ref();
+        *result = h;
+      } else {
+        TF_RETURN_IF_ERROR(TensorHandle::CreateEmptyLocalHandle(
+            true, /* d= */ d, /* op_device= */ device,
+            /*resource_device=*/nullptr, h->dtype, ctx, result));
+      }
     } else {
-      uint64 context_id = ctx->GetContextId();
+      if (mirror) {
+        if (h->HasRemoteMirror(device, ctx->GetContextViewId())) {
+          h->Ref();
+          *result = h;
+          return Status::OK();
+        }
+      }
       string remote_task;
       if (!DeviceNameUtils::GetTaskName(device->parsed_name(), &remote_task)) {
         return errors::InvalidArgument(
@@ -1128,8 +1157,8 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
       }
       recv_op_id = ctx->RemoteMgr()->NextOpId();
       auto tensor_handle_data =
-          absl::make_unique<UnshapedRemoteTensorHandleData>(
-              recv_op_id, 0, remote_task, context_id, ctx);
+          absl::make_unique<UnshapedRemoteTensorHandleData>(recv_op_id, 0,
+                                                            remote_task, ctx);
       if (mirror) {
         TF_RETURN_IF_ERROR(
             h->AddUnshapedRemoteMirror(std::move(tensor_handle_data), device));
@@ -1140,7 +1169,8 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
             std::move(tensor_handle_data), h->dtype, device, ctx, result));
       }
     }
-    auto node = absl::make_unique<eager::RemoteCopyNode>(
+
+    auto node = std::make_unique<eager::RemoteCopyNode>(
         ctx, executor, h, result[0], device, recv_op_id);
     Status s = executor->AddOrExecute(std::move(node));
     if (!s.ok()) {

@@ -39,10 +39,10 @@ class MultiPlatformManagerImpl {
       LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<Platform*> InitializePlatformWithName(
-      absl::string_view target, const std::map<string, string>& options)
-      LOCKS_EXCLUDED(mu_);
+      absl::string_view target,
+      const std::map<std::string, std::string>& options) LOCKS_EXCLUDED(mu_);
   port::StatusOr<Platform*> InitializePlatformWithId(
-      const Platform::Id& id, const std::map<string, string>& options)
+      const Platform::Id& id, const std::map<std::string, std::string>& options)
       LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
@@ -66,13 +66,13 @@ class MultiPlatformManagerImpl {
   absl::Mutex mu_;
   std::vector<std::unique_ptr<Listener>> listeners_ GUARDED_BY(mu_);
   absl::flat_hash_map<Platform::Id, Platform*> id_map_ GUARDED_BY(mu_);
-  absl::flat_hash_map<string, Platform*> name_map_ GUARDED_BY(mu_);
+  absl::flat_hash_map<std::string, Platform*> name_map_ GUARDED_BY(mu_);
 };
 
 port::Status MultiPlatformManagerImpl::RegisterPlatform(
     std::unique_ptr<Platform> platform) {
   CHECK(platform != nullptr);
-  string key = absl::AsciiStrToLower(platform->Name());
+  std::string key = absl::AsciiStrToLower(platform->Name());
   absl::MutexLock lock(&mu_);
   if (name_map_.find(key) != name_map_.end()) {
     return port::Status(port::error::INTERNAL,
@@ -118,7 +118,8 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::PlatformWithId(
 }
 
 port::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithName(
-    absl::string_view target, const std::map<string, string>& options) {
+    absl::string_view target,
+    const std::map<std::string, std::string>& options) {
   absl::MutexLock lock(&mu_);
 
   SE_ASSIGN_OR_RETURN(Platform * platform, LookupByNameLocked(target));
@@ -134,7 +135,7 @@ port::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithName(
 }
 
 port::StatusOr<Platform*> MultiPlatformManagerImpl::InitializePlatformWithId(
-    const Platform::Id& id, const std::map<string, string>& options) {
+    const Platform::Id& id, const std::map<std::string, std::string>& options) {
   absl::MutexLock lock(&mu_);
 
   SE_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
@@ -224,13 +225,14 @@ MultiPlatformManagerImpl& Impl() {
 
 /*static*/ port::StatusOr<Platform*>
 MultiPlatformManager::InitializePlatformWithName(
-    absl::string_view target, const std::map<string, string>& options) {
+    absl::string_view target,
+    const std::map<std::string, std::string>& options) {
   return Impl().InitializePlatformWithName(target, options);
 }
 
 /*static*/ port::StatusOr<Platform*>
 MultiPlatformManager::InitializePlatformWithId(
-    const Platform::Id& id, const std::map<string, string>& options) {
+    const Platform::Id& id, const std::map<std::string, std::string>& options) {
   return Impl().InitializePlatformWithId(id, options);
 }
 

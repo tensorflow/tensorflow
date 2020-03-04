@@ -429,6 +429,11 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     return array_ops.identity(indexed_data)
 
 
+class _IndexLookupAccumulator(
+    collections.namedtuple("Accumulator", ["count_dict"])):
+  pass
+
+
 class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
   """Combiner for the IndexLookup preprocessing layer.
 
@@ -441,7 +446,6 @@ class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
       set to a value greater than the total number of distinct tokens in the
       dataset, all tokens are retained.s
   """
-  ACCUMULATOR_CLS = collections.namedtuple("Accumulator", ["count_dict"])
 
   def __init__(self, vocab_size=None):
     self._vocab_size = vocab_size
@@ -517,4 +521,4 @@ class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
     """Accumulate a sorted array of vocab tokens and corresponding counts."""
 
     count_dict = collections.defaultdict(int)
-    return self.ACCUMULATOR_CLS(count_dict)
+    return _IndexLookupAccumulator(count_dict)

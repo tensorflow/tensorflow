@@ -42,7 +42,9 @@ limitations under the License.
 
 using mkldnn::engine;
 using mkldnn::memory;
+#ifndef ENABLE_MKLDNN_V1
 using mkldnn::padding_kind;
+#endif
 using mkldnn::primitive;
 using mkldnn::reorder;
 using mkldnn::stream;
@@ -677,7 +679,7 @@ inline void ExecutePrimitive(const std::vector<primitive>& net,
   }
   cpu_stream.wait();
 #else
-  stream(stream::kind::eager).submit(net).wait();
+  stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
 }
 
@@ -1224,10 +1226,12 @@ inline memory::dims CalculateTFStrides(const memory::dims& dims_tf_order) {
   return strides;
 }
 
+#ifndef ENABLE_MKLDNN_V1
 inline padding_kind TFPaddingToMklDnnPadding(Padding pad) {
   // MKL-DNN only supports zero padding.
   return padding_kind::zero;
 }
+#endif
 
 /// Helper function to create memory descriptor in Blocked format
 ///
@@ -1496,8 +1500,8 @@ class MklDnnData {
 
   /// allocate function for data buffer
   inline void AllocateBuffer(size_t size) {
-    const int64 kMemoryAlginment = 64;  // For AVX512 memory alignment.
-    allocated_buffer_ = cpu_allocator()->AllocateRaw(kMemoryAlginment, size);
+    const int64 kMemoryAlignment = 64;  // For AVX512 memory alignment.
+    allocated_buffer_ = cpu_allocator()->AllocateRaw(kMemoryAlignment, size);
   }
 
   inline void* GetAllocatedBuffer() { return allocated_buffer_; }
@@ -1629,7 +1633,7 @@ class MklDnnData {
       reorder_memory_ = new memory(op_pd);
       std::vector<primitive> net;
       net.push_back(FindOrCreateReorder<T>(user_memory_, reorder_memory_));
-      stream(stream::kind::eager).submit(net).wait();
+      stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
       return true;
     }
@@ -1707,7 +1711,7 @@ class MklDnnData {
       std::vector<primitive> net;
       reorder_memory_ = new memory(op_pd, reorder_data_handle);
       net.push_back(FindOrCreateReorder<T>(user_memory_, reorder_memory_));
-      stream(stream::kind::eager).submit(net).wait();
+      stream(stream::kind::eager_nostore).submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
       return true;
     }
@@ -1919,7 +1923,7 @@ class LRUCache {
       this->lru_iterator = it;
     }
 
-    // Move construcctor
+    // Move constructor
     Entry(Entry&& source) noexcept
         : lru_iterator(std::move(source.lru_iterator)) {
       op = std::move(source.op);
@@ -1979,7 +1983,7 @@ class MklPrimitiveFactory {
             !port::TestCPUFeature(port::CPUFeature::AVX2));
   }
 
-  /// Fuction to check whether primitive memory optimization is enabled
+  /// Function to check whether primitive memory optimization is enabled
   static inline bool IsPrimitiveMemOptEnabled() {
     bool is_primitive_mem_opt_enabled = true;
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE", true,
@@ -2133,7 +2137,7 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-/// Fuction to find(or create) a reorder from memory pointed by
+/// Function to find(or create) a reorder from memory pointed by
 /// from to memory pointed by to, it will created primitive or
 /// get primitive from pool if it is cached.
 /// Returns the primitive.
@@ -2157,7 +2161,7 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 }
 
 #ifdef ENABLE_MKLDNN_V1
-void execute_primitives(
+inline void execute_primitives(
     std::vector<mkldnn::primitive>& primitives, std::shared_ptr<stream> stream,
     std::vector<std::unordered_map<int, memory>>& net_args) {
   DCHECK_EQ(primitives.size(), net_args.size());

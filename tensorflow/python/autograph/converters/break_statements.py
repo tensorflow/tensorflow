@@ -143,7 +143,7 @@ class BreakTransformer(converter.Base):
           orelse=guarded_orelse)
 
       new_for_node = node[1]
-      anno.setanno(new_for_node, 'extra_test', extra_test)
+      anno.setanno(new_for_node, anno.Basic.EXTRA_LOOP_TEST, extra_test)
       anno.copyanno(original_node, new_for_node, anno.Basic.DIRECTIVES)
 
     return node

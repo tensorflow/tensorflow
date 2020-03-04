@@ -395,7 +395,7 @@ void RunBenchmarkResizeBilinearTwoDims() {
 }  // namespace tensorflow
 
 #define RUN_TEST(t) \
-  TEST(QuantizationResizeBilenarTest, t) { tensorflow::t(); }
+  TEST(QuantizationResizeBilinearTest, t) { tensorflow::t(); }
 
 RUN_TEST(TestResizeBilinearOneDim);
 RUN_TEST(TestResizeBilinearTwoDims);

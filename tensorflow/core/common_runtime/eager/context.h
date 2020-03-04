@@ -236,8 +236,12 @@ class EagerContext : public core::RefCounted {
 
   Status RemoveFunction(const string& func);
 
-  // Clear remote executors on all worker targets in `remote_contexts_`.
-  Status ClearRemoteExecutors();
+  // Wait for pending nodes to be finished in local executors (including context
+  // default executor and thread executors) and executors on remote workers.
+  // Return combined status of remote executors. If there are multiple errors,
+  // the Status code will be the same as the first remote executor that has
+  // errors, and the error message will be combined from all executors.
+  Status SyncExecutors();
 
   core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
 
@@ -317,8 +321,8 @@ class EagerContext : public core::RefCounted {
   Status GetClient(const string& remote_task,
                    core::RefCountPtr<eager::EagerClient>* client);
 
-  uint64 GetContextId();
-  uint64 GetContextViewId();
+  uint64 GetContextId() const;
+  uint64 GetContextViewId() const;
   void IncrementContextViewId();
 
   // TODO(nareshmodi): Encapsulate remote state into a separate
@@ -601,11 +605,11 @@ class EagerContext : public core::RefCounted {
   std::shared_ptr<WorkerSession> worker_session_;
   std::unique_ptr<eager::EagerClientCache> remote_eager_workers_;
 
-  mutex remote_state_mu_;
+  mutable mutex remote_state_mu_;
 
   uint64 context_id_ GUARDED_BY(remote_state_mu_);
   // The view id of an eager context should be set to 0 when context is created,
-  // and continously incremented when context with the same context_id gets
+  // and continuously incremented when context with the same context_id gets
   // updated. The view id should be consistent between master and workers.
   uint64 context_view_id_ GUARDED_BY(remote_state_mu_);
   std::vector<string> remote_contexts_;

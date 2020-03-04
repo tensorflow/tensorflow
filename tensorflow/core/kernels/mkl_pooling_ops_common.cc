@@ -43,6 +43,7 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
   //        so src format is currently hard-coded.
   //        A utility function is used to do this,
   //        which may be broken with future CPU architectures
+#ifndef ENABLE_MKLDNN_V1
   bool is_2d = (fwdParams.src_dims.size() == 4);
   if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value)
     context_.src_fmt = is_2d ? MEMORY_FORMAT::nhwc : MEMORY_FORMAT::ndhwc;
@@ -51,20 +52,31 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
 
   context_.src_md.reset(new memory::desc({fwdParams.src_dims}, MklDnnType<T>(),
                                          context_.src_fmt));
+#else
+  context_.src_md.reset(new memory::desc(fwdParams.src_md.data));
+#endif  //  !ENABLE_MKLDNN_V1
   context_.dst_md.reset(new memory::desc({fwdParams.dst_dims}, MklDnnType<T>(),
                                          MEMORY_FORMAT::any));
 
+#ifndef ENABLE_MKLDNN_V1
   // Create a pooling descriptor.
   context_.fwd_desc.reset(new pooling_forward::desc(
       fwdParams.prop_kind, fwdParams.alg_kind, *context_.src_md,
       *context_.dst_md, fwdParams.strides, fwdParams.filter_dims,
       fwdParams.padding_left, fwdParams.padding_right, padding_kind::zero));
+#else
+  context_.fwd_desc.reset(new pooling_forward::desc(
+      fwdParams.prop_kind, fwdParams.alg_kind, *context_.src_md,
+      *context_.dst_md, fwdParams.strides, fwdParams.filter_dims,
+      fwdParams.padding_left, fwdParams.padding_right));
+#endif  // !ENABLE_MKLDNN_V1
   context_.fwd_pd.reset(
       new pooling_forward::primitive_desc(*context_.fwd_desc, cpu_engine_));
-
 #ifndef ENABLE_MKLDNN_V1
   context_.dst_fmt = static_cast<MEMORY_FORMAT>(
       context_.fwd_pd.get()->PRIMITIVE_DESC_DST.desc().data.format);
+#else
+  context_.dst_fmt = static_cast<MEMORY_FORMAT>(MEMORY_FORMAT::any);
 #endif  // ENABLE_MKLDNN_V1
 
   // Create MKL-DNN internal memory object with dummy data.
@@ -72,7 +84,6 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
       context_.fwd_pd.get()->PRIMITIVE_DESC_SRC, cpu_engine_, DummyData));
   context_.dst_mem.reset(new MEMORY_CONSTRUCTOR(
       context_.fwd_pd.get()->PRIMITIVE_DESC_DST, cpu_engine_, DummyData));
-
   // For max pooling, need to return workspace (ws) for backward computing.
   if (fwdParams.alg_kind == ALGORITHM::pooling_max &&
       fwdParams.prop_kind == prop_kind::forward_training) {
@@ -160,10 +171,11 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
 
   // Create memory descriptor.
   context_.diff_src_md.reset(new memory::desc(
-      {bwdParams.src_dims}, MklDnnType<T>(), memory::format::any));
+      {bwdParams.src_dims}, MklDnnType<T>(), MEMORY_FORMAT::any));
   context_.diff_dst_md.reset(new memory::desc(
       {bwdParams.dst_dims}, MklDnnType<T>(), bwdParams.src_format));
 
+#ifndef ENABLE_MKLDNN_V1
   context_.bwd_desc.reset(new pooling_backward::desc(
       bwdParams.alg_kind, *context_.diff_src_md, *context_.diff_dst_md,
       bwdParams.strides, bwdParams.filter_dims, bwdParams.padding_left,
@@ -175,6 +187,18 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
       bwdParams.prop_kind, bwdParams.alg_kind, *context_.diff_src_md,
       *context_.diff_dst_md, bwdParams.strides, bwdParams.filter_dims,
       bwdParams.padding_left, bwdParams.padding_right, padding_kind::zero));
+#else
+  context_.bwd_desc.reset(new pooling_backward::desc(
+      bwdParams.alg_kind, *context_.diff_src_md, *context_.diff_dst_md,
+      bwdParams.strides, bwdParams.filter_dims, bwdParams.padding_left,
+      bwdParams.padding_right));
+  // Create a forward primitive,
+  // which will be used as a hint for creating backward primitive.
+  context_.fwd_desc.reset(new pooling_forward::desc(
+      bwdParams.prop_kind, bwdParams.alg_kind, *context_.diff_src_md,
+      *context_.diff_dst_md, bwdParams.strides, bwdParams.filter_dims,
+      bwdParams.padding_left, bwdParams.padding_right));
+#endif  // !ENABLE_MKLDNN_V1
   context_.fwd_pd.reset(
       new pooling_forward::primitive_desc(*context_.fwd_desc, cpu_engine_));
   context_.bwd_pd.reset(new pooling_backward::primitive_desc(

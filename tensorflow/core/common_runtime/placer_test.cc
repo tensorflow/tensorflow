@@ -274,7 +274,7 @@ class PlacerTest : public ::testing::Test {
     RewriterConfig* rewriter_config = graph_opts->mutable_rewrite_options();
     rewriter_config->set_disable_meta_optimizer(true);
 
-    // Placing nested functions requires go through some PRE_PLACEMNT passes.
+    // Placing nested functions requires go through some PRE_PLACEMENT passes.
     // Currently, just the IsolateDeepOpsPass.
     GraphOptimizationPassOptions optimization_options;
     std::unique_ptr<Graph> graph_ptr(graph);
@@ -1493,7 +1493,7 @@ TEST_F(PlacerTest, TestUnknownAssignedDevice) {
 
 // Test that placement fails when an op with no registered kernels is
 // requested and no device is requested for the node
-TEST_F(PlacerTest, TestNoKernelsRegisteredWithNoRequstedDevice) {
+TEST_F(PlacerTest, TestNoKernelsRegisteredWithNoRequestedDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -2286,7 +2286,7 @@ TEST_F(NestedPlacerTest, OutputTwoResources_UnassignedResource) {
    * the "second pass" as they are "sources". It assigns `r1` to GPU because it
    * is in the same group as `b`. It assigns `r2` to GPU because GPU has a
    * higher device preference. Finally, `a` is assigned to GPU because `r2` is
-   * on GPU - this test that the "second pass" heuristics respect colocaton
+   * on GPU - this test that the "second pass" heuristics respect colocation
    * groups (even when the consumer of the source, i.e. PCO is on a different
    * device).
    */
@@ -2494,7 +2494,7 @@ TEST_F(NestedPlacerTest, DuplicateInputResource_Conflict) {
    *                 r1:RESOURCE:GPU
    *
    * There is a conflict but Placer always overrides requested devices
-   * when they result in coflict due to resource edges. Which device
+   * when they result in conflict due to resource edges. Which device
    * is picked for a/r1/r2 is indeterministic.
    */
   FunctionDef func = test::function::Swap();

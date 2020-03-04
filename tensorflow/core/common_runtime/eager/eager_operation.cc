@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 
@@ -29,7 +30,17 @@ Status EagerOperation::Reset(
   bool is_function = false;
   TF_RETURN_IF_ERROR(AttrTypeMapForOp(op, &attr_types_, &is_function));
 
+  // Don't update the device of direct function calls.
+  // Particularly, if the user did not explicitly request any device for this
+  // function, picking a device would result in this device being the default
+  // for nodes inside the function. This is undesirable for multi-device
+  // functions since the not-explicitly-placed nodes inside the body will all
+  // end up on this default device.
+  colocation_exempt_ = is_function;
   if (!is_function) {
+    const auto& exempt_ops = InputColocationExemptionRegistry::Global()->Get();
+    colocation_exempt_ = exempt_ops.find(op) != exempt_ops.end();
+
     TF_RETURN_IF_ERROR(OpDefForOp(op, &op_def_));
   } else if (!remote && !ctx_.FindFunctionByName(op)) {
     return errors::NotFound(

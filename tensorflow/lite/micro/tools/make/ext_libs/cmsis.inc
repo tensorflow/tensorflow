@@ -4,9 +4,6 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
         # CMSIS-NN optimizations not supported
     endif
 
-    CCFLAGS += -DARM_MATH_LOOPUNROLL
-    CXXFLAGS += -DARM_MATH_LOOPUNROLL
-
     # Setup CMSIS-NN lib and add required header files to microlite lib INCLUDE
     THIRD_PARTY_DOWNLOADS += \
       $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))

@@ -36,6 +36,7 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -311,6 +312,7 @@ class Sequential(training.Model):
     outputs = self.call(inputs, mask=mask)
     return outputs._keras_mask
 
+  @deprecated('2021-01-01', 'Please use `model.predict()` instead.')
   def predict_proba(self, x, batch_size=32, verbose=0):
     """Generates class probability predictions for the input samples.
 
@@ -333,6 +335,14 @@ class Sequential(training.Model):
                       '(like softmax or sigmoid would).')
     return preds
 
+  @deprecated('2021-01-01',
+              'Please use instead:'
+              '* `np.argmax(model.predict(x), axis=-1)`, '
+              '  if your model does multi-class classification '
+              '  (e.g. if it uses a `softmax` last-layer activation).'
+              '* `(model.predict(x) > 0.5).astype("int32")`, '
+              '  if your model does binary classification '
+              '  (e.g. if it uses a `sigmoid` last-layer activation).')
   def predict_classes(self, x, batch_size=32, verbose=0):
     """Generate class predictions for the input samples.
 

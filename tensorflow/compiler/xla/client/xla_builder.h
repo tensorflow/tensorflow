@@ -1061,6 +1061,34 @@ class XlaBuilder {
       XlaOp branch_index,
       absl::Span<const XlaComputation* const> branch_computations,
       absl::Span<const XlaOp> branch_operands);
+
+  // Returns OK status if the given op was built using this builder. Otherwise,
+  // returns an error.
+  Status CheckOpBuilder(XlaOp op) const;
+
+  // Here, InstructionType is either const HloInstructionProto* or non-const
+  // HloInstructionProto*.
+  template <typename InstructionType>
+  StatusOr<InstructionType> LookUpInstructionByHandleInternal(
+      int64 handle) const {
+    auto it = handle_to_index_.find(handle);
+    if (it == handle_to_index_.end()) {
+      return InvalidArgument("No XlaOp with handle %d", handle);
+    }
+    return const_cast<InstructionType>(&instructions_.at(it->second));
+  }
+
+  // Here, InstructionType is either const HloInstructionProto* or non-const
+  // HloInstructionProto*.
+  //
+  // TODO(hinsu): Return const pointer within StatusOr and use
+  // absl::implicit_cast at callsites. This requires implicit_cast support in
+  // stream_executor::port::StatusOr similar to absl::StatusOr.
+  template <typename InstructionType>
+  StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
+    TF_RETURN_IF_ERROR(CheckOpBuilder(op));
+    return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
+  }
 };
 
 // RAII-style object: sets the current sharding assignment in builder on

@@ -189,8 +189,10 @@ class AsyncExecuteNode : public EagerNode {
   }
 
   void Abort(Status status) override {
+    int i = 0;
     for (auto handle : retvals_) {
-      handle->Poison(status);
+      handle->Poison(status, ctx_->CanonicalDevice(kernel_->OutputDevice(i)));
+      ++i;
     }
   }
 

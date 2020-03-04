@@ -1390,6 +1390,9 @@ def main():
   else:
     environ_cp['TF_CONFIGURE_IOS'] = '0'
 
+  if environ_cp.get('TF_ENABLE_XLA', '1') == '1':
+    write_to_bazelrc('build --config=xla')
+
   set_action_env_var(
       environ_cp,
       'TF_NEED_OPENCL_SYCL',

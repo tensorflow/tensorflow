@@ -329,6 +329,9 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
             primary_status.error_message()));
       }
     }
+    for (auto task : tasks) {
+      task->description = node->operation.type + "_" + std::to_string(node->id);
+    }
     compiled_model->insert(compiled_model->end(), tasks.begin(), tasks.end());
   }
   return OkStatus();

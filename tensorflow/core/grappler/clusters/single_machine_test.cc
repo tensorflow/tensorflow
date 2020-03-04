@@ -619,7 +619,7 @@ TEST_F(SingleMachineTest, PeakMemoryStatsNotEnabled) {
 
   TF_CHECK_OK(cluster_->Shutdown());
   cluster_.reset();
-  SingleMachine cluster(60 /* timout_s */, 3 /* num_cpu_cores */,
+  SingleMachine cluster(60 /* timeout_s */, 3 /* num_cpu_cores */,
                         0 /* num_gpus */);
 
   TF_CHECK_OK(cluster.Provision());

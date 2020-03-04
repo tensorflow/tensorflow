@@ -32,6 +32,7 @@ from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.impl import conversion
+from tensorflow.python.autograph.impl.testing import pybind_for_testing
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
@@ -118,6 +119,13 @@ class ConversionTest(test.TestCase):
             weakref.ref(test_obj), test_obj.member_function))
 
     self.assertTrue(conversion.is_whitelisted(bound_method))
+
+  def test_is_whitelisted_pybind(self):
+    test_object = pybind_for_testing.TestClassDef()
+    with test.mock.patch.object(config, 'CONVERSION_RULES', ()):
+      # TODO(mdan): This should return True for functions and methods.
+      # Note: currently, native bindings are whitelisted by a separate check.
+      self.assertFalse(conversion.is_whitelisted(test_object.method))
 
   def test_convert_entity_to_ast_unsupported_types(self):
     with self.assertRaises(NotImplementedError):

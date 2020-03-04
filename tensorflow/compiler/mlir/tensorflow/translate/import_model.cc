@@ -42,7 +42,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Analysis/Verifier.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -64,6 +64,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -136,24 +137,6 @@ class NameUniquifier : public OpOrArgNameMapper {
 
   const FunctionLibraryDefinition& flib_;
 };
-
-// Populates the tf.versions attribute on a module, given a corresponding
-// graph VersionDef proto.
-void PopulateTfVersions(mlir::ModuleOp module,
-                        const VersionDef& graph_versions) {
-  mlir::Builder b(module.getContext());
-  auto producer = b.getNamedAttr(
-      "producer", b.getI32IntegerAttr(graph_versions.producer()));
-  auto min_consumer = b.getNamedAttr(
-      "min_consumer", b.getI32IntegerAttr(graph_versions.min_consumer()));
-  auto bad_consumers = b.getNamedAttr(
-      "bad_consumers", b.getI32ArrayAttr(llvm::ArrayRef<int32_t>(
-                           graph_versions.bad_consumers().begin(),
-                           graph_versions.bad_consumers().end())));
-  module.setAttr("tf.versions",
-                 b.getDictionaryAttr(llvm::ArrayRef<mlir::NamedAttribute>(
-                     {producer, min_consumer, bad_consumers})));
-}
 
 // Stateful helper class to import a TensorFlow model into an MLIR Module.
 //
@@ -336,7 +319,7 @@ class ImporterBase {
   mlir::Location GetLocation(const NodeDef& node);
 
   // Gets the location information string for the given node.
-  std::string GetLocationStr(const Node& node, bool includeNodeName = false);
+  std::string GetLocationStr(const Node& node);
 
   // Inserts a placeholder node in the graph to replace a feed output tensor,
   // and returns the new placeholder node and a boolean indicating if the
@@ -1363,17 +1346,12 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
   }
 }
 
-std::string ImporterBase::GetLocationStr(const Node& node,
-                                         bool includeNodeName) {
+std::string ImporterBase::GetLocationStr(const Node& node) {
   const auto location = GetLocation(node.def());
   std::string s;
   llvm::raw_string_ostream ss(s);
   location.print(ss);
   ss.flush();
-  // Removes the node name prefix if it exists.
-  if (!s.empty() && s[0] == '\"' && s.find_first_of(node.name()) == 1) {
-    return s.replace(0, node.name().size() + 3, "");
-  }
   return s;
 }
 
@@ -1866,8 +1844,8 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     TF_ASSIGN_OR_RETURN(func_type, importer.InferMainFunctionType(
                                        specs, context, &arg_nodes, &ret_nodes));
 
-    // TODO(prakalps): Refactor to keep attribute strings (tf.entry_function,
-    // tf.versions) shared by importer and exporter in a centralized place.
+    // TODO(prakalps): Refactor to keep tf.entry_function attribute encoding and
+    // decoding in a centralized place.
     // Record the input and output mapping.
     if (!specs.inputs.empty() || !specs.outputs.empty()) {
       mlir::Builder b(context);

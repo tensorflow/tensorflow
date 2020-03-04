@@ -1908,6 +1908,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:single_threaded_executor",
         "@com_google_absl//absl/base",
     ],
 )
@@ -1930,7 +1931,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "fused_batch_norm_op_test",
     size = "small",
     srcs = ["fused_batch_norm_op_test.cc"],
@@ -3248,6 +3249,22 @@ tf_cc_tests(
     ],
 )
 
+tf_cc_test(
+    name = "non_max_suppression_op_benchmark_test",
+    srcs = ["non_max_suppression_op_benchmark_test.cc"],
+    deps = [
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "resize_bilinear_op_test",
     srcs = ["resize_bilinear_op_test.cc"],
@@ -3942,10 +3959,15 @@ cc_library(
         "aggregate_ops.h",
         "aggregate_ops_cpu.h",
     ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//third_party/eigen3",
-    ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            "//third_party/eigen3",
+            "//tensorflow/core:framework",
+        ],
+    }),
 )
 
 tf_kernel_library(
@@ -8418,8 +8440,10 @@ exports_files([
     "cwise_op_gpu_less_equal.cu.cc",
     "cwise_op_gpu_logical_and.cu.cc",
     "cwise_op_gpu_logical_not.cu.cc",
+    "cwise_op_gpu_logical_or.cu.cc",
     "cwise_op_gpu_maximum.cu.cc",
     "cwise_op_gpu_minimum.cu.cc",
+    "cwise_op_gpu_mod.cu.cc",
     "cwise_op_gpu_mul.cu.cc",
     "cwise_op_gpu_neg.cu.cc",
     "cwise_op_gpu_not_equal_to.cu.cc",
@@ -8438,8 +8462,10 @@ exports_files([
     "cwise_op_less_equal.cc",
     "cwise_op_logical_and.cc",
     "cwise_op_logical_not.cc",
+    "cwise_op_logical_or.cc",
     "cwise_op_maximum.cc",
     "cwise_op_minimum.cc",
+    "cwise_op_mod.cc",
     "cwise_op_mul_1.cc",
     "cwise_op_mul_2.cc",
     "cwise_op_neg.cc",

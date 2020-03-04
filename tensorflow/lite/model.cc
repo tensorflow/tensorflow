@@ -43,42 +43,53 @@ ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
 }
 
 template <typename T>
-void Copy(const T* data_ptr, TfLiteIntArray** arr) {
+TfLiteStatus Copy(const T* data_ptr, TfLiteIntArray** arr) {
+  if (data_ptr->values() == nullptr) {
+    return kTfLiteError;
+  }
+
   int size = data_ptr->values()->size();
   *arr = TfLiteIntArrayCreate(size);
   for (int i = 0; i < size; i++) {
     (*arr)->data[i] = static_cast<int>(data_ptr->values()->Get(i));
   }
+  return kTfLiteOk;
 }
 
-void ParseSparseIndexVector(const DimensionMetadata* src,
-                            TfLiteDimensionMetadata* tgt) {
+TfLiteStatus ParseSparseIndexVector(const DimensionMetadata* src,
+                                    TfLiteDimensionMetadata* tgt) {
+  if (src->array_segments() == nullptr || src->array_indices() == nullptr) {
+    return kTfLiteError;
+  }
+  TfLiteStatus status = kTfLiteOk;
   switch (src->array_segments_type()) {
     case SparseIndexVector_Int32Vector:
-      Copy(src->array_segments_as_Int32Vector(), &tgt->array_segments);
+      status = Copy(src->array_segments_as_Int32Vector(), &tgt->array_segments);
       break;
     case SparseIndexVector_Uint16Vector:
-      Copy(src->array_segments_as_Uint16Vector(), &tgt->array_segments);
+      status =
+          Copy(src->array_segments_as_Uint16Vector(), &tgt->array_segments);
       break;
     case SparseIndexVector_Uint8Vector:
-      Copy(src->array_segments_as_Uint8Vector(), &tgt->array_segments);
+      status = Copy(src->array_segments_as_Uint8Vector(), &tgt->array_segments);
       break;
     default:
+      status = kTfLiteError;
       break;
   }
+  if (status != kTfLiteOk) return status;
+
   switch (src->array_indices_type()) {
     case SparseIndexVector_Int32Vector:
-      Copy(src->array_indices_as_Int32Vector(), &tgt->array_indices);
-      break;
+      return Copy(src->array_indices_as_Int32Vector(), &tgt->array_indices);
     case SparseIndexVector_Uint16Vector:
-      Copy(src->array_indices_as_Uint16Vector(), &tgt->array_indices);
-      break;
+      return Copy(src->array_indices_as_Uint16Vector(), &tgt->array_indices);
     case SparseIndexVector_Uint8Vector:
-      Copy(src->array_indices_as_Uint8Vector(), &tgt->array_indices);
-      break;
+      return Copy(src->array_indices_as_Uint8Vector(), &tgt->array_indices);
     default:
       break;
   }
+  return kTfLiteError;
 }
 }  // namespace
 
@@ -474,26 +485,6 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
     return kTfLiteError;
   }
 
-  const size_t dim_metadata_size = src_sparsity->dim_metadata()->size();
-  // Validate sparsity params before allocating the TfLiteSparsity output.
-  for (int i = 0; i < dim_metadata_size; i++) {
-    const auto* src_metadata = src_sparsity->dim_metadata()->Get(i);
-    if (src_metadata->format() != DimensionType_DENSE &&
-        src_metadata->format() != DimensionType_SPARSE_CSR) {
-      error_reporter_->Report("The %dth dimension has unknown type: %d.", i,
-                              src_metadata->format());
-      return kTfLiteError;
-    }
-
-    if (src_metadata->format() == DimensionType_SPARSE_CSR &&
-        (src_metadata->array_indices() == nullptr ||
-         src_metadata->array_segments() == nullptr)) {
-      error_reporter_->Report(
-          "The %dth sparse dimension has invalid parameters.", i);
-      return kTfLiteError;
-    }
-  }
-
   auto* sparsity =
       reinterpret_cast<TfLiteSparsity*>(malloc(sizeof(TfLiteSparsity)));
   memset(sparsity, 0, sizeof(TfLiteSparsity));
@@ -514,6 +505,7 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
     }
   }
 
+  const size_t dim_metadata_size = src_sparsity->dim_metadata()->size();
   sparsity->dim_metadata_size = dim_metadata_size;
   sparsity->dim_metadata = reinterpret_cast<TfLiteDimensionMetadata*>(
       malloc(dim_metadata_size * sizeof(TfLiteDimensionMetadata)));
@@ -522,6 +514,13 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
 
   for (int i = 0; i < dim_metadata_size; i++) {
     const auto* src_metadata = src_sparsity->dim_metadata()->Get(i);
+    if (src_metadata->format() != DimensionType_DENSE &&
+        src_metadata->format() != DimensionType_SPARSE_CSR) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "The %dth dimension has unknown type: %d.", i,
+                           src_metadata->format());
+      return kTfLiteError;
+    }
     auto* tgt_metadata = &sparsity->dim_metadata[i];
 
     tgt_metadata->format =
@@ -530,7 +529,12 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
     if (tgt_metadata->format == kTfLiteDimDense) {
       tgt_metadata->dense_size = src_metadata->dense_size();
     } else {
-      ParseSparseIndexVector(src_metadata, tgt_metadata);
+      if (ParseSparseIndexVector(src_metadata, tgt_metadata) != kTfLiteOk) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "The %dth sparse dimension has invalid parameters.", i);
+        return kTfLiteError;
+      }
     }
   }
 

@@ -39,10 +39,17 @@ namespace interpreter {
 
 InterpreterExecutable::InterpreterExecutable(
     std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloEvaluator> evaluator)
+    std::unique_ptr<HloEvaluator> evaluator,
+    absl::optional<DynamicDimensionInference> dynamic_dymension_inference)
     : Executable(std::move(hlo_module), /*hlo_profile_printer_data=*/nullptr,
                  /*hlo_profile_index_map=*/nullptr),
-      evaluator_(std::move(evaluator)) {}
+      evaluator_(std::move(evaluator)),
+      dynamic_dimension_inference_(std::move(dynamic_dymension_inference)) {
+  if (dynamic_dimension_inference_.has_value()) {
+    evaluator_->set_dynamic_dimension_inference(
+        &dynamic_dimension_inference_.value());
+  }
+}
 
 InterpreterExecutable::~InterpreterExecutable() {}
 

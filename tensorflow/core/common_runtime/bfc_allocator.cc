@@ -443,6 +443,12 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
 
 void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                               int64 requested_bytes) {
+  // Internal users will see the memory profile with default trace level.
+  auto traceme_level = profiler::TraceMeLevel::kVerbose;
+#ifdef PLATFORM_GOOGLE
+  traceme_level = profiler::TraceMeLevel::kInfo;
+#endif
+
   tensorflow::profiler::TraceMe trace_me(
       [&]() EXCLUSIVE_LOCKS_REQUIRED(lock_) {
         AllocatorStats stats = stats_;
@@ -459,7 +465,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
 #endif
                             "#");
       },
-      /*level=*/profiler::TraceMeLevel::kInfo);
+      traceme_level);
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,

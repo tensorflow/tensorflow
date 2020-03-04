@@ -346,6 +346,7 @@ xla_test(
         "conv_depthwise_test.cc",
     ],
     shard_count = 50,
+    tags = ["no_rocm"],
     deps = [
         ":conv_depthwise_common",
         ":test_macros_header",
@@ -2507,6 +2508,18 @@ xla_test(
         # Disabled in OSS until nvidia publicly releases a fixed ptxas.
         "no_oss",
     ],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:test",
+    ],
+)
+
+xla_test(
+    name = "get_dimension_size_test",
+    srcs = ["get_dimension_size_test.cc"],
     deps = [
         ":hlo_test_base",
         ":test_macros_header",

@@ -267,6 +267,17 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_reverse(self):
+    x = random_ops.random_uniform([3, 4, 2, 3])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return (array_ops.reverse(x1, axis=[0]),
+              array_ops.reverse(x1, axis=[-1]),
+              array_ops.reverse(x1, axis=[1, -1]))
+
+    self._test_loop_fn(loop_fn, 3)
+
   def test_transpose(self):
     x = random_ops.random_uniform([3, 2, 3, 4])
 

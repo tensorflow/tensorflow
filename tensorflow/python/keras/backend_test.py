@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
+
 from absl.testing import parameterized
 import numpy as np
 import scipy.sparse
@@ -24,6 +26,7 @@ import scipy.sparse
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
@@ -2144,6 +2147,53 @@ class ControlOpsTests(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  'Rank of `condition` should be less than'):
       keras.backend.switch(keras.backend.equal(x, x), false_func, true_func)
+
+
+class ContextValueCacheTest(test.TestCase):
+
+  def test_cache(self):
+    cache = keras.backend.ContextValueCache(list)
+    graph1 = ops.Graph()
+    graph2 = ops.Graph()
+
+    cache[graph1].append(1)
+    with graph1.as_default():
+      cache[None].append(2)
+
+    with graph2.as_default():
+      cache[None].append(3)
+    cache[graph2].append(4)
+
+    self.assertAllEqual(cache[graph1], [1, 2])
+    self.assertAllEqual(cache[graph2], [3, 4])
+
+    with context.eager_mode():
+      cache[None].append(5)
+      cache[None].append(6)
+      self.assertAllEqual(cache[None], [5, 6])
+
+    self.assertLen(cache, 3)
+
+    del graph1
+    gc.collect()
+    self.assertLen(cache, 2)
+
+  def test_cache_in_parent_graph(self):
+    cache = keras.backend.ContextValueCache(int)
+    cache.setdefault(None, keras.backend.constant(5))
+
+    with ops.Graph().as_default() as g:
+      # g is not a child graph of the default test context, so the recursive
+      # lookup will create a new default value.
+      self.assertAllEqual(cache[g], 0)
+
+    @def_function.function
+    def fn():
+      # The function graph is a child of the default test context, so
+      # __getitem__ will return the previously saved value.
+      return cache[ops.get_default_graph()]
+
+    self.assertEqual(self.evaluate(fn()), 5)
 
 
 if __name__ == '__main__':

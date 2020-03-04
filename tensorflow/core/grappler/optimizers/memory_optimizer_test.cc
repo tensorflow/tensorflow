@@ -520,7 +520,7 @@ TEST_F(RelaxAllocatorConstraintsTest, SameDeviceType) {
                                   {128, 128}, DT_FLOAT);
   Output assign = ops::Assign(s.WithOpName("assign").WithDevice("/cpu:0"),
                               variable, constant);
-  // Assign and Exp run on different devies, but do not straddle a CPU:GPU
+  // Assign and Exp run on different devices, but do not straddle a CPU:GPU
   // boundary, so we can we do not need to enforce allocation in pinned memory.
   Output exp = ops::Exp(s.WithOpName("exp").WithDevice("/cpu:1"), assign);
 

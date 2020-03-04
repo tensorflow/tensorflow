@@ -102,7 +102,7 @@ inline absl::Span<int64> AsInt64Slice(T* repeated_field) {
 }
 
 // Returns a string representation of the given data layout.
-string DataLayoutString(DataLayout layout);
+std::string DataLayoutString(DataLayout layout);
 
 // Specifies a quantization for activations in a given BatchDescriptor.
 enum class QuantizedActivationMode {
@@ -214,7 +214,7 @@ class RnnStateTensorDescriptor {
 };
 
 // Returns a string representation of the given quantization mode.
-string QuantizedActivationModeString(QuantizedActivationMode mode);
+std::string QuantizedActivationModeString(QuantizedActivationMode mode);
 
 // Describes the dimensions that a layer consumes/produces.
 //
@@ -265,8 +265,8 @@ class BatchDescriptor {
   // Clones values from 'other' for initialization.
   void CloneFrom(const BatchDescriptor& other);
 
-  string ToString() const;
-  string ToShortString() const;
+  std::string ToString() const;
+  std::string ToShortString() const;
 
   // Pre-condition:
   //   value_max_ == 0
@@ -379,7 +379,7 @@ class BatchDescriptor {
 };
 
 // Returns a string representation of the given filter layout.
-string FilterLayoutString(FilterLayout layout);
+std::string FilterLayoutString(FilterLayout layout);
 
 // Describes a filter for the convolution. This is the "window" from
 // height-by-width patches of each of the feature maps in the input layer to the
@@ -444,8 +444,8 @@ class FilterDescriptor {
 
   void CloneFrom(const FilterDescriptor& other);
 
-  string ToString() const;
-  string ToShortString() const;
+  std::string ToString() const;
+  std::string ToShortString() const;
   TensorDescriptorProto ToProto(DataType data_type) const;
 
   // Returns the number of weights required as parameters for a convolution
@@ -491,7 +491,7 @@ enum class PadAlignment : int64 {
 };
 
 // Returns a string representation of the given padding alignment.
-string PadAlignmentString(PadAlignment alignment);
+std::string PadAlignmentString(PadAlignment alignment);
 
 // Print alignment to str. Needed to use CHECK_EQ between two PadAlignments.
 std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment);
@@ -534,8 +534,8 @@ class ConvolutionDescriptor {
   explicit ConvolutionDescriptor(int ndims);
   ~ConvolutionDescriptor();
 
-  string ToString() const;
-  string ToShortString() const;
+  std::string ToString() const;
+  std::string ToShortString() const;
   ConvolutionDescriptorProto ToProto() const { return proto_; }
 
   ConvolutionDescriptor& set_zero_padding_height(int64 value) {
@@ -583,7 +583,7 @@ class ConvolutionDescriptor {
                                      : ConvolutionMode::CROSS_CORRELATION);
     return *this;
   }
-  ConvolutionDescriptor& set_name(const string& name) {
+  ConvolutionDescriptor& set_name(const std::string& name) {
     proto_.set_name(name);
     return *this;
   }
@@ -626,7 +626,7 @@ class ConvolutionDescriptor {
     return AsInt64Slice(proto_.paddings());
   }
 
-  string name() const { return proto_.name(); }
+  std::string name() const { return proto_.name(); }
 
  private:
   absl::Span<int64> strides() { return AsInt64Slice(proto_.mutable_strides()); }
@@ -690,7 +690,7 @@ enum class SpaceConcatenateMode : int64 {
 };
 
 // Returns a short name for the pooling mode, e.g. "Avg".
-string ShortPoolingModeString(PoolingMode mode);
+std::string ShortPoolingModeString(PoolingMode mode);
 
 // Describes a pooling operation to be enqueued onto a stream via a platform's
 // DnnSupport.
@@ -754,7 +754,7 @@ class PoolingDescriptor {
     propagate_nans_ = value;
     return *this;
   }
-  PoolingDescriptor& set_name(const string& name) {
+  PoolingDescriptor& set_name(const std::string& name) {
     name_ = name;
     return *this;
   }
@@ -762,8 +762,8 @@ class PoolingDescriptor {
   int ndims() const { return ndims_; }
   void CloneFrom(const PoolingDescriptor& other);
 
-  string ToString() const;
-  string ToShortString() const;
+  std::string ToString() const;
+  std::string ToShortString() const;
 
   PoolingMode mode() const { return mode_; }
   int64 window_height() const { return GetDim(window_, DimIndex::Y); }
@@ -779,13 +779,13 @@ class PoolingDescriptor {
   absl::Span<const int64> padding() const { return padding_; }
   absl::Span<const int64> strides() const { return strides_; }
   bool propagate_nans() const { return propagate_nans_; }
-  string name() const { return name_; }
+  std::string name() const { return name_; }
 
  private:
   PoolingMode mode_;
   int ndims_;
   bool propagate_nans_;
-  string name_;  // Name as in Tensorflow NodeDef, for debugging purposes.
+  std::string name_;  // Name as in Tensorflow NodeDef, for debugging purposes.
 
   // Stored as: ..., y, x.
   std::vector<int64> window_;
@@ -815,7 +815,7 @@ class AlgorithmDesc {
 
   AlgorithmProto ToProto() const { return proto_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   AlgorithmProto proto_;
@@ -892,7 +892,7 @@ class AlgorithmConfig {
   bool operator!=(const AlgorithmConfig& other) const {
     return !(*this == other);
   }
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   absl::optional<AlgorithmDesc> algorithm_;
@@ -959,8 +959,8 @@ class NormalizeDescriptor {
 
   void CloneFrom(const NormalizeDescriptor& other);
 
-  string ToString() const;
-  string ToShortString() const;
+  std::string ToString() const;
+  std::string ToShortString() const;
 
   float bias() const { return bias_; }
   int32 range() const { return range_; }
@@ -979,13 +979,13 @@ class NormalizeDescriptor {
 };
 
 // Returns a string representation of the given activation mode.
-string ActivationModeString(ActivationMode mode);
+std::string ActivationModeString(ActivationMode mode);
 
 // Describes the operation that DoElementwiseOperation should perform on its
 // inputs.
 enum class ElementwiseOperation { kAdd, kMultiply };
 
-string ElementwiseOperationString(ElementwiseOperation op);
+std::string ElementwiseOperationString(ElementwiseOperation op);
 
 // A simple class representing the version of the backing library, to
 // workaround the "too perfect forwarding" issue in gcc6+ compilers.
