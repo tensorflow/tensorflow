@@ -1,23 +1,10 @@
-## XMOS Microlite Integration Fork
-* __This README should not be part of any eventual merge with mainline Tensorflow__
-* If you are here looking for general purpose TF go to the real one (see below)
-* The scope of this repo is to stage an XS3 port of the TF microlite interpreter
-* If you are unsure what you are doing here please contact andrewc@xmos.com
+<div align="center">
+  <img src="https://www.tensorflow.org/images/tf_logo_social.png">
+</div>
 
-To get started run the following command from *this* directory:
-
-     make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" test -j3
-
-*Note: the -j argument can be > 3, but should be at least 3 so you can get all but one test done quickly (the other test will just take forever, sorry)*
-
-For a primer on how to do the porting, please check out the README here: https://github.com/xmos/tensorflow/tree/master/tensorflow/lite/micro
-
-Another, more approachable explainer on porting: https://www.oreilly.com/library/view/tinyml/9781492052036/ch04.html
-
-## Git - cleanliness vs. transparency
-Gitflow will be used for this, feel free to create feature branches right on this remote OR treat your fork of develop as a feature branch for Gitflow purposes. One caveat is the following: I am going to try to keep master rolling with TF so develop is just used for our development. This means that when pulling master into develop it would actually make good sense to squash those merges to a single commit. Merging from develop to master can be done as a plain old merge though.
-
-| [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
+**`Documentation`** |
+------------------- |
+[![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
 [TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
 for machine learning. It has a comprehensive, flexible ecosystem of
