@@ -3520,10 +3520,13 @@ class ConvertXlaDynamicUpdateSliceOp
   PatternMatchResult matchAndRewrite(TF::XlaDynamicUpdateSliceOp op,
                                      PatternRewriter &rewriter) const override {
     auto indices_type = op.indices().getType().dyn_cast<RankedTensorType>();
-    if (!indices_type) return matchFailure();
+    if (!indices_type || !indices_type.hasStaticShape() ||
+        indices_type.getShape().size() != 1)
+      return matchFailure();
 
-    SmallVector<Type, 2> unpacked_indices_type(
-        2, RankedTensorType::get({}, indices_type.getElementType()));
+    SmallVector<Type, 4> unpacked_indices_type(
+        indices_type.getDimSize(0),
+        RankedTensorType::get({}, indices_type.getElementType()));
     auto unpacked_indices = rewriter.create<TF::UnpackOp>(
         op.getLoc(), unpacked_indices_type, op.indices(),
         IntegerAttr::get(rewriter.getIntegerType(64), 0));
