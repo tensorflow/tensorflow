@@ -719,6 +719,7 @@ cc_library(
         ":convert_tensor",
         ":tensorflow",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
