@@ -25,7 +25,7 @@ limitations under the License.
 extern "C" {
 // Functionally equivalent to vsnprintf, trimmed down for TFLite Micro.
 // MicroSnprintf() is implemented using MicroVsnprintf().
-int MicroVsnprintf(char* output, int len, const char* format, va_list args);
+int MicroVsnprintf(char* output, int len, const char* format, ...);
 // Functionally equavalent to snprintf, trimmed down for TFLite Micro.
 // For example, MicroSnprintf(buffer, 10, "int %d", 10) will put the string
 // "int 10" in the buffer.

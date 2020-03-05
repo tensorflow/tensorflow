@@ -185,7 +185,9 @@ int FormatFloat(char* output, float i) {
 }  // namespace
 
 extern "C" int MicroVsnprintf(char* output, int len, const char* format,
-                              va_list args) {
+                              ...) {
+  va_list args;
+  va_start(args, format);
   int output_index = 0;
   const char* current = format;
   // One extra character must be left for the null terminator.
@@ -250,6 +252,7 @@ extern "C" int MicroVsnprintf(char* output, int len, const char* format,
     }
   }
   output[output_index++] = '\0';
+  va_end(args);
   return output_index;
 }
 

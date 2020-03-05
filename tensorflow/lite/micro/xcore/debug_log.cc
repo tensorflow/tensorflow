@@ -33,34 +33,6 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/debug_log.h"
 
-#include <syscall.h>
-#include <string.h>
 
-#ifndef DEBUG_PRINTF_BUFSIZE
-#define DEBUG_PRINTF_BUFSIZE 80
-#endif
-
-extern "C"{
-void DebugLog(const char* s) 
-{ 
-  char buf[DEBUG_PRINTF_BUFSIZE];
-  char *end = &buf[DEBUG_PRINTF_BUFSIZE - 1];
-  char *p = buf;
-
-    int len = strlen(s);
-    if (len > (end - buf)) {
-            // flush
-      _write(FD_STDOUT, buf, p - buf);
-      p = buf;
-    }
-    if (len > (end - buf)){
-      len = end - buf;
-    }
-    memcpy(p, s, len);
-    p += len;
-
-  _write(FD_STDOUT, buf, p - buf);
-
-}
-
-}
+#include <cstdio>
+extern "C" void DebugLog(const char* s) { printf(s); }
