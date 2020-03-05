@@ -1878,8 +1878,6 @@ bool MayPreventVectorization(const HloInstruction& hlo) {
                               case HloOpcode::kPower:
                               case HloOpcode::kAtan2:
                                 return true;
-                              case HloOpcode::kReduce:
-                                // TODO: check the to_apply() attribute.
                               default:
                                 return false;
                             }
@@ -2027,13 +2025,12 @@ void IrEmitterUnnested::EmitTile(
           }
         };
 
+        // Only try this path when we try to vectorize the loads.
+        // Special case when the tile doesn't fit completly for even row size.
+        // For odd row size every other row isn't aligned, so can't be
+        // vectorized this way by LLVM.
         if (!x_tile_fits &&
             mapping_scheme.GetIndexingOrder() == kLinearStridedIndexingX) {
-          // Only try this path when we try to vectorize the loads.
-
-          // Special case when the tile doesn't fit completly for even row size.
-          // For odd row size every other row isn't aligned, so can't be
-          // vectorized.
           ksl->If(loop_name + "_is_full_tile",
                   // if (block fully fit) {fast path} else {slow path}
                   // tile_width is always exact. For the last block,
