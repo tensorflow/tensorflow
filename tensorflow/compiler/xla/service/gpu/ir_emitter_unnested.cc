@@ -1940,6 +1940,38 @@ static llvm::Value* GetStartOffsetX(const KernelMappingScheme& mapping_scheme,
   return b->CreateMul(thread_id_x, constant(x_num_steps));
 }
 
+auto Unroll(bool add_index_boundary_condition, int64 x_num_steps, int64 step_x,
+            int64 vector_size, const string& loop_name,
+            KernelSupportLibrary* ksl, llvm::Value* start_offset_x,
+            llvm::Value* y_loc, llvm::Value* tile_width,
+            IrArray::Index& source_idx, llvm::IRBuilder<>& b_,
+            const IrEmitterUnnested::EmitElementFunction* emit_elem_function) {
+  llvm::Type* index_ty = tile_width->getType();
+  auto constant = [&](int64 val) {
+    return llvm::ConstantInt::get(index_ty, val);
+  };
+  for (int j = 0; j < x_num_steps / vector_size; j++) {
+    for (int i = 0; i < vector_size; i++) {
+      int linear_index = j * vector_size + i;
+      llvm::Value* x_loc = b_.CreateAdd(constant(j * step_x * vector_size + i),
+                                        start_offset_x, "x_loc");
+      IrArray::Index source_idx_x =
+          source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
+              .AddOffsetToDim(constant(j * step_x * vector_size + i), kDimX,
+                              &b_);
+      auto emit_element = [&] {
+        return (*emit_elem_function)(source_idx_x, y_loc, x_loc, linear_index);
+      };
+      if (add_index_boundary_condition) {
+        ksl->If(loop_name + "_x_in_tile", b_.CreateICmpULT(x_loc, tile_width),
+                emit_element);
+      } else {
+        emit_element();
+      }
+    }
+  }
+}
+
 void IrEmitterUnnested::EmitTile(
     const KernelMappingScheme& mapping_scheme,
     const IrArray::Index& tile_origin_index, const string& loop_name,
@@ -1991,58 +2023,39 @@ void IrEmitterUnnested::EmitTile(
   //
   // TODO(cheshire): Once ptxas is fixed and TF switches to it, remove the
   // workaround.
-  ksl->For(
-      loop_name + "_y_in_tile",
-      /*start=*/constant(0),
-      /*end=*/
-      ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
-                    num_threads_y),
-      /*step=*/constant(1), [&](llvm::Value* y_indvar) {
-        llvm::Value* y_loc = b_.CreateAdd(
-            thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
-        auto unroll = [&](bool add_index_boundary_condition) {
-          for (int j = 0; j < x_num_steps / vector_size; j++) {
-            for (int i = 0; i < vector_size; i++) {
-              int linear_index = j * vector_size + i;
-              llvm::Value* x_loc =
-                  b_.CreateAdd(constant(j * step_x * vector_size + i),
-                               start_offset_x, "x_loc");
-              IrArray::Index source_idx_x =
-                  source_idx.AddOffsetToDim(y_loc, kDimY, &b_)
-                      .AddOffsetToDim(constant(j * step_x * vector_size + i),
-                                      kDimX, &b_);
-              auto emit_element = [&] {
-                return emit_elem_function(source_idx_x, y_loc, x_loc,
-                                          linear_index);
-              };
-              if (add_index_boundary_condition) {
-                ksl->If(loop_name + "_x_in_tile",
-                        b_.CreateICmpULT(x_loc, tile_width), emit_element);
-              } else {
-                emit_element();
-              }
-            }
-          }
-        };
+  ksl->For(loop_name + "_y_in_tile",
+           /*start=*/constant(0),
+           /*end=*/
+           ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
+                         num_threads_y),
+           /*step=*/constant(1), [&](llvm::Value* y_indvar) {
+             llvm::Value* y_loc =
+                 b_.CreateAdd(thread_id_info.thread_id_y,
+                              b_.CreateMul(y_indvar, num_threads_y));
+             auto unroll = [&](bool add_index_boundary_condition) {
+               return Unroll(add_index_boundary_condition, x_num_steps, step_x,
+                             vector_size, loop_name, ksl, start_offset_x, y_loc,
+                             tile_width, source_idx, b_, &emit_elem_function);
+             };
 
-        // Only try this path when we try to vectorize the loads.
-        // Special case when the tile doesn't fit completly for even row size.
-        // For odd row size every other row isn't aligned, so can't be
-        // vectorized this way by LLVM.
-        if (!x_tile_fits &&
-            mapping_scheme.GetIndexingOrder() == kLinearStridedIndexingX) {
-          ksl->If(loop_name + "_is_full_tile",
-                  // if (block fully fit) {fast path} else {slow path}
-                  // tile_width is always exact. For the last block,
-                  // it will be the exact number of elements left.
-                  b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeX()),
-                                  tile_width),
-                  [&] { unroll(/*add_index_boundary_condition=*/false); },
-                  [&] { unroll(/*add_index_boundary_condition=*/true); });
-        } else {
-          unroll(/*add_index_boundary_condition=*/!x_tile_fits);
-        }
-      });
+             // Only try this path when we try to vectorize the loads.
+             // Special case when the tile doesn't fit completly for even row
+             // size. For odd row size every other row isn't aligned, so can't
+             // be vectorized this way by LLVM.
+             if (!x_tile_fits &&
+                 mapping_scheme.GetIndexingOrder() == kLinearStridedIndexingX) {
+               ksl->If(loop_name + "_is_full_tile",
+                       // if (block fully fit) {fast path} else {slow path}
+                       // tile_width is always exact. For the last block,
+                       // it will be the exact number of elements left.
+                       b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeX()),
+                                       tile_width),
+                       [&] { unroll(/*add_index_boundary_condition=*/false); },
+                       [&] { unroll(/*add_index_boundary_condition=*/true); });
+             } else {
+               unroll(/*add_index_boundary_condition=*/!x_tile_fits);
+             }
+           });
 }
 
 // Emits code to process a tensor element in a tile for the given kCopy HLO that
