@@ -194,7 +194,6 @@ int main(int argc, char **argv) {
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
-  pass_config.inline_functions = inline_functions;
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
   pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());

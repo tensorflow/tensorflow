@@ -34,7 +34,6 @@ struct PassConfig {
         quant_specs(std::move(specs)),
         skip_control_dialect(false),
         form_clusters(false),
-        inline_functions(true),
         unfold_batch_matmul(true),
         legalize_tf_while(true) {}
 
@@ -56,9 +55,6 @@ struct PassConfig {
   // are formed by grouping consecutive ops of the same device, under a
   // `tf_device.launch` op.
   bool form_clusters;
-  // Inline function calls within the main function in the MLIR module, prior
-  // to legalization to TFLite.
-  bool inline_functions;
   // if `unfold_batch_matmul` is true, the tf.BatchMatMul is unfolded to a set
   // of tfl.fully_connected ops.
   bool unfold_batch_matmul;

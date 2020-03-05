@@ -124,9 +124,9 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
         mlir::TFL::CreateLegalizeTFWhilePass());
   }
 
-  if (pass_config.inline_functions) {
-    pass_manager->addPass(mlir::createInlinerPass());
-  }
+  // Add function inlining pass. Both TF and TFLite dialects are opted into
+  // function inliner interface.
+  pass_manager->addPass(mlir::createInlinerPass());
 
   // TODO(jpienaar): Revise post dialect constants.
   pass_manager->addPass(mlir::TF::CreateDecodeConstantPass());
