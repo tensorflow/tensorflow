@@ -325,15 +325,14 @@ tf_kernel_library(
     deps = [
         ":eigen_helpers",
         ":fill_functor",
-        ":gpu_utils",
         ":image_resizer_state",
         ":ops_util",
+        "//third_party/eigen3",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//third_party/eigen3",
-    ],
+    ] + if_cuda_or_rocm([":gpu_utils"]),
     alwayslink = 1,
 )
 
@@ -4090,13 +4089,12 @@ tf_kernel_library(
     deps = MATH_DEPS + [
         ":eigen_contraction_kernel",
         ":fused_eigen_output_kernels",
-        ":gpu_utils",
     ] + select({
         ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
-    ]),
+    ]) + if_cuda_or_rocm([":gpu_utils"]),
 )
 
 tf_mkl_kernel_library(
@@ -4542,7 +4540,6 @@ tf_kernel_library(
         ":conv_2d",
         ":conv_3d",
         ":eigen_contraction_kernel",
-        ":gpu_utils",
         ":image_resizer_state",
         ":fill_functor",
         ":fused_eigen_output_kernels",
@@ -4556,7 +4553,6 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
-        "//tensorflow/stream_executor/gpu:redzone_allocator",
     ] + select({
         ":xsmm_convolutions": [
             "@libxsmm_archive//:xsmm_avx",
@@ -4568,6 +4564,9 @@ tf_kernel_library(
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/core:stream_executor",
+    ]) + if_cuda_or_rocm([
+        ":gpu_utils",
+        "//tensorflow/stream_executor/gpu:redzone_allocator",
     ]),
 )
 
