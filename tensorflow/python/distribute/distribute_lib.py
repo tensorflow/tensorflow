@@ -415,6 +415,70 @@ class InputContext(object):
         self.input_pipeline_id, self.num_input_pipelines)
 
 
+@tf_export("distribute.experimental.ValueContext", v1=[])
+class ValueContext(object):
+  """A class wrapping information needed by a distribute function.
+
+  This is a context class that is passed to the `value_fn` in
+  `strategy.experimental_distribute_values_from_function` and contains
+  information about the compute replicas. The `num_replicas_in_sync` and
+  `replica_id` can be used to customize the value on each replica.
+
+  Example usage:
+
+  1. Directly constructed.
+
+  >>> def value_fn(context):
+  ...   return context.replica_id_in_sync_group/context.num_replicas_in_sync
+  >>> context = tf.distribute.experimental.ValueContext(
+  ...   replica_id_in_sync_group=2, num_replicas_in_sync=4)
+  >>> per_replica_value = value_fn(context)
+  >>> per_replica_value
+  0.5
+
+  2. Passed in by `experimental_distribute_values_from_function`.
+
+  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> def value_fn(value_context):
+  ...   return value_context.num_replicas_in_sync
+  >>> distributed_values = (
+  ...      strategy.experimental_distribute_values_from_function(
+  ...        value_fn))
+  >>> local_result = strategy.experimental_local_results(distributed_values)
+  >>> local_result
+  (1,)
+
+  """
+
+  def __init__(self,
+               replica_id_in_sync_group=0,
+               num_replicas_in_sync=1):
+    """Initializes an ValueContext object.
+
+    Args:
+      replica_id_in_sync_group: the current replica_id, should be an int in
+        [0,`num_replicas_in_sync`).
+      num_replicas_in_sync: the number of replicas that are in sync.
+    """
+    self._replica_id_in_sync_group = replica_id_in_sync_group
+    self._num_replicas_in_sync = num_replicas_in_sync
+
+  @property
+  def num_replicas_in_sync(self):
+    """Returns the number of compute replicas in sync."""
+    return self._num_replicas_in_sync
+
+  @property
+  def replica_id_in_sync_group(self):
+    """Returns the replica ID."""
+    return self._replica_id_in_sync_group
+
+  def __str__(self):
+    return (("tf.distribute.ValueContext(replica id {}, "
+             " total replicas in sync: ""{})")
+            .format(self.replica_id_in_sync_group, self.num_replicas_in_sync))
+
+
 @tf_export("distribute.RunOptions")
 class RunOptions(
     collections.namedtuple("RunOptions", [
@@ -1212,6 +1276,81 @@ class Strategy(StrategyBase):
     """
     return self._extended._experimental_replicate_to_logical_devices(tensor)  # pylint: disable=protected-access
 
+  def experimental_distribute_values_from_function(self, value_fn):
+    """Generates `tf.distribute.DistributedValues` from `value_fn`.
+
+    This function is to generate `tf.distribute.DistributedValues` to pass
+    into `experimental_run_v2`, `reduce`, or other methods that take
+    distributed values when not using datasets.
+
+    Args:
+      value_fn: The function to run to generate values. It is called for
+        each replica with `tf.distribute.ValueContext` as the sole argument. It
+        must return a Tensor or a type that can be converted to a Tensor.
+    Returns:
+      A `tf.distribute.DistributedValues` containing a value for each replica.
+
+    Example usage:
+
+    1. Return constant value per replica:
+
+    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> def value_fn(ctx):
+    ...   return tf.constant(1.)
+    >>> distributed_values = (
+    ...      strategy.experimental_distribute_values_from_function(
+    ...        value_fn))
+    >>> local_result = strategy.experimental_local_results(distributed_values)
+    >>> local_result
+    (<tf.Tensor: shape=(), dtype=float32, numpy=1.0>,)
+
+    2. Distribute values in array based on replica_id:
+
+    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> array_value = np.array([3., 2., 1.])
+    >>> def value_fn(ctx):
+    ...   return array_value[ctx.replica_id_in_sync_group]
+    >>> distributed_values = (
+    ...      strategy.experimental_distribute_values_from_function(
+    ...        value_fn))
+    >>> local_result = strategy.experimental_local_results(distributed_values)
+    >>> local_result
+    (3.0,)
+
+    3. Specify values using num_replicas_in_sync:
+
+    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> def value_fn(ctx):
+    ...   return ctx.num_replicas_in_sync
+    >>> distributed_values = (
+    ...      strategy.experimental_distribute_values_from_function(
+    ...        value_fn))
+    >>> local_result = strategy.experimental_local_results(distributed_values)
+    >>> local_result
+    (1,)
+
+    4. Place values on devices and distribute:
+
+    ```
+    strategy = tf.distribute.TPUStrategy()
+    worker_devices = strategy.extended.worker_devices
+    multiple_values = []
+    for i in range(strategy.num_replicas_in_sync):
+      with tf.device(worker_devices[i]):
+        multiple_values.append(tf.constant(1.0))
+
+    def value_fn(ctx):
+      return multiple_values[ctx.replica_id]
+
+    distributed_values = strategy.
+      experimental_distribute_values_from_function(
+      value_fn)
+    ```
+
+    """
+    return self._extended._experimental_distribute_values_from_function(  # pylint: disable=protected-access
+        value_fn)
+
 
 # TF v1.x version has additional deprecated APIs
 @tf_export(v1=["distribute.Strategy"])
@@ -1715,6 +1854,9 @@ class StrategyExtendedV2(object):
     raise NotImplementedError("must be implemented in descendants")
 
   def _experimental_distribute_datasets_from_function(self, dataset_fn):
+    raise NotImplementedError("must be implemented in descendants")
+
+  def _experimental_distribute_values_from_function(self, value_fn):
     raise NotImplementedError("must be implemented in descendants")
 
   def _reduce(self, reduce_op, value):
@@ -2435,6 +2577,9 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
 
   def _experimental_distribute_datasets_from_function(self, dataset_fn):
     return dataset_fn(InputContext())
+
+  def _experimental_distribute_values_from_function(self, value_fn):
+    return value_fn(ValueContext())
 
   def _make_dataset_iterator(self, dataset):
     return _DefaultDistributionExtended.DefaultInputIterator(dataset)
