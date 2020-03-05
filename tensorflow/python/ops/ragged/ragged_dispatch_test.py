@@ -771,6 +771,21 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     else:
       self.assertAllEqual(result, expected)
 
+  def testUnaryElementwiseOpsPreserveUniformRowLength(self):
+    # Unary elementwise op
+    rt = ragged_tensor.RaggedTensor.from_uniform_row_length(
+        ragged_factory_ops.constant([[1, 2], [3]]),
+        uniform_row_length=2)
+    self.assertAllEqual(rt.uniform_row_length,
+                        array_ops.zeros_like(rt).uniform_row_length)
+
+    # Unary-list elementwise op
+    rt = ragged_tensor.RaggedTensor.from_uniform_row_length(
+        ragged_factory_ops.constant([[1, 2], [3]]),
+        uniform_row_length=2)
+    self.assertAllEqual(rt.uniform_row_length,
+                        math_ops.add_n([rt, rt]).uniform_row_length)
+
   def test_ragged_op_list(self):
     # Ops that should be listed as supported in both v1 and v2.
     supported_ops = [
