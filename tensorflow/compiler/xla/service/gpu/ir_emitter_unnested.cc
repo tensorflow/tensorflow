@@ -1870,8 +1870,6 @@ bool MayPreventVectorization(const HloInstruction& hlo) {
     return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
                           [&](const HloInstruction* instr) {
                             switch (instr->opcode()) {
-                              case HloOpcode::kReduce:
-                                return false;
                               case HloOpcode::kReduceWindow:
                               case HloOpcode::kSort:
                               case HloOpcode::kDot:
@@ -1880,6 +1878,8 @@ bool MayPreventVectorization(const HloInstruction& hlo) {
                               case HloOpcode::kPower:
                               case HloOpcode::kAtan2:
                                 return true;
+                              case HloOpcode::kReduce:
+                                // TODO: check the to_apply() attribute.
                               default:
                                 return false;
                             }
@@ -1899,6 +1899,7 @@ bool MayPreventVectorization(const HloInstruction& hlo) {
         return false;
     }
   } else if (hlo.opcode() == HloOpcode::kReduce) {
+    // TODO: check the to_apply() attribute.
     return false;
   }
   return true;
@@ -1928,17 +1929,17 @@ static llvm::Value* GetStartOffsetX(const KernelMappingScheme& mapping_scheme,
                                     llvm::Value* thread_id_x,
                                     llvm::Type* index_ty,
                                     llvm::IRBuilder<>* b) {
+  auto constant = [&](int64 val) {
+    return llvm::ConstantInt::get(index_ty, val);
+  };
   if (mapping_scheme.GetIndexingOrder() == kStridedIndexingX) {
     return thread_id_x;
   } else if (mapping_scheme.GetIndexingOrder() == kLinearStridedIndexingX) {
-    int vector_size = mapping_scheme.GetVectorSize();
-    return b->CreateMul(thread_id_x,
-                        llvm::ConstantInt::get(index_ty, vector_size));
+    return b->CreateMul(thread_id_x, constant(mapping_scheme.GetVectorSize()));
   }
   int64 x_num_steps =
       mapping_scheme.GetTileSizeX() / mapping_scheme.GetNumThreadsX();
-  return b->CreateMul(thread_id_x,
-                      llvm::ConstantInt::get(index_ty, x_num_steps));
+  return b->CreateMul(thread_id_x, constant(x_num_steps));
 }
 
 void IrEmitterUnnested::EmitTile(
@@ -1965,6 +1966,7 @@ void IrEmitterUnnested::EmitTile(
   // number of steps which can be made.
   int64 step_x =
       mapping_scheme.GetIndexingOrder() == kLinearIndexingX ? 1 : num_threads_x;
+  int64 vector_size = mapping_scheme.GetVectorSize();
 
   IrArray::Index source_idx =
       tile_origin_index.AddOffsetToDim(start_offset_x, kDimX, &b_);
@@ -1991,7 +1993,6 @@ void IrEmitterUnnested::EmitTile(
   //
   // TODO(cheshire): Once ptxas is fixed and TF switches to it, remove the
   // workaround.
-  int vector_size = mapping_scheme.GetVectorSize();
   ksl->For(
       loop_name + "_y_in_tile",
       /*start=*/constant(0),
@@ -2001,11 +2002,10 @@ void IrEmitterUnnested::EmitTile(
       /*step=*/constant(1), [&](llvm::Value* y_indvar) {
         llvm::Value* y_loc = b_.CreateAdd(
             thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
-        auto unroll = [&](bool add_index_boundary_condition,
-                          int64 vector_size) {
-          for (int64 j = 0; j < x_num_steps / vector_size; j++) {
+        auto unroll = [&](bool add_index_boundary_condition) {
+          for (int j = 0; j < x_num_steps / vector_size; j++) {
             for (int i = 0; i < vector_size; i++) {
-              int old_j = j * vector_size + i;
+              int linear_index = j * vector_size + i;
               llvm::Value* x_loc =
                   b_.CreateAdd(constant(j * step_x * vector_size + i),
                                start_offset_x, "x_loc");
@@ -2014,7 +2014,8 @@ void IrEmitterUnnested::EmitTile(
                       .AddOffsetToDim(constant(j * step_x * vector_size + i),
                                       kDimX, &b_);
               auto emit_element = [&] {
-                return emit_elem_function(source_idx_x, y_loc, x_loc, old_j);
+                return emit_elem_function(source_idx_x, y_loc, x_loc,
+                                          linear_index);
               };
               if (add_index_boundary_condition) {
                 ksl->If(loop_name + "_x_in_tile",
@@ -2039,14 +2040,10 @@ void IrEmitterUnnested::EmitTile(
                   // it will be the exact number of elements left.
                   b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeX()),
                                   tile_width),
-                  [&] {
-                    unroll(/*add_index_boundary_condition=*/false, vector_size);
-                  },
-                  [&] {
-                    unroll(/*add_index_boundary_condition=*/true, vector_size);
-                  });
+                  [&] { unroll(/*add_index_boundary_condition=*/false); },
+                  [&] { unroll(/*add_index_boundary_condition=*/true); });
         } else {
-          unroll(/*add_index_boundary_condition=*/!x_tile_fits, vector_size);
+          unroll(/*add_index_boundary_condition=*/!x_tile_fits);
         }
       });
 }
@@ -3163,21 +3160,21 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       !IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
                                             reduction_dimensions.dimensions[2]);
 
-  KernelMappingScheme::IndexingOrder indexing_order;
-  if (reduction_dimensions.is_row_reduction &&
-      // Only try to vectorize+coales memory access for row of even size.
-      // For odd row size, every other row isn't aligned, so can't be
-      // vectorized.
-      reduction_dimensions.dimensions[2] % 2 == 0) {
-    indexing_order = kLinearStridedIndexingX;
-  } else if (IsUnrollingColumnReductionBeneficial(
-                 unnested_hlo, input_shape,
-                 reduction_dimensions.dimensions[2])) {
-    indexing_order = kLinearIndexingX;
-  } else {
-    indexing_order = kStridedIndexingX;
-  }
-
+  KernelMappingScheme::IndexingOrder indexing_order = [&]() {
+    if (reduction_dimensions.is_row_reduction &&
+        // Only try to vectorize+coales memory access for row of even size.
+        // For odd row size, every other row isn't aligned, so can't be
+        // vectorized.
+        reduction_dimensions.dimensions[2] % 2 == 0) {
+      return kLinearStridedIndexingX;
+    } else if (IsUnrollingColumnReductionBeneficial(
+                   unnested_hlo, input_shape,
+                   reduction_dimensions.dimensions[2])) {
+      return kLinearIndexingX;
+    } else {
+      return kStridedIndexingX;
+    }
+  }();
   if (indexing_order == kLinearIndexingX &&
       !reduction_dimensions.is_row_reduction) {
     // Vectorized loads: a single thread reduces two adjacent columns.
@@ -3201,7 +3198,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   int vector_size = 1;
   if (indexing_order == kLinearStridedIndexingX) {
     if (reduction_dimensions.dimensions[2] % 2 == 0 &&
-        // As XLA unroll and suppose LLVM will vectorize,
+        // Assuming XLA will perform the unrolling and LLVM will vectorize,
         // disable the unroll for case that LLVM doesn't vectorize.
         !MayPreventVectorization(*unnested_hlo)) {
       vector_size = 2;

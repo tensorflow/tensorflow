@@ -77,13 +77,13 @@ class KernelMappingScheme {
  public:
   enum { DimZ = 0, DimY, DimX, DimTot };
   enum IndexingOrder {
-  // Threads read consecutive elements.
+    // Thread reads consecutive elements.
     LinearIndexingX,
-  // Threads read strided elements while keeping memory coalescing.
+    // Thread reads strided elements while keeping memory coalescing.
     StridedIndexingX,
-  // Threads read a few consecutive elements then take a strided
-  // step. This can trigger vectorized reads and keep memory
-  // coalescing.
+    // Thread reads a few consecutive elements then take a strided
+    // step. This can trigger vectorized reads and keep memory
+    // coalescing.
     LinearStridedIndexingX
   };
 
@@ -152,11 +152,12 @@ class KernelMappingScheme {
   // elements in the X dimension of a tile, each threads process
   // n=tile_size_x/num_threads_x elements.
   // indexing_order_ define which tile's elements each thread reads.
+
   const IndexingOrder indexing_order_;
-  // vector_size_ only supported for row reduction.
-  // Must be a divisor of tile_sizes_[2]/num_threads_x.
-  // Interesting values are 2 and 4 to trigger vectorized loads on GPUs
-  // while keeping memory coalescing.
+  // vector_size_ only supported for row reduction and must be a divisor
+  // of tile_sizes_[2]/num_threads_x.  Interesting values are 2 and 4
+  // to trigger vectorized loads on GPUs while keeping memory
+  // coalescing.
   const int vector_size_;
 };
 
