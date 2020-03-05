@@ -97,8 +97,8 @@ class BaseActivationsOpModel : public SingleOpModel {
     input_ = AddInput(input);
     // The output scale and input scale might be different.
     if (input.type == TensorType_UINT8 || input.type == TensorType_INT8) {
-      auto output_min = (input.min >= 0)? input.min: input.min * alpha;
-      auto output_max = (input.max >= 0)? input.max: input.max * alpha;
+      auto output_min = (input.min >= 0) ? input.min : input.min * alpha;
+      auto output_max = (input.max >= 0) ? input.max : input.max * alpha;
       output_ = AddOutput({input.type, {}, output_min, output_max});
     } else {
       output_ = AddOutput({input.type, {}});
@@ -489,9 +489,8 @@ TEST(QuantizedActivationsOpTest, LeakyReluUint8) {
                       0.0f, 1.0f, 3.0f,    // Row 1
                       1.0f, -0.5f, -1.0f,  // Row 2
                   },
-                  kQuantizedTolerance*8)));
+                  kQuantizedTolerance * 8)));
 }
-
 
 TEST(QuantizedActivationsOpTest, LeakyReluInt8) {
   const float kMin = -1;
@@ -501,23 +500,23 @@ TEST(QuantizedActivationsOpTest, LeakyReluInt8) {
       /*input=*/{TensorType_INT8, {5, 5}, 5 * kMin, 5 * kMax}, 0.1);
 
   m.SetInput<int8_t>({
-                          -5.0f, -4.6f, -4.2f, -3.8f, -3.4f, // Row 1
-                          -3.0f, -2.6f, -2.2f, -1.8f, -1.4f, // Row 2
-                          -1.0f, -0.6f, -0.2f,  0.2f,  0.6f, // Row 3
-                           1.0f,  1.4f,  1.8f,  2.2f,  2.6f, // Row 4
-                           3.0f,  3.4f,  3.8f,  4.2f,  4.6f, // Row 5
-                      });
+      -5.0f, -4.6f, -4.2f, -3.8f, -3.4f,  // Row 1
+      -3.0f, -2.6f, -2.2f, -1.8f, -1.4f,  // Row 2
+      -1.0f, -0.6f, -0.2f, 0.2f,  0.6f,   // Row 3
+      1.0f,  1.4f,  1.8f,  2.2f,  2.6f,   // Row 4
+      3.0f,  3.4f,  3.8f,  4.2f,  4.6f,   // Row 5
+  });
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      -0.50f, -0.46f, -0.42f, -0.38f, -0.34f, // Row 1
-                      -0.30f, -0.26f, -0.22f, -0.18f, -0.14f, // Row 2
-                      -0.10f, -0.06f, -0.02f,  0.20f,  0.60f, // Row 3
-                       1.00f,  1.40f,  1.80f,  2.20f,  2.60f, // Row 4
-                       3.00f,  3.40f,  3.80f,  4.20f,  4.60f, // Row 5
+                      -0.50f, -0.46f, -0.42f, -0.38f, -0.34f,  // Row 1
+                      -0.30f, -0.26f, -0.22f, -0.18f, -0.14f,  // Row 2
+                      -0.10f, -0.06f, -0.02f, 0.20f,  0.60f,   // Row 3
+                      1.00f,  1.40f,  1.80f,  2.20f,  2.60f,   // Row 4
+                      3.00f,  3.40f,  3.80f,  4.20f,  4.60f,   // Row 5
                   },
-                  kQuantizedTolerance*5)));
+                  kQuantizedTolerance * 5)));
 }
 
 TEST(QuantizedActivationsOpTest, Relu1Int8) {

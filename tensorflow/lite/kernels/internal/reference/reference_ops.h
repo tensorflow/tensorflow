@@ -26,7 +26,6 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
@@ -60,6 +59,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tflite {
 
@@ -265,7 +265,7 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
 }
 
 template <typename T>
-inline void QuantizeLeakyRelu(const LeakyReluParamsQuant& params,
+inline void QuantizeLeakyRelu(const LeakyReluParams& params,
                               const RuntimeShape& input_shape,
                               const T* input_data,
                               const RuntimeShape& output_shape,
@@ -279,16 +279,14 @@ inline void QuantizeLeakyRelu(const LeakyReluParamsQuant& params,
     int32 unclamped_output;
     if (input_value >= 0) {
       unclamped_output = params.output_offset +
-          MultiplyByQuantizedMultiplier(
-              input_value,
-              params.output_multiplier_identity,
-              params.output_shift_identity);
+                         MultiplyByQuantizedMultiplier(
+                             input_value, params.output_multiplier_identity,
+                             params.output_shift_identity);
     } else {
       unclamped_output = params.output_offset +
-          MultiplyByQuantizedMultiplier(
-              input_value,
-              params.output_multiplier_alpha,
-              params.output_shift_alpha);
+                         MultiplyByQuantizedMultiplier(
+                             input_value, params.output_multiplier_alpha,
+                             params.output_shift_alpha);
     }
     const T clamped_output =
         std::min(quantized_max, std::max(quantized_min, unclamped_output));
