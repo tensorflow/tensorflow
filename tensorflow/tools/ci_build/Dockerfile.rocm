@@ -73,7 +73,11 @@ ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 # Add target file to help determine which device(s) to build for
 RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> ${ROCM_PATH}/bin/target.lst'
 
-RUN wget https://www.dropbox.com/s/jixaw2y20vhw4uf/MIOpen-HIP-2.2.0.7630-f38e87a-ubuntu-16.04_amd64.deb && dpkg -i MIOpen*.deb && rm MIOpen*.deb
+# install MIOpen version with support for 3D pooling
+RUN wget https://www.dropbox.com/s/ztr9y09ipm1188i/MIOpen-HIP-2.2.0.7630-f38e87a-ubuntu-16.04_amd64.deb && dpkg -i MIOpen*.deb && rm MIOpen*.deb
+
+# installation of the MIOpen package seems to delete some required links...put them back in
+RUN bash -c 'cd ${ROCM_PATH}/include && ln -s ../miopen/include/miopen* .'
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
