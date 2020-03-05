@@ -177,8 +177,8 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
