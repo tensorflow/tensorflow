@@ -6661,9 +6661,9 @@ receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
     // `begin_indices`, `end_indices`, and `strides` with their canonical
     // values, respectively.
     bool GetSlicedBoundRanges(
-      ::llvm::SmallVectorImpl<int64_t> *begin_indices,
-      ::llvm::SmallVectorImpl<int64_t> *end_indices,
-      ::llvm::SmallVectorImpl<int64_t> *strides);
+      ::llvm::SmallVectorImpl<int64_t> *slice_begin,
+      ::llvm::SmallVectorImpl<int64_t> *slice_end,
+      ::llvm::SmallVectorImpl<int64_t> *slice_stride);
   }];
 }
 
@@ -6710,10 +6710,10 @@ shape of `StridedSlice`'s `input`.
     // `begin_indices`, `end_indices`, and `strides` with their canonical
     // values, respectively.
     bool GetSlicedShapeAndBoundRanges(
-      ::llvm::SmallVectorImpl<int64_t> *shape,
-      ::llvm::SmallVectorImpl<int64_t> *begin_indices,
-      ::llvm::SmallVectorImpl<int64_t> *end_indices,
-      ::llvm::SmallVectorImpl<int64_t> *strides);
+      ::llvm::SmallVectorImpl<int64_t> *input_shape,
+      ::llvm::SmallVectorImpl<int64_t> *slice_begin,
+      ::llvm::SmallVectorImpl<int64_t> *slice_end,
+      ::llvm::SmallVectorImpl<int64_t> *slice_stride);
   }];
 }
 

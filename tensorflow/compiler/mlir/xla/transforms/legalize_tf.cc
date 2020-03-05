@@ -1890,7 +1890,7 @@ class ConvertStridedSliceGradOp
     Value grad = op.dy();
     Type element_type = grad.getType().cast<ShapedType>().getElementType();
 
-    // Perform reshape to undo any new/shrink axies done by strided slice.
+    // Perform reshape to undo any new/shrink axes done by strided slice.
     grad = rewriter.create<xla_hlo::ReshapeOp>(
         op.getLoc(), RankedTensorType::get(shape, element_type), grad);
 
