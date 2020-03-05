@@ -8,10 +8,10 @@ namespace xcore {
 namespace pooling {
 
     typedef struct {
-        uint32_t pool_h;
-        uint32_t pool_w;
-        uint32_t stride_h;
-        uint32_t stride_w;
+        int32_t pool_h;
+        int32_t pool_w;
+        int32_t stride_h;
+        int32_t stride_w;
     } PoolingOptions;
 
     template<int N, class T>
@@ -32,15 +32,19 @@ namespace pooling {
         for (int i = 0; i < map.size(); ++i)
         {
             std::string key(keys[i].ToString());
-            
-            if (key.compare("pool_h") == 0)
-                options->pool_h = values[0].AsInt32();
-            else if (key.compare("pool_w") == 0)
-                options->pool_w = values[1].AsInt32();
-            else if (key.compare("stride_h") == 0)
-                options->stride_h = values[2].AsInt32();
-            else if (key.compare("stride_w") == 0)
-                options->stride_w = values[3].AsInt32();
+
+            if (key.compare("pool") == 0)
+            {
+                auto vec = values[i].AsVector(); // values represent [pool_h, pool_w]
+                options->pool_h = vec[0].AsInt32();
+                options->pool_w = vec[1].AsInt32();
+            }
+            else if (key.compare("stride") == 0)
+            {
+                auto vec = values[i].AsVector(); // values represent [stride_h, stride_w]
+                options->stride_h = vec[0].AsInt32();
+                options->stride_w = vec[1].AsInt32();
+            }
         }
         std::cout << std::endl;
     }
