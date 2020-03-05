@@ -36,8 +36,7 @@ struct PassConfig {
         form_clusters(false),
         inline_functions(true),
         unfold_batch_matmul(true),
-        legalize_tf_while(true),
-        saved_model_import(false) {}
+        legalize_tf_while(true) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -67,10 +66,6 @@ struct PassConfig {
   // Note: This is staging step and will be removed.
   // TODO(b/137395003): Remove post switching legalization.
   bool legalize_tf_while;
-
-  // This flag indicates whether the TF program to be converted is being
-  // imported into MLIR via saved model import.
-  bool saved_model_import;
 };
 
 }  // namespace TFL

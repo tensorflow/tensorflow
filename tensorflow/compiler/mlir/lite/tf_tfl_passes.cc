@@ -84,17 +84,15 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
   }
 
-  if (pass_config.saved_model_import) {
-    // This pass does resource analysis of saved model global tensors and marks
-    // those deemed read-only as immutable.
-    pass_manager->addPass(
-        mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
-    // This pass marks non-exported functions as symbol visibility 'private'
-    // those deemed read-only as immutable.
-    pass_manager->addPass(
-        mlir::tf_saved_model::
-            CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
-  }
+  // This pass does resource analysis of saved model global tensors and marks
+  // those deemed read-only as immutable.
+  pass_manager->addPass(
+      mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+  // This pass marks non-exported functions as symbol visibility 'private'
+  // those deemed read-only as immutable.
+  pass_manager->addPass(
+      mlir::tf_saved_model::
+          CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
 
   // Enable fusing composite ops that can be lowered to built-in TFLite ops.
   if (pass_config.emit_builtin_tflite_ops) {
@@ -139,12 +137,9 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
   // This pass does dead code elimination based on symbol visibility.
   pass_manager->addPass(mlir::createSymbolDCEPass());
-  if (pass_config.saved_model_import) {
-    // This pass 'freezes' immutable global tensors and inlines them as tf
-    // constant ops.
-    pass_manager->addPass(
-        mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
-  }
+  // This pass 'freezes' immutable global tensors and inlines them as tf
+  // constant ops.
+  pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
 
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
