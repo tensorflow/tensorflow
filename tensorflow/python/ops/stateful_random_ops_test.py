@@ -22,6 +22,7 @@ import re
 
 from absl.testing import parameterized
 import numpy as np
+import six
 
 from tensorflow.python.distribute import values as dist_values
 from tensorflow.python.distribute.mirrored_strategy import MirroredStrategy
@@ -612,6 +613,17 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     res2 = g2.normal(shape)
     self.assertAllEqual(res1, res2)
     self.assertAllEqual(g1.state.read_value(), g2.state.read_value())
+
+  @test_util.run_v2_only
+  def testFunArgAlgIsInt(self):
+    """Tests that `algorithm` is `int` when reconstructed from composite tensor.
+    """
+    @def_function.function
+    def f(g):
+      self.assertIsInstance(g.algorithm, six.integer_types)
+      return g.make_seeds(), g
+    gen = random.Generator.from_seed(123, alg="philox")
+    f(gen)
 
   @test_util.run_v2_only
   def testLimitedRetracingWithCompositeTensors(self):

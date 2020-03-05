@@ -226,35 +226,33 @@ def _convert_to_state_tensor(t):
 class GeneratorSpec(type_spec.TypeSpec):
   """TypeSpec for Generator."""
 
-  def __init__(self, shape=None, dtype=None):
+  def __init__(self, shape=None, dtype=None, alg=None):
     self.shape = shape
     self.dtype = dtype
+    self.alg = alg
 
   @property
   def _component_specs(self):
-    return (tensor_spec.TensorSpec(shape=(), dtype=dtypes.resource),
-            tensor_spec.TensorSpec(shape=(), dtype=ALGORITHM_TYPE))
+    return (tensor_spec.TensorSpec(shape=(), dtype=dtypes.resource),)
 
   def _to_components(self, value):
-    return (value.state.handle, ops.convert_to_tensor(value.algorithm,
-                                                      dtype=ALGORITHM_TYPE))
+    return (value.state.handle,)
 
   def _from_components(self, components):
     assert isinstance(components, (list, tuple))
-    assert len(components) == 2
+    assert len(components) == 1
     handle = components[0]
-    alg = components[1]
     state_var = resource_variable_ops.BaseResourceVariable(
         handle=handle, shape=self.shape, dtype=self.dtype,
         trainable=False, handle_deleter=object(), handle_name="RNGVar")
-    return Generator(state=state_var, alg=alg)
+    return Generator(state=state_var, alg=self.alg)
 
   @property
   def value_type(self):
     return Generator
 
   def _serialize(self):
-    return (self.shape, self.dtype)
+    return (self.shape, self.dtype, self.alg)
 
 
 def _create_variable(*args, **kwargs):
@@ -549,7 +547,8 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
 
   @property
   def _type_spec(self):
-    return GeneratorSpec(shape=self.state.shape, dtype=self.state.dtype)
+    return GeneratorSpec(shape=self.state.shape, dtype=self.state.dtype,
+                         alg=self.algorithm)
 
   @property
   def state(self):
