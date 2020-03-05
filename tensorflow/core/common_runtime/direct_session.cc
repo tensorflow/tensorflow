@@ -236,8 +236,9 @@ class DirectSessionFactory : public SessionFactory {
   }
 
   mutex sessions_lock_;
-  std::vector<DirectSession*> sessions_ GUARDED_BY(sessions_lock_);
-  absl::flat_hash_set<string> session_metadata_keys_ GUARDED_BY(sessions_lock_);
+  std::vector<DirectSession*> sessions_ TF_GUARDED_BY(sessions_lock_);
+  absl::flat_hash_set<string> session_metadata_keys_
+      TF_GUARDED_BY(sessions_lock_);
 };
 
 class DirectSessionRegistrar {

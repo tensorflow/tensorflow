@@ -237,7 +237,7 @@ class PyLocalBuffer {
   const Shape on_device_shape_;
   const std::shared_ptr<Device> device_;
   mutable absl::Mutex mu_;
-  std::shared_ptr<SharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
+  std::shared_ptr<SharedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
 
   // The cached value of the buffer on the host, produced either from a call to
   // CopyToHost or from a call to ToLiteral. Once a value has been fetched to
@@ -249,7 +249,7 @@ class PyLocalBuffer {
     Status status;
     std::shared_ptr<Literal> value;
   };
-  std::shared_ptr<HostValue> host_value_ GUARDED_BY(mu_);
+  std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
 };
 
 // Represents a compiled computation that can be executed given handles to

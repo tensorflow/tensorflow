@@ -51,8 +51,8 @@ struct MapDefunOp::ComputeOptions {
   std::function<void(std::function<void()>)> runner;
 
   // Output of a compute call
-  std::vector<PartialTensorShape> output_shapes GUARDED_BY(mu);
-  OpOutputList output GUARDED_BY(mu);
+  std::vector<PartialTensorShape> output_shapes TF_GUARDED_BY(mu);
+  OpOutputList output TF_GUARDED_BY(mu);
   mutex mu;
 
   // Create a copy of output_shapes because every `Compute` may expect a

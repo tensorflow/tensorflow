@@ -415,7 +415,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
      private:
       Status SaveGroup(IteratorStateWriter* writer, const string& name,
                        const std::vector<std::vector<Tensor>>& group)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(strings::StrCat(name, "_size"), group.size()));
         for (int i = 0; i < group.size(); i++) {
@@ -431,7 +431,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
       Status RestoreGroup(IteratorStateReader* reader, const string& name,
                           std::vector<std::vector<Tensor>>* group)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         int64 group_size;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(strings::StrCat(name, "_size"), &group_size));
@@ -450,7 +450,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status StartFlushingGroup(IteratorContext* ctx, int64 key)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         DatasetBase* group_dataset;
         TF_RETURN_IF_ERROR(NewWindowDataset(
             groups_[key], dataset()->input_->output_dtypes(),
@@ -490,13 +490,14 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
       // TODO(mrry): Optimize for dense key space if appropriate.
-      bool end_of_input_ GUARDED_BY(mu_) = false;
-      int64 current_key_ GUARDED_BY(mu_);
-      std::map<int64, std::vector<std::vector<Tensor>>> groups_ GUARDED_BY(mu_);
-      std::unique_ptr<IteratorBase> current_group_iterator_ GUARDED_BY(mu_);
-      std::map<int64, int64> window_sizes_ GUARDED_BY(mu_);
+      bool end_of_input_ TF_GUARDED_BY(mu_) = false;
+      int64 current_key_ TF_GUARDED_BY(mu_);
+      std::map<int64, std::vector<std::vector<Tensor>>> groups_
+          TF_GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> current_group_iterator_ TF_GUARDED_BY(mu_);
+      std::map<int64, int64> window_sizes_ TF_GUARDED_BY(mu_);
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_key_func_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_reduce_func_;
       std::unique_ptr<InstantiatedCapturedFunction>

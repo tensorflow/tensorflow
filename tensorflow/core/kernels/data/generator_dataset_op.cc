@@ -160,9 +160,9 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    bool initialized_ GUARDED_BY(mu_) = false;
-    bool finalized_ GUARDED_BY(mu_) = false;
-    std::vector<Tensor> state_ GUARDED_BY(mu_);
+    bool initialized_ TF_GUARDED_BY(mu_) = false;
+    bool finalized_ TF_GUARDED_BY(mu_) = false;
+    std::vector<Tensor> state_ TF_GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_init_func_;
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_next_func_;
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_finalize_func_;

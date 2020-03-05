@@ -581,11 +581,11 @@ struct TensorValue {
 // Used to store partitioned graphs from function-calling ops.
 struct GraphCollector {
   mutex mu;
-  std::vector<GraphDef> partitioned_graphs GUARDED_BY(mu);
-  GraphDef raw_graph GUARDED_BY(mu);
-  GraphDef optimized_graph GUARDED_BY(mu);
+  std::vector<GraphDef> partitioned_graphs TF_GUARDED_BY(mu);
+  GraphDef raw_graph TF_GUARDED_BY(mu);
+  GraphDef optimized_graph TF_GUARDED_BY(mu);
 
-  bool dirty GUARDED_BY(mu);
+  bool dirty TF_GUARDED_BY(mu);
 
   GraphCollector() : dirty(false) {}
 
@@ -607,7 +607,7 @@ struct GraphCollector {
     dirty = true;
   }
 
-  void ClearGraphs() EXCLUSIVE_LOCKS_REQUIRED(mu) {
+  void ClearGraphs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
     raw_graph.Clear();
     optimized_graph.Clear();
     partitioned_graphs.clear();
@@ -1260,25 +1260,26 @@ class OpKernelContext {
   // Records temp memory allocation. Tensor object is recorded to identify the
   // case where temp memory is used as output memory.
   void record_temp_memory_allocation(int64 size, const Tensor& t)
-      LOCKS_EXCLUDED(tracking_state_->stats_mu);
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size of temporary memory;
-  int64 temp_memory_allocated() const LOCKS_EXCLUDED(tracking_state_->stats_mu);
+  int64 temp_memory_allocated() const
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Records persistent memory allocation, size can be negative indicating
   // deallocation.
   void record_persistent_memory_allocation(int64 size, int64 alloc_id = -1)
-      LOCKS_EXCLUDED(tracking_state_->stats_mu);
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size and ids of persistent memory.
   int64 persistent_memory_allocated() const
-      LOCKS_EXCLUDED(tracking_state_->stats_mu);
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   std::vector<int64> persistent_alloc_ids() const
-      LOCKS_EXCLUDED(tracking_state_->stats_mu);
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Resets counters for temp and persistent memory and recorded ids.
-  void clear_recorded_memory() LOCKS_EXCLUDED(tracking_state_->stats_mu);
+  void clear_recorded_memory() TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   bool input_is_ref(int index) const;
 
@@ -1358,17 +1359,18 @@ class OpKernelContext {
   // recorded.
   struct TrackingState {
     mutable mutex mu;
-    gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators GUARDED_BY(mu);
+    gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators
+        TF_GUARDED_BY(mu);
 
-    UniqueTensorReferences referenced_tensors GUARDED_BY(mu);
+    UniqueTensorReferences referenced_tensors TF_GUARDED_BY(mu);
 
     mutable mutex stats_mu;
-    int64 temp_memory_allocated GUARDED_BY(stats_mu) = 0;
+    int64 temp_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
 
-    int64 persistent_memory_allocated GUARDED_BY(stats_mu) = 0;
+    int64 persistent_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
     gtl::InlinedVector<std::pair<const void*, int64>, 2>
-        temp_tensor_buffer_and_size GUARDED_BY(stats_mu);
-    gtl::InlinedVector<int64, 2> persistent_alloc_ids GUARDED_BY(stats_mu);
+        temp_tensor_buffer_and_size TF_GUARDED_BY(stats_mu);
+    gtl::InlinedVector<int64, 2> persistent_alloc_ids TF_GUARDED_BY(stats_mu);
   };
   std::unique_ptr<TrackingState> tracking_state_;
 

@@ -283,7 +283,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };
 
   const int64 batch_size_;

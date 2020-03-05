@@ -254,10 +254,10 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
 
      private:
       mutex mu_;
-      std::unique_ptr<IteratorBase> selector_input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> selector_input_impl_ TF_GUARDED_BY(mu_);
       std::vector<std::unique_ptr<IteratorBase>> data_input_impls_
-          GUARDED_BY(mu_);
-      int64 num_active_inputs_ GUARDED_BY(mu_);
+          TF_GUARDED_BY(mu_);
+      int64 num_active_inputs_ TF_GUARDED_BY(mu_);
     };
 
     static PartialTensorShape MostSpecificCompatibleShape(

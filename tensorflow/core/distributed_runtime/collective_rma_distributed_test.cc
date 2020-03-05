@@ -264,7 +264,7 @@ class CollRMADistTest : public ::testing::Test {
   std::vector<FakeWorker*> workers_;
   std::unique_ptr<CollectiveRemoteAccessDistributed> rma_;
   mutex mu_;
-  int num_done_ GUARDED_BY(mu_);
+  int num_done_ TF_GUARDED_BY(mu_);
   condition_variable done_;
   Tensor expected_value_;
   Tensor to_tensor_;

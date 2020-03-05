@@ -199,8 +199,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-    int64 next_index_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+    int64 next_index_ TF_GUARDED_BY(mu_);
   };
 
   const int64 num_shards_;

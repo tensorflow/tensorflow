@@ -402,7 +402,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   mutable mutex mu_;
 
-  int next_handle_ GUARDED_BY(mu_);
+  int next_handle_ TF_GUARDED_BY(mu_);
 
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
@@ -423,7 +423,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     }
   };
   std::unique_ptr<std::unordered_map<Handle, std::unique_ptr<Item>>> items_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 
   ProcessFunctionLibraryRuntime* parent_ = nullptr;  // not owned.
 

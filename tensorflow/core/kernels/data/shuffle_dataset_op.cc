@@ -268,7 +268,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    void ResetRngs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    void ResetRngs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       // Reset the generators based on the current iterator seeds.
       parent_generator_ = random::PhiloxRandom(seed_, seed2_);
       generator_ =
@@ -399,8 +399,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     }
 
     mutex mu_;
-    int64 seed_ GUARDED_BY(mu_);
-    int64 seed2_ GUARDED_BY(mu_);
+    int64 seed_ TF_GUARDED_BY(mu_);
+    int64 seed2_ TF_GUARDED_BY(mu_);
 
    private:
     // Used to represent slices of `buffer_` that belong to different epochs.
@@ -416,26 +416,26 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     };
 
     random::SingleSampleAdapter<random::PhiloxRandom>::ResultType Random()
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       num_random_samples_++;
       auto out = generator_();
       return out;
     }
 
-    std::unique_ptr<std::vector<Tensor>[]> buffer_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-    int64 epoch_ GUARDED_BY(mu_);
-    int64 num_elements_ GUARDED_BY(mu_);
+    std::unique_ptr<std::vector<Tensor>[]> buffer_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+    int64 epoch_ TF_GUARDED_BY(mu_);
+    int64 num_elements_ TF_GUARDED_BY(mu_);
     // Indices into `buffer_` indicating which data belongs to which epoch.
     // The slice at the front of the deque references data from the earliest
     // buffered epoch. It is an invariant that all slices reference
     // non-overlapping sections of `buffer_`.
-    std::deque<std::unique_ptr<Slice>> slices_ GUARDED_BY(mu_);
-    random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
+    std::deque<std::unique_ptr<Slice>> slices_ TF_GUARDED_BY(mu_);
+    random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
-        GUARDED_BY(mu_);
-    int64 num_random_samples_ GUARDED_BY(mu_) = 0;
-    bool data_produced_ GUARDED_BY(mu_) = false;
+        TF_GUARDED_BY(mu_);
+    int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
+    bool data_produced_ TF_GUARDED_BY(mu_) = false;
   };
 
   const DatasetBase* const input_;

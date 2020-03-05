@@ -68,10 +68,10 @@ class CallOptions {
 
  private:
   mutex mu_;
-  CancelFunction cancel_func_ GUARDED_BY(mu_);
+  CancelFunction cancel_func_ TF_GUARDED_BY(mu_);
 
   // RPC operation timeout in milliseconds.
-  int64 timeout_in_ms_ GUARDED_BY(mu_) = 0;
+  int64 timeout_in_ms_ TF_GUARDED_BY(mu_) = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CallOptions);
 };

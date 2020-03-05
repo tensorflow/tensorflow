@@ -360,7 +360,7 @@ class GrpcWorkerServiceThread {
   grpc::WorkerService::AsyncService* const worker_service_;
 
   mutex shutdown_mu_;
-  bool is_shutdown_ GUARDED_BY(shutdown_mu_);
+  bool is_shutdown_ TF_GUARDED_BY(shutdown_mu_);
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcWorkerServiceThread);
 };
 
@@ -411,7 +411,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
   std::unique_ptr<GrpcResponseCache> cache_;
   mutex service_shutdown_mu_;
-  bool is_shutdown_ GUARDED_BY(service_shutdown_mu_);
+  bool is_shutdown_ TF_GUARDED_BY(service_shutdown_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcWorkerService);
 };

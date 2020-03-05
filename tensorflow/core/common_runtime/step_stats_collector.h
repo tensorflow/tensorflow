@@ -198,14 +198,14 @@ class StepStatsCollector : public StepStatsCollectorInterface {
   typedef std::vector<std::unique_ptr<NodeExecStatsWrapper>> NodeStatsVector;
   typedef std::unordered_map<uint32, string> ThreadNamesMap;
 
-  void FinalizeInternal() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void FinalizeInternal() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutex mu_;
-  bool finalized_ GUARDED_BY(mu_);
-  std::unordered_map<string, NodeStatsVector> dev_stats_ GUARDED_BY(mu_);
-  std::unordered_map<string, ThreadNamesMap> thread_names_ GUARDED_BY(mu_);
-  StepStats* step_stats_ GUARDED_BY(mu_);
-  uint64 collected_nodes_ GUARDED_BY(mu_) = 0;
+  bool finalized_ TF_GUARDED_BY(mu_);
+  std::unordered_map<string, NodeStatsVector> dev_stats_ TF_GUARDED_BY(mu_);
+  std::unordered_map<string, ThreadNamesMap> thread_names_ TF_GUARDED_BY(mu_);
+  StepStats* step_stats_ TF_GUARDED_BY(mu_);
+  uint64 collected_nodes_ TF_GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace tensorflow

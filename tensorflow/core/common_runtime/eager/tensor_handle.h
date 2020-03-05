@@ -241,17 +241,17 @@ class TensorHandle : public core::RefCounted {
 
   // Map of local mirrors. This can include both ready and non-ready mirrors.
   std::unordered_map<const tensorflow::Device*, LocalTensorHandleData>
-      local_mirrors_ GUARDED_BY(mu_);
+      local_mirrors_ TF_GUARDED_BY(mu_);
 #if !defined(IS_MOBILE_PLATFORM)
   // TODO(yujingzhang): Remove resource_shape_mirrors_ once scalable per-replica
   // variable is ready, since we could get the shape locally without remote copy
   // then.
   std::unordered_map<string, RemoteTensorHandleData> resource_shape_mirrors_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
   // TODO(gjn): Is std::map the most optimal choice here? Perhaps this should be
   // a fixed size map.
   std::unordered_map<string, RemoteTensorHandleData> remote_mirrors_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 #endif
 
   // `ctx` is only guaranteed to be set if the handle is not "ready". This is

@@ -438,7 +438,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextFromExperiment(IteratorContext* ctx,
                                    std::vector<Tensor>* out_tensors,
                                    bool* end_of_sequence)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         DCHECK_GE(branch_index_, 0);
         DCHECK_LT(branch_index_, histograms_.size());
 
@@ -458,7 +458,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       // Select the fastest input to use based on the histograms of timings
       // of the completed iterations. The input with the best 90th percentile
       // iteration time is selected.
-      void SelectFastestInputIndex() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      void SelectFastestInputIndex() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         fastest_index_ = 0;
 
         VLOG(2) << "90.0 percentile iteration time:";
@@ -479,7 +479,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
 
       Status MakeCurrentIterator(IteratorContext* ctx, int64 branch_index,
                                  bool is_experiment)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         DCHECK_GE(branch_index, 0);
         DCHECK_LT(branch_index, histograms_.size());
 
@@ -523,19 +523,19 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       }
 
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
       std::vector<std::unique_ptr<InstantiatedCapturedFunction>>
-          instantiated_captured_funcs_ GUARDED_BY(mu_);
+          instantiated_captured_funcs_ TF_GUARDED_BY(mu_);
 
       // For tracking the time taken for each input's iterations.
-      std::vector<histogram::Histogram> histograms_ GUARDED_BY(mu_);
+      std::vector<histogram::Histogram> histograms_ TF_GUARDED_BY(mu_);
       int64 fastest_index_ = -1;
       std::unique_ptr<Tensor> wrapper_dataset_tensor_;
       std::unique_ptr<IteratorBase> current_iterator_;
 
       // Keeps track of which (branch, experiment) the next iteration is on.
-      int64 branch_index_ GUARDED_BY(mu_) = 0;
-      int64 experiment_counter_ GUARDED_BY(mu_) = 0;
+      int64 branch_index_ TF_GUARDED_BY(mu_) = 0;
+      int64 experiment_counter_ TF_GUARDED_BY(mu_) = 0;
     };  // class Iterator
 
     const DatasetBase* const input_;

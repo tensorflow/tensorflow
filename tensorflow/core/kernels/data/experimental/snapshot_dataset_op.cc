@@ -425,7 +425,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       Status InitializeIterator(
           IteratorContext* ctx,
           const experimental::SnapshotMetadataRecord& metadata)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         std::string run_id = "";
         if (!dataset()->snapshot_name_.empty()) {
           // We have overridden the snapshot with a custom name, so we don't
@@ -767,7 +767,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
-        string GetNextFilename() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        string GetNextFilename() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
           if (next_file_index_ >= filenames_.size()) {
             return "";
           }
@@ -823,7 +823,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         }
 
         Status WriteStatus(IteratorStateWriter* writer, size_t index,
-                           const Status& status) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                           const Status& status)
+            TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               CodeKey(index), static_cast<int64>(status.code())));
           if (!status.ok()) {
@@ -834,7 +835,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         }
 
         Status ReadStatus(IteratorStateReader* reader, size_t index,
-                          Status* status) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                          Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
           int64 code_int;
           TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
           error::Code code = static_cast<error::Code>(code_int);
@@ -868,26 +869,26 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         condition_variable cond_var_;
 
         const string hash_dir_;
-        tstring run_id_ GUARDED_BY(mu_);
-        tstring run_dir_ GUARDED_BY(mu_);
+        tstring run_id_ TF_GUARDED_BY(mu_);
+        tstring run_dir_ TF_GUARDED_BY(mu_);
         int64 version_;
         std::vector<tstring> filenames_;
 
-        uint64 elements_produced_ GUARDED_BY(mu_) = 0;
-        int64 time_spent_micros_ GUARDED_BY(mu_) = 0;
-        double kbytes_read_ GUARDED_BY(mu_) = 0;
-        size_t next_file_index_ GUARDED_BY(mu_) = 0;
-        int64 num_files_done_ GUARDED_BY(mu_) = 0;
+        uint64 elements_produced_ TF_GUARDED_BY(mu_) = 0;
+        int64 time_spent_micros_ TF_GUARDED_BY(mu_) = 0;
+        double kbytes_read_ TF_GUARDED_BY(mu_) = 0;
+        size_t next_file_index_ TF_GUARDED_BY(mu_) = 0;
+        int64 num_files_done_ TF_GUARDED_BY(mu_) = 0;
 
         std::unique_ptr<thread::ThreadPool> thread_pool_;
-        int64 num_active_threads_ GUARDED_BY(mu_) = 0;
-        std::deque<BufferElement> buffer_ GUARDED_BY(mu_);
-        bool cancelled_ GUARDED_BY(mu_) = false;
-        bool background_threads_started_ GUARDED_BY(mu_) = false;
-        bool background_threads_finished_ GUARDED_BY(mu_) = false;
-        int64 num_elements_read_ GUARDED_BY(mu_) = 0;
+        int64 num_active_threads_ TF_GUARDED_BY(mu_) = 0;
+        std::deque<BufferElement> buffer_ TF_GUARDED_BY(mu_);
+        bool cancelled_ TF_GUARDED_BY(mu_) = false;
+        bool background_threads_started_ TF_GUARDED_BY(mu_) = false;
+        bool background_threads_finished_ TF_GUARDED_BY(mu_) = false;
+        int64 num_elements_read_ TF_GUARDED_BY(mu_) = 0;
         // curr_filenames_ tracks which file is being read by each thread.
-        std::vector<tstring> curr_filenames_ GUARDED_BY(mu_);
+        std::vector<tstring> curr_filenames_ TF_GUARDED_BY(mu_);
       };
 
       class SnapshotWriterIterator : public DatasetIterator<Dataset> {
@@ -1207,7 +1208,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           return snapshot_data_filename;
         }
 
-        Status FillBuffer(IteratorContext* ctx) LOCKS_EXCLUDED(mu_) {
+        Status FillBuffer(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
           BufferElement elem;
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, &elem.value, &elem.end_of_sequence));
@@ -1433,28 +1434,28 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         // 5. By the background threads when they finish.
         condition_variable cond_var_;
 
-        BufferElement next_elem_ GUARDED_BY(mu_);
+        BufferElement next_elem_ TF_GUARDED_BY(mu_);
         std::unique_ptr<IteratorBase> input_impl_;
 
         const string hash_dir_;
-        tstring run_id_ GUARDED_BY(mu_);
-        tstring run_dir_ GUARDED_BY(mu_);
-        double compression_ratio_ GUARDED_BY(mu_) = 0.0;
-        bool is_restored_ GUARDED_BY(mu_) = false;
+        tstring run_id_ TF_GUARDED_BY(mu_);
+        tstring run_dir_ TF_GUARDED_BY(mu_);
+        double compression_ratio_ TF_GUARDED_BY(mu_) = 0.0;
+        bool is_restored_ TF_GUARDED_BY(mu_) = false;
 
-        uint64 elements_produced_ GUARDED_BY(mu_) = 0;
-        int64 time_spent_micros_ GUARDED_BY(mu_) = 0;
-        int64 bytes_produced_ GUARDED_BY(mu_) = 0;
+        uint64 elements_produced_ TF_GUARDED_BY(mu_) = 0;
+        int64 time_spent_micros_ TF_GUARDED_BY(mu_) = 0;
+        int64 bytes_produced_ TF_GUARDED_BY(mu_) = 0;
 
-        std::deque<BufferElement> buffer_ GUARDED_BY(mu_);
-        bool snapshot_failed_ GUARDED_BY(mu_) = false;
-        bool cancelled_ GUARDED_BY(mu_) = false;
-        bool first_call_ GUARDED_BY(mu_) = true;
-        bool end_of_sequence_ GUARDED_BY(mu_) = false;
-        bool written_final_metadata_file_ GUARDED_BY(mu_) = false;
-        uint64 next_file_index_ GUARDED_BY(mu_) = 0;
+        std::deque<BufferElement> buffer_ TF_GUARDED_BY(mu_);
+        bool snapshot_failed_ TF_GUARDED_BY(mu_) = false;
+        bool cancelled_ TF_GUARDED_BY(mu_) = false;
+        bool first_call_ TF_GUARDED_BY(mu_) = true;
+        bool end_of_sequence_ TF_GUARDED_BY(mu_) = false;
+        bool written_final_metadata_file_ TF_GUARDED_BY(mu_) = false;
+        uint64 next_file_index_ TF_GUARDED_BY(mu_) = 0;
         std::unique_ptr<thread::ThreadPool> thread_pool_;
-        int64 num_active_threads_ GUARDED_BY(mu_) = 0;
+        int64 num_active_threads_ TF_GUARDED_BY(mu_) = 0;
         int64 num_elements_written_ = 0;
       };
 
@@ -1488,9 +1489,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         std::unique_ptr<IteratorBase> input_impl_;
       };
 
-      string hash_dir_ GUARDED_BY(mu_);
-      SnapshotMode state_ GUARDED_BY(mu_);
-      std::unique_ptr<IteratorBase> iterator_ GUARDED_BY(mu_);
+      string hash_dir_ TF_GUARDED_BY(mu_);
+      SnapshotMode state_ TF_GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> iterator_ TF_GUARDED_BY(mu_);
 
       mutex mu_;
     };

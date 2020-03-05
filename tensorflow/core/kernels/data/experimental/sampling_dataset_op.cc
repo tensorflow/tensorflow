@@ -137,7 +137,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     }
 
    protected:
-    void ResetRngs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    void ResetRngs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       // Reset the generators based on the current iterator seeds.
       parent_generator_ = random::PhiloxRandom(seeds_.first, seeds_.second);
       generator_ =
@@ -186,10 +186,10 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     }
 
     mutex mu_;
-    std::pair<int64, int64> seeds_ GUARDED_BY(mu_);
+    std::pair<int64, int64> seeds_ TF_GUARDED_BY(mu_);
 
    private:
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 
     float Random() {
       mutex_lock l(mu_);
@@ -202,10 +202,10 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     }
 
     // random util
-    random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
+    random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
-        GUARDED_BY(mu_);
-    int64 num_random_samples_ GUARDED_BY(mu_) = 0;
+        TF_GUARDED_BY(mu_);
+    int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
   };
 
   const float rate_;

@@ -159,9 +159,9 @@ class GpuExecutable : public Executable {
   // `ResolveConstantGlobals`.
   tensorflow::mutex module_handle_mutex_;
   std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
-      module_handles_ GUARDED_BY(module_handle_mutex_);
+      module_handles_ TF_GUARDED_BY(module_handle_mutex_);
   std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
-      module_globals_ GUARDED_BY(module_handle_mutex_);
+      module_globals_ TF_GUARDED_BY(module_handle_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

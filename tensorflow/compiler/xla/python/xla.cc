@@ -73,7 +73,7 @@ namespace {
 
 struct Uniquer {
   absl::Mutex mu;
-  NameUniquer name_uniquer GUARDED_BY(mu);
+  NameUniquer name_uniquer TF_GUARDED_BY(mu);
 };
 
 Uniquer* GetUniquer() {

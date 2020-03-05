@@ -241,8 +241,9 @@ class PyTpuBuffer {
   // `child_buffers_` stores the child buffers; else, `device_buffer_` stores
   // the data content and `child_buffers_` is empty.
   mutable absl::Mutex mu_;
-  std::shared_ptr<TpuSharedBuffer> device_buffer_ GUARDED_BY(mu_);
-  std::vector<std::shared_ptr<TpuSharedBuffer>> child_buffers_ GUARDED_BY(mu_);
+  std::shared_ptr<TpuSharedBuffer> device_buffer_ TF_GUARDED_BY(mu_);
+  std::vector<std::shared_ptr<TpuSharedBuffer>> child_buffers_
+      TF_GUARDED_BY(mu_);
   // The cached value of the buffer on the host, produced either from a call to
   // CopyToHost or from a call to ToLiteral. Once a value has been fetched to
   // the host, it persists Delete() is called or the PyTpuBuffer is destroyed.
@@ -255,7 +256,7 @@ class PyTpuBuffer {
     Status status;
     std::shared_ptr<Literal> value;
   };
-  std::shared_ptr<HostValue> host_value_ GUARDED_BY(mu_);
+  std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
 };
 
 // Represents a compiled computation that can be executed given handles to

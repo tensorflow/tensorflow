@@ -490,8 +490,9 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     }
 
     mutex m;
-    std::vector<CuptiTracerEvent> events GUARDED_BY(m);
-    absl::flat_hash_map<uint32, CorrelationInfo> correlation_info GUARDED_BY(m);
+    std::vector<CuptiTracerEvent> events TF_GUARDED_BY(m);
+    absl::flat_hash_map<uint32, CorrelationInfo> correlation_info
+        TF_GUARDED_BY(m);
   };
   absl::FixedArray<PerDeviceCollector> per_device_collector_;
 

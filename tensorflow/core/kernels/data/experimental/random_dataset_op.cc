@@ -123,17 +123,17 @@ class RandomDatasetOp::Dataset : public DatasetBase {
 
    private:
     random::SingleSampleAdapter<random::PhiloxRandom>::ResultType Random()
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       num_random_samples_++;
       auto out = generator_();
       return out;
     }
     const std::pair<int64, int64> seeds_;
     mutex mu_;
-    random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
+    random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
-        GUARDED_BY(mu_);
-    int64 num_random_samples_ GUARDED_BY(mu_) = 0;
+        TF_GUARDED_BY(mu_);
+    int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
   };
 
   const std::pair<int64, int64> seeds_;
