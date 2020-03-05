@@ -1342,7 +1342,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     <tf.RaggedTensor [[3, 1], [], [2, 1], [1], []]>
 
     """
-    if self._cached_row_lengths is not None:
+    if self._cached_row_lengths is not None and axis == 1:
       return self._cached_row_lengths
 
     with ops.name_scope(name, "RaggedRowLengths", [self]):
