@@ -195,6 +195,8 @@ int main(int argc, char **argv) {
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
   pass_config.inline_functions = inline_functions;
+  if (import_saved_model || import_saved_model_v1)
+    pass_config.saved_model_import = true;
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
   pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
