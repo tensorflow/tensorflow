@@ -54,9 +54,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_
 #define TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_
 
-#include <stdint.h>
-
 #include "tensorflow/lite/micro/micro_error_reporter.h"
+
+#include <stdint.h>
 
 namespace micro_test {
 extern int tests_passed;
@@ -65,7 +65,6 @@ extern bool is_test_complete;
 extern bool did_test_fail;
 extern tflite::ErrorReporter* reporter;
 }  // namespace micro_test
-
 
 #define TF_LITE_MICRO_TESTS_BEGIN              \
   namespace micro_test {                       \
