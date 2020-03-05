@@ -506,6 +506,8 @@ class Progbar(object):
         others will be averaged by the progbar before display.
       interval: Minimum visual progress update interval (in seconds).
       unit_name: Display name for step counts (usually "step" or "sample").
+      ignore_first: Whether to ignore the duration of the first step when
+        estimating the ETA.
   """
 
   def __init__(self,
@@ -514,7 +516,8 @@ class Progbar(object):
                verbose=1,
                interval=0.05,
                stateful_metrics=None,
-               unit_name='step'):
+               unit_name='step',
+               ignore_first=True):
     self.target = target
     self.width = width
     self.verbose = verbose
@@ -538,6 +541,9 @@ class Progbar(object):
     self._values_order = []
     self._start = time.time()
     self._last_update = 0
+
+    self._ignore_first = ignore_first
+    self._time_after_first_step = None
 
   def update(self, current, values=None, finalize=None):
     """Updates the progress bar.
@@ -610,10 +616,7 @@ class Progbar(object):
       self._total_width = len(bar)
       sys.stdout.write(bar)
 
-      if current:
-        time_per_unit = (now - self._start) / current
-      else:
-        time_per_unit = 0
+      time_per_unit = self._estimate_step_duration(current, now)
 
       if self.target is None or finalize:
         if time_per_unit >= 1 or time_per_unit == 0:
@@ -676,6 +679,34 @@ class Progbar(object):
 
   def add(self, n, values=None):
     self.update(self._seen_so_far + n, values)
+
+  def _estimate_step_duration(self, current, now):
+    """
+    Given the step number `current` and the corresponding time `now`
+    this function returns an estimate for how long a single step
+    takes. If this is called before one step has been completed
+    (i.e. `current == 0`) then zero is given as an estimate. If
+    `ignore_first` is set for this `Progbar` instance, then
+    the duration estimate ignores the duration of the (assumed to
+    be non-representative) first step.
+    Arguments:
+      current: Index of current step.
+      now: The current time.
+
+    Returns: Estimate of the duration of a single step.
+
+    """
+    if current:
+      if self._ignore_first and self._time_after_first_step is not None:
+        time_per_unit = (now - self._time_after_first_step) / (current - 1)
+      else:
+        time_per_unit = (now - self._start) / current
+
+      if current == 1:
+        self._time_after_first_step = now
+      return time_per_unit
+    else:
+      return 0
 
 
 def make_batches(size, batch_size):
