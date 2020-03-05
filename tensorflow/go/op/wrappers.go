@@ -9900,6 +9900,71 @@ func EncodeProto(scope *Scope, sizes tf.Output, values []tf.Output, field_names 
 	return op.Output(0)
 }
 
+// Creates an iterator for reading from the tf.data service.
+//
+// Returns the created operation.
+func MakeDataServiceIterator(scope *Scope, dataset tf.Output, epoch_id tf.Output, iterator tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MakeDataServiceIterator",
+		Input: []tf.Input{
+			dataset, epoch_id, iterator,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Begins a tf.data service dataset epoch.
+func BeginEpoch(scope *Scope, dataset_id tf.Output, address tf.Output, protocol tf.Output) (epoch_id tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BeginEpoch",
+		Input: []tf.Input{
+			dataset_id, address, protocol,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Registers a dataset with the tf.data service.
+func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64) (dataset_id tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"external_state_policy": external_state_policy}
+	opspec := tf.OpSpec{
+		Type: "RegisterDataset",
+		Input: []tf.Input{
+			dataset, address, protocol,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that reads data from the tf.data service.
+func DataServiceDataset(scope *Scope, address tf.Output, protocol tf.Output, max_outstanding_requests tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "DataServiceDataset",
+		Input: []tf.Input{
+			address, protocol, max_outstanding_requests,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates a dataset that contains the unique elements of `input_dataset`.
 func UniqueDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
 	if scope.Err() != nil {
