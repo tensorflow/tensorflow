@@ -125,7 +125,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("seed", &seed_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("seed2", &seed2_));
 
-    mode_ = kSnapshotModeAuto;
+    mode_ = snapshot_util::kModeAuto;
     if (ctx->HasAttr("mode")) {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_));
     }
@@ -160,14 +160,15 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument(
             "pending_snapshot_expiry_seconds must be at least 1 second."));
 
-    OP_REQUIRES(
-        ctx,
-        mode_ == kSnapshotModeAuto || mode_ == kSnapshotModeRead ||
-            mode_ == kSnapshotModeWrite || mode_ == kSnapshotModePassthrough,
-        errors::InvalidArgument("mode must be either '", kSnapshotModeAuto,
-                                "', '", kSnapshotModeRead, "', '",
-                                kSnapshotModeWrite, "', or '",
-                                kSnapshotModePassthrough, "'."));
+    OP_REQUIRES(ctx,
+                mode_ == snapshot_util::kModeAuto ||
+                    mode_ == snapshot_util::kModeRead ||
+                    mode_ == snapshot_util::kModeWrite ||
+                    mode_ == snapshot_util::kModePassthrough,
+                errors::InvalidArgument(
+                    "mode must be either '", snapshot_util::kModeAuto, "', '",
+                    snapshot_util::kModeRead, "', '", snapshot_util::kModeWrite,
+                    "', or '", snapshot_util::kModePassthrough, "'."));
   }
 
  protected:
@@ -190,7 +191,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     uint64 hash;
     OP_REQUIRES_OK(ctx, ComputeDatasetHash(graph_def, path, &hash));
 
-    Status dump_status = SnapshotDumpDatasetGraph(path, hash, &graph_def);
+    Status dump_status =
+        snapshot_util::DumpDatasetGraph(path, hash, &graph_def);
     if (!dump_status.ok()) {
       LOG(WARNING) << "Unable to write graphdef to disk, error: "
                    << dump_status.ToString();
@@ -376,8 +378,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         if (iterator_ == nullptr) {
           experimental::SnapshotMetadataRecord metadata;
-          Status s = SnapshotReadMetadataFile(hash_dir_, &metadata);
-          TF_RETURN_IF_ERROR(SnapshotDetermineOpState(
+          Status s = snapshot_util::ReadMetadataFile(hash_dir_, &metadata);
+          TF_RETURN_IF_ERROR(snapshot_util::DetermineOpState(
               dataset()->mode_, s, &metadata,
               dataset()->pending_snapshot_expiry_seconds_, &state_));
           VLOG(2) << "Snapshot state: " << state_;
@@ -411,10 +413,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         {
           int64 temp;
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kState), &temp));
-          state_ = SnapshotMode(temp);
+          state_ = snapshot_util::Mode(temp);
         }
         experimental::SnapshotMetadataRecord metadata;
-        TF_RETURN_IF_ERROR(SnapshotReadMetadataFile(hash_dir_, &metadata));
+        TF_RETURN_IF_ERROR(
+            snapshot_util::ReadMetadataFile(hash_dir_, &metadata));
         TF_RETURN_IF_ERROR(InitializeIterator(ctx, metadata));
         VLOG(2) << "Restoring Snapshot iterator: " << state_;
         return RestoreInput(ctx, reader, iterator_);
@@ -434,13 +437,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         }
 
         switch (state_) {
-          case WRITER:
+          case snapshot_util::WRITER:
             iterator_ = absl::make_unique<SnapshotWriterIterator>(
                 SnapshotWriterIterator::Params{
                     dataset(), absl::StrCat(prefix(), "WriterImpl")},
                 hash_dir_, run_id);
             break;
-          case READER:
+          case snapshot_util::READER:
             if (run_id.empty() && metadata.run_id().empty()) {
               return errors::NotFound(
                   "Could not find a valid snapshot to read.");
@@ -468,7 +471,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                     dataset(), absl::StrCat(prefix(), "ReaderImpl")},
                 hash_dir_, run_id, metadata.version());
             break;
-          case PASSTHROUGH:
+          case snapshot_util::PASSTHROUGH:
             iterator_ = absl::make_unique<SnapshotPassthroughIterator>(
                 SnapshotPassthroughIterator::Params{
                     dataset(), absl::StrCat(prefix(), "PassthroughImpl")});
@@ -727,8 +730,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           std::unique_ptr<RandomAccessFile> file;
           TF_RETURN_IF_ERROR(
               Env::Default()->NewRandomAccessFile(filename, &file));
-          SnapshotReader reader(file.get(), dataset()->compression_, version_,
-                                dataset()->output_dtypes());
+          snapshot_util::Reader reader(file.get(), dataset()->compression_,
+                                       version_, dataset()->output_dtypes());
 
           while (true) {
             // Wait for a slot in the buffer.
@@ -953,7 +956,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 }
                 metadata.set_finalized(false);
                 TF_RETURN_IF_ERROR(
-                    SnapshotWriteMetadataFile(hash_dir_, &metadata));
+                    snapshot_util::WriteMetadataFile(hash_dir_, &metadata));
               }
               for (int i = 0; i < dataset()->num_writer_threads_; ++i) {
                 ++num_active_threads_;
@@ -1252,7 +1255,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         Status ProcessOneElement(int64* bytes_written,
                                  string* snapshot_data_filename,
                                  std::unique_ptr<WritableFile>* file,
-                                 std::unique_ptr<SnapshotWriter>* writer,
+                                 std::unique_ptr<snapshot_util::Writer>* writer,
                                  bool* end_of_processing) {
           profiler::TraceMe activity(
               [&]() {
@@ -1312,7 +1315,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               *snapshot_data_filename = GetSnapshotFilename();
               TF_RETURN_IF_ERROR(Env::Default()->NewAppendableFile(
                   *snapshot_data_filename, file));
-              *writer = absl::make_unique<SnapshotWriter>(
+              *writer = absl::make_unique<snapshot_util::Writer>(
                   file->get(), dataset()->compression_, kCurrentVersion,
                   dataset()->output_dtypes());
               *bytes_written = 0;
@@ -1329,12 +1332,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             if (!written_final_metadata_file_) {
               experimental::SnapshotMetadataRecord metadata;
               TF_RETURN_IF_ERROR(
-                  SnapshotReadMetadataFile(hash_dir_, &metadata));
+                  snapshot_util::ReadMetadataFile(hash_dir_, &metadata));
 
               if (metadata.run_id() == run_id_) {
                 metadata.set_finalized(true);
                 TF_RETURN_IF_ERROR(
-                    SnapshotWriteMetadataFile(hash_dir_, &metadata));
+                    snapshot_util::WriteMetadataFile(hash_dir_, &metadata));
               } else {
                 // TODO(frankchn): We lost the race, remove all snapshots.
               }
@@ -1366,9 +1369,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             cond_var_.notify_all();
             return;
           }
-          std::unique_ptr<SnapshotWriter> writer(
-              new SnapshotWriter(file.get(), dataset()->compression_,
-                                 kCurrentVersion, dataset()->output_dtypes()));
+          std::unique_ptr<snapshot_util::Writer> writer(
+              new snapshot_util::Writer(file.get(), dataset()->compression_,
+                                        kCurrentVersion,
+                                        dataset()->output_dtypes()));
 
           bool end_of_processing = false;
           while (!end_of_processing) {
@@ -1389,8 +1393,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         }
 
         Status ShouldCloseFile(const string& filename, uint64 bytes_written,
-                               SnapshotWriter* writer, WritableFile* file,
-                               bool* should_close) {
+                               snapshot_util::Writer* writer,
+                               WritableFile* file, bool* should_close) {
           // If the compression ratio has been estimated, use it to decide
           // whether the file should be closed. We avoid estimating the
           // compression ratio repeatedly because it requires syncing the file,
@@ -1490,7 +1494,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       };
 
       string hash_dir_ TF_GUARDED_BY(mu_);
-      SnapshotMode state_ TF_GUARDED_BY(mu_);
+      snapshot_util::Mode state_ TF_GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> iterator_ TF_GUARDED_BY(mu_);
 
       mutex mu_;
