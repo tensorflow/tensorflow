@@ -1677,7 +1677,6 @@ cuda_py_test(
     name = "bias_op_deterministic_test",
     size = "medium",
     srcs = ["bias_op_deterministic_test.py"],
-    xla_enable_strict_auto_jit = False,
     deps = [
         ":bias_op_base",
     ],
