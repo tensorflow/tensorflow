@@ -521,6 +521,7 @@ py_test(
     name = "ragged_gather_op_test",
     srcs = ["ragged_gather_op_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":ragged_factory_ops",
