@@ -537,6 +537,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::CeilOp>,
                    PointwiseToLinalgConverter<xla_lhlo::CompareOp>,
                    PointwiseToLinalgConverter<xla_lhlo::ConvertOp>,
+                   // TODO(ataei): Remove this pattern, CopyOp is folded away.
                    PointwiseToLinalgConverter<xla_lhlo::CopyOp>,
                    PointwiseToLinalgConverter<xla_lhlo::CosOp>,
                    PointwiseToLinalgConverter<xla_lhlo::DivOp>,

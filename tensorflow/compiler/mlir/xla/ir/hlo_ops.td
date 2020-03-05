@@ -908,6 +908,7 @@ def HLO_ConvOp : HLO_Op<"conv", [NoSideEffect]>, BASE_HLO_ConvOp {
 def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CopyOp {
   let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
+  let hasFolder = 1;
 }
 
 def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",

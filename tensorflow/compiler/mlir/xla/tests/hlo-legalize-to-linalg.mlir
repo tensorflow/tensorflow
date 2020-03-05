@@ -202,13 +202,12 @@ func @int_cmp(%lhs: tensor<2x2xi32>,
 // -----
 
 // CHECK-LABEL: func @copy
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func @copy(%input: tensor<2x4x8xf32>) -> tensor<2x4x8xf32> {
   %0 = "xla_hlo.copy"(%input) : (tensor<2x4x8xf32>) -> (tensor<2x4x8xf32>)
   return %0 : tensor<2x4x8xf32>
 }
-// CHECK: linalg.generic
-// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32):
-// CHECK-NEXT:   linalg.yield %[[OPERAND_IN]] : f32
+// CHECK: return [[ARG]] : tensor<2x4x8xf32>
 
 // -----
 
