@@ -1935,6 +1935,7 @@ static llvm::Value* GetStartOffsetX(const KernelMappingScheme& mapping_scheme,
   } else if (mapping_scheme.GetIndexingOrder() == kLinearStridedIndexingX) {
     return b->CreateMul(thread_id_x, constant(mapping_scheme.GetVectorSize()));
   }
+  CHECK_EQ(mapping_scheme.GetIndexingOrder(), kLinearIndexingX);
   int64 x_num_steps =
       mapping_scheme.GetTileSizeX() / mapping_scheme.GetNumThreadsX();
   return b->CreateMul(thread_id_x, constant(x_num_steps));
