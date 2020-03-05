@@ -380,7 +380,7 @@ TfLiteStatus LeakyReluPrepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, q_alpha <= std::numeric_limits<uint8_t>::max());
     // q_alpha will be stored as uint8_t. It won't affect the input
     data->q_alpha = q_alpha;
-    std::cout << "Quantized Q alpha value is: " << int(data->q_alpha) << '\n';
+
     // q_identity is used to make sure those>0 get correct value after dequantization.
     data->q_identity = ZOOM_FACTOR;
     data->zero_point = ZERO_POINT;
