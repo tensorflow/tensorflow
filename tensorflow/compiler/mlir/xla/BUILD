@@ -34,6 +34,7 @@ filegroup(
         "ir/hlo_utils.td",
         "ir/lhlo_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:include/mlir/Analysis/InferTypeOpInterface.td",
     ],
 )
 
@@ -609,6 +610,7 @@ tf_native_cc_binary(
 genrule(
     name = "operator_writer_inc",
     srcs = [
+        "@llvm-project//mlir:include/mlir/Analysis/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         ":ir/hlo_ops.td",
         ":ir/hlo_ops_base.td",

@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_XLA_IR_HLO_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Analysis/InferTypeOpInterface.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Dialect.h"  // TF:llvm-project
 #include "mlir/IR/DialectImplementation.h"  // TF:llvm-project
