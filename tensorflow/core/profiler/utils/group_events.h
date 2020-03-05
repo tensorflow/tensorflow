@@ -48,6 +48,8 @@ class EventNode {
 
   EventNode* GetParent() const { return parent_; }
 
+  const std::vector<EventNode*>& GetChildren() const { return children_; }
+
   void AddChild(EventNode* child) {
     children_.push_back(child);
     child->parent_ = this;
@@ -96,6 +98,8 @@ class EventForest {
               const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
               XSpace* space);
 
+  const EventNodeMap& GetEventNodeMap() const { return event_node_map_; }
+
   const EventGroupNameMap& GetEventGroupNameMap() const {
     return event_group_name_map_;
   }
@@ -119,7 +123,12 @@ class EventForest {
   // event nodes for them. A virtual event is created for each iteration of the
   // host training loop and connected to the
   // HostEventType::kExecutorStateProcess event nodes of the iteration.
-  void CreateVirtualEvents();
+  void CreateVirtualEventsForHostTrainingLoop();
+
+  // Create virutal events of HostEventType::kAsyncExecutorTraceContext and
+  // event nodes for them. A virtual event is created for every FunctionRun and
+  // the following eager ops (e.g., for Keras callback).
+  void CreateVirtualEventsForAsyncExecutor();
 
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;
