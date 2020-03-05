@@ -559,7 +559,6 @@ class Function(object):
 
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
-    context.ensure_initialized()
     if RUN_FUNCTIONS_EAGERLY:
       return self._python_function(*args, **kwds)
 
