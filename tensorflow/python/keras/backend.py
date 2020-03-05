@@ -79,6 +79,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import keras_export
 
 py_all = all
@@ -5703,9 +5704,12 @@ def random_uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
       shape, minval=minval, maxval=maxval, dtype=dtype, seed=seed)
 
 
+@deprecated(None, 'Use `tf.keras.backend.random_bernoulli` instead.')
 @keras_export('keras.backend.random_binomial')
 def random_binomial(shape, p=0.0, dtype=None, seed=None):
   """Returns a tensor with random binomial distribution of values.
+
+  DEPRECATED, use `tf.keras.backend.random_bernoulli` instead.
 
   The binomial distribution with parameters `n` and `p` is the probability
   distribution of the number of successful Bernoulli process. Only supports
@@ -5727,6 +5731,22 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
   return array_ops.where_v2(
       random_ops.random_uniform(shape, dtype=dtype, seed=seed) <= p,
       array_ops.ones(shape, dtype=dtype), array_ops.zeros(shape, dtype=dtype))
+
+
+@keras_export('keras.backend.random_bernoulli')
+def random_bernoulli(shape, p=0.0, dtype=None, seed=None):
+  """Returns a tensor with random bernoulli distribution of values.
+
+  Arguments:
+      shape: A tuple of integers, the shape of tensor to create.
+      p: A float, `0. <= p <= 1`, probability of bernoulli distribution.
+      dtype: String, dtype of returned tensor.
+      seed: Integer, random seed.
+
+  Returns:
+      A tensor.
+  """
+  return random_binomial(shape, p, dtype, seed)
 
 
 @keras_export('keras.backend.truncated_normal')
