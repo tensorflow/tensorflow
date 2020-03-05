@@ -97,7 +97,7 @@ def TF_Tensor : TensorOf<[TF_ElementType]>;
 //===----------------------------------------------------------------------===//
 // Integer types
 
-def TF_I32Or64 : IntOfWidths<[32, 64]>;
+def TF_I32Or64 : SignlessIntOfWidths<[32, 64]>;
 
 def TF_I32OrI64Tensor : TensorOf<[TF_I32Or64]>;
 
@@ -110,7 +110,7 @@ def TF_Uint64 : UI<64>;
 def TF_UInt : UnsignedIntOfWidths<[8, 16, 32, 64]>;
 
 // Any signed integer type
-def TF_SInt : IntOfWidths<[8, 16, 32, 64]>;
+def TF_SInt : SignlessIntOfWidths<[8, 16, 32, 64]>;
 
 // Any integer type
 def TF_Int : AnyTypeOf<[TF_SInt, TF_UInt]>;

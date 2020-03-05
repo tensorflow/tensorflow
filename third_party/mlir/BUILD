@@ -1530,13 +1530,17 @@ cc_library(
     hdrs = [
         "include/mlir/Target/LLVMIR/ModuleTranslation.h",
     ],
+    # TODO(herhut): Remove once fixed upstream.
+    copts = ["-Wno-pessimizing-move"],
     includes = ["include"],
     deps = [
         ":IR",
         ":LLVMConversionIncGen",
         ":LLVMDialect",
+        ":OpenMPDialect",
         ":Support",
         "@llvm-project//llvm:core",
+        "@llvm-project//llvm:frontend_open_mp",
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:transform_utils",
     ],

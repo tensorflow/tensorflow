@@ -18,7 +18,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 
-def HLO_Int : IntOfWidths<[8, 16, 32, 64]>;
+def HLO_Int : SignlessIntOfWidths<[8, 16, 32, 64]>;
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
 // The broadcasting dimensions correspond to a tuple that describes how a
