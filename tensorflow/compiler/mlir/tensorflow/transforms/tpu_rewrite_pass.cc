@@ -71,6 +71,13 @@ constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
 
+constexpr char kBadStringArrayElementMsg[] =
+    "bad '{0}' attribute at index {1}, not a string";
+constexpr char kBadArrayElementMsg[] =
+    "bad '{0}' attribute at index {1} with value '{2}': failed to parse to {3}";
+constexpr char kBadArrayAttrLengthMsg[] =
+    "bad '{0}' attribute, expected array attribute of size {1}, got size {2}";
+
 // Rewrites `tf_device.launch_func` operations assigned to TPU into actual TPU
 // jit-compile runtime ops.
 //
@@ -151,17 +158,11 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
   return success();
 }
 
-// Populates a TPUCompileMetadataProto from attributes of a
-// `tf_device::LaunchFuncOp`. If any necessary attributes are missing from the
-// op, a failure will be returned.
-// TODO(lyandy): Support session handle and guaranteed consts.
-LogicalResult SetMetadataProtoFromLaunchFuncOp(
-    tf_device::LaunchFuncOp op, int num_replicas, int num_cores_per_replica,
-    llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
+// Populates a TPUCompileMetadataProto with StepMarkerLocation from a
+// `tf_device::LaunchFuncOp`.
+LogicalResult SetMetadataProtoStepMarkerLocation(
+    tf_device::LaunchFuncOp op,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
-  metadata->set_num_replicas(num_replicas);
-  metadata->set_num_cores_per_replica(num_cores_per_replica);
-
   auto step_marker_location =
       op.getAttrOfType<StringAttr>(kStepMarkerLocationAttr);
   if (!step_marker_location)
@@ -180,6 +181,14 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
 
   metadata->set_step_marker_location(location);
 
+  return success();
+}
+
+// Populates a TPUCompileMetadataProto with PaddingMap from a
+// `tf_device::LaunchFuncOp`.
+LogicalResult SetMetadataProtoPaddingMap(
+    tf_device::LaunchFuncOp op,
+    tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   auto padding_map = op.getAttrOfType<ArrayAttr>(kPaddingMapAttr);
   if (!padding_map)
     return op.emitOpError(CreateMissingAttributeMsg(kPaddingMapAttr));
@@ -188,25 +197,56 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
     auto& padding_attr = padding_and_idx.value();
     auto padding_attr_str = padding_attr.dyn_cast<StringAttr>();
     if (!padding_attr_str)
-      return op.emitOpError(
-          llvm::formatv("bad '{0}' attribute at index {1}, not a string",
-                        kPaddingMapAttr, padding_and_idx.index()));
+      return op.emitOpError(llvm::formatv(
+          kBadStringArrayElementMsg, kPaddingMapAttr, padding_and_idx.index()));
 
     tensorflow::tpu::PaddingMap* padding =
         metadata->mutable_padding_maps()->Add();
     if (!padding->ParseFromString(std::string(padding_attr_str.getValue())))
       return op.emitOpError(llvm::formatv(
-          "bad '{0}' attribute at index {1} with value '{2}'", kPaddingMapAttr,
-          padding_and_idx.index(), padding_attr_str.getValue()));
+          kBadArrayElementMsg, kPaddingMapAttr, padding_and_idx.index(),
+          padding_attr_str.getValue(), "tpu::PaddingMap"));
   }
 
-  if (xla_device_assignment.hasValue())
-    *metadata->mutable_device_assignment() =
-        std::move(xla_device_assignment.getValue());
+  return success();
+}
+
+// Parses a xla::OpSharding from a string attribute.
+LogicalResult SetOpSharding(Operation* op, Attribute attr, llvm::StringRef name,
+                            int index, xla::OpSharding* sharding) {
+  auto sharding_str = attr.dyn_cast<StringAttr>();
+  if (!sharding_str)
+    return op->emitOpError(
+        llvm::formatv(kBadStringArrayElementMsg, name, index));
+
+  if (!sharding->ParseFromString(sharding_str.getValue().str()))
+    return op->emitOpError(llvm::formatv(kBadArrayElementMsg, name, index,
+                                         sharding_str.getValue(),
+                                         "xla::OpSharding"));
+
+  return success();
+}
+
+// Populates a TPUCompileMetadataProto with argument types and sharding from a
+// `tf_device::LaunchFuncOp`.
+LogicalResult SetMetadataProtoArgs(
+    tf_device::LaunchFuncOp op,
+    tensorflow::tpu::TPUCompileMetadataProto* metadata) {
+  auto input_shardings =
+      op.getAttrOfType<ArrayAttr>(tensorflow::kInputShardingAttr);
+  if (!input_shardings)
+    return op.emitOpError(
+        CreateMissingAttributeMsg(tensorflow::kInputShardingAttr));
+
+  if (input_shardings.size() != op.getNumOperands())
+    return op.emitOpError(
+        llvm::formatv(kBadArrayAttrLengthMsg, tensorflow::kInputShardingAttr,
+                      op.getNumOperands(), input_shardings.size()));
 
   // Set args metadata in proto.
   for (auto operand_type_and_idx : llvm::enumerate(op.getOperandTypes())) {
     Type operand_type = operand_type_and_idx.value();
+    int index = operand_type_and_idx.index();
     tensorflow::tpu::TPUCompileMetadataProto::Arg* arg = metadata->add_args();
     tensorflow::DataType dtype;
     tensorflow::Status status =
@@ -214,7 +254,7 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
     if (!status.ok())
       return op.emitOpError(
           llvm::formatv("failed to determine operand type at index {0}: {1}",
-                        operand_type_and_idx.index(), status.error_message()));
+                        index, status.error_message()));
 
     arg->set_dtype(dtype);
     // TODO(lyandy): Support other arg kinds.
@@ -233,27 +273,65 @@ LogicalResult SetMetadataProtoFromLaunchFuncOp(
       arg->mutable_shape()->set_unknown_rank(true);
     }
 
-    // TODO(lyandy): Determine proper sharding of args once topology and devices
-    // are propagated to the pass.
-    xla::OpSharding sharding;
-    sharding.set_type(xla::OpSharding::MAXIMAL);
-    sharding.add_tile_assignment_dimensions(1);
-    sharding.add_tile_assignment_devices(0);
-    *arg->mutable_sharding() = std::move(sharding);
-  }
-
-  // Set retvals metadata in proto.
-  // TODO(lyandy): Determine proper sharding of retvals once topology and
-  // devices is propagated to the pass.
-  for (int i = 0; i < op.getNumResults(); ++i) {
-    xla::OpSharding sharding;
-    sharding.set_type(xla::OpSharding::MAXIMAL);
-    sharding.add_tile_assignment_dimensions(1);
-    sharding.add_tile_assignment_devices(0);
-    *metadata->add_retvals()->mutable_sharding() = std::move(sharding);
+    if (failed(SetOpSharding(op, input_shardings.getValue()[index],
+                             tensorflow::kInputShardingAttr, index,
+                             arg->mutable_sharding())))
+      return failure();
   }
 
   return success();
+}
+
+// Populates a TPUCompileMetadataProto with result sharding from a
+// `tf_device::LaunchFuncOp`.
+LogicalResult SetMetadataProtoRetvals(
+    tf_device::LaunchFuncOp op,
+    tensorflow::tpu::TPUCompileMetadataProto* metadata) {
+  auto output_shardings =
+      op.getAttrOfType<ArrayAttr>(tensorflow::kOutputShardingAttr);
+  if (!output_shardings)
+    return op.emitOpError(
+        CreateMissingAttributeMsg(tensorflow::kOutputShardingAttr));
+
+  if (output_shardings.size() != op.getNumResults())
+    return op.emitOpError(
+        llvm::formatv(kBadArrayAttrLengthMsg, tensorflow::kOutputShardingAttr,
+                      op.getNumResults(), output_shardings.size()));
+
+  // Set retvals metadata in proto.
+  for (auto output_sharding_and_idx : llvm::enumerate(output_shardings))
+    if (failed(SetOpSharding(op, output_sharding_and_idx.value(),
+                             tensorflow::kOutputShardingAttr,
+                             output_sharding_and_idx.index(),
+                             metadata->add_retvals()->mutable_sharding())))
+      return failure();
+
+  return success();
+}
+
+// Populates a TPUCompileMetadataProto from attributes of a
+// `tf_device::LaunchFuncOp`. If any necessary attributes are missing from the
+// op, a failure will be returned.
+// TODO(lyandy): Support session handle and guaranteed consts.
+LogicalResult SetMetadataProtoFromLaunchFuncOp(
+    tf_device::LaunchFuncOp op, int num_replicas, int num_cores_per_replica,
+    llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
+    tensorflow::tpu::TPUCompileMetadataProto* metadata) {
+  metadata->set_num_replicas(num_replicas);
+  metadata->set_num_cores_per_replica(num_cores_per_replica);
+
+  if (failed(SetMetadataProtoStepMarkerLocation(op, metadata)))
+    return failure();
+
+  if (failed(SetMetadataProtoPaddingMap(op, metadata))) return failure();
+
+  if (xla_device_assignment.hasValue())
+    *metadata->mutable_device_assignment() =
+        std::move(xla_device_assignment.getValue());
+
+  if (failed(SetMetadataProtoArgs(op, metadata))) return failure();
+
+  return SetMetadataProtoRetvals(op, metadata);
 }
 
 // Wraps single op in `tf_device.launch` for explicit device assignment.
