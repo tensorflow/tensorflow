@@ -164,6 +164,7 @@ bool RemoteTensorHandleData::IsReady() const {
 void RemoteTensorHandleData::Poison(Status status) {
   mutex_lock l(mu_);
   is_poisoned_ = status;
+  is_ready_ = true;
 }
 
 Status RemoteTensorHandleData::IsPoisoned() const {
