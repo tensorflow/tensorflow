@@ -2621,9 +2621,8 @@ constexpr void CopyBit(const T &src, unsigned src_index, T &dst,
 // dimensions. For example, sparse spec for foo[..., 3:10] for foo of shape (2,
 // 4, 8) would have dims = 2.
 struct SparseSliceSpec {
-  const int64_t dims;
-  const int32_t begin_mask, end_mask, ellipsis_mask, new_axis_mask,
-      shrink_axis_mask;
+  int64_t dims;
+  int32_t begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask;
   const ArrayRef<int64_t> &begin;
   const ArrayRef<int64_t> &end;
   const ArrayRef<int64_t> &strides;
@@ -2782,6 +2781,14 @@ static void CalculateSlicedShapeFromSparseIndices(
   SparseSliceSpec sparse = {num_sparse_indices, begin_mask,    end_mask,
                             ellipsis_mask,      new_axis_mask, shrink_axis_mask,
                             sparse_begin,       sparse_end,    sparse_strides};
+
+  // If no ellipsis_mask exists then an implicit ellipsis_mask at the end is
+  // inserted. This handles cases where foo[2:4] (foo.shape() = [4, 8]) yields
+  // a tensor of shape [2, 8], i.e., foo[2:4] is same as foo[2:4, ...].
+  if (sparse.ellipsis_mask == 0) {
+    Set(sparse.ellipsis_mask, sparse.dims);
+    sparse.dims++;
+  }
 
   int64_t dims = input_shape.size();
   DenseSliceSpec dense = {dims,

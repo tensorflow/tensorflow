@@ -2415,6 +2415,25 @@ func @strided_slice_new_axis_mask(%input: tensor<2x4x8x16x32x64xf32>) {
   return
 }
 
+// CHECK-LABEL: strided_slice_implicit_ellipsis_mask(
+// CHECK-SAME: [[INPUT:%.*]]: tensor<10x16x2xf32>
+func @strided_slice_implicit_ellipsis_mask(%input: tensor<10x16x2xf32>) -> tensor<2x16x2xf32> {
+  // StridedSlice gets input[8:10], which is same as input[8:10, ...]
+  // The start_indices, limit_indices, and strides attribute of xla_hlo.slice
+  // reflect the canonicalized slice.
+  %begin = "tf.Const"() {value = dense<8> : tensor<1xi32>} : () -> tensor<1xi32>
+  %end = "tf.Const"() {value = dense<10> : tensor<1xi32>} : () -> tensor<1xi32>
+  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: [[SLICE:%.*]] = "xla_hlo.slice"([[INPUT]])
+  // CHECK-DAG-SAME: limit_indices = dense<[10, 16, 2]> : tensor<3xi64>
+  // CHECK-DAG-SAME: start_indices = dense<[8, 0, 0]> : tensor<3xi64>
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<3xi64>
+  // CHECK: [[RESHAPE:%.*]] = "xla_hlo.reshape"([[SLICE]]) : (tensor<2x16x2xf32>) -> tensor<2x16x2xf32>
+  %0 = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = f32} : (tensor<10x16x2xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<2x16x2xf32>
+  // CHECK: return [[RESHAPE]] : tensor<2x16x2xf32>
+  return %0 : tensor<2x16x2xf32>
+}
+
 
 //===----------------------------------------------------------------------===//
 // Reduction op legalizations.
