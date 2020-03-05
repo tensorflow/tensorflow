@@ -265,6 +265,21 @@ cc_library(
 )
 
 cc_library(
+    name = "unroll_batch_matmul_pass",
+    srcs = [
+        "transforms/unroll_batch_matmul.cc",
+    ],
+    hdrs = [
+        "transforms/unroll_batch_matmul.h",
+    ],
+    deps = [
+        ":tensorflow",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//mlir:QuantOps",
+    ],
+)
+
+cc_library(
     name = "tensorflow_passes",
     srcs = [
         "transforms/annotate_parameter_replication.cc",
@@ -308,7 +323,6 @@ cc_library(
         "transforms/tpu_rewrite_pass.cc",
         "transforms/tpu_sharding_identification_pass.cc",
         "transforms/tpu_variable_runtime_reformatting.cc",
-        "transforms/unroll_batch_matmul.cc",
         "translate/breakup-islands.cc",
         "translate/control_to_executor_dialect.cc",
         "translate/executor_to_control_dialect.cc",
@@ -318,7 +332,6 @@ cc_library(
         "transforms/bridge.h",
         "transforms/passes.h",
         "transforms/shape_inference.h",
-        "transforms/unroll_batch_matmul.h",
     ],
     includes = ["include"],
     deps = [
@@ -337,6 +350,7 @@ cc_library(
         ":tensorflow_types",
         ":tpu_rewrite_device_util",
         ":translate_utils",
+        ":unroll_batch_matmul_pass",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -348,14 +362,12 @@ cc_library(
         "//tensorflow/core/platform:random",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
