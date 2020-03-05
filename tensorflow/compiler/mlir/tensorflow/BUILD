@@ -275,7 +275,6 @@ cc_library(
     deps = [
         ":tensorflow",
         "@com_google_absl//absl/memory",
-        "@llvm-project//mlir:QuantOps",
     ],
 )
 
