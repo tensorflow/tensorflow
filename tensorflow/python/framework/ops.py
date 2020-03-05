@@ -302,12 +302,13 @@ class Tensor(_TensorLike):
   * a single data type (float32, int32, or string, for example)
   * a shape
 
-  TensorFlow supports two execution modes: eager and graph.  In eager
-  mode, operations are evaluated immediately.  In graph mode, a
-  computational graph is constructed for later evaluation.
+  TensorFlow supports eager execution and graph execution.  In eager
+  execution, operations are evaluated immediately.  In graph
+  execution, a computational graph is constructed for later
+  evaluation.
 
-  Eager mode is the default mode in TensorFlow.  In the example below,
-  the matrix multiplication results are calculated immediately.
+  TensorFlow defaults to eager execution.  In the example below, the
+  matrix multiplication results are calculated immediately.
 
   >>> # Compute some values using a Tensor
   >>> c = tf.constant([[1.0, 2.0], [3.0, 4.0]])
