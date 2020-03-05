@@ -17,13 +17,15 @@ py_library(
         "estimator/__init__.py",
         "keras_parameterized.py",
         "ops.py",
-        "testing_utils.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
         ":backend",
         ":engine",
+        # TODO(scottzhu): Stop exporting the test_utils after removing all
+        # callers that using it.
+        ":testing_utils",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/applications",
@@ -143,6 +145,19 @@ py_library(
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/profiler:profiler_v2",
         "//tensorflow/tools/docs:doc_controls",
+    ],
+)
+
+py_library(
+    name = "combinations",
+    srcs = [
+        "combinations.py",
+    ],
+    deps = [
+        ":testing_utils",
+        "//tensorflow/python:framework_combinations",
+        "//tensorflow/python:framework_test_combinations_lib",
+        "//tensorflow/python:tf2",
     ],
 )
 
@@ -280,6 +295,27 @@ py_library(
     ],
 )
 
+py_library(
+    name = "testing_utils",
+    srcs = [
+        "testing_utils.py",
+    ],
+    deps = [
+        ":backend",
+        ":models",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/engine:base_layer_utils",
+        "//tensorflow/python/keras/layers",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//third_party/py/numpy",
+    ],
+)
+
 tf_py_test(
     name = "activations_test",
     size = "small",
@@ -290,6 +326,22 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "combinations_test",
+    size = "small",
+    srcs = ["combinations_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":combinations",
+        ":testing_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/eager:context",
         "@absl_py//absl/testing:parameterized",
     ],
 )

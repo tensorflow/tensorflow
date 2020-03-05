@@ -75,32 +75,27 @@ void EvalIntegerSVDF(
   int32_t scratch_tensor[kScratchTensorMaxSize];
   int32_t scratch_output_tensor[kScratchTensorMaxSize];
 
-  // Shift states. No need to set last state, the matmul is not accumulative.
+  // Shift states.
+  int16_t* const state_ptr = GetTensorData<int16_t>(activation_state_tensor);
+
+  // Left shift the activation_state.
   {
-    for (int b = 0; b < n_batch; ++b) {
-      int16_t* state_ptr_batch =
-          GetTensorData<int16_t>(activation_state_tensor) +
-          b * n_memory * n_filter;
-      for (int f = 0; f < n_filter; ++f) {
-        // Shift the vector left:
-        int16_t* batch_ptr = state_ptr_batch;
-        int16_t* batch_start = state_ptr_batch + 1;
-        int16_t* batch_end = state_ptr_batch + n_memory;
-        while (batch_start != batch_end) {
-          *batch_ptr++ = *batch_start++;
-        }
-        state_ptr_batch += n_memory;
-      }
+    int16_t* new_state_start = state_ptr;
+    const int16_t* old_state_start = state_ptr + 1;
+    const int16_t* old_state_end = state_ptr + n_batch * n_filter * n_memory;
+    while (old_state_start != old_state_end) {
+      *new_state_start++ = *old_state_start++;
     }
   }
 
+  // Note: no need to clear the latest activation, matmul is not accumulative.
+
   // Feature matmul.
   {
-    int16_t* state = GetTensorData<int16_t>(activation_state_tensor);
     const int8_t* input = GetTensorData<int8_t>(input_tensor);
     const int8_t* weight_feature =
         GetTensorData<int8_t>(weights_feature_tensor);
-    int16_t* result_in_batch = state + (n_memory - 1);
+    int16_t* result_in_batch = state_ptr + (n_memory - 1);
 
     ae_q56s output_int16_max_56 = AE_CVTQ48A32S(INT16_MAX);
     ae_q56s output_int16_min_56 = AE_CVTQ48A32S(INT16_MIN);
@@ -170,9 +165,7 @@ void EvalIntegerSVDF(
 
       // Perform batched vector dot product:
       const int16_t* vector1_ptr = GetTensorData<int16_t>(weights_time_tensor);
-      const int16_t* vector2_ptr =
-          GetTensorData<int16_t>(activation_state_tensor) +
-          b * n_memory * n_filter;
+      const int16_t* vector2_ptr = state_ptr + b * n_memory * n_filter;
 
       int num_iters = n_filter / 2;
       const ae_p16x2s* offset_vector1 = (const ae_p16x2s*)(vector1_ptr - 2);

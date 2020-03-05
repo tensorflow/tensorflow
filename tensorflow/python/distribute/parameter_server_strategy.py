@@ -370,6 +370,12 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         [input_context],
         self._container_strategy())
 
+  def _experimental_distribute_values_from_function(self, value_fn):
+    # TODO(b/137795644): Implement this method for ParameterServerStrategy if
+    # needed.
+    raise NotImplementedError("_experimental_distribute_values_from_function "
+                              "not yet implemented in ParameterServerStrategy.")
+
   def _broadcast_to(self, tensor, destinations):
     # This is both a fast path for Python constants, and a way to delay
     # converting Python values to a tensor until we know what type it

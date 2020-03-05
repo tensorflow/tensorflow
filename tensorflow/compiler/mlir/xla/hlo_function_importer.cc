@@ -198,7 +198,8 @@ tensorflow::Status HloFunctionImporter::ImportInstructions(
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     HloInstruction* instruction, mlir::OpBuilder* func_builder) {
   TF_ASSIGN_OR_RETURN(auto operands, GetOperands(instruction));
-  TF_ASSIGN_OR_RETURN(auto result_type, ConvertType(instruction->shape()));
+  TF_ASSIGN_OR_RETURN(auto result_type, ConvertShapeToType<RankedTensorType>(
+                                            instruction->shape(), *builder_));
   llvm::SmallVector<NamedAttribute, 10> attributes = {builder_->getNamedAttr(
       "name", builder_->getStringAttr(instruction->name()))};
   mlir::Location loc = func_builder->getUnknownLoc();
@@ -699,29 +700,12 @@ StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(
   return operands;
 }
 
-StatusOr<mlir::Type> HloFunctionImporter::ConvertType(const Shape& shape) {
-  if (shape.IsToken()) {
-    return mlir::xla_hlo::TokenType::get(builder_->getContext());
-  }
-  if (shape.IsTuple()) {
-    llvm::SmallVector<mlir::Type, 4> contents;
-    contents.reserve(shape.tuple_shapes_size());
-    for (const auto& subtype : shape.tuple_shapes()) {
-      TF_ASSIGN_OR_RETURN(auto mlir_subtype, ConvertType(subtype));
-      contents.push_back(mlir_subtype);
-    }
-
-    return builder_->getTupleType(contents);
-  }
-
-  return ConvertTensorShapeToType<RankedTensorType>(shape, *builder_);
-}
-
 tensorflow::Status HloFunctionImporter::GetMlirTypes(
     const std::vector<HloInstruction*>& instructions,
     llvm::SmallVectorImpl<mlir::Type>* types) {
   for (auto instruction : instructions) {
-    TF_ASSIGN_OR_RETURN(auto ret_type, ConvertType(instruction->shape()));
+    TF_ASSIGN_OR_RETURN(auto ret_type, ConvertShapeToType<RankedTensorType>(
+                                           instruction->shape(), *builder_));
     types->push_back(ret_type);
   }
   return tensorflow::Status::OK();

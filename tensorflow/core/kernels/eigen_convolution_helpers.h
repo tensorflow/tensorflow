@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_EIGEN_CONVOLUTION_HELPERS_H_
 #define TENSORFLOW_CORE_KERNELS_EIGEN_CONVOLUTION_HELPERS_H_
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 namespace Eigen {
 namespace internal {
 

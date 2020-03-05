@@ -46,8 +46,14 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 // Optional pass which will unroll BatchMatMul and use only MatMul
 std::unique_ptr<OpPassBase<FuncOp>> CreateUnrollBatchMatMulPassPass();
 
+// Optional pass which will map TF BatchMatMul to TF Einsum
+std::unique_ptr<OpPassBase<FuncOp>> CreateBatchMatMulToEinsumPass();
+
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
+
+// Performs specific fusion for GPU targets.
+std::unique_ptr<OpPassBase<FuncOp>> CreateGpuOpFusionPass();
 
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
@@ -217,6 +223,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
 // ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass();
 
+// Creates a pass that identifies XLASharding ops in launch op for TPU
+// computation.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUShardingIdentificationPass();
+
 // Creates a pass that merges device variable reads/updates into the surrounded
 // TPUExecute node. This allows the execute node to perform in-place variable
 // updates.
@@ -239,6 +249,9 @@ namespace tf_saved_model {
 
 // Creates a pass that optimizes tf_saved_model.global_tensor ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass();
+
+// Creates a pass that freezes tf_saved_model.global_tensor ops.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateFreezeGlobalTensorsPass();
 
 // Creates a pass that uses tf_saved_model dialect linkage information
 // to mark function visibility. That is, exported functions are marked with

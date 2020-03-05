@@ -74,3 +74,11 @@ func @extract_scalars_to_tensor(%arg0: i32, %arg1: i32) -> i32 {
   // CHECK: return %[[ARG0]]
   return %2 : i32
 }
+
+// CHECK-LABEL: func @fold_copy
+// CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
+func @fold_copy(%arg : tensor<1x4xf32>) -> tensor<1x4xf32> {
+  // CHECK: return [[ARG]]
+  %0 = "xla_hlo.copy"(%arg) : (tensor<1x4xf32>) -> tensor<1x4xf32>
+  return %0 : tensor<1x4xf32>
+}

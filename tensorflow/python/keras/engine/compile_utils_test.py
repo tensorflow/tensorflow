@@ -205,6 +205,40 @@ class LossesContainerTest(keras_parameterized.TestCase):
     self.assertEqual(output_2_metric.name, 'output_2_loss')
     self.assertEqual(output_2_metric.result().numpy(), 0.5)
 
+  def test_missing_label_with_no_loss(self):
+    # It's ok to exclude a label if that label has no
+    # losses or metrics associated with it.
+    loss_container = compile_utils.LossesContainer({
+        'output1': 'mse',
+        'output3': 'mae'
+    })
+
+    y_p = {
+        'output1': ops.convert_to_tensor([[0], [1], [2]]),
+        'output2': ops.convert_to_tensor([[3], [4], [5]]),
+        'output3': ops.convert_to_tensor([[6], [7], [8]])
+    }
+    y_t = {
+        'output1': ops.convert_to_tensor([[1], [2], [3]]),
+        'output3': ops.convert_to_tensor([[4], [5], [6]])
+    }
+
+    total_loss = loss_container(y_t, y_p)
+    self.assertEqual(total_loss.numpy(), 3.)
+    self.assertLen(loss_container.metrics, 3)
+
+    loss_metric = loss_container.metrics[0]
+    self.assertEqual(loss_metric.name, 'loss')
+    self.assertEqual(loss_metric.result().numpy(), 3.)
+
+    output_1_metric = loss_container.metrics[1]
+    self.assertEqual(output_1_metric.name, 'output1_loss')
+    self.assertEqual(output_1_metric.result().numpy(), 1.)
+
+    output_3_metric = loss_container.metrics[2]
+    self.assertEqual(output_3_metric.name, 'output3_loss')
+    self.assertEqual(output_3_metric.result().numpy(), 2.)
+
 
 class MetricsContainerTest(keras_parameterized.TestCase):
 
@@ -452,6 +486,35 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     mae_metric = metric_container.metrics[0]
     self.assertEqual(mae_metric.name, 'mae')
     self.assertEqual(mae_metric.result().numpy(), 1.)
+
+  def test_missing_label_with_no_metrics(self):
+    # It's ok to exclude a label if that label has no
+    # losses or metrics associated with it.
+    metric_container = compile_utils.MetricsContainer(metrics={
+        'output1': 'mae',
+        'output3': 'mse'
+    })
+
+    y_p = {
+        'output1': ops.convert_to_tensor([[0], [1], [2]]),
+        'output2': ops.convert_to_tensor([[3], [4], [5]]),
+        'output3': ops.convert_to_tensor([[6], [7], [8]])
+    }
+    y_t = {
+        'output1': ops.convert_to_tensor([[1], [2], [3]]),
+        'output3': ops.convert_to_tensor([[4], [5], [6]])
+    }
+
+    metric_container.update_state(y_t, y_p)
+    self.assertLen(metric_container.metrics, 2)
+
+    mae_metric = metric_container.metrics[0]
+    self.assertEqual(mae_metric.name, 'output1_mae')
+    self.assertEqual(mae_metric.result().numpy(), 1.)
+
+    mse_metric = metric_container.metrics[1]
+    self.assertEqual(mse_metric.name, 'output3_mse')
+    self.assertEqual(mse_metric.result().numpy(), 4.)
 
 
 if __name__ == '__main__':

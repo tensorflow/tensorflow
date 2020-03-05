@@ -1,16 +1,18 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test", "tf_openmp_copts")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_tensor_coding_deps",
     "tf_proto_library",
     "tf_proto_library_cc",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
 load("//tensorflow:tensorflow.bzl", "tf_portable_proto_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load("//tensorflow/compiler/xla/service/cpu:build_defs.bzl", "runtime_copts")
 
 package(
     default_visibility = [":internal"],
@@ -180,6 +182,78 @@ cc_library(
     ],
 )
 
+# The filegroups below are explicitly used by
+# tensorflow/tools/pip_package:build_pip_package to ensure we include the proper
+# sources for the XLA AOT CPU runtime; as these are necessary outside of bazel
+# when linking tfcompile objects using saved_model_cli (e.g. using the
+# tensorflow pip package). The associated .cc files are included in tensorflow
+# pip package's xla_aot_runtime_srcs/ subdirectory. All necessary headers are
+# also included in the pip package's include/tensorflow/ and include/external/
+# subdirectories. Note however that sometimes additional object files may need
+# to be linked when linking aot xla objects, e.g. abseil libraries. See the deps
+# attribute of the "xla_compiled_cpu_runtime_standalone" target below for an
+# exhaustive list.
+filegroup(
+    name = "xla_compiled_cpu_runtime_hdrs",
+    srcs = [
+        "xla_compiled_cpu_function.h",
+        "//tensorflow/compiler/xla:cpu_runtime_hdrs",
+        "//tensorflow/compiler/xla/service/cpu:single_threaded_runtime_hdrs",
+        "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
+        "//tensorflow/core/platform:xla_cpu_runtime_srcs",
+    ],
+    visibility = ["//tensorflow/tools/pip_package:__pkg__"],
+)
+
+filegroup(
+    name = "xla_compiled_cpu_runtime_srcs",
+    srcs = [
+        "xla_compiled_cpu_function.cc",
+        "//tensorflow/compiler/xla:cpu_runtime_srcs",
+        "//tensorflow/compiler/xla/service/cpu:single_threaded_runtime_srcs",
+        "//tensorflow/core/kernels:xla_cpu_runtime_srcs",
+        "//tensorflow/core/platform:xla_cpu_runtime_srcs",
+    ],
+    visibility = ["//tensorflow/tools/pip_package:__pkg__"],
+)
+
+# This stand-alone target is used to ensure that we can build tf_library type
+# targets against the subset of sources declared in
+# xla_compiled_cpu_runtime_{srcs,hdrs}.
+#
+# The macros in tensorflow/python/tools/tools.bzl produce AOT compiled binaries
+# that rely on this target, as do unit tests in tensorflow/python/tools.
+#
+# See above for the significance of the source filegroups.
+cc_library(
+    name = "xla_compiled_cpu_runtime_standalone",
+    srcs = [
+        ":xla_compiled_cpu_runtime_srcs",
+    ],
+    hdrs = [
+        ":xla_compiled_cpu_runtime_hdrs",
+    ],
+    copts = runtime_copts() + tf_openmp_copts(),
+    features = ["fully_static_link"],
+    linkstatic = 1,
+    visibility = [":friends"],
+    # Note, we specifically remove MKL dependencies so the standalone does
+    # not require the MKL binary blob.
+    #
+    # TODO(ebrevdo): Remove tf_additoinal_tensor_coding_deps in favor of absl/strings:cord when
+    # we update absl to a newer version.
+    deps = [
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "//third_party/eigen3",
+        "//tensorflow/core/framework:numeric_types",
+    ] + tf_additional_tensor_coding_deps(),
+    alwayslink = 1,
+)
+
 cc_library(
     name = "xla_compiled_cpu_function",
     srcs = ["xla_compiled_cpu_function.cc"],
@@ -190,7 +264,7 @@ cc_library(
         # binary produced by tfcompile.
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/platform:types",
     ],
 )
 

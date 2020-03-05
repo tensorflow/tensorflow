@@ -142,19 +142,16 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   float* output_ptr = GetTensorData<float>(output);
 
   // Left shift the activation_state.
-  for (int b = 0; b < batch_size; ++b) {
-    float* state_ptr_batch = state_ptr + b * memory_size * num_filters;
-    for (int f = 0; f < num_filters; ++f) {
-      // Shift the vector left:
-      float* batch_ptr = state_ptr_batch;
-      float* batch_start = state_ptr_batch + 1;
-      float* batch_end = state_ptr_batch + memory_size;
-      while (batch_start != batch_end) {
-        *batch_ptr++ = *batch_start++;
-      }
-      state_ptr_batch += memory_size;
+  {
+    float* new_state_start = state_ptr;
+    const float* old_state_start = state_ptr + 1;
+    const float* old_state_end =
+        state_ptr + batch_size * num_filters * memory_size;
+    while (old_state_start != old_state_end) {
+      *new_state_start++ = *old_state_start++;
     }
   }
+
   // Note: no need to clear the latest activation, matmul is not accumulative.
 
   // Compute conv1d(inputs, weights_feature).
@@ -206,24 +203,20 @@ void EvalIntegerSVDF(
   int32_t scratch_tensor[kScratchTensorMaxSize];
   int32_t scratch_output_tensor[kScratchTensorMaxSize];
 
-  // Shift states. No need to set last state, the matmul is not accumulative.
+  // Shift states.
+  int16_t* const state_ptr = GetTensorData<int16_t>(activation_state_tensor);
+
+  // Left shift the activation_state.
   {
-    for (int b = 0; b < n_batch; ++b) {
-      int16_t* state_ptr_batch =
-          GetTensorData<int16_t>(activation_state_tensor) +
-          b * n_memory * n_filter;
-      for (int f = 0; f < n_filter; ++f) {
-        // Shift the vector left:
-        int16_t* batch_ptr = state_ptr_batch;
-        int16_t* batch_start = state_ptr_batch + 1;
-        int16_t* batch_end = state_ptr_batch + n_memory;
-        while (batch_start != batch_end) {
-          *batch_ptr++ = *batch_start++;
-        }
-        state_ptr_batch += n_memory;
-      }
+    int16_t* new_state_start = state_ptr;
+    const int16_t* old_state_start = state_ptr + 1;
+    const int16_t* old_state_end = state_ptr + n_batch * n_filter * n_memory;
+    while (old_state_start != old_state_end) {
+      *new_state_start++ = *old_state_start++;
     }
   }
+
+  // Note: no need to clear the latest activation, matmul is not accumulative.
 
   // Feature matmul.
   {

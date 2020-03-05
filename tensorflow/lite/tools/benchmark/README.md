@@ -82,6 +82,11 @@ and the following optional parameters:
     blank, passive mode is used by default.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
+*   `enable_platform_tracing`: `bool` (default=false) \
+    Whether to enable platform-wide tracing. Needs to be combined with
+    'enable_op_profiling'. Note, the platform-wide tracing might not work if
+    the tool runs as a commandline native binary. For example, on Android, the
+    ATrace-based tracing only works when the tool is launched as an APK.
 *   `hexagon_profiling`: `bool` (default=false) \
     Whether to profile ops running on hexagon. Needs to be combined with
     `enable_op_profiling`. When this is set to true the profile of ops

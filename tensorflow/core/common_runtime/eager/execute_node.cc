@@ -32,7 +32,7 @@ Status ExecuteNodeArgs::Init(
     for (int i = 0; i < n_inputs; ++i) {
       TensorHandle* in = op_inputs_flat[i];
       Device* d = kernel->InputDevice(i);
-      Status s = in->TensorValue(&tensor_args_flat[i], ctx->CanonicalDevice(d));
+      Status s = in->TensorValue(ctx->CanonicalDevice(d), &tensor_args_flat[i]);
       if (!s.ok()) {
 #if !defined(IS_MOBILE_PLATFORM)
         uint64 context_view_id = ctx->GetContextViewId();

@@ -807,7 +807,8 @@ def aot_compile_cpu(args):
       variables_to_feed=variables_to_feed,
       output_prefix=args.output_prefix,
       target_triple=args.target_triple,
-      cpp_class=args.cpp_class)
+      cpp_class=args.cpp_class,
+      enable_multithreading=args.enable_multithreading)
 
 
 def add_show_subparser(subparsers):
@@ -1034,9 +1035,8 @@ def add_aot_compile_cpu_subparser(subparsers):
        '',
        'Some possibly useful flags:',
        '  --xla_cpu_enable_fast_math=false',
-       '  --xla_cpu_multi_thread_eigen=false',
        '  --xla_force_host_platform_device_count=<num threads>',
-       '    (useful in conjunction with disabling eigen multi threading)'
+       '    (useful in conjunction with disabling multi threading)'
       ])
 
   parser_compile = subparsers.add_parser(
@@ -1103,6 +1103,12 @@ def add_aot_compile_cpu_subparser(subparsers):
             'values will be uninitialized in the compiled object '
             '(this applies to all input arguments from the signature as '
             'well).'))
+  parser_compile.add_argument(
+      '--enable_multithreading',
+      type=bool,
+      default='',
+      help=('*NOT CURRENTLY SUPPORTED*  '
+            'Enable multithreading in the compiled computation.'))
 
   parser_compile.set_defaults(func=aot_compile_cpu)
 

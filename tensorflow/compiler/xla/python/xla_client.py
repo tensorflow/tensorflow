@@ -177,7 +177,7 @@ def _cpu_backend_factory():
   return LocalBackend(platform='cpu', client=client)
 
 
-def _gpu_backend_factory():
+def _gpu_backend_factory(distributed_client=None, node_id=0):
   """Returns a GPU backend. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
@@ -197,8 +197,11 @@ def _gpu_backend_factory():
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  client = _xla.get_nvidia_gpu_client(asynchronous=True,
-                                      allocator_config=config)
+  client = _xla.get_nvidia_gpu_client(
+      asynchronous=True,
+      allocator_config=config,
+      distributed_client=distributed_client,
+      node_id=node_id)
   return LocalBackend(platform='gpu', client=client)
 
 

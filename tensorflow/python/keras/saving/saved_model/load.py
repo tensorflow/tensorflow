@@ -73,6 +73,9 @@ training_lib_v1 = LazyLoader(
     "tensorflow.python.keras.engine.training_v1")
 metrics = LazyLoader("metrics", globals(),
                      "tensorflow.python.keras.metrics")
+recurrent = LazyLoader(
+    "recurrent", globals(),
+    "tensorflow.python.keras.layers.recurrent")
 # pylint:enable=g-inconsistent-quotes
 
 
@@ -81,9 +84,10 @@ PUBLIC_ATTRIBUTES = CommonEndpoints.all_functions.union(
 PUBLIC_ATTRIBUTES.add(constants.KERAS_ATTR)
 
 
-KERAS_OBJECT_IDENTIFIERS = ('_tf_keras_layer', '_tf_keras_input_layer',
-                            '_tf_keras_network', '_tf_keras_model',
-                            '_tf_keras_sequential', '_tf_keras_metric')
+KERAS_OBJECT_IDENTIFIERS = (
+    '_tf_keras_layer', '_tf_keras_input_layer', '_tf_keras_network',
+    '_tf_keras_model', '_tf_keras_sequential', '_tf_keras_metric',
+    '_tf_keras_rnn_layer')
 
 
 def load(path, compile=True):  # pylint: disable=redefined-builtin
@@ -218,6 +222,7 @@ class KerasObjectLoader(tf_load.Loader):
     """Creates a Python object from a SavedObject protocol buffer."""
     if node_id in self._layer_nodes:
       return self._layer_nodes[node_id]
+
     if node_id in self._nodes_recreated_from_config:
       obj, setter = self._nodes_recreated_from_config[node_id]
 
@@ -412,6 +417,8 @@ class KerasObjectLoader(tf_load.Loader):
       obj.trainable = metadata['trainable']
     if metadata.get('dtype') is not None:
       obj._set_dtype_policy(metadata['dtype'])
+    if metadata.get('stateful') is not None:
+      obj.stateful = metadata['stateful']
     # pylint: enable=protected-access
 
     build_input_shape = metadata.get('build_input_shape')
@@ -703,6 +710,14 @@ def _finalize_config_layers(layers):
     # Restore metrics list.
     _restore_layer_metrics(layer)
 
+    # Restore RNN layer states
+    if (isinstance(layer, recurrent.RNN) and
+        layer.stateful and
+        hasattr(_get_keras_attr(layer), 'states')):
+      layer.states = getattr(_get_keras_attr(layer), 'states', None)
+      for variable in nest.flatten(layer.states):
+        backend.track_variable(variable)
+
 
 def _finalize_metric(metric):
   metric.update_state = types.MethodType(metrics_utils.update_state_wrapper(
@@ -752,7 +767,6 @@ def revive_custom_object(identifier, metadata):
       '_tf_keras_model': (RevivedNetwork, model_class),
       '_tf_keras_sequential': (RevivedNetwork, models_lib.Sequential),
   }
-
   parent_classes = revived_classes.get(identifier, None)
 
   if parent_classes is not None:
@@ -810,6 +824,8 @@ class RevivedLayer(object):
             metadata['activity_regularizer'])
       if metadata.get('_is_feature_layer') is not None:
         revived_obj._is_feature_layer = metadata['_is_feature_layer']
+      if metadata.get('stateful') is not None:
+        revived_obj.stateful = metadata['stateful']
       # pylint:enable=protected-access
 
     return revived_obj, _revive_setter

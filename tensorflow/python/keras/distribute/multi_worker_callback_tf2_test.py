@@ -210,11 +210,15 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
       test_obj.assertFalse(file_io.file_exists(saving_filepath))
 
+      multi_process_runner.barrier().wait()
+
       model.fit(
           x=train_ds,
           epochs=num_epoch,
           steps_per_epoch=steps,
           callbacks=[callbacks.TensorBoard(log_dir=saving_filepath)])
+
+      multi_process_runner.barrier().wait()
 
       test_obj.assertTrue(file_io.list_directory(saving_filepath))
 
@@ -256,4 +260,4 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
 
 if __name__ == '__main__':
-  multi_process_runner.test_main()
+  multi_process_runner.test_main(barrier_parties=2)

@@ -543,7 +543,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
               'depth':
                   4,
               'axis':
-                  1
+                  -1
           },
           expected=ragged_factory_ops.constant_value(
               [[[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], [[1, 0, 0, 0]]],

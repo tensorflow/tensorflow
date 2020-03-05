@@ -1,7 +1,7 @@
 # Description:
 #  Tools for building the TensorFlow pip package.
 
-load("//tensorflow:tensorflow.bzl", "if_windows", "transitive_hdrs")
+load("//tensorflow:tensorflow.bzl", "filegroup_as_file", "if_windows", "transitive_hdrs")
 load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
@@ -66,6 +66,11 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
+filegroup_as_file(
+    name = "xla_compiled_cpu_runtime_srcs.txt",
+    dep = "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
+)
+
 # Add dynamic kernel dso files here.
 DYNAMIC_LOADED_KERNELS = [
     "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
@@ -77,7 +82,10 @@ COMMON_PIP_DEPS = [
     "README",
     "setup.py",
     ":included_headers",
+    ":xla_compiled_cpu_runtime_srcs.txt_file",
     "//tensorflow:tensorflow_py",
+    "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_hdrs",
+    "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
     "//tensorflow/core:protos_all_proto_srcs",
     "//tensorflow/examples/saved_model/integration_tests:mnist_util",
     "//tensorflow/lite/python/testdata:interpreter_test_data",
@@ -105,6 +113,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/distribute:multi_process_runner",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/keras:combinations",
     "//tensorflow/python/keras/layers/preprocessing:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     "//tensorflow/python/keras/distribute:multi_worker_testing_utils",

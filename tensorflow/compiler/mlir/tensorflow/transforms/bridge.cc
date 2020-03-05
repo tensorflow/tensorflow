@@ -25,6 +25,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
+namespace {
+// Add logger to bridge passmanager.
+void EnableLogging(PassManager *pm) {
+  // Print the whole module after each pass, which requires disabling
+  // multi-threading as well.
+  pm->disableMultithreading();
+  pm->enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
+      /*print_module_scope=*/true));
+}
+}  // namespace
+
 namespace TFTPU {
 namespace {
 void AddGraphExportLoweringPasses(OpPassManager &pm) {
@@ -39,10 +50,7 @@ tensorflow::Status RunTPUBridge(
     ModuleOp module, bool enable_logging,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
   PassManager bridge(module.getContext());
-
-  // Add logger to bridge passmanager.
-  if (enable_logging)
-    bridge.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>());
+  if (enable_logging) EnableLogging(&bridge);
 
   // Populate a passmanager with the list of passes that implement the bridge.
   pipeline_builder(bridge);
@@ -118,15 +126,7 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_logging,
                                                  bool enable_inliner) {
   PassManager bridge(module.getContext());
-
-  // Add logger to bridge passmanager.
-  if (enable_logging) {
-    // Print the whole module after each pass, which requires disabling
-    // multi-threading as well.
-    bridge.disableMultithreading();
-    bridge.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
-        /* print_module_scope=*/true));
-  }
+  if (enable_logging) EnableLogging(&bridge);
 
   StandardPipelineOptions pipeline_options;
   pipeline_options.enable_inliner.setValue(enable_inliner);

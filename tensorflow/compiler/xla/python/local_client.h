@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/local_device_state.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -88,7 +89,8 @@ class PyLocalClient {
       std::string platform_name, LocalClient* client,
       std::vector<std::shared_ptr<Device>> devices, int host_id,
       std::unique_ptr<se::DeviceMemoryAllocator> allocator,
-      std::unique_ptr<tensorflow::Allocator> host_memory_allocator);
+      std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
+      std::unique_ptr<GpuExecutableRunOptions> gpu_run_options);
   virtual ~PyLocalClient() = default;
 
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
@@ -116,6 +118,10 @@ class PyLocalClient {
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
   tensorflow::Allocator* host_memory_allocator() const {
     return host_memory_allocator_.get();
+  }
+
+  GpuExecutableRunOptions* gpu_run_options() const {
+    return gpu_run_options_.get();
   }
 
   tensorflow::thread::ThreadPool* h2d_transfer_pool() {
@@ -146,6 +152,8 @@ class PyLocalClient {
   // only used on GPU where it is more efficient to copy buffers to and from the
   // device via a staging area of pinned memory.
   std::unique_ptr<tensorflow::Allocator> host_memory_allocator_;
+
+  std::unique_ptr<GpuExecutableRunOptions> gpu_run_options_;
 
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
 };

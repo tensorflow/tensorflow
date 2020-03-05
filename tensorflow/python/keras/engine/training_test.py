@@ -2308,9 +2308,9 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       _ = model.train_on_batch(input_a_np, output_a_np)
       _ = model.test_on_batch(input_a_np, output_a_np)
       # fit
-      _ = model.fit(input_a_np, [output_a_np])
+      _ = model.fit(input_a_np, output_a_np)
       # evaluate
-      _ = model.evaluate(input_a_np, [output_a_np])
+      _ = model.evaluate(input_a_np, output_a_np)
 
       # Same without dropout.
       a = keras.Input(shape=(3,), name='input_a')
@@ -2326,9 +2326,9 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       _ = model.train_on_batch(input_a_np, output_a_np)
       _ = model.test_on_batch(input_a_np, output_a_np)
       # fit
-      _ = model.fit(input_a_np, [output_a_np])
+      _ = model.fit(input_a_np, output_a_np)
       # evaluate
-      _ = model.evaluate(input_a_np, [output_a_np])
+      _ = model.evaluate(input_a_np, output_a_np)
 
   def test_model_with_external_loss(self):
     with ops.Graph().as_default(), self.cached_session():

@@ -205,7 +205,6 @@ class IteratorGetNextOp : public HybridAsyncOpKernel {
       : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {}
 
   AsyncOpKernel* AsAsync() override;
-  const AsyncOpKernel* AsAsync() const override;
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override;

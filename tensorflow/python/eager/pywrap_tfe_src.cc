@@ -3924,8 +3924,6 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
 // `include_tensor_ranks_only` allows caching on arguments excluding shape info,
 // so that a slow path using relaxed shape can rely on a cache key that excludes
 // shapes.
-//
-// TODO(nareshmodi): Add support for sparse tensors.
 PyObject* TFE_Py_EncodeArg(PyObject* arg, bool include_tensor_ranks_only) {
   EncodeResult result;
   const auto status =
