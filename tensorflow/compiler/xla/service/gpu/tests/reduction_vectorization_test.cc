@@ -106,7 +106,7 @@ CHECK: ld.global.nc.v2.f32
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(ReductionVectorizationTest, EvenColums) {
+TEST_F(ReductionVectorizationTest, EvenColumns) {
   const char* hlo_text = R"(
 HloModule ReducePower2
 
@@ -133,7 +133,7 @@ CHECK-NOT: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
 CHECK-NOT: ld.global.nc.v2.f32
-// TODO: find how to modify LLVM/opt to get this merged? vectorize before some loop opt?
+// TODO: Make this a vectorized load
 CHECK: ld.global.nc.f32
 CHECK: ld.global.nc.f32
 )");
