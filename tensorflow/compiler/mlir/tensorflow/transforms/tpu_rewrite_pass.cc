@@ -361,9 +361,6 @@ Operation* BuildCompileOp(
     int num_cores_per_replica, llvm::StringRef compilation_device,
     llvm::Optional<xla::DeviceAssignmentProto>&& xla_device_assignment,
     OpBuilder* builder) {
-  // TODO(b/139377366): Use tf_tpu.compile build method when it is defined.
-  OperationState compile_op_state(launch_func.getLoc(), "tf._TPUCompileMlir");
-
   // Set metadata from attributes.
   tensorflow::tpu::TPUCompileMetadataProto metadata;
   if (failed(SetMetadataProtoFromLaunchFuncOp(
@@ -376,9 +373,6 @@ Operation* BuildCompileOp(
     txt_metadata = metadata.DebugString();
   else
     metadata.SerializeToString(&txt_metadata);
-
-  compile_op_state.addAttribute("metadata",
-                                builder->getStringAttr(txt_metadata));
 
   // Build a shape op for each input to launch_func.
   // TODO(b/139377366): When shape inference is ready, we can use compile time
@@ -399,36 +393,22 @@ Operation* BuildCompileOp(
         operand_and_idx.value());
     compile_op_operands.emplace_back(shape_op.getResult());
   }
-  compile_op_state.addOperands(compile_op_operands);
-  compile_op_state.addAttribute(
-      "NumDynamicShapes",
-      builder->getI64IntegerAttr(compile_op_operands.size()));
 
-  FlatSymbolRefAttr func_attr =
-      launch_func.getAttrOfType<FlatSymbolRefAttr>("func");
-  if (!func_attr) {
-    launch_func.emitOpError("does not have `func` attribute");
-    return nullptr;
-  }
+  FlatSymbolRefAttr func_attr = launch_func.funcAttr();
   FuncOp func = launch_func.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
       func_attr.getValue());
 
   std::string txt_module;
   if (failed(EncapsulateFuncAndSerialize(func, &txt_module))) return nullptr;
-  compile_op_state.addAttribute("mlir_module",
-                                builder->getStringAttr(txt_module));
 
-  // Result #0 is a string indicating whether compilation is successful or not.
-  compile_op_state.addTypes(
-      RankedTensorType::get({}, builder->getType<TF::StringType>()));
+  auto result_type =
+      RankedTensorType::get({}, builder->getType<TF::StringType>());
 
-  // Result #1 is key to look up executable binary in compilation cache.
-  compile_op_state.addTypes(
-      RankedTensorType::get({}, builder->getType<TF::StringType>()));
+  auto compile_op = builder->create<TF::_TPUCompileMlirOp>(
+      launch_func.getLoc(), /*compilation_status=*/result_type,
+      /*program=*/result_type, compile_op_operands, txt_module, txt_metadata);
 
-  Operation* compile_op = builder->createOperation(compile_op_state);
-
-  return WrapOpInLaunch(builder, compile_op->getLoc(), compile_op,
+  return WrapOpInLaunch(builder, compile_op.getLoc(), compile_op,
                         compilation_device);
 }
 
@@ -548,10 +528,8 @@ tf_device::LaunchOp AssignDevicesToReplicatedExecute(
 void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
                                       llvm::StringRef compilation_device,
                                       OpBuilder* builder) {
-  OperationState assert_op_state(compile_op->getLoc(),
-                                 "tf.TPUCompileSucceededAssert");
-  assert_op_state.addOperands(compile_op->getResult(0));
-  Operation* assert_op = builder->createOperation(assert_op_state);
+  auto assert_op = builder->create<TF::TPUCompileSucceededAssertOp>(
+      compile_op->getLoc(), compile_op->getResult(0));
   WrapOpInLaunch(builder, compile_op->getLoc(), assert_op, compilation_device);
 }
 
