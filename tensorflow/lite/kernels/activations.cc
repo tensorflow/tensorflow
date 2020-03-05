@@ -1093,35 +1093,34 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
   const LeakyReluOpData* data =
       reinterpret_cast<LeakyReluOpData*>(node->user_data);
 
+  LeakyReluParams op_params;
   switch (input->type) {
     case kTfLiteFloat32: {
-      LeakyReluParams op_params{params->alpha};
+      op_params.alpha = params->alpha;
       optimized_ops::LeakyRelu(
           op_params, GetTensorShape(input), GetTensorData<float>(input),
           GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8: {
-      LeakyReluParams op_params{0.,
-                                input->params.zero_point,
-                                output->params.zero_point,
-                                data->output_multiplier_alpha,
-                                data->output_shift_alpha,
-                                data->output_multiplier_identity,
-                                data->output_shift_identity};
+      op_params.input_offset = input->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.output_multiplier_alpha = data->output_multiplier_alpha;
+      op_params.output_shift_alpha = data->output_shift_alpha;
+      op_params.output_multiplier_identity = data->output_multiplier_identity;
+      op_params.output_shift_identity = data->output_shift_identity;
       reference_ops::QuantizeLeakyRelu(
           op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
           GetTensorShape(output), GetTensorData<uint8_t>(output));
       return kTfLiteOk;
     } break;
     case kTfLiteInt8: {
-      LeakyReluParams op_params{0.,
-                                input->params.zero_point,
-                                output->params.zero_point,
-                                data->output_multiplier_alpha,
-                                data->output_shift_alpha,
-                                data->output_multiplier_identity,
-                                data->output_shift_identity};
+      op_params.input_offset = input->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.output_multiplier_alpha = data->output_multiplier_alpha;
+      op_params.output_shift_alpha = data->output_shift_alpha;
+      op_params.output_multiplier_identity = data->output_multiplier_identity;
+      op_params.output_shift_identity = data->output_shift_identity;
       reference_ops::QuantizeLeakyRelu(
           op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
           GetTensorShape(output), GetTensorData<int8_t>(output));
