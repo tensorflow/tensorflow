@@ -376,6 +376,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // TODO(aaudibert): Refactor the implementations to avoid the need for
     // `IteratorContext` when saving the state of the iterator.
     Status SaveInternal(IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
       mutex_lock l(*mu_);
       wait_for_checkpoint_ = true;
       // Wait for all in-flight calls to complete.

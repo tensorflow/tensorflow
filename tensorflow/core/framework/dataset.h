@@ -815,9 +815,10 @@ class DatasetBase : public core::RefCounted {
   ABSL_DEPRECATED("Use CheckExternalState instead.")
   virtual bool IsStateful() const { return false; }
 
-  // Indicates whether the dataset depends on any external state. If so, the
-  // method returns `errors::FailedPrecondition` with a message that identifies
-  // the external state. Otherwise, the method returns `Status::OK()`.
+  // Indicates whether the dataset depends on any external state which would
+  // prevent it from being serializable. If so, the method returns
+  // `errors::FailedPrecondition` with a message that identifies the external
+  // state. Otherwise, the method returns `Status::OK()`.
   //
   // TODO(jsimsa): Make this method pure virtual once all `DatasetBase`
   // implementations have an override.
@@ -907,17 +908,6 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
-    Status s = params_.dataset->CheckExternalState();
-    if (!s.ok()) {
-      if (ctx->external_state_policy() ==
-          SerializationContext::ExternalStatePolicy::kWarn) {
-        LOG(WARNING) << "Dataset contains external state: " << s.ToString();
-      }
-      if (ctx->external_state_policy() ==
-          SerializationContext::ExternalStatePolicy::kFail) {
-        return s;
-      }
-    }
     return IteratorBase::Save(ctx, writer);
   }
 

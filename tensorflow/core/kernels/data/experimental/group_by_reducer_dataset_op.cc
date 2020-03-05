@@ -285,6 +285,13 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {
+        TF_RETURN_IF_ERROR(dataset()->captured_key_func_->CheckExternalState());
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_init_func_->CheckExternalState());
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_reduce_func_->CheckExternalState());
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_finalize_func_->CheckExternalState());
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
 

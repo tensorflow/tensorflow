@@ -251,6 +251,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     }
 
     Status SaveInternal(IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
       mutex_lock l(*mu_);
       // Wait for all in-flight calls to complete.
       while (num_calls_ > 0) {

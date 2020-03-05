@@ -163,6 +163,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     }
 
     Status SaveInternal(IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
       mutex_lock l(mu_);
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));

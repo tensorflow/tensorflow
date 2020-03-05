@@ -395,6 +395,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     Status SaveInternal(IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
       // The order of locking is important here to avoid deadlock.
       mutex_lock l(mu_);
       mutex_lock ckpt_l(ckpt_mu_);

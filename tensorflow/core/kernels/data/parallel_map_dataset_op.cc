@@ -190,6 +190,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           ctx, &instantiated_captured_func_);
     }
 
+    Status CheckExternalState() override {
+      return dataset_->captured_func_->CheckExternalState();
+    }
+
     void MapFunc(IteratorContext* ctx, const string& prefix,
                  std::vector<Tensor> input_element, std::vector<Tensor>* result,
                  StatusCallback done) override {
@@ -375,6 +379,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   Status SaveInternal(IteratorStateWriter* writer) override {
+    TF_RETURN_IF_ERROR(parallel_map_functor_->CheckExternalState());
     mutex_lock l(*mu_);
     // Wait for all in-flight calls to complete.
     while (num_calls_ > 0) {
