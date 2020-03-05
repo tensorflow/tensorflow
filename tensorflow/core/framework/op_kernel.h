@@ -136,7 +136,6 @@ class OpKernel {
 
   // Returns nullptr iff this op kernel is synchronous.
   virtual AsyncOpKernel* AsAsync() { return nullptr; }
-  virtual const AsyncOpKernel* AsAsync() const { return nullptr; }
 
   // Initial time (in CPU cycles) we expect an operation to take.  Used to
   // determine whether an operation should be place in a threadpool.  Operations
@@ -263,7 +262,6 @@ class AsyncOpKernel : public OpKernel {
   virtual void ComputeAsync(OpKernelContext* context, DoneCallback done) = 0;
 
   AsyncOpKernel* AsAsync() override { return this; }
-  const AsyncOpKernel* AsAsync() const override { return this; }
 
   void Compute(OpKernelContext* context) override;
 };
@@ -732,6 +730,7 @@ class OpKernelContext {
     std::function<void(std::function<void()>)>* runner = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
     GraphCollector* graph_collector = nullptr;
+    bool run_all_kernels_inline = false;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -866,6 +865,12 @@ class OpKernelContext {
 
   // If non-null, kernels should populate with any partition subgraphs created.
   GraphCollector* graph_collector() { return params_->graph_collector; }
+
+  // If True, hint that all kernels in functions called by this kernel, should
+  // be treated as "inexpensive", and hence executed on the scheduling thread.
+  bool run_all_kernels_inline() const {
+    return params_->run_all_kernels_inline;
+  }
 
   // Input to output forwarding.
 
@@ -1366,6 +1371,10 @@ class OpKernelContext {
     gtl::InlinedVector<int64, 2> persistent_alloc_ids GUARDED_BY(stats_mu);
   };
   std::unique_ptr<TrackingState> tracking_state_;
+
+  // For access to `params_->op_kernel`.
+  friend void CheckNotInComputeAsync(OpKernelContext* ctx,
+                                     const char* correct_macro_name);
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };

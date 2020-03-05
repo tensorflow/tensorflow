@@ -661,6 +661,14 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         input_contexts,
         self._container_strategy())
 
+  def _experimental_distribute_values_from_function(self, value_fn):
+    per_replica_values = []
+    for replica_id in range(self._num_replicas_in_sync):
+      per_replica_values.append(value_fn(
+          distribute_lib.ValueContext(replica_id,
+                                      self._num_replicas_in_sync)))
+    return values.regroup(per_replica_values, always_wrap=True)
+
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
                                           initial_loop_values=None):

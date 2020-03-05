@@ -28,8 +28,4 @@ else
   NO_JOB=1
 fi
 
-if [[ ! -z "${TARGET_ARCH}" ]]; then
-  make -j ${NO_JOB} TARGET=rpi -C "${TENSORFLOW_DIR}" -f tensorflow/lite/tools/make/Makefile TARGET_ARCH=${TARGET_ARCH}
-else
-  make -j ${NO_JOB} TARGET=rpi -C "${TENSORFLOW_DIR}" -f tensorflow/lite/tools/make/Makefile
-fi
+make -j ${NO_JOB} TARGET=rpi -C "${TENSORFLOW_DIR}" -f tensorflow/lite/tools/make/Makefile $@

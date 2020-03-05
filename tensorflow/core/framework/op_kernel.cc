@@ -1756,7 +1756,7 @@ void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
 
 void CheckNotInComputeAsync(OpKernelContext* ctx,
                             const char* correct_macro_name) {
-  CHECK_EQ(nullptr, ctx->op_kernel().AsAsync())
+  CHECK_EQ(nullptr, ctx->params_->op_kernel->AsAsync())
       << "Use " << correct_macro_name << " in AsyncOpKernel implementations.";
 }
 

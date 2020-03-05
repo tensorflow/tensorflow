@@ -33,6 +33,7 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -1111,7 +1112,7 @@ class DataHandler(object):
     dataset = self._adapter.get_dataset()
     if class_weight:
       dataset = dataset.map(_make_class_weight_map_fn(class_weight))
-    self._steps_per_epoch = self._infer_steps(steps_per_epoch, dataset)
+    self._inferred_steps = self._infer_steps(steps_per_epoch, dataset)
     self._dataset = strategy.experimental_distribute_dataset(dataset)
 
   def enumerate_epochs(self):
@@ -1135,12 +1136,13 @@ class DataHandler(object):
     """Catches errors when an iterator runs out of data."""
     try:
       yield
+      context.async_wait()
     except (StopIteration, errors.OutOfRangeError):
-      if (self._adapter.get_size() is None and self._steps_per_epoch is None and
+      if (self._adapter.get_size() is None and self._inferred_steps is None and
           self._current_step > 0):
         # The input passed by the user ran out of batches.
         # Now we know the cardinality of the input(dataset or generator).
-        self._steps_per_epoch = self._current_step
+        self._inferred_steps = self._current_step
       else:
         self._insufficient_data = True
         total_epochs = self._epochs - self._initial_epoch
@@ -1150,18 +1152,33 @@ class DataHandler(object):
             "least `steps_per_epoch * epochs` batches (in this case, "
             "{} batches). You may need to use the repeat() function "
             "when building your dataset.".format(total_epochs *
-                                                 self._steps_per_epoch))
+                                                 self._inferred_steps))
 
   def steps(self):
     """Yields steps for the current epoch."""
     self._current_step = 0
-    # `self._steps_per_epoch` can be changed by `catch_stop_iteration`.
-    while (self._steps_per_epoch is None or
-           self._current_step < self._steps_per_epoch):
+    # `self._inferred_steps` can be changed by `catch_stop_iteration`.
+    while (self._inferred_steps is None or
+           self._current_step < self._inferred_steps):
       if self._insufficient_data:  # Set by `catch_stop_iteration`.
         break
       yield self._current_step
       self._current_step += 1
+
+  @property
+  def inferred_steps(self):
+    """The inferred steps per epoch of the created `Dataset`.
+
+    This will be `None` in the case where:
+
+    (1) A `Dataset` of unknown cardinality was passed to the `DataHandler`, and
+    (2) `steps_per_epoch` was not provided, and
+    (3) The first epoch of iteration has not yet completed.
+
+    Returns:
+      The inferred steps per epoch of the created `Dataset`.
+    """
+    return self._inferred_steps
 
   def _infer_steps(self, steps, dataset):
     """Infers steps_per_epoch needed to loop through a dataset."""
@@ -1189,16 +1206,12 @@ class DataHandler(object):
       raise ValueError("When passing an infinitely repeating dataset, you "
                        "must specify how many steps to draw.")
     if size >= 0:
-      return size
+      return size.numpy().item()
     return None
 
   @property
   def _samples(self):
     return self._adapter.get_samples()
-
-  @property
-  def _steps(self):
-    return self._adapter.get_size()
 
 
 def _make_class_weight_map_fn(class_weight):

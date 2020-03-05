@@ -76,12 +76,15 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
   updated via `LossScale.update()` whenever gradients are applied, either
   through `minimize()` or `apply_gradients()`. For example:
 
-  ```python
-  opt = tf.keras.optimizers.SGD(0.1)
-  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(opt, "dynamic")
-  # 'minimize' applies loss scaling to the loss and updates the loss sale.
-  opt.minimize(loss_fn)
-  ```
+  >>> opt = tf.keras.optimizers.SGD(0.25)
+  >>> opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(opt,
+  ...                                                                "dynamic")
+  >>> var = tf.Variable(1.)
+  >>> loss_fn = lambda: var ** 2
+  >>> # 'minimize' applies loss scaling to the loss and updates the loss sale.
+  >>> opt.minimize(loss_fn, var_list=var)
+  >>> var.numpy()
+  0.5
 
   If a `tf.GradientTape` is used to compute gradients instead of
   `LossScaleOptimizer.minimize` or `LossScaleOptimizer.get_gradients`, the loss
@@ -90,16 +93,14 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
   `tf.GradientTape`, and `LossScaleOptimizer.get_unscaled_gradients` after
   computing the gradients with `tf.GradientTape`. For example:
 
-  ```python
-  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(...)
-  vars = ...
-  with tf.GradientTape() as tape:
-    loss = ...
-    scaled_loss = opt.get_scaled_loss(loss)
-  scaled_grads = tape.gradient(scaled_loss, vars)
-  grads = opt.get_unscaled_gradients(scaled_grads)
-  opt.apply_gradients(zip(grads, vars))  # Loss scale will be updated here
-  ```
+  >>> with tf.GradientTape() as tape:
+  ...   loss = loss_fn()
+  ...   scaled_loss = opt.get_scaled_loss(loss)
+  >>> scaled_grad = tape.gradient(scaled_loss, var)
+  >>> (grad,) = opt.get_unscaled_gradients([scaled_grad])
+  >>> opt.apply_gradients([(grad, var)])  # Loss scale is updated here
+  >>> var.numpy()
+  0.25
   """
 
   def __init__(self, optimizer, loss_scale):

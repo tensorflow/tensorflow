@@ -59,6 +59,9 @@ if platform.system() == 'Windows':
 else:
   llvm_config.use_default_substitutions()
 
+llvm_config.config.substitutions.append(
+    ('%tfrt_bindir', 'tensorflow/compiler/aot'))
+
 # Tweak the PATH to include the tools dir.
 llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
 

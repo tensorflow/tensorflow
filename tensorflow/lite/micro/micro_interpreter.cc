@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/micro/compatibility.h"
+#include "tensorflow/lite/micro/micro_allocator.h"
 #include "tensorflow/lite/micro/micro_optional_debug_tools.h"
 
 namespace tflite {
@@ -31,16 +32,39 @@ const char* OpNameFromRegistration(const TfLiteRegistration* registration) {
   }
 }
 
-void ReportOpError(struct TfLiteContext* context, const char* format, ...) {
-  MicroInterpreter* interpreter =
-      static_cast<MicroInterpreter*>(context->impl_);
+}  // namespace
+
+namespace internal {
+
+TfLiteStatus ContextHelper::AllocatePersistentBuffer(TfLiteContext* ctx,
+                                                     size_t bytes, void** ptr) {
+  return reinterpret_cast<ContextHelper*>(ctx->impl_)
+      ->allocator_->AllocatePersistentBuffer(bytes, ptr);
+}
+
+TfLiteStatus ContextHelper::RequestScratchBufferInArena(TfLiteContext* ctx,
+                                                        size_t bytes,
+                                                        int* buffer_idx) {
+  ContextHelper* helper = reinterpret_cast<ContextHelper*>(ctx->impl_);
+  return helper->allocator_->RequestScratchBufferInArena(
+      helper->current_node_idx_, bytes, buffer_idx);
+}
+
+void* ContextHelper::GetScratchBuffer(TfLiteContext* ctx, int buffer_idx) {
+  return reinterpret_cast<ContextHelper*>(ctx->impl_)
+      ->allocator_->GetScratchBuffer(buffer_idx);
+}
+
+void ContextHelper::ReportOpError(struct TfLiteContext* context,
+                                  const char* format, ...) {
+  ContextHelper* helper = static_cast<ContextHelper*>(context->impl_);
   va_list args;
   va_start(args, format);
-  interpreter->error_reporter()->Report(format, args);
+  TF_LITE_REPORT_ERROR(helper->error_reporter_, format, args);
   va_end(args);
 }
 
-}  // namespace
+}  // namespace internal
 
 MicroInterpreter::MicroInterpreter(const Model* model,
                                    const OpResolver& op_resolver,
@@ -52,7 +76,8 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       error_reporter_(error_reporter),
       allocator_(&context_, model_, tensor_arena, tensor_arena_size,
                  error_reporter_),
-      tensors_allocated_(false) {
+      tensors_allocated_(false),
+      context_helper_(error_reporter_, &allocator_) {
   const flatbuffers::Vector<flatbuffers::Offset<SubGraph>>* subgraphs =
       model->subgraphs();
   if (subgraphs->size() != 1) {
@@ -65,8 +90,8 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   tensors_ = subgraph_->tensors();
   operators_ = subgraph_->operators();
 
-  context_.impl_ = static_cast<void*>(this);
-  context_.ReportError = ReportOpError;
+  context_.impl_ = static_cast<void*>(&context_helper_);
+  context_.ReportError = context_helper_.ReportOpError;
   context_.recommended_num_threads = 1;
 
   // If the system is big endian then convert weights from the flatbuffer from
@@ -140,10 +165,14 @@ void MicroInterpreter::CorrectTensorDataEndianness(T* data, int32_t size) {
 TfLiteStatus MicroInterpreter::AllocateTensors() {
   TF_LITE_ENSURE_OK(&context_, allocator_.AllocateNodeAndRegistrations(
                                    op_resolver_, &node_and_registrations_));
-  TF_LITE_ENSURE_OK(&context_, allocator_.FinishTensorAllocation());
 
-  // Init method is not yet implemented.
+  // Only allow AllocatePersistentBuffer in Init stage.
+  context_.AllocatePersistentBuffer = context_helper_.AllocatePersistentBuffer;
+  context_.RequestScratchBufferInArena = nullptr;
+  context_.GetScratchBuffer = nullptr;
+
   for (size_t i = 0; i < operators_->size(); ++i) {
+    context_helper_.SetNodeIndex(i);
     auto* node = &(node_and_registrations_[i].node);
     auto* registration = node_and_registrations_[i].registration;
     size_t init_data_size;
@@ -160,8 +189,15 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
           registration->init(&context_, init_data, init_data_size);
     }
   }
+  context_helper_.SetNodeIndex(-1);
 
+  // Both AllocatePersistentBuffer and RequestScratchBufferInArena is available
+  // in Prepare stage.
+  context_.RequestScratchBufferInArena =
+      context_helper_.RequestScratchBufferInArena;
   for (size_t i = 0; i < operators_->size(); ++i) {
+    // Set node idx to annotate the lifetime for scratch buffers.
+    context_helper_.SetNodeIndex(i);
     auto* node = &(node_and_registrations_[i].node);
     auto* registration = node_and_registrations_[i].registration;
     if (registration->prepare) {
@@ -169,17 +205,24 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
       if (prepare_status != kTfLiteOk) {
         TF_LITE_REPORT_ERROR(
             error_reporter_,
-            "Node %s (number %d) failed to prepare with status %d",
+            "Node %s (number %df) failed to prepare with status %d",
             OpNameFromRegistration(registration), i, prepare_status);
         return kTfLiteError;
       }
     }
   }
+  context_helper_.SetNodeIndex(-1);
 
+  // Prepare is done, we're ready for Invoke. Memory allocation is no longer
+  // allowed. Kernels can only fetch scratch buffers via GetScratchBuffer.
+  context_.AllocatePersistentBuffer = nullptr;
+  context_.RequestScratchBufferInArena = nullptr;
+  context_.GetScratchBuffer = context_helper_.GetScratchBuffer;
+
+  TF_LITE_ENSURE_OK(&context_, allocator_.FinishTensorAllocation());
   tensors_allocated_ = true;
   return kTfLiteOk;
 }
-
 TfLiteStatus MicroInterpreter::Invoke() {
   if (initialization_status_ != kTfLiteOk) {
     TF_LITE_REPORT_ERROR(error_reporter_,

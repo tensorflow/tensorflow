@@ -515,6 +515,7 @@ class BatchResource : public ResourceBase {
     opts.stats_collector = last_task_context->stats_collector();
     opts.rendezvous = last_task_context->rendezvous();
     opts.runner = last_task_context->runner();
+    opts.run_all_kernels_inline = last_task_context->run_all_kernels_inline();
 
     auto* flib = last_task_context->function_library();
     std::vector<Tensor> combined_outputs;

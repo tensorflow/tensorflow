@@ -179,8 +179,6 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       return tflite::TensorType_FLOAT16;
     case mlir::TF::TensorFlowTypes::STRING:
       return tflite::TensorType_STRING;
-    case mlir::TF::TensorFlowTypes::UINT8:
-      return tflite::TensorType_UINT8;
     case mlir::TF::TensorFlowTypes::QUINT8:
       return tflite::TensorType_UINT8;
     case mlir::StandardTypes::Complex: {
@@ -196,7 +194,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
         case 1:
           return tflite::TensorType_BOOL;
         case 8:
-          return tflite::TensorType_INT8;
+          return itype.isUnsigned() ? tflite::TensorType_UINT8
+                                    : tflite::TensorType_INT8;
         case 16:
           return tflite::TensorType_INT16;
         case 32:

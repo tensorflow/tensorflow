@@ -18118,6 +18118,13 @@ op {
     name: "interpolation"
     type: "string"
   }
+  attr {
+    name: "fill_mode"
+    type: "string"
+    default_value {
+      s: "constant"
+    }
+  }
 }
 op {
   name: "ImageSummary"
@@ -18410,6 +18417,18 @@ op {
     name: "Tval"
     type: "type"
   }
+}
+op {
+  name: "InitializeTableFromDataset"
+  input_arg {
+    name: "table_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  is_stateful: true
 }
 op {
   name: "InitializeTableFromTextFile"
@@ -32659,6 +32678,129 @@ op {
         type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "RaggedCross"
+  input_arg {
+    name: "ragged_values"
+    type_list_attr: "ragged_values_types"
+  }
+  input_arg {
+    name: "ragged_row_splits"
+    type_list_attr: "ragged_splits_types"
+  }
+  input_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+    number_attr: "Nsparse"
+  }
+  input_arg {
+    name: "sparse_values"
+    type_list_attr: "sparse_values_types"
+  }
+  input_arg {
+    name: "sparse_shape"
+    type: DT_INT64
+    number_attr: "Nsparse"
+  }
+  input_arg {
+    name: "dense_inputs"
+    type_list_attr: "dense_types"
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "out_values_type"
+  }
+  output_arg {
+    name: "output_row_splits"
+    type_attr: "out_row_splits_type"
+  }
+  attr {
+    name: "Nsparse"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "input_order"
+    type: "string"
+  }
+  attr {
+    name: "hashed_output"
+    type: "bool"
+  }
+  attr {
+    name: "num_buckets"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "hash_key"
+    type: "int"
+  }
+  attr {
+    name: "ragged_values_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "ragged_splits_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "sparse_values_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "dense_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "out_values_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "out_row_splits_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -47979,6 +48121,7 @@ op {
         type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
+        type: DT_UINT32
       }
     }
   }

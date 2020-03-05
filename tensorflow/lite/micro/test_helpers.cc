@@ -19,7 +19,9 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/micro_utils.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace testing {
@@ -179,6 +181,25 @@ ModelBuilder::Tensor ModelBuilder::AddTensorImpl(
       /* sparsity */ 0);
   next_tensor_id_++;
   return next_tensor_id_ - 1;
+}
+
+const Model* BuildSimpleStatefulModel() {
+  using flatbuffers::Offset;
+  flatbuffers::FlatBufferBuilder* fb_builder = BuilderInstance();
+
+  ModelBuilder model_builder(fb_builder);
+
+  const int op_id =
+      model_builder.RegisterOp(BuiltinOperator_CUSTOM, "simple_stateful_op", 0);
+  const int input_tensor = model_builder.AddTensor(TensorType_UINT8, {3});
+  const int median_tensor = model_builder.AddTensor(TensorType_UINT8, {3});
+  const int invoke_count_tensor =
+      model_builder.AddTensor(TensorType_INT32, {1});
+
+  model_builder.AddNode(op_id, {input_tensor},
+                        {median_tensor, invoke_count_tensor});
+  return model_builder.BuildModel({input_tensor},
+                                  {median_tensor, invoke_count_tensor});
 }
 
 const Model* BuildSimpleModelWithBranch() {
@@ -471,6 +492,14 @@ const Model* GetSimpleModelWithBranch() {
   static Model* model = nullptr;
   if (!model) {
     model = const_cast<Model*>(BuildSimpleModelWithBranch());
+  }
+  return model;
+}
+
+const Model* GetSimpleStatefulModel() {
+  static Model* model = nullptr;
+  if (!model) {
+    model = const_cast<Model*>(BuildSimpleStatefulModel());
   }
   return model;
 }

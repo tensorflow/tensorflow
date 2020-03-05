@@ -1274,7 +1274,7 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
 
 
 class AddLayer(keras.layers.Layer):
-  """A layer which adds it's input to a variable.
+  """A layer which adds its input to a variable.
 
   Useful for testing a layer with a variable
   """
@@ -1288,7 +1288,7 @@ class AddLayer(keras.layers.Layer):
 
 
 class IdentityLayer(keras.layers.Layer):
-  """A layer that returns it's input.
+  """A layer that returns its input.
 
   Useful for testing a layer without a variable.
   """

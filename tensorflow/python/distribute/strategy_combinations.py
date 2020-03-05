@@ -255,11 +255,18 @@ strategies_minus_tpu = [
     mirrored_strategy_with_gpu_and_cpu, mirrored_strategy_with_two_gpus
 ]
 
+strategies_minus_default_and_tpu = [
+    one_device_strategy, one_device_strategy_gpu,
+    mirrored_strategy_with_gpu_and_cpu, mirrored_strategy_with_two_gpus
+]
+
 tpu_strategies = [
     tpu_strategy,  # steps_per_run=2
     tpu_strategy_one_step,
     cloud_tpu_strategy,
 ]
+
+all_strategies_minus_default = strategies_minus_default_and_tpu + tpu_strategies
 
 all_strategies = strategies_minus_tpu + tpu_strategies
 

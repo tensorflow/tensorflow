@@ -358,8 +358,8 @@ void ProcessOpWithShapeInput(Model* model, Operator* op) {
     return;
   }
   CHECK(dims_array.data_type == ArrayDataType::kInt32) << "dims must be int32";
-  CHECK_LE(RequiredBufferSizeForShape(dims_array.shape()), 4)
-      << "dims vector can be no larger than 4 values";
+  CHECK_LE(RequiredBufferSizeForShape(dims_array.shape()), 6)
+      << "dims vector can be no larger than 6 values";
 
   std::vector<int32> const& dims =
       dims_array.GetBuffer<ArrayDataType::kInt32>().data;
