@@ -2512,7 +2512,7 @@ tf_export(
         gen_image_ops.extract_jpeg_shape)
 
 
-@tf_export('image.encode_png')
+@tf_export('io.encode_png', 'image.encode_png')
 def encode_png(image, compression=-1, name=None):
   r"""PNG-encode an image.
 
