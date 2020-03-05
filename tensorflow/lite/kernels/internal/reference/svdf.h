@@ -205,7 +205,7 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   // Compute conv1d(inputs, weights_feature).
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       weights_feature_ptr, num_filters, input_size, input_ptr, batch_size,
-      scratch_ptr, /*result_stride=*/1);
+      scratch_ptr);
 
   // Copy the latest activation from scratch into activation_state:
   // The last, i.e. (memory_size-1)th entry for each batch, and filter.
@@ -270,7 +270,7 @@ inline void EvalHybridSVDF(
     // Compute conv1d(inputs, weights_feature).
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         weights_feature_ptr, num_filters, input_size, quantized_input_ptr,
-        scaling_factors_ptr, batch_size, scratch_ptr, /*result_stride=*/1);
+        scaling_factors_ptr, batch_size, scratch_ptr);
   }
 
   // Copy the latest activation from scratch into activation_state:

@@ -1318,7 +1318,7 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, filter_rows, filter_cols, gemm_input_data,
       scaling_factors_ptr, /*n_batch=*/gemm_input_rows, accum_scratch,
-      output_data, /*result_stride=*/1, context);
+      output_data, context);
   AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
                                    bias_shape, bias_data, output_shape,
                                    output_data);
