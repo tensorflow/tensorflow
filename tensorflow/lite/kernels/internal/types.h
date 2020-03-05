@@ -1085,13 +1085,12 @@ struct LeakyReluParams {
 
 
 struct LeakyReluParamsQuant {
-  uint8_t q_alpha;
-  uint8_t q_identity;
-  int32 alpha_offset;
   int32 input_offset;
   int32 output_offset;
-  int32 output_multiplier;
-  int output_shift;
+  int32 output_multiplier_alpha;
+  int output_shift_alpha;
+  int32 output_multiplier_identity;
+  int output_shift_identity;
 };
 
 template <typename P>
