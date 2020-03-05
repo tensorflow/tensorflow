@@ -359,7 +359,7 @@ class FileWriter(SummaryToEventTransformer):
       raise RuntimeError(
           "v1.summary.FileWriter is not compatible with eager execution. "
           "Use `tf.summary.create_file_writer`,"
-           "or a `with v1.Graph().as_default():` context")
+          "or a `with v1.Graph().as_default():` context")
     if session is not None:
       event_writer = EventFileWriterV2(
           session, logdir, max_queue, flush_secs, filename_suffix)
