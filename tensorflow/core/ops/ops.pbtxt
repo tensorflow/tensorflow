@@ -18118,6 +18118,13 @@ op {
     name: "interpolation"
     type: "string"
   }
+  attr {
+    name: "fill_mode"
+    type: "string"
+    default_value {
+      s: "constant"
+    }
+  }
 }
 op {
   name: "ImageSummary"
