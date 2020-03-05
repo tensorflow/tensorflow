@@ -4267,7 +4267,7 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
    
-    with ops.device(input_dataset._variant_tensor.device):
+    with ops.colocate_with(input_dataset._variant_tensor.device):
       variant_tensor = gen_dataset_ops.prefetch_dataset(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
           buffer_size=self._buffer_size,
