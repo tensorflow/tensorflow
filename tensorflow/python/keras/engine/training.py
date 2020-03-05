@@ -21,6 +21,7 @@ from __future__ import print_function
 import copy
 
 from tensorflow.python.distribute import distribute_coordinator as dc
+from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
@@ -61,6 +62,10 @@ def enable_multi_worker(method):
 
   def _method_wrapper(self, *args, **kwargs):
     if not self._in_multi_worker_mode():  # pylint: disable=protected-access
+      return method(self, *args, **kwargs)
+
+    # Running inside `run_distribute_coordinator` already.
+    if dc_context.get_current_worker_context():
       return method(self, *args, **kwargs)
 
     return dc.run_distribute_coordinator(
