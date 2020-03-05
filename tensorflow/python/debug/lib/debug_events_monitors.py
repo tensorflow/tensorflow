@@ -228,8 +228,23 @@ class InfNanMonitor(BaseMonitor):
             execution_index=execution_index,
             graph_execution_trace_index=graph_execution_trace_index))
     elif tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_HEALTH:
-      raise NotImplementedError(
-          "InfNanMonitor does not support FULL_HEALTH tensor-debug mode yet.")
+      (_, _, _, _, size, num_neg_inf, num_pos_inf, num_nan,
+       _, _, _) = debug_tensor_value
+      if num_neg_inf or num_pos_inf or num_nan:
+        self._alerts.append(InfNanAlert(
+            wall_time,
+            op_type,
+            output_slot,
+            size=size,
+            num_neg_inf=num_neg_inf,
+            num_pos_inf=num_pos_inf,
+            num_nan=num_nan,
+            execution_index=execution_index,
+            graph_execution_trace_index=graph_execution_trace_index))
+    else:
+      raise ValueError(
+          "Unsupported tensor debug mode: %s" %
+          debug_event_pb2.TensorDebugMode.Name(tensor_debug_mode))
 
   def on_execution(self,
                    execution_index,
