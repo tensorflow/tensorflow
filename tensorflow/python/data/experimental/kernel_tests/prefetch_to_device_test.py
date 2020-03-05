@@ -146,12 +146,13 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
-        prefetching_ops.prefetch_to_device("/gpu:0"))
-
-    self.assertEqual(device_dataset._variant_tensor.device, '/device:GPU:0')
+        prefetching_ops.prefetch_to_device('/gpu:0'))
 
     iterator = dataset_ops.make_initializable_iterator(device_dataset)
     next_element = iterator.get_next()
+
+    self.assertEqual(device_dataset._variant_tensor.device, '/device:GPU:0')
+    self.assertEqual(next_element.device, '/device:GPU:0')
 
     with self.cached_session(
         config=config_pb2.ConfigProto(allow_soft_placement=False)):
@@ -196,12 +197,13 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
-        prefetching_ops.prefetch_to_device("/gpu:0"))
-
-    self.assertEqual(device_dataset._variant_tensor.device, '/device:GPU:0')
+        prefetching_ops.prefetch_to_device('/gpu:0'))
 
     iterator = dataset_ops.make_initializable_iterator(device_dataset)
     next_element = iterator.get_next()
+
+    self.assertEqual(device_dataset._variant_tensor.device, '/device:GPU:0')
+    self.assertEqual(next_element.device, '/device:GPU:0')
 
     with self.cached_session(
         config=config_pb2.ConfigProto(allow_soft_placement=False)):
