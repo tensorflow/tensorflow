@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
+#include "tensorflow/core/grappler/optimizers/common_subgraph_elimination.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/debug_stripper.h"
@@ -184,6 +185,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("auto_mixed_precision",
          new AutoMixedPrecision(cfg_.auto_mixed_precision()));
   MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL));
+  MK_OPT("common_subgraph_elimination",
+         new CommonSubgraphElimination(cfg_.common_subgraph_elimination()));
   MK_OPT("arithmetic", new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
   MK_OPT("autoparallel", new AutoParallel(cfg_.auto_parallel().num_replicas()));
   MK_OPT("loop", new LoopOptimizer(cfg_.loop_optimization(), cpu_device_));
@@ -223,6 +226,11 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<FunctionOptimizer>(
         cfg_.function_optimization(),
         /*lower_control_flow=*/!IsSingleThreadedExecutor()));
+  }
+  if (cfg_.common_subgraph_elimination() != RewriterConfig::OFF &&
+      cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<CommonSubgraphElimination>(
+        cfg_.common_subgraph_elimination()));
   }
   if (cfg_.debug_stripper() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<DebugStripper>());
@@ -812,6 +820,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.constant_folding() != RewriterConfig::OFF ||
          rewrite_cfg.shape_optimization() != RewriterConfig::OFF ||
          rewrite_cfg.remapping() != RewriterConfig::OFF ||
+         rewrite_cfg.common_subgraph_elimination() != RewriterConfig::OFF ||
          rewrite_cfg.arithmetic_optimization() != RewriterConfig::OFF ||
          rewrite_cfg.loop_optimization() != RewriterConfig::OFF ||
          rewrite_cfg.dependency_optimization() != RewriterConfig::OFF ||
