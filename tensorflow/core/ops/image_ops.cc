@@ -1022,7 +1022,6 @@ REGISTER_OP("GenerateBoundingBoxProposals")
       return Status::OK();
     });
 
-// TODO(ringwalt): Add a "fill_mode" attr with "constant", "mirror", etc.
 // TODO(ringwalt): Add a "fill_constant" argument for constant mode (default 0).
 // V2 op supports output_shape. V1 op is in contrib.
 REGISTER_OP("ImageProjectiveTransformV2")
@@ -1031,6 +1030,7 @@ REGISTER_OP("ImageProjectiveTransformV2")
     .Input("output_shape: int32")
     .Attr("dtype: {uint8, int32, int64, float16, float32, float64}")
     .Attr("interpolation: string")
+    .Attr("fill_mode: string = 'constant'")
     .Output("transformed_images: dtype")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;

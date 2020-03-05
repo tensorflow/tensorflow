@@ -40,6 +40,12 @@ END
 Interpolation method, "NEAREST" or "BILINEAR".
 END
   }
+  attr {
+    name: "fill_mode"
+    description: <<END
+Fill mode, "REFLECT", "MIRROR", "WRAP", or "CONSTANT".
+END
+  }
   summary: "Applies the given transform to each of the images."
   description: <<END
 If one row of `transforms` is `[a0, a1, a2, b0, b1, b2, c0, c1]`, then it maps

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -400,10 +401,17 @@ class RandomTranslation(Layer):
       When represented as a single float, this value is used for both the upper
       and lower bound.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'nearest', 'bilinear'}`).
-    fill_value: Value used for points outside the boundaries of the input if
-      `mode='constant'`.
+      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      - *reflect*: `(d c b a | a b c d | d c b a)`
+        The input is extended by reflecting about the edge of the last pixel.
+      - *constant*: `(k k k k | a b c d | k k k k)`
+        The input is extended by filling all values beyond the edge with the
+        same constant value k = 0.
+      - *wrap*: `(a b c d | a b c d | a b c d)`
+        The input is extended by wrapping around to the opposite edge.
+    interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
+
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
       data_format='channels_last'.
@@ -418,8 +426,8 @@ class RandomTranslation(Layer):
   def __init__(self,
                height_factor,
                width_factor,
-               fill_mode='nearest',
-               fill_value=0.,
+               fill_mode='reflect',
+               interpolation='bilinear',
                seed=None,
                **kwargs):
     self.height_factor = height_factor
@@ -448,11 +456,16 @@ class RandomTranslation(Layer):
       raise ValueError('`width_factor` must have values between [-1, 1], '
                        'got {}'.format(width_factor))
 
-    if fill_mode not in {'nearest', 'bilinear'}:
+    if fill_mode not in {'reflect', 'wrap', 'constant'}:
       raise NotImplementedError(
-          '`fill_mode` {} is not supported yet.'.format(fill_mode))
+          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
+          '`constant` are supported.'.format(fill_mode))
+    if interpolation not in {'nearest', 'bilinear'}:
+      raise NotImplementedError(
+          'Unknown `interpolation` {}. Only `nearest` and '
+          '`bilinear` are supported.'.format(interpolation))
     self.fill_mode = fill_mode
-    self.fill_value = fill_value
+    self.interpolation = interpolation
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
@@ -482,6 +495,12 @@ class RandomTranslation(Layer):
       translations = math_ops.cast(
           array_ops.concat([height_translate, width_translate], axis=1),
           dtype=inputs.dtype)
+      if compat.forward_compatible(2020, 3, 25):
+        return transform(
+            inputs,
+            get_translation_matrix(translations),
+            interpolation=self.interpolation,
+            fill_mode=self.fill_mode)
       return transform(
           inputs,
           get_translation_matrix(translations),
@@ -500,7 +519,7 @@ class RandomTranslation(Layer):
         'height_factor': self.height_factor,
         'width_factor': self.width_factor,
         'fill_mode': self.fill_mode,
-        'fill_value': self.fill_value,
+        'interpolation': self.interpolation,
         'seed': self.seed,
     }
     base_config = super(RandomTranslation, self).get_config()
@@ -542,6 +561,7 @@ def get_translation_matrix(translations, name=None):
 
 def transform(images,
               transforms,
+              fill_mode='constant',
               interpolation='nearest',
               output_shape=None,
               name=None):
@@ -559,10 +579,32 @@ def transform(images,
       `k = c0 x + c1 y + 1`. The transforms are *inverted* compared to the
       transform mapping input points to output points. Note that gradients are
       not backpropagated into transformation parameters.
-    interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
+    fill_mode: Points outside the boundaries of the input are filled according
+      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+    interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     output_shape: Output dimesion after the transform, [height, width]. If None,
       output is the same size as input image.
     name: The name of the op.
+
+  ## Fill mode.
+  Behavior for each valid value is as follows:
+
+  reflect (d c b a | a b c d | d c b a)
+  The input is extended by reflecting about the edge of the last pixel.
+
+  constant (k k k k | a b c d | k k k k)
+  The input is extended by filling all values beyond the edge with the same
+  constant value k = 0.
+
+  wrap (a b c d | a b c d | a b c d)
+  The input is extended by wrapping around to the opposite edge.
+
+  Input shape:
+    4D tensor with shape: `(samples, height, width, channels)`,
+      data_format='channels_last'.
+  Output shape:
+    4D tensor with shape: `(samples, height, width, channels)`,
+      data_format='channels_last'.
 
   Returns:
     Image(s) with the same type and shape as `images`, with the given
@@ -593,6 +635,7 @@ def transform(images,
         images,
         output_shape=output_shape,
         transforms=transforms,
+        fill_mode=fill_mode.upper(),
         interpolation=interpolation.upper())
 
 
@@ -656,9 +699,23 @@ class RandomRotation(Layer):
       2 representing lower and upper bound for rotating clockwise and
       counter-clockwise. When represented as a single float, lower = upper.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'constant', 'nearest', 'bilinear', 'reflect',
-      'wrap'}`).
+      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      - *reflect*: `(d c b a | a b c d | d c b a)`
+        The input is extended by reflecting about the edge of the last pixel.
+      - *constant*: `(k k k k | a b c d | k k k k)`
+        The input is extended by filling all values beyond the edge with the
+        same constant value k = 0.
+      - *wrap*: `(a b c d | a b c d | a b c d)`
+    interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
+
+  Input shape:
+    4D tensor with shape: `(samples, height, width, channels)`,
+      data_format='channels_last'.
+  Output shape:
+    4D tensor with shape: `(samples, height, width, channels)`,
+      data_format='channels_last'.
+
   Raise:
     ValueError: if lower bound is not between [0, 1], or upper bound is
       negative.
@@ -666,7 +723,8 @@ class RandomRotation(Layer):
 
   def __init__(self,
                factor,
-               fill_mode='nearest',
+               fill_mode='reflect',
+               interpolation='bilinear',
                seed=None,
                **kwargs):
     self.factor = factor
@@ -678,10 +736,16 @@ class RandomRotation(Layer):
     if self.lower < 0. or self.upper < 0.:
       raise ValueError('Factor cannot have negative values, '
                        'got {}'.format(factor))
-    if fill_mode not in {'nearest', 'bilinear'}:
+    if fill_mode not in {'reflect', 'wrap', 'constant'}:
       raise NotImplementedError(
-          '`fill_mode` {} is not supported yet.'.format(fill_mode))
+          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
+          '`constant` are supported.'.format(fill_mode))
+    if interpolation not in {'nearest', 'bilinear'}:
+      raise NotImplementedError(
+          'Unknown `interpolation` {}. Only `nearest` and '
+          '`bilinear` are supported.'.format(interpolation))
     self.fill_mode = fill_mode
+    self.interpolation = interpolation
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
@@ -705,7 +769,8 @@ class RandomRotation(Layer):
       return transform(
           inputs,
           get_rotation_matrix(angles, img_hd, img_wd),
-          interpolation=self.fill_mode)
+          fill_mode=self.fill_mode,
+          interpolation=self.interpolation)
 
     output = tf_utils.smart_cond(training, random_rotated_inputs,
                                  lambda: inputs)
@@ -719,6 +784,7 @@ class RandomRotation(Layer):
     config = {
         'factor': self.factor,
         'fill_mode': self.fill_mode,
+        'interpolation': self.interpolation,
         'seed': self.seed,
     }
     base_config = super(RandomRotation, self).get_config()
