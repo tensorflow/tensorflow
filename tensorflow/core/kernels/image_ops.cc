@@ -46,37 +46,26 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 using functor::FillProjectiveTransform;
 using generator::Interpolation;
-using generator::Mode;
+using generator::INTERPOLATION_BILINEAR;
+using generator::INTERPOLATION_NEAREST;
+using generator::ProjectiveGenerator;
 
 template <typename Device, typename T>
 class ImageProjectiveTransform : public OpKernel {
  private:
   Interpolation interpolation_;
-  Mode fill_mode_;
 
  public:
   explicit ImageProjectiveTransform(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string interpolation_str;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("interpolation", &interpolation_str));
     if (interpolation_str == "NEAREST") {
-      interpolation_ = Interpolation::NEAREST;
+      interpolation_ = INTERPOLATION_NEAREST;
     } else if (interpolation_str == "BILINEAR") {
-      interpolation_ = Interpolation::BILINEAR;
+      interpolation_ = INTERPOLATION_BILINEAR;
     } else {
       LOG(ERROR) << "Invalid interpolation " << interpolation_str
                  << ". Supported types: NEAREST, BILINEAR";
-    }
-    string mode_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("fill_mode", &mode_str));
-    if (mode_str == "REFLECT") {
-      fill_mode_ = Mode::REFLECT;
-    } else if (mode_str == "WRAP") {
-      fill_mode_ = Mode::WRAP;
-    } else if (mode_str == "CONSTANT") {
-      fill_mode_ = Mode::CONSTANT;
-    } else {
-      LOG(ERROR) << "Invalid mode " << mode_str
-                 << ". Supported types: REFLECT, WRAP, CONSTANT";
     }
   }
 
@@ -89,7 +78,8 @@ class ImageProjectiveTransform : public OpKernel {
                 (TensorShapeUtils::IsMatrix(transform_t.shape()) &&
                  (transform_t.dim_size(0) == images_t.dim_size(0) ||
                   transform_t.dim_size(0) == 1) &&
-                 transform_t.dim_size(1) == 8),
+                 transform_t.dim_size(1) ==
+                     ProjectiveGenerator<Device, T>::kNumParameters),
                 errors::InvalidArgument(
                     "Input transform should be num_images x 8 or 1 x 8"));
 
@@ -126,7 +116,7 @@ class ImageProjectiveTransform : public OpKernel {
     auto transform = transform_t.matrix<float>();
 
     (FillProjectiveTransform<Device, T>(interpolation_))(
-        ctx->eigen_device<Device>(), &output, images, transform, fill_mode_);
+        ctx->eigen_device<Device>(), &output, images, transform);
   }
 };
 
@@ -148,41 +138,26 @@ TF_CALL_double(REGISTER);
 #if GOOGLE_CUDA
 
 typedef Eigen::GpuDevice GPUDevice;
-typedef generator::Mode Mode;
 
 namespace functor {
 
 // NOTE(ringwalt): We get an undefined symbol error if we don't explicitly
 // instantiate the operator() in GCC'd code.
-#define DECLARE_PROJECT_FUNCTOR(TYPE)                                       \
+#define DECLARE_FUNCTOR(TYPE)                                               \
   template <>                                                               \
   void FillProjectiveTransform<GPUDevice, TYPE>::operator()(                \
       const GPUDevice& device, OutputType* output, const InputType& images, \
-      const TransformsType& transform, const Mode fill_mode) const;         \
+      const TransformsType& transform) const;                               \
   extern template struct FillProjectiveTransform<GPUDevice, TYPE>
 
-TF_CALL_uint8(DECLARE_PROJECT_FUNCTOR);
-TF_CALL_int32(DECLARE_PROJECT_FUNCTOR);
-TF_CALL_int64(DECLARE_PROJECT_FUNCTOR);
-TF_CALL_half(DECLARE_PROJECT_FUNCTOR);
-TF_CALL_float(DECLARE_PROJECT_FUNCTOR);
-TF_CALL_double(DECLARE_PROJECT_FUNCTOR);
+TF_CALL_uint8(DECLARE_FUNCTOR);
+TF_CALL_int32(DECLARE_FUNCTOR);
+TF_CALL_int64(DECLARE_FUNCTOR);
+TF_CALL_half(DECLARE_FUNCTOR);
+TF_CALL_float(DECLARE_FUNCTOR);
+TF_CALL_double(DECLARE_FUNCTOR);
 
 }  // end namespace functor
-
-namespace generator {
-
-#define DECLARE_MAP_FUNCTOR(Mode)                                         \
-  template <>                                                             \
-  float MapCoordinate<GPUDevice, Mode>::operator()(const float out_coord, \
-                                                   const DenseIndex len); \
-  extern template struct MapCoordinate<GPUDevice, Mode>
-
-DECLARE_MAP_FUNCTOR(Mode::REFLECT);
-DECLARE_MAP_FUNCTOR(Mode::WRAP);
-DECLARE_MAP_FUNCTOR(Mode::CONSTANT);
-
-}  // end namespace generator
 
 #define REGISTER(TYPE)                                                \
   REGISTER_KERNEL_BUILDER(Name("ImageProjectiveTransformV2")          \
