@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/algorithm.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
@@ -84,6 +85,8 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
   params.AddParam("max_delegated_partitions", BenchmarkParam::Create<int>(0));
   params.AddParam("profiling_output_csv_file",
                   BenchmarkParam::Create<std::string>(""));
+  params.AddParam("enable_platform_tracing",
+                  BenchmarkParam::Create<bool>(false));
   return params;
 }
 
@@ -100,15 +103,34 @@ std::string CreateFilePath(const std::string& file_name) {
 }
 
 void WriteInputLayerValueFile(const std::string& file_path,
-                              ModelGraphType graph_type, int num_elements) {
+                              ModelGraphType graph_type, int num_elements,
+                              char file_value = 'a') {
   std::ofstream file(file_path);
-  int bytes =
-      graph_type == ModelGraphType::FP32 ? 4 * num_elements : num_elements;
-  // TODO(b/150335637): Add a test to check the initialization of the input
-  // tensor.
-  char* buffer = new char[bytes]();
-  file.write(buffer, bytes);
-  delete[](buffer);
+  int bytes = 0;
+  switch (graph_type) {
+    case ModelGraphType::FP32:
+      bytes = 4 * num_elements;
+      break;
+    case ModelGraphType::INT8:
+      bytes = num_elements;
+      break;
+    default:
+      LOG(WARNING) << absl::StrFormat(
+          "ModelGraphType(enum_value:%d) is not known.", graph_type);
+      LOG(WARNING) << "The size of the ModelGraphType will be 1 byte in tests.";
+      bytes = num_elements;
+      break;
+  }
+  std::vector<char> buffer(bytes, file_value);
+  file.write(buffer.data(), bytes);
+}
+
+void CheckInputTensorValue(const TfLiteTensor* input_tensor,
+                           char tensor_value) {
+  ASSERT_THAT(input_tensor, testing::NotNull());
+  EXPECT_TRUE(std::all_of(
+      input_tensor->data.raw, input_tensor->data.raw + input_tensor->bytes,
+      [tensor_value](char c) { return c == tensor_value; }));
 }
 
 class TestBenchmark : public BenchmarkTfLiteModel {
@@ -121,26 +143,32 @@ class TestBenchmark : public BenchmarkTfLiteModel {
     PrepareInputData();
     ResetInputsAndOutputs();
   }
+
+  const TfLiteTensor* GetInputTensor(int index) {
+    return index >= interpreter_->inputs().size()
+               ? nullptr
+               : interpreter_->input_tensor(index);
+  }
 };
 
 TEST(BenchmarkTest, DoesntCrashFp32Model) {
   ASSERT_THAT(g_fp32_model_path, testing::NotNull());
 
-  BenchmarkTfLiteModel benchmark(CreateFp32Params());
+  TestBenchmark benchmark(CreateFp32Params());
   benchmark.Run();
 }
 
 TEST(BenchmarkTest, DoesntCrashInt8Model) {
   ASSERT_THAT(g_int8_model_path, testing::NotNull());
 
-  BenchmarkTfLiteModel benchmark(CreateInt8Params());
+  TestBenchmark benchmark(CreateInt8Params());
   benchmark.Run();
 }
 
 TEST(BenchmarkTest, DoesntCrashMultiPerfOptions) {
   ASSERT_THAT(g_fp32_model_path, testing::NotNull());
 
-  BenchmarkTfLiteModel benchmark(CreateFp32Params());
+  TestBenchmark benchmark(CreateFp32Params());
   BenchmarkPerformanceOptions all_options_benchmark(&benchmark);
   all_options_benchmark.Run();
 }
@@ -150,7 +178,7 @@ TEST(BenchmarkTest, DoesntCrashMultiPerfOptionsWithProfiling) {
 
   BenchmarkParams params = CreateFp32Params();
   params.Set<bool>("enable_op_profiling", true);
-  BenchmarkTfLiteModel benchmark(std::move(params));
+  TestBenchmark benchmark(std::move(params));
   BenchmarkPerformanceOptions all_options_benchmark(&benchmark);
   all_options_benchmark.Run();
 }
@@ -166,7 +194,7 @@ TEST(BenchmarkTest, DoesntCrashWithExplicitInputFp32Model) {
   params.Set<std::string>("input_layer_shape",
                           "1,8,8,3:1,8,8,3:1,8,8,3:1,8,8,3");
   params.Set<std::string>("input_layer_value_range", "d,1,10:b,0,100");
-  BenchmarkTfLiteModel benchmark(std::move(params));
+  TestBenchmark benchmark(std::move(params));
   benchmark.Run();
 }
 
@@ -176,18 +204,33 @@ TEST(BenchmarkTest, DoesntCrashWithExplicitInputInt8Model) {
   // Note: the following input-related params are *specific* to model
   // 'g_int8_model_path' which is specified as
   // 'lite:testdata/add_quantized_int8.bin for the test.
+  int a_min = 1;
+  int a_max = 10;
   BenchmarkParams params = CreateInt8Params();
   params.Set<std::string>("input_layer", "a");
   params.Set<std::string>("input_layer_shape", "1,8,8,3");
-  params.Set<std::string>("input_layer_value_range", "a,1,10");
-  BenchmarkTfLiteModel benchmark(std::move(params));
+  params.Set<std::string>("input_layer_value_range",
+                          absl::StrFormat("a,%d,%d", a_min, a_max));
+  TestBenchmark benchmark(std::move(params));
   benchmark.Run();
+
+  auto input_tensor = benchmark.GetInputTensor(0);
+  ASSERT_THAT(input_tensor, testing::NotNull());
+  EXPECT_TRUE(std::all_of(
+      input_tensor->data.raw, input_tensor->data.raw + input_tensor->bytes,
+      [a_min, a_max](int i) { return a_min <= i && i <= a_max; }));
 }
 
 TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesFp32Model) {
   ASSERT_THAT(g_fp32_model_path, testing::NotNull());
-  const std::string file_path = CreateFilePath("fp32_binary");
-  WriteInputLayerValueFile(file_path, ModelGraphType::FP32, 192);
+  char file_value_b = 'b';
+  const std::string file_path_b = CreateFilePath("fp32_binary_b");
+  WriteInputLayerValueFile(file_path_b, ModelGraphType::FP32, 192,
+                           file_value_b);
+  char file_value_d = 'd';
+  const std::string file_path_d = CreateFilePath("fp32_binary_d");
+  WriteInputLayerValueFile(file_path_d, ModelGraphType::FP32, 192,
+                           file_value_d);
 
   // Note: the following input-related params are *specific* to model
   // 'g_fp32_model_path' which is specified as 'lite:testdata/multi_add.bin for
@@ -197,15 +240,19 @@ TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesFp32Model) {
   params.Set<std::string>("input_layer_shape",
                           "1,8,8,3:1,8,8,3:1,8,8,3:1,8,8,3");
   params.Set<std::string>("input_layer_value_files",
-                          "d:" + file_path + ",b:" + file_path);
-  BenchmarkTfLiteModel benchmark(std::move(params));
+                          "d:" + file_path_d + ",b:" + file_path_b);
+  TestBenchmark benchmark(std::move(params));
   benchmark.Run();
+
+  CheckInputTensorValue(benchmark.GetInputTensor(1), file_value_b);
+  CheckInputTensorValue(benchmark.GetInputTensor(3), file_value_d);
 }
 
 TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesInt8Model) {
   ASSERT_THAT(g_int8_model_path, testing::NotNull());
   const std::string file_path = CreateFilePath("int8_binary");
-  WriteInputLayerValueFile(file_path, ModelGraphType::INT8, 192);
+  char file_value = 'a';
+  WriteInputLayerValueFile(file_path, ModelGraphType::INT8, 192, file_value);
 
   // Note: the following input-related params are *specific* to model
   // 'g_int8_model_path' which is specified as
@@ -214,8 +261,10 @@ TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesInt8Model) {
   params.Set<std::string>("input_layer", "a");
   params.Set<std::string>("input_layer_shape", "1,8,8,3");
   params.Set<std::string>("input_layer_value_files", "a:" + file_path);
-  BenchmarkTfLiteModel benchmark(std::move(params));
+  TestBenchmark benchmark(std::move(params));
   benchmark.Run();
+
+  CheckInputTensorValue(benchmark.GetInputTensor(0), file_value);
 }
 
 class MaxDurationWorksTestListener : public BenchmarkListener {
@@ -229,9 +278,9 @@ class MaxDurationWorksTestListener : public BenchmarkListener {
 
 TEST(BenchmarkTest, MaxDurationWorks) {
   ASSERT_THAT(g_fp32_model_path, testing::NotNull());
-  BenchmarkTfLiteModel benchmark(CreateParams(100000000 /* num_runs */,
-                                              1000000.0f /* min_secs */,
-                                              0.001f /* max_secs */));
+  TestBenchmark benchmark(CreateParams(100000000 /* num_runs */,
+                                       1000000.0f /* min_secs */,
+                                       0.001f /* max_secs */));
   MaxDurationWorksTestListener listener;
   benchmark.AddListener(&listener);
   benchmark.Run();

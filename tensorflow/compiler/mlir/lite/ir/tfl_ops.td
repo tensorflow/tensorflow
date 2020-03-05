@@ -48,13 +48,6 @@ def TFL_Str : Type<CPred<"$_self.isa<mlir::TF::StringType>()">,
              BuildableType<"getType<mlir::TF::StringType>()">;
 
 //===----------------------------------------------------------------------===//
-// TFLite dialect uint8 type - uses the TF uint8 type as implementation
-//===----------------------------------------------------------------------===//
-def TFL_Uint8 : Type<CPred<"$_self.isa<mlir::TF::Uint8Type>()">,
-                    "TFLite uint8 type">,
-              BuildableType<"getType<mlir::TF::Uint8Type>()">;
-
-//===----------------------------------------------------------------------===//
 // TFLite dialect quint8 type - uses the TF quint8 type as implementation
 //===----------------------------------------------------------------------===//
 def TFL_Quint8 : Type<CPred<"$_self.isa<mlir::TF::Quint8Type>()">,
@@ -141,6 +134,7 @@ class TFL_VariadicTensorOf<list<Type> allowedRuntimeTypes,
   Variadic<TensorOf<allowedOpTypes>>,
   TFL_RuntimeType<Variadic<TensorOf<allowedRuntimeTypes>>>;
 
+def TFL_Uint8 : UI<8>;
 def TFL_Int32Or64 : IntOfWidths<[32, 64]>;
 
 def TFL_BoolTensor : TFL_TensorOf<[I1]>;
@@ -223,9 +217,9 @@ class TFL_Operand0DOr1ElementTensor<int x> :
 class TFL_TFTypesWithSameBits<int i, int j, int num> :
   And<[
     Or<[CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isa<mlir::TF::Quint" # num # "Type>()">,
-        CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isa<mlir::TF::Uint" # num # "Type>()">]>,
+        CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isUnsignedInteger(" # num # ")">]>,
     Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Quint" # num # "Type>()">,
-        CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Uint" # num # "Type>()">]>]>;
+        CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isUnsignedInteger(" # num # ")">]>]>;
 
 class TFL_OperandHasRankLessThan<int n, int m> :
   PredOpTrait<"operand " # n # " is maximum " # m # "-D",

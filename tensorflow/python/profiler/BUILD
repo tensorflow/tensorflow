@@ -59,7 +59,6 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",
-        "no_windows",
     ],
     deps = [
         ":profiler_v2",

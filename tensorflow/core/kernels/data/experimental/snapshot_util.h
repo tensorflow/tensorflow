@@ -24,8 +24,22 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
+
+class GraphDef;
+
 namespace data {
 namespace experimental {
+
+class SnapshotMetadataRecord;
+
+constexpr char kSnapshotFilename[] = "snapshot.metadata";
+
+constexpr char kSnapshotModeAuto[] = "auto";
+constexpr char kSnapshotModeWrite[] = "write";
+constexpr char kSnapshotModeRead[] = "read";
+constexpr char kSnapshotModePassthrough[] = "passthrough";
+
+enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 
 class SnapshotTensorMetadata;
 
@@ -112,6 +126,21 @@ class SnapshotReader {
   int num_complex_ = 0;
   std::vector<bool> simple_tensor_mask_;  // true for simple, false for complex.
 };
+
+Status SnapshotWriteMetadataFile(
+    const string& hash_dir,
+    const experimental::SnapshotMetadataRecord* metadata);
+
+Status SnapshotReadMetadataFile(const string& hash_dir,
+                                experimental::SnapshotMetadataRecord* metadata);
+
+Status SnapshotDumpDatasetGraph(const std::string& path, uint64 hash,
+                                const GraphDef* graph);
+
+Status SnapshotDetermineOpState(
+    const std::string& mode_string, const Status& file_status,
+    const experimental::SnapshotMetadataRecord* metadata,
+    const uint64 pending_snapshot_expiry_seconds, SnapshotMode* mode);
 
 }  // namespace experimental
 }  // namespace data

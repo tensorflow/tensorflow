@@ -1134,7 +1134,8 @@ struct KernelRegistration {
 // KernelDef.
 struct KernelRegistry {
   mutex mu;
-  std::unordered_multimap<string, KernelRegistration> registry GUARDED_BY(mu);
+  std::unordered_multimap<string, KernelRegistration> registry
+      TF_GUARDED_BY(mu);
 };
 
 #if defined(_WIN32)
@@ -1756,7 +1757,7 @@ void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
 
 void CheckNotInComputeAsync(OpKernelContext* ctx,
                             const char* correct_macro_name) {
-  CHECK_EQ(nullptr, ctx->op_kernel().AsAsync())
+  CHECK_EQ(nullptr, ctx->params_->op_kernel->AsAsync())
       << "Use " << correct_macro_name << " in AsyncOpKernel implementations.";
 }
 

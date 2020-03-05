@@ -163,6 +163,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     }
 
     Status SaveInternal(IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
       mutex_lock l(mu_);
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
@@ -232,17 +233,17 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
    private:
     Status BuildCurrentElementIteratorLocked(IteratorContext* ctx)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       return MakeIteratorFromInputElement(
           ctx, this, captured_func_inputs_, element_index_++,
           *instantiated_captured_func_, prefix(), &current_element_iterator_);
     }
 
     mutex mu_;
-    size_t element_index_ GUARDED_BY(mu_) = 0;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> current_element_iterator_ GUARDED_BY(mu_);
-    std::vector<Tensor> captured_func_inputs_ GUARDED_BY(mu_);
+    size_t element_index_ TF_GUARDED_BY(mu_) = 0;
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> current_element_iterator_ TF_GUARDED_BY(mu_);
+    std::vector<Tensor> captured_func_inputs_ TF_GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
   };
 

@@ -186,6 +186,13 @@ TEST_F(LhloGenTest, Sign) {
                                               "rsqrt.hlo"));
 }
 
+TEST_F(LhloGenTest, Sqrt) {
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "sqrt.hlo"));
+}
+
 TEST_F(LhloGenTest, Tanh) {
   CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
                                               "service", "mlir_gpu", "tests",

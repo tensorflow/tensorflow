@@ -27,10 +27,11 @@ namespace profiler {
 // Convert collected trace in XSpace format to tools data based on the
 // specified list of tools, and save to ProfileResponse.
 // The accepted tools are:
-//   "overview_page", "input_pipeline" and "tensorflow_stats".
-void ConvertXSpaceToProfileResponse(const XSpace& xspace,
-                                    const ProfileRequest& req,
-                                    ProfileResponse* response);
+//   "overview_page", "input_pipeline", "tensorflow_stats", "kernel_stats"
+//   and "trace_viewer".
+Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
+                                      const ProfileRequest& req,
+                                      ProfileResponse* response);
 
 }  // namespace profiler
 }  // namespace tensorflow

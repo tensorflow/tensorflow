@@ -187,7 +187,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
 
    private:
     // Sets up reader streams to read from the file at `current_file_index_`.
-    Status SetupStreamsLocked(Env* env) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    Status SetupStreamsLocked(Env* env) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (current_file_index_ >= dataset()->filenames_.size()) {
         return errors::InvalidArgument(
             "current_file_index_:", current_file_index_,
@@ -203,18 +203,18 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
     }
 
     // Resets all reader streams.
-    void ResetStreamsLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    void ResetStreamsLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       reader_.reset();
       file_.reset();
     }
 
     mutex mu_;
-    size_t current_file_index_ GUARDED_BY(mu_) = 0;
+    size_t current_file_index_ TF_GUARDED_BY(mu_) = 0;
 
     // `reader_` will borrow the object that `file_` points to, so
     // we must destroy `reader_` before `file_`.
-    std::unique_ptr<RandomAccessFile> file_ GUARDED_BY(mu_);
-    std::unique_ptr<io::SequentialRecordReader> reader_ GUARDED_BY(mu_);
+    std::unique_ptr<RandomAccessFile> file_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<io::SequentialRecordReader> reader_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<string> filenames_;

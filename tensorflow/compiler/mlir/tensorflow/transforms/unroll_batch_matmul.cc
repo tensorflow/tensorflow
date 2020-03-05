@@ -71,7 +71,7 @@ TF::ReshapeOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createReshapeOp(
   Type resultType = RankedTensorType::get(shape, element_type);
   auto constant_attr = DenseElementsAttr::get(shape_spec_type, shape);
   auto shape_tensor =
-      rewriter.create<ConstantOp>(loc, shape_spec_type, constant_attr);
+      rewriter.create<TF::ConstOp>(loc, shape_spec_type, constant_attr);
   return rewriter.create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
                                         /*shape=*/shape_tensor);
 }
@@ -104,8 +104,8 @@ std::vector<Value> ConvertTFBatchMatMulOp<BatchMatMulOpType>::sliceInput(
     auto begin_attr =
         DenseElementsAttr::get<int64_t>(vector3_type, {batch_idx, 0, 0});
     auto size_attr = DenseElementsAttr::get<int64_t>(vector3_type, slice_size);
-    auto begin = rewriter.create<ConstantOp>(loc, vector3_type, begin_attr);
-    auto size = rewriter.create<ConstantOp>(loc, vector3_type, size_attr);
+    auto begin = rewriter.create<TF::ConstOp>(loc, vector3_type, begin_attr);
+    auto size = rewriter.create<TF::ConstOp>(loc, vector3_type, size_attr);
     auto slice_op = rewriter.create<TF::SliceOp>(loc, slice_result_type,
                                                  /*input=*/reshape_op.output(),
                                                  begin, size);

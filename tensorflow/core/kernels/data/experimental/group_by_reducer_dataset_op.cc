@@ -285,6 +285,13 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {
+        TF_RETURN_IF_ERROR(dataset()->captured_key_func_->CheckExternalState());
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_init_func_->CheckExternalState());
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_reduce_func_->CheckExternalState());
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_finalize_func_->CheckExternalState());
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
 
@@ -391,11 +398,11 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-      bool end_of_input_ GUARDED_BY(mu_) = false;
-      std::map<int64, std::vector<Tensor>> states_ GUARDED_BY(mu_);
-      std::vector<int64> keys_ GUARDED_BY(mu_);
-      int64 keys_index_ GUARDED_BY(mu_) = 0;
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+      bool end_of_input_ TF_GUARDED_BY(mu_) = false;
+      std::map<int64, std::vector<Tensor>> states_ TF_GUARDED_BY(mu_);
+      std::vector<int64> keys_ TF_GUARDED_BY(mu_);
+      int64 keys_index_ TF_GUARDED_BY(mu_) = 0;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_key_func_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_init_func_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_reduce_func_;

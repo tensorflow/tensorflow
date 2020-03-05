@@ -2745,6 +2745,89 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
   return absl::make_unique<UnsupportedOperationParser>();
 }
 
+// A utility class to remove Dequantize op in the graph.
+class DequantizeOpRemover {
+ public:
+  bool MayAddNode(const TfLiteNode& node, int32_t op_code, int node_id,
+                  const TfLiteTensor* tensors) {
+    if (op_code == kTfLiteBuiltinDequantize &&
+        tensors[node.inputs->data[0]].type == TfLiteType::kTfLiteFloat16) {
+      dequant_nodes_[node.outputs->data[0]] = {node_id, node.inputs->data[0]};
+      input_tensors_.insert(node.inputs->data[0]);
+      return true;
+    }
+    return false;
+  }
+
+  // Remap inputs of 'node' to the inputs of the preceding dequant if there's a
+  // one.
+  // inputs_from_dequant: records the node id of a dequantize node whose
+  // output tensor is one of the input tensor of this 'node'.
+  // orig_inputs: records original input tensor ids of this node if any input is
+  // remapped.
+  void MayRemapInputTensors(TfLiteNode* node,
+                            std::vector<int>* inputs_from_dequant,
+                            std::vector<int>* orig_inputs) const {
+    inputs_from_dequant->clear();
+    orig_inputs->clear();
+    if (dequant_nodes_.empty()) return;
+
+    TfLiteIntArray* inputs = node->inputs;
+    orig_inputs->reserve(inputs->size);
+    // Fix the node's inputs (i.e. prune out the preceding dequantize node)
+    // in order to test if it is supported on the GPU.
+    for (int j = 0; j < inputs->size; ++j) {
+      const int input_tid = inputs->data[j];
+      orig_inputs->push_back(input_tid);
+      const auto it = dequant_nodes_.find(input_tid);
+      if (it != dequant_nodes_.end()) {
+        inputs_from_dequant->push_back(it->second.node_id);
+        // Remap inputs of this node to the inputs of the preceding dequant.
+        inputs->data[j] = it->second.input_tensor_id;
+      }
+    }
+  }
+
+  // May restore inputs of 'node' to 'orig_inputs' if there're inputs from
+  // dequant nodes (i.e. denoted by 'inputs_from_dequant'). We will also mark
+  // such dequantize nodes to be preserved.
+  void MayRestoreInputTensors(TfLiteNode* node,
+                              const std::vector<int>& inputs_from_dequant,
+                              const std::vector<int>& orig_inputs) {
+    if (inputs_from_dequant.empty()) return;
+
+    for (int j = 0; j < node->inputs->size; ++j) {
+      node->inputs->data[j] = orig_inputs[j];
+    }
+    // Mark those dequantize nodes to be presevered in the graph.
+    dequant_nodes_to_save_.insert(dequant_nodes_to_save_.end(),
+                                  inputs_from_dequant.begin(),
+                                  inputs_from_dequant.end());
+  }
+
+  void RemovePreservedNodesFrom(std::vector<int>* nodes) const {
+    for (const int nid : dequant_nodes_to_save_) {
+      auto it = std::find(nodes->begin(), nodes->end(), nid);
+      if (it != nodes->end()) nodes->erase(it);
+    }
+  }
+
+ private:
+  struct NodeInfo {
+    int node_id;
+    int input_tensor_id;
+  };
+
+  // A map recording dequantize nodes of this graph. A dequantize node is
+  // identified by the output tensor id. The value is a NodeInfo.
+  std::unordered_map<int, NodeInfo> dequant_nodes_;
+
+  // A set of input tensor ids of dequantize nodes.
+  std::set<int> input_tensors_;
+
+  // The node ids of dequantize nodes that has to be preserved in the graph.
+  std::vector<int> dequant_nodes_to_save_;
+};
 }  // namespace
 
 Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
@@ -2800,18 +2883,10 @@ TfLiteIntArray* GetOpsToReplaceFromGraphWithDequantize(TfLiteContext* context) {
     return nullptr;
   }
   std::set<std::string> errors;
-  std::unordered_map<int, int> dequant_nodes;
   std::vector<int> ops_to_replace;
-  std::vector<int> dequant_nodes_to_save;
+  DequantizeOpRemover dequant_remover;
 
-  // Map the output tensor of a Dequantize nodes to its input tensor.
-  std::unordered_map<int, int> node_map;
   for (int i = 0; i < execution_plan->size; ++i) {
-    bool replace_node = false;
-    // Keep track of any inputs from a Dequantize node.
-    std::vector<int> inputs_from_dequant;
-    std::vector<int> orig_inputs;
-
     const int node_id = execution_plan->data[i];
     TfLiteNode* node = nullptr;
     TfLiteRegistration* registration = nullptr;
@@ -2821,28 +2896,22 @@ TfLiteIntArray* GetOpsToReplaceFromGraphWithDequantize(TfLiteContext* context) {
       context->ReportError(context, status.error_message().c_str());
       return nullptr;
     }
-    if (registration->builtin_code == kTfLiteBuiltinDequantize &&
-        context->tensors[node->inputs->data[0]].type ==
-            TfLiteType::kTfLiteFloat16) {
-      // Record the output->input mapping for the op.
-      node_map[node->outputs->data[0]] = node->inputs->data[0];
+
+    if (dequant_remover.MayAddNode(*node, registration->builtin_code, node_id,
+                                   context->tensors)) {
       // For now, add the node to the list of ops to replace.
       ops_to_replace.push_back(node_id);
-      // Record the dequant node id, indexed by output id.
-      dequant_nodes[node->outputs->data[0]] = node_id;
       continue;
     }
-    TfLiteIntArray* inputs = node->inputs;
-    // Fix the node's inputs (i.e. prune out the preceding dequantize node)
-    // in order to test if it is supported on the GPU.
-    for (int j = 0; j < inputs->size; ++j) {
-      orig_inputs.push_back(inputs->data[j]);
-      if (node_map.find(inputs->data[j]) != node_map.end()) {
-        inputs_from_dequant.push_back(dequant_nodes[inputs->data[j]]);
-        // Remap inputs of this node to the inputs of the preceding dequant.
-        inputs->data[j] = node_map[inputs->data[j]];
-      }
-    }
+
+    // Record the node id of a dequantize node whose output tensor is one of the
+    // input tensor of this node.
+    std::vector<int> inputs_from_dequant;
+    // Original input tensor ids of this node.
+    std::vector<int> orig_inputs;
+    dequant_remover.MayRemapInputTensors(node, &inputs_from_dequant,
+                                         &orig_inputs);
+
     status = IsSupported(context, node, registration);
     if (status.ok() &&
         // TODO(eignasheva): resolve sub operation support for metal delegate
@@ -2850,29 +2919,16 @@ TfLiteIntArray* GetOpsToReplaceFromGraphWithDequantize(TfLiteContext* context) {
         IsAllFloatTensors(context, node->inputs) &&
         IsAllFloatTensors(context, node->outputs) && errors.empty()) {
       // Node is supported and there were no previous errors.
-      replace_node = true;
-      ops_to_replace.push_back(i);
+      ops_to_replace.push_back(node_id);
     } else {
-      // Unable to replace this node. Restore the inputs to the original
-      // if they were modified.
-      if (!inputs_from_dequant.empty()) {
-        TfLiteIntArray* inputs = node->inputs;
-        for (int j = 0; j < inputs->size; ++j) {
-          inputs->data[j] = orig_inputs[j];
-        }
-      }
-      errors.insert(GetOpNameByRegistration(registration) + ": " +
-                    status.error_message());
-    }
-    // if any input is the output of a dequantize node AND we failed to
-    // replace this op, mark the corresponding dequantize node as a node to
-    // save.
-    if (!replace_node && !inputs_from_dequant.empty()) {
-      dequant_nodes_to_save.insert(dequant_nodes_to_save.end(),
-                                   inputs_from_dequant.begin(),
-                                   inputs_from_dequant.end());
+      // The node is not replaceable, record an error message.
+      errors.insert(absl::StrCat(GetOpNameByRegistration(registration), ": ",
+                                 status.error_message()));
+      dequant_remover.MayRestoreInputTensors(node, inputs_from_dequant,
+                                             orig_inputs);
     }
   }
+
   if (!errors.empty()) {
     std::string unsupported = absl::StrJoin(errors, "\n");
     std::string error_message =
@@ -2883,14 +2939,8 @@ TfLiteIntArray* GetOpsToReplaceFromGraphWithDequantize(TfLiteContext* context) {
         " on the CPU.";
     context->ReportError(context, error_message.c_str());
   }
-  // Pop all dequantize nodes that must be preserved.
-  for (int i = 0; i < dequant_nodes_to_save.size(); ++i) {
-    auto it = std::find(ops_to_replace.begin(), ops_to_replace.end(),
-                        dequant_nodes_to_save[i]);
-    if (it != ops_to_replace.end()) {
-      ops_to_replace.erase(it);
-    }
-  }
+
+  dequant_remover.RemovePreservedNodesFrom(&ops_to_replace);
   return ConvertVectorToTfLiteIntArray(ops_to_replace);
 }
 

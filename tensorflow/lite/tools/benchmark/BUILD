@@ -106,6 +106,7 @@ cc_test(
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/algorithm",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -148,6 +149,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/ruy/profiler",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/tools/evaluation:utils",

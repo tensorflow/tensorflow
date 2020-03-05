@@ -65,7 +65,7 @@ class FileSystemRegistryImpl : public FileSystemRegistry {
  private:
   mutable mutex mu_;
   mutable std::unordered_map<std::string, std::unique_ptr<FileSystem>> registry_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 };
 
 Status FileSystemRegistryImpl::Register(const std::string& scheme,

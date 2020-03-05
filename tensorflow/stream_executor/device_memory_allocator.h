@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -263,7 +264,7 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
   absl::Mutex mutex_;
 
   // Cache of streams for GetStream.
-  std::map<int, Stream> streams_ GUARDED_BY(mutex_);
+  std::map<int, Stream> streams_ TF_GUARDED_BY(mutex_);
 };
 
 template <typename ElemT>

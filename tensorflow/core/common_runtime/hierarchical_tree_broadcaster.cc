@@ -312,7 +312,7 @@ void HierarchicalTreeBroadcaster::RunTree() {
     }
 
     mutex mu;               // also guards status_ while callbacks are pending
-    int pending_count = 0;  // GUARDED_BY(mu)
+    int pending_count = 0;  // TF_GUARDED_BY(mu)
     condition_variable all_done;
 
     if (my_rank >= 0 && my_rank != source_rank) {

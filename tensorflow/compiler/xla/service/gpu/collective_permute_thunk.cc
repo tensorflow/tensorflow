@@ -127,12 +127,12 @@ class Rendezvous {
       std::make_shared<BlockingCounter>(key_.num_participants)};
 
   tensorflow::mutex mu_;
-  bool initialized_ GUARDED_BY(mu_) = false;
+  bool initialized_ TF_GUARDED_BY(mu_) = false;
 
   // We use an std::map so that we can iterate over it below in a guaranteed
   // order.  The order shouldn't actually matter, but why be nondeterministic if
   // we don't have to be?
-  std::map<int64, ParticipantData> participants_ GUARDED_BY(mu_);
+  std::map<int64, ParticipantData> participants_ TF_GUARDED_BY(mu_);
 };
 
 void EnqueueCopy(se::DeviceMemoryBase src, se::Stream* src_stream,

@@ -74,7 +74,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
 
  private:
   mutex mu_;
-  int next_handle_ GUARDED_BY(mu_) = 0;
+  int next_handle_ TF_GUARDED_BY(mu_) = 0;
   DeviceMgr* device_mgr_;
 };
 

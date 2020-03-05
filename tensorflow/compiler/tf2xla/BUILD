@@ -5,6 +5,7 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_tensor_coding_deps",
     "tf_proto_library",
     "tf_proto_library_cc",
 )
@@ -238,16 +239,18 @@ cc_library(
     visibility = [":friends"],
     # Note, we specifically remove MKL dependencies so the standalone does
     # not require the MKL binary blob.
+    #
+    # TODO(ebrevdo): Remove tf_additoinal_tensor_coding_deps in favor of absl/strings:cord when
+    # we update absl to a newer version.
     deps = [
-        "//tensorflow/core/framework:numeric_types",
-        "//third_party/eigen3",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/synchronization",
-    ],
+        "//third_party/eigen3",
+        "//tensorflow/core/framework:numeric_types",
+    ] + tf_additional_tensor_coding_deps(),
     alwayslink = 1,
 )
 

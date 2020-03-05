@@ -199,18 +199,19 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   std::copy(state_ptr + 1, state_ptr + batch_size * memory_size * num_filters,
             state_ptr);
 
-  // Clear the latest activation (the rightmost column).
-  for (int i = 0; i < batch_size * num_filters; ++i) {
-    state_ptr[i * memory_size + memory_size - 1] = 0.0f;
-  }
+  // Clear scratch (the matmul is accumulative).
+  std::fill_n(scratch_ptr, batch_size * num_filters, 0.0f);
 
   // Compute conv1d(inputs, weights_feature).
-  // The state's rightmost column is used to save current cycle activation. This
-  // is achieved by starting at state_ptr[memory_size - 1] and having the stride
-  // equal to memory_size.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       weights_feature_ptr, num_filters, input_size, input_ptr, batch_size,
-      &state_ptr[memory_size - 1], memory_size);
+      scratch_ptr);
+
+  // Copy the latest activation from scratch into activation_state:
+  // The last, i.e. (memory_size-1)th entry for each batch, and filter.
+  for (int i = 0; i < batch_size * num_filters; ++i) {
+    state_ptr[i * memory_size + memory_size - 1] = scratch_ptr[i];
+  }
 
   ApplyTimeWeightsBiasAndActivation(
       batch_size, memory_size, num_filters, num_units, rank, weights_time_ptr,
@@ -252,10 +253,8 @@ inline void EvalHybridSVDF(
   std::copy(state_ptr + 1, state_ptr + batch_size * memory_size * num_filters,
             state_ptr);
 
-  // Clear the latest activation (the rightmost column).
-  for (int i = 0; i < batch_size * num_filters; ++i) {
-    state_ptr[i * memory_size + memory_size - 1] = 0.0f;
-  }
+  // Clear scratch (the matmul is accumulative).
+  std::fill_n(scratch_ptr, batch_size * num_filters, 0.0f);
 
   if (!tensor_utils::IsZeroVector(input_ptr, batch_size * input_size)) {
     // Quantize input from float to int8.
@@ -269,13 +268,15 @@ inline void EvalHybridSVDF(
     }
 
     // Compute conv1d(inputs, weights_feature).
-    // The rightmost column of state is used to save the current cycle
-    // activation. This is achieved by starting at state_ptr[memory_size - 1]
-    // and having the stride equal to memory_size.
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         weights_feature_ptr, num_filters, input_size, quantized_input_ptr,
-        scaling_factors_ptr, batch_size, &state_ptr[memory_size - 1],
-        memory_size);
+        scaling_factors_ptr, batch_size, scratch_ptr);
+  }
+
+  // Copy the latest activation from scratch into activation_state:
+  // The last, i.e. (memory_size-1)th entry for each batch, and filter.
+  for (int i = 0; i < batch_size * num_filters; ++i) {
+    state_ptr[i * memory_size + memory_size - 1] = scratch_ptr[i];
   }
 
   // TODO(alanchiao): can optimize hybrid case ~5% by unrolling loop in applying

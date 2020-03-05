@@ -268,6 +268,7 @@ cc_library(
     name = "tensorflow_passes",
     srcs = [
         "transforms/annotate_parameter_replication.cc",
+        "transforms/batchmatmul_to_einsum.cc",
         "transforms/bridge.cc",
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
@@ -278,9 +279,11 @@ cc_library(
         "transforms/executor_tpuv1_island_coarsening.cc",
         "transforms/executor_tpuv1_outline_tpu_island.cc",
         "transforms/fold_switch.cc",
+        "transforms/freeze_global_tensors.cc",
         "transforms/functional_control_flow_to_cfg.cc",
         "transforms/generated_canonicalize.inc",
         "transforms/generated_optimize.inc",
+        "transforms/gpu_fusion.cc",
         "transforms/graph_pruning.cc",
         "transforms/launch_to_device_attribute.cc",
         "transforms/layout_optimization.cc",
@@ -315,6 +318,7 @@ cc_library(
         "translate/tf_functional_to_executor.cc",
     ],
     hdrs = [
+        "transforms/batchmatmul_to_einsum.h",
         "transforms/bridge.h",
         "transforms/passes.h",
         "transforms/shape_inference.h",
@@ -337,6 +341,7 @@ cc_library(
         ":tensorflow_types",
         ":tpu_rewrite_device_util",
         ":translate_utils",
+        ":xla_sharding_util",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -1152,5 +1157,21 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "xla_sharding_util",
+    srcs = [
+        "utils/xla_sharding_util.cc",
+    ],
+    hdrs = [
+        "utils/xla_sharding_util.h",
+    ],
+    deps = [
+        ":tensorflow",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
     ],
 )

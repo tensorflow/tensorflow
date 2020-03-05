@@ -383,7 +383,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._auto_track_sub_layers = True
 
   @trackable.no_automatic_dependency_tracking
-  @base_layer_utils.default
+  @generic_utils.default
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
 
@@ -597,7 +597,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         self._non_trainable_weights.append(variable)
     return variable
 
-  @base_layer_utils.default
+  @generic_utils.default
   def get_config(self):
     """Returns the config of the layer.
 
@@ -737,7 +737,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         lambda s: tensor_spec.TensorSpec(dtype=dtype, shape=s),
         output_shape)
 
-  @base_layer_utils.default
+  @generic_utils.default
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
 
@@ -2052,7 +2052,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           "Layer {self.name} is casting an input tensor from dtype "
           "{input_dtype} to the layer's dtype of {layer_dtype}, which is new "
           "behavior in TensorFlow 2.  The layer has dtype {layer_dtype} "
-          "because it's dtype defaults to floatx.\n\n"
+          'because its dtype defaults to floatx.\n\n'
           ""
           "If you intended to run this layer in {layer_dtype}, you can safely "
           "ignore this warning. If in doubt, this warning is likely only an "

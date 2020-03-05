@@ -1,7 +1,10 @@
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_test")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -181,6 +184,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/core:allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
@@ -292,15 +296,19 @@ cc_library(
     name = "nvidia_gpu_device",
     srcs = ["nvidia_gpu_device.cc"],
     hdrs = ["nvidia_gpu_device.h"],
+    copts = if_cuda(["-DNCCL_ENABLED=1"]),
     deps = [
         ":local_client",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/python/distributed:client",
         "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:bfc_allocator",
         "//tensorflow/core:gpu_mem_allocator",
         "//tensorflow/stream_executor:tf_allocator_adapter",
-    ],
+    ] + if_cuda(["@local_config_nccl//:nccl"]),
 )
 
 config_setting(
@@ -355,6 +363,9 @@ pybind_extension(
         "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
         "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/compiler/xla/client/lib:svd",
+        "//tensorflow/compiler/xla/python/distributed",
+        "//tensorflow/compiler/xla/python/distributed:client",
+        "//tensorflow/compiler/xla/python/distributed:service",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:hlo",

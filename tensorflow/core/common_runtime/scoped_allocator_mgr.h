@@ -66,7 +66,7 @@ class ScopedAllocatorContainer : public core::RefCounted {
         : field_index(ScopedAllocator::kBackingIndex),
           scoped_allocator(nullptr) {}
   };
-  std::unordered_map<int32, SAField> allocators_ GUARDED_BY(mu_);
+  std::unordered_map<int32, SAField> allocators_ TF_GUARDED_BY(mu_);
 };
 
 // At most one of these exists per device.
@@ -103,7 +103,7 @@ class ScopedAllocatorMgr {
   string device_name_;
   mutex mu_;
   std::unordered_map<int64, ScopedAllocatorContainer*> per_step_map_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

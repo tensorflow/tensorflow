@@ -63,7 +63,7 @@ class SingleDebugEventFileWriter {
   std::atomic_int_fast32_t num_outstanding_events_;
 
   std::unique_ptr<WritableFile> writable_file_;
-  std::unique_ptr<io::RecordWriter> record_writer_ PT_GUARDED_BY(writer_mu_);
+  std::unique_ptr<io::RecordWriter> record_writer_ TF_PT_GUARDED_BY(writer_mu_);
   mutex writer_mu_;
 };
 
@@ -229,17 +229,17 @@ class DebugEventsWriter {
   const string dump_root_;
 
   string file_prefix_;
-  bool is_initialized_ GUARDED_BY(initialization_mu_);
+  bool is_initialized_ TF_GUARDED_BY(initialization_mu_);
   mutex initialization_mu_;
 
   const int64 circular_buffer_size_;
-  std::deque<string> execution_buffer_ GUARDED_BY(execution_buffer_mu_);
+  std::deque<string> execution_buffer_ TF_GUARDED_BY(execution_buffer_mu_);
   mutex execution_buffer_mu_;
   std::deque<string> graph_execution_trace_buffer_
-      GUARDED_BY(graph_execution_trace_buffer_mu_);
+      TF_GUARDED_BY(graph_execution_trace_buffer_mu_);
   mutex graph_execution_trace_buffer_mu_;
 
-  absl::flat_hash_map<string, int> device_name_to_id_ GUARDED_BY(device_mu_);
+  absl::flat_hash_map<string, int> device_name_to_id_ TF_GUARDED_BY(device_mu_);
   mutex device_mu_;
 
   std::unique_ptr<SingleDebugEventFileWriter> metadata_writer_;

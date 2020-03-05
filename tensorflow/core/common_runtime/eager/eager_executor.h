@@ -151,7 +151,7 @@ class EagerExecutor {
     return status_;
   }
 
-  bool ok() const NO_THREAD_SAFETY_ANALYSIS { return ok_; }
+  bool ok() const TF_NO_THREAD_SAFETY_ANALYSIS { return ok_; }
 
  private:
   // Possible states for this executor.
@@ -183,11 +183,12 @@ class EagerExecutor {
     NodeState state;
   };
 
-  const char* StateStringLocked() EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
+  const char* StateStringLocked()
+      TF_EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   void NodeDone(const core::RefCountPtr<NodeItem>& item, const Status& status,
                 bool from_queue);
-  void NotifyWaiters(uint64 id) EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
+  void NotifyWaiters(uint64 id) TF_EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   // Starts execution of pending EagerNodes. This function loops till executor
   // state_ is set to kShutDown. If any errors are encountered, these are set
@@ -201,7 +202,7 @@ class EagerExecutor {
   // The impl of WaitForAllPendingNodes
   // `lock` is the lock that holds node_queue_mutex_.
   Status WaitForAllPendingNodesLocked(mutex_lock* lock)
-      EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   Status WaitImpl(bool wait_all, uint64 node_id);
 
@@ -210,27 +211,27 @@ class EagerExecutor {
   mutable mutex node_queue_mutex_;
 
   // Used to signal that some EagerNodes are pending execution.
-  condition_variable nodes_pending_ GUARDED_BY(node_queue_mutex_);
+  condition_variable nodes_pending_ TF_GUARDED_BY(node_queue_mutex_);
 
   // Queue of pending NodeItems. Ordered by NodeItem::id.
   std::queue<core::RefCountPtr<NodeItem>> node_queue_
-      GUARDED_BY(node_queue_mutex_);
+      TF_GUARDED_BY(node_queue_mutex_);
 
   // Ordered by NodeItem::id.
   std::map<uint64, core::RefCountPtr<NodeItem>, std::less<uint64>>
-      unfinished_nodes_ GUARDED_BY(node_queue_mutex_);
+      unfinished_nodes_ TF_GUARDED_BY(node_queue_mutex_);
 
   // `status_` is set based on any errors raised during execution of a
   // EagerNode.  It remains set until ClearError is called.
-  Status status_ GUARDED_BY(node_queue_mutex_);
-  std::atomic<bool> ok_ GUARDED_BY(node_queue_mutex_);
+  Status status_ TF_GUARDED_BY(node_queue_mutex_);
+  std::atomic<bool> ok_ TF_GUARDED_BY(node_queue_mutex_);
 
   // Map from id of a EagerNode to condition_variables (not owned by the map).
   // These condition_variables are notified and removed when that EagerNode is
   // done executing, or if an error is found in execution of any EagerNode.
   // The map is ordered by id.
   std::multimap<uint64, condition_variable*, std::less<uint64>>
-      node_done_notifications_ GUARDED_BY(node_queue_mutex_);
+      node_done_notifications_ TF_GUARDED_BY(node_queue_mutex_);
 
   // thread_exited_notification_ is notified by the `thread_` right before it
   // exits.
@@ -238,7 +239,8 @@ class EagerExecutor {
 
   // When state_ is set to kShutDown, it indicates that `thread_` should stop as
   // soon as it is done executing the current EagerNode.
-  ExecutorState state_ GUARDED_BY(node_queue_mutex_) = ExecutorState::kActive;
+  ExecutorState state_ TF_GUARDED_BY(node_queue_mutex_) =
+      ExecutorState::kActive;
 
   // Thread object that calls the `Run` method in async mode.This thread runs
   // until state_ is set to kShuttingDown. It is `nullptr` in sync mode.

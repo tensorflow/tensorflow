@@ -46,7 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -1890,7 +1890,7 @@ class ConvertStridedSliceGradOp
     Value grad = op.dy();
     Type element_type = grad.getType().cast<ShapedType>().getElementType();
 
-    // Perform reshape to undo any new/shrink axies done by strided slice.
+    // Perform reshape to undo any new/shrink axes done by strided slice.
     grad = rewriter.create<xla_hlo::ReshapeOp>(
         op.getLoc(), RankedTensorType::get(shape, element_type), grad);
 

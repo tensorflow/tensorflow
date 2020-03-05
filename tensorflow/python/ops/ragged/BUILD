@@ -1123,3 +1123,34 @@ py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+py_test(
+    name = "ragged_cross_op_test",
+    srcs = ["ragged_cross_op_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # TODO(b/150702952): Reenable windows test once fixed.
+    ],
+    deps = [
+        ":ragged_array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_one_hot_op_test",
+    srcs = ["ragged_one_hot_op_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)

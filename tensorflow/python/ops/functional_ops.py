@@ -1181,6 +1181,9 @@ def partitioned_call(args,
   outputs = op.outputs
   if hasattr(f, "graph"):
     _set_read_only_resource_inputs_attr(op, f.graph)
+    if hasattr(f.graph, "collective_manager_ids_used"):
+      ops.set_int_list_attr(
+          op, acd.COLLECTIVE_MANAGER_IDS, f.graph.collective_manager_ids_used)
   return outputs if outputs else op
 
 

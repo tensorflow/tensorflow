@@ -505,7 +505,7 @@ tflite_cc_shared_object(
         ":framework",
         ":tflite_exported_symbols.lds",
         ":tflite_version_script.lds",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:builtin_ops_all_linked",
     ],
 )
 

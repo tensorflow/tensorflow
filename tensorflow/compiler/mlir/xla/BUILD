@@ -20,6 +20,7 @@ package_group(
         "//tensorflow/compiler/xla/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
+        "//third_party/tf_runtime/tools/tf_kernel_gen/...",
     ],
 )
 
@@ -132,13 +133,22 @@ cc_library(
 
 cc_library(
     name = "map_xla_to_scalar_op",
-    srcs = [],
     hdrs = ["transforms/map_xla_to_scalar_op.h"],
     deps = [
         ":hlo",
         ":lhlo",
+        ":map_hlo_to_lhlo_op",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
+    name = "map_hlo_to_lhlo_op",
+    hdrs = ["transforms/map_hlo_to_lhlo_op.h"],
+    deps = [
+        ":hlo",
+        ":lhlo",
     ],
 )
 
@@ -233,6 +243,7 @@ cc_library(
         ":hlo",
         ":hlo_shape_derivation",
         ":lhlo",
+        ":map_hlo_to_lhlo_op",
         "@com_google_absl//absl/memory",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

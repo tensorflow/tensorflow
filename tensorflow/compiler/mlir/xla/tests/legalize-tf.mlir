@@ -523,17 +523,17 @@ func @broadcast_shift_right(%arg0: tensor<4xi32>, %arg1: tensor<2x4xi32>) -> ten
 }
 
 // CHECK-LABEL: func @shift_right_unsigned
-func @shift_right_unsigned(%arg0: tensor<4x!tf.uint8>, %arg1: tensor<4x!tf.uint8>) -> tensor<4x!tf.uint8> {
+func @shift_right_unsigned(%arg0: tensor<4xui8>, %arg1: tensor<4xui8>) -> tensor<4xui8> {
   // CHECK:  tf.RightShift
-  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4x!tf.uint8>, tensor<4x!tf.uint8>) -> tensor<4x!tf.uint8>
-  return %0 : tensor<4x!tf.uint8>
+  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4xui8>, tensor<4xui8>) -> tensor<4xui8>
+  return %0 : tensor<4xui8>
 }
 
 // CHECK-LABEL: func @broadcast_shift_right_unsigned
-func @broadcast_shift_right_unsigned(%arg0: tensor<4x!tf.uint8>, %arg1: tensor<2x4x!tf.uint8>) -> tensor<2x4x!tf.uint8> {
+func @broadcast_shift_right_unsigned(%arg0: tensor<4xui8>, %arg1: tensor<2x4xui8>) -> tensor<2x4xui8> {
   // CHECK:  tf.RightShift
-  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4x!tf.uint8>, tensor<2x4x!tf.uint8>) -> tensor<2x4x!tf.uint8>
-  return %0 : tensor<2x4x!tf.uint8>
+  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4xui8>, tensor<2x4xui8>) -> tensor<2x4xui8>
+  return %0 : tensor<2x4xui8>
 }
 
 // CHECK-LABEL: func @and
@@ -2415,6 +2415,25 @@ func @strided_slice_new_axis_mask(%input: tensor<2x4x8x16x32x64xf32>) {
   return
 }
 
+// CHECK-LABEL: strided_slice_implicit_ellipsis_mask(
+// CHECK-SAME: [[INPUT:%.*]]: tensor<10x16x2xf32>
+func @strided_slice_implicit_ellipsis_mask(%input: tensor<10x16x2xf32>) -> tensor<2x16x2xf32> {
+  // StridedSlice gets input[8:10], which is same as input[8:10, ...]
+  // The start_indices, limit_indices, and strides attribute of xla_hlo.slice
+  // reflect the canonicalized slice.
+  %begin = "tf.Const"() {value = dense<8> : tensor<1xi32>} : () -> tensor<1xi32>
+  %end = "tf.Const"() {value = dense<10> : tensor<1xi32>} : () -> tensor<1xi32>
+  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: [[SLICE:%.*]] = "xla_hlo.slice"([[INPUT]])
+  // CHECK-DAG-SAME: limit_indices = dense<[10, 16, 2]> : tensor<3xi64>
+  // CHECK-DAG-SAME: start_indices = dense<[8, 0, 0]> : tensor<3xi64>
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<3xi64>
+  // CHECK: [[RESHAPE:%.*]] = "xla_hlo.reshape"([[SLICE]]) : (tensor<2x16x2xf32>) -> tensor<2x16x2xf32>
+  %0 = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = f32} : (tensor<10x16x2xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<2x16x2xf32>
+  // CHECK: return [[RESHAPE]] : tensor<2x16x2xf32>
+  return %0 : tensor<2x16x2xf32>
+}
+
 
 //===----------------------------------------------------------------------===//
 // Reduction op legalizations.
@@ -3245,6 +3264,121 @@ func @strided_slice_grad(%grad: tensor<4x16x1022xf32>) -> tensor<4x128x1024xf32>
   %0 = "tf.StridedSliceGrad"(%shape, %begin, %end, %strides, %grad) {begin_mask = 1, end_mask = 4} : (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<4x16x1022xf32>) -> tensor<4x128x1024xf32>
   // CHECK: return [[PAD]]
   return %0: tensor<4x128x1024xf32>
+}
+
+// CHECK-LABEL: strided_slice_grad_shrink_axis_mask
+// CHECK-SAME: [[GRAD:%.*]]: tensor<8xf32>
+func @strided_slice_grad_shrink_axis_mask(%grad: tensor<8xf32>) -> tensor<4x8xf32> {
+  // Input to StridedSlice was of shape 4x8xf32
+  // Strided slice gets input[2:3, 0:8]
+  // shrink_axis_mask is 1 denoting that dim#0 is shrunk. So the output is 8xf32
+  // which is the shape of gradient.
+  // StridedSliceGrad would reshape the gradient to 1x8xf32 and
+  // then pad to match the shape of input 4x8xf32.
+
+  %shape = "tf.Const"() {value = dense<[4, 8]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %begin = "tf.Const"() {value = dense<[2, 0]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[3, 8]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: [[RESHAPE:%.*]] = "xla_hlo.reshape"([[GRAD]]) : (tensor<8xf32>) -> tensor<1x8xf32>
+  // CHECK: [[ZEROS:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: [[PAD:%.*]] = "xla_hlo.pad"([[RESHAPE]], [[ZEROS]])
+  // CHECK-DAG-SAME: edge_padding_low = dense<[2, 0]> : tensor<2xi64>
+  // CHECK-DAG-SAME: edge_padding_high = dense<[1, 0]> : tensor<2xi64>
+  // CHECK-DAG-SAME: interior_padding = dense<0> : tensor<2xi64>
+  %0 = "tf.StridedSliceGrad"(%shape, %begin, %end, %strides, %grad) {begin_mask = 0, end_mask = 0, shrink_axis_mask = 1} : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<8xf32>) -> tensor<4x8xf32>
+
+  // CHECK: return [[PAD]] : tensor<4x8xf32>
+  return %0 : tensor<4x8xf32>
+}
+
+// CHECK-LABEL: strided_slice_grad_new_axis_mask
+// CHECK-SAME: [[GRAD:%.*]]: tensor<1x2xf32>
+func @strided_slice_grad_new_axis_mask(%grad: tensor<1x2xf32>) -> tensor<8xf32> {
+  // Input to StridedSlice was of shape 8xf32
+  // Strided slice gets input[tf.new_axis, 2:4]
+  // new_axis_mask is 1 denoting new axis is inserted at dim#0. So the output is
+  // 1x2xf32 which is the shape of gradient.
+  // StridedSliceGrad would reshape the gradient to 2xf32 and
+  // then pad to match the shape of input 4x8xf32.
+
+  %shape = "tf.Const"() {value = dense<[8]> : tensor<1xi32>} : () -> (tensor<1xi32>)
+  %begin = "tf.Const"() {value = dense<[0, 2]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[0, 4]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: [[RESHAPE:%.*]] = "xla_hlo.reshape"([[GRAD]]) : (tensor<1x2xf32>) -> tensor<2xf32>
+  // CHECK: [[ZEROS:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: [[PAD:%.*]] = "xla_hlo.pad"([[RESHAPE]], [[ZEROS]])
+  // CHECK-DAG-SAME: edge_padding_low = dense<2> : tensor<1xi64>
+  // CHECK-DAG-SAME: edge_padding_high = dense<4> : tensor<1xi64>
+  // CHECK-DAG-SAME: interior_padding = dense<0> : tensor<1xi64>
+  %0 = "tf.StridedSliceGrad"(%shape, %begin, %end, %strides, %grad) {begin_mask = 0, end_mask = 0, new_axis_mask = 1} : (tensor<1xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<1x2xf32>) -> tensor<8xf32>
+
+  // CHECK: return [[PAD]] : tensor<8xf32>
+  return %0 : tensor<8xf32>
+}
+
+// CHECK-LABEL: strided_slice_grad_ellipsis_mask
+// CHECK-SAME: [[GRAD:%.*]]: tensor<2x4x8xf32>
+func @strided_slice_grad_ellipsis_mask(%grad: tensor<2x4x8xf32>) -> tensor<4x4x8xf32> {
+  // Input to StridedSlice was of shape 4x4x8xf32
+  // Strided slice gets input[2:4, ...]
+  // ellipsis_mask is 2 denoting that slice contains all elements in dim#1 and
+  // dim#2, ignoring begin and end indices for these dimensions. So the output
+  // is 2x4x8xf32 which is the shape of gradient.
+  // StridedSliceGrad would pad the gradient to match the shape of
+  // input 4x4x8xf32.
+
+  %shape = "tf.Const"() {value = dense<[4, 4, 8]> : tensor<3xi32>} : () -> (tensor<3xi32>)
+  %begin = "tf.Const"() {value = dense<[2, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[4, 5]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: [[RESHAPE:%.*]] = "xla_hlo.reshape"([[GRAD]]) : (tensor<2x4x8xf32>) -> tensor<2x4x8xf32>
+  // CHECK: [[ZEROS:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: [[PAD:%.*]] = "xla_hlo.pad"([[RESHAPE]], [[ZEROS]])
+  // CHECK-DAG-SAME: edge_padding_low = dense<[2, 0, 0]> : tensor<3xi64>
+  // CHECK-DAG-SAME: edge_padding_high = dense<0> : tensor<3xi64>
+  // CHECK-DAG-SAME: interior_padding = dense<0> : tensor<3xi64>
+  %0 = "tf.StridedSliceGrad"(%shape, %begin, %end, %strides, %grad) {begin_mask = 0, end_mask = 0, ellipsis_mask = 2} : (tensor<3xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2x4x8xf32>) -> tensor<4x4x8xf32>
+
+  // CHECK: return [[PAD]] : tensor<4x4x8xf32>
+  return %0 : tensor<4x4x8xf32>
+}
+
+
+// CHECK-LABEL: strided_slice_grad_all_masks
+// CHECK-SAME: [[GRAD:%.*]]: tensor<1x4x8x8x10x2x1xf32>
+func @strided_slice_grad_all_masks(%grad: tensor<1x4x8x8x10x2x1xf32>) -> tensor<2x4x8x16x32x64xf32> {
+  // For StridedSlice input[1, tf.new_axis, ..., 8:, :10, 2:6:2, tf.new_axis]
+  // New axis mask is at index 1 and 6 of sparse spec, so
+  // new_axis_mask = 2^1 + 2^6 = 66
+  // The ellipsis mask is applied to dim #1, #2 of input i.e, we get
+  // canonicalized slice input[1, :, :, 8:, :10, 2:6:2]
+  // The StridedSliceGrad op would propogate the gradient for the sliced tensor
+  // to the original input tensor by padding with zeroes.
+
+  %shape = "tf.Const"() {value = dense<[2, 4, 8, 16, 32, 64]> : tensor<6xi32>} : () -> (tensor<6xi32>)
+  %begin = "tf.Const"() {value = dense<[1, 0, 0, 8, 1, 2, 0]> : tensor<7xi32>} : () -> (tensor<7xi32>)
+  %end = "tf.Const"() {value = dense<[2, 0, 0, 10, 10, 6, 0]> : tensor<7xi32>} : () -> (tensor<7xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 1, 1, 1, 1, 2, 1]> : tensor<7xi32>} : () -> (tensor<7xi32>)
+
+  // Remove 2 new axes (at index 1 and 6) and 1 shrink axis (at index 0)
+  // CHECK: [[RESHAPE:%.*]] = "xla_hlo.reshape"([[GRAD]]) : (tensor<1x4x8x8x10x2x1xf32>) -> tensor<1x4x8x8x10x2xf32>
+  // CHECK: [[ZERO:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // The edge_padding_low, edge_padding_high and interior_padding attributes of
+  // xla_hlo.pad would reflect the padding required to get the shape of the
+  // input of StridedSlice op.
+  // CHECK: [[PAD:%.*]] = "xla_hlo.pad"([[RESHAPE]], [[ZERO]])
+  // CHECK-DAG-SAME: edge_padding_low = dense<[1, 0, 0, 8, 0, 2]> : tensor<6xi64>
+  // CHECK-DAG-SAME: edge_padding_high = dense<[0, 0, 0, 0, 22, 59]> : tensor<6xi64>
+  // CHECK-DAG-SAME: interior_padding = dense<[0, 0, 0, 0, 0, 1]> : tensor<6xi64>
+  %0 = "tf.StridedSliceGrad"(%shape, %begin, %end, %strides, %grad) {begin_mask = 16, end_mask = 8, shrink_axis_mask = 1, ellipsis_mask = 4, new_axis_mask = 66} : (tensor<6xi32>, tensor<7xi32>, tensor<7xi32>, tensor<7xi32>, tensor<1x4x8x8x10x2x1xf32>) -> tensor<2x4x8x16x32x64xf32>
+
+  // CHECK: return [[PAD]] : tensor<2x4x8x16x32x64xf32>
+  return %0 : tensor<2x4x8x16x32x64xf32>
 }
 
 // CHECK-LABEL: @tensor_scatter_update

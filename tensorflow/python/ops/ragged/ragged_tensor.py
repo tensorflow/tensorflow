@@ -1342,7 +1342,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     <tf.RaggedTensor [[3, 1], [], [2, 1], [1], []]>
 
     """
-    if self._cached_row_lengths is not None:
+    if self._cached_row_lengths is not None and axis == 1:
       return self._cached_row_lengths
 
     with ops.name_scope(name, "RaggedRowLengths", [self]):
@@ -2255,6 +2255,14 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
     if rank is not None:
       if ragged_rank >= rank:
         raise ValueError("ragged_rank must be less than rank.")
+
+  def is_compatible_with(self, spec_or_value):
+    if (self._ragged_rank == 0 and
+        isinstance(spec_or_value, (ops.Tensor, tensor_spec.TensorSpec))):
+      return tensor_spec.TensorSpec(
+          self._shape, self._dtype).is_compatible_with(spec_or_value)
+    else:
+      return super(RaggedTensorSpec, self).is_compatible_with(spec_or_value)
 
   def _serialize(self):
     return (self._shape, self._dtype, self._ragged_rank, self._row_splits_dtype)

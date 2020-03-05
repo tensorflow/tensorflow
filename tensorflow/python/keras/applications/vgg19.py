@@ -53,6 +53,10 @@ def VGG19(
 ):
   """Instantiates the VGG19 architecture.
 
+  Reference:
+  - [Very Deep Convolutional Networks for Large-Scale Image Recognition](
+      https://arxiv.org/abs/1409.1556) (ICLR 2015)
+
   By default, it loads weights pre-trained on ImageNet. Check 'weights' for
   other options.
 

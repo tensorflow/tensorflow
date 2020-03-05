@@ -68,7 +68,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_SVDF, Register_SVDF(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_RNN, Register_RNN(),
              /* min_version */ 1,
              /* max_version */ 2);
