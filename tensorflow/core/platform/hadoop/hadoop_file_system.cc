@@ -276,7 +276,7 @@ class HDFSRandomAccessFile : public RandomAccessFile {
   hdfsFS fs_;
 
   mutable mutex mu_;
-  mutable hdfsFile file_ GUARDED_BY(mu_);
+  mutable hdfsFile file_ TF_GUARDED_BY(mu_);
 };
 
 Status HadoopFileSystem::NewRandomAccessFile(

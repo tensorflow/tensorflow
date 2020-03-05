@@ -182,8 +182,8 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    int64 i_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    int64 i_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };
 
   static PartialTensorShape MostSpecificCompatibleShape(

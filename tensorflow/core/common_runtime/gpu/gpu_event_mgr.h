@@ -112,9 +112,9 @@ class EventMgr {
   const int64 deferred_bytes_threshold_;
   const int32 polling_active_delay_usecs_;
   mutex mu_;
-  condition_variable events_pending_ GUARDED_BY(mu_);
+  condition_variable events_pending_ TF_GUARDED_BY(mu_);
 
-  void FlushAccumulatedTensors() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void FlushAccumulatedTensors() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   struct InUse {
     se::Event* event;
@@ -152,20 +152,20 @@ class EventMgr {
   // Tensors and/or a BufRec to be deleted only after the Event
   // records.
   void QueueInUse(se::Stream* stream, InUse in_use)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void QueueTensors(se::Stream* stream, TensorReferenceVector* tensors)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     QueueInUse(stream, {nullptr, tensors, BufRec(), nullptr});
   }
 
   void QueueBuffer(se::Stream* stream, BufRec bufrec)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     QueueInUse(stream, {nullptr, nullptr, bufrec, nullptr});
   }
 
   void QueueFunc(se::Stream* stream, std::function<void()> func)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     QueueInUse(stream, {nullptr, nullptr, BufRec(), std::move(func)});
   }
 
@@ -175,7 +175,7 @@ class EventMgr {
   // to "*to_free".  The caller should call FreeMemory(to_free)
   // when this returns.
   void PollEvents(bool is_dedicated_poller, ToFreeVector* to_free)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // An internal polling loop that runs at a low frequency to clear
   // straggler Events.
@@ -186,18 +186,18 @@ class EventMgr {
   void StopPollingLoop();
 
   // A stack of unused events
-  std::vector<se::Event*> free_events_ GUARDED_BY(mu_);
+  std::vector<se::Event*> free_events_ TF_GUARDED_BY(mu_);
 
   // Buffered list of tensors waiting to have an event queued for deletion
-  se::Stream* accumulated_stream_ GUARDED_BY(mu_);
-  TensorReferenceVector* accumulated_tensors_ GUARDED_BY(mu_);
+  se::Stream* accumulated_stream_ TF_GUARDED_BY(mu_);
+  TensorReferenceVector* accumulated_tensors_ TF_GUARDED_BY(mu_);
   // Sum of the TotalBytes() of the tensors in "accumulated_tensors_"
-  int64 accumulated_tensor_bytes_ GUARDED_BY(mu_);
+  int64 accumulated_tensor_bytes_ TF_GUARDED_BY(mu_);
 
   // A FIFO queue of InUse events and associated tensors.
-  std::deque<InUse> used_events_ GUARDED_BY(mu_);
+  std::deque<InUse> used_events_ TF_GUARDED_BY(mu_);
 
-  bool stop_polling_ GUARDED_BY(mu_);
+  bool stop_polling_ TF_GUARDED_BY(mu_);
   std::unique_ptr<Notification> polling_stopped_;
 
   // The main PollLoop for the event manager runs in this threadpool.
@@ -216,7 +216,7 @@ class EventMgrFactory {
 
   // Maintain one EventMgr per physical device (StreamExecutor is
   // per-physical-device).
-  std::map<se::StreamExecutor*, EventMgr*> event_mgr_map_ GUARDED_BY(mu_);
+  std::map<se::StreamExecutor*, EventMgr*> event_mgr_map_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

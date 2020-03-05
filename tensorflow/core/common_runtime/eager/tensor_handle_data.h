@@ -98,8 +98,8 @@ class LocalTensorHandleData {
 
    private:
     mutable mutex mu_;
-    bool is_ready_ GUARDED_BY(mu_);
-    Status is_poisoned_ GUARDED_BY(mu_);
+    bool is_ready_ TF_GUARDED_BY(mu_);
+    Status is_poisoned_ TF_GUARDED_BY(mu_);
   };
 
   absl::variant<NonBlockingControl, BlockingControl> ctrl_;

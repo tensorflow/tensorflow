@@ -82,7 +82,7 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
           recv_keys(recv_keys) {}
   };
 
-  std::vector<FunctionData> function_data_ GUARDED_BY(mu_);
+  std::vector<FunctionData> function_data_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

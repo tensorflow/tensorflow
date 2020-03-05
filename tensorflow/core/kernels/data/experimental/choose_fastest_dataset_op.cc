@@ -300,11 +300,11 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       std::vector<histogram::Histogram> histograms_;
 
       mutex mu_;
-      int64 experiment_counter_ GUARDED_BY(mu_) = 0;
+      int64 experiment_counter_ TF_GUARDED_BY(mu_) = 0;
       int64 fastest_index_ = -1;
 
       std::vector<ThreadInfo> StartThreads(IteratorContext* ctx)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         std::vector<ThreadInfo> threads(dataset()->inputs_.size());
         for (size_t i = 0, num_inputs = dataset()->inputs_.size();
              i < num_inputs; ++i) {
@@ -330,7 +330,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       // Select the fastest input to use based on the histograms of timings
       // of the completed threads. The input with the best 90th percentile
       // iteration time is selected.
-      void SelectFastestInputIndex() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      void SelectFastestInputIndex() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         fastest_index_ = 0;
 
         VLOG(2) << "90.0 percentile iteration time:";

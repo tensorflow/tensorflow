@@ -89,7 +89,7 @@ class ThreadPoolHandleOp : public OpKernel {
     }
   }
 
-  void Compute(OpKernelContext* ctx) override LOCKS_EXCLUDED(mu_) {
+  void Compute(OpKernelContext* ctx) override TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     if (!initialized_) {
       ResourceMgr* mgr = ctx->resource_manager();
@@ -98,7 +98,7 @@ class ThreadPoolHandleOp : public OpKernel {
       OP_REQUIRES_OK(ctx, mgr->LookupOrCreate<ThreadPoolResource>(
                               cinfo_.container(), cinfo_.name(), &resource,
                               [this, ctx](ThreadPoolResource** ret)
-                                  EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                                  TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                                     *ret = new ThreadPoolResource(
                                         ctx->env(), {}, display_name_,
                                         num_threads_,
@@ -115,8 +115,8 @@ class ThreadPoolHandleOp : public OpKernel {
 
  private:
   mutex mu_;
-  ContainerInfo cinfo_ GUARDED_BY(mu_);
-  bool initialized_ GUARDED_BY(mu_) = false;
+  ContainerInfo cinfo_ TF_GUARDED_BY(mu_);
+  bool initialized_ TF_GUARDED_BY(mu_) = false;
   string display_name_;
   int num_threads_;
   int max_intra_op_parallelism_;

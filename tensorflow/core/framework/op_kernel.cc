@@ -1134,7 +1134,8 @@ struct KernelRegistration {
 // KernelDef.
 struct KernelRegistry {
   mutex mu;
-  std::unordered_multimap<string, KernelRegistration> registry GUARDED_BY(mu);
+  std::unordered_multimap<string, KernelRegistration> registry
+      TF_GUARDED_BY(mu);
 };
 
 #if defined(_WIN32)

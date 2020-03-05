@@ -148,7 +148,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    int64 next_ GUARDED_BY(mu_);
+    int64 next_ TF_GUARDED_BY(mu_);
   };
 
   const int64 start_;

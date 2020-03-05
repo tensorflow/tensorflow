@@ -151,7 +151,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    int64 i_ GUARDED_BY(mu_);
+    int64 i_ TF_GUARDED_BY(mu_);
     const int64 n_;
   };
 

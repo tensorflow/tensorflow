@@ -46,9 +46,10 @@ class RandomSeedGenerator : public ResourceBase {
   const int64 seed_;
   const int64 seed2_;
   mutex mu_;
-  random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
-  random::SingleSampleAdapter<random::PhiloxRandom> generator_ GUARDED_BY(mu_);
-  int64 num_random_samples_ GUARDED_BY(mu_) = 0;
+  random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
+  random::SingleSampleAdapter<random::PhiloxRandom> generator_
+      TF_GUARDED_BY(mu_);
+  int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
 };
 
 // Creates an instance of random seed generator resource and transfers ownership

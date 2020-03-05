@@ -135,7 +135,7 @@ class InterleaveMany : public Node {
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     return std::make_shared<InterleaveMany>(
         Args{id_, name_, std::move(output)});
   }
@@ -144,7 +144,7 @@ class InterleaveMany : public Node {
   // output time of inputs comprising the interleave "cycle".
   double OutputTimeLocked(std::vector<double>* input_times,
                           std::map<string, double>* gradient) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
@@ -188,7 +188,7 @@ class InterleaveMany : public Node {
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
   double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
-      override SHARED_LOCKS_REQUIRED(mu_) {
+      override TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
       (*processing_times)[long_name()] = self_processing_time;
@@ -223,7 +223,7 @@ class AsyncInterleaveMany : public Node {
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     std::vector<std::shared_ptr<Parameter>> parameters;
     for (auto& pair : parameters_) {
       parameters.push_back(pair.second);
@@ -239,7 +239,7 @@ class AsyncInterleaveMany : public Node {
   // `buffer_size` is derived from parallelism.
   double OutputTimeLocked(std::vector<double>* input_times,
                           std::map<string, double>* gradient) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     if (num_inputs() <= 1) {
       return SelfProcessingTimeLocked();
     }
@@ -309,7 +309,7 @@ class AsyncInterleaveMany : public Node {
   // The processing time is the sum of the self processing time and the average
   // processing time of inputs comprising the interleave "cycle".
   double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
-      override SHARED_LOCKS_REQUIRED(mu_) {
+      override TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
       (*processing_times)[long_name()] = self_processing_time;
@@ -333,7 +333,7 @@ class KnownRatio : public Node {
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     return std::make_shared<KnownRatio>(Args{id_, name_, std::move(output)},
                                         ratio_);
   }
@@ -342,7 +342,7 @@ class KnownRatio : public Node {
   // `ratio_` and the sum of output times of inputs.
   double OutputTimeLocked(std::vector<double>* input_times,
                           std::map<string, double>* gradient) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     if (ratio_ == 0) {
       return SelfProcessingTimeLocked();
     }
@@ -378,7 +378,7 @@ class KnownRatio : public Node {
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
   double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
-      override SHARED_LOCKS_REQUIRED(mu_) {
+      override TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
       (*processing_times)[long_name()] = self_processing_time;
@@ -405,7 +405,7 @@ class AsyncKnownRatio : public Node {
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     std::vector<std::shared_ptr<Parameter>> parameters;
     for (auto& pair : parameters_) {
       parameters.push_back(pair.second);
@@ -423,7 +423,7 @@ class AsyncKnownRatio : public Node {
   // Current implementation assumes that there is at most 1 parameter per node.
   double OutputTimeLocked(std::vector<double>* input_times,
                           std::map<string, double>* gradient) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     double parallelism = 1.0;
     double buffer_size = 0.0;
     auto* parallelism_parameter = gtl::FindOrNull(parameters_, kParallelism);
@@ -514,7 +514,7 @@ class AsyncKnownRatio : public Node {
   // The processing time is the sum of the self processing time and the product
   // of `ratio_` and the sum of processing times of inputs.
   double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
-      override SHARED_LOCKS_REQUIRED(mu_) {
+      override TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
       (*processing_times)[long_name()] = self_processing_time;
@@ -535,7 +535,7 @@ class UnknownRatio : public Node {
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     return std::make_shared<UnknownRatio>(Args{id_, name_, std::move(output)});
   }
 
@@ -543,7 +543,7 @@ class UnknownRatio : public Node {
   // the ratio estimate and the sum of output times of inputs.
   double OutputTimeLocked(std::vector<double>* input_times,
                           std::map<string, double>* gradient) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     if (num_elements_ == 0 || inputs_.empty() ||
         inputs_.front()->num_elements() == 0) {
       return SelfProcessingTimeLocked();
@@ -582,7 +582,7 @@ class UnknownRatio : public Node {
   // The processing time is the sum of the self processing time and the product
   // of the ratio estimate and the sum of processing times of inputs.
   double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
-      override SHARED_LOCKS_REQUIRED(mu_) {
+      override TF_SHARED_LOCKS_REQUIRED(mu_) {
     double self_processing_time = SelfProcessingTimeLocked();
     if (processing_times) {
       (*processing_times)[long_name()] = self_processing_time;
@@ -608,20 +608,20 @@ class Unknown : public Node {
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     return std::make_shared<Unknown>(Args{id_, name_, std::move(output)});
   }
 
   // The output time is the sum of output times of inputs.
   double OutputTimeLocked(std::vector<double>* input_times,
                           std::map<string, double>* gradient) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     return OutputTimeForInputs(input_times, gradient);
   }
 
   // The processing time is the sum of processing times of inputs.
   double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
-      override SHARED_LOCKS_REQUIRED(mu_) {
+      override TF_SHARED_LOCKS_REQUIRED(mu_) {
     return TotalProcessingTimeForInputs(processing_times);
   }
 };

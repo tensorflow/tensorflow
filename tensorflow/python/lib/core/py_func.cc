@@ -48,7 +48,7 @@ namespace tensorflow {
 namespace {
 
 static mutex mu(LINKER_INITIALIZED);
-static PyObject* py_trampoline GUARDED_BY(mu) = nullptr;
+static PyObject* py_trampoline TF_GUARDED_BY(mu) = nullptr;
 
 // Returns the py_trampoline that is used to pass the control to the
 // python runtime.

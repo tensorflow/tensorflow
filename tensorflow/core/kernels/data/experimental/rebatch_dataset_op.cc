@@ -249,8 +249,8 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
 
       mutex mu_;
       std::unique_ptr<IteratorBase> input_impl_;
-      std::vector<InputDescriptor> input_descriptors_ GUARDED_BY(mu_);
-      int64 slice_number_ GUARDED_BY(mu_) = 0;
+      std::vector<InputDescriptor> input_descriptors_ TF_GUARDED_BY(mu_);
+      int64 slice_number_ TF_GUARDED_BY(mu_) = 0;
     };
 
     const DatasetBase* const input_;

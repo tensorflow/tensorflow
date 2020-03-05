@@ -86,7 +86,7 @@ class SimpleRendezvous : public RendezvousInterface {
   typedef std::unordered_map<string, Tensor> Table;
 
   mutex mu_;
-  Table table_ GUARDED_BY(mu_);
+  Table table_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace

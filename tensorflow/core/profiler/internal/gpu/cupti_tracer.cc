@@ -962,9 +962,9 @@ class CudaEventRecorder {
   }
 
   absl::Mutex mutex_;
-  bool stopped_ GUARDED_BY(mutex_) = false;
-  std::vector<KernelRecord> kernel_records_ GUARDED_BY(mutex_);
-  std::vector<MemcpyRecord> memcpy_records_ GUARDED_BY(mutex_);
+  bool stopped_ TF_GUARDED_BY(mutex_) = false;
+  std::vector<KernelRecord> kernel_records_ TF_GUARDED_BY(mutex_);
+  std::vector<MemcpyRecord> memcpy_records_ TF_GUARDED_BY(mutex_);
 
   CuptiInterface *cupti_interface_;
   CuptiTraceCollector *collector_;

@@ -57,7 +57,7 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
 // Locks on entry.
 static void WarnIfBadPtxasVersion(const string& ptxas_path) {
   static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  static std::unordered_set<string>* seen_ptxas_paths GUARDED_BY(mu) =
+  static std::unordered_set<string>* seen_ptxas_paths TF_GUARDED_BY(mu) =
       new std::unordered_set<string>();
 
   tensorflow::mutex_lock lock(mu);
@@ -127,7 +127,7 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
     int device_ordinal, const char* ptx, GpuAsmOpts compilation_options) {
   using PtxCacheKey = std::tuple<int, std::string, GpuAsmOpts::PtxOptionsTuple>;
   static tensorflow::mutex ptx_cache_mutex(tensorflow::LINKER_INITIALIZED);
-  static auto& ptx_cache GUARDED_BY(ptx_cache_mutex) =
+  static auto& ptx_cache TF_GUARDED_BY(ptx_cache_mutex) =
       *new absl::flat_hash_map<PtxCacheKey, std::vector<uint8>>();
 
   tensorflow::mutex_lock lock(ptx_cache_mutex);

@@ -83,7 +83,7 @@ class SparseConditionalAccumulator
 
   Status ValidateShape(
       std::tuple<const Tensor*, const Tensor*, const Tensor*>* tensor,
-      bool has_known_shape) EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      bool has_known_shape) TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     const Tensor* tensor_idx = std::get<0>(*tensor);
     const Tensor* tensor_val = std::get<1>(*tensor);
     const Tensor* tensor_shape = std::get<2>(*tensor);
@@ -319,7 +319,7 @@ class SparseConditionalAccumulator
   }
 
   void DivideAccumGradByCounter(OpKernelContext* ctx) override
-      EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     const int64 nnz = count_element_->size();
     auto accum_flat = accum_val_->flat_outer_dims<T>();
     std::vector<T> count_typet;
@@ -356,7 +356,7 @@ class SparseConditionalAccumulator
   bool GetAndValidateTensorInputForApplyGrad(
       OpKernelContext* ctx,
       std::tuple<const Tensor*, const Tensor*, const Tensor*>** tensor) override
-      EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     // TODO(xinghao, jmchen): The roundabout way of getting attr from
     // OpKernelContext (instead of OpKernelConstruction) is a hack, and should
     // be fixed if it affects efficiency.

@@ -138,7 +138,7 @@ class GrpcMasterService : public AsyncServiceInterface {
   grpc::MasterService::AsyncService master_service_;
 
   mutex mu_;
-  bool is_shutdown_ GUARDED_BY(mu_);
+  bool is_shutdown_ TF_GUARDED_BY(mu_);
   const ConfigProto default_session_config_;
   ::grpc::Alarm* shutdown_alarm_ = nullptr;
 
