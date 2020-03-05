@@ -140,14 +140,14 @@ inline Optional<PredicateType> getCmpPredicate(
 template <>
 inline Optional<CmpFPredicate> getCmpPredicate<CmpFPredicate>(
     StringRef xla_comparison_direction) {
-  return llvm::StringSwitch<CmpFPredicate>(xla_comparison_direction)
+  return llvm::StringSwitch<Optional<CmpFPredicate>>(xla_comparison_direction)
       .Case("EQ", CmpFPredicate::OEQ)
       .Case("NE", CmpFPredicate::ONE)
       .Case("GE", CmpFPredicate::OGE)
       .Case("GT", CmpFPredicate::OGT)
       .Case("LE", CmpFPredicate::OLE)
       .Case("LT", CmpFPredicate::OLT)
-      .Default(CmpFPredicate::NumPredicates);
+      .Default(llvm::None);
 }
 
 template <>
