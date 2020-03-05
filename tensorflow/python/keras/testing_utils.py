@@ -95,8 +95,8 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
       string or integer values.
     adapt_data: Optional data for an 'adapt' call. If None, adapt() will not
       be tested for this layer. This is only relevant for PreprocessingLayers.
-    custom_objects: Optional Objects for your custom layer. If you write a 
-      your layer, you can use this variable.
+    custom_objects: Optional dictionary mapping name strings to custom objects
+      in the layer class. This is helpful for testing custom layers.
       
   Returns:
     The output data (Numpy array) returned by the layer, for additional
