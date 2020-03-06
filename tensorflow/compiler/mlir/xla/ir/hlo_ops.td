@@ -944,10 +944,11 @@ def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]>, BASE_HLO_DotOp {
 }
 
 def DotDimensionNumbers : StructAttr<"DotDimensionNumbers", HLO_Dialect, [
-                StructFieldAttr<"lhs_batching_dimensions",   ElementsAttr>,
-                StructFieldAttr<"rhs_batching_dimensions",   ElementsAttr>,
-                StructFieldAttr<"lhs_contracting_dimensions", ElementsAttr>,
-                StructFieldAttr<"rhs_contracting_dimensions", ElementsAttr>] > {
+                StructFieldAttr<"lhs_batching_dimensions",   I64ElementsAttr>,
+                StructFieldAttr<"rhs_batching_dimensions",   I64ElementsAttr>,
+                StructFieldAttr<"lhs_contracting_dimensions", I64ElementsAttr>,
+                StructFieldAttr<"rhs_contracting_dimensions", I64ElementsAttr>
+  ]> {
   let description = "Structure of dimension information for dot product";
 }
 
