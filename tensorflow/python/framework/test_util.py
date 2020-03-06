@@ -1017,6 +1017,21 @@ def build_as_function_and_v1_graph(func=None):
   return decorator
 
 
+def run_in_async_and_sync_mode(f):
+  """Execute the test in async mode and sync mode."""
+
+  @parameterized.named_parameters([("Async", True), ("", False)])
+  @functools.wraps(f)
+  def decorator(self, async_mode, *args, **kwargs):
+    if async_mode:
+      with context.execution_mode(context.ASYNC):
+        f(self, *args, **kwargs)
+    else:
+      with context.execution_mode(context.SYNC):
+        f(self, *args, **kwargs)
+  return decorator
+
+
 def eager_lazy_remote_copy_on_and_off(f):
   """Execute the test method w/o lazy tensor copy for function remote inputs."""
 
