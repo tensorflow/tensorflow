@@ -3572,6 +3572,80 @@ class ConvertXlaDynamicUpdateSliceOp
   }
 };
 
+/// Converts the Cumsum TensorFlow op to the HLO ReduceWindow op by setting
+/// appropriate window dimensions, with 'add' as the reduction function.  The
+/// input tensor needs to have a static shape, and 'axis' must be const.  The
+/// TableGen pattern is not used for this rewrite because it involves regions.
+class ConvertCumsumOp : public OpRewritePattern<TF::CumsumOp> {
+  using OpRewritePattern<TF::CumsumOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::CumsumOp op,
+                                     PatternRewriter &rewriter) const override {
+    auto input = op.x();
+    auto input_type = input.getType().dyn_cast<ShapedType>();
+    if (!input_type || !input_type.hasStaticShape()) {
+      return matchFailure();
+    }
+
+    // TODO(jennik): Add support for the optional 'exclusive' and 'reverse'
+    // arguments.
+    if (op.exclusive() || op.reverse()) {
+      return matchFailure();
+    }
+
+    // We can only match when the axis is a constant scalar.
+    DenseIntElementsAttr axis_attr;
+    if (!matchPattern(op.axis(), m_Constant(&axis_attr))) {
+      return matchFailure();
+    }
+
+    // Convert if we need to enlarge the element type's bitwidth to avoid
+    // precision loss.
+    Type input_element_type = input_type.getElementType();
+    Type sum_element_type = GetSumAccumulationType(input_element_type);
+    input = rewriter.create<ConvertOp>(op.getLoc(), input, sum_element_type);
+
+    ArrayRef<int64_t> input_shape = input_type.getShape();
+    int64_t rank = input_shape.size();
+
+    // Get the dimension to apply the reduction on, and offset properly if it is
+    // negative.
+    int64_t axis = (*axis_attr.begin()).getSExtValue();
+    if (axis < 0) {
+      axis += rank;
+    }
+
+    SmallVector<int64_t, 4> window_dims(rank, 1);
+    SmallVector<int64_t, 4> window_strides(rank, 1);
+    window_dims[axis] = input_shape[axis];
+
+    SmallVector<int64_t, 8> paddings(rank * 2, 0);
+    paddings[axis * 2] = input_shape[axis] - 1;
+    auto paddings_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({rank, 2}, rewriter.getIntegerType(64)),
+        paddings);
+
+    Value init =
+        GetScalarConstOfType(sum_element_type, op.getLoc(), 0, &rewriter);
+
+    auto reduce = rewriter.create<ReduceWindowOp>(
+        op.getLoc(), input_type, input, init,
+        GetI64ElementsAttr(rewriter.getI64ArrayAttr(window_dims)),
+        GetI64ElementsAttr(rewriter.getI64ArrayAttr(window_strides)),
+        /*base_dilations=*/DenseIntElementsAttr(),
+        /*window_dilations=*/DenseIntElementsAttr(), paddings_attr);
+    BuildReduceBody<AddOp>(sum_element_type, &reduce.body(), &rewriter);
+    Value result = reduce.getResult();
+
+    // Convert back if we enlarged the element type's bitwidth.
+    result =
+        rewriter.create<ConvertOp>(op.getLoc(), result, input_element_type);
+
+    rewriter.replaceOp(op, result);
+    return matchSuccess();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -3588,7 +3662,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   patterns.insert<
       ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBF16FloorDivOp,
       ConvertConv2D, ConvertConv2DBackpropFilterOp,
-      ConvertConv2DBackpropInputOp, ConvertEinsumOp,
+      ConvertConv2DBackpropInputOp, ConvertCumsumOp, ConvertEinsumOp,
       ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
       ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
       ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp, ConvertMaxOp,

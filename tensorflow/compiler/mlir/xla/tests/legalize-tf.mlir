@@ -3653,3 +3653,48 @@ func @xla_dynamic_update_slice2(%arg0: tensor<4xf32>, %arg1: tensor<2xf32>, %arg
   %0 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %arg2) : (tensor<4xf32>, tensor<2xf32>, tensor<1xi32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
+
+//===----------------------------------------------------------------------===//
+// Cumsum op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @cumsum_static
+// CHECK-SAME: [[X:%.*]]: tensor<4xf32>
+func @cumsum_static(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: [[AXIS:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+  // CHECK: [[CONVERT_X:%.*]] = "xla_hlo.convert"([[X]]) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: [[INIT:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: [[REDUCE:%.*]] = "xla_hlo.reduce_window"([[CONVERT_X]], [[INIT]]) ( {
+  // CHECK: ^bb0([[A:%.*]]: tensor<f32>, [[B:%.*]]: tensor<f32>):
+  // CHECK:   [[SUM:%.*]] = xla_hlo.add [[A]], [[B]] : tensor<f32>
+  // CHECK:   "xla_hlo.return"([[SUM]]) : (tensor<f32>) -> ()
+  // CHECK: }) {padding = dense<{{\[\[}}3, 0]]> : tensor<1x2xi64>, window_dimensions = dense<4> : tensor<1xi64>, window_strides = dense<1> : tensor<1xi64>} : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+  // CHECK: [[CONVERT_REDUCE:%.*]] = "xla_hlo.convert"([[REDUCE]]) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: return [[CONVERT_REDUCE]]
+  %0 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "", dtype = i32, value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Cumsum"(%arg0, %0) {exclusive = false, reverse = false} : (tensor<4xf32>, tensor<i32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @cumsum_exclusive
+func @cumsum_exclusive(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: "tf.Cumsum"
+  %0 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "", dtype = i32, value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Cumsum"(%arg0, %0) {exclusive = true, reverse = false} : (tensor<4xf32>, tensor<i32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @cumsum_reverse
+func @cumsum_reverse(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: "tf.Cumsum"
+  %0 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "", dtype = i32, value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Cumsum"(%arg0, %0) {exclusive = false, reverse = true} : (tensor<4xf32>, tensor<i32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @cumsum_dynamic
+func @cumsum_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<i32>) -> tensor<?xf32> {
+  // CHECK: "tf.Cumsum"
+  %0 = "tf.Cumsum"(%arg0, %arg1) : (tensor<?xf32>, tensor<i32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
