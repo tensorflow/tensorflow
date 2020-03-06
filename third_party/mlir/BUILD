@@ -1565,8 +1565,6 @@ cc_library(
     hdrs = [
         "include/mlir/Target/LLVMIR/ModuleTranslation.h",
     ],
-    # TODO(herhut): Remove once fixed upstream.
-    copts = ["-Wno-pessimizing-move"],
     includes = ["include"],
     deps = [
         ":IR",
