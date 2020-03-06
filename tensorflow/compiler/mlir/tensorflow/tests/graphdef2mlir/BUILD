@@ -8,6 +8,9 @@ glob_lit_tests(
         ":test_utilities",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
+    tags_override = {
+        "error-message-with-source-info.pbtxt": ["no_oss"],  # TODO(b/150946057): to be fixed on oss.
+    },
     test_file_exts = ["pbtxt"],
 )
 
