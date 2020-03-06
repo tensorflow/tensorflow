@@ -2544,6 +2544,7 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
+        ":DialectUtils",
         ":EDSC",
         ":IR",
         ":LLVMDialect",
