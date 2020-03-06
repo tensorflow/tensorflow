@@ -131,8 +131,8 @@ class ConstantFolding : public GraphOptimizer {
   Status SimplifyNode(bool use_shape_info, NodeDef* node,
                       GraphDef* optimized_graph, GraphProperties* properties);
 
-  Status RunOptimizationPass(Cluster* cluster, GrapplerItem* item,
-                             GraphDef* optimized_graph);
+  Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
+                             GraphDef* output);
 
   // Applies partial constant folding for Concat which is not commutative.
   // Returns true if the transformation applied successfully.
