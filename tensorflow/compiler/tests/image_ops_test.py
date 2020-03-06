@@ -514,13 +514,6 @@ class ResizeNearestNeighborTest(xla_test.XLATestCase):
                            [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9]],
                           dtype=np.float32))
 
-  def testBFloat16(self):
-    img = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]],
-                   dtype=dtypes.bfloat16.as_numpy_dtype)
-    self._assertForwardOpMatchesExpected(img, [4, 4], expected=np.array(
-        [[1, 2, 2, 3], [4, 5, 5, 6], [4, 5, 5, 6], [7, 8, 8, 9]],
-        dtype=np.float32))
-
   def testAlignCorners3x3To12x12_uint8(self):
     # TODO(b/72099414): enable the test for TPU when the issue is fixed.
     if (self.device not in ["XLA_GPU", "XLA_CPU"]):
@@ -597,14 +590,12 @@ class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
       ("256x256To299x299", 256, 256, 299, 299),
       ("512x512To299x299", 512, 512, 299, 299),
       ("224x224To224x224", 224, 224, 224, 224),
-      ("224x224To224x224-bfloat", 224, 224, 224, 224,
-       dtypes.bfloat16.as_numpy_dtype),
       # This test is disabled because it is very slow. It is slow because
       # 383 is prime, 383 and 2047 are coprime, and 2048 is large.
       # ("Disabled_384x72To2048x384", 384, 72, 2048, 384),
   )
 
-  def test(self, src_y, src_x, dst_y, dst_x, dtype=np.float32):
+  def test(self, src_y, src_x, dst_y, dst_x):
     if test.is_built_with_rocm():
       self.skipTest("Disabled on ROCm, because it runs out of memory")
 
@@ -622,7 +613,7 @@ class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
     ]
 
     self._assertForwardOpMatchesExpected(
-        np.array(input_data, dtype=dtype), [dst_y, dst_x],
+        np.array(input_data, dtype=np.float32), [dst_y, dst_x],
         expected=np.array(result, dtype=np.float32),
         large_tolerance=True)
 
