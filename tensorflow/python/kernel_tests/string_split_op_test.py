@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
@@ -33,7 +34,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class StringSplitOpTest(test.TestCase):
+class StringSplitOpTest(test.TestCase, parameterized.TestCase):
 
   def testStringSplit(self):
     strings = ["pigs on the wing", "animals"]
@@ -168,6 +169,66 @@ class StringSplitOpTest(test.TestCase):
       self.assertAllEqual(values, [b"a", b"b", b"c"])
       self.assertAllEqual(indices, [[0, 0], [1, 0], [2, 0]])
       self.assertAllEqual(shape, [3, 1])
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name="RaggedResultType",
+          source=[b"pigs on the wing", b"animals"],
+          result_type="RaggedTensor",
+          expected=[[b"pigs", b"on", b"the", b"wing"], [b"animals"]]),
+      dict(
+          testcase_name="SparseResultType",
+          source=[b"pigs on the wing", b"animals"],
+          result_type="SparseTensor",
+          expected=sparse_tensor.SparseTensorValue(
+              [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0]],
+              [b"pigs", b"on", b"the", b"wing", b"animals"], [2, 4])),
+      dict(
+          testcase_name="DefaultResultType",
+          source=[b"pigs on the wing", b"animals"],
+          expected=sparse_tensor.SparseTensorValue(
+              [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0]],
+              [b"pigs", b"on", b"the", b"wing", b"animals"], [2, 4])),
+      dict(
+          testcase_name="BadResultType",
+          source=[b"pigs on the wing", b"animals"],
+          result_type="BouncyTensor",
+          error="result_type must be .*"),
+      dict(
+          testcase_name="WithSepAndAndSkipEmpty",
+          source=[b"+hello+++this+is+a+test"],
+          sep="+",
+          skip_empty=False,
+          result_type="RaggedTensor",
+          expected=[[b"", b"hello", b"", b"", b"this", b"is", b"a", b"test"]]),
+      dict(
+          testcase_name="WithDelimiter",
+          source=[b"hello world"],
+          delimiter="l",
+          result_type="RaggedTensor",
+          expected=[[b"he", b"o wor", b"d"]]),
+  ])
+  def testRaggedStringSplitWrapper(self,
+                                   source,
+                                   sep=None,
+                                   skip_empty=True,
+                                   delimiter=None,
+                                   result_type="SparseTensor",
+                                   expected=None,
+                                   error=None):
+    if error is not None:
+      with self.assertRaisesRegexp(ValueError, error):
+        ragged_string_ops.string_split(source, sep, skip_empty, delimiter,
+                                       result_type)
+    if expected is not None:
+      result = ragged_string_ops.string_split(source, sep, skip_empty,
+                                              delimiter, result_type)
+      if isinstance(expected, sparse_tensor.SparseTensorValue):
+        self.assertAllEqual(result.indices, expected.indices)
+        self.assertAllEqual(result.values, expected.values)
+        self.assertAllEqual(result.dense_shape, expected.dense_shape)
+      else:
+        self.assertAllEqual(result, expected)
 
 
 class StringSplitV2OpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -384,6 +445,10 @@ class StringSplitV2OpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                      self.evaluate(actual_sparse_v1.values).tolist())
     self.assertEqual(expected_sparse.dense_shape.tolist(),
                      self.evaluate(actual_sparse_v1.dense_shape).tolist())
+
+  def testSplitV1BadResultType(self):
+    with self.assertRaisesRegexp(ValueError, "result_type must be .*"):
+      ragged_string_ops.strings_split_v1("foo", result_type="BouncyTensor")
 
   def _py_split(self, strings, **kwargs):
     if isinstance(strings, compat.bytes_or_text_types):

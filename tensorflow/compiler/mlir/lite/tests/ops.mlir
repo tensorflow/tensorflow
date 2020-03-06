@@ -103,7 +103,7 @@ func @testAddN(tensor<? x f32>, tensor<? x f32>, tensor<? x f32>) -> tensor<? x 
 // test invalid AddN
 func @testAddNWrongOperandResultType(tensor<? x f16>, tensor<? x f16>, tensor<? x f16>) -> tensor<? x f16> {
 ^bb0(%arg0: tensor<? x f16>, %arg1: tensor<? x f16>, %arg2: tensor<? x f16>):
-  // expected-error @+1 {{'tfl.add_n' op operand #0 must be tensor of 32-bit float or 32-bit integer or QI16 type or QUI16 type values}}
+  // expected-error @+1 {{'tfl.add_n' op operand #0 must be tensor of 32-bit float or 32-bit signless integer or QI16 type or QUI16 type values}}
   %0 = "tfl.add_n"(%arg0, %arg1, %arg2): (tensor<? x f16>, tensor<? x f16>, tensor<? x f16>) -> tensor<? x f16>
   return %0 : tensor<? x f16>
 }
@@ -244,7 +244,7 @@ func @testLogicalNot(tensor<? x i1>) -> tensor<? x i1> {
 
 func @testLogicalNotWrongOperandType(tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>):
-  // expected-error @+1 {{'tfl.logical_not' op operand #0 must be tensor of 1-bit integer values}}
+  // expected-error @+1 {{'tfl.logical_not' op operand #0 must be tensor of 1-bit signless integer values}}
   %0 = "tfl.logical_not"(%arg0) : (tensor<? x i32>) -> tensor<? x i32>
   return %0 : tensor<? x i32>
 }
@@ -380,7 +380,7 @@ func @testLogicalAnd(tensor<? x i1>, tensor<? x i1>) -> tensor<? x i1> {
 
 func @testLogicalAndWrongOperandType(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
-  // expected-error @+1 {{'tfl.logical_and' op operand #0 must be tensor of 1-bit integer values}}
+  // expected-error @+1 {{'tfl.logical_and' op operand #0 must be tensor of 1-bit signless integer values}}
   %0 = "tfl.logical_and"(%arg0, %arg1) : (tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32>
   return %0 : tensor<? x i32>
 }
@@ -399,7 +399,7 @@ func @testLogicalOr(tensor<? x i1>, tensor<? x i1>) -> tensor<? x i1> {
 
 func @testLogicalOrWrongOperandType(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
-  // expected-error @+1 {{'tfl.logical_or' op operand #0 must be tensor of 1-bit integer values}}
+  // expected-error @+1 {{'tfl.logical_or' op operand #0 must be tensor of 1-bit signless integer values}}
   %0 = "tfl.logical_or"(%arg0, %arg1) : (tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32>
   return %0 : tensor<? x i32>
 }
@@ -692,7 +692,7 @@ func @testSelectMultiDim(%cond : tensor<?xi1>, %arg0 : tensor<?x4xi32>, %arg1 : 
 // -----
 
 func @testSelectWithUnsupportedType(%cond : tensor<?xi32>, %arg0 : tensor<?xi32>, %arg1 : tensor<?xi32>) -> tensor<?xi32> {
-  // expected-error @+1 {{op operand #0 must be tensor of 1-bit integer values}}
+  // expected-error @+1 {{op operand #0 must be tensor of 1-bit signless integer values}}
   %0 = "tfl.select"(%cond, %arg0, %arg1): (tensor<?xi32>,tensor<?xi32>,tensor<?xi32>) -> tensor<?xi32>
   return %0 : tensor<?xi32>
 }
@@ -1166,7 +1166,7 @@ func @testOneHot(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<f32>, %
 // -----
 
 func @testOneHotWithInvalidOutputType(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<*xi8> {
-  // expected-error @+1 {{'tfl.one_hot' op result #0 must be tensor of 32-bit float or 32-bit integer or 64-bit integer or 1-bit integer values}}
+  // expected-error @+1 {{'tfl.one_hot' op result #0 must be tensor of 32-bit float or 32-bit signless integer or 64-bit signless integer or 1-bit signless integer values}}
   %0 = "tfl.one_hot"(%arg0, %arg1, %arg2, %arg3) {axis = -1 : i32} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<*xi8>
   return %0 : tensor<*xi8>
 }
@@ -1239,7 +1239,7 @@ func @transpose(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2xi32>) -> tensor<2x2xi3
 // -----
 
 func @transpose_perm_not_i32(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2xf32>) -> tensor<2x2xi32> {
-  // expected-error @+1 {{op operand #1 must be tensor of 32-bit integer values}}
+  // expected-error @+1 {{op operand #1 must be tensor of 32-bit signless integer values}}
   %0 = "tfl.transpose"(%arg0, %arg1) : (tensor<2x2xi32>, tensor<2xf32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -1322,7 +1322,7 @@ func @transpose_1d_perm(%arg0 : tensor<2x2xi32>, %arg1 : tensor<2x2xi32>) -> ten
 // -----
 
 func @anyWithI64Axis(%arg0: tensor<2x2xi1>, %arg1: tensor<i64>) -> tensor<i1> {
-  // expected-error @+1 {{tfl.reduce_any' op operand #1 must be tensor of 32-bit integer values}}
+  // expected-error @+1 {{tfl.reduce_any' op operand #1 must be tensor of 32-bit signless integer values}}
   %0 = "tfl.reduce_any"(%arg0, %arg1) {keep_dims = false} : (tensor<2x2xi1>, tensor<i64>) -> tensor<i1>
   return %0 : tensor<i1>
 }
@@ -1352,7 +1352,7 @@ func @testSplitVWithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>
 // -----
 
 func @whereWithI32Input(%arg0: tensor<3x5xi32>) -> tensor<?x2xi64> {
-  // expected-error @+1 {{'tfl.where' op operand #0 must be tensor of 1-bit integer values}}
+  // expected-error @+1 {{'tfl.where' op operand #0 must be tensor of 1-bit signless integer values}}
   %0 = "tfl.where"(%arg0) : (tensor<3x5xi32>) -> tensor<?x2xi64>
   return %0 : tensor<?x2xi64>
 }
@@ -1559,7 +1559,7 @@ func @testSliceBeginOutOfRange(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>) -
 
 func @testSplitOpWithBadNumSplits(%arg0 : tensor<16xf32>) -> () {
   %split_dim = constant dense<0> : tensor<i32>
-  // expected-error @+1 {{'tfl.split' op attribute 'num_splits' failed to satisfy constraint: positive 32-bit integer attribute}}
+  // expected-error @+1 {{'tfl.split' op attribute 'num_splits' failed to satisfy constraint: 32-bit signless integer attribute whose value is positive}}
   "tfl.split"(%split_dim, %arg0) {num_splits = 0 : i32} : (tensor<i32>, tensor<16xf32>) -> ()
   return
 }
@@ -1682,7 +1682,7 @@ func @testSplitOpWithValidTensorTypeDynamic(%arg0 : tensor<16x?xf32>) -> (tensor
 func @testSplitVOpWithBadNumSplits(%arg0 : tensor<16xf32>) -> () {
   %size_splits = constant dense<[]> : tensor<0xi32>
   %split_dim = constant dense<0> : tensor<i32>
-  // expected-error @+1 {{'tfl.split_v' op attribute 'num_splits' failed to satisfy constraint: positive 32-bit integer attribute}}
+  // expected-error @+1 {{'tfl.split_v' op attribute 'num_splits' failed to satisfy constraint: 32-bit signless integer attribute whose value is positive}}
   "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 0 : i32} : (tensor<16xf32>, tensor<0xi32>, tensor<i32>) -> ()
   return
 }
@@ -1702,7 +1702,7 @@ func @testSplitVOpWithMismatchedNumResults(%arg0 : tensor<16xf32>) -> (tensor<8x
 func @testSplitVOpWithBadSizeSplitsTensorType(%arg0: tensor<16x4x4xf32>) -> tensor<16x4x4xf32> {
   %size_splits = constant dense<[[8, 8], [2, 2]]> : tensor<2x2xi32>
   %split_dim = constant dense<0> : tensor<i32>
-  // expected-error @+1 {{'tfl.split_v' op operand #1 must be 1D tensor of 32-bit integer values}}
+  // expected-error @+1 {{'tfl.split_v' op operand #1 must be 1D tensor of 32-bit signless integer values}}
   %0 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 1 : i32} : (tensor<16x4x4xf32>, tensor<2x2xi32>, tensor<i32>) -> tensor<16x4x4xf32>
   return %0 : tensor<16x4x4xf32>
 }
@@ -1711,7 +1711,7 @@ func @testSplitVOpWithBadSizeSplitsTensorType(%arg0: tensor<16x4x4xf32>) -> tens
 
 func @testSplitVOpWithBadSizeSplitsUnrankedTensorType(%arg0: tensor<16x4x4xf32>, %size_splits: tensor<*xi32>) -> tensor<16x4x4xf32> {
   %split_dim = constant dense<0> : tensor<i32>
-  // expected-error @+1 {{'tfl.split_v' op operand #1 must be 1D tensor of 32-bit integer values}}
+  // expected-error @+1 {{'tfl.split_v' op operand #1 must be 1D tensor of 32-bit signless integer values}}
   %0 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 1 : i32} : (tensor<16x4x4xf32>, tensor<*xi32>, tensor<i32>) -> tensor<16x4x4xf32>
   return %0 : tensor<16x4x4xf32>
 }
@@ -1761,7 +1761,7 @@ func @testSplitVOpWithBadSizeSplitsSize(%arg0: tensor<16x4x4xf32>) -> tensor<15x
 func @testSplitVOpWithBadSplitDimTensorType(%arg0: tensor<16x4x4xf32>) -> tensor<16x4x4xf32> {
   %size_splits = constant dense<[16]> : tensor<1xi32>
   %split_dim = constant dense<0> : tensor<2x2xi32>
-  // expected-error @+1 {{'tfl.split_v' op operand #2 must be 0D tensor of 32-bit integer values}}
+  // expected-error @+1 {{'tfl.split_v' op operand #2 must be 0D tensor of 32-bit signless integer values}}
   %0 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 1 : i32} : (tensor<16x4x4xf32>, tensor<1xi32>, tensor<2x2xi32>) -> tensor<16x4x4xf32>
   return %0 : tensor<16x4x4xf32>
 }
@@ -1770,7 +1770,7 @@ func @testSplitVOpWithBadSplitDimTensorType(%arg0: tensor<16x4x4xf32>) -> tensor
 
 func @testSplitVOpWithBadSplitDimUnrankedTensorType(%arg0: tensor<16x4x4xf32>, %split_dim : tensor<*xi32>) -> tensor<16x4x4xf32> {
   %size_splits = constant dense<[16]> : tensor<1xi32>
-  // expected-error @+1 {{'tfl.split_v' op operand #2 must be 0D tensor of 32-bit integer values}}
+  // expected-error @+1 {{'tfl.split_v' op operand #2 must be 0D tensor of 32-bit signless integer values}}
   %0 = "tfl.split_v"(%arg0, %size_splits, %split_dim) {num_splits = 1 : i32} : (tensor<16x4x4xf32>, tensor<1xi32>, tensor<*xi32>) -> tensor<16x4x4xf32>
   return %0 : tensor<16x4x4xf32>
 }

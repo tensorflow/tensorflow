@@ -7054,6 +7054,27 @@ lengths: Output tensor containing sizes of the 0th dimension of tensors in the l
   TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_TensorListElementShapeOp : TF_Op<"TensorListElementShape", [NoSideEffect]> {
+  let summary = "The shape of the elements of the given list, as a tensor.";
+
+  let description = [{
+input_handle: the list
+  element_shape: the shape of elements of the list
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$element_shape
+  );
+
+  TF_DerivedResultTypeAttr shape_type = TF_DerivedResultTypeAttr<0>;
+
+  let hasFolder = 1;
+}
+
 def TF_TensorListFromTensorOp : TF_Op<"TensorListFromTensor", [NoSideEffect]> {
   let summary = [{
 Creates a TensorList which, when stacked, has the value of `tensor`.
@@ -7822,6 +7843,8 @@ shape(t) ==> [2, 2, 3]
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_WhereOp : TF_Op<"Where", [NoSideEffect]> {
@@ -8015,8 +8038,9 @@ used to look up the program in the compilation cache.
 
   let results = (outs
     TF_StrTensor:$compilation_status,
-    TF_StrTensor:$program
+    Variadic<TF_StrTensor>:$program
   );
 
+  TF_DerivedResultSizeAttr num_computations = TF_DerivedResultSizeAttr<1>;
   TF_DerivedOperandSizeAttr NumDynamicShapes = TF_DerivedOperandSizeAttr<0>;
 }

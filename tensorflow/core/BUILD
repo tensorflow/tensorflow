@@ -1021,7 +1021,6 @@ cc_library(
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
-        "//tensorflow/core/kernels:cudnn_rnn_kernels",
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:decode_proto_op",
         "//tensorflow/core/kernels:encode_proto_op",
@@ -1096,6 +1095,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:mkl_tmp_bf16_ops",
     ]) + if_cuda([
+        "//tensorflow/core/kernels:cudnn_rnn_kernels",
         "//tensorflow/core/grappler/optimizers:gpu_swapping_kernels",
         "//tensorflow/core/grappler/optimizers:gpu_swapping_ops",
     ]) + if_nccl([

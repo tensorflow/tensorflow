@@ -90,11 +90,28 @@ std::unique_ptr<XEvent> CreateVirtualEvent(const XStat& step_id_stat,
   return virtual_event;
 }
 
-bool NeedsVirtualEvents(
+bool NeedsVirtualEventsForHostTrainingLoop(
     const std::vector<int64 /*EventType*/>& root_event_types) {
   return std::find(root_event_types.begin(), root_event_types.end(),
                    HostEventType::kHostTrainingLoopIteration) !=
          root_event_types.end();
+}
+
+bool NeedsVirtualEventsForAsyncExecutor(
+    const std::vector<int64 /*EventType*/>& root_event_types) {
+  return std::find(root_event_types.begin(), root_event_types.end(),
+                   HostEventType::kAsyncExecutorTraceContext) !=
+         root_event_types.end();
+}
+
+bool HasFunctionRun(EventNode* event_node) {
+  for (EventNode* child : event_node->GetChildren()) {
+    if (child->GetPlaneVisitor().GetEventType(child->GetEvent()) ==
+        HostEventType::kFunctionRun) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace
@@ -226,7 +243,7 @@ void EventForest::CreateEventGroup(
   }
 }
 
-void EventForest::CreateVirtualEvents() {
+void EventForest::CreateVirtualEventsForHostTrainingLoop() {
   VirtualEventNodeMap virtual_event_node_map;
   auto executor_event_node_list =
       gtl::FindOrNull(event_node_map_, HostEventType::kExecutorStateProcess);
@@ -260,6 +277,31 @@ void EventForest::CreateVirtualEvents() {
   }
 }
 
+void EventForest::CreateVirtualEventsForAsyncExecutor() {
+  auto eager_kernel_execute_event_node_list =
+      gtl::FindOrNull(event_node_map_, HostEventType::kEagerKernelExecute);
+  if (!eager_kernel_execute_event_node_list) return;
+  EventNode* virtual_event_node = nullptr;
+  for (auto& eager_kernel_execute_event_node :
+       *eager_kernel_execute_event_node_list) {
+    if (HasFunctionRun(eager_kernel_execute_event_node.get())) {
+      auto new_virtual_event = absl::make_unique<XEvent>();
+      auto new_virtual_event_node = absl::make_unique<EventNode>(
+          &eager_kernel_execute_event_node->GetPlaneVisitor(),
+          new_virtual_event.get());
+      // virtual_event_container_ keeps new_virtual_event alive.
+      virtual_event_container_.push_back(std::move(new_virtual_event));
+      virtual_event_node = new_virtual_event_node.get();
+      // event_node_map_ keeps new_virtual_event_node alive.
+      event_node_map_[HostEventType::kAsyncExecutorTraceContext].push_back(
+          std::move(new_virtual_event_node));
+    }
+    if (virtual_event_node) {
+      virtual_event_node->AddChild(eager_kernel_execute_event_node.get());
+    }
+  }
+}
+
 EventForest::EventForest(
     const std::vector<InterThreadConnectInfo>& connect_info_list,
     const std::vector<int64>& root_event_types,
@@ -272,13 +314,17 @@ EventForest::EventForest(
     ConnectIntraThread(visitors_.back(), &plane);
   }
   ConnectInterThread(connect_info_list);
-  if (NeedsVirtualEvents(root_event_types)) {
-    CreateVirtualEvents();
+  if (NeedsVirtualEventsForHostTrainingLoop(root_event_types)) {
+    CreateVirtualEventsForHostTrainingLoop();
+  }
+  if (NeedsVirtualEventsForAsyncExecutor(root_event_types)) {
+    CreateVirtualEventsForAsyncExecutor();
   }
   CreateEventGroup(root_event_types);
 }
 
 void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
+  if (!space) return;
   std::vector<InterThreadConnectInfo> connect_info_list(
       {{HostEventType::kFunctionRun,
         HostEventType::kExecutorStateProcess,
@@ -295,10 +341,10 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
   const std::vector<int64 /*EventType*/> root_event_types(
       {HostEventType::kHostTrainingLoopIteration, HostEventType::kTraceContext,
        HostEventType::kFunctionRun, HostEventType::kSessionRun});
-  EventForest event_tree(connect_info_list, root_event_types,
-                         CreateTfXPlaneVisitor, space);
+  EventForest event_forest(connect_info_list, root_event_types,
+                           CreateTfXPlaneVisitor, space);
   if (event_group_name_map) {
-    *event_group_name_map = event_tree.GetEventGroupNameMap();
+    *event_group_name_map = event_forest.GetEventGroupNameMap();
   }
 }
 

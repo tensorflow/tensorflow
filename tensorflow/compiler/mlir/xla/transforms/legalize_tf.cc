@@ -428,6 +428,42 @@ static DenseIntElementsAttr Get2DTransposePerm(BoolAttr transpose, Builder *b) {
 }
 
 //===----------------------------------------------------------------------===//
+// MatrixBandPart op utilities.
+//===----------------------------------------------------------------------===//
+
+// Gets the size of the dimension `dim_from_end` from the end of `input`.
+// Requires that `input` is a tensor.
+static int GetDimensionSizeFromEnd(Value input, int dim_from_end) {
+  // Note: the verifier enforces that `input` is a ranked tensor.
+  auto input_type = input.getType().cast<TensorType>();
+  auto input_shape = input_type.getShape();
+  int dim = (input_shape.size() - 1) - dim_from_end;
+  return input_shape[dim];
+}
+
+// Gets a 2D tensor type with shape {dim_0, dim_1}, where `dim_0` and `dim_1`
+// have the same size as the last two dimensions of `input` (the second-to-last
+// dimension and last dimension, respectively). The element type of the
+// outputted RankedTensorType will match the element type of `input`.
+// Requires that `input` is a tensor.
+static RankedTensorType Get2DTensorType(Value input) {
+  // `dim_0` refers to the second-to-last dimension; `dim_1` refers to the last.
+  int dim_0 = GetDimensionSizeFromEnd(input, 1);
+  int dim_1 = GetDimensionSizeFromEnd(input, 0);
+  auto element_type = input.getType().cast<TensorType>().getElementType();
+  return RankedTensorType::get({dim_0, dim_1}, element_type);
+}
+
+// Creates a HLO ConvertOp, converting `input` to have the same element type as
+// `elem_type_tensor`. Requires `elem_type_tensor` to be a tensor.
+static Value CreateConvertOp(OpBuilder *builder, Location loc, Value input,
+                             Value elem_type_tensor) {
+  auto element_type =
+      elem_type_tensor.getType().cast<TensorType>().getElementType();
+  return builder->create<xla_hlo::ConvertOp>(loc, input, element_type);
+}
+
+//===----------------------------------------------------------------------===//
 // Pad op utilities.
 //===----------------------------------------------------------------------===//
 
@@ -3520,10 +3556,13 @@ class ConvertXlaDynamicUpdateSliceOp
   PatternMatchResult matchAndRewrite(TF::XlaDynamicUpdateSliceOp op,
                                      PatternRewriter &rewriter) const override {
     auto indices_type = op.indices().getType().dyn_cast<RankedTensorType>();
-    if (!indices_type) return matchFailure();
+    if (!indices_type || !indices_type.hasStaticShape() ||
+        indices_type.getShape().size() != 1)
+      return matchFailure();
 
-    SmallVector<Type, 2> unpacked_indices_type(
-        2, RankedTensorType::get({}, indices_type.getElementType()));
+    SmallVector<Type, 4> unpacked_indices_type(
+        indices_type.getDimSize(0),
+        RankedTensorType::get({}, indices_type.getElementType()));
     auto unpacked_indices = rewriter.create<TF::UnpackOp>(
         op.getLoc(), unpacked_indices_type, op.indices(),
         IntegerAttr::get(rewriter.getIntegerType(64), 0));

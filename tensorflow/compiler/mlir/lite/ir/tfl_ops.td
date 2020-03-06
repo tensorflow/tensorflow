@@ -135,7 +135,7 @@ class TFL_VariadicTensorOf<list<Type> allowedRuntimeTypes,
   TFL_RuntimeType<Variadic<TensorOf<allowedRuntimeTypes>>>;
 
 def TFL_Uint8 : UI<8>;
-def TFL_Int32Or64 : IntOfWidths<[32, 64]>;
+def TFL_Int32Or64 : SignlessIntOfWidths<[32, 64]>;
 
 def TFL_BoolTensor : TFL_TensorOf<[I1]>;
 def TFL_FpOrI32OrI64Tensor : TFL_TensorOf<[AnyFloat, TFL_Int32Or64]>;
@@ -2710,7 +2710,7 @@ def TFL_SplitOp : TFL_Op<"split", [
   let arguments = (ins
     TFL_TensorOf<[I32]>:$split_dim,
     TFL_TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$value,
-    PositiveI32Attr:$num_splits
+    Confined<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs
@@ -2735,7 +2735,7 @@ def TFL_SplitVOp : TFL_Op<"split_v", [NoSideEffect, SameOperandsAndResultsScale]
     TFL_TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$value,
     TFL_1DTensorOf<[I32], [I32]>:$size_splits,
     TFL_0DTensorOf<[I32], [I32]>:$split_dim,
-    PositiveI32Attr:$num_splits
+    Confined<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs

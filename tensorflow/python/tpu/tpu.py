@@ -83,6 +83,7 @@ _TPU_REPLICATE_ATTR = "_tpu_replicate"
 _POST_DEVICE_REWRITE_ATTR = "_post_device_rewrite"
 _TPU_COMPILATION_STATUS_ATTR = "_tpu_compilation_status"
 _OUTSIDE_COMPILATION_ATTR = "_xla_outside_compilation"
+_PIVOT_FOR_CLUSTER = "_pivot_for_cluster"
 
 
 def _tpu_system_device_name(job):
@@ -1206,6 +1207,8 @@ def split_compile_and_replicate(computation,
   else:
     cluster_name = graph.unique_name("cluster")
   pivot = control_flow_ops.no_op(name=cluster_name + "/pivot")
+  pivot._set_attr(_PIVOT_FOR_CLUSTER,  # pylint: disable=protected-access
+                  attr_value_pb2.AttrValue(s=compat.as_bytes(cluster_name)))
   context = TPUReplicateContext(
       name=cluster_name, num_replicas=num_replicas, pivot=pivot)
   try:

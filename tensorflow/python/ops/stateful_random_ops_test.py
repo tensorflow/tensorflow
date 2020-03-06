@@ -22,6 +22,7 @@ import re
 
 from absl.testing import parameterized
 import numpy as np
+import six
 
 from tensorflow.python.distribute import values as dist_values
 from tensorflow.python.distribute.mirrored_strategy import MirroredStrategy
@@ -560,6 +561,23 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
         "For the Philox algorithm, the size of state must be at least"):
       gen_stateful_random_ops.stateful_standard_normal_v2(
           var.handle, random.RNG_ALG_PHILOX, shape)
+    with self.assertRaisesWithPredicateMatch(
+        ValueError,
+        "minval must be a scalar; got a tensor of shape "):
+      @def_function.function
+      def f():
+        gen.uniform(shape=shape, minval=array_ops.zeros(shape, "int32"),
+                    maxval=100, dtype="int32")
+      f()
+    with self.assertRaisesWithPredicateMatch(
+        ValueError,
+        "maxval must be a scalar; got a tensor of shape "):
+      @def_function.function
+      def f2():
+        gen.uniform(
+            shape=shape, minval=0, maxval=array_ops.ones(shape, "int32") * 100,
+            dtype="int32")
+      f2()
 
   @test_util.run_v2_only
   def testGetGlobalGeneratorWithXla(self):
@@ -612,6 +630,17 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     res2 = g2.normal(shape)
     self.assertAllEqual(res1, res2)
     self.assertAllEqual(g1.state.read_value(), g2.state.read_value())
+
+  @test_util.run_v2_only
+  def testFunArgAlgIsInt(self):
+    """Tests that `algorithm` is `int` when reconstructed from composite tensor.
+    """
+    @def_function.function
+    def f(g):
+      self.assertIsInstance(g.algorithm, six.integer_types)
+      return g.make_seeds(), g
+    gen = random.Generator.from_seed(123, alg="philox")
+    f(gen)
 
   @test_util.run_v2_only
   def testLimitedRetracingWithCompositeTensors(self):

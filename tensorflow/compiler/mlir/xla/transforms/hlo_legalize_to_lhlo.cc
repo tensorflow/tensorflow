@@ -273,14 +273,14 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //   "xla_lhlo.fusion"() ({
 //     %0 = tensor_load %arg1 : memref<2x2xf32>
 //     %1 = tensor_load %arg2 : memref<2x2xf32>
-//     %2 = "xla_hlo.add"(%0, %1) {name = "add"} :
+//     %2 = "xla_hlo.add"(%0, %1) :
 //         (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 //     %3 = tensor_load %arg0 : memref<2x2xf32>
-//     %4 = "xla_hlo.mul"(%2, %3) {name = "multiply"} :
+//     %4 = "xla_hlo.mul"(%2, %3) :
 //         (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 //     tensor_store %4, %arg3 : memref<2x2xf32>
 //     "xla_lhlo.terminator"() : () -> ()
-//   }) {name = "fusion"} : () -> ()
+//   }) : () -> ()
 //   return
 // }
 //
@@ -290,14 +290,14 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //              %arg2: memref<2x2xf32>,
 //              %arg3: memref<2x2xf32>) {
 //   "xla_lhlo.fusion"() ( {
-//     %0 = alloc() {temp = true} : memref<2x2xf32>
+//     %0 = alloc() : memref<2x2xf32>
 //     "xla_lhlo.add"(%arg1, %arg2, %0) :
 //         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 //     "xla_lhlo.mul"(%0, %arg0, %arg3) :
 //         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 //     dealloc %0 : memref<2x2xf32>
 //     "xla_lhlo.terminator"() : () -> ()
-//   }) {name = "fusion"} : () -> ()
+//   }) : () -> ()
 //   return
 //  }
 // }
@@ -305,9 +305,9 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 // FuncOp signature conversion example:
 //
 // func @func_op(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-//   %0 = xla_hlo.max %arg0, %arg1 {name = "maximum.47"} : tensor<4xf32>
-//   %1 = xla_hlo.add %arg0, %0 {name = "maximum.47"} : tensor<4xf32>
-//   return %1 : tensor<4xf32>
+//   %0 = "xla_hlo.max"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) ->
+//   tensor<4xf32> %1 = "xla_hlo.add"(%arg0, %0)  : (tensor<4xf32>,
+//   tensor<4xf32>) -> tensor<4xf32> return %1 : tensor<4xf32>
 // }
 //
 // Transformed function with an extra argument for the result. The types have
@@ -316,11 +316,14 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 // func @func_op(%arg0: memref<4xf32>,
 //               %arg1: memref<4xf32>,
 //               %arg2: memref<4xf32>) {
-//   %0 = alloc() {temp = true} : memref<4xf32>
-//   "xla_lhlo.max"(%arg0, %arg1, %0) {name = "maximum.47"} :
+//   %0 = alloc() : memref<4xf32>
+//   %1 = alloc() : memref<4xf32>
+//   "xla_lhlo.max"(%arg0, %arg1, %0) :
 //         (memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()
-//   "xla_lhlo.add"(%arg0, %0, %arg2) {name = "maximum.47"} :
+//   "xla_lhlo.add"(%arg0, %0, %1) :
 //         (memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()
+//   "xla_lhlo.copy"(%1, %arg2) : (memref<4xf32>, memref<4xf32>) -> ()
+//   dealloc %0 : memref<4xf32>
 //   dealloc %1 : memref<4xf32>
 //   "xla_lhlo.terminator"() : () -> ()
 // }
@@ -473,57 +476,12 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
-/// Removes Lhlo.CopyOp that copies from an allocated buffer to the block
-/// argument. All uses of the buffer are replaced with the block argument.
-struct RedundantCopiesRemoval : mlir::FunctionPass<RedundantCopiesRemoval> {
-  void runOnFunction() override {
-    llvm::SmallVector<mlir::Operation*, 2> eraseList;
-    getFunction().walk([&](mlir::xla_lhlo::CopyOp copyOp) {
-      auto arguments = copyOp.getOperation()->getBlock()->getArguments();
-      if (std::any_of(arguments.begin(), arguments.end(),
-                      [&](mlir::BlockArgument arg) {
-                        return copyOp.output() == arg;
-                      }) &&
-          std::none_of(arguments.begin(), arguments.end(),
-                       [&](mlir::BlockArgument arg) {
-                         return copyOp.operand() == arg;
-                       })) {
-        mlir::Value operand = copyOp.operand();
-        mlir::Value output = copyOp.output();
-        copyOp.erase();
-        for (auto op : operand.getUsers()) {
-          if (!mlir::isa<mlir::DeallocOp>(op)) {
-            op->replaceUsesOfWith(operand, output);
-          }
-        }
-        auto allocOp = operand.getDefiningOp();
-        if (auto deallocOp =
-                mlir::dyn_cast<mlir::DeallocOp>(*allocOp->getUsers().begin())) {
-          eraseList.push_back(deallocOp);
-          eraseList.push_back(allocOp);
-        }
-      }
-    });
-    for (auto op : eraseList) {
-      op->erase();
-    }
-  };
-};
-
 std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeToLhloPass() {
   return absl::make_unique<HloLegalizeToLhlo>();
 }
 
-std::unique_ptr<OpPassBase<FuncOp>> createLhloCopyRemovalPass() {
-  return absl::make_unique<RedundantCopiesRemoval>();
-}
-
 static PassRegistration<HloLegalizeToLhlo> legalize_pass(
     "hlo-legalize-to-lhlo", "Legalize from HLO dialect to LHLO dialect");
-
-static PassRegistration<RedundantCopiesRemoval> copies_removal_pass(
-    "lhlo-redundant-copies-removal",
-    "Legalize from HLO dialect to LHLO dialect");
 
 }  // namespace xla_hlo
 }  // namespace mlir

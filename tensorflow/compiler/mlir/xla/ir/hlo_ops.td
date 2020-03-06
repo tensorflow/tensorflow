@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef HLO_OPS
 #define HLO_OPS
 
+include "mlir/Analysis/InferTypeOpInterface.td"
 include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_utils.td"
@@ -1088,7 +1089,7 @@ def HLO_ScatterOp: HLO_Op<"scatter", [NoSideEffect]>, BASE_HLO_ScatterOp {
 }
 
 // TODO(jpienaar): Add broadcastable trait.
-def HLO_SelectOp: HLO_Op<"select", [NoSideEffect]>, BASE_HLO_SelectOp {
+def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]>, BASE_HLO_SelectOp {
   let arguments = (ins
     HLO_PredTensor:$pred,
     HLO_Tensor:$on_true,

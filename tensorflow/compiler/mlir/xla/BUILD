@@ -34,6 +34,7 @@ filegroup(
         "ir/hlo_utils.td",
         "ir/lhlo_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:include/mlir/Analysis/InferTypeOpInterface.td",
     ],
 )
 
@@ -237,6 +238,19 @@ cc_library(
 )
 
 cc_library(
+    name = "lhlo_copy_removal",
+    srcs = ["transforms/lhlo_copy_removal.cc"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "hlo_legalize_to_lhlo",
     srcs = ["transforms/hlo_legalize_to_lhlo.cc"],
     deps = [
@@ -353,7 +367,9 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -609,6 +625,7 @@ tf_native_cc_binary(
 genrule(
     name = "operator_writer_inc",
     srcs = [
+        "@llvm-project//mlir:include/mlir/Analysis/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         ":ir/hlo_ops.td",
         ":ir/hlo_ops_base.td",

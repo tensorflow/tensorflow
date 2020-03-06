@@ -2908,6 +2908,19 @@ static LogicalResult Verify(TensorListReserveOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// TensorListElementShapeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult TensorListElementShapeOp::fold(ArrayRef<Attribute> operands) {
+  int width =
+      getType().cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
+  auto variant_type =
+      getElementTypeOrSelf(getOperand().getType()).cast<TF::VariantType>();
+  if (variant_type.getSubtypes().empty()) return {};
+  return ConvertShapeToAttr(variant_type.getSubtypes()[0], width);
+}
+
+//===----------------------------------------------------------------------===//
 // TensorListStackOp
 //===----------------------------------------------------------------------===//
 
@@ -3175,6 +3188,15 @@ static LogicalResult Verify(VariableShapeOp op) {
       return op.emitOpError(
           "requires resource input type to have at most 1 subtype");
   }
+}
+
+OpFoldResult VariableShapeOp::fold(ArrayRef<Attribute> operands) {
+  int width =
+      getType().cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
+  auto resource_type =
+      getElementTypeOrSelf(getOperand().getType()).cast<TF::ResourceType>();
+  if (resource_type.getSubtypes().empty()) return {};
+  return ConvertShapeToAttr(resource_type.getSubtypes()[0], width);
 }
 
 //===----------------------------------------------------------------------===//

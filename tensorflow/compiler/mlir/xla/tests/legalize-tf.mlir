@@ -1229,6 +1229,80 @@ func @test_sparse_mat_mul(%arg0: tensor<3x4xf32>, %arg1: tensor<4x5xf32>) -> ten
 }
 
 //===----------------------------------------------------------------------===//
+// MatrixBandPart op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: matrix_band_part
+// CHECK-SAME: (%[[INPUT:.*]]: tensor<64x64xbf16>, %[[LOWER:.*]]: tensor<i64>, %[[UPPER:.*]]: tensor<i64>)
+func @matrix_band_part(%arg0: tensor<64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
+  // CHECK: %[[M:.*]] = xla_hlo.constant dense<64> : tensor<i64>
+  // CHECK: %[[N:.*]] = xla_hlo.constant dense<64> : tensor<i64>
+
+  // CHECK: %[[ZERO:.*]] = xla_hlo.constant dense<0> : tensor<i64>
+  // CHECK: %[[A:.*]] = "xla_hlo.compare"(%[[LOWER]], %[[ZERO]]) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  // CHECK: %[[B:.*]] = "xla_hlo.select"(%[[A]], %[[M]], %[[LOWER]]) : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i64>
+
+  // CHECK: %[[C:.*]] = "xla_hlo.compare"(%[[UPPER]], %[[ZERO]]) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  // CHECK: %[[D:.*]] = "xla_hlo.select"(%[[C]], %[[N]], %[[UPPER]]) : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i64>
+
+  // CHECK: %[[E:.*]] = "xla_hlo.convert"(%[[B]]) : (tensor<i64>) -> tensor<bf16>
+  // CHECK: %[[F:.*]] = "xla_hlo.neg"(%[[E]]) : (tensor<bf16>) -> tensor<bf16>
+
+  // CHECK: %[[X:.*]] = "xla_hlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<64x64xbf16>
+  // CHECK: %[[Y:.*]] = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<64x64xbf16>
+  // CHECK: %[[OFFSET:.*]] = xla_hlo.sub %[[X]], %[[Y]] : tensor<64x64xbf16>
+  // CHECK: %[[G:.*]] = "xla_hlo.compare"(%[[F]], %[[OFFSET]]) {comparison_direction = "LE"} : (tensor<bf16>, tensor<64x64xbf16>) -> tensor<*xi1>
+
+  // CHECK: %[[H:.*]] = "xla_hlo.convert"(%[[D]]) : (tensor<i64>) -> tensor<bf16>
+  // CHECK: %[[I:.*]] = "xla_hlo.compare"(%[[OFFSET]], %[[H]]) {comparison_direction = "LE"} : (tensor<64x64xbf16>, tensor<bf16>) -> tensor<*xi1>
+
+  // CHECK: %[[J:.*]] = xla_hlo.and %[[G]], %[[I]] : tensor<*xi1>
+
+  // CHECK: %[[ZERO2:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<64x64xbf16>
+  // CHECK: %[[R:.*]] = "xla_hlo.select"(%[[J]], %[[INPUT]], %[[ZERO2]])
+  // CHECK: return %[[R]]
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64xbf16>
+  return %0 : tensor<64x64xbf16>
+}
+
+// CHECK-LABEL: matrix_band_part_2
+// CHECK-SAME: (%[[INPUT:.*]]: tensor<12x24x48xbf16>, %[[LOWER:.*]]: tensor<i64>, %[[UPPER:.*]]: tensor<i64>)
+func @matrix_band_part_2(%arg0: tensor<12x24x48xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<12x24x48xbf16> {
+  // CHECK: %[[X:.*]] = "xla_hlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<24x48xbf16>
+  // CHECK: %[[Y:.*]] = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<24x48xbf16>
+  // CHECK: %[[OFFSET:.*]] = xla_hlo.sub %[[X]], %[[Y]] : tensor<24x48xbf16>
+
+  // CHECK: %[[G:.*]] = "xla_hlo.compare"(%[[F]], %[[OFFSET]]) {comparison_direction = "LE"} : (tensor<bf16>, tensor<24x48xbf16>) -> tensor<*xi1>
+
+  // CHECK: %[[H:.*]] = "xla_hlo.convert"(%[[D]]) : (tensor<i64>) -> tensor<bf16>
+  // CHECK: %[[I:.*]] = "xla_hlo.compare"(%[[OFFSET]], %[[H]]) {comparison_direction = "LE"} : (tensor<24x48xbf16>, tensor<bf16>) -> tensor<*xi1>
+  // CHECK: %[[J:.*]] = xla_hlo.and %[[G]], %[[I]] {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : tensor<*xi1>
+
+  // CHECK: %[[ZERO2:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<12x24x48xbf16>
+  // CHECK: %[[R:.*]] = "xla_hlo.select"(%[[J]], %[[INPUT]], %[[ZERO2]])
+  // CHECK: return %[[R]]
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<12x24x48xbf16>, tensor<i64>, tensor<i64>) -> tensor<12x24x48xbf16>
+  return %0 : tensor<12x24x48xbf16>
+}
+
+// CHECK-LABEL: matrix_band_part_3
+// CHECK-SAME: (%[[INPUT:.*]]: tensor<*xbf16>, %[[LOWER:.*]]: tensor<i64>, %[[UPPER:.*]]: tensor<i64>)
+func @matrix_band_part_3(%arg0: tensor<*xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<*xbf16> {
+  // CHECK: "tf.MatrixBandPart"
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<*xbf16>, tensor<i64>, tensor<i64>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+// CHECK-LABEL: matrix_band_part_4
+// CHECK-SAME: (%[[INPUT:.*]]: tensor<24x48xbf16>, %[[LOWER:.*]]: tensor<i64>, %[[UPPER:.*]]: tensor<i64>)
+func @matrix_band_part_4(%arg0: tensor<24x48xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<24x48xbf16> {
+  // This one should lower.
+  // CHECK-NOT: "tf.MatrixBandPart"
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<24x48xbf16>, tensor<i64>, tensor<i64>) -> tensor<24x48xbf16>
+  return %0 : tensor<24x48xbf16>
+}
+
+//===----------------------------------------------------------------------===//
 // MaxPool op legalizations.
 //===----------------------------------------------------------------------===//
 
@@ -3568,4 +3642,14 @@ func @xla_dynamic_update_slice(%arg0: tensor<4x16xf32>, %arg1: tensor<2x4xf32>, 
   // CHECK: return [[DUS]]
   %0 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %arg2) : (tensor<4x16xf32>, tensor<2x4xf32>, tensor<2xi32>) -> tensor<4x16xf32>
   return %0 : tensor<4x16xf32>
+}
+
+// CHECK-LABEL: xla_dynamic_update_slice2
+func @xla_dynamic_update_slice2(%arg0: tensor<4xf32>, %arg1: tensor<2xf32>, %arg2: tensor<1xi32>) -> tensor<4xf32> {
+  // CHECK: [[SLICE0:%.+]] = "xla_hlo.slice"(%arg2) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<1xi32>) -> tensor<1xi32>
+  // CHECK: [[RESHAPE0:%.+]] = "xla_hlo.reshape"([[SLICE0]]) : (tensor<1xi32>) -> tensor<i32>
+  // CHECK: [[DUS:%.+]] = "xla_hlo.dynamic-update-slice"(%arg0, %arg1, [[RESHAPE0]]) : (tensor<4xf32>, tensor<2xf32>, tensor<i32>) -> tensor<4xf32>
+  // CHECK: return [[DUS]]
+  %0 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %arg2) : (tensor<4xf32>, tensor<2xf32>, tensor<1xi32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
 }

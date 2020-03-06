@@ -696,10 +696,10 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       const AllocationRequest& request,
       const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
 
-  // For a no-copy allocation, find the best possible chunk candidate, where it
-  // has the longest possible availability if no preferred offset is given, or
-  // at the preferred_offset if it is given.
-  absl::optional<ChunkCandidate> FindBestNoCopyChunkCandidate(
+  // Find the best possible chunk candidate, where it has the longest possible
+  // availability if no preferred offset is given, or at the preferred_offset if
+  // it is given.
+  absl::optional<ChunkCandidate> FindBestChunkCandidate(
       int64 end_time, int64 last_use_time,
       absl::optional<int64> preferred_offset,
       BufferInterval* alternate_mem_interval) const;

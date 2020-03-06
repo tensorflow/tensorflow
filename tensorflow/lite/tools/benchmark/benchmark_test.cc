@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/algorithm/algorithm.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
@@ -30,13 +31,14 @@ limitations under the License.
 namespace {
 const std::string* g_fp32_model_path = nullptr;
 const std::string* g_int8_model_path = nullptr;
+const std::string* g_string_model_path = nullptr;
 }  // namespace
 
 namespace tflite {
 namespace benchmark {
 namespace {
 
-enum class ModelGraphType { FP32, INT8 };
+enum class ModelGraphType { FP32, INT8, STRING };
 
 BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
                              ModelGraphType graph_type = ModelGraphType::FP32) {
@@ -53,6 +55,9 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
   if (graph_type == ModelGraphType::INT8) {
     params.AddParam("graph",
                     BenchmarkParam::Create<std::string>(*g_int8_model_path));
+  } else if (graph_type == ModelGraphType::STRING) {
+    params.AddParam("graph",
+                    BenchmarkParam::Create<std::string>(*g_string_model_path));
   } else {
     // by default, simply use the fp32 one.
     params.AddParam("graph",
@@ -97,6 +102,9 @@ BenchmarkParams CreateFp32Params() {
 BenchmarkParams CreateInt8Params() {
   return CreateParams(2, 1.0f, 150.0f, ModelGraphType::INT8);
 }
+BenchmarkParams CreateStringParams() {
+  return CreateParams(2, 1.0f, 150.0f, ModelGraphType::STRING);
+}
 
 std::string CreateFilePath(const std::string& file_name) {
   return std::string(getenv("TEST_TMPDIR")) + file_name;
@@ -126,11 +134,20 @@ void WriteInputLayerValueFile(const std::string& file_path,
 }
 
 void CheckInputTensorValue(const TfLiteTensor* input_tensor,
-                           char tensor_value) {
+                           char expected_value) {
   ASSERT_THAT(input_tensor, testing::NotNull());
   EXPECT_TRUE(std::all_of(
       input_tensor->data.raw, input_tensor->data.raw + input_tensor->bytes,
-      [tensor_value](char c) { return c == tensor_value; }));
+      [expected_value](char c) { return c == expected_value; }));
+}
+
+void CheckInputTensorValue(const TfLiteTensor* input_tensor,
+                           int tensor_dim_index,
+                           const std::string& expected_value) {
+  StringRef tensor_value = GetString(input_tensor, tensor_dim_index);
+  EXPECT_TRUE(absl::equal(tensor_value.str, tensor_value.str + tensor_value.len,
+                          expected_value.c_str(),
+                          expected_value.c_str() + expected_value.length()));
 }
 
 class TestBenchmark : public BenchmarkTfLiteModel {
@@ -162,6 +179,13 @@ TEST(BenchmarkTest, DoesntCrashInt8Model) {
   ASSERT_THAT(g_int8_model_path, testing::NotNull());
 
   TestBenchmark benchmark(CreateInt8Params());
+  benchmark.Run();
+}
+
+TEST(BenchmarkTest, DoesntCrashStringModel) {
+  ASSERT_THAT(g_int8_model_path, testing::NotNull());
+
+  TestBenchmark benchmark(CreateStringParams());
   benchmark.Run();
 }
 
@@ -267,6 +291,38 @@ TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesInt8Model) {
   CheckInputTensorValue(benchmark.GetInputTensor(0), file_value);
 }
 
+TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesStringModel) {
+  ASSERT_THAT(g_string_model_path, testing::NotNull());
+  const std::string file_path = CreateFilePath("string_binary");
+  const std::string string_value_0 = "abcd";
+  const std::string string_value_1 = "12345";
+  const std::string string_value_2 = "a1b2c3d4e5";
+  std::ofstream file(file_path);
+  // Store the terminating null-character ('\0') at the end of the returned
+  // value by std::string::c_str().
+  file.write(string_value_0.c_str(), string_value_0.length() + 1);
+  file.write(string_value_1.c_str(), string_value_1.length() + 1);
+  file.write(string_value_2.c_str(), string_value_2.length() + 1);
+  file.close();
+
+  // Note: the following input-related params are *specific* to model
+  // 'g_string_model_path' which is specified as
+  // 'lite:testdata/string_input_model.bin for the test.
+  BenchmarkParams params = CreateStringParams();
+  params.Set<std::string>("input_layer", "a");
+  params.Set<std::string>("input_layer_shape", "1,3");
+  params.Set<std::string>("input_layer_value_files", "a:" + file_path);
+  TestBenchmark benchmark(std::move(params));
+  benchmark.Run();
+
+  auto input_tensor = benchmark.GetInputTensor(0);
+  ASSERT_THAT(input_tensor, testing::NotNull());
+  EXPECT_EQ(GetStringCount(input_tensor), 3);
+  CheckInputTensorValue(input_tensor, 0, string_value_0);
+  CheckInputTensorValue(input_tensor, 1, string_value_1);
+  CheckInputTensorValue(input_tensor, 2, string_value_2);
+}
+
 class MaxDurationWorksTestListener : public BenchmarkListener {
   void OnBenchmarkEnd(const BenchmarkResults& results) override {
     const int64_t num_actul_runs = results.inference_time_us().count();
@@ -316,16 +372,19 @@ TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  std::string fp32_model_path, int8_model_path;
+  std::string fp32_model_path, int8_model_path, string_model_path;
   std::vector<tflite::Flag> flags = {
       tflite::Flag::CreateFlag("fp32_graph", &fp32_model_path,
                                "Path to a fp32 model file."),
       tflite::Flag::CreateFlag("int8_graph", &int8_model_path,
                                "Path to a int8 model file."),
+      tflite::Flag::CreateFlag("string_graph", &string_model_path,
+                               "Path to a string model file."),
   };
 
   g_fp32_model_path = &fp32_model_path;
   g_int8_model_path = &int8_model_path;
+  g_string_model_path = &string_model_path;
 
   const bool parse_result =
       tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flags);
