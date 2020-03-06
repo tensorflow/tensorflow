@@ -39,6 +39,16 @@ namespace xla_hlo {
 // functions in templated code.
 
 namespace impl {
+namespace {
+Value FindDynamicsOperand(Operation* op) {
+  for (auto operand : op->getOperands()) {
+    auto argtype = operand.getType().dyn_cast<ShapedType>();
+    if (!argtype.hasStaticShape()) {
+      return operand;
+    }
+  }
+}
+}
 
 struct UnknownShape {
   // Default shape derivation function that simply fails with a runtime error.
@@ -65,7 +75,8 @@ struct SameShapeAsFirstOperand {
   // and returns %4 as the shape value.
   static Value deriveShapeFromOp(Operation* op, int result_postion,
                                  ConversionPatternRewriter* rewriter) {
-    Value operand = op->getOperand(0);
+
+    Value operand = FindDynamicsOperand(op);
     ShapedType operand_type = operand.getType().dyn_cast<ShapedType>();
     if (!operand_type) {
       op->emitOpError() << "first operand has no shaped type";
@@ -126,6 +137,9 @@ SAME_SHAPE_AS_FIRST_OPERAND(SinOp)
 SAME_SHAPE_AS_FIRST_OPERAND(SqrtOp)
 SAME_SHAPE_AS_FIRST_OPERAND(SubOp)
 SAME_SHAPE_AS_FIRST_OPERAND(TanhOp)
+SAME_SHAPE_AS_FIRST_OPERAND(CompareOp)
+SAME_SHAPE_AS_FIRST_OPERAND(SelectOp)
+SAME_SHAPE_AS_FIRST_OPERAND(ConvertOp)
 
 #undef SAME_SHAPE_AS_FIRST_OPERAND
 

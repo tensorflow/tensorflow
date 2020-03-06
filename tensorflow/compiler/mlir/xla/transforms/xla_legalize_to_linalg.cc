@@ -189,6 +189,165 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
   }
 };
 
+template <typename LhloOp>
+class ScalarPointwiseBinaryToStandardConverter : public OpConversionPattern<LhloOp> {
+ public:
+  using OpConversionPattern<LhloOp>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      LhloOp lhlo_op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = lhlo_op.getLoc();
+    auto argType =
+        lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
+    if (!argType || !argType.getElementType().isSignlessIntOrFloat()
+        || (argType.getRank() != 0)) {
+      return ConversionPattern::matchFailure();
+    }
+    
+    for (const auto& arg : llvm::enumerate(args)) {
+      auto memrefType = arg.value().getType().dyn_cast<MemRefType>();
+      if (!memrefType) return ConversionPattern::matchFailure();
+      unsigned rank = memrefType.getRank();
+      if (rank != 0) return ConversionPattern::matchFailure();
+    }
+
+    // Create two loads from the input.
+    auto lhs = rewriter.create<LoadOp>(loc, lhlo_op.lhs());
+    auto rhs = rewriter.create<LoadOp>(loc, lhlo_op.rhs());
+    // TODO(ravishankarm) : Move this method out of xla_lhlo namespace.
+    Value opResult = xla_lhlo::MapXlaOpToStdScalarOp<LhloOp>(
+        llvm::cast<LhloOp>(lhlo_op), argType.getElementType(),
+        llvm::ArrayRef<Value>{lhs, rhs}, &rewriter);
+    rewriter.create<StoreOp>(loc, opResult, lhlo_op.out());
+    rewriter.eraseOp(lhlo_op);
+    return ConversionPattern::matchSuccess();
+  }
+};
+
+
+template <typename LhloOp>
+class ScalarPointwiseUnaryToStandardConverter : public OpConversionPattern<LhloOp> {
+ public:
+  using OpConversionPattern<LhloOp>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      LhloOp lhlo_op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = lhlo_op.getLoc();
+    auto argType =
+        lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
+    if (!argType || !argType.getElementType().isSignlessIntOrFloat()) {
+      return ConversionPattern::matchFailure();
+    }
+
+    for (const auto& arg : llvm::enumerate(args)) {
+      auto memrefType = arg.value().getType().dyn_cast<MemRefType>();
+      if (!memrefType) return ConversionPattern::matchFailure();
+      unsigned rank = memrefType.getRank();
+      if (rank != 0) return ConversionPattern::matchFailure();
+    }
+
+    // Create two loads from the input.
+    auto unaryval = rewriter.create<LoadOp>(loc, lhlo_op.input());
+    Value opResult = xla_lhlo::MapXlaOpToStdScalarOp<LhloOp>(
+        llvm::cast<LhloOp>(lhlo_op), argType.getElementType(),
+        llvm::ArrayRef<Value>{unaryval}, &rewriter);
+    rewriter.create<StoreOp>(loc, opResult, lhlo_op.output());
+    rewriter.eraseOp(lhlo_op);
+    return ConversionPattern::matchSuccess();
+  }
+};
+
+
+template <typename LhloOp>
+class BroadCastBinaryToLinalgConverter : public OpConversionPattern<LhloOp> {
+ public:
+  using OpConversionPattern<LhloOp>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      LhloOp lhlo_op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = lhlo_op.getLoc();
+    auto argType =
+        lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
+    if (!argType.hasRank()) {
+      emitError(loc, "lhlo to linalg conversion expects ranked args");
+      return ConversionPattern::matchFailure();
+    }
+    if (!argType.getElementType().isSignlessIntOrFloat()) {
+      return ConversionPattern::matchFailure();
+    }
+
+
+    unsigned lhs_rank = lhlo_op.lhs().getType().template dyn_cast<ShapedType>().getRank();
+    unsigned rhs_rank = lhlo_op.rhs().getType().template dyn_cast<ShapedType>().getRank();
+    if ((lhs_rank == 0 && rhs_rank == 0) || (lhs_rank != 0 && rhs_rank !=0))
+      return ConversionPattern::matchFailure();
+
+    // Construct the indexing maps needed for linalg.generic ops.
+    SmallVector<Attribute, 2> indexingMaps;
+    SmallVector<Type, 4> bodyArgTypes, bodyResultTypes;
+    unsigned nloops = 0;
+    int operandCount = args.size() - 1;
+    for (const auto& arg : llvm::enumerate(args)) {
+      auto memrefType = arg.value().getType().dyn_cast<MemRefType>();
+      if (!memrefType) return ConversionPattern::matchFailure();
+      unsigned rank = memrefType.getRank();
+      nloops = std::max(nloops, rank);
+      if (rank != 0) {
+        indexingMaps.emplace_back(
+            AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
+        auto& result_or_body_arg =
+          arg.index() < operandCount ? bodyArgTypes : bodyResultTypes;
+        result_or_body_arg.emplace_back(memrefType.getElementType());
+      }
+    }
+
+    // Create one loads from the input.
+    auto load_operand = lhs_rank == 0? lhlo_op.lhs() : lhlo_op.rhs(); 
+    auto ranked_arg = lhs_rank == 0? lhlo_op.rhs() : lhlo_op.lhs(); 
+    auto rhs = rewriter.create<LoadOp>(loc, load_operand);
+
+    auto linalgOp = rewriter.create<linalg::GenericOp>(
+        loc, ArrayRef<Type>{}, llvm::ArrayRef<Value>{ranked_arg, lhlo_op.out()},
+        rewriter.getI64IntegerAttr(bodyArgTypes.size()),     // args_in
+        rewriter.getI64IntegerAttr(bodyResultTypes.size()),  // args_out
+        rewriter.getArrayAttr(indexingMaps),
+        GetNParallelLoopsAttrs(nloops, &rewriter),
+        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+
+    // Add a block to the region.
+    auto* region = &linalgOp.region();
+    auto* block = rewriter.createBlock(region, region->end());
+    block->addArguments(bodyArgTypes);
+    block->addArguments(bodyResultTypes);
+
+    SmallVector<Value, 4> bodyArgs;
+    if (lhs_rank == 0) { 
+      bodyArgs.push_back(rhs);
+      for (int i = 0, e = bodyArgTypes.size(); i < e; ++i) {
+        bodyArgs.push_back(block->getArgument(i));
+      } 
+    } else {
+      for (int i = 0, e = bodyArgTypes.size(); i < e; ++i) {
+        bodyArgs.push_back(block->getArgument(i));
+      } 
+      bodyArgs.push_back(rhs);
+    }
+
+    rewriter.setInsertionPointToEnd(block);
+ 
+    Value opResult = xla_lhlo::MapXlaOpToStdScalarOp<LhloOp>(
+        llvm::cast<LhloOp>(lhlo_op), bodyResultTypes, bodyArgs, &rewriter);
+    rewriter.create<linalg::YieldOp>(loc, opResult);
+    rewriter.eraseOp(lhlo_op);
+    return ConversionPattern::matchSuccess();
+  }
+};
+
+
+
 /// Base class for lowering xla operations that have one operand and one result,
 /// and are semantically equivalent to a copy of the input to the output (like
 /// transpose, some reshape, etc.). The derived classes need to provide a method
@@ -491,6 +650,64 @@ class ConstConverter : public OpConversionPattern<xla_lhlo::ConstOp> {
   }
 };
 
+// Support scalar and shaped type
+class RankedConstConverter : public OpConversionPattern<xla_lhlo::ConstOp> {
+  public:
+    using OpConversionPattern<xla_lhlo::ConstOp>::OpConversionPattern;
+
+    PatternMatchResult matchAndRewrite(
+        xla_lhlo::ConstOp constOp, ArrayRef<Value> args,
+        ConversionPatternRewriter& rewriter) const final {
+      auto loc = constOp.getLoc();
+      auto valueAttr = constOp.value().cast<DenseElementsAttr>();
+      // Shaped type
+      if (valueAttr.getType().getRank() != 0) {
+        auto tensor_type = valueAttr.getType().cast<mlir::TensorType>();
+        auto mem_ref_type = mlir::MemRefType::get(tensor_type.getShape(), tensor_type.getElementType());
+        auto value_shape = mem_ref_type.getShape();
+        auto element_type = tensor_type.getElementType();
+
+        auto max_dim = *std::max_element(value_shape.begin(), value_shape.end());
+        mlir::SmallVector<mlir::Value, 8> constant_indices;
+        for (int64_t i = 0; i < max_dim; ++i) {
+          auto value_idx = rewriter.create<mlir::ConstantIndexOp>(loc, i);
+          constant_indices.push_back(value_idx);
+        }
+
+        // TODO: FIXME ?
+        auto value_it = valueAttr.getValues<mlir::IntegerAttr>().begin();
+        auto value_end = valueAttr.getValues<mlir::IntegerAttr>().end();
+        mlir::SmallVector<mlir::Value, 2> indices;
+        std::function<void(uint64_t)> store_elements = [&](uint64_t dimension) {
+          if (dimension == value_shape.size()) {
+            auto std_const_op = rewriter.create<mlir::ConstantOp>(loc, *value_it);
+            rewriter.create<mlir::StoreOp>(loc, std_const_op, args[0], llvm::makeArrayRef(indices));
+            ++value_it;
+            return;
+          }
+
+          for (int64_t i = 0; i < value_shape[dimension]; ++i) {
+            indices.push_back(constant_indices[i]);
+            store_elements(dimension + 1);
+            indices.pop_back();
+          }
+        };
+
+        store_elements(0);
+
+        rewriter.eraseOp(constOp);
+      } else {
+        // Scalar type
+        auto stdConstOp =
+          rewriter.create<mlir::ConstantOp>(loc, valueAttr.getValue({}));
+        rewriter.create<mlir::StoreOp>(loc, stdConstOp, constOp.getOperand());
+        rewriter.eraseOp(constOp);
+      }
+      return matchSuccess();
+    }
+};
+
+
 class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
  public:
   using OpConversionPattern<xla_lhlo::SliceOp>::OpConversionPattern;
@@ -529,7 +746,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<BroadcastInDimConverter<xla_lhlo::BroadcastInDimOp>,
-                   ConstConverter,
+                   RankedConstConverter,
                    IotaConverter,
                    PointwiseToLinalgConverter<xla_lhlo::AbsOp>,
                    PointwiseToLinalgConverter<xla_lhlo::AddOp>,
@@ -553,9 +770,22 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::SqrtOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SubOp>,
                    PointwiseToLinalgConverter<xla_lhlo::TanhOp>,
+
+                   ScalarPointwiseBinaryToStandardConverter<xla_lhlo::AddOp>,
+                   ScalarPointwiseBinaryToStandardConverter<xla_lhlo::CompareOp>,
+                   ScalarPointwiseBinaryToStandardConverter<xla_lhlo::SubOp>,
+
+                   ScalarPointwiseUnaryToStandardConverter<xla_lhlo::AbsOp>,
+                   ScalarPointwiseUnaryToStandardConverter<xla_lhlo::NegOp>,
+
+                   BroadCastBinaryToLinalgConverter<xla_lhlo::CompareOp>,
+                   BroadCastBinaryToLinalgConverter<xla_lhlo::AddOp>,
+                   BroadCastBinaryToLinalgConverter<xla_lhlo::SubOp>,
+                   BroadCastBinaryToLinalgConverter<xla_lhlo::DivOp>,
+                   BroadCastBinaryToLinalgConverter<xla_lhlo::RemOp>,
+
                    ReshapeAddRemoveDimConverter<xla_lhlo::ReshapeOp>,
                    ScalarBroadcastInDimConverter,
-                   ScalarPointwiseToStandardConverter<xla_lhlo::AddOp>,
                    SliceConverter
                   >(context);
   // clang-format on
