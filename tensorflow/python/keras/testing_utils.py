@@ -197,7 +197,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
-  recovered_model = keras.models.Model.from_config(
+  recovered_model = models.Model.from_config(
     model_config, custom_objects)
   if model.weights:
     weights = model.get_weights()
@@ -253,7 +253,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
-  recovered_model = keras.models.Sequential.from_config(
+  recovered_model = models.Sequential.from_config(
     model_config, custom_objects)
   if model.weights:
     weights = model.get_weights()
