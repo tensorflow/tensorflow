@@ -2665,6 +2665,14 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
     # Default strategy doesn't indicate multi-worker training.
     return False
 
+  @property
+  def should_checkpoint(self):
+    return True
+
+  @property
+  def should_save_summary(self):
+    return True
+
   # TODO(priyag): This should inherit from `InputIterator`, once dependency
   # issues have been resolved.
   class DefaultInputIterator(object):
