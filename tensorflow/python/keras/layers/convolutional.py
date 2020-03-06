@@ -597,6 +597,17 @@ class Conv2D(Conv):
         kernel_constraint=constraints.get(kernel_constraint),
         bias_constraint=constraints.get(bias_constraint),
         **kwargs)
+        
+    def checkProperKernel(self):
+        if(isinstance(self.kernel_size,tuple)):
+    	    for i in self.kernel_size:
+    		    if(i==0):
+    			    print("No dimension of a kernel can be zero")
+    			    exit(0)
+        else:
+    	    if(self.kernel_size==0):
+    		    print("Kernel size cannot be zero")
+    		    exit(0)
 
 
 @keras_export('keras.layers.Conv3D', 'keras.layers.Convolution3D')
