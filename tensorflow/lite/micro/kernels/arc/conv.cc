@@ -24,8 +24,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
+#include "tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h"
 #include "tensorflow/lite/micro/mli_tf_utils.h"
-
+#include "tensorflow/lite/micro/kernels/arc/mli_slicers.h"
 #include "mli_api.h"
 
 namespace tflite {
@@ -205,44 +206,51 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
       cfg.padding_bottom = data->padding.height + data->padding.height_offset;
     }
 
-    // Get first input from batch
-    mli_point_to_subtsr_cfg subtsr_cfg_in = { {0, 0}, 2, static_cast<uint8_t>(mli_in.shape[1]) };
-    mli_point_to_subtsr_cfg subtsr_cfg_out = { {0, 0}, 2, static_cast<uint8_t>(mli_out.shape[1]) };
-    mli_tensor sub_mli_in = { 0 };
-    mli_tensor sub_mli_out = { 0 };
-    mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
-    mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
+    const int heightDimension = 1;
+    int inSliceHeight = 0;
+    int outSliceHeight = 0;
+    const int kernelHeight = static_cast<int>(mli_weights.shape[KRNL_H_DIM_HWC]);
+    const int overlap = kernelHeight - cfg.stride_height;
 
     // Tensors for data in fast (local) memory and config to copy data from external to local memory
     mli_tensor weights_local = mli_weights;
     mli_tensor bias_local = mli_bias;
-    mli_tensor in_local = sub_mli_in;
-    mli_tensor out_local = sub_mli_out;
+    mli_tensor in_local = mli_in;
+    mli_tensor out_local = mli_out;
     mli_mov_cfg_t copy_config;
     mli_mov_cfg_for_copy(&copy_config);
     TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_conv_tensors(context, &in_local, &weights_local, &bias_local, &out_local));
-    bool in_is_local = in_local.data == sub_mli_in.data;
-    bool out_is_local = out_local.data == sub_mli_out.data;
+    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_io(&in_local, &out_local, kernelHeight, cfg.stride_height, &inSliceHeight, &outSliceHeight));
+
+    const bool in_is_local = in_local.data == mli_in.data;
+    const bool out_is_local = out_local.data == mli_out.data;
+
+    /* mli_in tensor contains batches of HWC tensors. so it is a 4 dimensional tensor.
+    because the mli kernel will process one HWC tensor at a time, the 4 dimensional tensor needs to be sliced into nBatch 3 dimensional tensors.
+    on top of that there could be a need to also slice in the Height dimension. for that the sliceHeight has been calculated.
+    The tensor slicer is configured that it will completely slice the nBatch dimension (0) and slice the height dimension (1)
+    in chunks of 'sliceHeight' */
+    TensorSlicer in_slice(&mli_in, heightDimension, inSliceHeight, cfg.padding_top, cfg.padding_bottom, overlap); 
+    TensorSlicer out_slice(&mli_out, heightDimension, outSliceHeight);
+
+    mli_tensor *in_ptr = in_is_local ? in_slice.Sub() : &in_local;
+    mli_tensor *out_ptr = out_is_local ? out_slice.Sub() : &out_local;
 
     mli_mov_tensor_sync(&mli_weights, &copy_config, &weights_local);
     mli_mov_tensor_sync(&mli_bias, &copy_config, &bias_local);
-    const int batches = MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
 
-    for (int i = 0; i < batches; i++) {
-      mli_mov_tensor_sync(&sub_mli_in, &copy_config, &in_local);
-      mli_krn_conv2d_hwc_sa8_sa8_sa32(&in_local, &weights_local, &bias_local, &cfg, &out_local);
-      mli_mov_tensor_sync(&out_local, &copy_config, &sub_mli_out);
-      subtsr_cfg_in.start_coord[0]++;
-      subtsr_cfg_out.start_coord[0]++;
-      mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
-      mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
-      if (in_is_local) {
-        in_local.data = sub_mli_in.data;
-      }
-      if (out_is_local) {
-        out_local.data = sub_mli_out.data;
-      }
+    while (!out_slice.Done()) {
+      cfg.padding_top = in_slice.GetPaddingPre();
+      cfg.padding_bottom = in_slice.GetPaddingPost();
+
+      mli_mov_tensor_sync(in_slice.Sub(), &copy_config, in_ptr);
+      mli_krn_conv2d_hwc_sa8_sa8_sa32(in_ptr, &weights_local, &bias_local, &cfg, out_ptr);
+      mli_mov_tensor_sync(out_ptr, &copy_config, out_slice.Sub());
+
+      in_slice.Next();
+      out_slice.Next();
     }
+    free_arc_scratch_buffers();
   } else {
     ConvParams op_params;
     op_params.input_offset = -input->params.zero_point;
