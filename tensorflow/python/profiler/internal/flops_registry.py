@@ -150,6 +150,7 @@ def _add_flops(graph, node):
   """Compute flops for Add operation."""
   return _binary_per_element_op_flops(graph, node)
 
+
 @ops.RegisterStatistics("Sub", "flops")
 def _sub_flops(graph, node):
   """Compute flops for Sub operation."""
