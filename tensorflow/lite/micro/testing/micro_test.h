@@ -56,8 +56,6 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 
-#include <stdint.h>
-
 namespace micro_test {
 extern int tests_passed;
 extern int tests_failed;
