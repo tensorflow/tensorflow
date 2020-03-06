@@ -598,6 +598,8 @@ class Conv2D(Conv):
         bias_constraint=constraints.get(bias_constraint),
         **kwargs)
         
+    self.checkProperKernel()
+        
     def checkProperKernel(self):
         if(isinstance(self.kernel_size,tuple)):
     	    for i in self.kernel_size:
