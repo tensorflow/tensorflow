@@ -354,7 +354,9 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],
 )
