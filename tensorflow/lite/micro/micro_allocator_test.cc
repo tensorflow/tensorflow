@@ -185,10 +185,10 @@ TF_LITE_MICRO_TEST(TestAllocationForModelsWithBranches) {
   // bytes = 2 * 2 * 3 * sizeof(float32) = 48, same for other tensors.
   TF_LITE_MICRO_EXPECT_EQ(48, context.tensors[0].bytes);
   // t1 can't reuse any memory, as n0 requires both t0 and t1.
-  TF_LITE_MICRO_EXPECT_EQ(48, context.tensors[1].data.uint8 - start);
+  TF_LITE_MICRO_EXPECT_EQ(96, context.tensors[1].data.uint8 - start);
   // t2 can't reuse any memory, as n1 requires both t0 and t2. Also n2 requires
   // both t1 and t2.
-  TF_LITE_MICRO_EXPECT_EQ(96, context.tensors[2].data.uint8 - start);
+  TF_LITE_MICRO_EXPECT_EQ(48, context.tensors[2].data.uint8 - start);
   // t3 reuses the same memory from t0 as t0 is not an input to any node.
   TF_LITE_MICRO_EXPECT_EQ(0, context.tensors[3].data.uint8 - start);
 }
