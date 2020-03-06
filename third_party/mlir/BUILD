@@ -218,6 +218,7 @@ filegroup(
     name = "StdOpsTdFiles",
     srcs = [
         "include/mlir/Analysis/CallInterfaces.td",
+        "include/mlir/Analysis/ControlFlowInterfaces.td",
         "include/mlir/Dialect/StandardOps/IR/Ops.td",
         "include/mlir/IR/OpAsmInterface.td",
         ":OpBaseTdFiles",
@@ -396,12 +397,14 @@ cc_library(
         "include/mlir/Dialect/StandardOps/EDSC/*.h",
     ]) + [
         "include/mlir/Analysis/CallInterfaces.h",
+        "include/mlir/Analysis/ControlFlowInterfaces.h",
         "include/mlir/Transforms/InliningUtils.h",
     ],
     includes = ["include"],
     deps = [
         ":CallOpInterfacesIncGen",
         ":CommonFolders",
+        ":ControlFlowInterfacesIncGen",
         ":EDSC",
         ":IR",
         ":StandardOpsIncGen",
@@ -508,7 +511,9 @@ cc_library(
             "lib/Dialect/LLVMIR/IR/ROCDL*.cpp",
             "lib/Dialect/LLVMIR/IR/ROCDL*.h",
         ],
-    ),
+    ) + [
+        "include/mlir/Analysis/ControlFlowInterfaces.h",
+    ],
     hdrs = glob(
         [
             "include/mlir/Dialect/LLVMIR/*.h",
@@ -520,6 +525,7 @@ cc_library(
     ),
     includes = ["include"],
     deps = [
+        ":ControlFlowInterfacesIncGen",
         ":IR",
         ":LLVMOpsIncGen",
         ":Support",
@@ -575,6 +581,7 @@ cc_library(
         ":IR",
         ":LLVMDialect",
         ":StandardOps",
+        ":Support",
     ],
 )
 
@@ -586,7 +593,10 @@ cc_library(
             "lib/Dialect/GPU/Transforms/*.h",
         ],
     ),
-    hdrs = ["include/mlir/Dialect/GPU/Passes.h"],
+    hdrs = [
+        "include/mlir/Dialect/GPU/Passes.h",
+        "include/mlir/Dialect/GPU/Utils.h",
+    ],
     includes = ["include"],
     deps = [
         ":EDSC",
@@ -603,6 +613,7 @@ cc_library(
 filegroup(
     name = "LLVMOpsTdFiles",
     srcs = [
+        "include/mlir/Analysis/ControlFlowInterfaces.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/LLVMIR/LLVMOps.td",
         ":OpBaseTdFiles",
@@ -958,6 +969,7 @@ filegroup(
     name = "SPIRVOpsTdFiles",
     srcs = [
         "include/mlir/Analysis/CallInterfaces.td",
+        "include/mlir/Analysis/ControlFlowInterfaces.td",
         ":OpBaseTdFiles",
     ] + glob(["include/mlir/Dialect/SPIRV/*.td"]),
 )
@@ -1128,6 +1140,7 @@ cc_library(
             "lib/Dialect/SPIRV/SPIRVLowering.cpp",
         ],
     ) + [
+        "include/mlir/Analysis/ControlFlowInterfaces.h",
         "include/mlir/Transforms/InliningUtils.h",
     ],
     hdrs = glob(
@@ -1142,6 +1155,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":CommonFolders",
+        ":ControlFlowInterfacesIncGen",
         ":IR",
         ":Parser",
         ":Pass",
@@ -1429,6 +1443,26 @@ cc_library(
 )
 
 gentbl(
+    name = "ControlFlowInterfacesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Analysis/ControlFlowInterfaces.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Analysis/ControlFlowInterfaces.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Analysis/ControlFlowInterfaces.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
     name = "CallOpInterfacesIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
@@ -1492,6 +1526,7 @@ cc_library(
     deps = [
         ":AffineOps",
         ":CallOpInterfacesIncGen",
+        ":ControlFlowInterfacesIncGen",
         ":IR",
         ":InferTypeOpInterfaceIncGen",
         ":LoopOps",
@@ -2562,6 +2597,8 @@ exports_files(
     [
         "include/mlir/Analysis/CallInterfaces.h",
         "include/mlir/Analysis/CallInterfaces.td",
+        "include/mlir/Analysis/ControlFlowInterfaces.h",
+        "include/mlir/Analysis/ControlFlowInterfaces.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/StandardOps/IR/Ops.td",
         "include/mlir/IR/OpAsmInterface.td",
