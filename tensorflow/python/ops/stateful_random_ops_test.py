@@ -561,6 +561,23 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
         "For the Philox algorithm, the size of state must be at least"):
       gen_stateful_random_ops.stateful_standard_normal_v2(
           var.handle, random.RNG_ALG_PHILOX, shape)
+    with self.assertRaisesWithPredicateMatch(
+        ValueError,
+        "minval must be a scalar; got a tensor of shape "):
+      @def_function.function
+      def f():
+        gen.uniform(shape=shape, minval=array_ops.zeros(shape, "int32"),
+                    maxval=100, dtype="int32")
+      f()
+    with self.assertRaisesWithPredicateMatch(
+        ValueError,
+        "maxval must be a scalar; got a tensor of shape "):
+      @def_function.function
+      def f2():
+        gen.uniform(
+            shape=shape, minval=0, maxval=array_ops.ones(shape, "int32") * 100,
+            dtype="int32")
+      f2()
 
   @test_util.run_v2_only
   def testGetGlobalGeneratorWithXla(self):

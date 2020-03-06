@@ -687,11 +687,14 @@ class Generator(tracking.AutoTrackable, composite_tensor.CompositeTensor):
     Args:
       shape: A 1-D integer Tensor or Python array. The shape of the output
         tensor.
-      minval: A 0-D Tensor or Python value of type `dtype`. The lower bound on
-        the range of random values to generate.  Defaults to 0.
-      maxval: A 0-D Tensor or Python value of type `dtype`. The upper bound on
-        the range of random values to generate.  Defaults to 1 if `dtype` is
-        floating point.
+      minval: A Tensor or Python value of type `dtype`, broadcastable with
+        `shape` (for integer types, broadcasting is not supported, so it needs
+        to be a scalar). The lower bound on the range of random values to
+        generate.  Defaults to 0.
+      maxval: A Tensor or Python value of type `dtype`, broadcastable with
+        `shape` (for integer types, broadcasting is not supported, so it needs
+        to be a scalar). The upper bound on the range of random values to
+        generate.  Defaults to 1 if `dtype` is floating point.
       dtype: The type of the output.
       name: A name for the operation (optional).
 
