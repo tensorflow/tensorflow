@@ -465,6 +465,10 @@ def _EluGrad(op, grad):
 def _SeluGrad(op, grad):
   return gen_nn_ops.selu_grad(grad, op.outputs[0])
 
+@ops.RegisterGradient("Gelu")
+def _GeluGrad(op, grad):
+  return gen_nn_ops.gelu_grad(grad, op.inputs[0])
+
 
 @ops.RegisterGradient("Softplus")
 def _SoftplusGrad(op, grad):

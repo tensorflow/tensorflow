@@ -1169,6 +1169,19 @@ REGISTER_OP("SoftsignGrad")
     .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
+REGISTER_OP("Gelu")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("T: {half, bfloat16, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("GeluGrad")
+    .Input("gradients: T")
+    .Input("outputs: T")
+    .Output("backprops: T")
+    .Attr("T: {half, bfloat16, float, double}")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("Softmax")

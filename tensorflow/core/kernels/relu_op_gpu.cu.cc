@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_launch_config.h"
 
 #if TENSORFLOW_USE_ROCM
- #include "rocm/include/hip/hip_fp16.h"
+#include "rocm/include/hip/hip_fp16.h"
 typedef __half2 half2;
 #endif
 
@@ -162,6 +162,97 @@ struct Relu<Device, qint8> {
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+template <class T>
+__global__ void GeluKernel(const T* in, T* out, int32 count) {
+  int i = threadIdx.x + blockIdx.x * blockDim.x;
+  if (i >= count) return;
+  const auto scale = static_cast<T>(0.7978845608028654);
+  const auto p1 = scale;
+  const auto p3 = static_cast<T>(0.044715 * 0.7978845608028654);
+  T x = in[i];
+  out[i] = 0.5 * x * (1 + tanh(p1 * x + p3 * x * x * x));
+}
+
+template <class T>
+__global__ void GeluGradKernel(const T* gradient, const T* feature, T* backprop,
+                               int32 count) {
+  int i = threadIdx.x + blockIdx.x * blockDim.x;
+  if (i >= count) return;
+
+  const T p1 = static_cast<T>(0.7978845608028654);
+  const T p3 = static_cast<T>(0.044715 * 0.7978845608028654);
+  T x = feature[i];
+  T z = p1 * x + p3 * x * x * x;
+  T g = gradient[i];
+  T cz = 1. / cosh(z);
+  backprop[i] = static_cast<T>(
+      g * 0.5 * (1. + tanh(z) + x * (p1 + 3 * p3 * x * x) * cz * cz));
+}
+
+template <>
+__global__ void GeluKernel<Eigen::half>(const Eigen::half* _in,
+                                        Eigen::half* _out, int32 count) {
+  int i = threadIdx.x + blockIdx.x * blockDim.x;
+  if (i >= count) return;
+  const half* in = reinterpret_cast<const half*>(_in);
+  half* out = reinterpret_cast<half*>(_out);
+  const float scale = 0.7978845608028654;
+  const float p1 = scale;
+  const float p3 = 0.044715 * 0.7978845608028654;
+  float x = in[i];
+  out[i] = 0.5 * x * (1 + tanh(p1 * x + p3 * x * x * x));
+}
+
+template <>
+__global__ void GeluGradKernel<Eigen::half>(const Eigen::half* _gradient,
+                                            const Eigen::half* _feature,
+                                            Eigen::half* _backprop,
+                                            int32 count) {
+  int i = threadIdx.x + blockIdx.x * blockDim.x;
+  if (i >= count) return;
+  const float scale = 0.7978845608028654;
+  const float p1 = scale;
+  const float p3 = 0.044715 * 0.7978845608028654;
+  const half* gradient = reinterpret_cast<const half*>(_gradient);
+  const half* feature = reinterpret_cast<const half*>(_feature);
+  half* backprop = reinterpret_cast<half*>(_backprop);
+  float x = feature[i];
+  float z = p1 * x + p3 * x * x * x;
+  float g = gradient[i];
+  float cz = 1. / cosh(z);
+  backprop[i] = g * 0.5 * (1. + tanh(z) + x * (p1 + 3 * p3 * x * x) * cz * cz);
+}
+
+template <typename T>
+struct Gelu<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::ConstTensor input,
+                  typename TTypes<T>::Tensor output) {
+    int32 count = input.size();
+    if (count == 0) return;
+    constexpr int32 kThreadInBlock = 256;
+    TF_CHECK_OK(GpuLaunchKernel(
+        GeluKernel<T>, (count + kThreadInBlock - 1) / kThreadInBlock,
+        kThreadInBlock, 0, d.stream(), input.data(), output.data(), count));
+  }
+};
+
+template <typename T>
+struct GeluGrad<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::ConstTensor gradient,
+                  typename TTypes<T>::ConstTensor feature,
+                  typename TTypes<T>::Tensor backprop) {
+    int32 count = gradient.size();
+    if (count == 0) return;
+    constexpr int32 kThreadInBlock = 256;
+    TF_CHECK_OK(GpuLaunchKernel(GeluGradKernel<T>,
+                                (count + kThreadInBlock - 1) / kThreadInBlock,
+                                kThreadInBlock, 0, d.stream(), gradient.data(),
+                                feature.data(), backprop.data(), count));
+  }
+};
+#endif
+
 }  // namespace functor
 
 // Definition of the GPU implementations declared in relu_op.cc.
@@ -175,12 +266,12 @@ struct Relu<Device, qint8> {
   template struct functor::Elu<GPUDevice, T>;           \
   template struct functor::EluGrad<GPUDevice, T>;       \
   template struct functor::Selu<GPUDevice, T>;          \
-  template struct functor::SeluGrad<GPUDevice, T>;
+  template struct functor::SeluGrad<GPUDevice, T>;      \
+  template struct functor::Gelu<GPUDevice, T>;          \
+  template struct functor::GeluGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template struct functor::Relu<GPUDevice, qint8>;
-#endif
 
 }  // end namespace tensorflow
 
