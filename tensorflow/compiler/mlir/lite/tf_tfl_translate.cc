@@ -195,6 +195,11 @@ int main(int argc, char **argv) {
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
 
+  // Currently we only do shape inference for saved model import.
+  if (import_saved_model || import_saved_model_v1) {
+    pass_config.shape_inference = true;
+  }
+
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
   pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
 

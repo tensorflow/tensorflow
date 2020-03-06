@@ -35,7 +35,8 @@ struct PassConfig {
         skip_control_dialect(false),
         form_clusters(false),
         unfold_batch_matmul(true),
-        legalize_tf_while(true) {}
+        legalize_tf_while(true),
+        shape_inference(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.
@@ -62,6 +63,8 @@ struct PassConfig {
   // Note: This is staging step and will be removed.
   // TODO(b/137395003): Remove post switching legalization.
   bool legalize_tf_while;
+  // Whether to do shape inference.
+  bool shape_inference;
 };
 
 }  // namespace TFL
