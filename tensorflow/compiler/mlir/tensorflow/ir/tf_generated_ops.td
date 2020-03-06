@@ -8038,8 +8038,9 @@ used to look up the program in the compilation cache.
 
   let results = (outs
     TF_StrTensor:$compilation_status,
-    TF_StrTensor:$program
+    Variadic<TF_StrTensor>:$program
   );
 
+  TF_DerivedResultSizeAttr num_computations = TF_DerivedResultSizeAttr<1>;
   TF_DerivedOperandSizeAttr NumDynamicShapes = TF_DerivedOperandSizeAttr<0>;
 }

@@ -405,8 +405,9 @@ Operation* BuildCompileOp(
       RankedTensorType::get({}, builder->getType<TF::StringType>());
 
   auto compile_op = builder->create<TF::_TPUCompileMlirOp>(
-      launch_func.getLoc(), /*compilation_status=*/result_type,
-      /*program=*/result_type, compile_op_operands, txt_module, txt_metadata);
+      launch_func.getLoc(), /*compilation_status=*/result_type, /*program=*/
+      llvm::SmallVector<Type, 8>(num_cores_per_replica, result_type),
+      compile_op_operands, txt_module, txt_metadata);
 
   return WrapOpInLaunch(builder, compile_op.getLoc(), compile_op,
                         compilation_device);
