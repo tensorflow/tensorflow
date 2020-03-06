@@ -5,6 +5,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+#TODO(scottzhu): Cleanup all the deps to python/keras
+
 py_library(
     name = "legacy_base_layer",
     srcs = ["legacy_base_layer.py"],
@@ -29,11 +31,11 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/frozen_keras:constraint",
+        "//tensorflow/python/frozen_keras:initializers",
+        "//tensorflow/python/frozen_keras:regularizers",
         "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:constraints",
-        "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras:metrics",
-        "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/engine:base_layer_utils",
         "//tensorflow/python/keras/engine:input_spec",
