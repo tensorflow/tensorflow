@@ -19,40 +19,47 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "mli_api.h"
 
-/**
- * @brief Function to allocate scratch buffers for the convolution tensors
- *
- * @detail This function will update the data pointers in the 4 tensors with pointers
- * to scratch buffers in fast local memory.
- *
- * @param context  [I] pointer to TfLite context (needed for error handling)
- * @param in [IO] pointer to the input tensor
- * @param weights [IO] pointer to the weights tensor
- * @param bias [IO] pointer to the bias tensor
- * @param output [IO] pointer to the output tensor
- *
- * @return Tf Lite status code
- */
-TfLiteStatus get_arc_scratch_buffer_for_conv_tensors(TfLiteContext* context,
-    mli_tensor* in, 
-    mli_tensor* weights, 
-    mli_tensor* bias, 
-    mli_tensor* out);
+namespace tflite {
+namespace ops {
+namespace micro {
 
-/**
- * @brief Function to allocate scratch buffers for kernels with only input and output buffers
- *
- * @detail This function will update the data pointers in the 2 tensors with pointers
- * to scratch buffers in fast local memory.
- *
- * @param context  [I] pointer to TfLite context (needed for error handling)
- * @param in [IO] pointer to the input tensor
- * @param output [IO] pointer to the output tensor
- *
- * @return Tf Lite status code
- */
-TfLiteStatus get_arc_scratch_buffer_for_io_tensors(TfLiteContext* context,
-    mli_tensor* in, 
-    mli_tensor* out);
+
+void free_arc_scratch_buffers(void);
+void *get_arc_scratch_buffer(int size);// Function to assign fast memory from one of 3 scratch buffers.
+
+void get_arc_scratch_buffer_two_max_sizes(int *size1, int *size2);
+
+static inline bool inside_arc_dccm(void* p) {
+#if core_config_dccm_present
+  return ((unsigned)p >= core_config_dccm_base) && ((unsigned)p < core_config_dccm_base + core_config_dccm_size);
+#else
+  return false;
+#endif
+}
+
+static inline bool inside_arc_xccm(void* p) {
+#if core_config_xy
+  return ((unsigned)p >= core_config_xy_x_base) && ((unsigned)p < core_config_xy_x_base + core_config_xy_size);
+#else
+  return false;
+#endif
+}
+
+static inline bool inside_arc_yccm(void* p) {
+#if core_config_xy
+  return ((unsigned)p >= core_config_xy_y_base) && ((unsigned)p < core_config_xy_y_base + core_config_xy_size);
+#else
+  return false;
+#endif
+}
+
+static inline
+bool inside_arc_ccm(void* p) {
+  return inside_arc_dccm(p) || inside_arc_xccm(p) || inside_arc_yccm(p);
+}
+
+}  // namespace micro
+}  // namespace ops
+}  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MICRO_ARC_SCRATCH_BUFFERS_H_

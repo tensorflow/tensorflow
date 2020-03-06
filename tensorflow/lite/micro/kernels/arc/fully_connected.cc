@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/arc/mli_tf_utils.h"
 #include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
+#include "tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h"
 
 #include "mli_api.h"
 
