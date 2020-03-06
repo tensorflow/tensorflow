@@ -73,21 +73,29 @@ Value CreateI64DenseConst(OpBuilder* builder, ArrayRef<int64_t> shape,
   return builder->create<ConstantOp>(location, type, attr);
 }
 
+Value CreateI32DenseConst(OpBuilder* builder, ArrayRef<int32_t> values,
+                          mlir::Location location) {
+  auto type = RankedTensorType::get(static_cast<int>(values.size()),
+                                    builder->getIntegerType(32));
+  auto attr = DenseElementsAttr::get(type, values);
+  return builder->create<ConstantOp>(location, type, attr);
+}
+
 Value CreateNoneValue(OpBuilder* builder, mlir::Location location) {
   return builder->create<mlir::ConstantOp>(location, builder->getNoneType(),
                                            builder->getUnitAttr());
 }
 
 Value Transpose(OpBuilder* builder, Value value_to_transpose,
-                SmallVector<int64_t, 4> perm, RankedTensorType original_type,
+                SmallVector<int32_t, 4> perm, RankedTensorType original_type,
                 mlir::Location location) {
   // Create a constant op for transpose permutation.
-  auto perm_op = CreateI64DenseConst(builder, perm, perm, location);
+  auto perm_op = CreateI32DenseConst(builder, perm, location);
 
   // Create tensor type for the transpose result.
   auto transpose_type = original_type;
   auto transpose_shape = functional::map(
-      [transpose_type](int64_t dim) { return transpose_type.getDimSize(dim); },
+      [transpose_type](int32_t dim) { return transpose_type.getDimSize(dim); },
       perm);
   auto elem_type = transpose_type.getElementType();
   auto result_type = RankedTensorType::get(transpose_shape, elem_type);
@@ -99,7 +107,7 @@ Value Transpose(OpBuilder* builder, Value value_to_transpose,
 Value Transpose2D(OpBuilder* builder, Value value_to_transpose,
                   RankedTensorType type, mlir::Location location) {
   // Create a constant op for transpose permutation.
-  SmallVector<int64_t, 4> perm = {1, 0};
+  SmallVector<int32_t, 4> perm = {1, 0};
   return Transpose(builder, value_to_transpose, perm, type, location);
 }
 
@@ -618,7 +626,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
   auto final_input_type = input_type;
   // We will transpose the inputs.
   if (!time_majored) {
-    SmallVector<int64_t, 4> perm = {1, 0, 2};
+    SmallVector<int32_t, 4> perm = {1, 0, 2};
     final_inputs =
         Transpose(builder, final_inputs, perm, input_type, func_op.getLoc());
     final_input_type = final_inputs.getType().dyn_cast<RankedTensorType>();
@@ -713,7 +721,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
 
   auto final_output = lstm.getResult();
   if (!time_majored) {
-    SmallVector<int64_t, 4> perm = {1, 0, 2};
+    SmallVector<int32_t, 4> perm = {1, 0, 2};
     final_output =
         Transpose(builder, final_output, perm, result_type, func_op.getLoc());
   }
