@@ -517,7 +517,7 @@ class Interpreter(object):
 class InterpreterWithCustomOps(Interpreter):
   """Interpreter interface for TensorFlow Lite Models that accepts custom ops.
 
-  The interface provided by this class is experimenal and therefore not exposed
+  The interface provided by this class is experimental and therefore not exposed
   as part of the public API.
 
   Wraps the tf.lite.Interpreter class and adds the ability to load custom ops
