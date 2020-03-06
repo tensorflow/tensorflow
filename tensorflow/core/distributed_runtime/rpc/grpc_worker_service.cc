@@ -669,6 +669,7 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
           AllocatorAttributes cpu_attr;
           cpu_attr.set_gpu_compatible(true);
           cpu_attr.set_nic_compatible(true);
+          MEMDEBUG_CACHE_OP("GrpcWorker::RecvBufAsync::consumer_callback");
           Tensor* cpu_tensor =
               new Tensor(cpu_dev->GetAllocator(cpu_attr),
                          hook->prod_value->dtype(), hook->prod_value->shape());

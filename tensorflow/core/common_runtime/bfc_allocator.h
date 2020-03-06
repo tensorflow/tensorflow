@@ -81,7 +81,7 @@ class BFCAllocator : public Allocator {
 
   void SetSafeFrontier(uint64 count) override;
 
-  virtual bool ShouldRecordOpName() const { return false; }
+  bool ShouldRecordOpName() const { return true; }
 
   MemoryDump RecordMemoryMap();
 

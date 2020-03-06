@@ -38,6 +38,7 @@ constexpr char kDebugModeFlag[] = "debug_mode";
 constexpr char kDelegateFlag[] = "delegate";
 constexpr char kNnapiDelegate[] = "nnapi";
 constexpr char kGpuDelegate[] = "gpu";
+constexpr char kHexagonDelegate[] = "hexagon";
 
 std::string GetNameFromPath(const std::string& str) {
   int pos = str.find_last_of("/\\");
@@ -62,6 +63,8 @@ bool EvaluateModel(const std::string& model_file_path,
     inference_params->set_delegate(TfliteInferenceParams::NNAPI);
   } else if (delegate == kGpuDelegate) {
     inference_params->set_delegate(TfliteInferenceParams::GPU);
+  } else if (delegate == kHexagonDelegate) {
+    inference_params->set_delegate(TfliteInferenceParams::HEXAGON);
   }
 
   // Get ground truth data.

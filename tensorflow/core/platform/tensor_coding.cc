@@ -24,7 +24,6 @@ limitations under the License.
 
 #if defined(TENSORFLOW_PROTOBUF_USES_CORD)
 #include "strings/cord_varint.h"
-#include "absl/strings/cord.h"
 #endif  // defined(TENSORFLOW_PROTOBUF_USES_CORD)
 
 namespace tensorflow {
@@ -135,7 +134,14 @@ std::unique_ptr<StringListDecoder> NewStringListDecoder(const string& in) {
 #if defined(TENSORFLOW_PROTOBUF_USES_CORD)
 void AssignRefCounted(StringPiece src, core::RefCounted* obj, Cord* out) {
   obj->Ref();
-  *out = absl::MakeCordFromExternal(src, [obj]() { obj->Unref(); });
+  out->Clear();
+  // Defines a lambda to unref "obj" when Cord deletes this piece of
+  // memory. +[] converts the lambda to a C style function pointer.
+  auto cleanup = +[](absl::string_view donotcare, void* obj) {
+    reinterpret_cast<core::RefCounted*>(obj)->Unref();
+  };
+  out->AppendExternalMemory(absl::string_view(src.data(), src.size()), obj,
+                            cleanup);
 }
 
 void EncodeStringList(const tstring* strings, int64 n, Cord* out) {

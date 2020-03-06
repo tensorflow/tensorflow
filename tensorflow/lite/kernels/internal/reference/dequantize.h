@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <limits.h>
 
+#include <vector>
+
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -58,6 +60,33 @@ inline void DequantizeInteger(const tflite::DequantizationParams& op_params,
         static_cast<OutputT>(round(scale * (val - zero_point)));
     output_data[i] = result;
   }
+}
+
+// Dequantizes per-channel quantized tensor to float.
+template <typename T>
+inline void PerChannelDequantize(
+    const tflite::PerChannelDequantizationParams& op_params,
+    const RuntimeShape& input_shape, const T* input_data,
+    const RuntimeShape& output_shape, float* output_data) {
+  // Ensure flat size is same.
+  MatchingFlatSize(input_shape, output_shape);
+
+  const int32* zero_point = op_params.zero_point;
+  const float* scale = op_params.scale;
+  const int32 quantized_dimension = op_params.quantized_dimension;
+  const int32 num_dims = input_shape.DimensionsCount();
+  const int32* dims_data = input_shape.DimsData();
+  std::vector<int32> current_dim(num_dims, 0);
+
+  do {
+    size_t offset = ReducedOutputOffset(num_dims, dims_data, current_dim.data(),
+                                        0, nullptr);
+    const int channel = current_dim[quantized_dimension];
+    const int32 val = input_data[offset];
+    const float result =
+        static_cast<float>(scale[channel] * (val - zero_point[channel]));
+    output_data[offset] = result;
+  } while (NextIndex(num_dims, dims_data, current_dim.data()));
 }
 
 }  // namespace reference_ops
