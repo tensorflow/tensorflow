@@ -223,9 +223,9 @@ class OptimizerV2(trackable.Trackable):
   If you intend to create your own optimization algorithm, simply inherit from
   this class and override the following methods:
 
-    - resource_apply_dense (update variable given gradient tensor is dense)
-    - resource_apply_sparse (update variable given gradient tensor is sparse)
-    - create_slots (if your optimizer algorithm requires additional variables)
+    - _resource_apply_dense (update variable given gradient tensor is dense)
+    - _resource_apply_sparse (update variable given gradient tensor is sparse)
+    - _create_slots (if your optimizer algorithm requires additional variables)
     - get_config (serialization of the optimizer, include all hyper parameters)
   """
 
@@ -621,6 +621,9 @@ class OptimizerV2(trackable.Trackable):
     else:
       return value
 
+  def _create_slots(self, var_list):
+    pass
+
   def __getattribute__(self, name):
     """Overridden to support hyperparameter access."""
     try:
@@ -1009,7 +1012,7 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       An `Operation` which updates the value of the variable.
     """
-    raise NotImplementedError()
+    raise NotImplementedError("Must be implemented in subclasses.")
 
   def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices,
                                                **kwargs):
@@ -1058,7 +1061,7 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       An `Operation` which updates the value of the variable.
     """
-    raise NotImplementedError()
+    raise NotImplementedError("Must be implemented in subclasses.")
 
   def _resource_scatter_add(self, x, i, v):
     with ops.control_dependencies(
