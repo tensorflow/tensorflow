@@ -69,6 +69,7 @@ function copy_xla_aot_runtime_sources() {
       echo "Missing xla source file: ${file}" 1>&2
     fi
   done
+  cp tensorflow/tools/pip_package/xla_build/CMakeLists.txt "${dst_dir}"
   popd
 }
 

@@ -71,6 +71,11 @@ filegroup_as_file(
     dep = "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
 )
 
+filegroup(
+    name = "xla_cmake",
+    srcs = ["xla_build/CMakeLists.txt"],
+)
+
 # Add dynamic kernel dso files here.
 DYNAMIC_LOADED_KERNELS = [
     "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
@@ -83,6 +88,7 @@ COMMON_PIP_DEPS = [
     "setup.py",
     ":included_headers",
     ":xla_compiled_cpu_runtime_srcs.txt_file",
+    ":xla_cmake",
     "//tensorflow:tensorflow_py",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_hdrs",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
