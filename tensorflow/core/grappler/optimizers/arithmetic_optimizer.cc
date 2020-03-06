@@ -1586,6 +1586,10 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       const int n = node.attr().at("N").i();
       const int start = node.op() == "Concat" ? 1 : 0;
       const int end = start + n;
+      if (end > node.input_size()) {
+        return errors::FailedPrecondition(
+              "Got attr N=", n, " without enough inputs.");
+      }
       // Set up tail pointers to point to the immediate inputs to Concat.
       for (int input_port = start; input_port < end; ++input_port) {
         if (IsControlInput(node.input(input_port))) {
