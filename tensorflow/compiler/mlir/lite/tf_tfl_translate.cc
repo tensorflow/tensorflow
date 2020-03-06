@@ -201,6 +201,11 @@ int main(int argc, char **argv) {
   }
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
+  // TODO(b/150901738): Move those into tf_tfl_translate.cc.
+  // Convert back to outlined while format for export back to flatbuffer.
+  if (pass_config.legalize_tf_while) {
+    pm.addPass(mlir::TFL::CreateWhileOutlinePass());
+  }
   pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
 
   std::string result;
