@@ -107,7 +107,6 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
       out_tensors->reserve(1);
-      Tensor result(dataset()->output_dtypes()[0]);
       switch (dataset()->output_dtypes()[0]) {
 #define HANDLE_TYPE(type)                                \
   case DataTypeToEnum<type>::value: {                    \
