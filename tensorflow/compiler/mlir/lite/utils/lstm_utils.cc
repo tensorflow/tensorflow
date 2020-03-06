@@ -688,12 +688,13 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
   // Build the lstm op.
   SmallVector<int64_t, 3> output_shape = {time, batch, n_output};
   auto result_type = mlir::RankedTensorType::get(
-      output_shape, input.getType().cast<RankedTensorType>().getElementType());
+      output_shape,
+      final_inputs.getType().cast<RankedTensorType>().getElementType());
 
   Value none = builder->create<mlir::ConstantOp>(
       func_op.getLoc(), builder->getNoneType(), builder->getUnitAttr());
   auto lstm = builder->create<mlir::TFL::UnidirectionalSequenceLSTMOp>(
-      func_op.getLoc(), result_type, /*input=*/input,
+      func_op.getLoc(), result_type, /*input=*/final_inputs,
       /*input_to_input_weights=*/weights_array->getResult(0),
       /*input_to_forget_weights=*/weights_array->getResult(1),
       /*input_to_cell_weights=*/weights_array->getResult(2),
