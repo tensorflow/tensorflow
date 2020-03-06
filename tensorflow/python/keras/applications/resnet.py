@@ -450,6 +450,37 @@ def stack3(x, filters, blocks, stride1=2, groups=32, name=None):
   return x
 
 
+def remove_bias(network):
+  resnet_new_input = tf.keras.layers.Input(tensor=network.layers[0].output)
+  weights = None
+
+  def copy_weights(*args, **kwargs):
+    return weights
+
+  for layer in network.layers[1:]:
+    if type(layer) != tf.keras.layers.Conv2D:
+      x = layer(layer.input)
+    else:
+      existing = layer
+      weights = existing.weights[0]
+
+      x = tf.keras.layers.Conv2D(
+        existing.filters,
+        existing.kernel_size,
+        existing.strides,
+        existing.padding,
+        existing.data_format,
+        existing.dilation_rate,
+        existing.activation,
+        use_bias=False,
+        kernel_initializer=copy_weights,
+        kernel_regularizer=existing.kernel_regularizer,
+        activity_regularizer=existing.activity_regularizer,
+        kernel_constraint=existing.kernel_constraint,
+        name=existing.name
+      )(layer.input)
+  return tf.keras.Model(inputs=[resnet_new_input], outputs=[x])
+
 @keras_export('keras.applications.resnet50.ResNet50',
               'keras.applications.resnet.ResNet50',
               'keras.applications.ResNet50')
@@ -459,6 +490,7 @@ def ResNet50(include_top=True,
              input_shape=None,
              pooling=None,
              classes=1000,
+             use_bias=True,
              **kwargs):
   """Instantiates the ResNet50 architecture."""
 
@@ -468,8 +500,11 @@ def ResNet50(include_top=True,
     x = stack1(x, 256, 6, name='conv4')
     return stack1(x, 512, 3, name='conv5')
 
-  return ResNet(stack_fn, False, True, 'resnet50', include_top, weights,
+  net = ResNet(stack_fn, False, True, 'resnet50', include_top, weights,
                 input_tensor, input_shape, pooling, classes, **kwargs)
+  if not use_bias:
+      net = remove_bias(net)
+  return net
 
 
 @keras_export('keras.applications.resnet.ResNet101',
@@ -480,6 +515,7 @@ def ResNet101(include_top=True,
               input_shape=None,
               pooling=None,
               classes=1000,
+              use_bias=True,
               **kwargs):
   """Instantiates the ResNet101 architecture."""
 
@@ -489,9 +525,11 @@ def ResNet101(include_top=True,
     x = stack1(x, 256, 23, name='conv4')
     return stack1(x, 512, 3, name='conv5')
 
-  return ResNet(stack_fn, False, True, 'resnet101', include_top, weights,
+  net = ResNet(stack_fn, False, True, 'resnet101', include_top, weights,
                 input_tensor, input_shape, pooling, classes, **kwargs)
-
+  if not use_bias:
+    net = remove_bias(net)
+  return net
 
 @keras_export('keras.applications.resnet.ResNet152',
               'keras.applications.ResNet152')
@@ -501,6 +539,7 @@ def ResNet152(include_top=True,
               input_shape=None,
               pooling=None,
               classes=1000,
+              use_bias=True,
               **kwargs):
   """Instantiates the ResNet152 architecture."""
 
@@ -510,8 +549,11 @@ def ResNet152(include_top=True,
     x = stack1(x, 256, 36, name='conv4')
     return stack1(x, 512, 3, name='conv5')
 
-  return ResNet(stack_fn, False, True, 'resnet152', include_top, weights,
+  net = ResNet(stack_fn, False, True, 'resnet152', include_top, weights,
                 input_tensor, input_shape, pooling, classes, **kwargs)
+  if not use_bias:
+    net = remove_bias(net)
+  return net
 
 
 @keras_export('keras.applications.resnet50.preprocess_input',
