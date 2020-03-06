@@ -127,8 +127,8 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   CHECK(curl_ != nullptr) << "Couldn't initialize a curl session.";
 
   // NOTE: CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt is configured by
-  //       default in //third_party:curl.BUILD and can be customized via an
-  //       environment variable.
+  //       default in tensorflow/third_party/curl.BUILD and can be customized
+  //       via an environment variable.
 
   CHECK_CURL_OK(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput));
