@@ -1,4 +1,9 @@
 op {
   graph_op_name: "Acos"
   summary: "Computes acos of x element-wise."
+  description: <<END
+Given a tensor `x`, this operation returns a tensor containing the 
+arccosine of each element in `x` or in other words it returns the 
+inverse of sin of the value.
+END
 }
