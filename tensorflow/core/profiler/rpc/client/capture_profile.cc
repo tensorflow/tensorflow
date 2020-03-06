@@ -97,8 +97,8 @@ Status Profile(const string& service_addr, const string& logdir,
       FromGrpcStatus(stub->Profile(&context, request, &response)));
 
   if (!response.empty_trace()) {
-    TF_CHECK_OK(SaveTensorboardProfile(logdir, session_id, request.host_name(),
-                                       response, &std::cout));
+    TF_RETURN_IF_ERROR(SaveTensorboardProfile(
+        logdir, session_id, request.host_name(), response, &std::cout));
     // Print this at the end so that it's not buried in irrelevant LOG messages.
     std::cout
         << "NOTE: using the trace duration " << duration_ms << "ms.\n"
