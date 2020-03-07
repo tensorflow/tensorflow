@@ -24,6 +24,15 @@ then
   GOPATH=$(go env GOPATH)
 fi
 
+# Check if it is running in git-bash
+ls -la / | grep git-bash.exe
+if [ $? -e "0" ]
+then
+  GOPATH=${GOPATH//\\/\/}
+  GOPATH=/${GOPATH//:/}
+fi
+
+
 cd $(dirname $0)
 for g in $(echo "${GOPATH//:/ }"); do
     TF_DIR="${g}/src/github.com/tensorflow/tensorflow"
