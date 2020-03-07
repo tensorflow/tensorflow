@@ -718,6 +718,8 @@ cc_library(
     deps = [
         ":convert_tensor",
         ":tensorflow",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
     alwayslink = 1,
 )
