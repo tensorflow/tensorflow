@@ -158,6 +158,17 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
+    Status SaveInternal(IteratorStateWriter* writer) override {
+      return errors::Unimplemented(
+          "GeneratorDataset does not support checkpointing.");
+    }
+
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      return errors::Unimplemented(
+          "GeneratorDataset does not support checkpointing.");
+    }
+
    private:
     mutex mu_;
     bool initialized_ TF_GUARDED_BY(mu_) = false;

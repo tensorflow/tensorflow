@@ -47,17 +47,6 @@ Status MakeIteratorFromInputElement(
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator);
 
-// Creates an iterator for a dataset which is created by applying the given
-// function to the given input element.
-//
-// TODO(jsimsa): Remove this overload once all callers are migrated to the API
-// that passes in the parent iterator pointer.
-ABSL_DEPRECATED("Use the overload that passes the parent iterator pointer.")
-Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
-
 // Determines whether the given node is stateful.
 Status IsNodeStateful(const FunctionLibraryDefinition& library,
                       const NodeDef& node);

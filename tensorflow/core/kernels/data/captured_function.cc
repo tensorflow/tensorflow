@@ -432,15 +432,6 @@ Status MakeIteratorFromInputElement(
       out_iterator);
 }
 
-Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
-  return MakeIteratorFromInputElement(ctx, /*parent=*/nullptr, input_element,
-                                      thread_index, inst_captured_func, prefix,
-                                      out_iterator);
-}
-
 /* static */
 Status FunctionMetadata::Create(
     OpKernelConstruction* ctx, const string& func_name, Params params,
