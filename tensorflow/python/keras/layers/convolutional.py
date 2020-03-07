@@ -604,12 +604,10 @@ class Conv2D(Conv):
         if(isinstance(self.kernel_size,tuple)):
     	    for i in self.kernel_size:
     		    if(i==0):
-    			    print("No dimension of a kernel can be zero")
-    			    exit(0)
+    			    raise ValueError("Kernel dimension cannot be zero")
         else:
     	    if(self.kernel_size==0):
-    		    print("Kernel size cannot be zero")
-    		    exit(0)
+    		    raise ValueError("Kernel size cannot be zero")
 
 
 @keras_export('keras.layers.Conv3D', 'keras.layers.Convolution3D')
