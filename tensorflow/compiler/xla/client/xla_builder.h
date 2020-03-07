@@ -95,6 +95,7 @@ class XlaOp {
   int64 handle() const { return handle_; }
 
   friend class XlaBuilder;
+  friend class MlirHloBuilder;
 
   // < 0 means "invalid handle".
   int64 handle_;
@@ -139,7 +140,7 @@ class XlaBuilder {
   XlaBuilder(const XlaBuilder&) = delete;
   XlaBuilder& operator=(const XlaBuilder&) = delete;
 
-  ~XlaBuilder();
+  virtual ~XlaBuilder();
 
   // Returns the computation name.
   const string& name() const { return name_; }
@@ -277,7 +278,7 @@ class XlaBuilder {
   StatusOr<Shape> GetShape(XlaOp op) const;
 
   // Returns the shape of the given op.
-  StatusOr<const Shape*> GetShapePtr(XlaOp op) const;
+  virtual StatusOr<const Shape*> GetShapePtr(XlaOp op) const;
 
   // Returns the (inferred) result for the current computation's shape. This
   // assumes the root instruction is the last added instruction.
@@ -645,7 +646,7 @@ class XlaBuilder {
   StatusOr<HloInstructionProto*> LookUpMutableInstructionByHandle(int64 handle);
 
   // Internal helper method that does the building for an arbitrary unary op.
-  XlaOp UnaryOp(HloOpcode unop, XlaOp operand);
+  virtual XlaOp UnaryOp(HloOpcode unop, XlaOp operand);
 
   // Internal helper method that does the building for an arbitrary binary op.
   // broadcast_dimensions specifies which dimensions to use for broadcasting
@@ -1056,15 +1057,16 @@ class XlaBuilder {
   friend XlaOp GetDimensionSize(XlaOp operand, int64 dimension);
   friend XlaOp SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension);
 
+ protected:
+  // Returns OK status if the given op was built using this builder. Otherwise,
+  // returns an error.
+  Status CheckOpBuilder(XlaOp op) const;
+
  private:
   XlaOp ConditionalImpl(
       XlaOp branch_index,
       absl::Span<const XlaComputation* const> branch_computations,
       absl::Span<const XlaOp> branch_operands);
-
-  // Returns OK status if the given op was built using this builder. Otherwise,
-  // returns an error.
-  Status CheckOpBuilder(XlaOp op) const;
 
   // Here, InstructionType is either const HloInstructionProto* or non-const
   // HloInstructionProto*.

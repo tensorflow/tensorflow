@@ -81,6 +81,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_dialect_registration",
         "//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_linalg",
         "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
         "//tensorflow/compiler/mlir/xla:xla_lower",
