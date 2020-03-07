@@ -274,7 +274,14 @@ cc_library(
     ],
     deps = [
         ":tensorflow",
+        "//tensorflow/core:framework",
         "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
     ],
 )
 
