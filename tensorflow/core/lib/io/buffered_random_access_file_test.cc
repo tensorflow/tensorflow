@@ -111,11 +111,10 @@ void BM_BufferedSmallSeqReads(const int iters, const int buf_size,
   char scratch[1024];
   testing::StartTiming();
 
-  std::unique_ptr<RandomAccessFile> raf;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &raf));
-
   for (int itr = 0; itr < iters; ++itr) {
-    BufferedRandomAccessFile braf(raf.get(), buf_size, /* own_file */ false);
+    std::unique_ptr<RandomAccessFile> raf;
+    TF_ASSERT_OK(env->NewRandomAccessFile(fname, &raf));
+    BufferedRandomAccessFile braf(std::move(raf), buf_size);
     for (int64 i = 0; i < file_size; ++i) {
       TF_ASSERT_OK(braf.Read(i, 1, &result, scratch));
     }

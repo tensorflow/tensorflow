@@ -4,29 +4,18 @@ namespace tensorflow {
 namespace io {
 
 BufferedRandomAccessFile::BufferedRandomAccessFile(
-    std::unique_ptr<RandomAccessFile>&& other_file, size_t buf_size)
-    : BufferedRandomAccessFile(other_file.release(), buf_size, true) {}
-
-BufferedRandomAccessFile::BufferedRandomAccessFile(RandomAccessFile* other_file,
-                                                   size_t buf_size,
-                                                   bool own_file)
+    std::unique_ptr<RandomAccessFile>&& file, size_t buf_size)
     : buf_size_(buf_size),
       buf_(new char[buf_size_]),
       pos_(0),
       limit_(0),
       file_pos_(0),
-      own_file_(own_file),
-      other_file_(other_file) {}
+      file_(std::move(file)) {}
 
 BufferedRandomAccessFile::~BufferedRandomAccessFile() {
   mutex_lock lock(mu_);
-  if (own_file_) {
-    delete other_file_;
-  }
   delete[] buf_;
-
   buf_ = nullptr;
-  other_file_ = nullptr;
 }
 
 Status BufferedRandomAccessFile::Read(uint64 offset, size_t n,
@@ -43,7 +32,7 @@ Status BufferedRandomAccessFile::Read(uint64 offset, size_t n,
         // Unnecessary to read into buffer and then copy to scratch when buffer
         // is empty and byte to read is large enough.
         StringPiece tmp_result;
-        status = other_file_->Read(offset + total_read, n - total_read,
+        status = file_->Read(offset + total_read, n - total_read,
                                    &tmp_result, scratch + total_read);
         // In case the data read is not filled from the start of the scratch
         // buffer (`scratch + total_read` here).
@@ -107,7 +96,7 @@ void BufferedRandomAccessFile::Seek(uint64 offset) const {
 Status BufferedRandomAccessFile::FillBuffer() const {
   DCHECK(pos_ == limit_);
   StringPiece result;
-  Status status = other_file_->Read(file_pos_, buf_size_, &result, buf_);
+  Status status = file_->Read(file_pos_, buf_size_, &result, buf_);
   if (!status.ok() && !errors::IsOutOfRange(status)) {
     return status;
   }
