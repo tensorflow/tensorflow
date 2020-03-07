@@ -50,8 +50,7 @@ XlaCompiler* XlaOpKernelContext::compiler() const {
 }
 
 // Retrieves an XlaExpression that was allocated by a previous Op.
-const XlaExpression* XlaOpKernelContext::CastExpressionFromTensor(
-    const Tensor& tensor) {
+static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor) {
   const XlaExpression* expression =
       reinterpret_cast<const XlaExpression*>(tensor.tensor_data().data());
   CHECK(expression->kind() != XlaExpression::Kind::kInvalid)
@@ -60,8 +59,8 @@ const XlaExpression* XlaOpKernelContext::CastExpressionFromTensor(
 }
 
 // Assigns an XlaExpression to a tensor on an XLA compilation device.
-void XlaOpKernelContext::AssignExpressionToTensor(const XlaExpression& value,
-                                                  Tensor* tensor) {
+static void AssignExpressionToTensor(Tensor* tensor,
+                                     const XlaExpression& value) {
   const XlaExpression* expression =
       reinterpret_cast<const XlaExpression*>(tensor->tensor_data().data());
   CHECK(expression->kind() == XlaExpression::Kind::kInvalid)
@@ -397,8 +396,7 @@ namespace {
 Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
                                const XlaOpKernelContext* ctx,
                                TensorShape* shape, xla::XlaOp* value) {
-  const XlaExpression* expression =
-      XlaOpKernelContext::CastExpressionFromTensor(tensor);
+  const XlaExpression* expression = CastExpressionFromTensor(tensor);
   XlaResource* variable = expression->resource();
   TF_RET_CHECK(variable != nullptr);
   TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
@@ -488,8 +486,7 @@ void XlaOpKernelContext::SetOutputExpression(int index,
       TF_ASSIGN_OR_RETURN(TensorShape shape, expression.GetShape());
       TF_RETURN_IF_ERROR(context_->allocate_output(index, shape, &output));
     }
-    XlaOpKernelContext::AssignExpressionToTensor(
-        expression, context_->mutable_output(index));
+    AssignExpressionToTensor(context_->mutable_output(index), expression);
     return Status::OK();
   }();
   if (!status.ok()) {
@@ -539,8 +536,7 @@ namespace {
 Status AssignVariableTensor(const Tensor& tensor, DataType type,
                             const XlaOpKernelContext* ctx, xla::XlaOp handle,
                             xla::XlaBuilder* builder) {
-  const XlaExpression* expression =
-      XlaOpKernelContext::CastExpressionFromTensor(tensor);
+  const XlaExpression* expression = CastExpressionFromTensor(tensor);
   XlaResource* variable = expression->resource();
   TF_RET_CHECK(variable != nullptr);
   TF_RET_CHECK(variable->kind() == XlaResource::kVariable);

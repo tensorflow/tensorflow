@@ -278,13 +278,6 @@ class XlaOpKernelContext {
   // separate specialization of the computation for each DataType.
   const xla::XlaComputation* GetOrCreateMul(const DataType type);
 
-  // Assigns an XlaExpression to a tensor on an XLA compilation device.
-  static void AssignExpressionToTensor(const XlaExpression& value,
-                                       Tensor* tensor);
-
-  // Retrieves an XlaExpression that was assigned to the specified tensor.
-  static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);
-
  private:
   // Returns the tensor of input `name`.
   const Tensor& GetInputTensorByName(absl::string_view name);
