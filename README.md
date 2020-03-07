@@ -10,16 +10,16 @@ TinyML 번역서의 한국 독자들을 위한 한글 소스코드 저장소를 
 ### Google Colab 통한 실습 
 아래의 Jupyter Notebook 파일은 Google Colab과 연결되도록 만들어두었습니다. 이를 통해 책의 주요 딥러닝 모델 학습 코드를 간편하게 실행해 볼 수 있습니다. 
 
-- __Ch04: 사인파를 예측하는 모델 만들기__ [create_sine_model.ipynb ](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite//examples/hello_world/create_sine_model.ipynb)
+- __Ch04: 사인파를 예측하는 모델 만들기__ [create_sine_model.ipynb ](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite/micro/examples/hello_world/create_sine_model.ipynb)
 
     ![](./images/sinewave.png)
 
-- __Ch08: 음성 인식 모델 만들기__ [train_speech_model.ipynb](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite//examples/micro_speech⁩/train_speech_model.ipynb)
+- __Ch08: 음성 인식 모델 만들기__ [train_speech_model.ipynb](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite/micro/examples/micro_speech⁩/train_speech_model.ipynb)
 
     ![](./images/training_audio.gif)
     ![](./images/cross_entropy.gif)
 
-- __Ch12: 마술 지팡이 제스쳐 인식하기__ [train_magic_wand_model.ipynb](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite//examples/magic_wand⁩/train⁩/train_magic_wand_model.ipynb)
+- __Ch12: 마술 지팡이 제스쳐 인식하기__ [train_magic_wand_model.ipynb](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite/micro/examples/magic_wand⁩/train⁩/train_magic_wand_model.ipynb)
 
     ![](./images/training.gif)
     ![](./images/tensorboard.gif)
