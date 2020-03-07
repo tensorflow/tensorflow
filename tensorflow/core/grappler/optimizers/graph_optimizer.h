@@ -58,6 +58,12 @@ class GraphOptimizer {
   virtual Status Optimize(Cluster* cluster, const GrapplerItem& item,
                           GraphDef* optimized_graph) = 0;
 
+  // Subclasses may define a version of Optimize that consumes item.
+  virtual Status Optimize(Cluster* cluster, GrapplerItem&& item,
+                          GraphDef* optimized_graph) {
+    return Optimize(cluster, item, optimized_graph);
+  }
+
   // Method invoked by the framework so that it can provide feedback
   // on how well the "optimized_graph" (produced as *optimized_graph from a
   // call to Optimize) performed.  Lower "result" scores are better.
