@@ -41,6 +41,7 @@ py_library(
         ":ragged_map_ops",
         ":ragged_math_ops",
         ":ragged_operators",
+        ":ragged_ops",
         ":ragged_string_ops",
         ":ragged_tensor",
         ":ragged_tensor_shape",
@@ -228,6 +229,35 @@ py_library(
         ":ragged_tensor",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "ragged_ops",
+    srcs = ["ragged_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ragged_array_ops",
+        ":ragged_batch_gather_ops",
+        ":ragged_batch_gather_with_default_op",
+        ":ragged_concat_ops",
+        ":ragged_config",
+        ":ragged_conversion_ops",
+        ":ragged_dispatch",
+        ":ragged_factory_ops",
+        ":ragged_functional_ops",
+        ":ragged_gather_ops",
+        ":ragged_getitem",
+        ":ragged_map_ops",
+        ":ragged_math_ops",
+        ":ragged_operators",
+        ":ragged_string_ops",
+        ":ragged_tensor",
+        ":ragged_tensor_shape",
+        ":ragged_tensor_value",
+        ":ragged_util",
+        ":ragged_where_op",
+        ":segment_id_ops",
     ],
 )
 

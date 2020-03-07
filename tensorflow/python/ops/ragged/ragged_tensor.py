@@ -2117,15 +2117,50 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     return isinstance(rt, ops.EagerTensor)
 
   #=============================================================================
-  # Indexing & Slicing
+  # Operators
   #=============================================================================
-  def __getitem__(self, key):
-    """Returns the specified piece of this RaggedTensor."""
-    # See ragged_getitem.py for the documentation and implementation of this
-    # method.
-    #
-    # Note: the imports in ragged/__init__.py ensure that this method always
-    # gets overridden before it is called.
+  # To avoid circular dependencies, we define stub methods for operators here,
+  # and then override them when the ragged_operators module is imported.
+
+  def _overloaded_operator(name):  # pylint: disable=no-self-argument
+    def stub(*args, **kwargs):
+      del args, kwargs
+      raise ValueError(
+          "You must import 'tensorflow.python.ops.ragged.ragged_ops' "
+          "before using RaggedTensor.%s" % name)
+    return stub
+
+  __getitem__ = _overloaded_operator("__getitem__")
+  __ge__ = _overloaded_operator("__ge__")
+  __gt__ = _overloaded_operator("__gt__")
+  __le__ = _overloaded_operator("__le__")
+  __lt__ = _overloaded_operator("__lt__")
+  __and__ = _overloaded_operator("__and__")
+  __rand__ = _overloaded_operator("__rand__")
+  __invert__ = _overloaded_operator("__invert__")
+  __ror__ = _overloaded_operator("__ror__")
+  __or__ = _overloaded_operator("__or__")
+  __xor__ = _overloaded_operator("__xor__")
+  __rxor__ = _overloaded_operator("__rxor__")
+  __abs__ = _overloaded_operator("__abs__")
+  __add__ = _overloaded_operator("__add__")
+  __radd__ = _overloaded_operator("__radd__")
+  __div__ = _overloaded_operator("__div__")
+  __rdiv__ = _overloaded_operator("__rdiv__")
+  __floordiv__ = _overloaded_operator("__floordiv__")
+  __rfloordiv__ = _overloaded_operator("__rfloordiv__")
+  __mod__ = _overloaded_operator("__mod__")
+  __rmod__ = _overloaded_operator("__rmod__")
+  __mul__ = _overloaded_operator("__mul__")
+  __rmul__ = _overloaded_operator("__rmul__")
+  __neg__ = _overloaded_operator("__neg__")
+  __pow__ = _overloaded_operator("__pow__")
+  __rpow__ = _overloaded_operator("__rpow__")
+  __sub__ = _overloaded_operator("__sub__")
+  __rsub__ = _overloaded_operator("__rsub__")
+  __truediv__ = _overloaded_operator("__truediv__")
+  __rtruediv__ = _overloaded_operator("__rtruediv__")
+  del _overloaded_operator
 
   #=============================================================================
   # Name Scope
