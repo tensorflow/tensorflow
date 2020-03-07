@@ -4,6 +4,6 @@ op {
   description: <<END
 Given a tensor `x`, this operation returns a tensor containing the 
 arccosine of each element in `x` or in other words it returns the 
-inverse of sin of the value.
+inverse of cos of the value.
 END
 }
