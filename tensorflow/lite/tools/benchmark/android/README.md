@@ -72,27 +72,21 @@ The steps described here follows the method of
 https://developer.android.com/topic/performance/tracing/on-device. Refer to the
 page for more detailed information.
 
-(0)-(3) Follow the steps (0)-(3) of [build/install/run](#to_buildinstallrun)
+(0)-(3) Follow the steps (0)-(3) of [build/install/run](#to-buildinstallrun)
 section.
 
 (4) Set up Quick Settings tile for System Tracing app on your device. Follow the
-[instruction]
-(https://developer.android.com/topic/performance/tracing/on-device#set-up-tile).
-The System Tracing tile will be added to the Quick Settings panel, which appears
-in next figure:
-
-![alt text](https://developer.android.com/topic/performance/images/tracing/quick-settings-systrace-icon.webp){ width=40% }
+[instruction](https://developer.android.com/topic/performance/tracing/on-device#set-up-tile).
+The System Tracing tile will be added to the Quick Settings panel.
 
 Optionally, you can set up other configurations for tracing from the app menu.
-Refer to the [guide]
-(https://developer.android.com/topic/performance/tracing/on-device#app-menu)
+Refer to the
+[guide](https://developer.android.com/topic/performance/tracing/on-device#app-menu)
 for more information.
 
 (5) Tap the System Tracing tile, which has the label "Record trace". The tile
 becomes enabled, and a persistent notification appears to notify you that the
-system is now recording a trace, as shown in next figure:
-
-![alt text](https://developer.android.com/topic/performance/images/tracing/on-device-systrace-start.webp){ width=40% }
+system is now recording a trace.
 
 (6) Run the benchmark with platform tracing enabled.
 
@@ -115,18 +109,15 @@ adb logcat | grep "Average inference"
 (8) Stop tracing by tapping either the System Tracing tile in the Quick Settings
 panel or on the System Tracing notification. The system displays a new
 notification that contains the message "Saving trace". When saving is complete,
-the system dismisses the notification and displays a third notification,
-confirming that your trace has been saved and that you're ready to share the
-system trace, as shown in next figure:
+the system dismisses the notification and displays a third notification "Trace
+saved", confirming that your trace has been saved and that you're ready to share
+the system trace.
 
-![alt text](https://developer.android.com/topic/performance/images/tracing/on-device-systrace-saved.webp){ width=40% }
-
-(9) [Share]
-(https://developer.android.com/topic/performance/tracing/on-device#share-trace)
-a trace file, [convert]
-(https://developer.android.com/topic/performance/tracing/on-device#converting_between_trace_formats)
-between tracing formats and [create]
-(https://developer.android.com/topic/performance/tracing/on-device#create-html-report)
+(9) [Share](https://developer.android.com/topic/performance/tracing/on-device#share-trace)
+a trace file,
+[convert](https://developer.android.com/topic/performance/tracing/on-device#converting_between_trace_formats)
+between tracing formats and
+[create](https://developer.android.com/topic/performance/tracing/on-device#create-html-report)
 an HTML report.
 Note that, the catured tracing file format is either in Perfetto format or in
 Systrace format depending on the Android version of your device. Select the
