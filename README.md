@@ -1,9 +1,8 @@
-# TinyML 번역서 소스코드 저장소
+# TinyML: Tensorflow lite for microcontroller 
 TinyML 번역서의 한국 독자들을 위한 한글 소스코드 저장소를 개설하게 되었습니다. 책에서도 명시하고 있지만, 텐서플로우 프로젝트는 업데이트가 활발히 진행되고 있는 프로젝트 입니다. 가장 최신 코드는 아래의 영어 원문 코드를 참조하시기 바랍니다. 
 
 - TinyML(Tensorflow Lite) <https://oreil.ly/TQ4CC>
-- 한빛미디어 책 구매 링크 (삽입예정)
-- 책 표지 이미지 (삽입예정)
+- 책 표지 이미지 & 링크 (삽입예정)
 
 ## 실습소스코드 
 
