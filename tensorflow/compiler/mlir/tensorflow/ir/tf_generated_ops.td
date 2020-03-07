@@ -319,6 +319,32 @@ this value or a subsequent newer value of the variable.
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_Atan2Op : TF_Op<"Atan2", [NoSideEffect, ResultsBroadcastableShape]>,
+                 WithBroadcastableBinOpBuilder {
+  let summary = [{
+Computes arctangent of `y/x` element-wise, respecting signs of the arguments.
+  }];
+
+  let description = [{
+This is the angle \( \theta \in [-\pi, \pi] \) such that
+\[ x = r \cos(\theta) \]
+and
+\[ y = r \sin(\theta) \]
+where \(r = \sqrt(x^2 + y^2) \).
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$y,
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_AvgPoolOp : TF_Op<"AvgPool", [NoSideEffect]> {
   let summary = "Performs average pooling on the input.";
 
