@@ -5,5 +5,12 @@ op {
 Given a tensor `x`, this operation returns a tensor containing the 
 arccosine of each element in `x` or in other words it returns the 
 inverse of cos of the value.
+
+For Example :
+```python
+x = tf.constant([1,0], dtype=tf.float16) 
+y = tf.math.acos(x) # [0., 1.57] --> in radians
+```
+
 END
 }
