@@ -367,7 +367,8 @@ class Iterator(trackable.Trackable):
           raise TypeError("Expected output shapes compatible with %r but got "
                           "dataset with output shapes %r." %
                           (self.output_shapes, dataset_output_shapes))
-    with ops.colocate_with(self._iterator_resource):
+
+    with ops.colocate_with(dataset._variant_tensor):
       return gen_dataset_ops.make_iterator(
           dataset._variant_tensor, self._iterator_resource, name=name)  # pylint: disable=protected-access
 
