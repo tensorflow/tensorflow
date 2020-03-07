@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import os
 import unittest
-
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
@@ -470,11 +469,11 @@ class AutoMixedPrecisionTest(test.TestCase):
   @test_util.disable_xla('This test does not pass with XLA')
   def test_conv_bn_dropout(self):
     """Test dropout precision of convolution batch norm graph."""
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available():
       random_seed.set_random_seed(0)
       x = _input([2, 8, 8, 1])
       y = _conv_bn(x)
-      y = nn.dropout(y, rate=0.5)
+      y = nn.dropout(y, rate=0.5, seed=1337)
       y = math_ops.add(y, 1, name='addition')
       y = _conv_bn(y)
       y = array_ops.identity(y)
@@ -486,24 +485,15 @@ class AutoMixedPrecisionTest(test.TestCase):
       output_val_ref, output_val, cost_graph = self._run(output)
       node_map = _build_node_map(cost_graph.node)
       self._assert_output_fp16(node_map, 'Conv2D')
-      # ROCm Dropout only support fp32, disable this assert now
-      if not test.is_built_with_rocm:
-        self._assert_output_fp16(node_map, 'FusedBatchNormV3')
+      self._assert_output_fp16(node_map, 'FusedBatchNormV3')
         # We do not assert dropout's dtype because we do not want to rely on the
         # node names of dropout's internal implementation.
         # self._assert_output_fp16(node_map, 'dropout/mul')
       # We do not assert dropout's dtype because we do not want to rely on the
       # node names of dropout's internal implementation.
-      for x in node_map:
-        print(x)
-      if test.is_built_with_rocm: # rocm fuses addition
-        self._assert_output_fp16(node_map, 
-          'dropout/Mul_1addition/y-0-CastToFp16-AutoMixedPrecision')
-      else:
-        self._assert_output_fp16(node_map, 'addition')
+      self._assert_output_fp16(node_map, 'addition')
       self._assert_output_fp16(node_map, 'Conv2D_1')
-
-      output_val_ref, output_val, cost_graph = self._run(output)
+      #output_val_ref, output_val, cost_graph = self._run(output)
       # Bump up the tolerance for the ROCm platform
       # The default tolerance (1e-3) results in a tiny fraction (<1%) of
       # miscompares on ROCm platform, and hence the tolerance bump
@@ -514,7 +504,7 @@ class AutoMixedPrecisionTest(test.TestCase):
   @test_util.disable_xla('This test does not pass with XLA')
   def test_conv_pool(self):
     """Test graph with convolution followed by pooling."""
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available():
       random_seed.set_random_seed(0)
       x = _input([2, 8, 8, 1])
       output = _conv_pool(x)
