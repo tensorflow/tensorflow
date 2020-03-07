@@ -600,7 +600,7 @@ class Conv2D(Conv):
         
     self.checkProperKernel()
         
-    def checkProperKernel(self):
+  def checkProperKernel(self):
         if(isinstance(self.kernel_size,tuple)):
     	    for i in self.kernel_size:
     		    if(i==0):
