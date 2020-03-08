@@ -23,6 +23,8 @@ import threading
 
 import numpy as np
 
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
@@ -103,6 +105,8 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   Raises:
     ValueError: if `input_shape is None`.
   """
+  layer_cls.call = autograph.tf_convert(layer_cls.call,
+                                        ag_ctx.control_status_ctx())
   if input_data is None:
     if input_shape is None:
       raise ValueError('input_shape is None')
