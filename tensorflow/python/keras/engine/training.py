@@ -888,6 +888,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                batch_size=None,
                verbose=1,
                sample_weight=None,
+               class_weight=None,
                steps=None,
                callbacks=None,
                max_queue_size=10,
