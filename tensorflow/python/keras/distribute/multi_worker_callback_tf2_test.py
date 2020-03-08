@@ -94,6 +94,8 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
           x=train_ds,
           epochs=num_epoch,
           steps_per_epoch=steps,
+          validation_data=train_ds,
+          validation_steps=steps,
           callbacks=[
               callbacks.ModelCheckpoint(
                   filepath=saving_filepath, save_weights_only=save_weights_only)
