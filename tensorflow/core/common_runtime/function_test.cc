@@ -99,11 +99,6 @@ class FunctionTest : public ::testing::Test {
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
-    params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                   Rendezvous** r) {
-      *r = new IntraProcessRendezvous(device_mgr);
-      return Status::OK();
-    };
     Executor* exec;
     TF_CHECK_OK(NewLocalExecutor(params, *g, &exec));
     exec_.reset(exec);
@@ -166,7 +161,13 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), &options.config,
-        TF_GRAPH_DEF_VERSION, lib_def_.get(), opts));
+        TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
+        /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
+        /*session_metadata=*/nullptr,
+        [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+          *r = new IntraProcessRendezvous(device_mgr);
+          return Status::OK();
+        }));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");

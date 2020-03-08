@@ -69,7 +69,8 @@ class ProcessFunctionLibraryRuntime {
       thread::ThreadPool* thread_pool = nullptr,
       DistributedFunctionLibraryRuntime* parent = nullptr,
       const CustomKernelCreator* custom_kernel_creator = nullptr,
-      const SessionMetadata* metadata = nullptr);
+      const SessionMetadata* session_metadata = nullptr,
+      Rendezvous::Factory rendezvous_factory = nullptr);
 
   virtual ~ProcessFunctionLibraryRuntime() {
     // Deleting the FunctionLibraryRuntime map will delete the function handles
@@ -309,7 +310,8 @@ class ProcessFunctionLibraryRuntime {
 
   FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(
       std::vector<std::unique_ptr<CleanUpItem>>* items,
-      FunctionLibraryRuntime::DoneCallback done) const;
+      FunctionLibraryRuntime::DoneCallback done,
+      const Rendezvous* rendezvous) const;
 
   DistributedFunctionLibraryRuntime* const parent_;
 
@@ -459,6 +461,7 @@ class ProcessFunctionLibraryRuntime {
       flr_map_;
   int next_handle_ TF_GUARDED_BY(mu_);
   const SessionMetadata* const session_metadata_;
+  const Rendezvous::Factory rendezvous_factory_;
 };
 
 }  // namespace tensorflow
