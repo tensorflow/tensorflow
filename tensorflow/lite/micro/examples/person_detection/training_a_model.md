@@ -89,7 +89,7 @@ too tiny to be recognizable we also need to exclude very small bounding boxes.
 Slim contains a script to convert the bounding box into labels:
 
 ```
-! python models/research/slim/datasets/build_visualwakewords_data.py
+! python models/research/slim/datasets/build_visualwakewords_data.py \
 --logtostderr \
 --train_image_dir=coco/raw-data/train2014 \
 --val_image_dir=coco/raw-data/val2014 \
