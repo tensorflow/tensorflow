@@ -17,9 +17,7 @@ RUN ${PIP} --no-cache-dir install \
     scipy \
     sklearn \
     pandas \
-    portpicker \
-    && test "${USE_PYTHON_3_NOT_2}" -eq 1 && true || ${PIP} --no-cache-dir install \
-    enum34
+    portpicker
 
  # Build and install bazel
 ENV BAZEL_VERSION 0.15.0

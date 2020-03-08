@@ -96,18 +96,16 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
     && echo "/usr/local/cuda/lib64/stubs" > /etc/ld.so.conf.d/z-cuda-stubs.conf \
     && ldconfig
 
-ARG USE_PYTHON_3_NOT_2
-# TODO(angerson) Completely remove Python 2 support
-ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
-ARG PYTHON=python${_PY_SUFFIX}
-ARG PIP=pip${_PY_SUFFIX}
+ARG PYTHON_VERSION=3
+ARG PYTHON=python${PYTHON_VERSION}
+ARG PIP="${PYTHON} -m pip"
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
 
 RUN apt-get update && apt-get install -y \
     ${PYTHON} \
-    ${PYTHON}-pip
+    python3-pip
 
 RUN ${PIP} --no-cache-dir install --upgrade \
     pip \
@@ -135,9 +133,7 @@ RUN ${PIP} --no-cache-dir install \
     scipy \
     sklearn \
     pandas \
-    portpicker \
-    && test "${USE_PYTHON_3_NOT_2}" -eq 1 && true || ${PIP} --no-cache-dir install \
-    enum34
+    portpicker
 
  # Build and install bazel
 ENV BAZEL_VERSION 0.15.0
@@ -156,7 +152,7 @@ RUN chmod a+rwx /etc/bash.bashrc
 
 RUN ${PIP} install jupyter matplotlib
 # Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
-RUN if [[ "${USE_PYTHON_3_NOT_2}" == "1" ]]; then ${PIP} install ipykernel==5.1.1 nbformat==4.4.0; fi
+RUN ${PIP} install ipykernel==5.1.1 nbformat==4.4.0
 RUN ${PIP} install jupyter_http_over_ws
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 

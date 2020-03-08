@@ -65,18 +65,30 @@ slice_sets:
     py:
         - add_to_name: ""
           args:
-              - USE_PYTHON_3_NOT_2=1
+              - PYTHON_VERSION=3
         - add_to_name: "-py3"
           args:
-              - USE_PYTHON_3_NOT_2=1
+              - PYTHON_VERSION=3
+        - add_to_name: "-py37"
+          args:
+              - PYTHON_VERSION=3.7
+        - add_to_name: "-py38"
+          args:
+              - PYTHON_VERSION=3.8
 
     py-devel:
         - add_to_name: ""
           args:
-              - USE_PYTHON_3_NOT_2=1
+              - PYTHON_VERSION=3
         - add_to_name: "-py3"
           args:
-              - USE_PYTHON_3_NOT_2=1
+              - PYTHON_VERSION=3
+        - add_to_name: "-py37"
+          args:
+              - PYTHON_VERSION=3.7
+        - add_to_name: "-py38"
+          args:
+              - PYTHON_VERSION=3.8
 
     jupyter:
         - add_to_name: ""
