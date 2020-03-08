@@ -840,6 +840,8 @@ cuda_py_test(
     srcs = ["cross_device_ops_test.py"],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/151025792): enable after this is fixed.
+        "notap",  # TODO(b/151025792): enable after this is fixed.
     ],
     deps = [
         ":collective_all_reduce_strategy",
