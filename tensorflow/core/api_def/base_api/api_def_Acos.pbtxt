@@ -8,9 +8,8 @@ inverse of cos of the value.
 
 For Example :
 
-```python
-x = tf.constant([1,0], dtype=tf.float16) 
-y = tf.math.acos(x) # [0., 1.57] --> in radians
-```
+>>> x = tf.constant([1,0], dtype=tf.float16) 
+>>> y = tf.math.acos(x)
+<tf.Tensor: shape=(2,), dtype=float16, numpy=array([0.  , 1.57], dtype=float16)>
 END
 }
