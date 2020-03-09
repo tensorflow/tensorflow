@@ -68,6 +68,7 @@ load(
     "cc_header_only_library",
     "if_android",
     "if_chromiumos",
+    "if_cuda_or_rocm",
     "if_ios",
     "if_mobile",
     "if_not_windows",
@@ -1098,8 +1099,9 @@ cc_library(
         "//tensorflow/core/kernels:mkl_matmul_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:mkl_tmp_bf16_ops",
-    ]) + if_cuda([
+    ]) + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cudnn_rnn_kernels",
+    ]) + if_cuda([
         "//tensorflow/core/grappler/optimizers:gpu_swapping_kernels",
         "//tensorflow/core/grappler/optimizers:gpu_swapping_ops",
     ]) + if_rocm([
