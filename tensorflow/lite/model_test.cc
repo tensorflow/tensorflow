@@ -366,7 +366,7 @@ TEST(BasicFlatBufferModel, TestReadRuntimeVersionFromModel) {
       "tensorflow/lite/testdata/test_min_runtime.bin");
   ASSERT_TRUE(model2);
   // Check that we have read the runtime string correctly.
-  ASSERT_EQ(model2->GetMinimumRuntime(), "1.10.0");
+  ASSERT_EQ(model2->GetMinimumRuntime(), "1.5.0");
 }
 
 // The test model has the following tensor encoded in the TACO format:

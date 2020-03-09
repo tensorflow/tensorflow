@@ -76,6 +76,7 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
+#include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/lite/version.h"
 
 using llvm::dyn_cast;
@@ -1230,21 +1231,27 @@ BufferOffset<tflite::Metadata> Translator::BuildMetadata(StringRef name,
 Optional<VectorBufferOffset<BufferOffset<tflite::Metadata>>>
 Translator::CreateMetadataVector() {
   auto dict_attr = module_.getAttrOfType<mlir::DictionaryAttr>("tfl.metadata");
-  if (!dict_attr) return VectorBufferOffset<BufferOffset<tflite::Metadata>>();
-
   std::vector<BufferOffset<tflite::Metadata>> metadata;
-  for (const auto& named_attr : dict_attr) {
-    StringRef name = named_attr.first;
-    mlir::Attribute attr = named_attr.second;
-    if (auto content = attr.dyn_cast<StringAttr>()) {
-      metadata.push_back(BuildMetadata(name, content.getValue()));
-    } else {
-      module_.emitError(
-          "all values in tfl.metadata's dictionary key-value pairs should be "
-          "string attributes");
-      return llvm::None;
+  if (dict_attr) {
+    for (const auto& named_attr : dict_attr) {
+      StringRef name = named_attr.first;
+      mlir::Attribute attr = named_attr.second;
+      if (auto content = attr.dyn_cast<StringAttr>()) {
+        metadata.push_back(BuildMetadata(name, content.getValue()));
+      } else {
+        module_.emitError(
+            "all values in tfl.metadata's dictionary key-value pairs should be "
+            "string attributes");
+        return llvm::None;
+      }
     }
   }
+  // Runtime version string is generated after we update the op
+  // versions. Here we put a 16-byte dummy string as a placeholder. We choose
+  // 16-byte because it's the alignment of buffers in flatbuffer, so it won't
+  // cause any waste of space if the actual string is shorter than 16 bytes.
+  metadata.push_back(
+      BuildMetadata("min_runtime_version", std::string(16, '\0')));
   return builder_.CreateVector(metadata);
 }
 
@@ -1359,6 +1366,7 @@ Optional<std::string> Translator::TranslateInternal() {
       builder_.CreateVector(buffers_), metadata_buffer, *metadata);
   tflite::FinishModelBuffer(builder_, model);
   tflite::UpdateOpVersion(builder_.GetBufferPointer());
+  tflite::UpdateMinimumRuntimeVersionForModel(builder_.GetBufferPointer());
 
   // Return serialized string for the built FlatBuffer.
   return std::string(reinterpret_cast<const char*>(builder_.GetBufferPointer()),
