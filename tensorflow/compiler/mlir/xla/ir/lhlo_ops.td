@@ -315,6 +315,21 @@ def LHLO_SelectOp: LHLO_Op<"select", []>, BASE_HLO_SelectOp {
   );
 }
 
+def LHLO_SelectAndScatterOp: LHLO_Op<"select_and_scatter",
+      [NoSideEffect]>, BASE_HLO_SelectAndScatterOp {
+  let arguments = (ins
+    LHLO_Buffer:$operand,
+    LHLO_Buffer:$source,
+    LHLO_Buffer:$init_value,
+    LHLO_Buffer:$out,
+    OptionalAttr<I64ElementsAttr>:$window_dimensions,
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    OptionalAttr<I64ElementsAttr>:$padding
+  );
+
+  let regions = (region SizedRegion<1>:$select, SizedRegion<1>:$scatter);
+}
+
 def LHLO_ReverseOp: LHLO_Op<"reverse", []>, BASE_HLO_ReverseOp {
   let arguments = (ins
     LHLO_Buffer:$operand,
