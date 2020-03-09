@@ -59,16 +59,34 @@ XlaOp MlirHloBuilder::UnaryOp(HloOpcode unop, XlaOp operand) {
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferUnaryOpShape(unop, *operand_shape));
 
-    mlir::Value value = GetValue(operand);
-    mlir::OperationState state(loc_, GetMlirOpName(unop));
-    state.addOperands(value);
-    TF_ASSIGN_OR_RETURN(
-        mlir::Type ty,
-        ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
-    state.addTypes(ty);
-    mlir::Operation* op = builder_.createOperation(state);
-    return MakeXlaOp(op->getResult(0));
+    return CreateOp(GetMlirOpName(unop), shape, {operand}, /*attributes=*/{});
   });
+}
+
+XlaOp MlirHloBuilder::BinaryOpNoBroadcast(
+    HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
+    absl::optional<ComparisonDirection> direction) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    if (direction.has_value())
+      return Unimplemented("direction attribute not yet supported");
+    return CreateOp(GetMlirOpName(binop), shape, {lhs, rhs}, /*attributes=*/{});
+  });
+}
+
+StatusOr<XlaOp> MlirHloBuilder::CreateOp(
+    const std::string& op_name, const Shape& shape,
+    llvm::ArrayRef<XlaOp> operands,
+    llvm::ArrayRef<mlir::NamedAttribute> attributes) {
+  llvm::SmallVector<mlir::Value, 4> operand_values;
+  operand_values.reserve(operands.size());
+  for (XlaOp xla_op : operands) {
+    operand_values.push_back(GetValue(xla_op));
+  }
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  mlir::OperationState state(loc_, op_name, operand_values, {ty}, attributes);
+  mlir::Operation* op = builder_.createOperation(state);
+  return MakeXlaOp(op->getResult(0));
 }
 
 StatusOr<const Shape*> MlirHloBuilder::GetShapePtr(XlaOp op) const {

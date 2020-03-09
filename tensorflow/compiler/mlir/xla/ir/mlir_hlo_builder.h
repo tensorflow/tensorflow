@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -88,6 +89,15 @@ class MlirHloBuilder : public XlaBuilder {
 
  private:
   XlaOp UnaryOp(HloOpcode unop, XlaOp operand) override;
+
+  XlaOp BinaryOpNoBroadcast(
+      HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
+      absl::optional<ComparisonDirection> direction) override;
+
+  // Creates HLO dialect op and returns the result as an XlaOp.
+  StatusOr<XlaOp> CreateOp(const std::string& op_name, const Shape& shape,
+                           llvm::ArrayRef<XlaOp> operands,
+                           llvm::ArrayRef<mlir::NamedAttribute> attributes);
 
   mlir::OpBuilder builder_;
   mlir::Location loc_;
