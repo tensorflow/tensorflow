@@ -183,6 +183,12 @@ class HloModuleConfig {
     return &fusion_config_;
   }
 
+  const std::vector<std::vector<int64>>& dot_config() const {
+    return dot_config_;
+  }
+
+  std::vector<std::vector<int64>>* mutable_dot_config() { return &dot_config_; }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -214,6 +220,8 @@ class HloModuleConfig {
       FusionConfigCollection::kOff;
 
   std::vector<std::vector<bool>> fusion_config_;
+
+  std::vector<std::vector<int64>> dot_config_;
 };
 
 }  // namespace xla
