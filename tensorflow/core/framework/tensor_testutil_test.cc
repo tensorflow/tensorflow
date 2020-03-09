@@ -184,6 +184,16 @@ TEST(TensorTestUtilTest, ExpectTensorNearDouble) {
   TestEdgeCasesNear<T>();
 }
 
+// Tensor::Slice() and Tensor::SubSlice() may return unaligned Tensor.
+TEST(TensorTestUtilTest, ExpectTensorNearSlice) {
+  Tensor x(DT_FLOAT, TensorShape({7, 3}));
+  test::FillFn<float>(&x, [](int i) -> float { return 1.0; });
+
+  test::ExpectTensorNear<float>(
+      x.SubSlice(3), test::AsTensor<float>({1.0, 1.0, 1.0}, TensorShape({3})),
+      1e-10);
+}
+
 static const double kSlackFactor = 5.0;
 
 template <typename T>
