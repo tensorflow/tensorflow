@@ -877,15 +877,15 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(1, self.evaluate(result))
 
   def test_unweighted_high_sensitivity(self):
-    s_obj = metrics.SpecificityAtSensitivity(1.0)
-    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
+    s_obj = metrics.SpecificityAtSensitivity(0.8)
+    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.1, 0.45, 0.5, 0.8, 0.9]
     label_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
 
     y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
     y_true = constant_op.constant(label_values)
     self.evaluate(variables.variables_initializer(s_obj.variables))
     result = s_obj(y_true, y_pred)
-    self.assertAlmostEqual(0.2, self.evaluate(result))
+    self.assertAlmostEqual(0.4, self.evaluate(result))
 
   def test_unweighted_low_sensitivity(self):
     s_obj = metrics.SpecificityAtSensitivity(0.4)
@@ -974,42 +974,40 @@ class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
 
   def test_unweighted_high_recall(self):
     s_obj = metrics.PrecisionAtRecall(0.8)
-    pred_values = [0.0, 0.1, 0.2, 0.5, 0.6, 0.2, 0.5, 0.6, 0.8, 0.9]
+    pred_values = [0.0, 0.1, 0.2, 0.3, 0.5, 0.4, 0.5, 0.6, 0.8, 0.9]
     label_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
 
+    # For a score between 0.4 and 0.5, we expect 0.8 precision, 0.8 recall.
     y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
     y_true = constant_op.constant(label_values)
     self.evaluate(variables.variables_initializer(s_obj.variables))
     result = s_obj(y_true, y_pred)
-    # For 0.5 < decision threshold < 0.6.
-    self.assertAlmostEqual(2.0/3, self.evaluate(result))
+    self.assertAlmostEqual(0.8, self.evaluate(result))
 
   def test_unweighted_low_recall(self):
-    s_obj = metrics.PrecisionAtRecall(0.6)
-    pred_values = [0.0, 0.1, 0.2, 0.5, 0.6, 0.2, 0.5, 0.6, 0.8, 0.9]
+    s_obj = metrics.PrecisionAtRecall(0.4)
+    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.1, 0.15, 0.25, 0.26, 0.26]
     label_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
 
     y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
     y_true = constant_op.constant(label_values)
     self.evaluate(variables.variables_initializer(s_obj.variables))
     result = s_obj(y_true, y_pred)
-    # For 0.2 < decision threshold < 0.5.
-    self.assertAlmostEqual(0.75, self.evaluate(result))
+    self.assertAlmostEqual(0.5, self.evaluate(result))
 
   @parameterized.parameters([dtypes.bool, dtypes.int32, dtypes.float32])
   def test_weighted(self, label_dtype):
-    s_obj = metrics.PrecisionAtRecall(7.0/8)
-    pred_values = [0.0, 0.1, 0.2, 0.5, 0.6, 0.2, 0.5, 0.6, 0.8, 0.9]
+    s_obj = metrics.PrecisionAtRecall(0.4)
+    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
     label_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
-    weight_values = [2, 1, 2, 1, 2, 1, 2, 2, 1, 2]
+    weight_values = [2, 2, 1, 1, 1, 1, 1, 2, 2, 2]
 
     y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
     y_true = math_ops.cast(label_values, dtype=label_dtype)
     weights = constant_op.constant(weight_values)
     self.evaluate(variables.variables_initializer(s_obj.variables))
     result = s_obj(y_true, y_pred, sample_weight=weights)
-    # For 0.0 < decision threshold < 0.2.
-    self.assertAlmostEqual(0.7, self.evaluate(result))
+    self.assertAlmostEqual(2./3., self.evaluate(result))
 
   def test_invalid_sensitivity(self):
     with self.assertRaisesRegexp(
