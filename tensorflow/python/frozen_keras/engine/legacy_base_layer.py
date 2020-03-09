@@ -61,7 +61,6 @@ from tensorflow.python.frozen_keras.engine import node as node_module
 from tensorflow.python.frozen_keras.utils import generic_utils
 from tensorflow.python.frozen_keras.utils import layer_utils
 from tensorflow.python.frozen_keras.utils import tf_utils
-from tensorflow.python.keras.saving.saved_model import layer_serialization
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
@@ -2574,26 +2573,6 @@ class LegacyBaseLayer(module.Module):
     return output
 
   # SavedModel properties. Please see keras/saving/saved_model for details.
-
-  @property
-  def _trackable_saved_model_saver(self):
-    return layer_serialization.LayerSavedModelSaver(self)
-
-  @property
-  def _object_identifier(self):
-    return self._trackable_saved_model_saver.object_identifier
-
-  @property
-  def _tracking_metadata(self):
-    return self._trackable_saved_model_saver.tracking_metadata
-
-  def _list_extra_dependencies_for_serialization(self, serialization_cache):
-    return (self._trackable_saved_model_saver
-            .list_extra_dependencies_for_serialization(serialization_cache))
-
-  def _list_functions_for_serialization(self, serialization_cache):
-    return (self._trackable_saved_model_saver
-            .list_functions_for_serialization(serialization_cache))
 
   def __getstate__(self):
     # Override to support `copy.deepcopy` and pickling.

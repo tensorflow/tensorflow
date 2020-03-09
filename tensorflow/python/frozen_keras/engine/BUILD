@@ -42,7 +42,6 @@ py_library(
         "//tensorflow/python/frozen_keras/utils:layer_utils",
         "//tensorflow/python/frozen_keras/utils:tf_utils",
         "//tensorflow/python/keras:metrics",
-        "//tensorflow/python/keras/saving",
         "//tensorflow/python/module",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/training/tracking",
