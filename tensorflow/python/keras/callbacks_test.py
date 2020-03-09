@@ -1829,7 +1829,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
     for (dirpath, dirnames, filenames) in os.walk(profile_dir):
       del dirnames  # unused
       for filename in filenames:
-        if filename.endswith('.trace'):
+        if filename.endswith('.trace.json.gz'):
           return os.path.join(dirpath, filename)
     return None
 
