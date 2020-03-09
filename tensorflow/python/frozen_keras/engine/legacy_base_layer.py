@@ -51,13 +51,13 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.frozen_keras import backend
 from tensorflow.python.frozen_keras import constraints
 from tensorflow.python.frozen_keras import initializers
 from tensorflow.python.frozen_keras import regularizers
 from tensorflow.python.frozen_keras.engine import base_layer_utils
 from tensorflow.python.frozen_keras.engine import input_spec
 from tensorflow.python.frozen_keras.engine import node as node_module
-from tensorflow.python.keras import backend
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils

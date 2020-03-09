@@ -34,12 +34,11 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/frozen_keras:backend",
         "//tensorflow/python/frozen_keras:constraint",
         "//tensorflow/python/frozen_keras:initializers",
         "//tensorflow/python/frozen_keras:regularizers",
-        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:metrics",
-        "//tensorflow/python/keras/engine",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:layer_utils",
@@ -74,7 +73,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/frozen_keras:backend",
         "//tensorflow/python/training/tracking:base",
     ],
 )
@@ -88,7 +87,7 @@ py_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
-        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/frozen_keras:backend",
         "@six_archive//:six",
     ],
 )
@@ -100,7 +99,7 @@ py_library(
         ":base_layer_utils",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/frozen_keras:backend",
     ],
 )
 

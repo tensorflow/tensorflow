@@ -13,14 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
+# pylint: disable=g-classes-have-attributes
 """Contains the `Node` class."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.frozen_keras import backend
 from tensorflow.python.frozen_keras.engine import base_layer_utils
-from tensorflow.python.keras import backend
 from tensorflow.python.util import nest
 
 
