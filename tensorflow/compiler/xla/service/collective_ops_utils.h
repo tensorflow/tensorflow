@@ -241,9 +241,9 @@ class Rendezvous {
 
   tensorflow::mutex mu_;
 
-  bool initialized_ GUARDED_BY(mu_) = false;
+  bool initialized_ TF_GUARDED_BY(mu_) = false;
 
-  std::vector<AllReduceParticipantData> participants_ GUARDED_BY(mu_);
+  std::vector<AllReduceParticipantData> participants_ TF_GUARDED_BY(mu_);
 
  private:
   // Runs the all-reduce on the given thread.  If successful, returns

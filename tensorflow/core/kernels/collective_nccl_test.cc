@@ -428,7 +428,7 @@ class NcclTestBase : public ::testing::Test {
   std::vector<std::unique_ptr<DeviceInstance>> instances_;
   CollectiveParams col_params_;
   mutex mu_;
-  int32 op_counter_ GUARDED_BY(mu_) = 0;
+  int32 op_counter_ TF_GUARDED_BY(mu_) = 0;
 };
 
 class NcclReducerTest : public NcclTestBase {

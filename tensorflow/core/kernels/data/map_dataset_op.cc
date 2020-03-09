@@ -175,6 +175,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
     }
 
     Status SaveInternal(IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
       TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       return Status::OK();
     }

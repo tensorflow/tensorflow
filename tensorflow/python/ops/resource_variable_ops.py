@@ -51,7 +51,6 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
-from tensorflow.python.util.deprecation import deprecated_args
 
 
 acd.register_read_only_resource_op("ReadVariableOp")
@@ -334,10 +333,7 @@ def variable_accessed(variable):
 class BaseResourceVariable(variables.VariableV1):
   """A python variable from an existing handle."""
 
-  @deprecated_args(
-      None,
-      "If using Keras pass *_constraint arguments to layers.",
-      "constraint")
+  # TODO(wangpeng): Deprecate `constraint` when callers no long pass it in.
   def __init__(  # pylint: disable=super-init-not-called
       self,
       trainable=None,

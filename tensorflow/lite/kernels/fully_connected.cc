@@ -318,8 +318,7 @@ TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
   // Compute output += weight * input
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       GetTensorData<float>(filter), num_units, input_size,
-      GetTensorData<float>(input), batch_size, GetTensorData<float>(output),
-      /*result_stride=*/1);
+      GetTensorData<float>(input), batch_size, GetTensorData<float>(output));
 
   // Apply activation function
   tensor_utils::ApplyActivationToVector(
@@ -384,12 +383,11 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, num_units, input_size, quant_data, scaling_factors_ptr,
       batch_size, scratch, GetTensorData<float>(output),
-      /*result_stride=*/1, CpuBackendContext::GetFromContext(context));
+      CpuBackendContext::GetFromContext(context));
 #else
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, num_units, input_size, quant_data, scaling_factors_ptr,
-      batch_size, GetTensorData<float>(output),
-      /*result_stride=*/1);
+      batch_size, GetTensorData<float>(output));
 #endif
   // Apply activation function to floats.
   tensor_utils::ApplyActivationToVector(

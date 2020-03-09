@@ -43,6 +43,7 @@ limitations under the License.
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/IR/Location.h"  // TF:llvm-project
@@ -179,8 +180,6 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       return tflite::TensorType_FLOAT16;
     case mlir::TF::TensorFlowTypes::STRING:
       return tflite::TensorType_STRING;
-    case mlir::TF::TensorFlowTypes::UINT8:
-      return tflite::TensorType_UINT8;
     case mlir::TF::TensorFlowTypes::QUINT8:
       return tflite::TensorType_UINT8;
     case mlir::StandardTypes::Complex: {
@@ -196,7 +195,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
         case 1:
           return tflite::TensorType_BOOL;
         case 8:
-          return tflite::TensorType_INT8;
+          return itype.isUnsigned() ? tflite::TensorType_UINT8
+                                    : tflite::TensorType_INT8;
         case 16:
           return tflite::TensorType_INT16;
         case 32:
@@ -1248,9 +1248,34 @@ Translator::CreateMetadataVector() {
   return builder_.CreateVector(metadata);
 }
 
+bool UpdateEntryFunction(ModuleOp module) {
+  if (module.lookupSymbol<FuncOp>("main") != nullptr) {
+    // We already have an entry function.
+    return true;
+  }
+
+  int entry_func_count = 0;
+  FuncOp entry_func = nullptr;
+  for (auto fn : module.getOps<FuncOp>()) {
+    auto attrs = fn.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+    if (attrs && !attrs.empty()) {
+      entry_func_count++;
+      entry_func = fn;
+    }
+  }
+
+  // We should have one & only have one entry function.
+  if (entry_func_count != 1) return false;
+
+  // Update the entry func to main.
+  entry_func.setName("main");
+  return true;
+}
+
 Optional<std::string> Translator::Translate(
     ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
     bool emit_custom_ops, OpOrArgNameMapper* op_or_arg_name_mapper) {
+  if (!UpdateEntryFunction(module)) return llvm::None;
   if (!IsValidTFLiteMlirModule(module)) return llvm::None;
   Translator translator(module, emit_builtin_tflite_ops, emit_select_tf_ops,
                         emit_custom_ops, op_or_arg_name_mapper);

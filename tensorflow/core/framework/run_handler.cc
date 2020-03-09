@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <list>
 #include <memory>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -351,13 +352,13 @@ class ThreadWorkSource {
   mutex blocking_queue_op_mu_;
   char pad_[128];
   mutex waiters_mu_;
-  Waiter queue_waiters_ GUARDED_BY(waiters_mu_);
+  Waiter queue_waiters_ TF_GUARDED_BY(waiters_mu_);
   std::atomic<int64> traceme_id_;
 
   mutex run_handler_waiter_mu_;
-  uint64 version_ GUARDED_BY(run_handler_waiter_mu_);
-  mutex* sub_thread_pool_waiter_mu_ GUARDED_BY(run_handler_waiter_mu_);
-  Waiter* sub_thread_pool_waiter_ GUARDED_BY(run_handler_waiter_mu_);
+  uint64 version_ TF_GUARDED_BY(run_handler_waiter_mu_);
+  mutex* sub_thread_pool_waiter_mu_ TF_GUARDED_BY(run_handler_waiter_mu_);
+  Waiter* sub_thread_pool_waiter_ TF_GUARDED_BY(run_handler_waiter_mu_);
 };
 
 class RunHandlerThreadPool {
@@ -556,7 +557,7 @@ class RunHandlerThreadPool {
     std::unique_ptr<Thread> thread;
     int current_index;
     std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
-        new_thread_work_sources GUARDED_BY(mu);
+        new_thread_work_sources TF_GUARDED_BY(mu);
 
     uint64 current_version;
     // Should only be accessed by one thread.
@@ -841,11 +842,14 @@ class RunHandler::Impl {
   void ScheduleInterOpClosure(std::function<void()> fn);
   void ScheduleIntraOpClosure(std::function<void()> fn);
 
-  void Reset(int64 step_id);
+  void Reset(int64 step_id,
+             const RunOptions::Experimental::RunHandlerPoolOptions& options);
 
   RunHandlerPool::Impl* pool_impl() { return pool_impl_; }
 
   ThreadWorkSource* tws() { return &tws_; }
+
+  int64 priority() { return options_.priority(); }
 
  private:
   class ThreadPoolInterfaceWrapper : public thread::ThreadPoolInterface {
@@ -866,6 +870,7 @@ class RunHandler::Impl {
   int64 step_id_;
   std::unique_ptr<thread::ThreadPoolInterface> thread_pool_interface_;
   ThreadWorkSource tws_;
+  RunOptions::Experimental::RunHandlerPoolOptions options_;
 };
 
 // Contains shared state across all run handlers present in the pool. Also
@@ -891,7 +896,6 @@ class RunHandlerPool::Impl {
             std::vector<double>({1}))) {
     VLOG(1) << "Creating a RunHandlerPool with max handlers: " << max_handlers_;
     free_handlers_.reserve(max_handlers_);
-    sorted_active_handlers_.reserve(max_handlers_);
     handlers_.reserve(max_handlers_);
     for (int i = 0; i < max_handlers_; ++i) {
       handlers_.emplace_back(new RunHandler::Impl(this));
@@ -924,12 +928,14 @@ class RunHandlerPool::Impl {
     return run_handler_thread_pool_.get();
   }
 
-  bool has_free_handler() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool has_free_handler() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return !free_handlers_.empty();
   }
 
-  std::unique_ptr<RunHandler> Get(int64 step_id, int64 timeout_in_ms)
-      LOCKS_EXCLUDED(mu_) {
+  std::unique_ptr<RunHandler> Get(
+      int64 step_id, int64 timeout_in_ms,
+      const RunOptions::Experimental::RunHandlerPoolOptions& options)
+      TF_LOCKS_EXCLUDED(mu_) {
     thread_local std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
         thread_work_sources =
             std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>(
@@ -960,17 +966,24 @@ class RunHandlerPool::Impl {
       // Remove the last entry from free_handlers_ and add to the end of
       // sorted_active_handlers_.
       handler_impl = free_handlers_.back();
-      handler_impl->Reset(step_id);
-      // Sortedness isn't violated if we simply add at the end of the list,
-      // since handlers are expected to be obtained in increasing order of time.
-      sorted_active_handlers_.push_back(handler_impl);
-      DCHECK_LE(sorted_active_handlers_.size(), max_handlers_);
+      handler_impl->Reset(step_id, options);
       free_handlers_.pop_back();
 
-      num_active_requests = sorted_active_handlers_.size();
+      num_active_requests = sorted_active_handlers_.size() + 1;
       thread_work_sources->resize(num_active_requests);
+      int priority = options.priority();
+      auto it = sorted_active_handlers_.cbegin();
+      bool new_handler_inserted = false;
       for (int i = 0; i < num_active_requests; ++i) {
-        (*thread_work_sources)[i] = sorted_active_handlers_[i]->tws();
+        if (!new_handler_inserted && (it == sorted_active_handlers_.cend() ||
+                                      priority > (*it)->priority())) {
+          sorted_active_handlers_.insert(it, handler_impl);
+          new_handler_inserted = true;
+          // Point to the newly added handler.
+          --it;
+        }
+        (*thread_work_sources)[i] = (*it)->tws();
+        ++it;
       }
       version = ++version_;
     }
@@ -978,7 +991,7 @@ class RunHandlerPool::Impl {
     return WrapUnique<RunHandler>(new RunHandler(handler_impl));
   }
 
-  void ReleaseHandler(RunHandler::Impl* handler) LOCKS_EXCLUDED(mu_) {
+  void ReleaseHandler(RunHandler::Impl* handler) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     DCHECK_GT(sorted_active_handlers_.size(), 0);
 
@@ -1009,12 +1022,22 @@ class RunHandlerPool::Impl {
     // requests will trigger recomputation.
   }
 
+  std::vector<int64> GetActiveHandlerPrioritiesForTesting()
+      TF_LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    std::vector<int64> ret;
+    for (const auto& handler_impl : sorted_active_handlers_) {
+      ret.push_back(handler_impl->priority());
+    }
+    return ret;
+  }
+
  private:
   void RecomputePoolStats(
       int num_active_requests, uint64 version,
       const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources);
 
-  void LogInfo() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void LogInfo() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Maximum number of handlers pre-created during pool construction time. The
   // number has been chosen expecting each handler might at least want 1
@@ -1029,15 +1052,19 @@ class RunHandlerPool::Impl {
   // Thread compatible part used only by lock under RunHandlerPool.
   // Handlers are sorted by start time.
   // TODO(azaks): sort by the remaining latency budget.
-  std::vector<RunHandler::Impl*> sorted_active_handlers_ GUARDED_BY(mu_);
-  std::vector<RunHandler::Impl*> free_handlers_ GUARDED_BY(mu_);
-  std::vector<std::unique_ptr<RunHandler::Impl>> handlers_ GUARDED_BY(mu_);
-  // Histogram of elapsed runtime of every handler (in ms).
-  histogram::Histogram time_hist_ GUARDED_BY(mu_);
+  // TODO(chaox): Consider other data structure for maintaining the sorted
+  // active handlers if the searching overhead(currently O(n)) becomes the
+  // bottleneck.
+  std::list<RunHandler::Impl*> sorted_active_handlers_ TF_GUARDED_BY(mu_);
+  std::vector<RunHandler::Impl*> free_handlers_ TF_GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<RunHandler::Impl>> handlers_ TF_GUARDED_BY(mu_);
 
-  int64 iterations_ GUARDED_BY(mu_);
+  // Histogram of elapsed runtime of every handler (in ms).
+  histogram::Histogram time_hist_ TF_GUARDED_BY(mu_);
+
+  int64 iterations_ TF_GUARDED_BY(mu_);
   mutex mu_;
-  int64 version_ GUARDED_BY(mu_);
+  int64 version_ TF_GUARDED_BY(mu_);
   const std::vector<double> sub_thread_pool_end_request_percentage_;
 };
 
@@ -1092,16 +1119,17 @@ void RunHandlerPool::Impl::LogInfo() {
     uint64 now = tensorflow::Env::Default()->NowMicros();
     string times_str = "";
     string ids_str = "";
+    auto it = sorted_active_handlers_.cbegin();
     for (int i = 0; i < num_active_requests; ++i) {
       if (i > 0) {
         times_str += " ";
         ids_str += " ";
       }
 
-      times_str += strings::StrCat(
-          (now - sorted_active_handlers_[i]->start_time_us()) / 1000.0, " ms.");
-      ids_str +=
-          strings::StrCat(sorted_active_handlers_[i]->tws()->GetTracemeId());
+      times_str +=
+          strings::StrCat((now - (*it)->start_time_us()) / 1000.0, " ms.");
+      ids_str += strings::StrCat((*it)->tws()->GetTracemeId());
+      ++it;
     }
     VLOG(1) << "Elapsed times are: " << times_str;
     VLOG(1) << "Step ids are: " << ids_str;
@@ -1127,7 +1155,7 @@ void RunHandler::Impl::ThreadPoolInterfaceWrapper::Schedule(
 RunHandler::Impl::Impl(RunHandlerPool::Impl* pool_impl)
     : pool_impl_(pool_impl) {
   thread_pool_interface_.reset(new ThreadPoolInterfaceWrapper(this));
-  Reset(0);
+  Reset(0, RunOptions::Experimental::RunHandlerPoolOptions());
 }
 
 void RunHandler::Impl::ScheduleInterOpClosure(std::function<void()> fn) {
@@ -1142,9 +1170,12 @@ void RunHandler::Impl::ScheduleIntraOpClosure(std::function<void()> fn) {
                                                         std::move(fn));
 }
 
-void RunHandler::Impl::Reset(int64 step_id) {
+void RunHandler::Impl::Reset(
+    int64 step_id,
+    const RunOptions::Experimental::RunHandlerPoolOptions& options) {
   start_time_us_ = tensorflow::Env::Default()->NowMicros();
   step_id_ = step_id;
+  options_ = options;
   tws_.SetTracemeId(step_id);
 }
 
@@ -1157,9 +1188,15 @@ RunHandlerPool::RunHandlerPool(int num_inter_op_threads,
 
 RunHandlerPool::~RunHandlerPool() {}
 
-std::unique_ptr<RunHandler> RunHandlerPool::Get(int64 step_id,
-                                                int64 timeout_in_ms) {
-  return impl_->Get(step_id, timeout_in_ms);
+std::unique_ptr<RunHandler> RunHandlerPool::Get(
+    int64 step_id, int64 timeout_in_ms,
+    const RunOptions::Experimental::RunHandlerPoolOptions& options) {
+  return impl_->Get(step_id, timeout_in_ms, options);
+}
+
+std::vector<int64> RunHandlerPool::GetActiveHandlerPrioritiesForTesting()
+    const {
+  return impl_->GetActiveHandlerPrioritiesForTesting();
 }
 
 RunHandler::RunHandler(Impl* impl) : impl_(impl) {}

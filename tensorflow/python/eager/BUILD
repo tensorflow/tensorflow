@@ -869,6 +869,43 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "remote_execution_test",
+    srcs = ["remote_execution_test.py"],
+    grpc_enabled = True,
+    python_version = "PY3",
+    shard_count = 2,
+    tags = [
+        "no_oss",  # This test launches local server
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:remote",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "remote_cluster_test",
+    srcs = ["remote_cluster_test.py"],
+    grpc_enabled = True,
+    python_version = "PY3",
+    shard_count = 16,
+    tags = [
+        "no_oss",  # This test launches local server
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tpu_py_test(
     name = "remote_cloud_tpu_test",
     srcs = ["remote_cloud_tpu_test.py"],

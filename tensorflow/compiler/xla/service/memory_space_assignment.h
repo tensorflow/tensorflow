@@ -639,13 +639,13 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   //        Segment    Segment   Segment
   //
   // start_time and end_time are the start and end logical times of the segment.
-  // last_use_time is the time of the last use for this buffer (Use3 in the
-  // figure). latest_prefetch_time is the latest time we can schedule the
-  // CopyDone for a prefetch.
+  // use_times is a sorted sequence of the times of all uses.
+  // latest_prefetch_time is the latest time we can schedule the CopyDone for a
+  // prefetch.
   struct AllocationRequest {
     int64 start_time;
     int64 end_time;
-    int64 last_use_time;
+    const std::vector<int64>* use_times;
     int64 latest_prefetch_time;
     int64 size;
     HloUse use;
@@ -696,11 +696,11 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       const AllocationRequest& request,
       const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
 
-  // For a no-copy allocation, find the best possible chunk candidate, where it
-  // has the longest possible availability if no preferred offset is given, or
-  // at the preferred_offset if it is given.
-  absl::optional<ChunkCandidate> FindBestNoCopyChunkCandidate(
-      int64 end_time, int64 last_use_time,
+  // Find the best possible chunk candidate, where it has the longest possible
+  // availability if no preferred offset is given, or at the preferred_offset if
+  // it is given.
+  absl::optional<ChunkCandidate> FindBestChunkCandidate(
+      int64 end_time, const std::vector<int64>& use_times,
       absl::optional<int64> preferred_offset,
       BufferInterval* alternate_mem_interval) const;
 

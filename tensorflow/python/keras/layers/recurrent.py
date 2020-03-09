@@ -34,6 +34,7 @@ from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
+from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -525,6 +526,7 @@ class RNN(Layer):
     # do the tensor_shape to shapes here. The input could be single tensor, or a
     # nested structure of tensors.
     def get_input_spec(shape):
+      """Convert input shape to InputSpec."""
       if isinstance(shape, tensor_shape.TensorShape):
         input_spec_shape = shape.as_list()
       else:
@@ -779,7 +781,6 @@ class RNN(Layer):
         if not nest.is_sequence(new_states):
           new_states = [new_states]
         return output, new_states
-
     last_output, outputs, states = K.rnn(
         step,
         inputs,
@@ -971,6 +972,10 @@ class RNN(Layer):
     layer = cls(cell, **config)
     layer._num_constants = num_constants
     return layer
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return layer_serialization.RNNSavedModelSaver(self)
 
 
 @keras_export('keras.layers.AbstractRNNCell')

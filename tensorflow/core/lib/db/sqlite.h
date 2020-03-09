@@ -57,7 +57,7 @@ class SqliteTransaction;
 /// This veneer uses auto-commit mode by default, which means a 4ms
 /// fsync() happens after every write unless a SqliteTransaction is
 /// used or WAL mode is enabled beforehand.
-class LOCKABLE Sqlite : public core::RefCounted {
+class TF_LOCKABLE Sqlite : public core::RefCounted {
  public:
   /// \brief Closes SQLite connection, which can take milliseconds.
   virtual ~Sqlite();
@@ -95,22 +95,22 @@ class LOCKABLE Sqlite : public core::RefCounted {
   /// If the most recent API call was successful, the result is
   /// undefined. The legacy result code can be obtained by saying
   /// errcode() & 0xff.
-  int errcode() const EXCLUSIVE_LOCKS_REQUIRED(this) {
+  int errcode() const TF_EXCLUSIVE_LOCKS_REQUIRED(this) {
     return sqlite3_extended_errcode(db_);
   }
 
   /// \brief Returns pointer to current error message state.
-  const char* errmsg() const EXCLUSIVE_LOCKS_REQUIRED(this) {
+  const char* errmsg() const TF_EXCLUSIVE_LOCKS_REQUIRED(this) {
     return sqlite3_errmsg(db_);
   }
 
   /// \brief Returns rowid assigned to last successful insert.
-  int64 last_insert_rowid() const EXCLUSIVE_LOCKS_REQUIRED(this) {
+  int64 last_insert_rowid() const TF_EXCLUSIVE_LOCKS_REQUIRED(this) {
     return sqlite3_last_insert_rowid(db_);
   }
 
   /// \brief Returns number of rows directly changed by last write.
-  int64 changes() const EXCLUSIVE_LOCKS_REQUIRED(this) {
+  int64 changes() const TF_EXCLUSIVE_LOCKS_REQUIRED(this) {
     return sqlite3_changes(db_);
   }
 
@@ -380,19 +380,19 @@ class SqliteStatement {
 /// \brief Reentrant SQLite connection object lock
 ///
 /// This is a no-op if SQLITE_OPEN_NOMUTEX was used.
-class SCOPED_LOCKABLE SqliteLock {
+class TF_SCOPED_LOCKABLE SqliteLock {
  public:
-  explicit SqliteLock(Sqlite& db) EXCLUSIVE_LOCK_FUNCTION(db)
+  explicit SqliteLock(Sqlite& db) TF_EXCLUSIVE_LOCK_FUNCTION(db)
       : mutex_(sqlite3_db_mutex(db.db_)) {
     sqlite3_mutex_enter(mutex_);
   }
-  SqliteLock(Sqlite& db, std::try_to_lock_t) EXCLUSIVE_LOCK_FUNCTION(db)
+  SqliteLock(Sqlite& db, std::try_to_lock_t) TF_EXCLUSIVE_LOCK_FUNCTION(db)
       : mutex_(sqlite3_db_mutex(db.db_)) {
     if (TF_PREDICT_FALSE(sqlite3_mutex_try(mutex_) != SQLITE_OK)) {
       is_locked_ = false;
     }
   }
-  ~SqliteLock() UNLOCK_FUNCTION() {
+  ~SqliteLock() TF_UNLOCK_FUNCTION() {
     if (is_locked_) sqlite3_mutex_leave(mutex_);
   }
   explicit operator bool() const { return is_locked_; }
@@ -409,17 +409,17 @@ class SCOPED_LOCKABLE SqliteLock {
 /// This class acquires an exclusive lock on the connection object (if
 /// mutexes weren't disabled) and runs BEGIN / ROLLBACK automatically.
 /// Unlike SqliteLock this scope is non-reentrant. To avoid program
-/// crashes, business logic should use the EXCLUSIVE_LOCK_FUNCTION and
-/// LOCKS_EXCLUDED annotations as much as possible.
-class SCOPED_LOCKABLE SqliteTransaction {
+/// crashes, business logic should use the TF_EXCLUSIVE_LOCK_FUNCTION and
+/// TF_LOCKS_EXCLUDED annotations as much as possible.
+class TF_SCOPED_LOCKABLE SqliteTransaction {
  public:
   /// \brief Locks db and begins deferred transaction.
   ///
   /// This will crash if a transaction is already active.
-  explicit SqliteTransaction(Sqlite& db) EXCLUSIVE_LOCK_FUNCTION(db);
+  explicit SqliteTransaction(Sqlite& db) TF_EXCLUSIVE_LOCK_FUNCTION(db);
 
   /// \brief Runs ROLLBACK and unlocks.
-  ~SqliteTransaction() UNLOCK_FUNCTION();
+  ~SqliteTransaction() TF_UNLOCK_FUNCTION();
 
   /// \brief Commits transaction.
   ///
@@ -435,8 +435,8 @@ class SCOPED_LOCKABLE SqliteTransaction {
 };
 
 #define SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(...) \
-  EXCLUSIVE_LOCKS_REQUIRED(__VA_ARGS__)
-#define SQLITE_TRANSACTIONS_EXCLUDED(...) LOCKS_EXCLUDED(__VA_ARGS__)
+  TF_EXCLUSIVE_LOCKS_REQUIRED(__VA_ARGS__)
+#define SQLITE_TRANSACTIONS_EXCLUDED(...) TF_LOCKS_EXCLUDED(__VA_ARGS__)
 
 inline SqliteStatement Sqlite::PrepareOrDie(const StringPiece& sql) {
   SqliteStatement stmt;

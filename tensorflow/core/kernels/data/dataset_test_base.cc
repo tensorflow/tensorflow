@@ -400,7 +400,12 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
   pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, thread_pool_.get(),
-      nullptr /* cluster_flr */);
+      /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
+      /*session_metadata=*/nullptr,
+      [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+        *r = new IntraProcessRendezvous(device_mgr);
+        return Status::OK();
+      });
   flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   if (thread_pool_ == nullptr) {
     runner_ = [](const std::function<void()>& fn) { fn(); };
@@ -448,11 +453,6 @@ Status DatasetOpsTestBase::RunFunction(
   };
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
-  };
-  params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                 Rendezvous** r) {
-    *r = new IntraProcessRendezvous(device_mgr);
-    return Status::OK();
   };
 
   Executor* cur_exec;

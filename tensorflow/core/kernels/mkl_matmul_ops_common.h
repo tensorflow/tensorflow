@@ -411,10 +411,11 @@ class MklDnnMatMulOpBase : public OpKernel {
                               output_tf_shape, output_mkl_shape);
   }
 
-  // LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
+  // TF_LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
   // be acquired before entering the function, since it is acquired
   // inside the function.
-  inline bool IsWeightCacheEmpty(OpKernelContext* context) LOCKS_EXCLUDED(mu_) {
+  inline bool IsWeightCacheEmpty(OpKernelContext* context)
+      TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
     return (weight_oi_.NumElements() == 0);
   }
@@ -427,7 +428,7 @@ class MklDnnMatMulOpBase : public OpKernel {
           matmul_fwd_pd,
       Tweight* weight_data, const Tensor& weight_tensor,
       MklDnnData<Tweight>& weight, const memory::desc& weight_md)
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
     const Tensor& weight_t = *weight_oi_.AccessTensor(context);
 
@@ -475,7 +476,7 @@ class MklDnnMatMulOpBase : public OpKernel {
 
   Tweight* GetCachedWeight(OpKernelContext* context,
                            const memory::desc& expected_md)
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock lock(mu_);
     const Tensor& weight_t = *weight_oi_.AccessTensor(context);
     const Tensor& weight_md_t = *weight_oi_md_.AccessTensor(context);
@@ -502,8 +503,8 @@ class MklDnnMatMulOpBase : public OpKernel {
  protected:
   // Tensor to save reordered weight
   mutex mu_;
-  PersistentTensor weight_oi_ GUARDED_BY(mu_);
-  PersistentTensor weight_oi_md_ GUARDED_BY(mu_);
+  PersistentTensor weight_oi_ TF_GUARDED_BY(mu_);
+  PersistentTensor weight_oi_md_ TF_GUARDED_BY(mu_);
 
   bool is_weight_const_;
 

@@ -193,6 +193,16 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "xla_cpu_runtime_srcs",
+    srcs = [
+        "cord.h",
+        "dynamic_annotations.h",
+        "env_time.cc",
+        "integral_types.h",
+    ],
+)
+
 cc_library(
     name = "mutex",
     srcs = [

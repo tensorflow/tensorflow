@@ -113,7 +113,7 @@ class WindowDataset : public DatasetBase {
     }
 
     mutex mu_;
-    size_t i_ GUARDED_BY(mu_) = 0;
+    size_t i_ TF_GUARDED_BY(mu_) = 0;
   };
 
   const std::vector<std::vector<Tensor>> elements_;

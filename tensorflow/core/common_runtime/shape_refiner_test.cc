@@ -980,10 +980,10 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInt64) {
 
   InputList inputs{
       // clang-format off
-      Input(ops::Const<int64>(root, 10LL)),
-      Input(ops::Const<int64>(root, 20LL)),
+      Input(ops::Const<int64>(root, int64{10})),
+      Input(ops::Const<int64>(root, int64{20})),
       Input(Output(scalar_non_const)),
-      Input(ops::Const<int64>(root, 1LL << 40)),
+      Input(ops::Const<int64>(root, int64{1} << 40)),
   };  // clang-format on
   auto pack = ops::Stack(root, inputs);
   TF_ASSERT_OK(root.status());
@@ -1008,8 +1008,8 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackUnknownDim) {
   Scope root = Scope::NewRootScope();
 
   InputList inputs{
-      Input(ops::Const<int64>(root, 10LL)),
-      Input(ops::Const<int64>(root, -1LL)),
+      Input(ops::Const<int64>(root, int64{10})),
+      Input(ops::Const<int64>(root, int64{-1})),
   };
   auto pack = ops::Stack(root, inputs);
   TF_ASSERT_OK(root.status());
@@ -1035,8 +1035,8 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
 
   // Inputs are length 2 vectors instead of scalars.
   InputList inputs{
-      Input(ops::Const<int64>(root, {10LL, 20LL})),
-      Input(ops::Const<int64>(root, {10LL, 21LL})),
+      Input(ops::Const<int64>(root, {int64{10}, int64{20}})),
+      Input(ops::Const<int64>(root, {int64{10}, int64{21}})),
   };
   auto pack = ops::Stack(root, inputs);
   TF_ASSERT_OK(root.status());

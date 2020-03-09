@@ -48,6 +48,8 @@ class EventNode {
 
   EventNode* GetParent() const { return parent_; }
 
+  const std::vector<EventNode*>& GetChildren() const { return children_; }
+
   void AddChild(EventNode* child) {
     children_.push_back(child);
     child->parent_ = this;
@@ -82,31 +84,57 @@ using EventNodeMap =
     absl::flat_hash_map<int64 /*event_type*/,
                         std::vector<std::unique_ptr<EventNode>>>;
 
+using VirtualEventContainer = std::vector<std::unique_ptr<XEvent>>;
+
 using EventGroupNameMap = absl::flat_hash_map<int64 /*group_id*/, std::string>;
 
-// Creates an EventNode for each event in event_node_map and connect events
-// according to the nesting relationship within the thread.
-void ConnectIntraThread(const XPlaneVisitor& visitor, XPlane* plane,
-                        EventNodeMap* event_node_map);
+// Creates a forest of EventNode by stitching events in space using the nesting
+// relationship within the same thread and connect_info_list across threads, and
+// groups them by the root events.
+class EventForest {
+ public:
+  EventForest(const std::vector<InterThreadConnectInfo>& connect_info_list,
+              const std::vector<int64>& root_event_types,
+              const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
+              XSpace* space);
 
-// Connects events across threads according to connect_info_list.
-void ConnectInterThread(
-    const EventNodeMap& event_node_map,
-    const std::vector<InterThreadConnectInfo>& connect_info_list);
+  const EventNodeMap& GetEventNodeMap() const { return event_node_map_; }
 
-// Creates event groups and populates event_group_name_map. For each event of
-// each event type in root_event_types in order, if it was not grouped yet, a
-// new group is created with all the events reachable from the root event.
-void CreateEventGroup(const std::vector<int64 /*EventType*/>& root_event_types,
-                      const EventNodeMap& event_node_map,
-                      EventGroupNameMap* event_group_name_map);
+  const EventGroupNameMap& GetEventGroupNameMap() const {
+    return event_group_name_map_;
+  }
 
-// Groups events in space using the nesting relationship within the same thread
-// and connect_info_list across threads, and populates event_group_name_map if
-// not nullptr.
-void GroupEvents(const std::vector<InterThreadConnectInfo>& connect_info_list,
-                 const std::vector<int64>& root_event_types, XSpace* space,
-                 EventGroupNameMap* event_group_name_map);
+ private:
+  // Creates an EventNode for each event in event_node_map and connect events
+  // according to the nesting relationship within the thread.
+  void ConnectIntraThread(const XPlaneVisitor& visitor, XPlane* plane);
+
+  // Connects events across threads according to connect_info_list.
+  void ConnectInterThread(
+      const std::vector<InterThreadConnectInfo>& connect_info_list);
+
+  // Creates event groups and populates event_group_name_map_. For each event of
+  // each event type in root_event_types in order, if it was not grouped yet, a
+  // new group is created with all the events reachable from the root event.
+  void CreateEventGroup(
+      const std::vector<int64 /*EventType*/>& root_event_types);
+
+  // Create virtual events of HostEventType::kHostTrainingLoopIteration and
+  // event nodes for them. A virtual event is created for each iteration of the
+  // host training loop and connected to the
+  // HostEventType::kExecutorStateProcess event nodes of the iteration.
+  void CreateVirtualEventsForHostTrainingLoop();
+
+  // Create virutal events of HostEventType::kAsyncExecutorTraceContext and
+  // event nodes for them. A virtual event is created for every FunctionRun and
+  // the following eager ops (e.g., for Keras callback).
+  void CreateVirtualEventsForAsyncExecutor();
+
+  EventNodeMap event_node_map_;
+  std::vector<XPlaneVisitor> visitors_;
+  VirtualEventContainer virtual_event_container_;
+  EventGroupNameMap event_group_name_map_;
+};
 
 // Calls GroupEvents with connect_info_list and root_event_types specific to
 // TensorFlow.

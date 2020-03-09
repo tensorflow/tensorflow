@@ -91,11 +91,11 @@ void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, int result_stride) {
+    float* __restrict__ result) {
   for (int batch = 0; batch < n_batch; ++batch) {
     const float batch_scaling_factor = scaling_factors[batch];
     // Compute dot-product for every column.
-    for (int row = 0; row < m_rows; ++row, result += result_stride) {
+    for (int row = 0; row < m_rows; ++row) {
       // Get the address of the first element of the row.
       const int8_t* __restrict__ row_ptr = matrix + row * m_cols;
 
@@ -152,6 +152,7 @@ void SseMatrixBatchVectorMultiplyAccumulate(
       }  // for col
 
       *result += sum * batch_scaling_factor;
+      ++result;
     }  // for row
 
     vectors += m_cols;
@@ -162,13 +163,12 @@ void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, int result_stride,
-    const float* __restrict__ per_channel_scale,
+    float* __restrict__ result, const float* __restrict__ per_channel_scale,
     const int32_t* __restrict__ input_offset) {
   static constexpr int kBlockSize = 16;
   for (int batch = 0; batch < n_batch; ++batch) {
     const float batch_scaling_factor = scaling_factors[batch];
-    for (int row = 0; row < m_rows; ++row, result += result_stride) {
+    for (int row = 0; row < m_rows; ++row) {
       const int8_t* __restrict__ row_ptr = matrix + row * m_cols;
       float scale = batch_scaling_factor;
       if (per_channel_scale != nullptr) {
@@ -204,6 +204,7 @@ void SseMatrixBatchVectorMultiplyAccumulate(
       }  // for col
       sum -= row_sum * input_offset[batch];
       *result += sum * scale;
+      ++result;
     }  // for row
     vectors += m_cols;
   }  // for batch

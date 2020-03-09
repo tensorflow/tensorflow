@@ -271,8 +271,7 @@ static ShapedBuffer MaybeOwningShapeTreeToShapedBuffer(
 
 StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
     absl::Span<Shape const* const> argument_host_shapes,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
-    ExecutableRunOptions run_options) {
+    std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options) {
   if (argument_host_shapes.size() != arguments.size()) {
     return InvalidArgument(
         "Number of argument host shapes not equal to number of arguments (%d "
@@ -291,8 +290,8 @@ StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
     shaped_buffer_ptrs.reserve(arguments.size());
     for (size_t i = 0; i < arguments.size(); ++i) {
       shaped_buffers.push_back(MaybeOwningShapeTreeToShapedBuffer(
-          *argument_host_shapes[i], arguments[i], backend_->platform(),
-          stream->parent()->device_ordinal()));
+          *argument_host_shapes[i], arguments[i].Buffers(),
+          backend_->platform(), stream->parent()->device_ordinal()));
       shaped_buffer_ptrs.push_back(&shaped_buffers.back());
     }
 

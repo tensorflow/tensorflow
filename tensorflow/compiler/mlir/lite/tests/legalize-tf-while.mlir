@@ -58,15 +58,15 @@ func @while_cond_10_frozen0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: t
 // CANON-SAME:         (tensor<i32>, tensor<256x256xf32>, tensor<?x256x256xf32>)
 // CANON:           [[VAL_1:%.*]] = constant dense<1.000000e+00> : tensor<256x256xf32>
 // CANON:           [[VAL_2:%.*]] = constant dense<0> : tensor<i32>
-// CANON:           [[VAL_3:%.*]] = constant dense<10> : tensor<i32>
-// CANON:           [[VAL_4:%.*]] = constant dense<1> : tensor<i32>
-// CANON:           [[VAL_5:%.*]] = "tf.Const"() {value = dense<2.560000e+02> : tensor<256x256xf32>} : () -> tensor<?x?xf32>
 // CANON:           [[VAL_6:%.*]]:3 = "tfl.while"([[VAL_2]], [[VAL_2]], [[VAL_0]]) ( {
 // CANON:           ^bb0([[VAL_7:%.*]]: tensor<*xi32>, [[VAL_8:%.*]]: tensor<*xi32>, [[VAL_9:%.*]]: tensor<*xf32>):
+// CANON:             [[VAL_3:%.*]] = constant dense<10> : tensor<i32>
 // CANON:             [[VAL_10:%.*]] = "tf.Less"([[VAL_8]], [[VAL_3]])
 // CANON:             "tfl.yield"([[VAL_10]]) : (tensor<*xi1>) -> ()
 // CANON:           },  {
 // CANON:           ^bb0([[VAL_11:%.*]]: tensor<*xi32>, [[VAL_12:%.*]]: tensor<*xi32>, [[VAL_13:%.*]]: tensor<*xf32>):
+// CANON:             [[VAL_4:%.*]] = constant dense<1> : tensor<i32>
+// CANON:             [[VAL_5:%.*]] = "tf.Const"() {value = dense<2.560000e+02> : tensor<256x256xf32>} : () -> tensor<?x?xf32>
 // CANON:             [[VAL_14:%.*]] = "tf.AddV2"([[VAL_12]], [[VAL_4]])
 // CANON:             [[VAL_15:%.*]] = "tf.AddV2"([[VAL_13]], [[VAL_5]])
 // CANON:             [[VAL_16:%.*]] = "tf.AddV2"([[VAL_11]], [[VAL_4]])

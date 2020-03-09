@@ -303,7 +303,7 @@ TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 ### Obtain the output
 
 The model's output tensor can be obtained by calling `output(0)` on the
-`tflite::MicroIntepreter`, where `0` represents the first (and only) output
+`tflite::MicroInterpreter`, where `0` represents the first (and only) output
 tensor.
 
 In the example, the model's output is a single floating point value contained

@@ -32,7 +32,7 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
-from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -1109,20 +1109,20 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     outputs = keras.layers.Dense(4)(inputs)
 
     with self.assertRaisesRegexp(TypeError, 'unexpected argument'):
-      model = training.Model(inputs, outputs, name='m', trainable=False,
-                             dtype='int64')
+      model = training_lib.Model(
+          inputs, outputs, name='m', trainable=False, dtype='int64')
     with self.assertRaisesRegexp(TypeError, 'unexpected argument'):
-      model = training.Model(inputs, outputs, name='m', trainable=False,
-                             dynamic=False)
+      model = training_lib.Model(
+          inputs, outputs, name='m', trainable=False, dynamic=False)
 
-    model = training.Model(inputs, outputs, name='m', trainable=False)
+    model = training_lib.Model(inputs, outputs, name='m', trainable=False)
     self.assertEqual('m', model.name)
     self.assertFalse(model.trainable)
     self.assertFalse(model.dynamic)
 
     # Subclassed model
-    model = training.Model(name='subclassed', trainable=True, dtype='int64',
-                           dynamic=True)
+    model = training_lib.Model(
+        name='subclassed', trainable=True, dtype='int64', dynamic=True)
     self.assertEqual('subclassed', model.name)
     self.assertTrue(model.dynamic)
     self.assertTrue(model.trainable)
@@ -1874,6 +1874,44 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     x = np.ones((10,))
     y = net(x)
     self.assertEqual(y.shape.rank, 2)
+
+  def test_training_passed_during_construction(self):
+
+    class MyLayer(base_layer.Layer):
+
+      def call(self, x, training=None):
+        self.training = training
+        return x
+
+    my_layer = MyLayer()
+    x = np.ones((1, 10))
+
+    inputs = input_layer_lib.Input(10)
+    outputs = my_layer(inputs, training=True)
+    network = network_lib.Network(inputs, outputs)
+
+    network(x, training=False)
+    # Hard-coded value passed during construction is respected.
+    self.assertTrue(my_layer.training)
+
+    inputs = input_layer_lib.Input(10)
+    outputs = my_layer(inputs, training=False)
+    network = network_lib.Network(inputs, outputs)
+
+    network(x, training=True)
+    # Hard-coded value passed during construction is respected.
+    self.assertFalse(my_layer.training)
+
+    inputs = input_layer_lib.Input(10)
+    outputs = my_layer(inputs, training=None)
+    network = network_lib.Network(inputs, outputs)
+
+    network(x, training=True)
+    # `None` value passed during construction is overridden.
+    self.assertTrue(my_layer.training)
+    network(x, training=False)
+    # `None` value passed during construction is overridden.
+    self.assertFalse(my_layer.training)
 
 
 if __name__ == '__main__':
