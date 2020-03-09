@@ -303,7 +303,8 @@ Status GraphMgr::Register(
   // Inserts one item into table_.
   {
     mutex_lock l(mu_);
-    *graph_handle = strings::Printf("%016llx", ++next_id_);
+    *graph_handle =
+        strings::Printf("%016llx", static_cast<long long>(++next_id_));
     item->handle = *graph_handle;
     CHECK(table_.insert({*graph_handle, item}).second);
   }

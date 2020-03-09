@@ -557,7 +557,7 @@ tensorflow::Status EagerServiceImpl::GetServerContext(
     return errors::InvalidArgument(strings::Printf(
         "Unable to find a context_id matching the specified one "
         "(%llu). Perhaps the worker was restarted, or the context was GC'd?",
-        context_id));
+        static_cast<unsigned long long>(context_id)));
   }
 
   *server_context = iter->second;

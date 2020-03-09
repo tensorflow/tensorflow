@@ -108,7 +108,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         buffer_size_(buffer_size),
         count_(count),
         traceme_metadata_(
-            {{"buffer_size", strings::Printf("%lld", buffer_size)}}) {
+            {{"buffer_size",
+              strings::Printf("%lld", static_cast<long long>(buffer_size))}}) {
     input_->Ref();
   }
 
