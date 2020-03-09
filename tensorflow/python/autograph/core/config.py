@@ -45,6 +45,7 @@ CONVERSION_RULES = (
     DoNotConvert('pstats'),
     DoNotConvert('re'),
     DoNotConvert('threading'),
+    DoNotConvert('urllib'),
 
     # Known libraries
     DoNotConvert('matplotlib'),
