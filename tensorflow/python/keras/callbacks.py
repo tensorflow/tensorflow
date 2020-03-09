@@ -873,10 +873,10 @@ class ProgbarLogger(Callback):
 
   def on_predict_begin(self, logs=None):
     self._reset_progbar()
-
-  def on_epoch_begin(self, epoch, logs=None):
+  #Apply check to avoid brokage on printout of Fit method.
+  def on_epoch_begin(self, epoch, is_start=True logs=None):
     self._reset_progbar()
-    if self.verbose and self.epochs > 1:
+    if self.verbose and self.epochs > 1 and is_start:
       print('Epoch %d/%d' % (epoch + 1, self.epochs))
 
   def on_train_batch_end(self, batch, logs=None):
