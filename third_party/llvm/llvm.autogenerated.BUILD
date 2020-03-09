@@ -575,7 +575,8 @@ gentbl(
     name = "amdgpu_isel_target_gen",
     tbl_outs = [
         ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
-        ("-gen-global-isel-combiner -combiners=AMDGPUPreLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenGICombiner.inc"),
+        ("-gen-global-isel-combiner -combiners=AMDGPUPreLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenPreLegalizeGICombiner.inc"),
+        ("-gen-global-isel-combiner -combiners=AMDGPUPostLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenPostLegalizeGICombiner.inc"),
     ],
     tblgen = ":llvm-tblgen",
     td_file = "lib/Target/AMDGPU/AMDGPUGISel.td",
@@ -735,6 +736,7 @@ cc_library(
         ":aarch64_target_gen",
         ":aarch64_utils",
         ":attributes_gen",
+        ":binary_format",
         ":config",
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
@@ -1150,6 +1152,7 @@ cc_library(
         ":arm_target_gen",
         ":arm_utils",
         ":attributes_gen",
+        ":binary_format",
         ":config",
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
@@ -1889,7 +1892,9 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":config",
+        ":debug_info_dwarf",
         ":mc",
+        ":object",
         ":support",
     ],
 )
@@ -2375,6 +2380,7 @@ cc_library(
     deps = [
         ":aggressive_inst_combine",
         ":analysis",
+        ":binary_format",
         ":bit_reader",
         ":bit_writer",
         ":code_gen",
@@ -3198,6 +3204,7 @@ cc_library(
         ":code_gen",
         ":config",
         ":core",
+        ":coroutines",
         ":inst_combine",
         ":instrumentation",
         ":ipo",
@@ -3280,6 +3287,7 @@ cc_library(
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/PowerPC"],
     deps = [
         ":attributes_gen",
+        ":binary_format",
         ":config",
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
@@ -4364,10 +4372,10 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/X86"],
     deps = [
+        ":binary_format",
         ":config",
         ":mc",
         ":mc_disassembler",
-        ":object",
         ":support",
         ":x86_info",
         ":x86_utils",

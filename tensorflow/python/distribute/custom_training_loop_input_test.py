@@ -23,12 +23,14 @@ from absl.testing import parameterized
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -131,6 +133,22 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
           distribution.experimental_run_v2(train_step, args=(x,)))
       results.append(output)
     self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.tpu_strategies,
+          mode=["eager"]))
+  def testFullEagerTPU(self, distribution):
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+
+    def train_step(data):
+      return math_ops.square(data)
+
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with self.assertRaisesRegexp(NotImplementedError,
+                                 "does not support pure eager execution"):
+      distribution.experimental_run_v2(train_step, args=(next(input_iterator),))
 
   @combinations.generate(
       combinations.combine(
@@ -312,6 +330,114 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       for val in actual_result:
         final_result.extend(val.numpy())
       self.assertAllEqual(expected_result, final_result)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetIteratorWithoutFunction(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(
+            lambda _: get_dataset_from_tensor_slices(data)))
+
+    self.assertAllEqual(
+        distribution.experimental_local_results(input_iterator.get_next()),
+        data[0:distribution.num_replicas_in_sync])
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetIteratorWithFunction(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(
+            lambda _: get_dataset_from_tensor_slices(data)))
+
+    @def_function.function
+    def run(iterator):
+      return distribution.experimental_local_results(iterator.get_next())
+
+    local_results = run(input_iterator)
+    self.assertAllEqual(local_results,
+                        data[0:distribution.num_replicas_in_sync])
+    backing_devices = [result.backing_device for result in local_results]
+    self.assertAllEqual(backing_devices, distribution.extended.worker_devices)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetPrefetch(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_dataset(
+            get_dataset_from_tensor_slices(data).batch(2)))
+
+    local_results = distribution.experimental_local_results(
+        input_iterator.get_next())
+
+    backing_devices = [result.backing_device for result in local_results]
+    self.assertAllEqual(backing_devices, distribution.extended.worker_devices)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetFunctionPrefetch(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(
+            lambda _: get_dataset_from_tensor_slices(data)))
+
+    local_results = distribution.experimental_local_results(
+        input_iterator.get_next())
+
+    backing_devices = [result.backing_device for result in local_results]
+    self.assertAllEqual(backing_devices, distribution.extended.worker_devices)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.tpu_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetHostPrefetch(self, distribution):
+    data = [5., 6., 7., 8.]
+    distribution.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
+    input_iterator = iter(
+        distribution.experimental_distribute_dataset(
+            get_dataset_from_tensor_slices(data).batch(2)))
+
+    local_results = distribution.experimental_local_results(
+        input_iterator.get_next())
+
+    for result in local_results:
+      self.assertEqual(result.backing_device,
+                       device_util.resolve("/device:CPU:0"))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.tpu_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetFunctionHostPrefetch(self, distribution):
+    data = [5., 6., 7., 8.]
+    distribution.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(
+            lambda _: get_dataset_from_tensor_slices(data)))
+
+    local_results = distribution.experimental_local_results(
+        input_iterator.get_next())
+
+    for result in local_results:
+      self.assertEqual(result.backing_device,
+                       device_util.resolve("/device:CPU:0"))
 
   @combinations.generate(
       combinations.combine(
@@ -615,6 +741,70 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       output = f_train_step(next(iterator))
       results.append(output)
     self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testMultiDeviceDataCapturedFunction(self, distribution):
+    inputs = constant_op.constant([2., 3.])
+    dataset = lambda _: dataset_ops.Dataset.from_tensor_slices(inputs).repeat(5)
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(dataset))
+    with distribution.scope():
+      var = variables.Variable(1.0)
+
+    @def_function.function
+    def train_step(input_iterator):
+
+      def func(inputs):
+        return math_ops.square(inputs) + var
+
+      per_replica_outputs = distribution.experimental_run_v2(
+          func, (next(input_iterator),))
+      mean = distribution.reduce(
+          reduce_util.ReduceOp.MEAN, per_replica_outputs, axis=None)
+      for _ in dataset_ops.Dataset.range(1):
+        per_replica_outputs = distribution.experimental_run_v2(
+            func, (next(input_iterator),))
+        mean = distribution.reduce(
+            reduce_util.ReduceOp.MEAN, per_replica_outputs, axis=None)
+      return mean
+
+    with distribution.scope():
+      if distribution.num_replicas_in_sync == 1:
+        self.assertAlmostEqual(10.0, self.evaluate(train_step(input_iterator)))
+      else:
+        self.assertAlmostEqual(7.5, self.evaluate(train_step(input_iterator)))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testDatasetOutOfRange(self, distribution):
+    with distribution.scope():
+      a = variables.Variable(
+          0.0, aggregation=variables.VariableAggregation.SUM)
+
+    def train_step(val):
+      a.assign_add(math_ops.reduce_sum(val))
+
+    @def_function.function
+    def f_train_step(iterator):
+      distribution.experimental_run_v2(train_step, args=(next(iterator),))
+      return a
+
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+
+    iterator = iter(dist_dataset)
+    with self.assertRaises(errors.OutOfRangeError):
+      for _ in range(100):
+        f_train_step(iterator)
+
+    self.assertAlmostEqual(26.0, a.numpy())
 
 
 if __name__ == "__main__":

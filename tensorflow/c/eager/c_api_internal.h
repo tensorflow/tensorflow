@@ -236,12 +236,16 @@ struct TFE_Executor {
   tensorflow::EagerExecutor* unowned_executor;
 };
 
+// An equivalent of a tensorflow::NameAttrList protocol buffer, but used in ways
+// that sometimes do not require serialization.
 struct TFE_OpAttrs {
-  explicit TFE_OpAttrs() : attributes(nullptr) {}
+  explicit TFE_OpAttrs() : name(nullptr), attributes(nullptr) {}
 
-  explicit TFE_OpAttrs(const tensorflow::AttrBuilder* value)
-      : attributes(value) {}
+  explicit TFE_OpAttrs(const tensorflow::AttrBuilder* value,
+                       const char* op_name)
+      : name(op_name), attributes(value) {}
 
+  const char* name;
   const tensorflow::AttrBuilder* attributes;
 };
 

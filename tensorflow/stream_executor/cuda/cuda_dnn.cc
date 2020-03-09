@@ -195,7 +195,7 @@ class CudnnAccess {
   absl::Mutex mutex_;
 
   // cuDNN library handle.
-  cudnnHandle_t handle_ GUARDED_BY(mutex_);  // Owned.
+  cudnnHandle_t handle_ TF_GUARDED_BY(mutex_);  // Owned.
 };
 
 namespace {
@@ -2620,8 +2620,8 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     bool specify_workspace_limit = scratch_allocator != nullptr;
     auto memory_limit_bytes =
         specify_workspace_limit
-            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), 0ll)
-            : 0ll;
+            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64{0})
+            : int64{0};
     SE_ASSIGN_OR_RETURN(cudnnConvolutionFwdAlgo_t algo,
                         GetCudnnConvolutionForwardAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
@@ -2673,8 +2673,8 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
     bool specify_workspace_limit = scratch_allocator != nullptr;
     auto memory_limit_bytes =
         specify_workspace_limit
-            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), 0ll)
-            : 0ll;
+            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64{0})
+            : int64{0};
     SE_ASSIGN_OR_RETURN(cudnnConvolutionBwdDataAlgo_t algo,
                         GetCudnnConvolutionBackwardDataAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
@@ -2725,8 +2725,8 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
     bool specify_workspace_limit = scratch_allocator != nullptr;
     auto memory_limit_bytes =
         specify_workspace_limit
-            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), 0ll)
-            : 0ll;
+            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64{0})
+            : int64{0};
     SE_ASSIGN_OR_RETURN(cudnnConvolutionBwdFilterAlgo_t algo,
                         GetCudnnConvolutionBackwardFilterAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
@@ -3607,8 +3607,10 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     void* batch_mean_opaque;
     void* batch_var_opaque;
     if (!batch_mean->is_null() && !batch_var->is_null()) {
-      stream->ThenMemZero(batch_mean, batch_mean->size());
-      stream->ThenMemZero(batch_var, batch_var->size());
+      if (exponential_average_factor == 1.0) {
+        stream->ThenMemZero(batch_mean, batch_mean->size());
+        stream->ThenMemZero(batch_var, batch_var->size());
+      }
       batch_mean_opaque = batch_mean->opaque();
       batch_var_opaque = batch_var->opaque();
     } else {

@@ -16,7 +16,7 @@ limitations under the License.
 // This is the legalization pattern definition file for TF to XLA.
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
@@ -358,6 +358,89 @@ def SparseMatMulToMatMul : Pat<(TF_SparseMatMulOp $a, $b, $a_sparse, $b_sparse,
                                 $transpose_b)>;
 
 //===----------------------------------------------------------------------===//
+// MatrixBandPart op pattern.
+//===----------------------------------------------------------------------===//
+
+class getIntegerAttr<string x>: NativeCodeCall<
+  "$_builder.getI64IntegerAttr(" # x # ")">;
+
+class GetDimensionSizeFromEnd<string dimFromEnd>: NativeCodeCall<
+  "$_builder.getI64IntegerAttr(GetDimensionSizeFromEnd($0, " # dimFromEnd # "))"
+  >;
+
+// TODO(b/149615308): Enable IotaOp usage as a child operation in a pattern
+// For now, this op needs to be created in C++ because the expected output type
+// cannot be inferred.
+class createIotaOp<string dim>: NativeCodeCall<
+  "$_builder.create<xla_hlo::IotaOp>($0.getOwner()->getLoc(), "
+  "Get2DTensorType($1), $_builder.getI64IntegerAttr(" # dim # "))">;
+
+// This op needs to be created in C++ because the generated Convert Op has no
+// way to specify shape information as an input. In the MatrixBandPart op
+// lowering, ConvertOp is not a root operation and the appropriate types cannot
+// be inferred, so we construct it manually.
+def createConvertOp: NativeCodeCall<
+  "CreateConvertOp(&($_builder), $0.getOwner()->getLoc(), $1, $2)">;
+
+// Performs a substitution of MatrixBandPartOp for XLA HLO ops. Psuedocode is
+// shown below, given a tensor `input` with k dimensions [I, J, K, ..., M, N]
+// and two integers, `num_lower` and `num_upper`:
+//
+//   iota_m = { M x N matrix with 0,1,...M along the M dimension }
+//   iota_n = { M x N matrix with 0,1,...N along the N dimension }
+//   num_lower_or_m = (num_lower < 0) ? m : num_lower
+//   num_upper_or_n = (num_upper < 0) ? n : num_upper
+//   offset = iota_m - iota_n
+//   indicator = (-num_lower_or_m < offset) & (offset < num_upper_or_n)
+//   zero_matrix = { [I, J, K,...M, N] zero matrix }
+//   return (indicator ? input : zero_matrix)
+//
+// TODO(b/149961547): Support dynamic shaped `input` in MatrixBandPartOp.
+def : Pattern<(TF_MatrixBandPartOp:$op AnyRankedTensor:$input, $num_lower, $num_upper),
+         [(HLO_ConstOp:$m_dim (GetDimensionSizeFromEnd<"0"> $input)),
+          (HLO_ConstOp:$n_dim (GetDimensionSizeFromEnd<"1"> $input)),
+          (HLO_SelectOp:$num_lower_or_m
+           (HLO_CompareOp
+            $num_lower, (HLO_ConstOp:$zero (ConstantSplat<"0"> $num_lower)),
+            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT
+           ),
+           $m_dim,
+           $num_lower
+          ),
+          (HLO_SelectOp:$num_upper_or_n
+           (HLO_CompareOp
+            $num_upper, $zero,
+            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT
+           ),
+           $n_dim,
+           $num_upper
+          ),
+          (HLO_SelectOp
+           (HLO_AndOp
+            (HLO_CompareOp
+             (HLO_NegOp
+              (createConvertOp $op, $num_lower_or_m, $input)
+             ),
+             (HLO_SubOp:$offset
+              (createIotaOp<"1"> $op, $input), (createIotaOp<"0"> $op, $input),
+              (NullDenseIntElementsAttr)
+             ),
+             (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE
+            ),
+            (HLO_CompareOp
+             $offset,
+             (createConvertOp
+              $op, $num_upper_or_n, $input
+             ),
+             (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE
+            ),
+            (BinBroadcastDimensions $offset, $input)
+           ),
+           $input,
+           (HLO_ConstOp (ConstantSplat<"0"> $input))
+          )]>;
+
+//===----------------------------------------------------------------------===//
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -504,8 +587,8 @@ def : Pat<(TF_SignOp $x),
           )>;
 
 def BothElementTypesSameWidthIntOrFloat : Constraint<CPred<
-  "getElementTypeOrSelf($0.getType()).isIntOrFloat() && "
-  "getElementTypeOrSelf($1.getType()).isIntOrFloat() && "
+  "getElementTypeOrSelf($0.getType()).isSignlessIntOrFloat() && "
+  "getElementTypeOrSelf($1.getType()).isSignlessIntOrFloat() && "
   "getElementTypeOrSelf($0.getType()).getIntOrFloatBitWidth() == "
   "getElementTypeOrSelf($1.getType()).getIntOrFloatBitWidth()">,
   "element types must be integers or floats of same width">;

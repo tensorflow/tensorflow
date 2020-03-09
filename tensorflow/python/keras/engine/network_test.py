@@ -32,7 +32,7 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
-from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -761,7 +761,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     output = a(b(a(b(x))))
     m = keras.models.Model(x, output)
     m.run_eagerly = testing_utils.should_run_eagerly()
-    m._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     output_val = m.predict(x_val)
 
@@ -789,7 +788,6 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
     m = keras.models.Model(inputs=input_layer, outputs=output)
     m.run_eagerly = testing_utils.should_run_eagerly()
-    m._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     x_val = np.random.random((10, 16, 9, 3))
     output_val = m.predict(x_val)
@@ -818,8 +816,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='sgd',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     loss = model.train_on_batch(x, y)
     self.assertEqual(loss, 0)  # In inference mode, output is equal to input.
 
@@ -838,8 +835,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(
         x=[np.ones((10, 5, 10)), np.zeros((10, 5))],
         y=np.zeros((10, 100)),
@@ -857,8 +853,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(
         x=[np.ones((10, 5, 10)), np.zeros((10, 5))],
         y=np.zeros((10, 100)),
@@ -887,8 +882,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(
         x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
         y=10 * np.ones((10, 10)),
@@ -902,8 +896,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(
         x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
         y=10 * np.ones((10, 10)),
@@ -928,8 +921,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(
         x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
         y=10 * np.ones((10, 10)),
@@ -942,8 +934,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(
         x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
         y=10 * np.ones((10, 10)),
@@ -976,8 +967,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     input_data = [
         ragged_factory_ops.constant([[3.0, 3.0], [3.0, 3.0], [3.0]]),
         ragged_factory_ops.constant([[7.0, 7.0], [7.0, 7.0], [7.0]])
@@ -993,8 +983,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(x=input_data, y=expected_data)
     # Check that second input was correctly added to first.
     self.assertEqual(history.history['loss'][0], 0.0)
@@ -1026,8 +1015,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(
         x=[np.ones((10, 10)), 2 * np.ones((10, 10)), 3 * np.ones((10, 10))],
         y=15 * np.ones((10, 10)),
@@ -1040,8 +1028,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(
         x=[np.ones((10, 10)), 2 * np.ones((10, 10)), 3 * np.ones((10, 10))],
         y=15 * np.ones((10, 10)),
@@ -1066,14 +1053,11 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     o = keras.layers.add(o)
     model = keras.Model(i, o)
     model.run_eagerly = testing_utils.should_run_eagerly()
-    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     i2 = keras.layers.Input(shape=(3, 2, 1))
     o2 = model(i2)
     model2 = keras.Model(i2, o2)
     model2.run_eagerly = testing_utils.should_run_eagerly()
-    model2._experimental_run_tf_function = testing_utils.should_run_tf_function(
-    )
 
     x = np.random.random((4, 3, 2, 1))
     out = model2.predict(x)
@@ -1091,8 +1075,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='sgd',
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     json_str = model.to_json()
     keras.models.model_from_json(json_str)
@@ -1126,20 +1109,20 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     outputs = keras.layers.Dense(4)(inputs)
 
     with self.assertRaisesRegexp(TypeError, 'unexpected argument'):
-      model = training.Model(inputs, outputs, name='m', trainable=False,
-                             dtype='int64')
+      model = training_lib.Model(
+          inputs, outputs, name='m', trainable=False, dtype='int64')
     with self.assertRaisesRegexp(TypeError, 'unexpected argument'):
-      model = training.Model(inputs, outputs, name='m', trainable=False,
-                             dynamic=False)
+      model = training_lib.Model(
+          inputs, outputs, name='m', trainable=False, dynamic=False)
 
-    model = training.Model(inputs, outputs, name='m', trainable=False)
+    model = training_lib.Model(inputs, outputs, name='m', trainable=False)
     self.assertEqual('m', model.name)
     self.assertFalse(model.trainable)
     self.assertFalse(model.dynamic)
 
     # Subclassed model
-    model = training.Model(name='subclassed', trainable=True, dtype='int64',
-                           dynamic=True)
+    model = training_lib.Model(
+        name='subclassed', trainable=True, dtype='int64', dynamic=True)
     self.assertEqual('subclassed', model.name)
     self.assertTrue(model.dynamic)
     self.assertTrue(model.trainable)
@@ -1398,8 +1381,7 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     model_input = np.random.randint(
         low=1, high=5, size=(10, 3, 4)).astype('float32')
@@ -1607,15 +1589,13 @@ class AddLossTest(keras_parameterized.TestCase):
     x = np.ones((10, 10))
     model.compile(
         'sgd',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x, batch_size=2, epochs=1)
 
     model2 = model.from_config(model.get_config())
     model2.compile(
         'sgd',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model2.set_weights(initial_weights)
     model2.fit(x, batch_size=2, epochs=1)
 
@@ -1639,16 +1619,14 @@ class AddLossTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x, y, batch_size=2, epochs=1)
 
     model2 = model.from_config(model.get_config())
     model2.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model2.set_weights(initial_weights)
     model2.fit(x, y, batch_size=2, epochs=1)
 
@@ -1869,6 +1847,71 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     self.assertEqual(network.dynamic, False)
     self.assertEqual(network.stateful, False)
 
+  def test_compute_output_shape_cache(self):
+    # See https://github.com/tensorflow/tensorflow/issues/32029.
+    x = input_layer_lib.Input(shape=(None, 32))
+    dense = keras.layers.Dense(2)
+    y = dense(x)
+    network = network_lib.Network(x, y, name='dense_network')
+
+    for i in range(999, 1024):
+      self.assertEqual(network.compute_output_shape((1, i, 32)), (1, i, 2))
+
+  def test_2d_inputs_squeezed_to_1d(self):
+    input_1d = input_layer_lib.Input(shape=())
+    outputs = input_1d * 2.
+    net = network_lib.Network(input_1d, outputs)
+
+    x = np.ones((10, 1))
+    y = net(x)
+    self.assertEqual(y.shape.rank, 1)
+
+  def test_1d_inputs_expanded_to_2d(self):
+    input_1d = input_layer_lib.Input(shape=(1,))
+    outputs = input_1d * 2.
+    net = network_lib.Network(input_1d, outputs)
+
+    x = np.ones((10,))
+    y = net(x)
+    self.assertEqual(y.shape.rank, 2)
+
+  def test_training_passed_during_construction(self):
+
+    class MyLayer(base_layer.Layer):
+
+      def call(self, x, training=None):
+        self.training = training
+        return x
+
+    my_layer = MyLayer()
+    x = np.ones((1, 10))
+
+    inputs = input_layer_lib.Input(10)
+    outputs = my_layer(inputs, training=True)
+    network = network_lib.Network(inputs, outputs)
+
+    network(x, training=False)
+    # Hard-coded value passed during construction is respected.
+    self.assertTrue(my_layer.training)
+
+    inputs = input_layer_lib.Input(10)
+    outputs = my_layer(inputs, training=False)
+    network = network_lib.Network(inputs, outputs)
+
+    network(x, training=True)
+    # Hard-coded value passed during construction is respected.
+    self.assertFalse(my_layer.training)
+
+    inputs = input_layer_lib.Input(10)
+    outputs = my_layer(inputs, training=None)
+    network = network_lib.Network(inputs, outputs)
+
+    network(x, training=True)
+    # `None` value passed during construction is overridden.
+    self.assertTrue(my_layer.training)
+    network(x, training=False)
+    # `None` value passed during construction is overridden.
+    self.assertFalse(my_layer.training)
 
 
 if __name__ == '__main__':

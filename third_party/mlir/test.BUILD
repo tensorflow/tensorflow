@@ -77,6 +77,7 @@ gentbl(
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
         "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Analysis/ControlFlowInterfaces.td",
         "@llvm-project//mlir:include/mlir/Analysis/InferTypeOpInterface.td",
     ],
     test = True,
@@ -87,6 +88,8 @@ cc_library(
     srcs = [
         "lib/TestDialect/TestDialect.cpp",
         "lib/TestDialect/TestPatterns.cpp",
+    ] + [
+        "@llvm-project//mlir:include/mlir/Analysis/ControlFlowInterfaces.h",
     ],
     hdrs = [
         "lib/TestDialect/TestDialect.h",
@@ -99,9 +102,11 @@ cc_library(
         ":TestOpsIncGen",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ControlFlowInterfacesIncGen",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
@@ -164,5 +169,18 @@ cc_library(
         "@llvm-project//mlir:VectorOps",
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorToLoops",
+    ],
+)
+
+cc_library(
+    name = "TestSPIRV",
+    srcs = glob([
+        "lib/Dialect/SPIRV/*.cpp",
+    ]),
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SPIRVDialect",
+        "@llvm-project//mlir:SPIRVLowering",
     ],
 )

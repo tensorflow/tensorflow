@@ -307,6 +307,12 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
         [distribute_lib.InputContext()],
         self._container_strategy())
 
+  def _experimental_distribute_values_from_function(self, value_fn):
+    # TODO(b/137795644): This should return a PerReplica value but other
+    # methods like experimental_run_v2 in OneDeviceStrategy need to be modified
+    # to do the same.
+    return value_fn(distribute_lib.ValueContext())
+
   # TODO(priyag): Deal with OutOfRange errors  once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
                                           initial_loop_values=None):
@@ -356,8 +362,8 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     with ops.device(self._device), _OneDeviceReplicaContext(strategy):
       return fn(*args, **kwargs)
 
-  def _reduce_to(self, reduce_op, value, destinations):
-    del reduce_op, destinations
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
+    del reduce_op, destinations, experimental_hints
     return value
 
   def _update(self, var, fn, args, kwargs, group):

@@ -50,7 +50,7 @@ struct SpaceToBatchNDContext {
 
 // Currently, only 4D NHWC input/output op_context are supported.
 // The 4D array need to have exactly 2 spatial dimensions.
-// TODO(nupurgarg): Support arbitrary dimension in SpaceToBatchND.
+// TODO(b/149952582): Support arbitrary dimension in SpaceToBatchND.
 const int kInputDimensionNum = 4;
 const int kBlockSizeDimensionNum = 1;
 const int kSpatialDimensionNum = 2;

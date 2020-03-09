@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -98,6 +99,8 @@ class Thunk {
     HloExecutionProfiler* profiler;                               // never null
     const DeviceAssignment* device_assn;                          // never null
     std::vector<std::function<void()>>* deferred_host_callbacks;  // never null
+    const std::vector<GlobalDeviceId>* gpu_global_device_ids;     // may be null
+    const NcclUniqueIdCallback* nccl_unique_id_callback;          // may be null
   };
 
   // Execute the kernel for the thunk on the given stream. This method must be

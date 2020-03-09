@@ -48,53 +48,60 @@ class ConcatBaseOp : public OpKernel {
   typedef std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>
       ConstMatrixVector;
 
-  explicit ConcatBaseOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit ConcatBaseOp(OpKernelConstruction* c)
+      : OpKernel(c),
+        axis_attribute_name_(AxisArgName == NAME_IS_AXIS
+                                 ? "axis"
+                                 : AxisArgName == NAME_IS_CONCAT_DIM
+                                       ? "concat_dim"
+                                       : "<invalid>") {
+    int unused;
+    OP_REQUIRES_OK(
+        c, InputRange(axis_attribute_name_, &axis_input_index_, &unused));
+    OP_REQUIRES_OK(c, InputRange("values", &values_input_start_index_,
+                                 &values_input_end_index_));
+  }
 
   void Compute(OpKernelContext* c) override {
-    const Tensor* concat_dim_tensor;
-    const char* axis_attribute_name =
-        AxisArgName == NAME_IS_AXIS
-            ? "axis"
-            : AxisArgName == NAME_IS_CONCAT_DIM ? "concat_dim" : "<invalid>";
-    OP_REQUIRES_OK(c, c->input(axis_attribute_name, &concat_dim_tensor));
+    const Tensor& concat_dim_tensor = c->input(axis_input_index_);
+
     // TODO(rmlarsen): Disallow legacy use of length-1 vectors as scalars.
     OP_REQUIRES(c,
-                (TensorShapeUtils::IsScalar(concat_dim_tensor->shape()) ||
-                 (TensorShapeUtils::IsVector(concat_dim_tensor->shape()) &&
-                  concat_dim_tensor->shape().dim_size(0) == 1)),
+                (TensorShapeUtils::IsScalar(concat_dim_tensor.shape()) ||
+                 (TensorShapeUtils::IsVector(concat_dim_tensor.shape()) &&
+                  concat_dim_tensor.shape().dim_size(0) == 1)),
                 errors::InvalidArgument(
-                    axis_attribute_name,
+                    axis_attribute_name_,
                     " tensor should be a scalar integer, but got shape ",
-                    concat_dim_tensor->shape().DebugString()));
+                    concat_dim_tensor.shape().DebugString()));
     int64 concat_dim;
     // In case of ConcatV2, "axis" could be int32 or int64
     if (AxisArgName == NAME_IS_AXIS) {
       OP_REQUIRES(
           c,
-          (concat_dim_tensor->dtype() == DT_INT32 ||
-           concat_dim_tensor->dtype() == DT_INT64),
-          errors::InvalidArgument(axis_attribute_name,
+          (concat_dim_tensor.dtype() == DT_INT32 ||
+           concat_dim_tensor.dtype() == DT_INT64),
+          errors::InvalidArgument(axis_attribute_name_,
                                   " tensor should be int32 or int64, but got ",
-                                  DataTypeString(concat_dim_tensor->dtype())));
+                                  DataTypeString(concat_dim_tensor.dtype())));
     } else {
-      OP_REQUIRES(c, (concat_dim_tensor->dtype() == DT_INT32),
+      OP_REQUIRES(c, (concat_dim_tensor.dtype() == DT_INT32),
                   errors::InvalidArgument(
-                      axis_attribute_name, " tensor should be int32, but got ",
-                      DataTypeString(concat_dim_tensor->dtype())));
+                      axis_attribute_name_, " tensor should be int32, but got ",
+                      DataTypeString(concat_dim_tensor.dtype())));
     }
-    if (concat_dim_tensor->dtype() == DT_INT32) {
+    if (concat_dim_tensor.dtype() == DT_INT32) {
       concat_dim =
-          internal::SubtleMustCopy(concat_dim_tensor->scalar<int32>()());
+          internal::SubtleMustCopy(concat_dim_tensor.scalar<int32>()());
     } else {
       concat_dim =
-          internal::SubtleMustCopy(concat_dim_tensor->scalar<int64>()());
+          internal::SubtleMustCopy(concat_dim_tensor.scalar<int64>()());
     }
 
-    OpInputList values;
-    OP_REQUIRES_OK(c, c->input_list("values", &values));
-    const int N = values.size();
-    const int input_dims = values[0].dims();
-    const TensorShape& input_shape = values[0].shape();
+    const int N = values_input_end_index_ - values_input_start_index_;
+    const Tensor& first_input = c->input(values_input_start_index_);
+    const int input_dims = first_input.dims();
+    const TensorShape& input_shape = first_input.shape();
 
     int32 axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
     // concat_dim==0 allows concatenating a list of scalars into a vector.
@@ -116,7 +123,7 @@ class ConcatBaseOp : public OpKernel {
     }
     int64 output_concat_dim = 0;
     for (int i = 0; i < N; ++i) {
-      const auto& in = values[i];
+      const auto& in = c->input(values_input_start_index_ + i);
       OP_REQUIRES(
           c, in.dims() == input_dims,
           errors::InvalidArgument(
@@ -137,7 +144,7 @@ class ConcatBaseOp : public OpKernel {
       if (in.NumElements() > 0) {
         int64 inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
-            in.shaped<T, 2>({inputs_flat_dim0, inputs_flat_dim1})));
+            in.template shaped<T, 2>({inputs_flat_dim0, inputs_flat_dim1})));
       }
       // TODO(rmlarsen): Remove check once !allow_legacy_scalars()?
       output_concat_dim += in.dims() > 0 ? in.dim_size(axis) : 1;
@@ -170,6 +177,12 @@ class ConcatBaseOp : public OpKernel {
       ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
     }
   }
+
+ private:
+  const char* const axis_attribute_name_;
+  int axis_input_index_;
+  int values_input_start_index_;
+  int values_input_end_index_;
 };
 
 template <typename Device, typename T>

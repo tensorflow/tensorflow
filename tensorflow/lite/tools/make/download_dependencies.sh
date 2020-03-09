@@ -72,6 +72,7 @@ download_and_extract() {
   local sha256="${3}"
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
+  rm -rf ${dir}/*  # Delete existing files.
   tempdir=$(mktemp -d)
   filepath="${tempdir}/$(basename ${url})"
   curl -Lo ${filepath} ${url}

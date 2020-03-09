@@ -16,6 +16,7 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -443,6 +444,12 @@ struct LaunchConvOp<GPUDevice, T> {
     using se::dnn::AlgorithmDesc;
     using se::dnn::ProfileResult;
 
+#if TENSORFLOW_USE_ROCM
+    // cudnn_use_autotune is applicable only the CUDA flow
+    // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
+    // if we do not have a cached algorithm_config for this conv_parameters
+    cudnn_use_autotune = true;
+#endif
     AlgorithmConfig algorithm_config;
 
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(

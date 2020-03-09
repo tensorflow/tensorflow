@@ -86,7 +86,7 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
                            ? GetOpWithInput(*model, post_conv_op->outputs[0])
                            : GetOpWithInput(*model, conv_op->outputs[0]);
   bool has_pad_op = false;
-  if (pad_op->type == OperatorType::kPad) {
+  if (pad_op && pad_op->type == OperatorType::kPad) {
     has_pad_op = true;
     CHECK_EQ(pad_op->inputs.size(), 2);
     CHECK_EQ(pad_op->outputs.size(), 1);
@@ -128,7 +128,7 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
   if (!has_pad_op) {
     auto* pre_stb_pad_op = GetOpWithOutput(*model, stb_op->inputs[0]);
     // If it is a Pad Op then just rewire the Input of Pad Op with Input of STB
-    if (pre_stb_pad_op->type == OperatorType::kPad) {
+    if (pre_stb_pad_op && pre_stb_pad_op->type == OperatorType::kPad) {
       stb_op->inputs[0] = pre_stb_pad_op->inputs[0];
       has_pad_op = true;
       pad_op = pre_stb_pad_op;

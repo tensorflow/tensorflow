@@ -95,8 +95,8 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
   def _local_results(self, value):
     return (value,)
 
-  def _reduce_to(self, reduce_op, value, destinations):
-    del reduce_op, destinations
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
+    del reduce_op, destinations, experimental_hints
     return value
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):

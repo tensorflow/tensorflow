@@ -425,6 +425,10 @@ tf_module {
     argspec: "args=[\'input\', \'block_shape\', \'crops\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "BeginEpoch"
+    argspec: "args=[\'dataset_id\', \'address\', \'protocol\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "BesselI0e"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -927,6 +931,10 @@ tf_module {
   member_method {
     name: "DataFormatVecPermute"
     argspec: "args=[\'x\', \'src_format\', \'dst_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'NCHW\', \'None\'], "
+  }
+  member_method {
+    name: "DataServiceDataset"
+    argspec: "args=[\'address\', \'protocol\', \'max_outstanding_requests\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "DatasetCardinality"
@@ -1817,6 +1825,10 @@ tf_module {
     argspec: "args=[\'table_handle\', \'keys\', \'values\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "InitializeTableFromDataset"
+    argspec: "args=[\'table_handle\', \'dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "InitializeTableFromTextFile"
     argspec: "args=[\'table_handle\', \'filename\', \'key_index\', \'value_index\', \'vocab_size\', \'delimiter\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\\t\', \'None\'], "
   }
@@ -2151,6 +2163,10 @@ tf_module {
   member_method {
     name: "Lu"
     argspec: "args=[\'input\', \'output_idx_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "MakeDataServiceIterator"
+    argspec: "args=[\'dataset\', \'epoch_id\', \'iterator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "MakeIterator"
@@ -2893,6 +2909,10 @@ tf_module {
     argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'False\', \'False\', \'MIN_FIRST\', \'None\'], "
   }
   member_method {
+    name: "QuantizedMatMulWithBiasAndDequantize"
+    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'min_freezed_output\', \'max_freezed_output\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'MIN_FIRST\', \'None\'], "
+  }
+  member_method {
     name: "QuantizedMatMulWithBiasAndRelu"
     argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'False\', \'False\', \'MIN_FIRST\', \'None\'], "
   }
@@ -3011,6 +3031,10 @@ tf_module {
   member_method {
     name: "RGBToHSV"
     argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "RaggedCross"
+    argspec: "args=[\'ragged_values\', \'ragged_row_splits\', \'sparse_indices\', \'sparse_values\', \'sparse_shape\', \'dense_inputs\', \'input_order\', \'hashed_output\', \'num_buckets\', \'hash_key\', \'out_values_type\', \'out_row_splits_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "RaggedGather"
@@ -3235,6 +3259,10 @@ tf_module {
   member_method {
     name: "RegexReplace"
     argspec: "args=[\'input\', \'pattern\', \'rewrite\', \'replace_global\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "RegisterDataset"
+    argspec: "args=[\'dataset\', \'address\', \'protocol\', \'external_state_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "Relu"

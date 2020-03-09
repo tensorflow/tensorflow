@@ -39,16 +39,23 @@ namespace interpreter {
 
 InterpreterExecutable::InterpreterExecutable(
     std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloEvaluator> evaluator)
+    std::unique_ptr<HloEvaluator> evaluator,
+    absl::optional<DynamicDimensionInference> dynamic_dymension_inference)
     : Executable(std::move(hlo_module), /*hlo_profile_printer_data=*/nullptr,
                  /*hlo_profile_index_map=*/nullptr),
-      evaluator_(std::move(evaluator)) {}
+      evaluator_(std::move(evaluator)),
+      dynamic_dimension_inference_(std::move(dynamic_dymension_inference)) {
+  if (dynamic_dimension_inference_.has_value()) {
+    evaluator_->set_dynamic_dimension_inference(
+        &dynamic_dimension_inference_.value());
+  }
+}
 
 InterpreterExecutable::~InterpreterExecutable() {}
 
 StatusOr<ExecutionOutput> InterpreterExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+    std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
@@ -58,13 +65,14 @@ StatusOr<ExecutionOutput> InterpreterExecutable::ExecuteAsyncOnStream(
   // TransferManager methods below.
   std::vector<ShapedBuffer> argument_buffers;
   argument_buffers.reserve(arguments.size());
-  for (const ShapeTree<MaybeOwningDeviceMemory>& arg : arguments) {
-    argument_buffers.push_back(ShapedBuffer(arg.shape(), arg.shape(),
+  for (auto& argument : arguments) {
+    const ShapeTree<MaybeOwningDeviceMemory>& buffers = argument.Buffers();
+    argument_buffers.push_back(ShapedBuffer(buffers.shape(), buffers.shape(),
                                             /*platform=*/nullptr,
                                             /*device_ordinal=*/0));
-    auto in_it = arg.begin();
+    auto in_it = buffers.begin();
     auto out_it = argument_buffers.back().buffers().begin();
-    for (; in_it != arg.end(); ++in_it, ++out_it) {
+    for (; in_it != buffers.end(); ++in_it, ++out_it) {
       out_it->second = in_it->second.AsDeviceMemoryBase();
     }
   }
@@ -120,12 +128,13 @@ StatusOr<ExecutionOutput> InterpreterExecutable::ExecuteAsyncOnStream(
   }
 
   // Transform the result literal back into a ShapedBuffer.
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result_buffers,
                       transfer_manager->AllocateScopedShapedBuffer(
                           result_literal.shape(), run_options->allocator(),
                           executor->device_ordinal()));
   TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDevice(
-      run_options->stream(), result_literal, result));
+      run_options->stream(), result_literal, result_buffers));
+  ExecutionOutput result(std::move(result_buffers));
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -134,17 +143,15 @@ StatusOr<ExecutionOutput> InterpreterExecutable::ExecuteAsyncOnStream(
     const double nanoseconds = (end_micros - start_micros) * 1000.0;
     profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
-
-  std::vector<se::OwningDeviceMemory> buffers_to_free;
-  for (ShapeTree<MaybeOwningDeviceMemory>& argument : arguments) {
-    for (std::pair<ShapeIndex, MaybeOwningDeviceMemory>& buffer : argument) {
-      auto maybe_owning_buffer = buffer.second.Release();
+  for (auto& argument : arguments) {
+    for (auto& index_buffer : *argument.MutableBuffers()) {
+      auto maybe_owning_buffer = index_buffer.second.Release();
       if (maybe_owning_buffer) {
-        buffers_to_free.push_back(std::move(*maybe_owning_buffer));
+        result.AddToBeReleased(std::move(*maybe_owning_buffer));
       }
     }
   }
-  return ExecutionOutput(std::move(result), std::move(buffers_to_free), {}, {});
+  return std::move(result);
 }
 
 /*static*/ int64 InterpreterExecutable::ShapeSizeBytes(const Shape& shape) {

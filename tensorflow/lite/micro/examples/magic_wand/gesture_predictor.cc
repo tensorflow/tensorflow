@@ -17,39 +17,56 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/examples/magic_wand/constants.h"
 
-// How many times the most recent gesture has been matched in a row
-int continuous_count = 0;
-// The result of the last prediction
-int last_predict = -1;
+namespace {
+// State for the averaging algorithm we're using.
+float prediction_history[kGestureCount][kPredictionHistoryLength] = {};
+int prediction_history_index = 0;
+int prediction_suppression_count = 0;
+}  // namespace
 
 // Return the result of the last prediction
-// 0: wing, 1: ring, 2: slope, 3: unknown
+// 0: wing("W"), 1: ring("O"), 2: slope("angle"), 3: unknown
 int PredictGesture(float* output) {
-  // Find whichever output has a probability > 0.8 (they sum to 1)
-  int this_predict = -1;
-  for (int i = 0; i < 3; i++) {
-    if (output[i] > 0.8) this_predict = i;
+  // Record the latest predictions in our rolling history buffer.
+  for (int i = 0; i < kGestureCount; ++i) {
+    prediction_history[i][prediction_history_index] = output[i];
   }
-  // No gesture was detected above the threshold
-  if (this_predict == -1) {
-    continuous_count = 0;
-    last_predict = 3;
-    return 3;
+  // Figure out which slot to put the next predictions into.
+  ++prediction_history_index;
+  if (prediction_history_index >= kPredictionHistoryLength) {
+    prediction_history_index = 0;
   }
-  if (last_predict == this_predict) {
-    continuous_count += 1;
+
+  // Average the last n predictions for each gesture, and find which has the
+  // highest score.
+  int max_predict_index = -1;
+  float max_predict_score = 0.0f;
+  for (int i = 0; i < kGestureCount; i++) {
+    float prediction_sum = 0.0f;
+    for (int j = 0; j < kPredictionHistoryLength; ++j) {
+      prediction_sum += prediction_history[i][j];
+    }
+    const float prediction_average = prediction_sum / kPredictionHistoryLength;
+    if ((max_predict_index == -1) || (prediction_average > max_predict_score)) {
+      max_predict_index = i;
+      max_predict_score = prediction_average;
+    }
+  }
+
+  // If there's been a recent prediction, don't trigger a new one too soon.
+  if (prediction_suppression_count > 0) {
+    --prediction_suppression_count;
+  }
+  // If we're predicting no gesture, or the average score is too low, or there's
+  // been a gesture recognised too recently, return no gesture.
+  if ((max_predict_index == kNoGesture) ||
+      (max_predict_score < kDetectionThreshold) ||
+      (prediction_suppression_count > 0)) {
+    return kNoGesture;
   } else {
-    continuous_count = 0;
+    // Reset the suppression counter so we don't come up with another prediction
+    // too soon.
+    prediction_suppression_count = kPredictionSuppressionDuration;
+    return max_predict_index;
   }
-  last_predict = this_predict;
-  // If we haven't yet had enough consecutive matches for this gesture,
-  // report a negative result
-  if (continuous_count < kConsecutiveInferenceThresholds[this_predict]) {
-    return 3;
-  }
-  // Otherwise, we've seen a positive result, so clear all our variables
-  // and report it
-  continuous_count = 0;
-  last_predict = -1;
-  return this_predict;
 }

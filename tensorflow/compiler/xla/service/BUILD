@@ -27,9 +27,7 @@ package_group(
     includes = [
         "//tensorflow/compiler/xla:friends",
     ],
-    packages = [
-        "//learning/brain/experimental/tf_runtime/...",
-    ],
+    packages = ["//learning/brain/experimental/tf_runtime/..."],
 )
 
 tf_proto_library_cc(
@@ -1373,6 +1371,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_proto_cc",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -1953,6 +1952,7 @@ cc_library(
     hdrs = ["all_reduce_combiner.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_domain_map",
         ":hlo_pass",
         ":hlo_query",
@@ -3109,6 +3109,7 @@ cc_library(
     deps = [
         ":heap_simulator",
         ":hlo_cost_analysis",
+        "//tensorflow/compiler/xla:debug_options_flags",
     ],
 )
 
@@ -3132,6 +3133,7 @@ cc_library(
     hdrs = ["hlo_dce.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_pass",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -3434,6 +3436,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:hash",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
     ],
@@ -4346,6 +4349,7 @@ cc_library(
         ":call_graph",
         ":hlo",
         ":hlo_pass",
+        ":hlo_query",
         ":pattern_matcher",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -4585,6 +4589,7 @@ cc_library(
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",  # fixdeps: keep
         "//tensorflow/stream_executor/lib",

@@ -193,14 +193,13 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "monitoring",
-    srcs = ["monitoring.cc"],
-    hdrs = ["//tensorflow/core/platform:monitoring.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
+filegroup(
+    name = "xla_cpu_runtime_srcs",
+    srcs = [
+        "cord.h",
+        "dynamic_annotations.h",
+        "env_time.cc",
+        "integral_types.h",
     ],
 )
 
@@ -529,7 +528,6 @@ filegroup(
     srcs = [
         "casts.h",
         "cord.h",
-        "monitoring.cc",
         "mutex.h",
         "mutex_data.h",
         "notification.h",

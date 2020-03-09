@@ -81,6 +81,9 @@ def start(logdir):
                       'server and profiler APIs at the same time.')
       raise errors.AlreadyExistsError(None, None,
                                       'Another profiler is running.')
+    except Exception:
+      _profiler = None
+      raise
 
 
 @tf_export('profiler.experimental.stop', v1=[])
@@ -102,8 +105,24 @@ def stop(save=True):
           None, None,
           'Cannot export profiling results. No profiler is running.')
     if save:
-      _profiler.export_to_tb()
+      try:
+        _profiler.export_to_tb()
+      except Exception:
+        _profiler = None
+        raise
     _profiler = None
+
+
+def warmup():
+  """Warm-up the profiler session.
+
+  The profiler session will set up profiling context, including loading CUPTI
+  library for GPU profiling. This is used for improving the accuracy of
+  the profiling results.
+
+  """
+  start('')
+  stop(save=False)
 
 
 @tf_export('profiler.experimental.server.start', v1=[])
@@ -115,12 +134,8 @@ def start_server(port):
 
   Args:
     port: port profiler server listens to.
-
-  Example usage:
-  ```python
-  tf.profiler.experimental.server.start('6009')
-  # do your training here.
-
+  Example usage: ```python tf.profiler.experimental.server.start('6009') # do
+    your training here.
   """
   _pywrap_profiler.start_server(port)
 

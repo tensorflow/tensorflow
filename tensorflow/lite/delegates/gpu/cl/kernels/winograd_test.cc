@@ -77,7 +77,12 @@ TEST_F(OpenCLOperationTest, Winograd4x4To36) {
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
+      float eps;
+      if (precision == CalculationsPrecision::F32) {
+        eps = 1e-5f * (env_.device().SupportsFP32RTN() ? 1.0f : 4.0f);
+      } else {
+        eps = 1e-2f * (env_.device().SupportsFP16RTN() ? 1.0f : 4.0f);
+      }
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
@@ -144,7 +149,12 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
+      float eps;
+      if (precision == CalculationsPrecision::F32) {
+        eps = 1e-5f * (env_.device().SupportsFP32RTN() ? 1.0f : 4.0f);
+      } else {
+        eps = 1e-2f * (env_.device().SupportsFP16RTN() ? 1.0f : 4.0f);
+      }
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);

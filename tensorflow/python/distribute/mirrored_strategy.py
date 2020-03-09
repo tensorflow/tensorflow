@@ -661,6 +661,14 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         input_contexts,
         self._container_strategy())
 
+  def _experimental_distribute_values_from_function(self, value_fn):
+    per_replica_values = []
+    for replica_id in range(self._num_replicas_in_sync):
+      per_replica_values.append(value_fn(
+          distribute_lib.ValueContext(replica_id,
+                                      self._num_replicas_in_sync)))
+    return values.regroup(per_replica_values, always_wrap=True)
+
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
                                           initial_loop_values=None):
@@ -788,7 +796,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _get_cross_device_ops(self):
     return self._cross_device_ops or self._inferred_cross_device_ops
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.Mirrored) and
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
@@ -801,11 +809,16 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
     return self._get_cross_device_ops().reduce(
-        reduce_op, value, destinations=destinations)
+        reduce_op,
+        value,
+        destinations=destinations,
+        experimental_hints=experimental_hints)
 
-  def _batch_reduce_to(self, reduce_op, value_destination_pairs):
+  def _batch_reduce_to(self, reduce_op, value_destination_pairs,
+                       experimental_hints):
     return self._get_cross_device_ops().batch_reduce(reduce_op,
-                                                     value_destination_pairs)
+                                                     value_destination_pairs,
+                                                     experimental_hints)
 
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.

@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -57,10 +57,26 @@ Value CreateF32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
   return builder->create<ConstantOp>(location, type, attr);
 }
 
+Value CreatTfF32ConstOp(OpBuilder* builder, ArrayRef<int64_t> shape, float val,
+                        mlir::Location location) {
+  auto type = RankedTensorType::get(shape, builder->getF32Type());
+  auto ele_type = RankedTensorType::get({1}, builder->getF32Type());
+  auto attr = DenseElementsAttr::get(ele_type, val);
+  return builder->create<TF::ConstOp>(location, type, attr);
+}
+
 Value CreateI64DenseConst(OpBuilder* builder, ArrayRef<int64_t> shape,
                           ArrayRef<int64_t> values, mlir::Location location) {
   auto type = RankedTensorType::get(static_cast<int>(shape.size()),
                                     builder->getIntegerType(64));
+  auto attr = DenseElementsAttr::get(type, values);
+  return builder->create<ConstantOp>(location, type, attr);
+}
+
+Value CreateI32DenseConst(OpBuilder* builder, ArrayRef<int32_t> values,
+                          mlir::Location location) {
+  auto type = RankedTensorType::get(static_cast<int>(values.size()),
+                                    builder->getIntegerType(32));
   auto attr = DenseElementsAttr::get(type, values);
   return builder->create<ConstantOp>(location, type, attr);
 }
@@ -70,22 +86,37 @@ Value CreateNoneValue(OpBuilder* builder, mlir::Location location) {
                                            builder->getUnitAttr());
 }
 
-Value Transpose2D(OpBuilder* builder, Value value_to_transpose,
-                  RankedTensorType type, mlir::Location location) {
+Value Transpose(OpBuilder* builder, Value value_to_transpose,
+                SmallVector<int32_t, 4> perm, RankedTensorType original_type,
+                mlir::Location location) {
   // Create a constant op for transpose permutation.
-  SmallVector<int64_t, 2> perm = {1, 0};
-  auto perm_op = CreateI64DenseConst(builder, perm, perm, location);
+  auto perm_op = CreateI32DenseConst(builder, perm, location);
 
   // Create tensor type for the transpose result.
-  auto transpose_type = type;
+  auto transpose_type = original_type;
   auto transpose_shape = functional::map(
-      [transpose_type](int64_t dim) { return transpose_type.getDimSize(dim); },
+      [transpose_type](int32_t dim) { return transpose_type.getDimSize(dim); },
       perm);
   auto elem_type = transpose_type.getElementType();
   auto result_type = RankedTensorType::get(transpose_shape, elem_type);
 
   return builder->create<TF::TransposeOp>(location, result_type,
                                           value_to_transpose, perm_op);
+}
+
+Value Transpose2D(OpBuilder* builder, Value value_to_transpose,
+                  RankedTensorType type, mlir::Location location) {
+  // Create a constant op for transpose permutation.
+  SmallVector<int32_t, 4> perm = {1, 0};
+  return Transpose(builder, value_to_transpose, perm, type, location);
+}
+
+Value Reverse(OpBuilder* builder, Value value_to_reverse, int axis,
+              RankedTensorType type, mlir::Location location) {
+  auto axis_op = CreateI32SplatConst(builder, {1}, axis, location);
+  // The result type will be the same as the input.
+  return builder->create<TF::ReverseV2Op>(location, type, value_to_reverse,
+                                          axis_op);
 }
 
 ArrayRef<int64_t> GetRankedTensorShape(Value value) {
@@ -565,16 +596,6 @@ LogicalResult CreateEqualSizeSplitVOp(Value input, int axis, int splits,
   return success();
 }
 
-void UpdateFuncSignature(int batch, int time, int output,
-                         mlir::FuncOp* func_op) {
-  SmallVector<int64_t, 4> output_shape{batch, time, output};
-  auto input_types = func_op->getType().getInputs();
-  auto element_type = input_types[0].cast<RankedTensorType>().getElementType();
-  auto output_type = mlir::RankedTensorType::get(output_shape, element_type);
-  func_op->setType(
-      mlir::FunctionType::get(input_types, output_type, func_op->getContext()));
-}
-
 // TODO(b/147436982): Consider refactor this to be more general.
 LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
   // For argument order, please check out standard_lstm under
@@ -586,15 +607,43 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
   Value recurrent_kernel = func_op.getArgument(4);
   Value bias = func_op.getArgument(5);
 
-  // Assume it's batch majored.
+  // The func op should have 5 outputs.
+  if (func_op.getNumResults() != 5) return failure();
+
+  // TFL lstm only supports time-majored inputs, so if it's not time-majored,
+  // we will transpose the inputs and outputs.
+  auto time_major_attr = func_op.getAttrOfType<BoolAttr>("tf.time_major");
+  if (time_major_attr == nullptr) return failure();
+
+  bool time_majored = time_major_attr.getValue();
   auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
   if (!input_type) {
     func_op.emitError() << "Input type is not a ranked tensor type";
     return failure();
   }
 
-  int batch = input_type.getDimSize(0);
-  int time = input_type.getDimSize(1);
+  auto final_inputs = input;
+  auto final_input_type = input_type;
+  // We will transpose the inputs.
+  if (!time_majored) {
+    SmallVector<int32_t, 4> perm = {1, 0, 2};
+    final_inputs =
+        Transpose(builder, final_inputs, perm, input_type, func_op.getLoc());
+    final_input_type = final_inputs.getType().dyn_cast<RankedTensorType>();
+  }
+
+  // Handle go_backwards:
+  // LSTM in Keras semantic will reverse the input sequence if it's go_backwards
+  auto go_backwards_attr = func_op.getAttrOfType<BoolAttr>("tf.go_backwards");
+
+  if (go_backwards_attr != nullptr && go_backwards_attr.getValue()) {
+    // We assume input is already in {time, batch, size} layout.
+    final_inputs =
+        Reverse(builder, final_inputs, 0, final_input_type, func_op.getLoc());
+  }
+
+  int batch = final_input_type.getDimSize(1);
+  int time = final_input_type.getDimSize(0);
 
   // Setup correct weights.
   RankedTensorType weight_type =
@@ -634,18 +683,16 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
                                      &bias_array)))
     return failure();
 
-  // Update the function signature:
-  UpdateFuncSignature(batch, time, n_output, &func_op);
-
   // Build the lstm op.
-  SmallVector<int64_t, 3> output_shape = {batch, time, n_output};
+  SmallVector<int64_t, 3> output_shape = {time, batch, n_output};
   auto result_type = mlir::RankedTensorType::get(
-      output_shape, input.getType().cast<RankedTensorType>().getElementType());
+      output_shape,
+      final_inputs.getType().cast<RankedTensorType>().getElementType());
 
   Value none = builder->create<mlir::ConstantOp>(
       func_op.getLoc(), builder->getNoneType(), builder->getUnitAttr());
-  auto lstm = builder->create<mlir::TFL::LSTMOp>(
-      func_op.getLoc(), result_type, /*input=*/input,
+  auto lstm = builder->create<mlir::TFL::UnidirectionalSequenceLSTMOp>(
+      func_op.getLoc(), result_type, /*input=*/final_inputs,
       /*input_to_input_weights=*/weights_array->getResult(0),
       /*input_to_forget_weights=*/weights_array->getResult(1),
       /*input_to_cell_weights=*/weights_array->getResult(2),
@@ -670,9 +717,40 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       /*cell_layer_norm_coefficients=*/none,
       /*output_layer_norm_coefficients=*/none, builder->getStringAttr("TANH"),
       builder->getF32FloatAttr(10.0), builder->getF32FloatAttr(0.0),
-      builder->getStringAttr("FULL"));
+      builder->getBoolAttr(true));
 
-  builder->create<mlir::ReturnOp>(func_op.getLoc(), lstm.getResult());
+  auto final_output = lstm.getResult();
+  if (!time_majored) {
+    SmallVector<int32_t, 4> perm = {1, 0, 2};
+    final_output =
+        Transpose(builder, final_output, perm, result_type, func_op.getLoc());
+  }
+
+  SmallVector<Value, 5> outputs;
+  SmallVector<Type, 5> output_types;
+
+  // Due to the existence of the while loop, the timestamp may be unknown
+  // for the signature, for us, since we know the inputs, we can infer the time
+  // steps.
+  for (int i = 0; i < 5; ++i) {
+    if (i == 1) {
+      // only this one is the real output.
+      outputs.push_back(final_output);
+      output_types.push_back(final_output.getType());
+    } else {
+      auto result_type =
+          func_op.getCallableResults()[i].dyn_cast<RankedTensorType>();
+      outputs.push_back(CreatTfF32ConstOp(builder, result_type.getShape(), 0.0f,
+                                          func_op.getLoc()));
+      output_types.push_back(result_type);
+    }
+  }
+
+  // Update function signatures.
+  func_op.setType(mlir::FunctionType::get(func_op.getType().getInputs(),
+                                          output_types, func_op.getContext()));
+
+  builder->create<mlir::ReturnOp>(func_op.getLoc(), outputs);
   return success();
 }
 

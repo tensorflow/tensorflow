@@ -230,6 +230,14 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         ))
     self.assertAllClose([2. * 5. + 3. * 4.], self.evaluate(vp))
 
+  def testNonDifferentiableOpWithInputTangent(self):
+    x = constant_op.constant(1.)
+    with forwardprop.ForwardAccumulator(x, 2.) as acc1:
+      with forwardprop.ForwardAccumulator(x, 2.) as acc2:
+        y = array_ops.zeros_like(x)
+      self.assertIsNone(acc1.jvp(y))
+    self.assertIsNone(acc2.jvp(y))
+
   def testJVPFunctionUsedByAccumulatorForOps(self):
     previous_fn = forwardprop._jvp_dispatch
     try:

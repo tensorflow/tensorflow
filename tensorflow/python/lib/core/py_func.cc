@@ -48,7 +48,7 @@ namespace tensorflow {
 namespace {
 
 static mutex mu(LINKER_INITIALIZED);
-static PyObject* py_trampoline GUARDED_BY(mu) = nullptr;
+static PyObject* py_trampoline TF_GUARDED_BY(mu) = nullptr;
 
 // Returns the py_trampoline that is used to pass the control to the
 // python runtime.
@@ -91,11 +91,11 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
   Device* device = IsCPUDevice(call->device) ? nullptr : call->device;
   for (int64 i = 0; i < n; ++i) {
     PyObject* arg = nullptr;
-    const Tensor& t = call->ins[i];
     if (call->eager) {
       TensorHandle* handle;
+      Tensor t = call->ins[i];
       TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
-          t, ctx->CanonicalDevice(device), nullptr, ctx, &handle));
+          std::move(t), ctx->CanonicalDevice(device), nullptr, ctx, &handle));
       arg = EagerTensorFromHandle(new TFE_TensorHandle{
           std::make_unique<tensorflow::TensorHandleInterface>(handle)});
       if (arg == nullptr) {
@@ -103,7 +103,7 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
         return errors::Internal("Unable to procure EagerTensor from Tensor.");
       }
     } else {
-      Status s = TensorToNdarray(t, &arg);
+      Status s = TensorToNdarray(call->ins[i], &arg);
       if (!s.ok()) {
         Py_DECREF(lst);
         return s;

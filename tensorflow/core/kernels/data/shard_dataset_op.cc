@@ -48,8 +48,9 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         input_(input),
         require_non_empty_(require_non_empty),
         traceme_metadata_(
-            {{"index", strings::Printf("%lld", index)},
-             {"num_shards", strings::Printf("%lld", num_shards)}}) {
+            {{"index", strings::Printf("%lld", static_cast<long long>(index))},
+             {"num_shards",
+              strings::Printf("%lld", static_cast<long long>(num_shards))}}) {
     input_->Ref();
   }
 
@@ -199,8 +200,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-    int64 next_index_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+    int64 next_index_ TF_GUARDED_BY(mu_);
   };
 
   const int64 num_shards_;

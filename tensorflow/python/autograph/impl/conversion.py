@@ -400,7 +400,9 @@ def is_whitelisted(
         logging.log(2, 'Whitelisted: %s: %s', o, rule)
         return True
 
-  if tf_inspect.isgeneratorfunction(o):
+  # The check for __code__ below is because isgeneratorfunction crashes
+  # without one.
+  if hasattr(o, '__code__') and tf_inspect.isgeneratorfunction(o):
     logging.warn(
         'Entity %s appears to be a generator function. It will not be converted'
         ' by AutoGraph.', o)

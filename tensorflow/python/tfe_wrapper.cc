@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/dlpack.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -473,12 +474,18 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     return output;
   });
-  m.def("TFE_ContextClearRemoteExecutors", [](py::handle& ctx) {
+  m.def("TFE_ContextSyncExecutors", [](py::handle& ctx) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
-    TFE_ContextClearRemoteExecutors(tensorflow::InputTFE_Context(ctx),
-                                    status.get());
+    TFE_ContextAsyncWait(tensorflow::InputTFE_Context(ctx), status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+  });
+  m.def("TFE_ContextClearExecutors", [](py::handle& ctx) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextAsyncWait(tensorflow::InputTFE_Context(ctx), status.get());
+    // NOTE: different from TFE_ContextSyncExecutors that raises potential
+    // errors, deliberately ignore executor statuses in cleanup.
   });
 
   // TFE_Executor logic
@@ -1040,6 +1047,50 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   // Util buffer helper functions
   m.def("TF_NewBufferFromString", &TF_NewBufferFromString,
         py::return_value_policy::reference);
+
+  // DLPack functions
+  m.def("TFE_ToDlpackCapsule", [](py::handle& o) {
+    PyObject* eager_tensor_pyobject_ptr = o.ptr();
+    TFE_TensorHandle* thandle = EagerTensor_Handle(eager_tensor_pyobject_ptr);
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    void* dlm_ptr = tensorflow::TFE_HandleToDLPack(thandle, status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+
+    py::capsule capsule(
+        dlm_ptr, tensorflow::kDlTensorCapsuleName, [](PyObject* capsule) {
+          if (PyCapsule_IsValid(capsule, tensorflow::kDlTensorCapsuleName)) {
+            void* dlm_rptr =
+                PyCapsule_GetPointer(capsule, tensorflow::kDlTensorCapsuleName);
+            if (dlm_rptr) {
+              tensorflow::TFE_CallDLManagedTensorDeleter(dlm_rptr);
+              PyCapsule_SetDestructor(capsule, nullptr);
+            }
+          }
+        });
+    return capsule;
+  });
+
+  m.def("TFE_FromDlpackCapsule", [](const py::capsule& pycapsule) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    if (absl::string_view(pycapsule.name()) !=
+        tensorflow::kDlTensorCapsuleName) {
+      status->status = tensorflow::errors::InvalidArgument(
+          "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
+          "Note that a DLPack tensor may be consumed at most once.",
+          absl::string_view(pycapsule.name()));
+      tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    }
+    TFE_TensorHandle* thandle =
+        tensorflow::TFE_HandleFromDLPack(pycapsule, status.get());
+
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+
+    PyCapsule_SetName(pycapsule.ptr(), "used_dltensor");
+    PyCapsule_SetDestructor(pycapsule.ptr(), nullptr);
+    return py::handle(EagerTensorFromHandle(thandle));
+  });
 
   // C API Enum
 

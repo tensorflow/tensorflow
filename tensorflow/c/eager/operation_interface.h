@@ -99,9 +99,6 @@ class AbstractOperationInterface {
   virtual tensorflow::Status SetUseXla(bool enable) {
     return tensorflow::errors::Unimplemented("SetUseXla not implemented");
   }
-  virtual tensorflow::Status ConsumeInput(TFE_TensorHandle* h) {
-    return tensorflow::errors::Unimplemented("ConsumeInput not implemented");
-  }
   virtual tensorflow::Status SetCancellationManager(
       TFE_CancellationManager* cancellation_manager) {
     return tensorflow::errors::Unimplemented(
@@ -172,7 +169,6 @@ class OperationInterface : public AbstractOperationInterface {
   Status OutputLength(const char* output_name, int* length) override;
 
   Status SetUseXla(bool enable) override;
-  Status ConsumeInput(TFE_TensorHandle* h) override;
   Status SetCancellationManager(
       TFE_CancellationManager* cancellation_manager) override;
 

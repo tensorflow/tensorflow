@@ -42,7 +42,7 @@ tf_py_test(
     name = "applications_test",
     size = "medium",
     srcs = ["applications_test.py"],
-    shard_count = 32,
+    shard_count = 36,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",

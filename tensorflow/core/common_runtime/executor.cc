@@ -197,6 +197,10 @@ struct NodeItem {
   // Number of output edges.
   size_t num_output_edges;
 
+  // If non-null, contains an array of num_outputs bools, where the ith bool
+  // is true if and only if the ith output is consumed by another node.
+  std::unique_ptr<bool[]> outputs_required;
+
   const EdgeInfo* output_edge_list() const { return output_edge_base(); }
 
   // ith output edge.
@@ -708,16 +712,24 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     }
 
     // Record information about whether each output of the op is used.
-    std::vector<bool> used_outputs(n->num_outputs(), false);
+    std::unique_ptr<bool[]> outputs_required(new bool[n->num_outputs()]);
+    std::fill(&outputs_required[0], &outputs_required[n->num_outputs()], false);
+    size_t unused_outputs = n->num_outputs();
     for (const Edge* e : n->out_edges()) {
       if (e->src_output() >= 0) {
-        used_outputs[e->src_output()] = true;
+        if (!outputs_required[e->src_output()]) {
+          --unused_outputs;
+          outputs_required[e->src_output()] = true;
+        }
       }
     }
-    for (bool used_output : used_outputs) {
-      if (!used_output) {
-        metrics::RecordUnusedOutput(n->type_string());
+    if (unused_outputs > 0) {
+      for (int i = 0; i < n->num_outputs(); ++i) {
+        if (!outputs_required[i]) {
+          metrics::RecordUnusedOutput(n->type_string());
+        }
       }
+      item->outputs_required = std::move(outputs_required);
     }
   }
 
@@ -1105,16 +1117,16 @@ class ExecutorState {
     int num_pending_inputs = 0;
 
     // The highest iteration number we have reached so far in this frame.
-    int64 iteration_count GUARDED_BY(mu) = 0;
+    int64 iteration_count TF_GUARDED_BY(mu) = 0;
 
     // The number of outstanding iterations.
-    int num_outstanding_iterations GUARDED_BY(mu) = 1;
+    int num_outstanding_iterations TF_GUARDED_BY(mu) = 1;
 
    private:
     // The active iteration states of this frame.
     gtl::InlinedVector<IterationState*, 12> iterations;
-    IterationState** const iterations_raw GUARDED_BY(mu);
-    IterationState* iterations_first GUARDED_BY(mu);
+    IterationState** const iterations_raw TF_GUARDED_BY(mu);
+    IterationState* iterations_first TF_GUARDED_BY(mu);
 
    public:
     // The NextIteration nodes to enter a new iteration. If the number of
@@ -1122,18 +1134,18 @@ class ExecutorState {
     // the next iteration until the number of outstanding iterations falls
     // below the limit.
     std::vector<std::pair<const NodeItem*, Entry>> next_iter_roots
-        GUARDED_BY(mu);
+        TF_GUARDED_BY(mu);
 
     // The values of the loop invariants for this loop. They are added into
     // this list as they "enter" the frame. When a loop invariant enters,
     // we make it available to all active iterations. When the frame starts
     // a new iteration, we make all the current loop invariants available
     // to the new iteration.
-    std::vector<std::pair<const NodeItem*, Entry>> inv_values GUARDED_BY(mu);
+    std::vector<std::pair<const NodeItem*, Entry>> inv_values TF_GUARDED_BY(mu);
 
     // The list of dead exit node items for the current highest iteration. We
     // will only "execute" the dead exits of the final iteration.
-    std::vector<const NodeItem*> dead_exits GUARDED_BY(mu);
+    std::vector<const NodeItem*> dead_exits TF_GUARDED_BY(mu);
 
     // Static information specific to this frame.
     PendingCounts* pending_counts = nullptr;
@@ -1155,7 +1167,7 @@ class ExecutorState {
     }
 
     inline IterationState* GetIteration(int64 iter)
-        EXCLUSIVE_LOCKS_REQUIRED(mu) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
       if (TF_PREDICT_TRUE(iter == 0)) {
         return iterations_first;
       } else {
@@ -1165,7 +1177,7 @@ class ExecutorState {
     }
 
     inline void SetIteration(int64 iter, IterationState* state)
-        EXCLUSIVE_LOCKS_REQUIRED(mu) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
       size_t index = iter % (max_parallel_iterations + 1);
       DCHECK(state == nullptr || iterations[index] == nullptr);
       iterations_raw[index] = state;
@@ -1186,7 +1198,7 @@ class ExecutorState {
     // frame. Return true iff the execution of the frame is done.
     inline bool DecrementOutstandingOpsLocked(const GraphView* gview,
                                               int64 iter, TaggedNodeSeq* ready)
-        EXCLUSIVE_LOCKS_REQUIRED(mu) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
       IterationState* istate = GetIteration(iter);
       istate->outstanding_ops--;
       if (istate->outstanding_ops != 0) {
@@ -1197,39 +1209,40 @@ class ExecutorState {
     }
 
     // Returns true if the computation in the frame is completed.
-    inline bool IsFrameDone() EXCLUSIVE_LOCKS_REQUIRED(mu) {
+    inline bool IsFrameDone() TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
       return (num_pending_inputs == 0 && num_outstanding_iterations == 0);
     }
 
     // Returns true if the iteration of the frame is completed.
-    bool IsIterationDone(int64 iter) EXCLUSIVE_LOCKS_REQUIRED(mu);
+    bool IsIterationDone(int64 iter) TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Increments the iteration id. If this is a new iteration, initialize it.
     void IncrementIteration(const GraphView* gview, TaggedNodeSeq* ready)
-        EXCLUSIVE_LOCKS_REQUIRED(mu);
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Activate all the deferred NextIteration nodes in a new iteration.
     void ActivateNexts(const GraphView* gview, int64 iter, TaggedNodeSeq* ready)
-        EXCLUSIVE_LOCKS_REQUIRED(mu);
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Activate all the current loop invariants in a new iteration.
     void ActivateLoopInvs(const GraphView* gview, int64 iter,
-                          TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
+                          TaggedNodeSeq* ready) TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Add a new loop invariant and make it available to all active
     // iterations.
     void AddLoopInv(const NodeItem* item, const Entry& entry,
-                    TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
+                    TaggedNodeSeq* ready) TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Activate the successors of a node. Contents of *outputs are left in an
     // indeterminate state after returning from this method.
     void ActivateNodes(const NodeItem* item, const bool is_dead, int64 iter,
                        EntryVector* outputs, TaggedNodeSeq* ready)
-        EXCLUSIVE_LOCKS_REQUIRED(mu);
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // Cleanup iterations of this frame starting from iteration iter.
     bool CleanupIterations(const GraphView* gview, int64 iter,
-                           TaggedNodeSeq* ready) EXCLUSIVE_LOCKS_REQUIRED(mu);
+                           TaggedNodeSeq* ready)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     void DumpIterationState(ExecutorState* parent) {
       mutex_lock l(mu);
@@ -1309,7 +1322,6 @@ class ExecutorState {
   int64 step_id_;
   // Not owned.
   RendezvousInterface* rendezvous_;
-  Executor::RendezvousFactory* create_rendezvous_ = nullptr;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
   string session_handle_;
@@ -1349,18 +1361,19 @@ class ExecutorState {
 
   // Available via OpKernelContext to every OpKernel invocation.
   mutex num_deferred_ops_mu_;
-  int64 num_deferred_ops_ GUARDED_BY(num_deferred_ops_mu_) = 0;
-  bool finish_when_deferred_ops_done_ GUARDED_BY(num_deferred_ops_mu_) = false;
+  int64 num_deferred_ops_ TF_GUARDED_BY(num_deferred_ops_mu_) = 0;
+  bool finish_when_deferred_ops_done_ TF_GUARDED_BY(num_deferred_ops_mu_) =
+      false;
 
   mutex mu_;
-  Status status_ GUARDED_BY(mu_);
+  Status status_ TF_GUARDED_BY(mu_);
 
   // Mapping from frame name to outstanding frames. A new frame is created
   // at some iteration of an active frame. So the unique key for the new
   // child frame is composed of the name of the parent frame, the iteration
   // number at which the parent frame is creating the new frame, and the
   // name of the new frame from nodedef.
-  gtl::FlatMap<string, FrameState*> outstanding_frames_ GUARDED_BY(mu_);
+  gtl::FlatMap<string, FrameState*> outstanding_frames_ TF_GUARDED_BY(mu_);
 
   // The unique name of a frame.
   inline string MakeFrameName(FrameState* frame, int64 iter_id,
@@ -1440,7 +1453,7 @@ class ExecutorState {
   // resizes and this particular iteration's array element will not
   // be changed out from under us because the iteration is still alive).
   Entry* GetInputTensors(FrameState* input_frame,
-                         int64 input_iter) const NO_THREAD_SAFETY_ANALYSIS {
+                         int64 input_iter) const TF_NO_THREAD_SAFETY_ANALYSIS {
     return input_frame->GetIteration(input_iter)->input_tensors;
   }
 };
@@ -1450,7 +1463,6 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       log_memory_(LogMemory::IsEnabled()),
       step_id_(args.step_id),
       rendezvous_(args.rendezvous),
-      create_rendezvous_(&impl->params_.rendezvous_factory),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
       session_handle_(args.session_handle),
@@ -1710,7 +1722,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.log_memory = log_memory_;
   params.record_tensor_accesses = impl_->device_record_tensor_accesses_;
   params.rendezvous = rendezvous_;
-  params.create_rendezvous = create_rendezvous_;
   params.collective_executor = collective_executor_;
   params.session_state = session_state_;
   params.session_handle = session_handle_;
@@ -1725,6 +1736,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.inputs = &inputs;
   params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
+  params.run_all_kernels_inline = run_all_kernels_inline_;
   params.stats_collector = stats_collector_;
   params.inc_num_deferred_ops_function = [this]() {
     mutex_lock lock(num_deferred_ops_mu_);
@@ -1823,6 +1835,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
       params.is_input_dead = is_input_dead;
       params.output_attr_array = item.output_attrs();
       params.forward_from_array = item.forward_from();
+      params.outputs_required_array = item.outputs_required.get();
 
       if (item.kernel_is_async) {
         // Asynchronous computes.
@@ -2093,9 +2106,10 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
   for (int i = 0; i < item.num_outputs; ++i) {
     const TensorValue val = ctx->release_output(i);
     if (val.tensor == nullptr) {
-      // Unless it's a Switch or a Recv, the node must produce a
-      // tensor value at i-th output.
-      if (!item.is_recv_or_switch) {
+      // Unless it's a Switch or a Recv, or the executor has marked the output
+      // as not required, the node must produce a tensor value at i-th output.
+      if (!(item.is_recv_or_switch ||
+            (item.outputs_required && !item.outputs_required[i]))) {
         s.Update(errors::Internal("Missing ", i, "-th output from ",
                                   FormatNodeDefForError(item.kernel->def())));
       }

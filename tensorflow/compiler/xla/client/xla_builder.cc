@@ -70,45 +70,6 @@ void SetProtoIdAndName(T* entry, const string& base_name, char separator,
   entry->set_id(id);
   entry->set_name(GetFullName(base_name, separator, id));
 }
-
-template <typename InstructionType>
-StatusOr<InstructionType> LookUpInstructionByHandleInternal(
-    const absl::flat_hash_map<int64, int64>& handle_to_index,
-    const std::vector<HloInstructionProto>& instructions, int64 handle) {
-  auto it = handle_to_index.find(handle);
-  if (it == handle_to_index.end()) {
-    return InvalidArgument("No XlaOp with handle %d", handle);
-  }
-  return const_cast<InstructionType>(&instructions.at(it->second));
-}
-
-Status CheckBuildersAffinity(const XlaBuilder* op_builder,
-                             const XlaBuilder* builder, int64 handle) {
-  if (op_builder != builder) {
-    return InvalidArgument(
-        "XlaOp with handle %d is built by builder '%s', but is trying to use "
-        "it in builder '%s'",
-        handle, op_builder->name(), builder->name());
-  }
-  return Status::OK();
-}
-
-template <typename InstructionType, typename OpBuilderType,
-          typename BuilderType, typename OpType>
-StatusOr<InstructionType> LookUpInstructionInternal(
-    const absl::flat_hash_map<int64, int64>& handle_to_index,
-    const std::vector<HloInstructionProto>& instructions,
-    OpBuilderType op_builder, BuilderType builder, OpType op_handle) {
-  if (op_builder == nullptr) {
-    return InvalidArgument(
-        "Invalid XlaOp with handle %d; the builder of this op is freed",
-        op_handle);
-  }
-  TF_RETURN_IF_ERROR(CheckBuildersAffinity(op_builder, builder, op_handle));
-  return LookUpInstructionByHandleInternal<InstructionType>(
-      handle_to_index, instructions, op_handle);
-}
-
 }  // namespace
 
 XlaOp operator-(XlaOp x) { return Neg(x); }
@@ -143,7 +104,7 @@ XlaOp operator>>(XlaOp x, XlaOp y) {
 
 StatusOr<const Shape*> XlaBuilder::GetShapePtr(XlaOp op) const {
   TF_RETURN_IF_ERROR(first_error_);
-  TF_RETURN_IF_ERROR(CheckBuildersAffinity(op.builder(), this, op.handle()));
+  TF_RETURN_IF_ERROR(CheckOpBuilder(op));
   auto it = handle_to_index_.find(op.handle());
   if (it == handle_to_index_.end()) {
     return InvalidArgument("No XlaOp with handle %d", op.handle());
@@ -1941,6 +1902,16 @@ XlaOp XlaBuilder::ConditionalImpl(
   });
 }
 
+Status XlaBuilder::CheckOpBuilder(XlaOp op) const {
+  if (this != op.builder()) {
+    return InvalidArgument(
+        "XlaOp with handle %d is built by builder '%s', but is trying to use "
+        "it in builder '%s'",
+        op.handle(), op.builder()->name(), name());
+  }
+  return Status::OK();
+}
+
 XlaOp XlaBuilder::Reduce(XlaOp operand, XlaOp init_value,
                          const XlaComputation& computation,
                          absl::Span<const int64> dimensions_to_reduce) {
@@ -2886,27 +2857,23 @@ void XlaBuilder::AddCalledComputation(const XlaComputation& computation,
 StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
     const XlaOp op) const {
   TF_RETURN_IF_ERROR(first_error_);
-  return LookUpInstructionInternal<const HloInstructionProto*>(
-      handle_to_index_, instructions_, op.builder_, this, op.handle());
+  return LookUpInstructionInternal<const HloInstructionProto*>(op);
 }
 
 StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstructionByHandle(
     int64 handle) const {
-  return LookUpInstructionByHandleInternal<const HloInstructionProto*>(
-      handle_to_index_, instructions_, handle);
+  return LookUpInstructionByHandleInternal<const HloInstructionProto*>(handle);
 }
 
 StatusOr<HloInstructionProto*> XlaBuilder::LookUpMutableInstruction(
     const XlaOp op) {
   TF_RETURN_IF_ERROR(first_error_);
-  return LookUpInstructionInternal<HloInstructionProto*>(
-      handle_to_index_, instructions_, op.builder_, this, op.handle());
+  return LookUpInstructionInternal<HloInstructionProto*>(op);
 }
 
 StatusOr<HloInstructionProto*> XlaBuilder::LookUpMutableInstructionByHandle(
     int64 handle) {
-  return LookUpInstructionByHandleInternal<HloInstructionProto*>(
-      handle_to_index_, instructions_, handle);
+  return LookUpInstructionByHandleInternal<HloInstructionProto*>(handle);
 }
 
 // Enqueues a "retrieve parameter value" instruction for a parameter that was

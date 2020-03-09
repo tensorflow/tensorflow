@@ -1859,8 +1859,7 @@ class KerasLoadTest(test.TestCase, parameterized.TestCase):
         [feature_column_lib.DenseFeatures(columns),
          core.Dense(1)])
     model_input = {"x": constant_op.constant([[1.]])}
-    model.compile(optimizer="adam", loss="mse", run_eagerly=True,
-                  experimental_run_tf_function=True)
+    model.compile(optimizer="adam", loss="mse", run_eagerly=True)
     model.fit(model_input, constant_op.constant([[3.]]))
     loaded = cycle(model, cycles)
     loaded._default_save_signature(model_input)
@@ -1992,6 +1991,21 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     self.assertAllClose(13.5, imported.wrapped_total(constant_op.constant(.5)))
     self.assertAllClose({"output_0": 13},
                         imported.signatures["serving_default"]())
+
+  # TODO(allenl, kkb): Use the new memory checker here once it's fast enough (3
+  # iterations took hundreds of seconds). It would be really nice to check
+  # allocations at a lower level.
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def test_functions_cleaned(self):
+    if sys.version_info.major < 3:
+      self.skipTest("Not working in Python 2")
+    root = module.Module()
+    root.v = variables.Variable(1.)
+    root.f = def_function.function(
+        lambda x: x + root.v,
+        input_signature=[
+            tensor_spec.TensorSpec(shape=[], dtype=dtypes.float32)])
+    cycle(root, 1)
 
 
 if __name__ == "__main__":

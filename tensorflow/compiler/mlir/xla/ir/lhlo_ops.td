@@ -42,7 +42,7 @@ def LHLO_PredBuffer : MemRefOf<[HLO_Pred]>;
 // Any integer or floating-point tensor types
 def LHLO_IntOrFpBuffer : MemRefOf<[HLO_Int, AnyFloat]>;
 
-def LHLO_Buffer : MemRefOf<[AnyFloat, AnyInteger]>;
+def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger]>;
 
 def LHLO_TupleBuffer : NestedTupleOf<[LHLO_Buffer]>;
 
@@ -96,6 +96,8 @@ def LHLO_LogOp: LHLO_UnaryElementwiseOp<"log">, BASE_HLO_LogOp;
 def LHLO_NegOp: LHLO_UnaryElementwiseOp<"neg">, BASE_HLO_NegOp;
 
 def LHLO_RsqrtOp: LHLO_UnaryElementwiseOp<"rsqrt">, BASE_HLO_RsqrtOp;
+
+def LHLO_SqrtOp: LHLO_UnaryElementwiseOp<"sqrt">, BASE_HLO_SqrtOp;
 
 def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign">, BASE_HLO_SignOp;
 

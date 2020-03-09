@@ -95,6 +95,7 @@ class XlaOp {
   int64 handle() const { return handle_; }
 
   friend class XlaBuilder;
+  friend class MlirHloBuilder;
 
   // < 0 means "invalid handle".
   int64 handle_;
@@ -139,7 +140,7 @@ class XlaBuilder {
   XlaBuilder(const XlaBuilder&) = delete;
   XlaBuilder& operator=(const XlaBuilder&) = delete;
 
-  ~XlaBuilder();
+  virtual ~XlaBuilder();
 
   // Returns the computation name.
   const string& name() const { return name_; }
@@ -277,7 +278,7 @@ class XlaBuilder {
   StatusOr<Shape> GetShape(XlaOp op) const;
 
   // Returns the shape of the given op.
-  StatusOr<const Shape*> GetShapePtr(XlaOp op) const;
+  virtual StatusOr<const Shape*> GetShapePtr(XlaOp op) const;
 
   // Returns the (inferred) result for the current computation's shape. This
   // assumes the root instruction is the last added instruction.
@@ -645,7 +646,7 @@ class XlaBuilder {
   StatusOr<HloInstructionProto*> LookUpMutableInstructionByHandle(int64 handle);
 
   // Internal helper method that does the building for an arbitrary unary op.
-  XlaOp UnaryOp(HloOpcode unop, XlaOp operand);
+  virtual XlaOp UnaryOp(HloOpcode unop, XlaOp operand);
 
   // Internal helper method that does the building for an arbitrary binary op.
   // broadcast_dimensions specifies which dimensions to use for broadcasting
@@ -1056,11 +1057,40 @@ class XlaBuilder {
   friend XlaOp GetDimensionSize(XlaOp operand, int64 dimension);
   friend XlaOp SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension);
 
+ protected:
+  // Returns OK status if the given op was built using this builder. Otherwise,
+  // returns an error.
+  Status CheckOpBuilder(XlaOp op) const;
+
  private:
   XlaOp ConditionalImpl(
       XlaOp branch_index,
       absl::Span<const XlaComputation* const> branch_computations,
       absl::Span<const XlaOp> branch_operands);
+
+  // Here, InstructionType is either const HloInstructionProto* or non-const
+  // HloInstructionProto*.
+  template <typename InstructionType>
+  StatusOr<InstructionType> LookUpInstructionByHandleInternal(
+      int64 handle) const {
+    auto it = handle_to_index_.find(handle);
+    if (it == handle_to_index_.end()) {
+      return InvalidArgument("No XlaOp with handle %d", handle);
+    }
+    return const_cast<InstructionType>(&instructions_.at(it->second));
+  }
+
+  // Here, InstructionType is either const HloInstructionProto* or non-const
+  // HloInstructionProto*.
+  //
+  // TODO(hinsu): Return const pointer within StatusOr and use
+  // absl::implicit_cast at callsites. This requires implicit_cast support in
+  // stream_executor::port::StatusOr similar to absl::StatusOr.
+  template <typename InstructionType>
+  StatusOr<InstructionType> LookUpInstructionInternal(XlaOp op) const {
+    TF_RETURN_IF_ERROR(CheckOpBuilder(op));
+    return LookUpInstructionByHandleInternal<InstructionType>(op.handle());
+  }
 };
 
 // RAII-style object: sets the current sharding assignment in builder on

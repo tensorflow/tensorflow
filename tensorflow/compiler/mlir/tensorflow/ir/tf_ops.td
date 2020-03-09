@@ -172,7 +172,7 @@ else_branch: A function that takes 'inputs' and returns a list of
   }];
 }
 
-def TF_MeanOp : TF_Op<"Mean", [NoSideEffect]> {
+def TF_MeanOp : TF_Op<"Mean", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
   let summary = "Computes the mean of elements across dimensions of a tensor.";
 
   let description = [{
@@ -195,6 +195,13 @@ retained with length 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let extraClassDeclaration = [{
+    // TF_FoldOperandsTransposeInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {}; }
+    LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
+  }];
 }
 
 def TF_LegacyCallOp : TF_Op<"LegacyCall",
@@ -543,4 +550,44 @@ Example:
   TF_DerivedOperandOrResultHandleShapeAttr shape =
     TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
 }
+
+// Not generated because it begins with an underscore, which isn't allowed by
+// the C++ standard.
+def TF_FusedBatchNormExOp : TF_Op<"_FusedBatchNormEx", [NoSideEffect]> {
+  let summary = "Internal FusedBatchNorm operation: reserved for internal use";
+
+  let description = [{
+ Do not invoke this operator directly in Python. A fusion optimization is
+ expected to create these operators.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32]>:$x,
+    F32Tensor:$scale,
+    F32Tensor:$offset,
+    F32Tensor:$mean,
+    F32Tensor:$variance,
+    Variadic<TensorOf<[F16, F32]>>:$side_input,
+
+    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
+    DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
+    DefaultValuedAttr<StrAttr, "Identity">:$activation_mode,
+    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
+    DefaultValuedAttr<BoolAttr, "true">:$is_training
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32]>:$y,
+    F32Tensor:$batch_mean,
+    F32Tensor:$batch_variance,
+    F32Tensor:$reserve_space_1,
+    F32Tensor:$reserve_space_2,
+    F32Tensor:$reserve_space_3
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandSizeAttr num_side_inputs = TF_DerivedOperandSizeAttr<5>;
+}
+
 #endif // TF_OPS

@@ -406,7 +406,7 @@ log_x_for_x_greater_than_or_equal_to_1(
     gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
   static_assert(
       OutputIntegerBits >= min_log_x_output_bits(InputIntegerBits),
-      "Output integer bits must be sufficent to accommodate logs of inputs.");
+      "Output integer bits must be sufficient to accommodate logs of inputs.");
   return log_x_for_x_greater_than_or_equal_to_1_impl<OutputIntegerBits,
                                                      InputIntegerBits>(
       input_val);
@@ -522,6 +522,15 @@ inline int SubscriptToIndex(const NdArrayDesc<4>& desc, int i0, int i1, int i2,
   TFLITE_DCHECK(i3 >= 0 && i3 < desc.extents[3]);
   return i0 * desc.strides[0] + i1 * desc.strides[1] + i2 * desc.strides[2] +
          i3 * desc.strides[3];
+}
+
+template <int N>
+inline int SubscriptToIndex(const NdArrayDesc<N>& desc, int indexes[N]) {
+  int result = 0;
+  for (int i = 0; i < N; ++i) {
+    result += indexes[i] * desc.strides[i];
+  }
+  return result;
 }
 
 // Given the dimensions of the operands for an element-wise binary broadcast,
@@ -675,6 +684,42 @@ inline void NdArrayDescsForElementwiseBroadcast(
       }
     }
   }
+}
+
+// Detailed implementation of NDOpsHelper, the indexes must be a zero array.
+// This implementation is equivalent to N nested loops. Ex, if N=4, it can be
+// re-writen as:
+// for (int b = 0; b < output.extents[0]; ++b) {
+//   for (int y = 0; y < output.extents[1]; ++y) {
+//     for (int x = 0; x < output.extents[2]; ++x) {
+//       for (int c = 0; c < output.extents[3]; ++c) {
+//           calc({b,y,x,c});
+//       }
+//     }
+//   }
+// }
+template <int N, int DIM, typename Calc>
+typename std::enable_if<DIM != N - 1, void>::type NDOpsHelperImpl(
+    const NdArrayDesc<N>& output, const Calc& calc, int indexes[N]) {
+  for (indexes[DIM] = 0; indexes[DIM] < output.extents[DIM]; ++indexes[DIM]) {
+    NDOpsHelperImpl<N, DIM + 1, Calc>(output, calc, indexes);
+  }
+}
+
+template <int N, int DIM, typename Calc>
+typename std::enable_if<DIM == N - 1, void>::type NDOpsHelperImpl(
+    const NdArrayDesc<N>& output, const Calc& calc, int indexes[N]) {
+  for (indexes[DIM] = 0; indexes[DIM] < output.extents[DIM]; ++indexes[DIM]) {
+    calc(indexes);
+  }
+}
+
+// Execute the calc function in the innermost iteration based on the shape of
+// the output. The calc function should take a single argument of type int[N].
+template <int N, typename Calc>
+inline void NDOpsHelper(const NdArrayDesc<N>& output, const Calc& calc) {
+  int indexes[N] = {0};
+  NDOpsHelperImpl<N, 0, Calc>(output, calc, indexes);
 }
 
 // Copied from gemmlowp::RoundDown when we dropped direct dependency on

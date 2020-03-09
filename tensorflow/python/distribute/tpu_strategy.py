@@ -34,6 +34,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
@@ -430,6 +431,14 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         input_contexts,
         self._container_strategy())
 
+  def _experimental_distribute_values_from_function(self, value_fn):
+    per_replica_values = []
+    for replica_id in range(self._num_replicas_in_sync):
+      per_replica_values.append(
+          value_fn(distribute_lib.ValueContext(replica_id,
+                                               self._num_replicas_in_sync)))
+    return values.regroup(per_replica_values, always_wrap=True)
+
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
   # a mechanism to infer the outputs of `fn`. Pending b/110550782.
@@ -543,7 +552,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self._logical_device_stack.append(logical_device_id)
     try:
-      if values._enclosing_tpu_context() is None:  # pylint: disable=protected-access
+      if tpu_values.enclosing_tpu_context() is None:
         yield
       else:
         with ops.device(tpu.core(logical_device_id)):
@@ -648,20 +657,20 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(**kwargs)
 
-          assert not isinstance(v, values.TPUMirroredVariable)
+          assert not isinstance(v, tpu_values.TPUMirroredVariable)
           value_list.append(v)
       return value_list
 
     return values.create_mirrored_variable(self._container_strategy(),
                                            _real_mirrored_creator,
-                                           values.TPUMirroredVariable,
-                                           values.TPUSyncOnReadVariable,
+                                           tpu_values.TPUMirroredVariable,
+                                           tpu_values.TPUSyncOnReadVariable,
                                            **kwargs)
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.DistributedValues) or
         tensor_util.is_tensor(value)
-       ) and values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
+       ) and tpu_values.enclosing_tpu_context() is not None:
       if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
         value *= (1. / self._num_replicas_in_sync)
@@ -701,9 +710,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return output
 
   def _update(self, var, fn, args, kwargs, group):
-    assert isinstance(var, values.TPUVariableMixin) or isinstance(
+    assert isinstance(var, tpu_values.TPUVariableMixin) or isinstance(
         var, resource_variable_ops.BaseResourceVariable)
-    if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
+    if tpu_values.enclosing_tpu_context() is not None:
       if group:
         return fn(var, *args, **kwargs)
       else:
@@ -724,7 +733,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return values.update_regroup(self, updates, group)
 
   def read_var(self, var):
-    assert isinstance(var, values.TPUVariableMixin) or isinstance(
+    assert isinstance(var, tpu_values.TPUVariableMixin) or isinstance(
         var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
 
@@ -745,7 +754,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # since the `1` gets broadcast as an int32 but global_step is int64.
     if isinstance(tensor, (float, int)):
       return tensor
-    if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
+    if tpu_values.enclosing_tpu_context() is not None:
       broadcast_tensor = [tensor for _ in range(self._num_replicas_in_sync)]
       result = tpu_ops.all_to_all(
           broadcast_tensor,

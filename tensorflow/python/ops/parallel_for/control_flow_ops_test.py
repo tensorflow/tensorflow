@@ -620,6 +620,20 @@ class NNTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_sparse_softmax_cross_entropy_with_logits(self):
+    logits = random_ops.random_uniform([3, 2, 4])
+    labels = random_ops.random_uniform(
+        shape=[3, 2], maxval=4, dtype=dtypes.int32)
+
+    def loop_fn(i):
+      logits_i = array_ops.gather(logits, i)
+      labels_i = array_ops.gather(labels, i)
+      loss = nn.sparse_softmax_cross_entropy_with_logits(
+          labels=labels_i, logits=logits_i)
+      return loss
+
+    self._test_loop_fn(loop_fn, 3)
+
 
 class RandomTest(PForTestCase):
 
@@ -1721,7 +1735,8 @@ class SpectralTest(PForTestCase, parameterized.TestCase):
       (fft_ops.irfft2d,),
       (fft_ops.irfft3d,),
   )
-  def test_irfft(self, op_func):
+  # TODO(agarwal): Reenable this once the test flaky is fixed.
+  def disabled_test_irfft(self, op_func):
     for dtype in (dtypes.complex64, dtypes.complex128):
       shape = [2, 3, 4, 3, 4]
       x = np.random.uniform(size=shape) + 1j * np.random.uniform(size=shape)

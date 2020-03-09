@@ -40,7 +40,6 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
-from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
@@ -1620,6 +1619,7 @@ def _inputs_with_flattening(pfor_input, input_indices):
 @RegisterPForWithArgs("MaxPoolGradGrad", dims=[0, 1, 2])
 @RegisterPForWithArgs("MaxPoolGradGradV2", dims=[0, 1, 2])
 @RegisterPForWithArgs("SoftmaxCrossEntropyWithLogits", dims=[0, 1])
+@RegisterPForWithArgs("SparseSoftmaxCrossEntropyWithLogits", dims=[0, 1])
 @RegisterPForWithArgs("SpaceToDepth", dims=[0])
 def _convert_flatten_batch(pfor_input, op_type, dims):
   del op_type
@@ -2159,6 +2159,14 @@ def _convert_squeeze(pfor_input):
   return wrap(array_ops.squeeze(t, axis=squeeze_dims), True)
 
 
+@RegisterPFor("ReverseV2")
+def _convert_reverse(pfor_input):
+  value = pfor_input.stacked_input(0)
+  axis = pfor_input.unstacked_input(1)
+  new_axis = array_ops.where_v2(axis >= 0, axis + 1, axis)
+  return wrap(gen_array_ops.reverse_v2(value, axis=new_axis), True)
+
+
 @RegisterPFor("Transpose")
 def _convert_transpose(pfor_input):
   t = pfor_input.stacked_input(0)
@@ -2179,6 +2187,8 @@ def _convert_zeroslike(pfor_input):
 def _convert_gather(pfor_input):
   param, param_stacked, _ = pfor_input.input(0)
   indices, indices_stacked, _ = pfor_input.input(1)
+  batch_dims = pfor_input.get_attr("batch_dims")
+
   op_type = pfor_input.op_type
   if op_type == "Gather":
     validate_indices = pfor_input.get_attr("validate_indices")
@@ -2199,9 +2209,22 @@ def _convert_gather(pfor_input):
         # However they will be sorted and unique. So if the shape matches, then
         # it must be picking up all the rows of param.
         return wrap(param, True)
-      # TODO(agarwal): use array_ops.slice here.
+
+    if batch_dims > 0:
+      # In order to maintain
+      #   indices.shape[:batch_dims] == params.shape[:batch_dims]
+      # with stacked indices, we move the first dimension of `indices` to the
+      # `batch_dims + 1`th position. The (non-batch) index dimensions will be
+      # inserted into the shape of `output` at the `axis` dimension, which is
+      # then transposed to the front (below).
+      order = array_ops.concat([
+          (list(range(1, batch_dims + 1)) + [0]),
+          math_ops.range(batch_dims + 1, array_ops.rank(indices))], axis=0)
+      indices = array_ops.transpose(indices, order)
+
     output = array_ops.gather(
-        param, indices, validate_indices=validate_indices, axis=axis)
+        param, indices, validate_indices=validate_indices, axis=axis,
+        batch_dims=batch_dims)
     if axis != 0:
       axis = control_flow_ops.cond(axis < 0,
                                    lambda: axis + array_ops.rank(param),
@@ -2216,38 +2239,13 @@ def _convert_gather(pfor_input):
           lambda: array_ops.transpose(output, order))
     return wrap(output, True)
   if param_stacked:
-    loop_len_vector = pfor_input.pfor.loop_len_vector
     pfor_input.stack_inputs(stack_indices=[1])
     indices = pfor_input.stacked_input(1)
-    param_flat = _flatten_first_two_dims(param)
 
-    # Recompute indices to handle stacked param.
-    indices_offset = (
-        math_ops.range(math_ops.cast(loop_len_vector[0], dtype=indices.dtype)) *
-        math_ops.cast(array_ops.shape(param)[1], indices.dtype))
-    # Reshape indices_offset to allow broadcast addition
-    ones = array_ops.ones([array_ops.rank(indices) - 1], dtype=dtypes.int32)
-    new_shape = array_ops.concat([loop_len_vector, ones], axis=0)
-    indices_offset = array_ops.reshape(indices_offset, new_shape)
-    indices += indices_offset
-
-    # TODO(agarwal): handle axis != 0. May need to transpose param or
-    # array_ops.gather_nd.
-    if isinstance(axis, ops.Tensor):
-      axis_value = tensor_util.constant_value(axis)
-    else:
-      try:
-        axis_value = int(axis)
-      except TypeError:
-        axis_value = None
-    msg = ("Gather, where indices and param are both loop dependent, currently "
-           "requires axis=0")
-    if axis_value is not None and axis_value != 0:
-      raise ValueError("Error while converting %s. %s. Got axis=%d" %
-                       (pfor_input.op, msg, axis))
-    with ops.control_dependencies(
-        [check_ops.assert_equal(axis, 0, message=msg)]):
-      output = array_ops.gather(param_flat, indices)
+    output = array_ops.gather(
+        param, indices,
+        axis=array_ops.where(axis >= 0, axis + 1, axis),
+        batch_dims=batch_dims + 1)
     return wrap(output, True)
 
 

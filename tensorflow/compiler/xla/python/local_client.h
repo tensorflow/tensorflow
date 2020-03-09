@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/local_device_state.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -88,7 +89,8 @@ class PyLocalClient {
       std::string platform_name, LocalClient* client,
       std::vector<std::shared_ptr<Device>> devices, int host_id,
       std::unique_ptr<se::DeviceMemoryAllocator> allocator,
-      std::unique_ptr<tensorflow::Allocator> host_memory_allocator);
+      std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
+      std::unique_ptr<GpuExecutableRunOptions> gpu_run_options);
   virtual ~PyLocalClient() = default;
 
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
@@ -116,6 +118,10 @@ class PyLocalClient {
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
   tensorflow::Allocator* host_memory_allocator() const {
     return host_memory_allocator_.get();
+  }
+
+  GpuExecutableRunOptions* gpu_run_options() const {
+    return gpu_run_options_.get();
   }
 
   tensorflow::thread::ThreadPool* h2d_transfer_pool() {
@@ -146,6 +152,8 @@ class PyLocalClient {
   // only used on GPU where it is more efficient to copy buffers to and from the
   // device via a staging area of pinned memory.
   std::unique_ptr<tensorflow::Allocator> host_memory_allocator_;
+
+  std::unique_ptr<GpuExecutableRunOptions> gpu_run_options_;
 
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
 };
@@ -229,7 +237,7 @@ class PyLocalBuffer {
   const Shape on_device_shape_;
   const std::shared_ptr<Device> device_;
   mutable absl::Mutex mu_;
-  std::shared_ptr<SharedDeviceBuffer> device_buffer_ GUARDED_BY(mu_);
+  std::shared_ptr<SharedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
 
   // The cached value of the buffer on the host, produced either from a call to
   // CopyToHost or from a call to ToLiteral. Once a value has been fetched to
@@ -241,7 +249,7 @@ class PyLocalBuffer {
     Status status;
     std::shared_ptr<Literal> value;
   };
-  std::shared_ptr<HostValue> host_value_ GUARDED_BY(mu_);
+  std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
 };
 
 // Represents a compiled computation that can be executed given handles to

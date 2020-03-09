@@ -767,7 +767,7 @@ def tf_gen_op_wrapper_cc(
             out_ops_file + "_internal.cc",
         ],
         srcs = srcs,
-        tools = [":" + tool] + tf_binary_additional_srcs(),
+        exec_tools = [":" + tool] + tf_binary_additional_srcs(),
         cmd = ("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
                "$(location :" + out_ops_file + ".cc) " +
                str(include_internal_ops) + " " + api_def_args_str),
@@ -969,7 +969,7 @@ def tf_gen_op_wrapper_py(
             name = name + "_pygenrule",
             outs = [out],
             srcs = api_def_srcs + [hidden_file],
-            tools = [tool_name] + tf_binary_additional_srcs(),
+            exec_tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str +
                    " @$(location " + hidden_file + ") > $@"),
         )
@@ -978,7 +978,7 @@ def tf_gen_op_wrapper_py(
             name = name + "_pygenrule",
             outs = [out],
             srcs = api_def_srcs,
-            tools = [tool_name] + tf_binary_additional_srcs(),
+            exec_tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str + " " +
                    op_list_arg + " " +
                    ("1" if op_list_is_whitelist else "0") + " > $@"),
@@ -2430,7 +2430,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
         cmd =
             "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) " +
             "$(@D) " + srcs_relative_dir + " $(SRCS)",
-        tools = [
+        exec_tools = [
             clean_dep("//tensorflow/tools/proto_text:gen_proto_text_functions"),
         ],
     )
@@ -2466,7 +2466,7 @@ def tf_version_info_genrule(name, out):
         cmd =
             "$(location //tensorflow/tools/git:gen_git_source) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
         local = 1,
-        tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
+        exec_tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
     )
 
 def tf_py_build_info_genrule(name, out, **kwargs):
@@ -2486,7 +2486,7 @@ def tf_py_build_info_genrule(name, out, **kwargs):
                 "cudnn_dll_name=cudnn64_$${TF_CUDNN_VERSION:-}.dll",
             ]), ""),
         local = 1,
-        tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
+        exec_tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
         **kwargs
     )
 
@@ -2691,6 +2691,9 @@ def if_cuda_or_rocm(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+def tf_monitoring_deps():
+    return []
+
 def tf_jit_compilation_passes_extra_deps():
     return []
 
@@ -2706,3 +2709,27 @@ def tfcompile_extra_flags():
 def tf_external_workspace_visible(visibility):
     # External workspaces can see this target.
     return ["//visibility:public"]
+
+def _filegroup_as_file_impl(ctx):
+    out = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(
+        output = out,
+        content = "\n".join([f.short_path for f in ctx.files.dep]),
+    )
+    return DefaultInfo(files = depset([out]))
+
+_filegroup_as_file = rule(
+    implementation = _filegroup_as_file_impl,
+    attrs = {
+        "dep": attr.label(),
+    },
+)
+
+def filegroup_as_file(name, dep, visibility = []):
+    """Creates a filegroup ${name}_file which contains the file ${name}."""
+    _filegroup_as_file(name = name, dep = dep)
+    native.filegroup(
+        name = name + "_file",
+        srcs = [name],
+        visibility = visibility,
+    )

@@ -36,7 +36,8 @@ Status CollectDataToResponse(const ProfileRequest& req,
                              ProfileResponse* response) {
   profiler::XSpace xspace;
   TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
-  profiler::ConvertXSpaceToProfileResponse(xspace, req, response);
+  TF_RETURN_IF_ERROR(
+      profiler::ConvertXSpaceToProfileResponse(xspace, req, response));
   return Status::OK();
 }
 
@@ -49,7 +50,7 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
 
   ::grpc::Status Profile(::grpc::ServerContext* ctx, const ProfileRequest* req,
                          ProfileResponse* response) override {
-    LOG(INFO) << "Received a profile request: " << req->DebugString();
+    VLOG(1) << "Received a profile request: " << req->DebugString();
     std::unique_ptr<ProfilerSession> profiler = ProfilerSession::Create();
     Status status = profiler->Status();
     if (!status.ok()) {

@@ -25,6 +25,11 @@ namespace xla {
 namespace py = pybind11;
 
 PYBIND11_MODULE(tpu_client_extension, m) {
+  // Initializes the NumPy API for the use of the types module.
+  if (!InitializeNumpyAPIForTypes()) {
+    throw std::runtime_error("Unable to initialize Numpy API");
+  }
+
   py::class_<PyTpuClient, std::shared_ptr<PyTpuClient>>(m, "TpuClient")
       .def_static("Get", &PyTpuClient::Get, py::arg("worker"))
       .def("device_count", &PyTpuClient::device_count)
@@ -116,9 +121,9 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                           std::make_move_iterator(tree.leaves.end()));
 
             py::gil_scoped_release gil_release;
-            return PyTpuBuffer::FromLiterals(std::move(leaves), tree.shape,
-                                             std::move(py_buffer_ref),
-                                             std::move(client), device->id());
+            return PyTpuBuffer::FromLiterals(
+                std::move(leaves), tree.shape, std::move(py_buffer_ref),
+                std::move(client), std::move(device));
           })
       .def_static("make_tuple",
                   [](const std::vector<PyTpuBuffer*> buffers,
@@ -132,15 +137,15 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                           "Cannot make tuple on device '%s' with '%s' backend",
                           device->DebugString(), client->platform_name());
                     }
-                    return PyTpuBuffer::MakeTuple(buffers, client,
-                                                  device->id());
+                    return PyTpuBuffer::MakeTuple(buffers, std::move(client),
+                                                  std::move(device));
                   })
       .def("copy_to_device",
            [](PyTpuBuffer* buffer, std::shared_ptr<Device> dst_device) {
              CHECK(dst_device != nullptr);
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             return buffer->CopyToDevice(dst_device->id());
+             return buffer->CopyToDevice(std::move(dst_device));
            })
       .def("delete", &PyTpuBuffer::Delete)
       .def("destructure", &PyTpuBuffer::DestructureTuple)
@@ -163,10 +168,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              return LiteralToPython(std::move(literal));
            })
       .def("shape", &PyTpuBuffer::on_host_shape)
-      .def("device",
-           [](PyTpuBuffer* buffer) -> std::shared_ptr<Device> {
-             return buffer->client()->devices()[buffer->device_id()];
-           })
+      .def("device", &PyTpuBuffer::device)
       .def("platform", &PyTpuBuffer::platform_name)
       .def("is_deleted", [](const PyTpuBuffer& buffer) {
         return buffer.DeviceBuffer() == nullptr;

@@ -61,7 +61,10 @@ py_library(
 py_library(
     name = "test_utils",
     testonly = 1,
-    srcs = ["test_utils.py"],
+    srcs = [
+        "__init__.py",
+        "test_utils.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//third_party/py/numpy",
@@ -332,6 +335,21 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "searchsorted_op_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["searchsorted_op_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -988,6 +1006,11 @@ tf_xla_py_test(
     name = "unstack_test",
     size = "medium",
     srcs = ["unstack_test.py"],
+    disabled_backends = [
+        # TODO(b/149750262): timeout on CPU.
+        "cpu",
+        "cpu_ondemand",
+    ],
     python_version = "PY3",
     shard_count = 5,
     tags = [
@@ -1506,6 +1529,7 @@ cuda_py_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -1526,6 +1550,7 @@ cuda_py_test(
         "no_rocm",
     ],
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         ":test_utils",
         "//tensorflow/core:protos_all_py",
@@ -1550,6 +1575,7 @@ cuda_py_test(
         "no_rocm",
     ],
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         ":test_utils",
         "//tensorflow/core:protos_all_py",
@@ -1642,6 +1668,7 @@ cuda_py_test(
         "no_rocm",
     ],
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         ":lstm",
         ":xla_test",

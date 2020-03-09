@@ -140,8 +140,7 @@ class CallbackCountsTest(keras_parameterized.TestCase):
     model.compile(
         adam.AdamOptimizer(0.001),
         'binary_crossentropy',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   @parameterized.named_parameters(('with_numpy', _get_numpy()),
@@ -257,8 +256,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         loss='mse',
         optimizer='rmsprop',
         metrics=[keras.metrics.CategoricalAccuracy(name='my_acc')],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   @keras_parameterized.run_with_all_model_types
@@ -1420,6 +1418,147 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     model.fit(data, epochs=2, callbacks=[progbar])
     self.assertEqual(progbar.target, 5)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_callback_passed_floats(self):
+
+    class MyCallback(keras.callbacks.Callback):
+
+      def on_batch_end(self, batch, logs=None):
+        assert isinstance(batch, int)
+        assert isinstance(logs['loss'], float)
+        self.on_batch_end_called = True
+
+      def on_epoch_end(self, batch, logs=None):
+        assert isinstance(batch, int)
+        assert isinstance(logs['loss'], float)
+        self.on_epoch_end_called = True
+
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    callback = MyCallback()
+    model.fit(x, y, epochs=2, callbacks=[callback])
+    self.assertTrue(callback.on_batch_end_called)
+    self.assertTrue(callback.on_batch_end_called)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_implements_batch_hooks(self):
+
+    class MyCallbackWithBatchHooks(keras.callbacks.Callback):
+
+      def __init__(self):
+        self.train_batches = 0
+        self.test_batches = 0
+        self.predict_batches = 0
+
+      def on_train_batch_end(self, batch, logs=None):
+        self.train_batches += 1
+
+      def on_test_batch_end(self, batch, logs=None):
+        self.test_batches += 1
+
+      def on_predict_batch_end(self, batch, logs=None):
+        self.predict_batches += 1
+
+    class MyCallbackWithoutBatchHooks(keras.callbacks.Callback):
+
+      def __init__(self):
+        self.epochs = 0
+
+      def on_epoch_end(self, epoch, logs=None):
+        self.epochs += 1
+
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse')
+
+    my_cb = MyCallbackWithBatchHooks()
+    cb_list = keras.callbacks.CallbackList([my_cb], verbose=0)
+    self.assertTrue(cb_list._should_call_train_batch_hooks)
+    self.assertTrue(cb_list._should_call_test_batch_hooks)
+    self.assertTrue(cb_list._should_call_predict_batch_hooks)
+
+    model.fit(x, y, epochs=2, batch_size=10, callbacks=[my_cb], verbose=0)
+    model.evaluate(x, y, batch_size=10, callbacks=[my_cb], verbose=0)
+    model.predict(x, batch_size=10, callbacks=[my_cb], verbose=0)
+
+    self.assertEqual(my_cb.train_batches, 2)
+    self.assertEqual(my_cb.test_batches, 1)
+    self.assertEqual(my_cb.predict_batches, 1)
+
+    my_cb = MyCallbackWithoutBatchHooks()
+    cb_list = keras.callbacks.CallbackList([my_cb], verbose=0)
+    self.assertLen(cb_list.callbacks, 1)
+    self.assertFalse(cb_list._should_call_train_batch_hooks)
+    self.assertFalse(cb_list._should_call_test_batch_hooks)
+    self.assertFalse(cb_list._should_call_predict_batch_hooks)
+
+    model.fit(x, y, epochs=2, batch_size=10, callbacks=[my_cb], verbose=0)
+    model.evaluate(x, y, batch_size=10, callbacks=[my_cb], verbose=0)
+    model.predict(x, batch_size=10, callbacks=[my_cb], verbose=0)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_implements_batch_hooks_override(self):
+
+    class MyCallback(keras.callbacks.Callback):
+
+      def __init__(self, should_run=True):
+        self.should_run = should_run
+        self.train_batches = 0
+        self.test_batches = 0
+        self.predict_batches = 0
+
+      def on_train_batch_end(self, batch, logs=None):
+        self.train_batches += 1
+
+      def on_test_batch_end(self, batch, logs=None):
+        self.test_batches += 1
+
+      def on_predict_batch_end(self, batch, logs=None):
+        self.predict_batches += 1
+
+      def _implements_train_batch_hooks(self):
+        return self.should_run
+
+      def _implements_test_batch_hooks(self):
+        return self.should_run
+
+      def _implements_predict_batch_hooks(self):
+        return self.should_run
+
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse')
+
+    my_cb = MyCallback(should_run=True)
+    cb_list = keras.callbacks.CallbackList([my_cb], verbose=0)
+    self.assertTrue(cb_list._should_call_train_batch_hooks)
+    self.assertTrue(cb_list._should_call_test_batch_hooks)
+    self.assertTrue(cb_list._should_call_predict_batch_hooks)
+
+    model.fit(x, y, epochs=2, batch_size=10, callbacks=[my_cb], verbose=0)
+    model.evaluate(x, y, batch_size=10, callbacks=[my_cb], verbose=0)
+    model.predict(x, batch_size=10, callbacks=[my_cb], verbose=0)
+
+    self.assertEqual(my_cb.train_batches, 2)
+    self.assertEqual(my_cb.test_batches, 1)
+    self.assertEqual(my_cb.predict_batches, 1)
+
+    my_cb = MyCallback(should_run=False)
+    cb_list = keras.callbacks.CallbackList([my_cb], verbose=0)
+    self.assertFalse(cb_list._should_call_train_batch_hooks)
+    self.assertFalse(cb_list._should_call_test_batch_hooks)
+    self.assertFalse(cb_list._should_call_predict_batch_hooks)
+
+    model.fit(x, y, epochs=2, batch_size=10, callbacks=[my_cb], verbose=0)
+    model.evaluate(x, y, batch_size=10, callbacks=[my_cb], verbose=0)
+    model.predict(x, batch_size=10, callbacks=[my_cb], verbose=0)
+
+    self.assertEqual(my_cb.train_batches, 0)
+    self.assertEqual(my_cb.test_batches, 0)
+    self.assertEqual(my_cb.predict_batches, 0)
+
 
 # A summary that was emitted during a test. Fields:
 #   logdir: str. The logdir of the FileWriter to which the summary was
@@ -1516,8 +1655,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     model.compile(
         opt,
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   def test_TensorBoard_default_logdir(self):
@@ -1703,7 +1841,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     )
 
   def test_custom_summary(self):
-    if not testing_utils.should_run_tf_function():
+    if not context.executing_eagerly():
       self.skipTest('Custom summaries only supported in V2 code path.')
 
     def scalar_v2_mock(name, data, step=None):
@@ -1732,8 +1870,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     tb_cbk = keras.callbacks.TensorBoard(self.logdir, update_freq=1)
     x, y = np.ones((10, 5)), np.ones((10, 5))
     model.fit(x, y, batch_size=2, validation_data=(x, y), callbacks=[tb_cbk])
@@ -1801,9 +1938,17 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
     model.compile(
         opt,
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     return model
+
+  def _get_trace_file(self, logdir):
+    profile_dir = os.path.join(logdir, 'plugins', 'profile')
+    for (dirpath, dirnames, filenames) in os.walk(profile_dir):
+      del dirnames  # unused
+      for filename in filenames:
+        if filename.endswith('.trace.json.gz'):
+          return os.path.join(dirpath, filename)
+    return None
 
   def fitModelAndAssertKerasModelWritten(self, model):
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
@@ -1873,6 +2018,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag=u'batch_1'),
         },
     )
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
 
   def test_TensorBoard_autoTrace_tagNameWithBatchNum(self):
     model = self._get_seq_model()
@@ -1895,6 +2041,78 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag=u'batch_2'),
         },
     )
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+
+  def test_TensorBoard_autoTrace_profileBatchRangeSingle(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch='2,2', write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=3,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            # Trace will be logged once at the batch it stops profiling.
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_2'),
+        },
+    )
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+
+  def test_TensorBoard_autoTrace_profileBatchRange(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch='1,3', write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=4,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            # Trace will be logged once at the batch it stops profiling.
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_3'),
+        },
+    )
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+
+  def test_TensorBoard_autoTrace_profileInvalidBatchRange(self):
+    with self.assertRaises(ValueError):
+      keras.callbacks.TensorBoard(
+          self.logdir,
+          histogram_freq=1,
+          profile_batch='-1,3',
+          write_graph=False)
+
+    with self.assertRaises(ValueError):
+      keras.callbacks.TensorBoard(
+          self.logdir,
+          histogram_freq=1,
+          profile_batch='1,None',
+          write_graph=False)
+
+    with self.assertRaises(ValueError):
+      keras.callbacks.TensorBoard(
+          self.logdir, histogram_freq=1, profile_batch='6,5', write_graph=False)
+
+    with self.assertRaises(ValueError):
+      keras.callbacks.TensorBoard(
+          self.logdir, histogram_freq=1, profile_batch=-1, write_graph=False)
 
   def test_TensorBoard_autoTrace_profile_batch_largerThanBatchCount(self):
     model = self._get_seq_model()
@@ -1913,6 +2131,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
 
     # Enabled trace only on the 10000th batch, thus it should be empty.
     self.assertEmpty(summary_file.tensors)
+    self.assertIsNone(self._get_trace_file(logdir=self.train_dir))
 
 
 class MostRecentlyModifiedFileMatchingPatternTest(test.TestCase):

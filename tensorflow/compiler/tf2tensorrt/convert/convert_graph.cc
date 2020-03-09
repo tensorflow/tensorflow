@@ -469,6 +469,7 @@ Status CreateTRTNode(const ConversionParams& params,
           .Attr("precision_mode", prec_string)
           .Attr("use_calibration", info.use_calibration)
           .Attr("_use_implicit_batch", params.use_implicit_batch)
+          .Attr("_allow_build_at_runtime", info.allow_build_at_runtime)
           .Attr("OutT", out_types)
           .Finalize(&trt_node);
   if (!status.ok()) {
@@ -672,6 +673,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
                                    : EngineInfo::EngineType::TRTStatic);
     curr_engine.use_calibration = params.use_calibration;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
+    curr_engine.allow_build_at_runtime = params.allow_build_at_runtime;
 
     status = RegisterGraphToFunctionLibrary(curr_engine.segment_graph_def,
                                             &graph, curr_engine.engine_name);

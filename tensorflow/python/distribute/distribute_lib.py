@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=line-too-long
 """Library for running a computation across multiple devices.
 
 See the guide for overview and examples:
 [TensorFlow v2.x](https://www.tensorflow.org/guide/distributed_training),
-[TensorFlow v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute_strategy.ipynb).  # pylint: disable=line-too-long
+[TensorFlow v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute_strategy.ipynb).
 
 The intent of this library is that you can write an algorithm in a stylized way
 and it will be usable with a variety of different `tf.distribute.Strategy`
@@ -90,6 +91,7 @@ Note that we provide a default version of `tf.distribute.Strategy` that is
 used when no other strategy is in scope, that provides the same API with
 reasonable default behavior.
 """
+# pylint: enable=line-too-long
 
 from __future__ import absolute_import
 from __future__ import division
@@ -106,6 +108,7 @@ import six
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import numpy_dataset
@@ -412,6 +415,70 @@ class InputContext(object):
         self.input_pipeline_id, self.num_input_pipelines)
 
 
+@tf_export("distribute.experimental.ValueContext", v1=[])
+class ValueContext(object):
+  """A class wrapping information needed by a distribute function.
+
+  This is a context class that is passed to the `value_fn` in
+  `strategy.experimental_distribute_values_from_function` and contains
+  information about the compute replicas. The `num_replicas_in_sync` and
+  `replica_id` can be used to customize the value on each replica.
+
+  Example usage:
+
+  1. Directly constructed.
+
+  >>> def value_fn(context):
+  ...   return context.replica_id_in_sync_group/context.num_replicas_in_sync
+  >>> context = tf.distribute.experimental.ValueContext(
+  ...   replica_id_in_sync_group=2, num_replicas_in_sync=4)
+  >>> per_replica_value = value_fn(context)
+  >>> per_replica_value
+  0.5
+
+  2. Passed in by `experimental_distribute_values_from_function`.
+
+  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> def value_fn(value_context):
+  ...   return value_context.num_replicas_in_sync
+  >>> distributed_values = (
+  ...      strategy.experimental_distribute_values_from_function(
+  ...        value_fn))
+  >>> local_result = strategy.experimental_local_results(distributed_values)
+  >>> local_result
+  (1,)
+
+  """
+
+  def __init__(self,
+               replica_id_in_sync_group=0,
+               num_replicas_in_sync=1):
+    """Initializes an ValueContext object.
+
+    Args:
+      replica_id_in_sync_group: the current replica_id, should be an int in
+        [0,`num_replicas_in_sync`).
+      num_replicas_in_sync: the number of replicas that are in sync.
+    """
+    self._replica_id_in_sync_group = replica_id_in_sync_group
+    self._num_replicas_in_sync = num_replicas_in_sync
+
+  @property
+  def num_replicas_in_sync(self):
+    """Returns the number of compute replicas in sync."""
+    return self._num_replicas_in_sync
+
+  @property
+  def replica_id_in_sync_group(self):
+    """Returns the replica ID."""
+    return self._replica_id_in_sync_group
+
+  def __str__(self):
+    return (("tf.distribute.ValueContext(replica id {}, "
+             " total replicas in sync: ""{})")
+            .format(self.replica_id_in_sync_group, self.num_replicas_in_sync))
+
+
 @tf_export("distribute.RunOptions")
 class RunOptions(
     collections.namedtuple("RunOptions", [
@@ -424,7 +491,7 @@ class RunOptions(
 
   Attributes:
     experimental_enable_dynamic_batch_size: Boolean. Only applies to
-      TPUStrategy. Default to False. If True, TPUStrategy will enable dynamic
+      TPUStrategy. Default to True. If True, TPUStrategy will enable dynamic
       padder to support dynamic batch size for the inputs. Otherwise only static
       shape inputs are allowed.
     experimental_bucketizing_dynamic_shape: Boolean. Only applies to
@@ -1209,6 +1276,81 @@ class Strategy(StrategyBase):
     """
     return self._extended._experimental_replicate_to_logical_devices(tensor)  # pylint: disable=protected-access
 
+  def experimental_distribute_values_from_function(self, value_fn):
+    """Generates `tf.distribute.DistributedValues` from `value_fn`.
+
+    This function is to generate `tf.distribute.DistributedValues` to pass
+    into `experimental_run_v2`, `reduce`, or other methods that take
+    distributed values when not using datasets.
+
+    Args:
+      value_fn: The function to run to generate values. It is called for
+        each replica with `tf.distribute.ValueContext` as the sole argument. It
+        must return a Tensor or a type that can be converted to a Tensor.
+    Returns:
+      A `tf.distribute.DistributedValues` containing a value for each replica.
+
+    Example usage:
+
+    1. Return constant value per replica:
+
+    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> def value_fn(ctx):
+    ...   return tf.constant(1.)
+    >>> distributed_values = (
+    ...      strategy.experimental_distribute_values_from_function(
+    ...        value_fn))
+    >>> local_result = strategy.experimental_local_results(distributed_values)
+    >>> local_result
+    (<tf.Tensor: shape=(), dtype=float32, numpy=1.0>,)
+
+    2. Distribute values in array based on replica_id:
+
+    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> array_value = np.array([3., 2., 1.])
+    >>> def value_fn(ctx):
+    ...   return array_value[ctx.replica_id_in_sync_group]
+    >>> distributed_values = (
+    ...      strategy.experimental_distribute_values_from_function(
+    ...        value_fn))
+    >>> local_result = strategy.experimental_local_results(distributed_values)
+    >>> local_result
+    (3.0,)
+
+    3. Specify values using num_replicas_in_sync:
+
+    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> def value_fn(ctx):
+    ...   return ctx.num_replicas_in_sync
+    >>> distributed_values = (
+    ...      strategy.experimental_distribute_values_from_function(
+    ...        value_fn))
+    >>> local_result = strategy.experimental_local_results(distributed_values)
+    >>> local_result
+    (1,)
+
+    4. Place values on devices and distribute:
+
+    ```
+    strategy = tf.distribute.TPUStrategy()
+    worker_devices = strategy.extended.worker_devices
+    multiple_values = []
+    for i in range(strategy.num_replicas_in_sync):
+      with tf.device(worker_devices[i]):
+        multiple_values.append(tf.constant(1.0))
+
+    def value_fn(ctx):
+      return multiple_values[ctx.replica_id]
+
+    distributed_values = strategy.
+      experimental_distribute_values_from_function(
+      value_fn)
+    ```
+
+    """
+    return self._extended._experimental_distribute_values_from_function(  # pylint: disable=protected-access
+        value_fn)
+
 
 # TF v1.x version has additional deprecated APIs
 @tf_export(v1=["distribute.Strategy"])
@@ -1714,13 +1856,16 @@ class StrategyExtendedV2(object):
   def _experimental_distribute_datasets_from_function(self, dataset_fn):
     raise NotImplementedError("must be implemented in descendants")
 
+  def _experimental_distribute_values_from_function(self, value_fn):
+    raise NotImplementedError("must be implemented in descendants")
+
   def _reduce(self, reduce_op, value):
     # Default implementation until we have an implementation for each strategy.
     return self._local_results(
-        self._reduce_to(reduce_op, value,
-                        device_util.current() or "/device:CPU:0"))[0]
+        self.reduce_to(reduce_op, value,
+                       device_util.current() or "/device:CPU:0"))[0]
 
-  def reduce_to(self, reduce_op, value, destinations):
+  def reduce_to(self, reduce_op, value, destinations, experimental_hints=None):
     """Combine (via e.g. sum or mean) values across replicas.
 
     Args:
@@ -1730,6 +1875,8 @@ class StrategyExtendedV2(object):
         string. The return value will be copied to all destination devices (or
         all the devices where the `destinations` value resides). To perform an
         all-reduction, pass `value` to `destinations`.
+      experimental_hints: A `tf.distrbute.experimental.CollectiveHints`. Hints
+        to perform collective operations.
 
     Returns:
       A tensor or value mirrored to `destinations`.
@@ -1742,18 +1889,25 @@ class StrategyExtendedV2(object):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     assert (reduce_op == reduce_util.ReduceOp.SUM or
             reduce_op == reduce_util.ReduceOp.MEAN)
-    return self._reduce_to(reduce_op, value, destinations)
+    if experimental_hints is None:
+      experimental_hints = collective_util.Hints()
+    return self._reduce_to(reduce_op, value, destinations, experimental_hints)
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     raise NotImplementedError("must be implemented in descendants")
 
-  def batch_reduce_to(self, reduce_op, value_destination_pairs):
+  def batch_reduce_to(self,
+                      reduce_op,
+                      value_destination_pairs,
+                      experimental_hints=None):
     """Combine multiple `reduce_to` calls into one for faster execution.
 
     Args:
       reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
-      value_destination_pairs: A sequence of (value, destinations)
-        pairs. See `reduce_to()` for a description.
+      value_destination_pairs: A sequence of (value, destinations) pairs. See
+        `reduce_to()` for a description.
+      experimental_hints: A `tf.distrbute.experimental.CollectiveHints`. Hints
+        to perform collective operations.
 
     Returns:
       A list of mirrored values, one per pair in `value_destination_pairs`.
@@ -1763,11 +1917,16 @@ class StrategyExtendedV2(object):
     assert not isinstance(reduce_op, variable_scope.VariableAggregation)
     if isinstance(reduce_op, six.string_types):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
-    return self._batch_reduce_to(reduce_op, value_destination_pairs)
+    if experimental_hints is None:
+      experimental_hints = collective_util.Hints()
+    return self._batch_reduce_to(reduce_op, value_destination_pairs,
+                                 experimental_hints)
 
-  def _batch_reduce_to(self, reduce_op, value_destination_pairs):
+  def _batch_reduce_to(self, reduce_op, value_destination_pairs,
+                       experimental_hints):
     return [
-        self.reduce_to(reduce_op, t, destinations=v)
+        self.reduce_to(
+            reduce_op, t, destinations=v, experimental_hints=experimental_hints)
         for t, v in value_destination_pairs
     ]
 
@@ -2265,7 +2424,7 @@ class ReplicaContext(object):
     require_replica_context(self)
     return (device_util.current(),)
 
-  def all_reduce(self, reduce_op, value):
+  def all_reduce(self, reduce_op, value, experimental_hints=None):
     """All-reduces the given `value Tensor` nest across replicas.
 
     If `all_reduce` is called in any replica, it must be called in all replicas.
@@ -2287,16 +2446,21 @@ class ReplicaContext(object):
       reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
       value: The nested structure of `Tensor`s to all-reduce. The structure must
         be compatible with `tf.nest`.
+      experimental_hints: A `tf.distrbute.experimental.CollectiveHints`. Hints
+        to perform collective operations.
 
     Returns:
        A `Tensor` nest with the reduced `value`s from each replica.
     """
     if isinstance(reduce_op, six.string_types):
       reduce_op = reduce_util.ReduceOp(reduce_op.upper())
+    if experimental_hints is None:
+      experimental_hints = collective_util.Hints()
 
     def batch_all_reduce(strategy, *value_flat):
       return strategy.extended.batch_reduce_to(
-          reduce_op, [(v, _batch_reduce_destination(v)) for v in value_flat])
+          reduce_op, [(v, _batch_reduce_destination(v)) for v in value_flat],
+          experimental_hints)
 
     if reduce_op in [reduce_util.ReduceOp.SUM, reduce_util.ReduceOp.MEAN]:
       # TODO(cjfj): Work out why `batch_reduce` doesn't return the correct grad.
@@ -2414,6 +2578,9 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _experimental_distribute_datasets_from_function(self, dataset_fn):
     return dataset_fn(InputContext())
 
+  def _experimental_distribute_values_from_function(self, value_fn):
+    return value_fn(ValueContext())
+
   def _make_dataset_iterator(self, dataset):
     return _DefaultDistributionExtended.DefaultInputIterator(dataset)
 
@@ -2447,9 +2614,9 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
         replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
       return fn(*args, **kwargs)
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     # TODO(josh11b): Use destinations?
-    del reduce_op, destinations
+    del reduce_op, destinations, experimental_hints
     return value
 
   def _update(self, var, fn, args, kwargs, group):
@@ -2497,6 +2664,14 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
     """Whether this strategy indicates working in multi-worker settings."""
     # Default strategy doesn't indicate multi-worker training.
     return False
+
+  @property
+  def should_checkpoint(self):
+    return True
+
+  @property
+  def should_save_summary(self):
+    return True
 
   # TODO(priyag): This should inherit from `InputIterator`, once dependency
   # issues have been resolved.

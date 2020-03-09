@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/operation_selector.h"
+#include "tensorflow/lite/delegates/gpu/cl/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
@@ -106,64 +107,6 @@ void AddUsage(ValueId id, int task_index,
     (*usage_records)[id].y = task_index;
   } else {
     (*usage_records)[id].y = task_index;
-  }
-}
-
-TensorStorageType SelectBestStorageType(const CLContext& context,
-                                        const CLDevice& device,
-                                        const BHWC& shape,
-                                        const TensorStorageType& desired,
-                                        const DataType& data_type,
-                                        const Layout& layout) {
-  if (CanCreateTensorWithShape(context, device, shape,
-                               TensorDescriptor{data_type, desired, layout})) {
-    return desired;
-  }
-  auto GetBestTypeAfterTextureArray = [&]() {
-    if (device.SupportsImageBuffer() &&
-        CanCreateTensorWithShape(
-            context, device, shape,
-            TensorDescriptor{data_type, TensorStorageType::IMAGE_BUFFER,
-                             layout})) {
-      return TensorStorageType::IMAGE_BUFFER;
-    } else {
-      return TensorStorageType::BUFFER;
-    }
-  };
-  auto GetBestTypeAfterTexture2D = [&]() {
-    if (device.SupportsTextureArray() &&
-        CanCreateTensorWithShape(
-            context, device, shape,
-            TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY,
-                             layout})) {
-      return TensorStorageType::TEXTURE_ARRAY;
-    } else {
-      return GetBestTypeAfterTextureArray();
-    }
-  };
-  auto GetBestTypeAfterTexture3D = [&]() {
-    if (CanCreateTensorWithShape(
-            context, device, shape,
-            TensorDescriptor{data_type, TensorStorageType::TEXTURE_2D,
-                             layout})) {
-      return TensorStorageType::TEXTURE_2D;
-    } else {
-      return GetBestTypeAfterTexture2D();
-    }
-  };
-  switch (desired) {
-    case TensorStorageType::TEXTURE_2D:
-    case TensorStorageType::SINGLE_TEXTURE_2D:
-      return GetBestTypeAfterTexture2D();
-    case TensorStorageType::TEXTURE_ARRAY:
-      return GetBestTypeAfterTextureArray();
-    case TensorStorageType::TEXTURE_3D:
-      return GetBestTypeAfterTexture3D();
-    case TensorStorageType::IMAGE_BUFFER:
-    case TensorStorageType::BUFFER:
-      return TensorStorageType::BUFFER;
-    default:
-      return TensorStorageType::BUFFER;
   }
 }
 
@@ -457,6 +400,12 @@ void InferenceContext::Merge() {
 void InferenceContext::GetUsages(
     const std::function<bool(const TensorDescriptor&)>& functor,
     std::map<ValueId, int2>* usages) {
+  for (ValueId in_id : input_ids_) {
+    const auto& desc = tensor_reserver_.Get(in_id).descriptor;
+    if (functor(desc)) {
+      AddUsage(in_id, 0, usages);
+    }
+  }
   for (int op_index = 0; op_index < nodes_.size(); ++op_index) {
     auto tensors = GetCLNodeTensors(nodes_[op_index]);
     for (auto& tensor : tensors) {
@@ -465,7 +414,7 @@ void InferenceContext::GetUsages(
       }
     }
   }
-  for (auto& out_id : output_ids_) {
+  for (ValueId out_id : output_ids_) {
     const auto& desc = tensor_reserver_.Get(out_id).descriptor;
     if (functor(desc)) {
       AddUsage(out_id, nodes_.size(), usages);
