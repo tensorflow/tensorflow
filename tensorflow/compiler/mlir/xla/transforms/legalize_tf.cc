@@ -2928,22 +2928,22 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
   }
 };
 
-// Converts InfeedEnqueueTuple to XLA HLO after_all, infeed and
+// Converts InfeedDequeueTuple to XLA HLO create_token, infeed and
 // get_tuple_element ops.
 //
 // All HLO infeed ops expect a HLO token type operand and produce a tuple
 // containing a token. This HLO token type is used to order multiple infeed
 // operations within a computation. The token type can come from other
-// infeed/outfeed/send/recv ops or can be generated using an after_all op with
-// no operands. Here we emit an after_all op to generate the token type operand
-// of infeed.
+// infeed/outfeed/send/recv ops or can be generated using create_token op with
+// no operands. Here we emit a create_token op to generate the token type
+// operand of infeed.
 //
 // For example the following IR:
 // %0:2 = "tf.InfeedDequeueTuple"() : () -> (tensor<3xi32>, tensor<4xf32>)
 //
 // would be lowered to
 //
-// %token = "xla_hlo.after_all"() : () -> !xla_hlo.token
+// %token = "xla_hlo.create_token"() : () -> !xla_hlo.token
 // %data_and_token = "xla_hlo.infeed"(%token) {infeed_config = ""} :
 //      (!xla_hlo.token) -> tuple<tuple<tensor<3xi32>, tensor<4xf32>>,
 //      !xla_hlo.token>
@@ -2962,21 +2962,20 @@ class ConvertInfeedDequeueTupleOp
     for (auto idx_and_output : llvm::enumerate(op.outputs())) {
       result_types[idx_and_output.index()] = (idx_and_output.value().getType());
     }
-    // Infeed takes a single token operand. Generate the token using after_all
-    // op to pass to the infeed op.
-    auto afterall = rewriter.create<AfterAllOp>(
-        op.getLoc(), xla_hlo::TokenType::get(rewriter.getContext()),
-        ValueRange());
+    // Infeed takes a single token operand. Generate the token using
+    // create_token op to pass to the infeed op.
+    auto token = rewriter.create<CreateTokenOp>(
+        op.getLoc(), xla_hlo::TokenType::get(rewriter.getContext()));
 
     // Emit infeed op.
     // The result type of infeed is a tuple(tuple(result types), token type).
     auto data_tuple_type =
         mlir::TupleType::get(result_types, rewriter.getContext());
     auto data_and_token_type = mlir::TupleType::get(
-        {data_tuple_type, afterall.getType()}, rewriter.getContext());
+        {data_tuple_type, token.getType()}, rewriter.getContext());
 
     auto data_and_token =
-        rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, afterall,
+        rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
                                   /*infeed_config=*/rewriter.getStringAttr(""));
 
     // The infeed instruction produces a tuple of the infeed data and a token
@@ -2998,10 +2997,11 @@ class ConvertInfeedDequeueTupleOp
   }
 };
 
-// Converts tf.OutfeedEnqueueTuple to XLA HLO tuple, after_all and outfeed ops.
+// Converts tf.OutfeedEnqueueTuple to XLA HLO tuple, create_token and outfeed
+// ops.
 //
 // XLA HLO outfeed op expects a token, which we generate by emitting an
-// after_all op.
+// create_token op.
 //
 // For example the following IR:
 // "tf.OutfeedEnqueueTuple"(%val_1, %val_2) : (tensor<3xi32>, tensor<4xf32>) ->
@@ -3011,7 +3011,7 @@ class ConvertInfeedDequeueTupleOp
 //
 // %tuple = "xla_hlo.tuple"(%val_1, %val_2) : (tensor<3xi32>, tensor<4xf32>) ->
 //      tuple<tensor<3xi32>, tensor<4xf32>>
-// %token = "xla_hlo.after_all"() : () -> !xla_hlo.token
+// %token = "xla_hlo.create_token"() : () -> !xla_hlo.token
 // %outfeed_token = "xla_hlo.outfeed"(%tuple, %token) {outfeed_config = ""} :
 //      (tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token) -> !xla_hlo.token
 //
@@ -3024,9 +3024,8 @@ class ConvertOutfeedEnqueueTupleOp
                                      PatternRewriter &rewriter) const override {
     auto token_type = xla_hlo::TokenType::get(rewriter.getContext());
     auto tuple = rewriter.create<TupleOp>(op.getLoc(), op.inputs());
-    auto afterall =
-        rewriter.create<AfterAllOp>(op.getLoc(), token_type, ValueRange());
-    rewriter.create<OutfeedOp>(op.getLoc(), token_type, tuple, afterall,
+    auto token = rewriter.create<CreateTokenOp>(op.getLoc(), token_type);
+    rewriter.create<OutfeedOp>(op.getLoc(), token_type, tuple, token,
                                /*outfeed_config=*/rewriter.getStringAttr(""));
     rewriter.eraseOp(op);
     return matchSuccess();
