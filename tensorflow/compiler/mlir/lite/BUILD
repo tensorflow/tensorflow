@@ -580,7 +580,7 @@ cc_library(
         "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/tools/versioning:op_version",
+        "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

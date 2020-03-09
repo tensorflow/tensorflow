@@ -225,8 +225,20 @@ string FlatBufferModel::GetMinimumRuntime() const {
       auto buf = metadata->buffer();
       auto* buffer = (*model_->buffers())[buf];
       auto* array = buffer->data();
-      return string(reinterpret_cast<const char*>(array->data()),
-                    array->size());
+      // Get the real length of the runtime string, since there might be
+      // trailing
+      // '\0's in the buffer.
+      for (int len = 0; len < array->size(); ++len) {
+        if (array->data()[len] == '\0') {
+          return string(reinterpret_cast<const char*>(array->data()), len);
+        }
+      }
+      // If there is no '\0' in the buffer, this indicates that the flatbuffer
+      // is malformed.
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
+          "Min_runtime_version in model metadata is malformed");
+      break;
     }
   }
   return "";

@@ -182,7 +182,7 @@ cc_library(
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
-        "//tensorflow/lite/tools/versioning:op_version",
+        "//tensorflow/lite/tools/versioning",
         "@com_google_googletest//:gtest",
     ],
 )
