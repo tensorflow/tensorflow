@@ -41,20 +41,10 @@ template <typename CppType>
       type, llvm::makeArrayRef(data_span.data(), data_span.size()));
 }
 
-bool IsIdentityPermutation(absl::Span<const int64> minor_to_major_layout) {
-  bool is_identity = true;
-  // XLA stores layout in the inverse order for obscure reasons. Therefore, we
-  // compare and reverse the vector at the same time.
-  for (int64 i = 0, e = minor_to_major_layout.size(); i < e; ++i) {
-    is_identity &= minor_to_major_layout[i] == e - i - 1;
-  }
-  return is_identity;
-}
-
 StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
     const Shape& shape, mlir::Builder builder) {
   if (!shape.has_layout() ||
-      IsIdentityPermutation(shape.layout().minor_to_major())) {
+      LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
     return llvm::SmallVector<AffineMap, 1>{};
   }
   if (!shape.is_static()) {
