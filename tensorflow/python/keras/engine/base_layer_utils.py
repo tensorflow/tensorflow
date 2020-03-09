@@ -650,12 +650,6 @@ def mark_as_return(outputs, acd):
   return nest.map_structure(_mark_as_return, outputs)
 
 
-def default(method):
-  """Decorates a method to detect overrides in subclasses."""
-  method._is_default = True  # pylint: disable=protected-access
-  return method
-
-
 V2_DTYPE_BEHAVIOR = None
 
 

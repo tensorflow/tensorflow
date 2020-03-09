@@ -586,7 +586,7 @@ class Network(base_layer.Layer):
     """
     return
 
-  @base_layer_utils.default
+  @generic_utils.default
   def build(self, input_shape):
     """Builds the model based on input shapes received.
 
