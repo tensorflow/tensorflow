@@ -41,16 +41,33 @@ template <typename CppType>
       type, llvm::makeArrayRef(data_span.data(), data_span.size()));
 }
 
-llvm::SmallVector<AffineMap, 2> GetPermutationIfAvailable(
+bool IsIdentityPermutation(absl::Span<const int64> minor_to_major_layout) {
+  bool is_identity = true;
+  // XLA stores layout in the inverse order for obscure reasons. Therefore, we
+  // compare and reverse the vector at the same time.
+  for (int64 i = 0, e = minor_to_major_layout.size(); i < e; ++i) {
+    is_identity &= minor_to_major_layout[i] == e - i - 1;
+  }
+  return is_identity;
+}
+
+StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
     const Shape& shape, mlir::Builder builder) {
-  if (!shape.has_layout() || shape.layout().minor_to_major().empty()) {
-    return {};
+  if (!shape.has_layout() ||
+      IsIdentityPermutation(shape.layout().minor_to_major())) {
+    return llvm::SmallVector<AffineMap, 1>{};
   }
-  llvm::SmallVector<unsigned, 2> permutation;
+  if (!shape.is_static()) {
+    return tensorflow::errors::Internal(
+        "Permutations for dynamic shapes are not yet supported");
+  }
+  llvm::SmallVector<int64_t, 2> permuted_sizes;
   for (auto dim : llvm::reverse(shape.layout().minor_to_major())) {
-    permutation.push_back(dim);
+    permuted_sizes.push_back(shape.dimensions(dim));
   }
-  return {AffineMap::getPermutationMap(permutation, builder.getContext())};
+  return llvm::SmallVector<AffineMap, 1>{AffineMap::get(
+      permuted_sizes.size(), 0,
+      makeCanonicalStridedLayoutExpr(permuted_sizes, builder.getContext()))};
 }
 
 }  // namespace
@@ -64,8 +81,10 @@ StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
   using mlir::MemRefType;
   auto dimensions = shape.dimensions();
   llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
+  auto permutation_or = GetPermutationIfAvailable(shape, builder);
+  if (!permutation_or.ok()) return permutation_or.status();
   return MemRefType::get(array, element_type_or.ValueOrDie(),
-                         GetPermutationIfAvailable(shape, builder));
+                         permutation_or.ValueOrDie());
 }
 
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
