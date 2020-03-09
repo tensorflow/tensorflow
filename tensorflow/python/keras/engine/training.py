@@ -978,6 +978,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           x=x,
           y=y,
           sample_weight=sample_weight,
+          class_weight=class_weight,
           batch_size=batch_size,
           steps_per_epoch=steps,
           initial_epoch=0,
