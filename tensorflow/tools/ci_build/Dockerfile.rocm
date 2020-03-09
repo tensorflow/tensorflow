@@ -79,6 +79,19 @@ RUN wget https://www.dropbox.com/s/ztr9y09ipm1188i/MIOpen-HIP-2.2.0.7630-f38e87a
 # installation of the MIOpen package seems to delete some required links...put them back in
 RUN bash -c 'cd ${ROCM_PATH}/include && ln -s ../miopen/include/miopen* .'
 
+# Need to explicitly create the $ROCM_PATH/.info/version file to workaround what seems to be a bazel bug
+# The env vars being set via --action_env in .bazelrc and .tf_configure.bazelrc files are sometimes
+# not getting set in the build command being spawned by bazel (in theory this should not happen)
+# As a consequence ROCM_PATH is sometimes not set for the hipcc commands.
+# When hipcc incokes hcc, it specifies $ROCM_PATH/.../include dirs via the `-isystem` options
+# If ROCM_PATH is not set, it defaults to /opt/rocm, and as a consequence a dependency is generated on the
+# header files included within `/opt/rocm`, which then leads to bazel dependency errors
+# Explicitly creating the $ROCM_PATH/.info/version allows ROCM path to be set correrctly, even when ROCM_PATH
+# is not explicitly set, and thus avoids the eventual bazel dependency error.
+# The bazel bug needs to be root-caused and addressed, but that is out of our control and may take a long time
+# to come to fruition, so implementing the workaround to make do till then
+RUN touch ${ROCM_PATH}/.info/version
+
 # Copy and run the install scripts.
 COPY install/*.sh /install/
 ARG DEBIAN_FRONTEND=noninteractive
