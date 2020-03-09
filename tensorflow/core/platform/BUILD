@@ -939,8 +939,6 @@ tf_cc_tests(
         "port_test.cc",
         "profile_utils/cpu_utils_test.cc",
         "scanner_test.cc",
-        "stacktrace_handler_test.cc",
-        "stacktrace_test.cc",
         "str_util_test.cc",
         "strcat_test.cc",
         "stringpiece_test.cc",
@@ -966,6 +964,37 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@zlib",
+    ],
+)
+
+tf_cc_test(
+    name = "stacktrace_test",
+    size = "small",
+    srcs = [
+        "stacktrace_test.cc",
+    ],
+    tags = ["no_windows"],
+    deps = [
+        ":logging",
+        ":stacktrace",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_tests(
+    name = "stacktrace_handler_test",
+    size = "small",
+    srcs = [
+        "stacktrace_handler_test.cc",
+    ],
+    tags = ["no_windows"],
+    deps = [
+        ":logging",
+        ":stacktrace",
+        ":stacktrace_handler",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
