@@ -11,6 +11,7 @@ py_library(
     name = "legacy_base_layer",
     srcs = ["legacy_base_layer.py"],
     deps = [
+        ":base_layer_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:auto_control_deps",
@@ -37,7 +38,6 @@ py_library(
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras/engine",
-        "//tensorflow/python/keras/engine:base_layer_utils",
         "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:generic_utils",
@@ -52,6 +52,29 @@ py_library(
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "base_layer_utils",
+    srcs = ["base_layer_utils.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_util",
+        "//tensorflow/python:control_flow_v2_func_graphs",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
@@ -70,6 +93,20 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "base_layer_utils_test",
+    srcs = ["base_layer_utils_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        ":base_layer_utils",
+        "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
