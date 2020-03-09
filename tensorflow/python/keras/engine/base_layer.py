@@ -508,7 +508,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       dtype = self.dtype or backend.floatx()
     dtype = dtypes.as_dtype(dtype)
     if self._dtype_policy.variable_dtype is None:
-      # The policy is "infer", so we infer the policy from the variable dtype.
+      # The policy is "_infer", so we infer the policy from the variable dtype.
       self._dtype_policy = policy.Policy(dtype.base_dtype.name)
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
