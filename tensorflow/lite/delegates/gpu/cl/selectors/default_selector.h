@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_OPERATION_SELECTOR_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_OPERATION_SELECTOR_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_DEFAULT_SELECTOR_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_DEFAULT_SELECTOR_H_
 
 #include <memory>
 
@@ -29,15 +29,14 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-Status GPUOperationFromNode(const CreationContext& creation_context,
-                            const OperationDef& op_def, ModelHints hints,
-                            const std::vector<Value<TensorRef<BHWC>>*>& inputs,
-                            const std::vector<Value<TensorRef<BHWC>>*>& outputs,
-                            const Node& node,
-                            GPUOperationsSubgraph* gpu_subgraph);
+Status SelectDefault(const CreationContext& creation_context,
+                     const OperationDef& op_def, ModelHints hints,
+                     const std::vector<Value<TensorRef<BHWC>>*>& inputs,
+                     const std::vector<Value<TensorRef<BHWC>>*>& outputs,
+                     const Node& node, GPUOperationsSubgraph* gpu_subgraph);
 
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_OPERATION_SELECTOR_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_DEFAULT_SELECTOR_H_

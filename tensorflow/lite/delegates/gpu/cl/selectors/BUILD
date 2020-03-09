@@ -43,6 +43,20 @@ cc_library(
 )
 
 cc_library(
+    name = "default_selector",
+    hdrs = ["default_selector.h"],
+    deps = [
+        ":subgraph",
+        "//tensorflow/lite/delegates/gpu/cl:model_hints",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/cl/selectors/default:default_selector",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
+cc_library(
     name = "dw_convolution_selector",
     srcs = ["dw_convolution_selector.cc"],
     hdrs = ["dw_convolution_selector.h"],
@@ -83,12 +97,14 @@ cc_library(
         ":dw_convolution_selector",
         ":fully_connected_selector",
         ":simple_selectors",
+        ":subgraph",
         "//tensorflow/lite/delegates/gpu/cl:cl_device",
         "//tensorflow/lite/delegates/gpu/cl:model_hints",
         "//tensorflow/lite/delegates/gpu/cl:storage_type_util",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
         "//tensorflow/lite/delegates/gpu/cl/kernels:elementwise",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/cl/selectors:default_selector",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -129,5 +145,16 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "subgraph",
+    srcs = ["subgraph.cc"],
+    hdrs = ["subgraph.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common:model",
     ],
 )
