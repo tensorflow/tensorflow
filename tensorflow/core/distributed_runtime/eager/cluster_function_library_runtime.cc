@@ -120,7 +120,18 @@ void EagerClusterFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::LocalHandle handle, gtl::ArraySlice<Tensor> args,
     std::vector<Tensor>* rets, FunctionLibraryRuntime::DoneCallback done) {
-  done(errors::Unimplemented("Not implemented"));
+  if (args.empty() && rets->empty()) {
+    FunctionLibraryRuntime::Options opts_copy = opts;
+    opts_copy.op_id = ctx_->RemoteMgr()->NextOpId();
+    Run(opts_copy, handle, /*args=*/nullptr, std::move(done));
+  } else {
+    // TODO(b/150963957): Support remote inputs and outputs which are passed as
+    // Tensors.
+    done(errors::Unimplemented(
+        "Not implemented. Users could set the input devices and output devices "
+        "in FunctionLibraryRuntime::Options to the default multi-device "
+        "function device as a workaround."));
+  }
 }
 
 void EagerClusterFunctionLibraryRuntime::Run(
@@ -158,8 +169,10 @@ void EagerClusterFunctionLibraryRuntime::Run(
   eager::EnqueueRequest* request = new eager::EnqueueRequest;
   request->set_context_id(context_id_);
   eager::Operation* remote_op = request->add_queue()->mutable_operation();
-  for (size_t i = 0; i < args->size(); ++i) {
-    remote_op->add_inputs()->Swap(&(*args)[i]);
+  if (args) {
+    for (size_t i = 0; i < args->size(); ++i) {
+      remote_op->add_inputs()->Swap(&(*args)[i]);
+    }
   }
   // The remote component function should use the same op_id as its parent
   // multi-device function's in order to get the global unique op_id generated

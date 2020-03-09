@@ -471,8 +471,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
     result.push_back(std::make_pair("autotune", autotune_ ? "true" : "false"));
     result.push_back(
         std::make_pair("deterministic", deterministic_ ? "true" : "false"));
-    result.push_back(
-        std::make_pair("parallelism", strings::Printf("%lld", parallelism)));
+    result.push_back(std::make_pair(
+        "parallelism",
+        strings::Printf("%lld", static_cast<long long>(parallelism))));
     return result;
   }
 

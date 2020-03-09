@@ -3215,6 +3215,49 @@ test_suite(
     ],
 )
 
+tf_cc_test(
+    name = "common_runtime_placer_test",
+    size = "small",
+    srcs = [
+        "common_runtime/placer_test.cc",
+    ],
+    linkopts = select({
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["no_windows"],
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/cc:while_loop",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/util:protos_test_cc",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cc_tests(
     name = "core_higher_level_tests",
     size = "small",
@@ -3234,7 +3277,6 @@ tf_cc_tests(
         "common_runtime/optimization_registry_test.cc",
         "common_runtime/pending_counts_test.cc",
         "common_runtime/placer_inspection_required_ops_utils_test.cc",
-        "common_runtime/placer_test.cc",
         "common_runtime/session_test.cc",
         "common_runtime/threadpool_device_test.cc",
         "//tensorflow/core/example:feature_util_test.cc",

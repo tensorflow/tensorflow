@@ -265,6 +265,27 @@ cc_library(
 )
 
 cc_library(
+    name = "unroll_batch_matmul_pass",
+    srcs = [
+        "transforms/unroll_batch_matmul.cc",
+    ],
+    hdrs = [
+        "transforms/unroll_batch_matmul.h",
+    ],
+    deps = [
+        ":tensorflow",
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "tensorflow_passes",
     srcs = [
         "transforms/annotate_parameter_replication.cc",
@@ -311,7 +332,6 @@ cc_library(
         "transforms/tpu_rewrite_pass.cc",
         "transforms/tpu_sharding_identification_pass.cc",
         "transforms/tpu_variable_runtime_reformatting.cc",
-        "transforms/unroll_batch_matmul.cc",
         "translate/breakup-islands.cc",
         "translate/control_to_executor_dialect.cc",
         "translate/executor_to_control_dialect.cc",
@@ -322,7 +342,6 @@ cc_library(
         "transforms/bridge.h",
         "transforms/passes.h",
         "transforms/shape_inference.h",
-        "transforms/unroll_batch_matmul.h",
     ],
     includes = ["include"],
     deps = [
@@ -341,6 +360,7 @@ cc_library(
         ":tensorflow_types",
         ":tpu_rewrite_device_util",
         ":translate_utils",
+        ":unroll_batch_matmul_pass",
         ":xla_sharding_util",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -360,7 +380,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -708,18 +727,34 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_dialect_passes",
+    name = "decode_constant_pass",
     srcs = [
-        "transforms/constant_fold.cc",
         "transforms/decode_constant.cc",
-        "transforms/dialect_hooks.cc",
     ],
     hdrs = [
-        "transforms/constant_fold.h",
         "transforms/decode_constant.h",
     ],
     deps = [
         ":convert_tensor",
+        ":tensorflow",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tf_dialect_passes",
+    srcs = [
+        "transforms/constant_fold.cc",
+        "transforms/dialect_hooks.cc",
+    ],
+    hdrs = [
+        "transforms/constant_fold.h",
+    ],
+    deps = [
+        ":convert_tensor",
+        ":decode_constant_pass",
         ":eval_util",
         ":tensorflow",
         ":tensorflow_types",

@@ -62,7 +62,8 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
           output_types_(output_types),
           output_shapes_(output_shapes),
           traceme_metadata_(
-              {{"num_replicas", strings::Printf("%lld", num_replicas)}}) {
+              {{"num_replicas", strings::Printf("%lld", static_cast<long long>(
+                                                            num_replicas))}}) {
       input_->Ref();
     }
 

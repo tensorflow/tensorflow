@@ -980,7 +980,9 @@ inline void LstmStepInteger(
     TFLITE_DCHECK(input_to_input_effective_bias);
     TFLITE_DCHECK(recurrent_to_input_effective_bias);
   }
-  TFLITE_DCHECK(projection_effective_bias);
+  if (use_projection) {
+    TFLITE_DCHECK(projection_effective_bias);
+  }
 
   // Set scratch to 0.
   if (!use_cifg) {

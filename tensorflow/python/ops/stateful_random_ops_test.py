@@ -748,6 +748,18 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(2, len(local_results))
       self.assertAllDifferent(local_results)
 
+  @test_util.run_v2_only
+  def testUniformFullInt(self):
+    """Tests full-range int uniform.
+    """
+    shape = [3, 4]
+    dtype = dtypes.int32
+    g = random.Generator.from_seed(1)
+    r1 = g.uniform(shape=shape, dtype=dtype, minval=None)
+    g = random.Generator.from_seed(1)
+    r2 = g.uniform_full_int(shape=shape, dtype=dtype)
+    self.assertAllEqual(r1, r2)
+
 
 if __name__ == "__main__":
   test.main()

@@ -55,6 +55,8 @@ class WrapperDataset : public DatasetBase {
 
   string DebugString() const override { return "WrapperDataset"; }
 
+  Status CheckExternalState() const override { return Status::OK(); }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

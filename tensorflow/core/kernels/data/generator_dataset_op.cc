@@ -158,6 +158,17 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
+    Status SaveInternal(IteratorStateWriter* writer) override {
+      return errors::Unimplemented(
+          "GeneratorDataset does not support checkpointing.");
+    }
+
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      return errors::Unimplemented(
+          "GeneratorDataset does not support checkpointing.");
+    }
+
    private:
     mutex mu_;
     bool initialized_ TF_GUARDED_BY(mu_) = false;
@@ -177,13 +188,14 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
 
 GeneratorDatasetOp::GeneratorDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kInitFunc, /*params=*/{},
+  FunctionMetadata::Params params;
+  params.is_multi_device_function = true;
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kInitFunc, params,
                                                &init_func_metadata_));
-  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kNextFunc, /*params=*/{},
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kNextFunc, params,
                                                &next_func_metadata_));
-  OP_REQUIRES_OK(ctx,
-                 FunctionMetadata::Create(ctx, kFinalizeFunc, /*params=*/{},
-                                          &finalize_func_metadata_));
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kFinalizeFunc, params,
+                                               &finalize_func_metadata_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
 }

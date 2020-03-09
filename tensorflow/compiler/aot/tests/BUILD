@@ -10,6 +10,9 @@ package(
 glob_lit_tests(
     data = [":filecheck_test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
+    tags_override = {
+        "test_error_message.lit.pbtxt": ["no_oss"],  # TODO(b/150957738): to be fixed on oss.
+    },
     test_file_exts = ["lit.pbtxt"],
 )
 

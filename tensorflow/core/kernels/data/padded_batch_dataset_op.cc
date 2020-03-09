@@ -61,7 +61,8 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         input_(input),
         op_version_(op_version),
         traceme_metadata_(
-            {{"batch_size", strings::Printf("%lld", batch_size)},
+            {{"batch_size",
+              strings::Printf("%lld", static_cast<long long>(batch_size))},
              {"drop_remainder", drop_remainder ? "true" : "false"}}) {
     input_->Ref();
 

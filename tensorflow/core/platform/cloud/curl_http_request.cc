@@ -127,8 +127,8 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   CHECK(curl_ != nullptr) << "Couldn't initialize a curl session.";
 
   // NOTE: CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt is configured by
-  //       default in //third_party:curl.BUILD and can be customized via an
-  //       environment variable.
+  //       default in tensorflow/third_party/curl.BUILD and can be customized
+  //       via an environment variable.
 
   CHECK_CURL_OK(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput));
@@ -141,7 +141,8 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   // TODO(b/74351157): Enable HTTP/2.
 
   // Set up the progress meter.
-  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 0ULL));
+  CHECK_CURL_OK(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, uint64{0}));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, this));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION,
                                            &CurlHttpRequest::ProgressCallback));

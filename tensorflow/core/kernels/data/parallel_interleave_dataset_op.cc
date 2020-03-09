@@ -172,8 +172,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         traceme_metadata_(
             {{"autotune",
               num_parallel_calls == model::kAutotune ? "true" : "false"},
-             {"block_length", strings::Printf("%lld", block_length)},
-             {"cycle_length", strings::Printf("%lld", cycle_length)},
+             {"block_length",
+              strings::Printf("%lld", static_cast<long long>(block_length))},
+             {"cycle_length",
+              strings::Printf("%lld", static_cast<long long>(cycle_length))},
              {"deterministic",
               deterministic.IsNondeterministic() ? "false" : "true"}}) {
     input_->Ref();
@@ -467,8 +469,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         mu_->unlock();
       }
       auto result = dataset()->traceme_metadata_;
-      result.push_back(
-          std::make_pair("parallelism", strings::Printf("%lld", parallelism)));
+      result.push_back(std::make_pair(
+          "parallelism",
+          strings::Printf("%lld", static_cast<long long>(parallelism))));
       return result;
     }
 

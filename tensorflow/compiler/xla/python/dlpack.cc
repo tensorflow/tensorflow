@@ -329,11 +329,12 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
   if (dlmt->deleter) {
     on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };
   }
+  absl::Span<const std::shared_ptr<BufferDefinitionEvent>> definition_events;
   auto device_buffer = std::make_shared<SharedDeviceBuffer>(
       /*allocator=*/nullptr, dlmt->dl_tensor.ctx.device_id,
       std::initializer_list<se::DeviceMemoryBase>{buffer},
       /*children=*/std::vector<std::shared_ptr<SharedDeviceBuffer>>{},
-      /*definition_event=*/nullptr, std::move(on_delete_callback));
+      definition_events, std::move(on_delete_callback));
 
   // We have taken ownership of the array inside the capsule; make sure the
   // capsule it cannot be used again.

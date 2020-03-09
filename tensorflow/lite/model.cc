@@ -325,8 +325,8 @@ std::vector<int> FlatBufferIntArrayToVector(T* flat_array) {
   if (flat_array == nullptr) {
     return {};
   }
-  std::vector<int> ret(flat_array->Length());
-  for (int i = 0; i < flat_array->Length(); i++) {
+  std::vector<int> ret(flat_array->size());
+  for (int i = 0; i < flat_array->size(); i++) {
     ret[i] = flat_array->Get(i);
   }
   return ret;
@@ -347,9 +347,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
   TfLiteStatus status = kTfLiteOk;
 
   // Reduce the number of redundant allocations
-  subgraph->ReserveNodes(operators->Length());
+  subgraph->ReserveNodes(operators->size());
 
-  for (int i = 0; i < operators->Length(); ++i) {
+  for (int i = 0; i < operators->size(); ++i) {
     const auto* op = operators->Get(i);
     int index = op->opcode_index();
     if (index < 0 || index >= flatbuffer_op_index_to_registration_.size()) {
@@ -555,7 +555,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     return kEmptyTensorName;
   };
 
-  for (int i = 0; i < tensors->Length(); ++i) {
+  for (int i = 0; i < tensors->size(); ++i) {
     const auto* tensor = tensors->Get(i);
     std::vector<int> dims = FlatBufferIntArrayToVector(tensor->shape());
 
@@ -603,7 +603,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     size_t dims_signature_rank = 0;
     const int* dims_signature_data = nullptr;
     if (tensor->shape_signature()) {
-      dims_signature_rank = tensor->shape_signature()->Length();
+      dims_signature_rank = tensor->shape_signature()->size();
       dims_signature_data = tensor->shape_signature()->data();
     }
 
@@ -718,15 +718,15 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   interpreter->reset(new Interpreter(error_reporter_));
   (*interpreter)->SetNumThreads(num_threads);
-  if (subgraphs->Length() > 1) {
-    (*interpreter)->AddSubgraphs(subgraphs->Length() - 1);
+  if (subgraphs->size() > 1) {
+    (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }
 
 #if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
   (*interpreter)->SetProfiler(tflite::profiling::CreatePlatformProfiler());
 #endif
 
-  for (int subgraph_index = 0; subgraph_index < subgraphs->Length();
+  for (int subgraph_index = 0; subgraph_index < subgraphs->size();
        ++subgraph_index) {
     const tflite::SubGraph* subgraph = (*subgraphs)[subgraph_index];
     tflite::Subgraph* modified_subgraph =
@@ -739,7 +739,7 @@ TfLiteStatus InterpreterBuilder::operator()(
           subgraph_index);
       return cleanup_and_error();
     }
-    if (modified_subgraph->AddTensors(tensors->Length()) != kTfLiteOk) {
+    if (modified_subgraph->AddTensors(tensors->size()) != kTfLiteOk) {
       return cleanup_and_error();
     }
     // Set num threads

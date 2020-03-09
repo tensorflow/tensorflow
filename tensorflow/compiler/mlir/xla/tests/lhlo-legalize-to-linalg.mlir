@@ -415,6 +415,20 @@ func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @rsqrt
+func @rsqrt(%input: memref<2x2xf32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.rsqrt"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = rsqrt %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
 // CHECK-LABEL: func @sign
 func @sign(%input: memref<2x2xf32>,
           %result: memref<2x2xf32>) {

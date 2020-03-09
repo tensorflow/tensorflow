@@ -49,6 +49,7 @@ load(
     "is_windows",
     "raw_exec",
     "read_dir",
+    "realpath",
     "which",
 )
 
@@ -360,8 +361,8 @@ def _cuda_include_path(repository_ctx, cuda_config):
             )
     inc_entries = []
     if target_dir != "":
-        inc_entries.append(target_dir)
-    inc_entries.append(cuda_config.cuda_toolkit_path + "/include")
+        inc_entries.append(realpath(repository_ctx, target_dir))
+    inc_entries.append(realpath(repository_ctx, cuda_config.cuda_toolkit_path + "/include"))
     return inc_entries
 
 def enable_cuda(repository_ctx):

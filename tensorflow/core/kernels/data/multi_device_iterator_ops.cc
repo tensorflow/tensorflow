@@ -573,7 +573,8 @@ class MultiDeviceIteratorInitOp : public OpKernel {
 
     IteratorContext iter_ctx(std::move(params));
     OP_REQUIRES_OK(
-        ctx, dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));
+        ctx, dataset->MakeIterator(std::move(iter_ctx), /*parent=*/nullptr,
+                                   "Iterator", &iterator));
     int64 incarnation_id;
     OP_REQUIRES_OK(ctx, resource->Init(std::move(iterator), max_buffer_size,
                                        &incarnation_id));

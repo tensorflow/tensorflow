@@ -21,3 +21,15 @@ cc_library(
         "//tensorflow/lite/micro:micro_utils",
     ],
 )
+
+cc_library(
+    name = "micro_benchmark",
+    hdrs = [
+        "micro_benchmark.h",
+    ],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:micro_time",
+    ],
+)

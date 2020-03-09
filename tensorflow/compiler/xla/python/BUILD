@@ -394,3 +394,25 @@ pybind_extension(
         "//conditions:default": [],
     }),
 )
+
+tf_cc_test(
+    name = "gpu_multistream_test",
+    srcs = ["gpu_multistream_test.cc"],
+    tags = [
+        # TODO(phawkins): figure out TF test infra such that this only runs under GPU.
+        "no_oss",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":local_client",
+        ":nvidia_gpu_device",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:random",
+    ],
+)

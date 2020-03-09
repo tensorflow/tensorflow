@@ -400,7 +400,7 @@ bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
 #else
   int32 pid = static_cast<int32>(getpid());
 #endif
-  uint64 now_microsec = NowMicros();
+  long long now_microsec = NowMicros();  // NOLINT
 
   *prefix += strings::Printf("%s-%x-%d-%llx", port::Hostname().c_str(), tid,
                              pid, now_microsec);

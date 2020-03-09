@@ -66,7 +66,7 @@ def stateless_random_uniform(shape,
   `maxval - minval` significantly smaller than the range of the output (either
   `2**32` or `2**64`).
 
-  For full full-range (i.e. inclusive of both max and min) random integers, pass
+  For full-range (i.e. inclusive of both max and min) random integers, pass
   `minval=None` and `maxval=None` with an integer `dtype`. For an integer dtype
   either both `minval` and `maxval` must be `None` or neither may be `None`. For
   example:

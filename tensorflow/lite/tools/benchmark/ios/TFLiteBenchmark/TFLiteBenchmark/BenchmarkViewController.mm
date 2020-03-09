@@ -19,12 +19,7 @@
 #import <string>
 #import <vector>
 
-#if defined(USE_TFLITE_BENCHMARK_HEADERS)
-#include "third_party/tensorflow/lite/tools/benchmark/experimental/c/benchmark_c_api.h"
-#include "third_party/tensorflow/lite/tools/benchmark/logging.h"
-#else
 #import <TensorFlowLiteBenchmarkC/TensorFlowLiteBenchmarkC.h>
-#endif
 
 namespace {
 NSString* FilePathForResourceName(NSString* filename) {

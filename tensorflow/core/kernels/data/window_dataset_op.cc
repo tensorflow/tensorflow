@@ -54,9 +54,12 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         output_dtypes_(input_->output_dtypes().size(), {DT_VARIANT}),
         output_shapes_(input_->output_shapes().size(), TensorShape({})),
         traceme_metadata_(
-            {{"window_size", strings::Printf("%lld", window_size)},
-             {"window_shift", strings::Printf("%lld", window_shift)},
-             {"window_stride", strings::Printf("%lld", window_stride)}}) {
+            {{"window_size",
+              strings::Printf("%lld", static_cast<long long>(window_size))},
+             {"window_shift",
+              strings::Printf("%lld", static_cast<long long>(window_shift))},
+             {"window_stride", strings::Printf("%lld", static_cast<long long>(
+                                                           window_stride))}}) {
     input_->Ref();
   }
 

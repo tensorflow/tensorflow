@@ -76,6 +76,7 @@ gentbl(
     td_srcs = [
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
+        "@llvm-project//mlir:include/mlir/IR/SideEffects.td",
         "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Analysis/ControlFlowInterfaces.td",
         "@llvm-project//mlir:include/mlir/Analysis/InferTypeOpInterface.td",
@@ -117,6 +118,7 @@ cc_library(
     srcs = [
         "lib/IR/TestFunc.cpp",
         "lib/IR/TestMatchers.cpp",
+        "lib/IR/TestSideEffects.cpp",
         "lib/IR/TestSymbolUses.cpp",
     ],
     deps = [

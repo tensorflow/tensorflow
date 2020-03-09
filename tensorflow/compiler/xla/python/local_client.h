@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -80,6 +81,19 @@ class Device {
   const int host_id_;
   const std::string platform_name_;
 };
+
+class PyLocalBuffer;
+// Helper struct for cross host transfers, returned by the callback from a call
+// to PyLocalBuffer::MakeCrossHostReceiveBuffers.
+struct PyLocalCrossHostRecvBuffer {
+  // serialized_descriptor should be transmitted to the sender and passed to a
+  // call to src_buffer->CopyToRemoteDevice.
+  std::string serialized_descriptor;
+  // The buffer that will hold the result of the transfer.
+  std::unique_ptr<PyLocalBuffer> buffer;
+};
+using PyLocalCrossHostRecvNotifier =
+    std::function<void(StatusOr<std::vector<PyLocalCrossHostRecvBuffer>>&&)>;
 
 // Encapsulates the state of Python session with XLA.
 class PyLocalClient {
@@ -134,6 +148,19 @@ class PyLocalClient {
   virtual bool EnqueueD2DTransfersOnSrcStream() const { return true; }
 
  protected:
+  friend class PyLocalBuffer;
+  virtual void EnqueueCrossHostReceive(
+      std::vector<std::unique_ptr<PyLocalBuffer>>&& buffers,
+      PyLocalCrossHostRecvNotifier&& notifier) const {
+    notifier(Unimplemented("Cross host receives not implemented."));
+  }
+
+  virtual Status CopyToRemoteDevice(PyLocalBuffer* buffer,
+                                    absl::string_view serialized_descriptor,
+                                    std::shared_ptr<Device> device) const {
+    return Unimplemented("Cross host sends not implemented.");
+  }
+
   std::string platform_name_;
   LocalClient* client_;
 
@@ -181,6 +208,19 @@ class PyLocalBuffer {
       const std::vector<PyLocalBuffer*> buffers,
       std::shared_ptr<PyLocalClient> client, std::shared_ptr<Device> device);
 
+  // Asynchronously makes a vector of PyLocalBuffers that can be used to receive
+  // cross host transfers using `client` on `device'. `shapes` must be the exact
+  // shapes, with identical layouts, corresponding to the buffers that will be
+  // sent. When resources for the transfer are available, notifier will be
+  // called with a vector of PyLocalCrossHostRecvBuffer structs, one for each
+  // shape in `shapes`. Each struct contains a buffer that will contain the
+  // received value, and an opaque string that should be transmitted to the
+  // sending host and used in a call to CopyToRemoteDevice. None of the recv
+  // buffers will become ready until *all* of the sends have completed.
+  static void MakeCrossHostReceiveBuffers(
+      absl::Span<const Shape> shapes, std::shared_ptr<PyLocalClient> client,
+      std::shared_ptr<Device> device, PyLocalCrossHostRecvNotifier&& notifier);
+
   PyLocalBuffer(Shape on_host_shape, Shape on_device_shape,
                 std::shared_ptr<SharedDeviceBuffer> device_buffer,
                 std::shared_ptr<PyLocalClient> client,
@@ -226,6 +266,18 @@ class PyLocalBuffer {
   // Copies the buffer to device `dst_device`.
   StatusOr<std::unique_ptr<PyLocalBuffer>> CopyToDevice(
       std::shared_ptr<Device> dst_device);
+
+  // Copies the buffer to remote device `dst_device`. This call must be preceded
+  // by a call to MakeCrossHostReceiveBuffers on the remote host's
+  // dst_device. MakeCrossHostReceiveBuffers takes an array of shapes to
+  // construct the destination buffers, and a callback supplies an array
+  // containing both the destination buffers, and a serialized descriptor for
+  // each buffer. For each destination buffer there should be a matching call to
+  // src->CopyToRemoteDevice on a remote host for a src buffer of the
+  // corresponding shape. serialized_descriptor is the string returned by the
+  // callback along with the corresponding destination buffer.
+  Status CopyToRemoteDevice(absl::string_view serialized_descriptor,
+                            std::shared_ptr<Device> dst_device);
 
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.

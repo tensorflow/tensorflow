@@ -278,11 +278,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         mu_->unlock();
       }
       data::TraceMeMetadata result;
-      result.push_back(
-          std::make_pair("buffer_limit", strings::Printf("%lld", limit)));
+      result.push_back(std::make_pair(
+          "buffer_limit",
+          strings::Printf("%lld", static_cast<long long>(limit))));
       if (dataset()->slack_period_ > 0) {
-        result.push_back(
-            std::make_pair("slack", strings::Printf("%lld", slack_us_.load())));
+        result.push_back(std::make_pair(
+            "slack",
+            strings::Printf("%lld", static_cast<long long>(slack_us_.load()))));
       }
       return result;
     }
