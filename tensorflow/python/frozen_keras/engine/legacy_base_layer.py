@@ -58,10 +58,10 @@ from tensorflow.python.frozen_keras import regularizers
 from tensorflow.python.frozen_keras.engine import base_layer_utils
 from tensorflow.python.frozen_keras.engine import input_spec
 from tensorflow.python.frozen_keras.engine import node as node_module
+from tensorflow.python.frozen_keras.utils import generic_utils
+from tensorflow.python.frozen_keras.utils import layer_utils
+from tensorflow.python.frozen_keras.utils import tf_utils
 from tensorflow.python.keras.saving.saved_model import layer_serialization
-from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.keras.utils import layer_utils
-from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
 from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import

@@ -87,7 +87,7 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/frozen_keras/utils:generic_utils",
         "@six_archive//:six",
     ],
 )
@@ -100,7 +100,7 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:tf2",
-        "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/frozen_keras/utils:generic_utils",
         "@six_archive//:six",
     ],
 )
@@ -112,7 +112,7 @@ py_library(
         ":backend",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/frozen_keras/utils:generic_utils",
         "@six_archive//:six",
     ],
 )
