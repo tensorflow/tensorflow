@@ -757,15 +757,21 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     if not callable(generator):
       raise TypeError("`generator` must be callable.")
 
-    if output_types is None and output_spec is None:
-      raise TypeError("Either `output_types` or `output_spec` must be "
-                      "specified.")
-
     if output_spec is not None:
+      if output_types is not None:
+        raise TypeError("`output_types` can not be used together with "
+                        "`output_spec`")
+      if output_shapes is not None:
+        raise TypeError("`output_shapes` can not be used together with "
+                        "`output_spec`")
       if not all(isinstance(_, type_spec.TypeSpec)
                  for _ in nest.flatten(output_spec)):
         raise TypeError("All the elements of `output_spec` must be "
                         "a `tf.TypeSpec` objects.")
+    else:
+      if output_types is None and output_shapes is not None:
+        raise TypeError("`output_shapes` can not be used alone without "
+                        "`output_types`")
 
     if output_spec is None:
       if output_shapes is None:
