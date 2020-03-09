@@ -294,6 +294,7 @@ cc_library(
         "transforms/bridge_pass.cc",
         "transforms/cluster_formation.cc",
         "transforms/cluster_outlining.cc",
+        "transforms/collection_ops_util.cc",
         "transforms/decompose_resource_ops_pass.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/executor_tpuv1_inline_tpu_island.cc",
@@ -323,6 +324,7 @@ cc_library(
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
         "transforms/stack_ops_decomposition.cc",
+        "transforms/tensor_list_ops_decomposition.cc",
         "transforms/test_side_effect_analysis.cc",
         "transforms/tf_device_assignment.cc",
         "transforms/tpu_cluster_formation.cc",
@@ -340,6 +342,7 @@ cc_library(
     hdrs = [
         "transforms/batchmatmul_to_einsum.h",
         "transforms/bridge.h",
+        "transforms/collection_ops_util.h",
         "transforms/passes.h",
         "transforms/shape_inference.h",
     ],
