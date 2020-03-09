@@ -742,7 +742,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> list(dataset.take(1))
     [(<tf.Tensor: shape=(), dtype=int64, numpy=42>, <tf.RaggedTensor [[1, 2], [3]]>)]
 
-    NOTE: The current implementation of `Dataset.from_generator()` uses
+    Note: The current implementation of `Dataset.from_generator()` uses
     `tf.numpy_function` and inherits the same constraints. In particular, it
     requires the `Dataset`- and `Iterator`-related operations to be placed
     on a device in the same process as the Python program that called
@@ -750,7 +750,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     serialized in a `GraphDef`, and you should not use this method if you
     need to serialize your model and restore it in a different environment.
 
-    NOTE: If `generator` depends on mutable global variables or other external
+    Note: If `generator` depends on mutable global variables or other external
     state, be aware that the runtime may invoke `generator` multiple times
     (in order to support repeating the `Dataset`) and at any time
     between the call to `Dataset.from_generator()` and the production of the
