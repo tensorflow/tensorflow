@@ -122,7 +122,7 @@ int SingleOpModel::AddOutput(const TensorData& t) {
 void SingleOpModel::SetBuiltinOp(BuiltinOperator type,
                                  BuiltinOptions builtin_options_type,
                                  flatbuffers::Offset<void> builtin_options) {
-  opcodes_.push_back(CreateOperatorCode(builder_, type, 0, 0));
+  opcodes_.push_back(CreateOperatorCode(builder_, type, 0));
   operators_.push_back(CreateOperator(
       builder_, /*opcode_index=*/0, builder_.CreateVector<int32_t>(inputs_),
       builder_.CreateVector<int32_t>(outputs_), builtin_options_type,
@@ -201,6 +201,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 
 void SingleOpModel::ApplyDelegate() {
   if (force_use_nnapi) {
+    // TODO(b/124505407): Check the result and fail accordingly.
     interpreter_->ModifyGraphWithDelegate(TestNnApiDelegate());
   }
 
@@ -349,7 +350,7 @@ void MultiOpModel::AddBuiltinOp(
     BuiltinOperator type, BuiltinOptions builtin_options_type,
     const flatbuffers::Offset<void>& builtin_options,
     const std::vector<int32_t>& inputs, const std::vector<int32_t>& outputs) {
-  opcodes_.push_back(CreateOperatorCode(builder_, type, 0, 0));
+  opcodes_.push_back(CreateOperatorCode(builder_, type, 0));
   const int opcode_index = opcodes_.size() - 1;
   operators_.push_back(CreateOperator(
       builder_, opcode_index, builder_.CreateVector<int32_t>(inputs),
