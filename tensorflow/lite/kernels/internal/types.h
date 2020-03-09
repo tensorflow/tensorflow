@@ -863,6 +863,12 @@ struct DequantizationParams {
   int32 zero_point;
 };
 
+struct PerChannelDequantizationParams {
+  const float* scale;
+  const int32* zero_point;
+  int32 quantized_dimension;
+};
+
 struct FakeQuantParams {
   MinMax minmax;
   int32 num_bits;

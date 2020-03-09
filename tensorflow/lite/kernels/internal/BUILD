@@ -1028,6 +1028,17 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "per_channel_dequantize_test",
+    srcs = ["per_channel_dequantize_test.cc"],
+    deps = [
+        ":reference_base",
+        ":types",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 exports_files(["optimized/eigen_tensor_reduced_instantiations_oss.h"])
 
 filegroup(
