@@ -82,26 +82,25 @@ namespace conv {
         typedef struct {
             Conv2DOptions options;
             nn_conv2d_sido_params_t *params;
-        } UserData;
+        } OpData;
 
         void* Init2D(TfLiteContext* context, const char* buffer, size_t length) 
         {
-            auto* user_data = new UserData();
-            user_data->params = new nn_conv2d_sido_params_t();
+            OpData* op_data = nullptr;
+            context->AllocatePersistentBuffer(context, sizeof(OpData), (void**) &op_data);
+
+            op_data->params = new nn_conv2d_sido_params_t();
 
             if (buffer)
-                parse_options(buffer, length, &user_data->options);
+                parse_options(buffer, length, &op_data->options);
 
-            return user_data;
+            return op_data;
         }
 
         void Free2D(TfLiteContext* context, void* buffer) {
-            auto* user_data = reinterpret_cast<UserData*>(buffer);
-
-            conv2d_shallowin_deepout_deinit(user_data->params);
-            delete user_data;
+            auto* op_data = reinterpret_cast<OpData*>(buffer);
+            conv2d_shallowin_deepout_deinit(op_data->params);
         }
-
 
         TfLiteStatus Prepare2D(TfLiteContext* context, TfLiteNode* node) {
             TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
@@ -112,12 +111,12 @@ namespace conv {
             const TfLiteTensor* biases = GetInput(context, node, 2);
             const TfLiteTensor* output = GetOutput(context, node, 0);
 
-            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
-            if (user_data->params->blocks)
+            if (op_data->params->blocks)
             {
                 // need to deinit first because something significant has changes with the operator
-                conv2d_shallowin_deepout_deinit(user_data->params);
+                conv2d_shallowin_deepout_deinit(op_data->params);
             }
 
             nn_conv2d_init_params_t init_params;
@@ -125,11 +124,11 @@ namespace conv {
 
             init_params.X_height = input->dims->data[1];
             init_params.X_width = input->dims->data[2];
-            init_params.K_h = user_data->options.K_h;
-            init_params.K_w = user_data->options.K_w;
+            init_params.K_h = op_data->options.K_h;
+            init_params.K_w = op_data->options.K_w;
             init_params.C_in = input->dims->data[3]; // number of channels after padding
-            init_params.C_out = user_data->options.C_out;
-            init_params.pad_mode = user_data->options.padding_mode;
+            init_params.C_out = op_data->options.C_out;
+            init_params.pad_mode = op_data->options.padding_mode;
             init_params.zero_point = input->params.zero_point;
 
             region_params.top = 0;
@@ -140,7 +139,7 @@ namespace conv {
             // NOTE: There is a comment in common.h about TfLiteQuantization quantization being added to 
             //         TfLiteTensor to replace TfLiteQuantizationParams params
             conv2d_shallowin_deepout_init(
-                user_data->params,
+                op_data->params,
                 &init_params,
                 &region_params,
                 weights->data.int8,
@@ -157,11 +156,11 @@ namespace conv {
             const TfLiteTensor* shift_scale = GetInput(context, node, 3);
             TfLiteTensor* output = GetOutput(context, node, 0);
 
-            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
             conv2d_shallowin_deepout(
                 output->data.int8, // Y
-                user_data->params,
+                op_data->params,
                 input->data.int8, // X,
                 weights->data.int8, // K
                 (int16_t*) shift_scale->data.i16 // shifts & scales
@@ -185,24 +184,25 @@ namespace conv {
         typedef struct {
             Conv2DOptions options;
             nn_conv2d_dido_params_t *params;
-        } UserData;
+        } OpData;
 
         void* Init2D(TfLiteContext* context, const char* buffer, size_t length) 
         {
-            auto* user_data = new UserData();
-            user_data->params = new nn_conv2d_dido_params_t();
+            OpData* op_data = nullptr;
+            context->AllocatePersistentBuffer(context, sizeof(OpData), (void**) &op_data);
+
+            op_data->params = new nn_conv2d_dido_params_t();
 
             if (buffer)
-                parse_options(buffer, length, &user_data->options);
+                parse_options(buffer, length, &op_data->options);
 
-            return user_data;
+            return op_data;
         }
 
         void Free2D(TfLiteContext* context, void* buffer) {
-            auto* user_data = reinterpret_cast<UserData*>(buffer);
+            auto* op_data = reinterpret_cast<OpData*>(buffer);
 
-            conv2d_deepin_deepout_deinit(user_data->params);
-            delete user_data;
+            conv2d_deepin_deepout_deinit(op_data->params);
         }
 
         TfLiteStatus Prepare2D(TfLiteContext* context, TfLiteNode* node) {
@@ -214,18 +214,18 @@ namespace conv {
             const TfLiteTensor* bias_shift_scale = GetInput(context, node, 2);
             const TfLiteTensor* output = GetOutput(context, node, 0);
 
-            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
             // set param values not parsed from custom options
-            user_data->options.K_h = weights->dims->data[1];
-            user_data->options.K_w = weights->dims->data[2];
-            user_data->options.C_in = weights->dims->data[3] * weights->dims->data[5];
-            user_data->options.C_out = weights->dims->data[0] * weights->dims->data[4];
+            op_data->options.K_h = weights->dims->data[1];
+            op_data->options.K_w = weights->dims->data[2];
+            op_data->options.C_in = weights->dims->data[3] * weights->dims->data[5];
+            op_data->options.C_out = weights->dims->data[0] * weights->dims->data[4];
 
-            if (user_data->params->blocks)
+            if (op_data->params->blocks)
             {
                 // need to deinit first because something significant has changes with the operator
-                conv2d_deepin_deepout_deinit(user_data->params);
+                conv2d_deepin_deepout_deinit(op_data->params);
             }
 
             nn_conv2d_init_params_t init_params;
@@ -233,11 +233,11 @@ namespace conv {
 
             init_params.X_height = input->dims->data[1];
             init_params.X_width = input->dims->data[2];
-            init_params.K_h = user_data->options.K_h;
-            init_params.K_w = user_data->options.K_w;
-            init_params.C_in = user_data->options.C_in;
-            init_params.C_out = user_data->options.C_out;
-            init_params.pad_mode = user_data->options.padding_mode;
+            init_params.K_h = op_data->options.K_h;
+            init_params.K_w = op_data->options.K_w;
+            init_params.C_in = op_data->options.C_in;
+            init_params.C_out = op_data->options.C_out;
+            init_params.pad_mode = op_data->options.padding_mode;
             init_params.zero_point = input->params.zero_point;
 
             region_params.top = 0;
@@ -248,7 +248,7 @@ namespace conv {
             // NOTE: There is a comment in common.h about TfLiteQuantization quantization being added to 
             //         TfLiteTensor to replace TfLiteQuantizationParams params
             conv2d_deepin_deepout_init(
-                user_data->params,
+                op_data->params,
                 &init_params,
                 &region_params,
                 weights->data.int8,
@@ -264,11 +264,11 @@ namespace conv {
             const TfLiteTensor* shift_scale = GetInput(context, node, 3);
             TfLiteTensor* output = GetOutput(context, node, 0);
 
-            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
             conv2d_deepin_deepout(
                 output->data.int8, // Y
-                user_data->params,
+                op_data->params,
                 input->data.int8, // X,
                 weights->data.int8, // K
                 (int16_t*) shift_scale->data.i16 // shifts & scales
@@ -292,24 +292,18 @@ namespace conv {
         typedef struct {
             Conv2DOptions options;
             nn_conv2d_1x1_plan_t plan;
-        } UserData;
+        } OpData;
 
         void* Init2D(TfLiteContext* context, const char* buffer, size_t length)
         {
-            auto* user_data = new UserData();
+            OpData* op_data = nullptr;
+            context->AllocatePersistentBuffer(context, sizeof(OpData), (void**) &op_data);
 
             if (buffer)
-                parse_options(buffer, length, &user_data->options);
+                parse_options(buffer, length, &op_data->options);
 
-            return user_data;
+            return op_data;
         }
-
-        void Free2D(TfLiteContext* context, void* buffer) {
-            auto* user_data = reinterpret_cast<UserData*>(buffer);
-
-            delete user_data;
-        }
-
 
         TfLiteStatus Prepare2D(TfLiteContext* context, TfLiteNode* node) {
             TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
@@ -318,24 +312,24 @@ namespace conv {
             const TfLiteTensor* input = GetInput(context, node, 0);
             const TfLiteTensor* output = GetOutput(context, node, 0);
 
-            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
             // set param values not parsed from custom options
-            user_data->options.C_in = input->dims->data[3];
-            user_data->options.C_out = output->dims->data[3];
+            op_data->options.C_in = input->dims->data[3];
+            op_data->options.C_out = output->dims->data[3];
 
             nn_image_params_t params_in;
             params_in.height = input->dims->data[1];
             params_in.width = input->dims->data[2];
-            params_in.channels = user_data->options.C_in;
+            params_in.channels = op_data->options.C_in;
 
             nn_image_params_t params_out;
             params_out.height = output->dims->data[1];
             params_out.width = output->dims->data[2];
-            params_out.channels = user_data->options.C_out;
+            params_out.channels = op_data->options.C_out;
 
             conv2d_1x1_init(
-                &user_data->plan,
+                &op_data->plan,
                 &params_in,
                 &params_out,
                 0, // start_row
@@ -353,14 +347,14 @@ namespace conv {
             const TfLiteTensor* bias_shift_scale = GetInput(context, node, 2);
             TfLiteTensor* output = GetOutput(context, node, 0);
 
-            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
             conv2d_1x1(
                 output->data.int8, // Y
                 input->data.int8, // X,
                 weights->data.int8, // K
                 (data16_t*) bias_shift_scale->data.i16, // BSS
-                &user_data->plan
+                &op_data->plan
             );
 
             return kTfLiteOk;
@@ -394,7 +388,7 @@ TfLiteRegistration* Register_Conv2D_SIDO() {
 TfLiteRegistration* Register_Conv2D_1x1() {
     static TfLiteRegistration r = {
         conv::n1x1::Init2D,
-        conv::n1x1::Free2D,
+        nullptr,
         conv::n1x1::Prepare2D,
         conv::n1x1::Eval2D
     };

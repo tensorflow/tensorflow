@@ -61,21 +61,16 @@ namespace pooling {
         typedef struct {
             PoolingOptions options;
             nn_window_op_plan_t plan;
-        } UserData;
+        } OpData;
 
         void* Init2D(TfLiteContext* context, const char* buffer, size_t length) {
-            auto* user_data = new UserData();
+            OpData* op_data = nullptr;
+            context->AllocatePersistentBuffer(context, sizeof(OpData), (void**) &op_data);
 
             if (buffer)
-                parse_options(buffer, length, &user_data->options);
+                parse_options(buffer, length, &op_data->options);
 
-            return user_data;
-        }
-
-        void Free2D(TfLiteContext* context, void* buffer) {
-            auto* user_data = reinterpret_cast<UserData*>(buffer);
-
-            delete user_data;
+            return op_data;
         }
 
         TfLiteStatus Prepare2D(TfLiteContext* context, TfLiteNode* node) {
@@ -84,7 +79,7 @@ namespace pooling {
             const TfLiteTensor* input = GetInput(context, node, 0);
             TfLiteTensor* output = GetOutput(context, node, 0);
 
-            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
             nn_image_params_t params_in;
             params_in.height = input->dims->data[1];
@@ -98,10 +93,10 @@ namespace pooling {
 
             nn_window_op_config_t config;
             nn_window_op_config_simple(&config, &params_in, &params_out,
-                                    user_data->options.pool_h, user_data->options.pool_w,
-                                    user_data->options.stride_h, user_data->options.stride_w);
+                                    op_data->options.pool_h, op_data->options.pool_w,
+                                    op_data->options.stride_h, op_data->options.stride_w);
 
-            maxpool2d_init(&user_data->plan, &params_in, &params_out, &config);
+            maxpool2d_init(&op_data->plan, &params_in, &params_out, &config);
 
             return kTfLiteOk;
         }
@@ -110,12 +105,12 @@ namespace pooling {
             const TfLiteTensor* input = GetInput(context, node, 0);
             TfLiteTensor* output = GetOutput(context, node, 0);
 
-            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
             maxpool2d(
                 output->data.int8,
                 input->data.int8,
-                &user_data->plan
+                &op_data->plan
             );
 
             return kTfLiteOk;
@@ -135,21 +130,16 @@ namespace pooling {
         typedef struct {
             PoolingOptions options;
             nn_avgpool2d_plan_t plan;
-        } UserData;
+        } OpData;
 
         void* Init2D(TfLiteContext* context, const char* buffer, size_t length) {
-            auto* user_data = new UserData();
+            OpData* op_data = nullptr;
+            context->AllocatePersistentBuffer(context, sizeof(OpData), (void**) &op_data);
 
             if (buffer)
-                parse_options(buffer, length, &user_data->options);
+                parse_options(buffer, length, &op_data->options);
 
-            return user_data;
-        }
-
-        void Free2D(TfLiteContext* context, void* buffer) {
-            auto* user_data = reinterpret_cast<UserData*>(buffer);
-
-            delete user_data;
+            return op_data;
         }
 
         TfLiteStatus Prepare2D(TfLiteContext* context, TfLiteNode* node) {
@@ -158,7 +148,7 @@ namespace pooling {
             const TfLiteTensor* input = GetInput(context, node, 0);
             TfLiteTensor* output = GetOutput(context, node, 0);
 
-            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
             nn_image_params_t params_in;
             params_in.height = input->dims->data[1];
@@ -172,10 +162,10 @@ namespace pooling {
 
             nn_window_op_config_t config;
             nn_window_op_config_simple(&config, &params_in, &params_out,
-                                    user_data->options.pool_h, user_data->options.pool_w,
-                                    user_data->options.stride_h, user_data->options.stride_w);
+                                    op_data->options.pool_h, op_data->options.pool_w,
+                                    op_data->options.stride_h, op_data->options.stride_w);
 
-            avgpool2d_init(&user_data->plan, &params_in, &params_out, &config);
+            avgpool2d_init(&op_data->plan, &params_in, &params_out, &config);
 
             return kTfLiteOk;
         }
@@ -184,12 +174,12 @@ namespace pooling {
             const TfLiteTensor* input = GetInput(context, node, 0);
             TfLiteTensor* output = GetOutput(context, node, 0);
 
-            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
             avgpool2d(
                 output->data.int8,
                 input->data.int8,
-                &user_data->plan
+                &op_data->plan
             );
 
             return kTfLiteOk;
@@ -211,18 +201,13 @@ namespace pooling {
             int32_t bias;
             uint32_t scale;
             uint32_t shift;
-        } UserData;
+        } OpData;
 
         void* Init2D(TfLiteContext* context, const char* buffer, size_t length) {
-            auto* user_data = new UserData();
+            OpData* op_data = nullptr;
+            context->AllocatePersistentBuffer(context, sizeof(OpData), (void**) &op_data);
 
-            return user_data;
-        }
-
-        void Free2D(TfLiteContext* context, void* buffer) {
-            auto* user_data = reinterpret_cast<UserData*>(buffer);
-
-            delete user_data;
+            return op_data;
         }
 
         TfLiteStatus Prepare2D(TfLiteContext* context, TfLiteNode* node) {
@@ -231,11 +216,11 @@ namespace pooling {
             
             const TfLiteTensor* bss = GetInput(context, node, 1);
 
-            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
-            user_data->bias= unpack<4, int32_t>(&bss->data.uint8[0]);
-            user_data->scale = unpack<1, uint32_t>(&bss->data.uint8[4]);
-            user_data->shift = unpack<2, uint32_t>(&bss->data.uint8[5]);
+            op_data->bias= unpack<4, int32_t>(&bss->data.uint8[0]);
+            op_data->scale = unpack<1, uint32_t>(&bss->data.uint8[4]);
+            op_data->shift = unpack<2, uint32_t>(&bss->data.uint8[5]);
 
             return kTfLiteOk;
         }
@@ -244,7 +229,7 @@ namespace pooling {
             const TfLiteTensor* input = GetInput(context, node, 0);
             TfLiteTensor* output = GetOutput(context, node, 0);
 
-            auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
             uint32_t X_height = input->dims->data[1];
             uint32_t X_width = input->dims->data[2];
@@ -256,9 +241,9 @@ namespace pooling {
                 X_height,
                 X_width,
                 C_in,
-                user_data->bias,
-                user_data->shift,
-                user_data->scale
+                op_data->bias,
+                op_data->shift,
+                op_data->scale
             );
 
             return kTfLiteOk;
@@ -271,7 +256,7 @@ namespace pooling {
 TfLiteRegistration* Register_MaxPool2D() {
     static TfLiteRegistration r = {
         pooling::maxpool::Init2D,
-        pooling::maxpool::Free2D,
+        nullptr,
         pooling::maxpool::Prepare2D,
         pooling::maxpool::Eval2D
     };
@@ -282,7 +267,7 @@ TfLiteRegistration* Register_MaxPool2D() {
 TfLiteRegistration* Register_AvgPool2D() {
     static TfLiteRegistration r = {
         pooling::avgpool::Init2D,
-        pooling::avgpool::Free2D,
+        nullptr,
         pooling::avgpool::Prepare2D,
         pooling::avgpool::Eval2D
     };
@@ -292,7 +277,7 @@ TfLiteRegistration* Register_AvgPool2D() {
 TfLiteRegistration* Register_AvgPool2D_Global() {
     static TfLiteRegistration r = {
         pooling::avgpool_global::Init2D,
-        pooling::avgpool_global::Free2D,
+        nullptr,
         pooling::avgpool_global::Prepare2D,
         pooling::avgpool_global::Eval2D
     };
