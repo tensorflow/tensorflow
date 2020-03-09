@@ -122,6 +122,67 @@ class TPUStrategyTest(test.TestCase):
     self.assertAllEqual(2., run_inference(1))  # Use TPU core 0.
     self.assertAllEqual(3., run_inference(1))  # Use TPU core 1.
 
+  def test_computation_on_subset_cores(self):
+    resolver = get_tpu_cluster_resolver()
+    remote.connect_to_cluster(resolver)
+    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+    all_core_strategy = tpu_lib.TPUStrategy(resolver)
+
+    with all_core_strategy.scope():
+      v = variables.Variable(0.0,
+                             aggregation=variables.VariableAggregation.MEAN)
+
+    # Computation on the 1st core.
+    device_assignment = device_assignment_lib.DeviceAssignment.build(
+        topology, num_replicas=1)
+    first_core_strategy = tpu_lib.TPUStrategy(
+        resolver, device_assignment=device_assignment)
+
+    # Computation on the 2nd core.
+    device_assignment2 = device_assignment_lib.DeviceAssignment(
+        topology, [[[0, 0, 1]]])
+    second_core_strategy = tpu_lib.TPUStrategy(
+        resolver, device_assignment=device_assignment2)
+
+    @def_function.function
+    def train_step():
+
+      def step_fn():
+        return v + 1.0
+
+      all_core_strategy.experimental_run_v2(step_fn)
+      r1 = first_core_strategy.experimental_run_v2(step_fn)
+      r2 = second_core_strategy.experimental_run_v2(step_fn)
+      return r1 + r2
+
+    train_step()
+    self.assertAllEqual(2., train_step())
+
+  def test_worker_devices_on_subset_cores(self):
+    resolver = get_tpu_cluster_resolver()
+    remote.connect_to_cluster(resolver)
+    topology = tpu_strategy_util.initialize_tpu_system(resolver)
+
+    # Strategy for the 1st core.
+    device_assignment = device_assignment_lib.DeviceAssignment.build(
+        topology, num_replicas=1)
+    first_core_strategy = tpu_lib.TPUStrategy(
+        resolver, device_assignment=device_assignment)
+
+    # Strategy for the 2nd core.
+    device_assignment2 = device_assignment_lib.DeviceAssignment(
+        topology, [[[0, 0, 1]]])
+    second_core_strategy = tpu_lib.TPUStrategy(
+        resolver, device_assignment=device_assignment2)
+
+    self.assertLen(first_core_strategy.extended.worker_devices, 1)
+    self.assertEndsWith(first_core_strategy.extended.worker_devices[0],
+                        "device:TPU:0")
+
+    self.assertLen(second_core_strategy.extended.worker_devices, 1)
+    self.assertEndsWith(second_core_strategy.extended.worker_devices[0],
+                        "device:TPU:1")
+
 
 if __name__ == "__main__":
   test.main()
