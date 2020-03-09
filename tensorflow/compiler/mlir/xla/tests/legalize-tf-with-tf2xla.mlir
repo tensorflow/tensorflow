@@ -42,6 +42,13 @@ func @multiple_dialect_ops(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %1 : tensor<2xf32>
 }
 
+// CHECK-LABEL: binary_op
+func @binary_op(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: xla_hlo.atan2 %arg0, %arg1 : tensor<2xf32>
+  %0 = "tf.Atan2"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
 // TODO(hinsu): Add a test with variant type once one of the ops supporting
 // the type is whitelisted. It should be rejected with unsupported type remark.
 

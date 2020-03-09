@@ -12,6 +12,8 @@ py_library(
     srcs = ["legacy_base_layer.py"],
     deps = [
         ":base_layer_utils",
+        ":input_spec",
+        ":node",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:auto_control_deps",
@@ -38,7 +40,6 @@ py_library(
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:metrics",
         "//tensorflow/python/keras/engine",
-        "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/keras/utils:layer_utils",
@@ -78,6 +79,31 @@ py_library(
     ],
 )
 
+py_library(
+    name = "input_spec",
+    srcs = ["input_spec.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/keras:backend",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "node",
+    srcs = ["node.py"],
+    deps = [
+        ":base_layer_utils",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras:backend",
+    ],
+)
+
 tf_py_test(
     name = "legacy_base_layer_test",
     size = "medium",
@@ -106,6 +132,21 @@ tf_py_test(
     ],
     deps = [
         ":base_layer_utils",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "input_spec_test",
+    size = "small",
+    srcs = ["input_spec_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        ":input_spec",
         "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],

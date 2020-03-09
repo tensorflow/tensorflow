@@ -362,7 +362,7 @@ def get_debug_info(nodes_to_debug_info_func, converted_graph):
   Args:
     nodes_to_debug_info_func: The method to collect the op debug info for the
       nodes.
-    converted_graph: A `GraphDef` after optimization and transfermation.
+    converted_graph: A `GraphDef` after optimization and transformation.
 
   Returns:
     `GraphDebugInfo` for all the original nodes in `converted_graph`.
