@@ -57,6 +57,7 @@ keras_packages = [
     "tensorflow.python.keras.layers.noise",
     "tensorflow.python.keras.layers.normalization",
     "tensorflow.python.keras.layers.normalization_v2",
+    "tensorflow.python.keras.layers.preprocessing",
     "tensorflow.python.keras.layers.pooling",
     "tensorflow.python.keras.layers.recurrent",
     "tensorflow.python.keras.layers.recurrent_v2",

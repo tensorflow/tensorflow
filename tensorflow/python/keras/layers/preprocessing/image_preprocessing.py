@@ -36,6 +36,7 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import stateless_random_ops
+from tensorflow.python.util.tf_export import keras_export
 
 ResizeMethod = image_ops.ResizeMethod
 
@@ -51,6 +52,7 @@ _RESIZE_METHODS = {
 }
 
 
+@keras_export('keras.layers.experimental.preprocessing.Resizing')
 class Resizing(Layer):
   """Image resizing layer.
 
@@ -63,15 +65,21 @@ class Resizing(Layer):
     interpolation: String, the interpolation method. Defaults to `bilinear`.
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
       `gaussian`, `mitchellcubic`
+    name: A string, the name of the layer.
   """
 
-  def __init__(self, height, width, interpolation='bilinear', **kwargs):
+  def __init__(self,
+               height,
+               width,
+               interpolation='bilinear',
+               name=None,
+               **kwargs):
     self.target_height = height
     self.target_width = width
     self.interpolation = interpolation
     self._interpolation_method = get_interpolation(interpolation)
     self.input_spec = InputSpec(ndim=4)
-    super(Resizing, self).__init__(**kwargs)
+    super(Resizing, self).__init__(name=name, **kwargs)
 
   def build(self, input_shape):
     channel_axis = 3
@@ -101,6 +109,7 @@ class Resizing(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.layers.experimental.preprocessing.CenterCrop')
 class CenterCrop(Layer):
   """Crop the central portion of the images to target height and width.
 
@@ -118,13 +127,14 @@ class CenterCrop(Layer):
   Arguments:
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
+    name: A string, the name of the layer.
   """
 
-  def __init__(self, height, width, **kwargs):
+  def __init__(self, height, width, name=None, **kwargs):
     self.target_height = height
     self.target_width = width
     self.input_spec = InputSpec(ndim=4)
-    super(CenterCrop, self).__init__(**kwargs)
+    super(CenterCrop, self).__init__(name=name, **kwargs)
 
   def build(self, input_shape):
     channel_axis = 3
@@ -173,6 +183,7 @@ class CenterCrop(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.layers.experimental.preprocessing.RandomCrop')
 class RandomCrop(Layer):
   """Randomly crop the images to target height and width.
 
@@ -195,15 +206,16 @@ class RandomCrop(Layer):
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
   """
 
-  def __init__(self, height, width, seed=None, **kwargs):
+  def __init__(self, height, width, seed=None, name=None, **kwargs):
     self.height = height
     self.width = width
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomCrop, self).__init__(**kwargs)
+    super(RandomCrop, self).__init__(name=name, **kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -278,6 +290,7 @@ class RandomCrop(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.layers.experimental.preprocessing.Rescaling')
 class Rescaling(Layer):
   """Multiply inputs by `scale`.
 
@@ -294,11 +307,12 @@ class Rescaling(Layer):
 
   Arguments:
     scale: Float, the scale to apply to the inputs.
+    name: A string, the name of the layer.
   """
 
-  def __init__(self, scale, **kwargs):
+  def __init__(self, scale, name=None, **kwargs):
     self.scale = scale
-    super(Rescaling, self).__init__(**kwargs)
+    super(Rescaling, self).__init__(name=name, **kwargs)
 
   def call(self, inputs):
     dtype = self._compute_dtype
@@ -315,13 +329,16 @@ class Rescaling(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+HORIZONTAL = 'horizontal'
+VERTICAL = 'vertical'
+HORIZONTAL_AND_VERTICAL = 'horizontal_and_vertical'
+
+
+@keras_export('keras.layers.experimental.preprocessing.RandomFlip')
 class RandomFlip(Layer):
   """Randomly flip each image horizontally and vertically.
 
-  This layer will by default flip the images horizontally and then vertically
-  during training time.
-  `RandomFlip(horizontal=True)` will only flip the input horizontally.
-  `RandomFlip(vertical=True)` will only flip the input vertically.
+  This layer will flip the images based on the `mode` attribute.
   During inference time, the output will be identical to input. Call the layer
   with `training=True` to flip the input.
 
@@ -334,23 +351,35 @@ class RandomFlip(Layer):
     `(samples, height, width, channels)`, data_format='channels_last'.
 
   Attributes:
-    horizontal: Bool, whether to randomly flip horizontally.
-    width: Bool, whether to randomly flip vertically.
+    mode: String indicating which flip mode to use. Can be "horizontal",
+      "vertical", or "horizontal_and_vertical". Defaults to
+      "horizontal_and_vertical".
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
   """
 
-  def __init__(self, horizontal=None, vertical=None, seed=None, **kwargs):
-    # If both arguments are None, set both to True.
-    if horizontal is None and vertical is None:
+  def __init__(self,
+               mode=HORIZONTAL_AND_VERTICAL,
+               seed=None,
+               name=None,
+               **kwargs):
+    super(RandomFlip, self).__init__(name=name, **kwargs)
+    self.mode = mode
+    if mode == HORIZONTAL:
+      self.horizontal = True
+      self.vertical = False
+    elif mode == VERTICAL:
+      self.horizontal = False
+      self.vertical = True
+    elif mode == HORIZONTAL_AND_VERTICAL:
       self.horizontal = True
       self.vertical = True
     else:
-      self.horizontal = horizontal or False
-      self.vertical = vertical or False
+      raise ValueError('RandomFlip layer {name} received an unknown mode '
+                       'argument {arg}'.format(name=name, arg=mode))
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomFlip, self).__init__(**kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -376,14 +405,15 @@ class RandomFlip(Layer):
 
   def get_config(self):
     config = {
-        'horizontal': self.horizontal,
-        'vertical': self.vertical,
+        'mode': self.mode,
         'seed': self.seed,
     }
     base_config = super(RandomFlip, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
+# TODO(tanzheny): Add examples, here and everywhere.
+@keras_export('keras.layers.experimental.preprocessing.RandomTranslation')
 class RandomTranslation(Layer):
   """Randomly translate each image during training.
 
@@ -404,12 +434,16 @@ class RandomTranslation(Layer):
     fill_value: Value used for points outside the boundaries of the input if
       `mode='constant'`.
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
+
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
       data_format='channels_last'.
+
   Output shape:
     4D tensor with shape: `(samples, height, width, channels)`,
       data_format='channels_last'.
+
   Raise:
     ValueError: if lower bound is not between [0, 1], or upper bound is
       negative.
@@ -421,6 +455,7 @@ class RandomTranslation(Layer):
                fill_mode='nearest',
                fill_value=0.,
                seed=None,
+               name=None,
                **kwargs):
     self.height_factor = height_factor
     if isinstance(height_factor, (tuple, list)):
@@ -456,7 +491,7 @@ class RandomTranslation(Layer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomTranslation, self).__init__(**kwargs)
+    super(RandomTranslation, self).__init__(name=name, **kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -636,6 +671,7 @@ def get_rotation_matrix(angles, image_height, image_width, name=None):
         axis=1)
 
 
+@keras_export('keras.layers.experimental.preprocessing.RandomRotation')
 class RandomRotation(Layer):
   """Randomly rotate each image.
 
@@ -659,6 +695,8 @@ class RandomRotation(Layer):
       to the given mode (one of `{'constant', 'nearest', 'bilinear', 'reflect',
       'wrap'}`).
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
+
   Raise:
     ValueError: if lower bound is not between [0, 1], or upper bound is
       negative.
@@ -668,6 +706,7 @@ class RandomRotation(Layer):
                factor,
                fill_mode='nearest',
                seed=None,
+               name=None,
                **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
@@ -685,7 +724,7 @@ class RandomRotation(Layer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomRotation, self).__init__(**kwargs)
+    super(RandomRotation, self).__init__(name=name, **kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -725,6 +764,7 @@ class RandomRotation(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.layers.experimental.preprocessing.RandomZoom')
 class RandomZoom(Layer):
   """Randomly zoom each image during training.
 
@@ -744,6 +784,7 @@ class RandomZoom(Layer):
     fill_value: Value used for points outside the boundaries of the input if
       `mode='constant'`.
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
 
   Input shape:
     4D tensor with shape:
@@ -764,6 +805,7 @@ class RandomZoom(Layer):
                fill_mode='nearest',
                fill_value=0.,
                seed=None,
+               name=None,
                **kwargs):
     self.height_factor = height_factor
     if isinstance(height_factor, (tuple, list)):
@@ -799,7 +841,7 @@ class RandomZoom(Layer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomZoom, self).__init__(**kwargs)
+    super(RandomZoom, self).__init__(name=name, **kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -890,6 +932,7 @@ def get_zoom_matrix(zooms, image_height, image_width, name=None):
         axis=1)
 
 
+@keras_export('keras.layers.experimental.preprocessing.RandomContrast')
 class RandomContrast(Layer):
   """Adjust the contrast of an image or images by a random factor.
 
@@ -909,17 +952,19 @@ class RandomContrast(Layer):
     `(samples, height, width, channels)`, data_format='channels_last'.
 
   Attributes:
-    factor: a positive float represented as fraction of value, or a tuple
-      of size 2 representing lower and upper bound. When represented as a
-      single float, lower = upper. The contrast factor will be randomly picked
-      between [1.0 - lower, 1.0 + upper].
+    factor: a positive float represented as fraction of value, or a tuple of
+      size 2 representing lower and upper bound. When represented as a single
+      float, lower = upper. The contrast factor will be randomly picked between
+      [1.0 - lower, 1.0 + upper].
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
+
   Raise:
     ValueError: if lower bound is not between [0, 1], or upper bound is
       negative.
   """
 
-  def __init__(self, factor, seed=None, **kwargs):
+  def __init__(self, factor, seed=None, name=None, **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
       self.lower = factor[0]
@@ -931,7 +976,7 @@ class RandomContrast(Layer):
                        'got {}'.format(factor))
     self.seed = seed
     self.input_spec = InputSpec(ndim=4)
-    super(RandomContrast, self).__init__(**kwargs)
+    super(RandomContrast, self).__init__(name=name, **kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -958,6 +1003,7 @@ class RandomContrast(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.layers.experimental.preprocessing.RandomHeight')
 class RandomHeight(Layer):
   """Randomly vary the height of a batch of images during training.
 
@@ -967,8 +1013,8 @@ class RandomHeight(Layer):
   By default, this layer is inactive during inference.
 
   Arguments:
-    factor: A positive float (fraction of original height), or a tuple of
-      size 2 representing lower and upper bound for resizing vertically. When
+    factor: A positive float (fraction of original height), or a tuple of size 2
+      representing lower and upper bound for resizing vertically. When
       represented as a single float, this value is used for both the upper and
       lower bound. For instance, `factor=(0.2, 0.3)` results in an output height
       varying in the range `[original + 20%, original + 30%]`. `factor=(-0.2,
@@ -979,17 +1025,21 @@ class RandomHeight(Layer):
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
       `gaussian`, `mitchellcubic`
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
 
   Input shape:
-    4D tensor with shape:
-    `(samples, height, width, channels)` (data_format='channels_last').
-
+    4D tensor with shape: `(samples, height, width, channels)`
+      (data_format='channels_last').
   Output shape:
-    4D tensor with shape:
-    `(samples, random_height, width, channels)`.
+    4D tensor with shape: `(samples, random_height, width, channels)`.
   """
 
-  def __init__(self, factor, interpolation='bilinear', seed=None, **kwargs):
+  def __init__(self,
+               factor,
+               interpolation='bilinear',
+               seed=None,
+               name=None,
+               **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
       self.height_lower = -factor[0]
@@ -1004,7 +1054,7 @@ class RandomHeight(Layer):
     self.input_spec = InputSpec(ndim=4)
     self.seed = seed
     self._rng = make_generator(self.seed)
-    super(RandomHeight, self).__init__(**kwargs)
+    super(RandomHeight, self).__init__(name=name, **kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -1046,6 +1096,7 @@ class RandomHeight(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.layers.experimental.preprocessing.RandomWidth')
 class RandomWidth(Layer):
   """Randomly vary the width of a batch of images during training.
 
@@ -1067,6 +1118,7 @@ class RandomWidth(Layer):
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
       `gaussian`, `mitchellcubic`
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
 
   Input shape:
     4D tensor with shape:
@@ -1077,7 +1129,12 @@ class RandomWidth(Layer):
     `(samples, random_height, width, channels)`.
   """
 
-  def __init__(self, factor, interpolation='bilinear', seed=None, **kwargs):
+  def __init__(self,
+               factor,
+               interpolation='bilinear',
+               seed=None,
+               name=None,
+               **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
       self.width_lower = -factor[0]
@@ -1092,7 +1149,7 @@ class RandomWidth(Layer):
     self.input_spec = InputSpec(ndim=4)
     self.seed = seed
     self._rng = make_generator(self.seed)
-    super(RandomWidth, self).__init__(**kwargs)
+    super(RandomWidth, self).__init__(name=name, **kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
