@@ -1897,7 +1897,7 @@ bool MayPreventVectorization(const HloInstruction& hlo) {
         return false;
     }
   } else if (hlo.opcode() == HloOpcode::kReduce) {
-    // TODO: check if the to_apply() attribute contain instruction
+    // TODO: check if the to_apply() attribute contains instruction
     // that break LLVM vectorization.
     return false;
   }
@@ -1942,17 +1942,17 @@ static llvm::Value* GetStartOffsetX(const KernelMappingScheme& mapping_scheme,
   return b->CreateMul(thread_id_x, constant(x_num_steps));
 }
 
-// This function calls emit_elem_function() x_num_steps times.  If
-// vector_size==1, then each element index passed to
-// emit_elem_function() will be separated by step_x. If vector_size>1,
-// then it must be a multiple of x_num_steps.  In that case, it
+// Calls `emit_elem_function()` `x_num_steps` times.  If
+// `vector_size`==1, then each element index passed to
+// `emit_elem_function()` will be separated by `step_x`. If `vector_size`>1,
+// then it must be a multiple of `x_num_steps`.  In that case, it
 // triggers a different indexing order that is vectorizable by
-// LLVM. It generates many groups of calls to emit_elem_function. Each
-// group is separated by step_x elements.  Inside a group, elements
-// are consecutive. If check_x_tile_bounds is true, then it will check
-// if the element index is in bound compared to tile_width before
-// calling emit_elem_function.
-static void Unroll(
+// LLVM. It generates many groups of calls to `emit_elem_function`. Each
+// group is separated by `step_x` elements.  Inside a group, elements
+// are consecutive. If `check_x_tile_bounds` is true, then it will check
+// if the element index is in bound compared to `tile_width` before
+// calling `emit_elem_function`.
+static void UnrollInnerTileLoop(
     bool check_x_tile_bounds, int64 x_num_steps, int64 step_x,
     int64 vector_size, const string& loop_name, KernelSupportLibrary* ksl,
     llvm::Value* start_offset_x, llvm::Value* y_loc, llvm::Value* tile_width,
@@ -2035,38 +2035,39 @@ void IrEmitterUnnested::EmitTile(
   //
   // TODO(cheshire): Once ptxas is fixed and TF switches to it, remove the
   // workaround.
-  ksl->For(loop_name + "_y_in_tile",
-           /*start=*/constant(0),
-           /*end=*/
-           ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
-                         num_threads_y),
-           /*step=*/constant(1), [&](llvm::Value* y_indvar) {
-             llvm::Value* y_loc =
-                 b_.CreateAdd(thread_id_info.thread_id_y,
-                              b_.CreateMul(y_indvar, num_threads_y));
-             auto unroll = [&](bool check_x_tile_bounds) {
-               return Unroll(check_x_tile_bounds, x_num_steps, step_x,
-                             vector_size, loop_name, ksl, start_offset_x, y_loc,
-                             tile_width, source_idx, b_, &emit_elem_function);
-             };
+  ksl->For(
+      loop_name + "_y_in_tile",
+      /*start=*/constant(0),
+      /*end=*/
+      ceil_of_ratio(b_.CreateSub(tile_height, thread_id_info.thread_id_y),
+                    num_threads_y),
+      /*step=*/constant(1), [&](llvm::Value* y_indvar) {
+        llvm::Value* y_loc = b_.CreateAdd(
+            thread_id_info.thread_id_y, b_.CreateMul(y_indvar, num_threads_y));
+        auto unrollInnerTileLoop = [&](bool check_x_tile_bounds) {
+          return UnrollInnerTileLoop(check_x_tile_bounds, x_num_steps, step_x,
+                                     vector_size, loop_name, ksl,
+                                     start_offset_x, y_loc, tile_width,
+                                     source_idx, b_, &emit_elem_function);
+        };
 
-             // Only take this path when we unroll in a way vectorizable by
-             // LLVM. Special case when the tile doesn't fit completely for even
-             // row size. For odd row size every other row isn't aligned to the
-             // vectorized size, so it can't be vectorized by LLVM.
-             if (!x_tile_fits &&
-                 mapping_scheme.GetIndexingOrder() == kLinearStridedIndexingX) {
-               ksl->If(loop_name + "_is_full_tile",
-                       // For the last block, tile_width will be the number of
-                       // elements left.
-                       b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeX()),
-                                       tile_width),
-                       [&] { unroll(/*check_x_tile_bounds=*/false); },
-                       [&] { unroll(/*check_x_tile_bounds=*/true); });
-             } else {
-               unroll(/*check_x_tile_bounds=*/!x_tile_fits);
-             }
-           });
+        // Only take this path when we unroll in a way vectorizable by
+        // LLVM. Special case when the tile doesn't fit completely for even
+        // row size. For odd row size every other row isn't aligned to the
+        // vectorized size, so it can't be vectorized by LLVM.
+        if (!x_tile_fits &&
+            mapping_scheme.GetIndexingOrder() == kLinearStridedIndexingX) {
+          ksl->If(loop_name + "_is_full_tile",
+                  // For the last block, tile_width will be the number of
+                  // elements left.
+                  b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeX()),
+                                  tile_width),
+                  [&] { unrollInnerTileLoop(/*check_x_tile_bounds=*/false); },
+                  [&] { unrollInnerTileLoop(/*check_x_tile_bounds=*/true); });
+        } else {
+          unrollInnerTileLoop(/*check_x_tile_bounds=*/!x_tile_fits);
+        }
+      });
 }
 
 // Emits code to process a tensor element in a tile for the given kCopy HLO that
