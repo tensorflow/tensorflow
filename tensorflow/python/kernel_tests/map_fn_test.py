@@ -69,14 +69,13 @@ class MapFnTest(test.TestCase):
 
   def testMapSparseTensor(self):
     with self.cached_session():
-      st = sparse_tensor.SparseTensor(
-          indices=[[0, 0], [0, 1], [1, 0]],
-          values=constant_op.constant([0, 1, 2]),
-          dense_shape=[2, 2])
-      result = map_fn.map_fn(lambda x: x, st)
-      self.assertAllEqual(result.indices, st.indices)
-      self.assertAllEqual(result.values, st.values)
-      self.assertAllEqual(result.dense_shape, st.dense_shape)
+      with self.assertRaises(TypeError):
+        map_fn.map_fn(
+            lambda x: x,
+            sparse_tensor.SparseTensor(
+                indices=[[0, 0], [0, 1], [1, 0]],
+                values=constant_op.constant([0, 1, 2]),
+                dense_shape=[2, 2]))
 
   @test_util.run_in_graph_and_eager_modes
   def testMapOverScalarErrors(self):
