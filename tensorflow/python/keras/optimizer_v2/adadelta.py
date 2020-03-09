@@ -59,7 +59,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
   rate which would cause divergence.This occurs only near the end of the
   training as gradients and step sizes are small,and the epsilon constant 
   in the numerator and denominator dominate past gradients and parameter
-  updates which converge learning rate to 1.
+  updates which converge the learning rate to 1.
   
   In section 4.1("Handwritten Digit Classification"), MNIST data was trained 
   with tanh non linearities and 500 hidden units and 300 hidden in units with
