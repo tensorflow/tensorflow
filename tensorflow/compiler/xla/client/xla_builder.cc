@@ -511,31 +511,17 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64> broadcast_dimensions,
                            absl::optional<ComparisonDirection> direction) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferBinaryOpShape(
                          binop, *lhs_shape, *rhs_shape, broadcast_dimensions));
-    *instr.mutable_shape() = shape.ToProto();
-    if (binop == HloOpcode::kCompare) {
-      if (!direction.has_value()) {
-        return InvalidArgument(
-            "kCompare expects a ComparisonDirection, but none provided.");
-      }
-      instr.set_comparison_direction(ComparisonDirectionToString(*direction));
-    } else if (direction.has_value()) {
-      return InvalidArgument(
-          "A comparison direction is provided for a non-compare opcode: %s.",
-          HloOpcodeString(binop));
-    }
 
     const int64 lhs_rank = lhs_shape->rank();
     const int64 rhs_rank = rhs_shape->rank();
 
     XlaOp updated_lhs = lhs;
     XlaOp updated_rhs = rhs;
-
     if (!broadcast_dimensions.empty() && lhs_rank != rhs_rank) {
       const bool should_broadcast_lhs = lhs_rank < rhs_rank;
       XlaOp from = should_broadcast_lhs ? lhs : rhs;
@@ -576,7 +562,30 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                           AddBroadcastSequence(shape, updated_rhs));
     }
 
-    return AddInstruction(std::move(instr), binop, {updated_lhs, updated_rhs});
+    return BinaryOpNoBroadcast(binop, shape, updated_lhs, updated_rhs,
+                               direction);
+  });
+}
+
+XlaOp XlaBuilder::BinaryOpNoBroadcast(
+    HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
+    absl::optional<ComparisonDirection> direction) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    if (binop == HloOpcode::kCompare) {
+      if (!direction.has_value()) {
+        return InvalidArgument(
+            "kCompare expects a ComparisonDirection, but none provided.");
+      }
+      instr.set_comparison_direction(ComparisonDirectionToString(*direction));
+    } else if (direction.has_value()) {
+      return InvalidArgument(
+          "A comparison direction is provided for a non-compare opcode: %s.",
+          HloOpcodeString(binop));
+    }
+
+    return AddInstruction(std::move(instr), binop, {lhs, rhs});
   });
 }
 

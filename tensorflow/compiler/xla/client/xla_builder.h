@@ -656,6 +656,12 @@ class XlaBuilder {
                  absl::Span<const int64> broadcast_dimensions,
                  absl::optional<ComparisonDirection> direction = absl::nullopt);
 
+  // Internal helper method that does the building for an arbitrary binary op
+  // with same ranked operands that doesn't broadcast.
+  virtual XlaOp BinaryOpNoBroadcast(
+      HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
+      absl::optional<ComparisonDirection> direction);
+
   // Internal helper method that does the building for an arbitrary ternary op.
   XlaOp TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs);
 
