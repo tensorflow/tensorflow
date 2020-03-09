@@ -154,6 +154,29 @@ def LHLO_ReduceOp: LHLO_Op<"reduce", [
 
   let regions = (region SizedRegion<1>:$body);
 }
+
+def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", [
+      NoSideEffect,
+      SingleBlockImplicitTerminator<"TerminatorOp">
+    ]>, BASE_HLO_ReduceWindowOp {
+
+  let arguments = (ins
+    LHLO_Buffer:$operand,
+    LHLO_Buffer:$init_value,
+    LHLO_Buffer:$out,
+    I64ElementsAttr:$window_dimensions,
+    // If strides or dilations attributes are missing then the default value is
+    // one for each of the input dimensions. Similarly, padding values are zero
+    // for both low and high in each of the dimensions, if not specified.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    OptionalAttr<I64ElementsAttr>:$base_dilations,
+    OptionalAttr<I64ElementsAttr>:$window_dilations,
+    OptionalAttr<I64ElementsAttr>:$padding
+  );
+
+  let regions = (region SizedRegion<1>:$body);
+}
+
 //===----------------------------------------------------------------------===//
 // XLA tuple op definitions.
 //===----------------------------------------------------------------------===//
