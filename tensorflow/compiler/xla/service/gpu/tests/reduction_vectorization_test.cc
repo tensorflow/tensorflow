@@ -32,19 +32,7 @@ namespace gpu {
 
 namespace {
 
-class ReductionVectorizationTest : public GpuCodegenTest {
- protected:
-  void EnsureDeterminism(absl::string_view hlo_text) {
-    std::vector<ExecutionProfile> profiles;
-    profiles.emplace_back();
-    profiles.emplace_back();
-    EXPECT_TRUE(RunMultipleTimes(hlo_text,
-                                 /*run_hlo_passes=*/true,
-                                 /*profiles=*/&profiles,
-                                 /*backend_config=*/"",
-                                 /*assert_determinism=*/true));
-  }
-};
+class ReductionVectorizationTest : public GpuCodegenTest {};
 
 TEST_F(ReductionVectorizationTest, Power2) {
   const char* hlo_text = R"(
