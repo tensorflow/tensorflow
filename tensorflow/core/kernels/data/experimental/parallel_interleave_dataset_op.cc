@@ -527,12 +527,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
       // Sets inputs for a worker thread and notifies it to start processing.
       void SetInputs(const Status& s, std::vector<Tensor> input_arguments,
-                     EparallaxTensorIndex* i) {
+                     EparallaxTensorIndex* idx) {
         if (s.ok()) {
           DCHECK(!MayHaveElements())
               << "Tried to start inputs, despite already producing!";
           input = std::move(input_arguments);
-          index = i;
+          index = idx;
           is_producing = true;
           cond_var.notify_one();
         } else {
@@ -741,16 +741,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                       .output_elem.output.empty() &&
                   !worker_thread_states_[thread_index].end_of_sequence) {
                 EparallaxTensorIndex* unused_index;
-                do {
-                  worker_thread_states_[thread_index].output_elem.status =
-                      worker_thread_states_[thread_index].iterator->GetNext(
-                          ctx.get(),
-                          &worker_thread_states_[thread_index].output_elem.output,
-                          &worker_thread_states_[thread_index].end_of_sequence,
-                          unused_index);
-                } while (worker_thread_states_[thread_index].output_elem.output.empty() &&
-                         worker_thread_states_[thread_index].output_elem.status.ok() &&
-                         !worker_thread_states_[thread_index].end_of_sequence);
+                worker_thread_states_[thread_index].output_elem.status =
+                    worker_thread_states_[thread_index].iterator->GetNext(
+                        ctx.get(),
+                        &worker_thread_states_[thread_index].output_elem.output,
+                        &worker_thread_states_[thread_index].end_of_sequence,
+                        unused_index);
                 end_of_sequence =
                     worker_thread_states_[thread_index].end_of_sequence;
               } else {
