@@ -84,7 +84,18 @@ REGISTER_XLA_OP(Name("Min").CompileTimeConstantInput("reduction_indices"),
 class MaxOp : public XlaReductionOp {
  public:
   explicit MaxOp(OpKernelConstruction* ctx)
-      : XlaReductionOp(ctx, ctx->input_type(0)) {}
+      : XlaReductionOp(ctx, ctx->input_type(0)) {
+    OP_REQUIRES_OK(ctx, TypeCheck(xla_reduction_type_));
+  }
+
+  Status TypeCheck(xla::PrimitiveType xla_reduction_type_){
+    if(xla_reduction_type_ == xla::C64){
+	  return errors::InvalidArgument(
+		"Unsupported type in xla_reduction_type_");
+	}else{
+      return Status::OK();
+    }
+  }
 
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::MinValue(builder, xla_reduction_type_);
