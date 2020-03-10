@@ -1340,8 +1340,8 @@ func @reciprocal_f16(%arg0: tensor<8xf16>) -> tensor<8xf16> {
   return %0: tensor<8xf16>
 
 // CHECK-LABEL: reciprocal_f16
-// CHECK:  %cst = constant dense<1.000000e+00> : tensor<1xf16>
-// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xf16>, tensor<8xf16>) -> tensor<8xf16>
+// CHECK:  %cst = constant dense<1.000000e+00> : tensor<f16>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<f16>, tensor<8xf16>) -> tensor<8xf16>
 // CHECK:  return
 }
 
@@ -1350,8 +1350,8 @@ func @reciprocal_f32(%arg0: tensor<8xf32>) -> tensor<8xf32> {
   return %0: tensor<8xf32>
 
 // CHECK-LABEL: reciprocal_f32
-// CHECK:  %cst = constant dense<1.000000e+00> : tensor<1xf32>
-// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xf32>, tensor<8xf32>) -> tensor<8xf32>
+// CHECK:  %cst = constant dense<1.000000e+00> : tensor<f32>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<8xf32>) -> tensor<8xf32>
 // CHECK:  return
 }
 
@@ -1360,8 +1360,8 @@ func @reciprocal_complex_f32(%arg0: tensor<8xcomplex<f32>>) -> tensor<8xcomplex<
   return %0: tensor<8xcomplex<f32>>
 
 // CHECK-LABEL: reciprocal_complex_f32
-// CHECK:  %cst = constant opaque<"tf", "0x746674656E736F722464747970653A2044545F434F4D504C455836342074656E736F725F7368617065207B2064696D207B2073697A653A2031207D207D2074656E736F725F636F6E74656E743A20225C3030305C3030305C3230303F5C3030305C3030305C3030305C30303022"> : tensor<1xcomplex<f32>>
-// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xcomplex<f32>>, tensor<8xcomplex<f32>>) -> tensor<8xcomplex<f32>>
+// CHECK:  %cst = constant opaque<"tf", "0x746674656E736F722464747970653A2044545F434F4D504C455836342074656E736F725F7368617065207B2064696D207B2073697A653A2031207D207D2074656E736F725F636F6E74656E743A20225C3030305C3030305C3230303F5C3030305C3030305C3030305C30303022"> : tensor<complex<f32>>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<complex<f32>>, tensor<8xcomplex<f32>>) -> tensor<8xcomplex<f32>>
 // CHECK:  return
 }
 
@@ -1370,8 +1370,8 @@ func @reciprocal_i32(%arg0: tensor<8xi32>) -> tensor<8xi32> {
   return %0: tensor<8xi32>
 
 // CHECK-LABEL: reciprocal_i32
-// CHECK:  %cst = constant dense<1> : tensor<1xi32>
-// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<8xi32>) -> tensor<8xi32>
+// CHECK:  %cst = constant dense<1> : tensor<i32>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<i32>, tensor<8xi32>) -> tensor<8xi32>
 // CHECK:  return
 }
 
@@ -1380,8 +1380,8 @@ func @reciprocal_i64(%arg0: tensor<8xi64>) -> tensor<8xi64> {
   return %0: tensor<8xi64>
 
 // CHECK-LABEL: reciprocal_i64
-// CHECK:  %cst = constant dense<1> : tensor<1xi64>
-// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<1xi64>, tensor<8xi64>) -> tensor<8xi64>
+// CHECK:  %cst = constant dense<1> : tensor<i64>
+// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<i64>, tensor<8xi64>) -> tensor<8xi64>
 // CHECK:  return
 }
 
@@ -1480,3 +1480,25 @@ func @UnidirectionalRnn(%arg: tensor<28x1x28xf32>) -> (tensor<28x1x28xf32>) {
 // CHECK:           [[VAL_4:%.*]] = "tfl.unidirectional_sequence_rnn"([[VAL_0]], [[VAL_1]], [[VAL_1]], [[VAL_2]], [[VAL_3]]) {fused_activation_function = "TANH", time_major = true} : (tensor<28x1x28xf32>, tensor<28x28xf32>, tensor<28x28xf32>, tensor<28xf32>, tensor<1x28xf32>) -> tensor<28x1x28xf32>
 // CHECK:           return [[VAL_4]] : tensor<28x1x28xf32>
 // CHECK:         }
+
+func @broadcast_to_f32(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {
+  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<3xf32>, tensor<2xi32>) -> tensor<3x3xf32>
+  return %0: tensor<3x3xf32>
+
+// CHECK-LABEL: broadcast_to_f32
+// CHECK:  [[CST:%.*]] = constant dense<1.000000e+00> : tensor<f32>
+// CHECK:  [[FILL:%.*]] = "tfl.fill"(%arg1, [[CST]]) : (tensor<2xi32>, tensor<f32>) -> tensor<3x3xf32>
+// CHECK:  [[MUL:%.*]] = "tfl.mul"(%arg0, [[FILL]]) {fused_activation_function = "NONE"} : (tensor<3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
+// CHECK   return [[MUL]] : tensor<3x3xf32>
+}
+
+func @broadcast_to_i32(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> tensor<3x3xi32> {
+  %0 = "tf.BroadcastTo"(%input, %shape) : (tensor<3xi32>, tensor<2xi32>) -> tensor<3x3xi32>
+  return %0: tensor<3x3xi32>
+
+// CHECK-LABEL: broadcast_to_i32
+// CHECK:  [[CST:%.*]] = constant dense<1> : tensor<i32>
+// CHECK:  [[FILL:%.*]] = "tfl.fill"(%arg1, [[CST]]) : (tensor<2xi32>, tensor<i32>) -> tensor<3x3xi32>
+// CHECK:  [[MUL:%.*]] = "tfl.mul"(%arg0, [[FILL]]) {fused_activation_function = "NONE"} : (tensor<3xi32>, tensor<3x3xi32>) -> tensor<3x3xi32>
+// CHECK   return [[MUL]] : tensor<3x3xi32>
+}
