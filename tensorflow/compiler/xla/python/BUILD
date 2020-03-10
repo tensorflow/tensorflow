@@ -62,6 +62,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":bfloat16",
+        ":local_client",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
