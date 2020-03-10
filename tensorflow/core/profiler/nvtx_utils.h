@@ -31,14 +31,10 @@ namespace nvtx {
 
 extern const int8 NVTX_RANGE_INJECTION_STATUS;
 
-// A helper function to decide whether to skip CUDA NVTX profiling ranges.
-inline bool IsNvtxRangesDisabled(){
-  return NVTX_RANGE_INJECTION_STATUS == NVTX_RANGE_INJECTION_STATUS_kDisabled;
-};
-
 // A helper function to decide whether to enable CUDA NVTX profiling ranges.
 inline bool IsNvtxRangesEnabled(){
-  return NVTX_RANGE_INJECTION_STATUS == NVTX_RANGE_INJECTION_STATUS_kBasic;
+  // return NVTX_RANGE_INJECTION_STATUS == NVTX_RANGE_INJECTION_STATUS_kBasic;
+  return NVTX_RANGE_INJECTION_STATUS != NVTX_RANGE_INJECTION_STATUS_kDisabled;
 };
 
 // A helper function to decide whether to enable CUDA NVTX profiling ranges
@@ -78,6 +74,53 @@ namespace hlo{
 // Returns the op name for the node associated with this HLO, for use with
 // NVTX range annotations.
 string NvtxNodeNameString(string cluster_name, string op_name);
+
+}  // namespace HLO
+
+namespace eager{
+
+// Returns the op name for the node associated with this HLO, for use with
+// NVTX range annotations.
+template <typename T1, typename T2>
+string GetNvtxRangeMessage(T1& inputs, T2* kernel_)
+{
+   if (IsNvtxRangesDetailedEnabled()) {
+      std::vector<string> args_pieces;
+      for (int i = 0; i < inputs.GetTensorValues()->size(); i++) {
+        if (i == 10) {
+          // Truncate long arg lists and indicate with an ending null value.
+          args_pieces.push_back("null");
+          break;
+        }
+        const auto& shape = inputs.GetTensorValues()->at(i).tensor->shape();
+        string shape_str = shape.unknown_rank() ? "null" : shape.DebugString();
+        args_pieces.push_back(strings::StrCat("{\"name\":\"",
+                                              kernel_->def().input(i),
+                                              "\",\"shape\":", shape_str, "}"));
+      }
+      std::vector<string> attrs_pieces;
+      const auto& attrs = kernel_->def().attr();
+      for (auto it = attrs.begin(); it != attrs.end(); ++it) {
+        const string& key = it->first;
+        const AttrValue& value = it->second;
+        // Exclude types that aren't useful for profiling.
+        if (value.value_case() == AttrValue::kFunc ||
+            value.value_case() == AttrValue::kPlaceholder ||
+            value.value_case() == AttrValue::VALUE_NOT_SET) {
+          continue;
+        }
+        string value_str = AttrValueToJson(value);
+        attrs_pieces.push_back(strings::StrCat("\"", key, "\":", value_str));
+      }
+      return strings::StrCat("{\"op\":\"", kernel_->def().op(), "\",\"name\":\"",
+                            kernel_->name(), "\",\"args\":[",
+                            str_util::Join(args_pieces, ","), "],\"attrs\":{",
+                            str_util::Join(attrs_pieces, ","), "}}");
+    } else {
+      return kernel_->def().op() + ": " + kernel_->name();
+    }
+
+}
 
 }  // namespace HLO
 

@@ -1797,7 +1797,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
     nvtxRangeId_t nvtx_range;
 
-    if (! nvtx::IsNvtxRangesDisabled()) {
+    if (nvtx::IsNvtxRangesEnabled()) {
 
       std::vector<const TensorShape*> input_shape_array;
       

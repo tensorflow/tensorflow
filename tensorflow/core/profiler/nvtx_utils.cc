@@ -252,7 +252,7 @@ nvtxRangeId_t MaybeNvtxDomainRangeStart(string node_op, string node_name) {
 
 nvtxRangeId_t MaybeNvtxDomainRangeStartMsg(string msg, string node_op) {
   nvtxRangeId_t nvtx_range;
-  if (! IsNvtxRangesDisabled()) {
+  if (IsNvtxRangesEnabled()) {
     nvtx_range = nvtxRangeStartHelper(
       msg.c_str(),
       node_op.c_str(),
@@ -263,7 +263,7 @@ nvtxRangeId_t MaybeNvtxDomainRangeStartMsg(string msg, string node_op) {
 }
 
 void MaybeNvtxDomainRangeEnd(nvtxRangeId_t nvtx_range) {
-  if (! IsNvtxRangesDisabled()) {
+  if (IsNvtxRangesEnabled()) {
     nvtxDomainRangeEnd(GetNvtxTensorFlowCoreDomain(), nvtx_range);
   }
 }
