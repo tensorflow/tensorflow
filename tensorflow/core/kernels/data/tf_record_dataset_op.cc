@@ -254,10 +254,10 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
                   "`buffer_size` must be >= 0 (0 == no buffering)"));
 
   if (is_gcs_fs && is_cloud_tpu_gcs_fs() && buffer_size < kCloudTpuBlockSize) {
-    LOG(WARNING) << "User buffer size is too small for reading Cloud TPU "
-                 << "TFRecords stored in GCS. Overriding " << buffer_size
-                 << " to the minimum recommended buffer_size = "
-                 << kCloudTpuBlockSize;
+    VLOG(2) << "User buffer size is too small for reading Cloud TPU "
+            << "TFRecords stored in GCS. Overriding " << buffer_size
+            << " to the minimum recommended buffer_size = "
+            << kCloudTpuBlockSize;
     buffer_size = kCloudTpuBlockSize;
   }
 
