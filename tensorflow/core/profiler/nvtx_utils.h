@@ -59,9 +59,86 @@ string DataTypeToNumpyString(DataType dtype);
 // TODO(benbarsdell): This is a bit crude and hacky (and inefficient).
 string AttrValueToJson(const AttrValue& attr_value);
 
+/*
 string MaybeGetNvtxDomainRangeMessage(
     const OpKernel* op_kernel, const int num_inputs,
     std::vector<const TensorShape*> input_shape_array);
+*/
+namespace{
+static const Tensor* const kEmptyTensor = new Tensor;
+
+template <typename T1>
+const Tensor* GetTensorValueForDump(const T1& input) {
+  if (!input.has_value) {
+    return kEmptyTensor;
+  } else if (input.ref == nullptr) {
+    return input.val.get();
+  } else {
+    return input.ref;
+  }
+}
+}
+
+template <typename T1, typename T2>
+string MaybeGetNvtxDomainRangeMessage(const T1& item, T2* first_input) {
+
+  if (!IsNvtxRangesEnabled()) {
+    return string();
+  } else {
+
+    const OpKernel* kernel = item.kernel;
+    const int num_inputs = item.num_inputs;
+
+    if (IsNvtxRangesDetailedEnabled()) {
+
+      std::vector<string> args_pieces;
+      std::vector<string> attrs_pieces;
+
+      std::vector<const TensorShape*> input_shape_array;
+
+      for (int i = 0; i < item.num_inputs; ++i) {
+        input_shape_array.push_back(
+            &GetTensorValueForDump(first_input[i])->shape());
+      }
+
+      for (int i = 0; i < num_inputs; ++i) {
+        if (i == 10) {
+          // Truncate long arg lists and indicate with an ending null value.
+          args_pieces.push_back("null");
+          break;
+        }
+        const TensorShape& shape = *(input_shape_array[i]);
+        string shape_str = shape.unknown_rank() ? "null" : shape.DebugString();
+        args_pieces.push_back(strings::StrCat("{\"name\":\"",
+                                              kernel->def().input(i),
+                                              "\",\"shape\":", shape_str, "}"));
+      }
+
+      const auto& attrs = kernel->def().attr();
+
+      for (auto it = attrs.begin(); it != attrs.end(); ++it) {
+        const string& key = it->first;
+        const AttrValue& value = it->second;
+        // Exclude types that aren't useful for profiling.
+        if (value.value_case() == AttrValue::kFunc ||
+            value.value_case() == AttrValue::kPlaceholder ||
+            value.value_case() == AttrValue::VALUE_NOT_SET) {
+          continue;
+        }
+        string value_str = AttrValueToJson(value);
+        attrs_pieces.push_back(strings::StrCat("\"", key, "\":", value_str));
+      }
+
+      return strings::StrCat("{\"op\":\"", kernel->def().op(), "\",\"name\":\"",
+                            kernel->name(), "\",\"args\":[",
+                            str_util::Join(args_pieces, ","), "],\"attrs\":{",
+                            str_util::Join(attrs_pieces, ","), "}}");
+    }
+    else {
+      return kernel->def().op() + ": " + kernel->name();
+    }
+  }
+}
 
 nvtxRangeId_t MaybeNvtxDomainRangeStart(string node_op, string node_name);
 

@@ -283,15 +283,10 @@ Status KernelAndDeviceOp::Run(
 
   OpKernelContext context(&params);
 
-  nvtxRangeId_t nvtx_range;
-
-  if (nvtx::IsNvtxRangesEnabled()) {
-    nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(
-        nvtx::eager::GetNvtxRangeMessage<EagerKernelArgs,OpKernel>(
-            inputs, kernel_),
-        kernel_->def().op()
-    );
-  }
+  nvtxRangeId_t nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(
+    nvtx::eager::GetNvtxRangeMessage<EagerKernelArgs,OpKernel>(inputs, kernel_),
+    kernel_->def().op()
+  );
 
   {
     // 'AnnotatedTraceMe' will trace both scheduling time on host and execution

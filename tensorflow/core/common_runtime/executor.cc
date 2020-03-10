@@ -1795,28 +1795,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     Entry* first_input = input_tensors + item.input_start;
     outputs.clear();
 
-    nvtxRangeId_t nvtx_range;
-
-    if (nvtx::IsNvtxRangesEnabled()) {
-
-      std::vector<const TensorShape*> input_shape_array;
-      
-      if (nvtx::IsNvtxRangesDetailedEnabled()) {
-        for (int i = 0; i < item.num_inputs; ++i) {
-          input_shape_array.push_back(
-              &GetTensorValueForDump(first_input[i])->shape());
-        }
-      }
-
-      nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(
-        nvtx::MaybeGetNvtxDomainRangeMessage(
-          item.kernel,
-          item.num_inputs,
-          input_shape_array
-        ),
-        item.kernel->def().op()
-      );
-    }
+    nvtxRangeId_t nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(
+      nvtx::MaybeGetNvtxDomainRangeMessage(item, first_input),
+      item.kernel->def().op()
+    );
 
     TensorReferenceVector accessed_tensors;
     DeviceContext* device_context = nullptr;
