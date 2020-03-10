@@ -1,7 +1,5 @@
 # Ruy is not BLAS
 
-# TODO(b/123403203) actually make TFLite use ruy.
-
 load(":build_defs.bzl", "ruy_copts_avx2", "ruy_copts_avxvnni", "ruy_copts_base", "ruy_copts_skylake", "ruy_copts_sse42")
 load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
 load(":ruy_test.bzl", "ruy_benchmark", "ruy_test")
@@ -9,6 +7,21 @@ load(":ruy_test.bzl", "ruy_benchmark", "ruy_test")
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows"},
+)
+
+config_setting(
+    name = "armeabi-v7a",
+    values = {"cpu": "armeabi-v7a"},
+)
+
+config_setting(
+    name = "x86_64",
+    values = {"cpu": "k8"},
 )
 
 config_setting(
@@ -853,7 +866,7 @@ cc_library(
     # need defines, not copts, because it's controlling a header, test.h
     defines = ruy_test_ext_defines(),
     linkopts = select({
-        "//tensorflow:windows": [],
+        ":windows": [],
         "//conditions:default": ["-lm"],
     }),
     deps = [

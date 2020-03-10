@@ -6,7 +6,7 @@
 
 def ruy_copts_base():
     return select({
-        "//tensorflow:android_arm": [
+        ":armeabi-v7a": [
             "-mfpu=neon",
         ],
         "//conditions:default": [],
