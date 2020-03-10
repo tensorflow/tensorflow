@@ -36,6 +36,7 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
+from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensorSpec
 from tensorflow.python.ops.ragged.row_partition import RowPartition
@@ -139,7 +140,8 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testRaggedTensorConstruction(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
-    rp = RowPartition(row_splits=row_splits, internal=True)
+    rp = RowPartition(row_splits=row_splits,
+                      internal=row_partition._row_partition_factory_key)
     rt = RaggedTensor(values=values, row_partition=rp, internal=True)
 
     self.assertAllEqual(rt,
@@ -148,7 +150,8 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testRaggedTensorConstructionErrors(self):
     values = constant_op.constant(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
-    rp = RowPartition(row_splits=row_splits, internal=True)
+    rp = RowPartition(row_splits=row_splits,
+                      internal=row_partition._row_partition_factory_key)
 
     with self.assertRaisesRegexp(ValueError,
                                  'RaggedTensor constructor is private'):
