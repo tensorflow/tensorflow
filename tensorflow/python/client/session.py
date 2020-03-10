@@ -25,6 +25,7 @@ import warnings
 
 import numpy as np
 import wrapt
+import six
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -304,15 +305,24 @@ class _ElementFetchMapper(_FetchMapper):
         self._unique_fetches.append(ops.get_default_graph().as_graph_element(
             fetch, allow_tensor=True, allow_operation=True))
       except TypeError as e:
-        raise TypeError('Fetch argument %r has invalid type %r, '
-                        'must be a string or Tensor. (%s)' %
-                        (fetch, type(fetch), str(e)))
+        six.raise_from(
+          TypeError('Fetch argument %r has invalid type %r, '
+                    'must be a string or Tensor. (%s)' %
+                    (fetch, type(fetch), str(e))),
+          e
+        )
       except ValueError as e:
-        raise ValueError('Fetch argument %r cannot be interpreted as a '
-                         'Tensor. (%s)' % (fetch, str(e)))
+        six.raise_from(
+          ValueError('Fetch argument %r cannot be interpreted as a '
+                     'Tensor. (%s)' % (fetch, str(e))),
+          e
+        )
       except KeyError as e:
-        raise ValueError('Fetch argument %r cannot be interpreted as a '
-                         'Tensor. (%s)' % (fetch, str(e)))
+        six.raise_from(
+          ValueError('Fetch argument %r cannot be interpreted as a '
+                     'Tensor. (%s)' % (fetch, str(e))),
+          e
+        )
     self._contraction_fn = contraction_fn
 
   def unique_fetches(self):
@@ -660,12 +670,20 @@ class BaseSession(SessionInterface):
     if target is not None:
       try:
         self._target = compat.as_bytes(target)
-      except TypeError:
+      except TypeError as e:
         if isinstance(target, config_pb2.ConfigProto):
-          raise TypeError('target must be a string, but got %s.'
-                          ' Did you do "Session(config)" instead of'
-                          ' "Session(config=config)"?' % type(target))
-        raise TypeError('target must be a string, but got %s' % type(target))
+          six.raise_from(
+            TypeError('target must be a string, but got %s.'
+                      ' Did you do "Session(config)" instead of'
+                      ' "Session(config=config)"?'
+                      % type(target)),
+            e
+          )
+        six.raise_from(
+          TypeError('target must be a string, but got '
+                          '%s' % type(target)),
+          e
+        )
     else:
       self._target = None
 
@@ -1120,8 +1138,11 @@ class BaseSession(SessionInterface):
             subfeed_t = self.graph.as_graph_element(
                 subfeed, allow_tensor=True, allow_operation=False)
           except Exception as e:
-            raise TypeError('Cannot interpret feed_dict key as Tensor: ' +
-                            e.args[0])
+            six.raise_from(
+              TypeError('Cannot interpret feed_dict key as Tensor: ' +
+                        e.args[0]),
+              e
+            )
 
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
@@ -1381,7 +1402,10 @@ class BaseSession(SessionInterface):
                     '\nby modifying the config for creating the session eg.'
                     '\nsession_config.graph_options.rewrite_options.'
                     'disable_meta_optimizer = True')
-      raise type(e)(node_def, op, message)
+      six.raise_from(
+        type(e)(node_def, op, message),
+        e
+      )
 
   def _extend_graph(self):
     with self._graph._session_run_lock():  # pylint: disable=protected-access
