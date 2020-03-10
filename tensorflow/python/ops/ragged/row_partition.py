@@ -33,10 +33,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import segment_id_ops
 
-# pylint: disable=protected-access
-_eval_using_default_session = ops._eval_using_default_session
-# pylint: enable=protected-access
-
 #===============================================================================
 # RowPartition
 #===============================================================================

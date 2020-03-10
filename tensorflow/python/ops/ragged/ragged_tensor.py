@@ -46,7 +46,6 @@ from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
-_eval_using_default_session = ops._eval_using_default_session
 _convert_row_partition = RowPartition._convert_row_partition
 # pylint: enable=protected-access
 
