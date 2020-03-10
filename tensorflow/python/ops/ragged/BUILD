@@ -518,11 +518,8 @@ py_test(
 
 py_test(
     name = "row_partition_test",
-    size = "medium",
-    timeout = "long",
     srcs = ["row_partition_test.py"],
     python_version = "PY3",
-    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
