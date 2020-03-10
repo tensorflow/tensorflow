@@ -60,7 +60,6 @@ cuda_py_test(
     tags = [
         "no_pip",
         "no_rocm",
-        "no_windows",
     ],
     deps = [
         ":profiler_v2",

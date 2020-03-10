@@ -77,8 +77,8 @@ class Var : public ResourceBase {
   // there is not a good value there due to a race condition, and it's possible
   // to stumble upon this during variable.initialized_value(). So it's best to
   // just store directly whether the variable is initialized.
-  bool is_initialized = false;  // GUARDED_BY(mu_) but annotalysis doesn't like
-                                // it.
+  bool is_initialized = false;  // TF_GUARDED_BY(mu_) but annotalysis doesn't
+                                // like it.
 
   // Also fake-guarded by mu_. Should be set to True whenever any sparse
   // operation uses the variable. Once this is true no tensor is allowed to
@@ -97,22 +97,22 @@ class Var : public ResourceBase {
 
 // Does unlock and unref automatically when going out of scope, and also
 // supports early manual release.
-class SCOPED_LOCKABLE ScopedUnlockUnrefVar {
+class TF_SCOPED_LOCKABLE ScopedUnlockUnrefVar {
  public:
-  explicit ScopedUnlockUnrefVar(Var* var) EXCLUSIVE_LOCK_FUNCTION(var_->mu())
+  explicit ScopedUnlockUnrefVar(Var* var) TF_EXCLUSIVE_LOCK_FUNCTION(var_->mu())
       : var_(var) {
     if (var_) {
       var_->mu()->lock();
     }
   }
-  void Release() UNLOCK_FUNCTION() {
+  void Release() TF_UNLOCK_FUNCTION() {
     if (var_) {
       var_->mu()->unlock();
       var_->Unref();
       var_ = nullptr;
     }
   }
-  ~ScopedUnlockUnrefVar() UNLOCK_FUNCTION() { Release(); }
+  ~ScopedUnlockUnrefVar() TF_UNLOCK_FUNCTION() { Release(); }
 
  private:
   Var* var_;

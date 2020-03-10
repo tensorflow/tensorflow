@@ -655,6 +655,7 @@ cc_library(
         "noop_elimination.h",
     ],
     deps = [
+        ":function_utils",
         ":graph_utils",
         ":optimizer_base",
         "@com_google_absl//absl/container:flat_hash_set",

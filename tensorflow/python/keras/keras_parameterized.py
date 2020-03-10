@@ -333,8 +333,7 @@ def run_all_keras_modes(test_or_class=None,
       metrics = ['mae']
       model.compile(
           optimizer, loss, metrics=metrics,
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
 
       inputs = np.zeros((10, 3))
       targets = np.zeros((10, 4))
@@ -402,23 +401,20 @@ def run_all_keras_modes(test_or_class=None,
 def _v1_session_test(f, test_or_class, config, *args, **kwargs):
   with ops.get_default_graph().as_default():
     with testing_utils.run_eagerly_scope(False):
-      with testing_utils.experimental_run_tf_function_scope(False):
-        with test_or_class.test_session(use_gpu=True, config=config):
-          f(test_or_class, *args, **kwargs)
+      with test_or_class.test_session(use_gpu=True, config=config):
+        f(test_or_class, *args, **kwargs)
 
 
 def _v2_eager_test(f, test_or_class, *args, **kwargs):
   with context.eager_mode():
     with testing_utils.run_eagerly_scope(True):
-      with testing_utils.experimental_run_tf_function_scope(True):
-        f(test_or_class, *args, **kwargs)
+      f(test_or_class, *args, **kwargs)
 
 
 def _v2_function_test(f, test_or_class, *args, **kwargs):
   with context.eager_mode():
     with testing_utils.run_eagerly_scope(False):
-      with testing_utils.experimental_run_tf_function_scope(True):
-        f(test_or_class, *args, **kwargs)
+      f(test_or_class, *args, **kwargs)
 
 
 def _test_or_class_decorator(test_or_class, single_method_decorator):

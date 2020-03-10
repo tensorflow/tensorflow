@@ -640,6 +640,13 @@ message RunOptions {
     // and tail) latency.
     // Consider using this option for CPU-bound workloads like inference.
     bool use_run_handler_pool = 2;
+    // Options for run handler thread pool.
+    message RunHandlerPoolOptions {
+      // Priority of the request. The run handler thread pool will schedule ops
+      // based on the priority number. The larger number means higher priority.
+      int64 priority = 1;
+    }
+    RunHandlerPoolOptions run_handler_pool_options = 3;
   }
 
   Experimental experimental = 8;

@@ -30,7 +30,7 @@ class StreamAssignment {
   int StreamNumberForHlo(const HloInstruction& hlo) const;
   bool HasStreamAssigned(const HloInstruction& hlo) const;
   // `hlo` needs to outlive this StreamAssignment object.
-  void AssignStreamToHlo(const HloInstruction* hlo, int stream_no);
+  void AssignStreamToHlo(const HloInstruction* hlo, int stream_num);
 
  private:
   int stream_count_ = 1;  // At least the main stream.

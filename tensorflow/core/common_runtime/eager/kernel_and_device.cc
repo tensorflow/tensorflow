@@ -256,7 +256,7 @@ Status KernelAndDeviceOp::Run(
   params.output_attr_array = output_alloc_attrs_.data();
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
-  params.rendezvous = rendez_;
+  params.rendezvous = rendezvous_;
   OpExecutionState* op_execution_state = nullptr;
 
   CancellationManager default_cancellation_manager;

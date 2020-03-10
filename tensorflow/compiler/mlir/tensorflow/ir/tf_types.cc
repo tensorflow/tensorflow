@@ -77,13 +77,17 @@ TensorFlowType TensorFlowRefType::get(Type type) {
         case 1:
           return BoolRefType::get(ctx);
         case 8:
-          return Int8RefType::get(ctx);
+          return itype.isUnsigned() ? TensorFlowType(Uint8RefType::get(ctx))
+                                    : Int8RefType::get(ctx);
         case 16:
-          return Int16RefType::get(ctx);
+          return itype.isUnsigned() ? TensorFlowType(Uint16RefType::get(ctx))
+                                    : Int16RefType::get(ctx);
         case 32:
-          return Int32RefType::get(ctx);
+          return itype.isUnsigned() ? TensorFlowType(Uint32RefType::get(ctx))
+                                    : Int32RefType::get(ctx);
         case 64:
-          return Int64RefType::get(ctx);
+          return itype.isUnsigned() ? TensorFlowType(Uint64RefType::get(ctx))
+                                    : Int64RefType::get(ctx);
         default:
           llvm_unreachable("unexpected integer type");
       }
@@ -121,6 +125,14 @@ Type TensorFlowRefType::RemoveRef() {
       return mlir::IntegerType::get(32, ctx);
     case TensorFlowTypes::INT64_REF:
       return mlir::IntegerType::get(64, ctx);
+    case TensorFlowTypes::UINT8_REF:
+      return mlir::IntegerType::get(8, IntegerType::Unsigned, ctx);
+    case TensorFlowTypes::UINT16_REF:
+      return mlir::IntegerType::get(16, IntegerType::Unsigned, ctx);
+    case TensorFlowTypes::UINT32_REF:
+      return mlir::IntegerType::get(32, IntegerType::Unsigned, ctx);
+    case TensorFlowTypes::UINT64_REF:
+      return mlir::IntegerType::get(64, IntegerType::Unsigned, ctx);
     case TensorFlowTypes::COMPLEX64_REF:
       return mlir::ComplexType::get(mlir::FloatType::getF32(ctx));
     case TensorFlowTypes::COMPLEX128_REF:

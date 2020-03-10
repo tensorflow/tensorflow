@@ -383,7 +383,6 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
         op != "TensorArraySizeV3") {
       continue;
     }
-
     const std::vector<OpInfo::TensorProperties>& output =
         properties.GetOutputProperties(node->name());
     const std::vector<OpInfo::TensorProperties>& input =
@@ -410,8 +409,16 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
         continue;
       }
 
+      // TODO(rmlarsen): Remove this workaround for b/150861569
+      // The bug involves an expression of the form Shape(ExpandDims(x)
+      // with an incorrectly inferred zero-size first dimension.
+      if (op == "Shape") {
+        if (shape.dims() > 0 && shape.dim_size(0) == 0) continue;
+      }
+
       // Repurpose the existing node to be the constant.
       // Device placement is preserved.
+      graph_modified_ = true;
       node->set_op("Const");
       node->clear_attr();
       (*node->mutable_attr())["dtype"].set_type(type);
@@ -424,9 +431,8 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
       // the original graph.
       string ctrl_dep =
           AddControlDependency(node->input(0), graph_, node_map_.get());
+      node_map_->UpdateInput(node->name(), node->input(0), ctrl_dep);
       node->set_input(0, ctrl_dep);
-      node_map_->AddOutput(NodeName(ctrl_dep), node->name());
-
       // Done with the Shape/Size/Rank node, move to the next node.
       continue;
     }
@@ -458,6 +464,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
           continue;
         }
 
+        graph_modified_ = true;
         node->set_op("Const");
         *node->mutable_attr() = array_size->attr();
         node->set_input(0, AsControlDependency(NodeName(node->input(0))));
@@ -519,6 +526,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
             }
             *output->mutable_input(k) = const_name;
             node_map_->AddOutput(const_name, output->name());
+            graph_modified_ = true;
           }
           if (node_name == shape_n_node->name() && port != port_idx) {
             direct_edges_exist = true;
@@ -3705,8 +3713,9 @@ Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
 }
 
 Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
-                                            const GrapplerItem& item,
+                                            GrapplerItem* item,
                                             GraphDef* optimized_graph) {
+  graph_ = &item->graph;
   node_map_.reset(new NodeMap(graph_));
   nodes_whitelist_.clear();
   // Fold fetch nodes iff it has a single fanout. Note that if a fetch node
@@ -3716,14 +3725,14 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   // replace the node with multiple constants (each for one fanout) with
   // new names, and as a result users would not be able to fetch the node any
   // more with the original node name.
-  for (const auto& fetch : item.fetch) {
+  for (const auto& fetch : item->fetch) {
     const NodeDef* fetch_node = node_map_->GetNode(fetch);
     if (fetch_node && NumOutputs(*fetch_node, graph_) == 1) {
       nodes_whitelist_.insert(fetch_node->name());
     }
   }
 
-  GraphProperties properties(item);
+  GraphProperties properties(*item);
   // It's possible to feed a placeholder with a tensor of any shape: make sure
   // that the shape inference deals with this conservatively unless we're in
   // aggressive mode.
@@ -3732,15 +3741,18 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
                                         /*aggressive_shape_inference=*/false,
                                         /*include_input_tensor_values=*/false,
                                         /*include_output_tensor_values=*/true);
+
   const bool can_use_shape_info = s.ok();
 
+  absl::flat_hash_set<string> nodes_to_not_simplify;
   if (can_use_shape_info) {
     TF_RETURN_IF_ERROR(MaterializeShapes(properties));
     TF_RETURN_IF_ERROR(MaterializeConstants(properties));
+    TF_RETURN_IF_ERROR(
+        FoldGraph(properties, optimized_graph, &nodes_to_not_simplify));
+  } else {
+    *optimized_graph = *graph_;
   }
-  absl::flat_hash_set<string> nodes_to_not_simplify;
-  TF_RETURN_IF_ERROR(
-      FoldGraph(properties, optimized_graph, &nodes_to_not_simplify));
   node_map_.reset(new NodeMap(optimized_graph));
   TF_RETURN_IF_ERROR(SimplifyGraph(can_use_shape_info, optimized_graph,
                                    &properties, &nodes_to_not_simplify));
@@ -3795,11 +3807,10 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     graph_modified_ = false;
     item_to_optimize.graph.Swap(optimized_graph);
-    graph_ = &item_to_optimize.graph;
-    *optimized_graph = GraphDef();
-    node_count = graph_->node_size();
+    optimized_graph->Clear();
+    node_count = item_to_optimize.graph.node_size();
     TF_RETURN_IF_ERROR(
-        RunOptimizationPass(cluster, item_to_optimize, optimized_graph));
+        RunOptimizationPass(cluster, &item_to_optimize, optimized_graph));
   } while (graph_modified_ || optimized_graph->node_size() != node_count);
   *optimized_graph->mutable_library() = item.graph.library();
   *optimized_graph->mutable_versions() = item.graph.versions();

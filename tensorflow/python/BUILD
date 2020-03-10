@@ -4975,7 +4975,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "math_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops/math_ops_test.py"],
     python_version = "PY3",
     tags = ["no_windows_gpu"],
@@ -6489,7 +6489,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "adam_test",
-    size = "small",
+    size = "medium",
     srcs = ["training/adam_test.py"],
     python_version = "PY3",
     deps = [
@@ -7476,7 +7476,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "nn_grad_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops/nn_grad_test.py"],
     python_version = "PY3",
     deps = [
@@ -7904,7 +7904,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "auto_mixed_precision_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "grappler/auto_mixed_precision_test.py",
     ],

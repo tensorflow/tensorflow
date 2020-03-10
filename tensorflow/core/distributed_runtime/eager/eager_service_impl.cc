@@ -530,7 +530,8 @@ Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
     }
 
     TensorHandle* tensor_handle = nullptr;
-    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(tensor, &tensor_handle));
+    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
+        std::move(tensor), nullptr, nullptr, eager_context, &tensor_handle));
     TensorHandle* copied_handle = nullptr;
     Device* device;
     TF_RETURN_IF_ERROR(eager_context->FindDeviceFromName(
@@ -556,7 +557,7 @@ tensorflow::Status EagerServiceImpl::GetServerContext(
     return errors::InvalidArgument(strings::Printf(
         "Unable to find a context_id matching the specified one "
         "(%llu). Perhaps the worker was restarted, or the context was GC'd?",
-        context_id));
+        static_cast<unsigned long long>(context_id)));
   }
 
   *server_context = iter->second;

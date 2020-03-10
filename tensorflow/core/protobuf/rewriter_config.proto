@@ -60,6 +60,9 @@ message RewriterConfig {
   // Remapping (default is ON)
   // Remap subgraphs onto more efficient implementations.
   Toggle remapping = 14;
+  // Common subgraph elimination (default is ON)
+  // e.g. Simplify arithmetic ops; merge ops with same value (like constants).
+  Toggle common_subgraph_elimination = 24;
   // Arithmetic optimizations (default is ON)
   // e.g. Simplify arithmetic ops; merge ops with same value (like constants).
   Toggle arithmetic_optimization = 7;

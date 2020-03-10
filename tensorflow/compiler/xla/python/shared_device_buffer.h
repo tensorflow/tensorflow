@@ -66,7 +66,7 @@ class BufferDefinitionEvent {
   void WaitForEventOnStream(se::Stream* stream);
 
  private:
-  bool EventHasBeenRecorded() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool EventHasBeenRecorded() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // An event that is triggered when the content of one or more buffers is
   // ready. If this event is nullptr, it is assumed that the buffer's content is
@@ -77,7 +77,7 @@ class BufferDefinitionEvent {
 
   // A list of all streams for which the buffer's content is known to be defined
   // at the tail of the queue, i.e., for any newly enqueued command.
-  absl::InlinedVector<se::Stream*, 2> streams_defined_on_ GUARDED_BY(mu_);
+  absl::InlinedVector<se::Stream*, 2> streams_defined_on_ TF_GUARDED_BY(mu_);
 };
 
 // Class that represents a node in a reference-counted DAG of device buffers.

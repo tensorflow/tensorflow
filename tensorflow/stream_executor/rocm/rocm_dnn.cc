@@ -597,7 +597,7 @@ class MIOpenAccess {
   absl::Mutex mutex_;
 
   // MIOpen library handle.
-  miopenHandle_t handle_ GUARDED_BY(mutex_);  // Owned.
+  miopenHandle_t handle_ TF_GUARDED_BY(mutex_);  // Owned.
 };
 
 MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {

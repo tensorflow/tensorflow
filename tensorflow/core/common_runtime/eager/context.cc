@@ -128,14 +128,21 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              thread::ThreadPool* thread_pool,
                              DistributedFunctionLibraryRuntime* cluster_flr,
                              const CustomKernelCreator* custom_kernel_creator) {
+  Rendezvous::Factory rendezvous_factory =
+      [this](const int64 step_id, const DeviceMgr*, Rendezvous** r) {
+        *r = CreateRendezvous(step_id);
+        return Status::OK();
+      };
   if (lazy_copy_function_remote_inputs_) {
     pflr_.reset(new eager::EagerProcessFunctionLibraryRuntime(
         device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-        thread_pool, cluster_flr, custom_kernel_creator));
+        thread_pool, cluster_flr, custom_kernel_creator,
+        /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
   } else {
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-        thread_pool, cluster_flr, custom_kernel_creator));
+        thread_pool, cluster_flr, custom_kernel_creator,
+        /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
   }
 }
 

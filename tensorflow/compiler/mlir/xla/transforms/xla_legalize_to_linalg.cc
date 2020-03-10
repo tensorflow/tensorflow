@@ -149,8 +149,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     rewriter.setInsertionPointToEnd(block);
     // TODO(ravishankarm) : For now use the method in xla_lhlo namespace. That
     // method needs to be moved out of there.
-    Value opResult = xla_lhlo::MapXlaOpToStdScalarOp<OpTy>(
-        llvm::cast<OpTy>(op), bodyResultTypes, bodyArgs, &rewriter);
+    Value opResult = xla_lhlo::XlaOpToStdScalarOp::map<OpTy>(
+        op, bodyResultTypes, bodyArgs, &rewriter);
     if (!opResult) {
       return ConversionPattern::matchFailure();
     }
@@ -180,9 +180,9 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
     auto lhs = rewriter.create<LoadOp>(loc, lhlo_op.lhs());
     auto rhs = rewriter.create<LoadOp>(loc, lhlo_op.rhs());
     // TODO(ravishankarm) : Move this method out of xla_lhlo namespace.
-    Value opResult = xla_lhlo::MapXlaOpToStdScalarOp<LhloOp>(
-        llvm::cast<LhloOp>(lhlo_op), argType.getElementType(),
-        llvm::ArrayRef<Value>{lhs, rhs}, &rewriter);
+    Value opResult = xla_lhlo::XlaOpToStdScalarOp::map<LhloOp>(
+        lhlo_op, argType.getElementType(), llvm::ArrayRef<Value>{lhs, rhs},
+        &rewriter);
     rewriter.create<StoreOp>(loc, opResult, lhlo_op.out());
     rewriter.eraseOp(lhlo_op);
     return ConversionPattern::matchSuccess();
@@ -537,10 +537,12 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::CeilOp>,
                    PointwiseToLinalgConverter<xla_lhlo::CompareOp>,
                    PointwiseToLinalgConverter<xla_lhlo::ConvertOp>,
+                   // TODO(ataei): Remove this pattern, CopyOp is folded away.
                    PointwiseToLinalgConverter<xla_lhlo::CopyOp>,
                    PointwiseToLinalgConverter<xla_lhlo::CosOp>,
                    PointwiseToLinalgConverter<xla_lhlo::DivOp>,
                    PointwiseToLinalgConverter<xla_lhlo::ExpOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::LogOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MaxOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MinOp>,
                    PointwiseToLinalgConverter<xla_lhlo::MulOp>,
@@ -548,6 +550,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_lhlo::RemOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SelectOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SignOp>,
+                   PointwiseToLinalgConverter<xla_lhlo::SqrtOp>,
                    PointwiseToLinalgConverter<xla_lhlo::SubOp>,
                    PointwiseToLinalgConverter<xla_lhlo::TanhOp>,
                    ReshapeAddRemoveDimConverter<xla_lhlo::ReshapeOp>,
@@ -632,12 +635,14 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_hlo::CopyOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::DivOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::ExpOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::LogOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::MaxOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::MinOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::MulOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::NegOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::RemOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::SelectOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::SqrtOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::SubOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::TanhOp, false>>(context);
 }

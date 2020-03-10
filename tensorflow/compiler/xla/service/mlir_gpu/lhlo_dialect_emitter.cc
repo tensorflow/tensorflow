@@ -113,6 +113,9 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
     case HloOpcode::kSign:
       func_builder.create<lhlo::SignOp>(loc, rets, args, attrs);
       break;
+    case HloOpcode::kSqrt:
+      func_builder.create<lhlo::SqrtOp>(loc, rets, args, attrs);
+      break;
     case HloOpcode::kSubtract:
       func_builder.create<lhlo::SubOp>(loc, rets, args, attrs);
       break;

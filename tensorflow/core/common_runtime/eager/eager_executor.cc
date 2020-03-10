@@ -240,8 +240,17 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
       // nodes list. However we only notify if we are at the front of the list
       // since we don't want to notify any waiters of earlier nodes.
       need_notification = item->id == unfinished_nodes_.begin()->first;
+      // Remove item if it exists in unfinished_nodes_.
+      // With async execution, if two separate nodes failed and enter this
+      // callback, then the second node might not find itself in
+      // unfinished_nodes_ in the following senario:
+      //   1) Callback of the first failed node clears unfinished_nodes_
+      //   2) ClearError is called and executor status_ is set to OK
+      //   3) Callback of the second failed node is triggered
+      // In this case, do not taint the executor status or other note items
+      // because they are inserted after the ClearError.
       auto result = unfinished_nodes_.erase(item->id);
-      DCHECK_GT(result, 0);
+      if (result == 0) return;
     }
 
     if (!status.ok() && item->node->Fatal()) {

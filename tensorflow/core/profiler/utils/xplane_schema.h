@@ -78,6 +78,7 @@ enum HostEventType {
   kIteratorGetNextOp,
   // Virtual events for grouping.
   kHostTrainingLoopIteration,
+  kAsyncExecutorTraceContext,
   // GPU related.
   kKernelLaunch,
   kKernelExecute,

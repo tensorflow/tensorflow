@@ -65,6 +65,7 @@ int main(int argc, char** argv) {
   flags.out_metadata_object = "out_helper.o";
   flags.out_header = "out.h";
   flags.entry_point = "entry";
+  flags.debug_info_path_begin_marker = "";
 
   std::vector<tensorflow::Flag> flag_list;
   AppendMainFlags(&flag_list, &flags);

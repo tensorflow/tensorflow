@@ -62,7 +62,8 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
           output_types_(output_types),
           output_shapes_(output_shapes),
           traceme_metadata_(
-              {{"num_replicas", strings::Printf("%lld", num_replicas)}}) {
+              {{"num_replicas", strings::Printf("%lld", static_cast<long long>(
+                                                            num_replicas))}}) {
       input_->Ref();
     }
 
@@ -249,8 +250,8 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
 
       mutex mu_;
       std::unique_ptr<IteratorBase> input_impl_;
-      std::vector<InputDescriptor> input_descriptors_ GUARDED_BY(mu_);
-      int64 slice_number_ GUARDED_BY(mu_) = 0;
+      std::vector<InputDescriptor> input_descriptors_ TF_GUARDED_BY(mu_);
+      int64 slice_number_ TF_GUARDED_BY(mu_) = 0;
     };
 
     const DatasetBase* const input_;

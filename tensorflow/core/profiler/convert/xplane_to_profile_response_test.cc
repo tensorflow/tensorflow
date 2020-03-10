@@ -66,7 +66,7 @@ TEST(ConvertXPlaneToProfileResponse, TraceViewer) {
   CreateXSpace(&xspace);
   ProfileRequest request;
   ProfileResponse response;
-  ConvertXSpaceToProfileResponse(xspace, request, &response);
+  TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
 }
 
 TEST(ConvertXPlaneToProfileResponse, OverviewPage) {
@@ -75,7 +75,7 @@ TEST(ConvertXPlaneToProfileResponse, OverviewPage) {
   ProfileRequest request;
   request.add_tools("overview_page");
   ProfileResponse response;
-  ConvertXSpaceToProfileResponse(xspace, request, &response);
+  TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
   EXPECT_EQ(1, response.tool_data_size());
   EXPECT_EQ("overview_page.pb", response.tool_data(/*index=*/0).name());
   OverviewPage overview_page;
@@ -89,7 +89,7 @@ TEST(ConvertXPlaneToProfileResponse, InputPipeline) {
   ProfileRequest request;
   request.add_tools("input_pipeline");
   ProfileResponse response;
-  ConvertXSpaceToProfileResponse(xspace, request, &response);
+  TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
   EXPECT_EQ(1, response.tool_data_size());
   EXPECT_EQ("input_pipeline.pb", response.tool_data(/*index=*/0).name());
   InputPipelineAnalysisResult input_pipeline;
@@ -103,7 +103,7 @@ TEST(ConvertXPlaneToProfileResponse, TensorflowStats) {
   ProfileRequest request;
   request.add_tools("tensorflow_stats");
   ProfileResponse response;
-  ConvertXSpaceToProfileResponse(xspace, request, &response);
+  TF_CHECK_OK(ConvertXSpaceToProfileResponse(xspace, request, &response));
   EXPECT_EQ(1, response.tool_data_size());
   EXPECT_EQ("tensorflow_stats.pb", response.tool_data(/*index=*/0).name());
   TfStatsDatabase tf_stats_db;

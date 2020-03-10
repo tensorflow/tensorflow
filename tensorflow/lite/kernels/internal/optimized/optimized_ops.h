@@ -70,7 +70,7 @@ using reference_ops::Broadcast4DSlowLessEqualWithScaling;
 using reference_ops::Broadcast4DSlowLessWithScaling;
 using reference_ops::BroadcastAdd4DSlow;
 using reference_ops::BroadcastMul4DSlow;
-using reference_ops::BroadcastSub4DSlow;
+using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
 using reference_ops::DepthConcatenation;
@@ -1318,7 +1318,7 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, filter_rows, filter_cols, gemm_input_data,
       scaling_factors_ptr, /*n_batch=*/gemm_input_rows, accum_scratch,
-      output_data, /*result_stride=*/1, context);
+      output_data, context);
   AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
                                    bias_shape, bias_data, output_shape,
                                    output_data);
@@ -2959,8 +2959,8 @@ void Sub(const ArithmeticParams& params, const RuntimeShape& input1_shape,
     auto scalar = input2_data[0];
     output_map.array() = input1_map.array() - scalar;
   } else {
-    BroadcastSub4DSlow(params, input1_shape, input1_data, input2_shape,
-                       input2_data, output_shape, output_data);
+    BroadcastSubSlow(params, input1_shape, input1_data, input2_shape,
+                     input2_data, output_shape, output_data);
   }
 }
 

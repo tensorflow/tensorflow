@@ -380,6 +380,8 @@ def compare_models_v2(tflite_model,
       tf_results = [tf_results[list(tf_results.keys())[0]]]
     else:
       tf_results = [tf_results[tflite_label] for tflite_label in tflite_labels]
+  else:
+    tf_results = [tf_results]
 
   for tf_result, tflite_result in zip(tf_results, tflite_results):
     np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)

@@ -1105,7 +1105,7 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0});
@@ -1572,7 +1572,7 @@ class SparseApplyAdagradOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -1739,7 +1739,7 @@ class SparseApplyAdagradV2Op : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -1914,7 +1914,7 @@ class SparseApplyProximalAdagradOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -2189,7 +2189,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2});
@@ -2575,7 +2575,7 @@ class SparseApplyFtrlOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2});
@@ -2966,7 +2966,7 @@ class SparseApplyMomentumOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -3201,7 +3201,7 @@ class SparseApplyKerasMomentumOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -4147,7 +4147,7 @@ class SparseApplyRMSPropOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2});
@@ -4277,7 +4277,7 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2, 3});

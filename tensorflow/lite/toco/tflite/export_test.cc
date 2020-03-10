@@ -74,6 +74,9 @@ class ExportTest : public ::testing::Test {
         input1_array.data_type = ArrayDataType::kFloat;
         input2_array.data_type = ArrayDataType::kFloat;
         output_array.data_type = ArrayDataType::kFloat;
+        input1_array.copy_shape({1, 2, 2, 2});
+        input2_array.copy_shape({1, 2, 2, 2});
+        output_array.copy_shape({1, 2, 2, 2});
         input_model_.operators.emplace_back(op);
       } else if (name == "Assert") {
         auto* op = new TensorFlowAssertOperator;

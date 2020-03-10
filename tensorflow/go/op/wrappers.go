@@ -3072,53 +3072,6 @@ func UnbatchGrad(scope *Scope, original_input tf.Output, batch_index tf.Output, 
 	return op.Output(0)
 }
 
-// Elementwise computes the bitwise left-shift of `x` and `y`.
-//
-// If `y` is negative, or greater than or equal to the width of `x` in bits the
-// result is implementation defined.
-//
-// Example:
-//
-// ```python
-// import tensorflow as tf
-// from tensorflow.python.ops import bitwise_ops
-// import numpy as np
-// dtype_list = [tf.int8, tf.int16, tf.int32, tf.int64]
-//
-// for dtype in dtype_list:
-//   lhs = tf.constant([-1, -5, -3, -14], dtype=dtype)
-//   rhs = tf.constant([5, 0, 7, 11], dtype=dtype)
-//
-//   left_shift_result = bitwise_ops.left_shift(lhs, rhs)
-//
-//   print(left_shift_result)
-//
-// # This will print:
-// # tf.Tensor([ -32   -5 -128    0], shape=(4,), dtype=int8)
-// # tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int16)
-// # tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int32)
-// # tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int64)
-//
-// lhs = np.array([-2, 64, 101, 32], dtype=np.int8)
-// rhs = np.array([-1, -5, -3, -14], dtype=np.int8)
-// bitwise_ops.left_shift(lhs, rhs)
-// # <tf.Tensor: shape=(4,), dtype=int8, numpy=array([ -2,  64, 101,  32], dtype=int8)>
-// ```
-//
-func LeftShift(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LeftShift",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes element-wise population count (a.k.a. popcount, bitsum, bitcount).
 //
 // For each entry in `x`, calculates the number of `1` (on) bits in the binary
@@ -9947,6 +9900,71 @@ func EncodeProto(scope *Scope, sizes tf.Output, values []tf.Output, field_names 
 	return op.Output(0)
 }
 
+// Creates an iterator for reading from the tf.data service.
+//
+// Returns the created operation.
+func MakeDataServiceIterator(scope *Scope, dataset tf.Output, epoch_id tf.Output, iterator tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MakeDataServiceIterator",
+		Input: []tf.Input{
+			dataset, epoch_id, iterator,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Begins a tf.data service dataset epoch.
+func BeginEpoch(scope *Scope, dataset_id tf.Output, address tf.Output, protocol tf.Output) (epoch_id tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BeginEpoch",
+		Input: []tf.Input{
+			dataset_id, address, protocol,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Registers a dataset with the tf.data service.
+func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64) (dataset_id tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"external_state_policy": external_state_policy}
+	opspec := tf.OpSpec{
+		Type: "RegisterDataset",
+		Input: []tf.Input{
+			dataset, address, protocol,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that reads data from the tf.data service.
+func DataServiceDataset(scope *Scope, address tf.Output, protocol tf.Output, max_outstanding_requests tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "DataServiceDataset",
+		Input: []tf.Input{
+			address, protocol, max_outstanding_requests,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates a dataset that contains the unique elements of `input_dataset`.
 func UniqueDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -11625,6 +11643,53 @@ func NonMaxSuppressionV4(scope *Scope, boxes tf.Output, scores tf.Output, max_ou
 // Greedily selects a subset of bounding boxes in descending order of score,
 //
 // pruning away boxes that have high intersection-over-union (IOU) overlap
+// with previously selected boxes.  Bounding boxes with score less than
+// `score_threshold` are removed.  Bounding boxes are supplied as
+// [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+// diagonal pair of box corners and the coordinates can be provided as normalized
+// (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+// is agnostic to where the origin is in the coordinate system and more
+// generally is invariant to orthogonal transformations and translations
+// of the coordinate system; thus translating or reflections of the coordinate
+// system result in the same boxes being selected by the algorithm.
+// The output of this operation is a set of integers indexing into the input
+// collection of bounding boxes representing the selected boxes.  The bounding
+// box coordinates corresponding to the selected indices can then be obtained
+// using the `tf.gather operation`.  For example:
+//   selected_indices = tf.image.non_max_suppression_v2(
+//       boxes, scores, max_output_size, iou_threshold, score_threshold)
+//   selected_boxes = tf.gather(boxes, selected_indices)
+//
+// Arguments:
+//	boxes: A 2-D float tensor of shape `[num_boxes, 4]`.
+//	scores: A 1-D float tensor of shape `[num_boxes]` representing a single
+// score corresponding to each box (each row of boxes).
+//	max_output_size: A scalar integer tensor representing the maximum number of
+// boxes to be selected by non max suppression.
+//	iou_threshold: A 0-D float tensor representing the threshold for deciding whether
+// boxes overlap too much with respect to IOU.
+//	score_threshold: A 0-D float tensor representing the threshold for deciding when to remove
+// boxes based on score.
+//
+// Returns A 1-D integer tensor of shape `[M]` representing the selected
+// indices from the boxes tensor, where `M <= max_output_size`.
+func NonMaxSuppressionV3(scope *Scope, boxes tf.Output, scores tf.Output, max_output_size tf.Output, iou_threshold tf.Output, score_threshold tf.Output) (selected_indices tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "NonMaxSuppressionV3",
+		Input: []tf.Input{
+			boxes, scores, max_output_size, iou_threshold, score_threshold,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Greedily selects a subset of bounding boxes in descending order of score,
+//
+// pruning away boxes that have high intersection-over-union (IOU) overlap
 // with previously selected boxes.  Bounding boxes are supplied as
 // [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
 // diagonal pair of box corners and the coordinates can be provided as normalized
@@ -12076,6 +12141,18 @@ func SampleDistortedBoundingBoxV2(scope *Scope, image_size tf.Output, bounding_b
 // `output[..., 0]` contains hue, `output[..., 1]` contains saturation, and
 // `output[..., 2]` contains value. All HSV values are in `[0,1]`. A hue of 0
 // corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
+//
+// Usage Example:
+//
+// >>> blue_image = tf.stack([
+// ...    tf.zeros([5,5]),
+// ...    tf.zeros([5,5]),
+// ...    tf.ones([5,5])],
+// ...    axis=-1)
+// >>> blue_hsv_image = tf.image.rgb_to_hsv(blue_image)
+// >>> blue_hsv_image[0,0].numpy()
+// array([0.6666667, 1. , 1. ], dtype=float32)
+//
 //
 // Arguments:
 //	images: 1-D or higher rank. RGB data to convert. Last dimension must be size 3.
@@ -25538,6 +25615,71 @@ func Conv3DBackpropFilter(scope *Scope, input tf.Output, filter tf.Output, out_b
 	return op.Output(0)
 }
 
+// Conv3DAttr is an optional argument to Conv3D.
+type Conv3DAttr func(optionalAttr)
+
+// Conv3DDataFormat sets the optional data_format attribute to value.
+//
+// value: The data format of the input and output data. With the
+// default format "NDHWC", the data is stored in the order of:
+//     [batch, in_depth, in_height, in_width, in_channels].
+// Alternatively, the format could be "NCDHW", the data storage order is:
+//     [batch, in_channels, in_depth, in_height, in_width].
+// If not specified, defaults to "NDHWC"
+func Conv3DDataFormat(value string) Conv3DAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Conv3DDilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length 5.  The dilation factor for each dimension of
+// `input`. If set to k > 1, there will be k-1 skipped cells between each
+// filter element on that dimension. The dimension order is determined by the
+// value of `data_format`, see above for details. Dilations in the batch and
+// depth dimensions must be 1.
+// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+func Conv3DDilations(value []int64) Conv3DAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes a 3-D convolution given 5-D `input` and `filter` tensors.
+//
+// In signal processing, cross-correlation is a measure of similarity of
+// two waveforms as a function of a time-lag applied to one of them. This
+// is also known as a sliding dot product or sliding inner-product.
+//
+// Our Conv3D implements a form of cross-correlation.
+//
+// Arguments:
+//	input: Shape `[batch, in_depth, in_height, in_width, in_channels]`.
+//	filter: Shape `[filter_depth, filter_height, filter_width, in_channels,
+// out_channels]`. `in_channels` must match between `input` and `filter`.
+//	strides: 1-D tensor of length 5. The stride of the sliding window for each
+// dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+//	padding: The type of padding algorithm to use.
+func Conv3D(scope *Scope, input tf.Output, filter tf.Output, strides []int64, padding string, optional ...Conv3DAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv3D",
+		Input: []tf.Input{
+			input, filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Compute the lower regularized incomplete Gamma function `P(a, x)`.
 //
 // The lower regularized incomplete Gamma function is defined as:
@@ -27800,71 +27942,6 @@ func ParseSequenceExampleV2(scope *Scope, serialized tf.Output, debug_name tf.Ou
 		return
 	}
 	return context_sparse_indices, context_sparse_values, context_sparse_shapes, context_dense_values, context_ragged_values, context_ragged_row_splits, feature_list_sparse_indices, feature_list_sparse_values, feature_list_sparse_shapes, feature_list_dense_values, feature_list_dense_lengths, feature_list_ragged_values, feature_list_ragged_outer_splits, feature_list_ragged_inner_splits
-}
-
-// Conv3DAttr is an optional argument to Conv3D.
-type Conv3DAttr func(optionalAttr)
-
-// Conv3DDataFormat sets the optional data_format attribute to value.
-//
-// value: The data format of the input and output data. With the
-// default format "NDHWC", the data is stored in the order of:
-//     [batch, in_depth, in_height, in_width, in_channels].
-// Alternatively, the format could be "NCDHW", the data storage order is:
-//     [batch, in_channels, in_depth, in_height, in_width].
-// If not specified, defaults to "NDHWC"
-func Conv3DDataFormat(value string) Conv3DAttr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// Conv3DDilations sets the optional dilations attribute to value.
-//
-// value: 1-D tensor of length 5.  The dilation factor for each dimension of
-// `input`. If set to k > 1, there will be k-1 skipped cells between each
-// filter element on that dimension. The dimension order is determined by the
-// value of `data_format`, see above for details. Dilations in the batch and
-// depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
-func Conv3DDilations(value []int64) Conv3DAttr {
-	return func(m optionalAttr) {
-		m["dilations"] = value
-	}
-}
-
-// Computes a 3-D convolution given 5-D `input` and `filter` tensors.
-//
-// In signal processing, cross-correlation is a measure of similarity of
-// two waveforms as a function of a time-lag applied to one of them. This
-// is also known as a sliding dot product or sliding inner-product.
-//
-// Our Conv3D implements a form of cross-correlation.
-//
-// Arguments:
-//	input: Shape `[batch, in_depth, in_height, in_width, in_channels]`.
-//	filter: Shape `[filter_depth, filter_height, filter_width, in_channels,
-// out_channels]`. `in_channels` must match between `input` and `filter`.
-//	strides: 1-D tensor of length 5. The stride of the sliding window for each
-// dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-//	padding: The type of padding algorithm to use.
-func Conv3D(scope *Scope, input tf.Output, filter tf.Output, strides []int64, padding string, optional ...Conv3DAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Conv3D",
-		Input: []tf.Input{
-			input, filter,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Gives a guarantee to the TF runtime that the input tensor is a constant.
@@ -44948,6 +45025,104 @@ func InfeedEnqueue(scope *Scope, input tf.Output, optional ...InfeedEnqueueAttr)
 	return scope.AddOperation(opspec)
 }
 
+// Output a fact about factorials.
+func Fact(scope *Scope) (fact tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Fact",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Elementwise computes the bitwise left-shift of `x` and `y`.
+//
+// If `y` is negative, or greater than or equal to the width of `x` in bits the
+// result is implementation defined.
+//
+// Example:
+//
+// ```python
+// import tensorflow as tf
+// from tensorflow.python.ops import bitwise_ops
+// import numpy as np
+// dtype_list = [tf.int8, tf.int16, tf.int32, tf.int64]
+//
+// for dtype in dtype_list:
+//   lhs = tf.constant([-1, -5, -3, -14], dtype=dtype)
+//   rhs = tf.constant([5, 0, 7, 11], dtype=dtype)
+//
+//   left_shift_result = bitwise_ops.left_shift(lhs, rhs)
+//
+//   print(left_shift_result)
+//
+// # This will print:
+// # tf.Tensor([ -32   -5 -128    0], shape=(4,), dtype=int8)
+// # tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int16)
+// # tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int32)
+// # tf.Tensor([   -32     -5   -384 -28672], shape=(4,), dtype=int64)
+//
+// lhs = np.array([-2, 64, 101, 32], dtype=np.int8)
+// rhs = np.array([-1, -5, -3, -14], dtype=np.int8)
+// bitwise_ops.left_shift(lhs, rhs)
+// # <tf.Tensor: shape=(4,), dtype=int8, numpy=array([ -2,  64, 101,  32], dtype=int8)>
+// ```
+//
+func LeftShift(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LeftShift",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Generates a feature cross from a list of tensors, and returns it as a
+// RaggedTensor.  See `tf.ragged.cross` for more details.
+//
+// Arguments:
+//	ragged_values: The values tensor for each RaggedTensor input.
+//	ragged_row_splits: The row_splits tensor for each RaggedTensor input.
+//	sparse_indices: The indices tensor for each SparseTensor input.
+//	sparse_values: The values tensor for each SparseTensor input.
+//	sparse_shape: The dense_shape tensor for each SparseTensor input.
+//	dense_inputs: The tf.Tensor inputs.
+//	input_order: String specifying the tensor type for each input.  The `i`th character in
+// this string specifies the type of the `i`th input, and is one of: 'R' (ragged),
+// 'D' (dense), or 'S' (sparse).  This attr is used to ensure that the crossed
+// values are combined in the order of the inputs from the call to tf.ragged.cross.
+//
+//
+//
+//
+//
+//
+// Returns:
+//	output_values: The `values` for the returned `RaggedTensor`.
+//	output_row_splits: The `row_splits` for the returned `RaggedTensor`.
+func RaggedCross(scope *Scope, ragged_values []tf.Output, ragged_row_splits []tf.Output, sparse_indices []tf.Output, sparse_values []tf.Output, sparse_shape []tf.Output, dense_inputs []tf.Output, input_order string, hashed_output bool, num_buckets int64, hash_key int64, out_values_type tf.DataType, out_row_splits_type tf.DataType) (output_values tf.Output, output_row_splits tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"input_order": input_order, "hashed_output": hashed_output, "num_buckets": num_buckets, "hash_key": hash_key, "out_values_type": out_values_type, "out_row_splits_type": out_row_splits_type}
+	opspec := tf.OpSpec{
+		Type: "RaggedCross",
+		Input: []tf.Input{
+			tf.OutputList(ragged_values), tf.OutputList(ragged_row_splits), tf.OutputList(sparse_indices), tf.OutputList(sparse_values), tf.OutputList(sparse_shape), tf.OutputList(dense_inputs),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 //   Combines (nests of) input elements into a dataset of (nests of) windows.
 //
 //   A "window" is a finite dataset of flat elements of size `size` (or possibly
@@ -46151,53 +46326,6 @@ func SparseToSparseSetOperation(scope *Scope, set1_indices tf.Output, set1_value
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// Greedily selects a subset of bounding boxes in descending order of score,
-//
-// pruning away boxes that have high intersection-over-union (IOU) overlap
-// with previously selected boxes.  Bounding boxes with score less than
-// `score_threshold` are removed.  Bounding boxes are supplied as
-// [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
-// diagonal pair of box corners and the coordinates can be provided as normalized
-// (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
-// is agnostic to where the origin is in the coordinate system and more
-// generally is invariant to orthogonal transformations and translations
-// of the coordinate system; thus translating or reflections of the coordinate
-// system result in the same boxes being selected by the algorithm.
-// The output of this operation is a set of integers indexing into the input
-// collection of bounding boxes representing the selected boxes.  The bounding
-// box coordinates corresponding to the selected indices can then be obtained
-// using the `tf.gather operation`.  For example:
-//   selected_indices = tf.image.non_max_suppression_v2(
-//       boxes, scores, max_output_size, iou_threshold, score_threshold)
-//   selected_boxes = tf.gather(boxes, selected_indices)
-//
-// Arguments:
-//	boxes: A 2-D float tensor of shape `[num_boxes, 4]`.
-//	scores: A 1-D float tensor of shape `[num_boxes]` representing a single
-// score corresponding to each box (each row of boxes).
-//	max_output_size: A scalar integer tensor representing the maximum number of
-// boxes to be selected by non max suppression.
-//	iou_threshold: A 0-D float tensor representing the threshold for deciding whether
-// boxes overlap too much with respect to IOU.
-//	score_threshold: A 0-D float tensor representing the threshold for deciding when to remove
-// boxes based on score.
-//
-// Returns A 1-D integer tensor of shape `[M]` representing the selected
-// indices from the boxes tensor, where `M <= max_output_size`.
-func NonMaxSuppressionV3(scope *Scope, boxes tf.Output, scores tf.Output, max_output_size tf.Output, iou_threshold tf.Output, score_threshold tf.Output) (selected_indices tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "NonMaxSuppressionV3",
-		Input: []tf.Input{
-			boxes, scores, max_output_size, iou_threshold, score_threshold,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // UnsortedSegmentJoinAttr is an optional argument to UnsortedSegmentJoin.
 type UnsortedSegmentJoinAttr func(optionalAttr)
 
@@ -47067,18 +47195,6 @@ func InitializeTableFromTextFileV2(scope *Scope, table_handle tf.Output, filenam
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// Output a fact about factorials.
-func Fact(scope *Scope) (fact tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Fact",
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // TensorArrayConcatV2Attr is an optional argument to TensorArrayConcatV2.
