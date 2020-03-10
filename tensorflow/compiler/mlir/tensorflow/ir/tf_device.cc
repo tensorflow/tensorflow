@@ -213,14 +213,14 @@ void ParallelExecuteOp::build(Builder* builder, OperationState& state,
 std::vector<OpResult> ParallelExecuteOp::GetRegionOutputs(
     unsigned region_index) {
   int num_region_results =
-      GetRegionBlockWithIndex(region_index).getTerminator()->getNumResults();
+      GetRegionBlockWithIndex(region_index).getTerminator()->getNumOperands();
   std::vector<OpResult> results;
   results.reserve(num_region_results);
 
   int return_value_offset = 0;
   for (int region_id = 0; region_id < region_index; ++region_id)
     return_value_offset +=
-        GetRegionBlockWithIndex(region_id).getTerminator()->getNumResults();
+        GetRegionBlockWithIndex(region_id).getTerminator()->getNumOperands();
 
   for (int i = 0; i < num_region_results; ++i)
     results.emplace_back(getOperation()->getOpResult(return_value_offset + i));
