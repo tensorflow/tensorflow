@@ -397,6 +397,49 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus CheckPoolingParams(TfLiteContext* context,
+                                         const TfLitePoolParams* params,
+                                         int node_index) {
+    if (params->stride_width <= 0) {
+      if (context != nullptr) {
+        TF_LITE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
+                           params->stride_width, node_index);
+      }
+      return kTfLiteError;
+    }
+    if (params->stride_height <= 0) {
+      if (context != nullptr) {
+        TF_LITE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
+                           params->stride_height, node_index);
+      }
+      return kTfLiteError;
+    }
+
+    if (params->filter_width <= 0) {
+      if (context != nullptr) {
+        TF_LITE_KERNEL_LOG(context, "invalid filter width %d in node #%d",
+                           params->filter_width, node_index);
+      }
+      return kTfLiteError;
+    }
+    if (params->filter_height <= 0) {
+      if (context != nullptr) {
+        TF_LITE_KERNEL_LOG(context, "invalid filter height %d in node #%d",
+                           params->filter_height, node_index);
+      }
+      return kTfLiteError;
+    }
+    if (params->filter_width == 1 && params->filter_height == 1) {
+      if (context != nullptr) {
+        TF_LITE_KERNEL_LOG(context, "meaningless 1x1 pooling in node #%d",
+                           node_index);
+      }
+      return kTfLiteError;
+    }
+
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus CheckNumInputsAndOutputs(TfLiteContext* context,
                                                TfLiteNode* node,
                                                int expected_num_inputs,
@@ -538,6 +581,14 @@ class Subgraph {
         return VisitAddNode(subgraph, logging_context, node_index, node,
                             context->tensors, add_params, xnnpack_tensors);
       }
+      case kTfLiteBuiltinAveragePool2d: {
+        const TfLitePoolParams* pool_params =
+            static_cast<const TfLitePoolParams*>(node->builtin_data);
+
+        return VisitAveragePool2DNode(subgraph, logging_context, node_index,
+                                      node, context->tensors, pool_params,
+                                      xnnpack_tensors);
+      }
       case kTfLiteBuiltinConv2d: {
         const TfLiteConvParams* conv_params =
             static_cast<const TfLiteConvParams*>(node->builtin_data);
@@ -559,6 +610,14 @@ class Subgraph {
       case kTfLiteBuiltinLogistic:
         return VisitLogisticNode(subgraph, logging_context, node_index, node,
                                  context->tensors, xnnpack_tensors);
+      case kTfLiteBuiltinMaxPool2d: {
+        const TfLitePoolParams* pool_params =
+            static_cast<const TfLitePoolParams*>(node->builtin_data);
+
+        return VisitMaxPool2DNode(subgraph, logging_context, node_index, node,
+                                  context->tensors, pool_params,
+                                  xnnpack_tensors);
+      }
       case kTfLiteBuiltinMul: {
         const TfLiteMulParams* mul_params =
             static_cast<const TfLiteMulParams*>(node->builtin_data);
@@ -634,6 +693,64 @@ class Subgraph {
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context, "failed to delegate ADD node #%d",
+                           node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitAveragePool2DNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const TfLitePoolParams* pool_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    TF_LITE_ENSURE_STATUS(
+        CheckPoolingParams(logging_context, pool_params, node_index));
+
+    uint32_t flags = 0;
+    TF_LITE_ENSURE_STATUS(CalculatePadding(
+        logging_context, pool_params->padding, &flags, node_index));
+
+    float output_min = -std::numeric_limits<float>::infinity();
+    float output_max = +std::numeric_limits<float>::infinity();
+    TF_LITE_ENSURE_STATUS(ConvertActivationToOutputRange(
+        logging_context, node_index, pool_params->activation, &output_min,
+        &output_max));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_average_pooling_2d(
+          subgraph,
+          /*input_padding_top=*/0,
+          /*input_padding_right=*/0,
+          /*input_padding_bottom=*/0,
+          /*input_padding_left=*/0,
+          static_cast<uint32_t>(pool_params->filter_height),
+          static_cast<uint32_t>(pool_params->filter_width),
+          static_cast<uint32_t>(pool_params->stride_height),
+          static_cast<uint32_t>(pool_params->stride_width), output_min,
+          output_max,
+          /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate AVERAGE_POOL_2D node #%d",
                            node_index);
         return kTfLiteError;
       }
@@ -877,6 +994,65 @@ class Subgraph {
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(logging_context,
                            "failed to delegate SIGMOID node #%d", node_index);
+        return kTfLiteError;
+      }
+    }
+
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitMaxPool2DNode(
+      xnn_subgraph_t subgraph, TfLiteContext* logging_context, int node_index,
+      TfLiteNode* node, const TfLiteTensor* tensors,
+      const TfLitePoolParams* pool_params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    TF_LITE_ENSURE_STATUS(
+        CheckNumInputsAndOutputs(logging_context, node, 1, 1, node_index));
+
+    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, node->inputs->data[0], node_index));
+
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+
+    TF_LITE_ENSURE_STATUS(
+        CheckPoolingParams(logging_context, pool_params, node_index));
+
+    uint32_t flags = 0;
+    TF_LITE_ENSURE_STATUS(CalculatePadding(
+        logging_context, pool_params->padding, &flags, node_index));
+
+    float output_min = -std::numeric_limits<float>::infinity();
+    float output_max = +std::numeric_limits<float>::infinity();
+    TF_LITE_ENSURE_STATUS(ConvertActivationToOutputRange(
+        logging_context, node_index, pool_params->activation, &output_min,
+        &output_max));
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_max_pooling_2d(
+          subgraph,
+          /*input_padding_top=*/0,
+          /*input_padding_right=*/0,
+          /*input_padding_bottom=*/0,
+          /*input_padding_left=*/0,
+          static_cast<uint32_t>(pool_params->filter_height),
+          static_cast<uint32_t>(pool_params->filter_width),
+          static_cast<uint32_t>(pool_params->stride_height),
+          static_cast<uint32_t>(pool_params->stride_width),
+          /*dilation_height=*/1,
+          /*dilation_width=*/1, output_min, output_max,
+          /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
+          /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate MAX_POOL_2D node #%d",
+                           node_index);
         return kTfLiteError;
       }
     }
