@@ -159,7 +159,7 @@ namespace eager{
 // Returns the op name for the node associated with this HLO, for use with
 // NVTX range annotations.
 template <typename T1, typename T2>
-string GetNvtxRangeMessage(T1& inputs, T2* kernel_)
+string GetNvtxRangeMessage(const T1& inputs, T2* kernel_)
 {
    if (IsNvtxRangesDetailedEnabled()) {
       std::vector<string> args_pieces;

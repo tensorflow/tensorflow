@@ -284,7 +284,7 @@ Status KernelAndDeviceOp::Run(
   OpKernelContext context(&params);
 
   nvtxRangeId_t nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(
-    nvtx::eager::GetNvtxRangeMessage<EagerKernelArgs,OpKernel>(inputs, kernel_),
+    nvtx::eager::GetNvtxRangeMessage(inputs, kernel_.get()),
     kernel_->def().op()
   );
 
