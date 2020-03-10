@@ -2062,7 +2062,9 @@ port::Status CudnnSupport::DoCtcLossImpl(
       /*inputLengths=*/input_lengths_data.data(),
       /*costs=*/costs_data.opaque(), /*gradientsDesc=*/grads_desc.handle(),
       /*gradients=*/grads_data.opaque(),
-      /*algo=*/CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
+      /*algo=*/
+      RequireCudnnDeterminism() ? CUDNN_CTC_LOSS_ALGO_DETERMINISTIC
+                                : CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
       /*ctcLossDesc=*/ctc_loss_desc.handle(),
       /*workspace=*/scratch_memory.opaque(),
       /*workSpaceSizeInBytes=*/scratch_memory.size()));
@@ -3949,7 +3951,9 @@ port::Status CudnnSupport::DoPrepareForCtcLoss(
       /*labels=*/labels_data.data(),
       /*labelLengths=*/labels_lengths_data.data(),
       /*inputLengths=*/input_lengths_data.data(),
-      /*algo=*/CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
+      /*algo=*/
+      RequireCudnnDeterminism() ? CUDNN_CTC_LOSS_ALGO_DETERMINISTIC
+                                : CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
       /*ctcLossDesc=*/cudnn_ctc_loss_desc.handle(),
       /*sizeInBytes=*/&workspace_size_in_bytes));
 #else
