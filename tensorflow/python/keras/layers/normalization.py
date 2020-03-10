@@ -251,6 +251,10 @@ class BatchNormalizationBase(Layer):
     In addition to the checks done in this function, the input tensors rank must
     be 4. The input rank check can only be done once the input shape is known.
     """
+    # Note the ValueErrors in this function are caught and not reraised in
+    # _fused_can_be_used(). No other exception besides ValueError should be
+    # raised here.
+
     # Currently fused batch norm doesn't support renorm. It also only supports a
     # channel dimension on axis 1 or 3, when no virtual batch size or adjustment
     # is used.
@@ -269,6 +273,11 @@ class BatchNormalizationBase(Layer):
     if self.adjustment is not None:
       raise ValueError('Passing fused=True is unsupported when '
                        'adjustment is specified.')
+    # TODO(reedwm): Support fp64 in FusedBatchNorm then remove this check.
+    if self._compute_dtype not in ('float16', 'bfloat16', 'float32', None):
+      raise ValueError('Passing fused=True is only supported when the compute '
+                       'dtype is float16, bfloat16, or float32. Got dtype: %s'
+                       % (self._compute_dtype,))
 
   def _fused_can_be_used(self):
     try:
