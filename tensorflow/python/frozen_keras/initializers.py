@@ -22,8 +22,8 @@ import six
 
 from tensorflow.python import tf2
 from tensorflow.python.framework import dtypes
-from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
-from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.frozen_keras.utils.generic_utils import deserialize_keras_object
+from tensorflow.python.frozen_keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import init_ops_v2
 
 # These imports are brought in so that keras.initializers.deserialize

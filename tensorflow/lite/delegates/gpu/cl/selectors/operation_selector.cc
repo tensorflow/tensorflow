@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_transposed_selector.h"
+#include "tensorflow/lite/delegates/gpu/cl/selectors/default_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/dw_convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/fully_connected_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/simple_selectors.h"
@@ -139,23 +140,6 @@ Status WinogradFromNode(const CreationContext& creation_context,
                                         bias_copy, &winograd_down.operation));
 
   return OkStatus();
-}
-
-std::unique_ptr<GPUOperation>* InitSingleOpSubgraph(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs,
-    const std::vector<Value<TensorRef<BHWC>>*>& outputs,
-    GPUOperationsSubgraph* gpu_subgraph) {
-  gpu_subgraph->operations.clear();
-  gpu_subgraph->new_tensors.clear();
-  gpu_subgraph->operations.push_back({});
-  for (int i = 0; i < inputs.size(); ++i) {
-    gpu_subgraph->operations[0].input_ids.push_back(i);
-  }
-  for (int i = 0; i < outputs.size(); ++i) {
-    gpu_subgraph->operations[0].output_ids.push_back(i);
-  }
-
-  return &gpu_subgraph->operations[0].operation;
 }
 
 }  // namespace
@@ -363,8 +347,8 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       return OkStatus();
     }
     default:
-      return UnimplementedError(
-          absl::StrCat("No selector for ", node.operation.type));
+      return SelectDefault(creation_context, op_def, hints, inputs, outputs,
+                           node, gpu_subgraph);
   }
 }
 

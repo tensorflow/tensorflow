@@ -334,7 +334,6 @@ SplitOpTest/SplitOpTest/.+/0,29
 FloatSqueezeOpTest/.+,29
 
 # sub_test
--FloatSubOpModel/WithBroadcast5D
 FloatSubOpModel/.+
 -QuantizedSubOpModel/.+Int16
 -QuantizedSubOpModel/.+Int8

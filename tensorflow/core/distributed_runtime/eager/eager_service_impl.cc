@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
@@ -359,6 +360,34 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   {
     profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
                                profiler::TraceMeLevel::kVerbose);
+    if (!operation.op_inputs().empty() && !operation.inputs().empty()) {
+      return errors::InvalidArgument(
+          "Both operation.inputs and operation.op_inputs are specified in the "
+          "same request.");
+    }
+    for (const auto& input : operation.op_inputs()) {
+      tensorflow::TensorHandle* handle;
+      if (input.has_remote_handle()) {
+        TF_RETURN_IF_ERROR(
+            eager_context->RemoteMgr()->DeserializeRemoteTensorHandle(
+                input.remote_handle(), &handle));
+        op->AddInput(handle);
+      } else {
+        Tensor tensor;
+        if (!ParseTensorProtoToTensor(input.tensor(), &tensor)) {
+          return errors::InvalidArgument("Invalid TensorProto: ",
+                                         input.tensor().DebugString());
+        } else {
+          TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
+              std::move(tensor), nullptr, nullptr, eager_context, &handle));
+          op->AddInput(handle);
+        }
+      }
+      // Unref handle since it has a ref as an input now.
+      handle->Unref();
+    }
+    // TODO(b/150963957): Remove this once the migration from operation.inputs
+    // to operation.op_inputs completes.
     for (const auto& remote_handle : operation.inputs()) {
       tensorflow::TensorHandle* handle;
       TF_RETURN_IF_ERROR(

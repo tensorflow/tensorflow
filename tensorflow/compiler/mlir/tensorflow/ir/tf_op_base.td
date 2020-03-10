@@ -194,6 +194,16 @@ def TF_NumberOrStrTensor : TensorOf<[TF_NumberOrStr]>;
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
+// Tensorflow devices metadata
+
+// Tensorflow GPU device metadata.
+def TF_GpuDeviceMetadata : StructAttr<"GpuDeviceMetadata", TF_Dialect, [
+    // GPU device compute capability: major:minor.
+    StructFieldAttr<"cc_major", I32Attr>,
+    StructFieldAttr<"cc_minor", I32Attr>
+]>;
+
+//===----------------------------------------------------------------------===//
 // String attribute constraints
 
 // A string attribute whose value are one of the values in `cases`.

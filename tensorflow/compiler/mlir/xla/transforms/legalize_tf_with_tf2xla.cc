@@ -15,12 +15,12 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/Optional.h"
 #include "mlir/IR/Diagnostics.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project

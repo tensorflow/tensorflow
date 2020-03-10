@@ -210,13 +210,19 @@ class TensorHandle : public core::RefCounted {
 
   string DebugString() const;
 
-  void SetResourceHandleDtypeAndShape(
-      std::vector<DtypeAndPartialTensorShape>&& dtypes_and_shapes);
+  struct ResourceHandleInfo {
+    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
+    std::vector<string> allowed_devices;
+  };
+
+  void SetResourceHandleInfo(ResourceHandleInfo&& resource_handle_info);
 
   // If this TensorHandle is 1) a local tensor, and 2) a resource handle,
-  // return data types and shapes of the underlying resource.
+  // return data types, shapes and allowed devices of the underlying resource.
+  Status GetResourceHandleInfo(ResourceHandleInfo* result);
   Status GetResourceHandleDtypesAndShapes(
       std::vector<DtypeAndPartialTensorShape>* result);
+  Status GetResourceAllowedDevices(std::vector<string>* result);
 
  private:
   // The TensorHandleData can either represent a local or remote tensor handle.
@@ -224,6 +230,8 @@ class TensorHandle : public core::RefCounted {
   // to either SetTensor or SetRemoteShape which replaces the underlying data
   // with a ready version of the tensor handle data.
   bool IsReady() const;
+
+  Status GetResourceHandleInfoImpl(std::function<void()> set_resource_info);
 
   VariantDevice const device_;
 
@@ -268,9 +276,9 @@ class TensorHandle : public core::RefCounted {
   bool implicit_mirroring_;
 
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
-  // refers to a remote resource handle, we store data types and shapes for
-  // the underlying resource.
-  std::vector<DtypeAndPartialTensorShape> handle_dtypes_and_shapes_;
+  // refers to a remote resource handle, we store data types, shapes and allowed
+  // devices for the underlying resource.
+  ResourceHandleInfo resource_handle_info_;
 
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, data_ is immutable.

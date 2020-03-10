@@ -210,8 +210,8 @@ StatusOr<DLContext> DLContextForDevice(const Device& device) {
   return context;
 }
 
-StatusOr<std::shared_ptr<Device>> DeviceForDLContext(
-    const PyLocalClient& client, const DLContext& context) {
+StatusOr<Device*> DeviceForDLContext(const PyLocalClient& client,
+                                     const DLContext& context) {
   se::Platform::Id platform_id;
   switch (context.device_type) {
     case kDLCPU:
@@ -224,13 +224,11 @@ StatusOr<std::shared_ptr<Device>> DeviceForDLContext(
       return InvalidArgument("Unknown/unsupported DLPack device type %d",
                              context.device_type);
   }
-  auto it = absl::c_find_if(
-      client.local_devices(), [&](const std::shared_ptr<Device>& device) {
-        return device->local_device_state()->executor()->platform()->id() ==
-                   platform_id &&
-               device->local_device_state()->device_ordinal() ==
-                   context.device_id;
-      });
+  auto it = absl::c_find_if(client.local_devices(), [&](Device* device) {
+    return device->local_device_state()->executor()->platform()->id() ==
+               platform_id &&
+           device->local_device_state()->device_ordinal() == context.device_id;
+  });
   if (it == client.local_devices().end()) {
     return InvalidArgument(
         "No matching device found for DLPack device_type %d device_id %d",
@@ -289,7 +287,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer) {
 }
 
 StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, std::shared_ptr<PyLocalClient> client) {
+    const pybind11::capsule& tensor, PyLocalClient* client) {
   if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
@@ -302,7 +300,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
         "Number of dimensions in DLManagedTensor must be nonnegative, got %d",
         dlmt->dl_tensor.ndim);
   }
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<Device> device,
+  TF_ASSIGN_OR_RETURN(Device * device,
                       DeviceForDLContext(*client, dlmt->dl_tensor.ctx));
   absl::Span<int64 const> dimensions(
       reinterpret_cast<int64*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
@@ -340,9 +338,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");
   PyCapsule_SetDestructor(tensor.ptr(), nullptr);
-  return absl::make_unique<PyLocalBuffer>(shape, shape,
-                                          std::move(device_buffer),
-                                          std::move(client), std::move(device));
+  return absl::make_unique<PyLocalBuffer>(
+      shape, shape, std::move(device_buffer), client, device);
 }
 
 }  // namespace xla

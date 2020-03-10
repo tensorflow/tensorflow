@@ -141,10 +141,7 @@ LogicalResult CheckOutputConsumer(
 
   for (int i = 0; i < expected_num_outputs; ++i) {
     auto it = expected_consumer_indices.find(i);
-    if (it != expected_consumer_indices.end()) {
-      // Expected consumer.
-      if (call_op->getResult(i).use_empty()) return failure();
-    } else {
+    if (it == expected_consumer_indices.end()) {
       // Unexpected consumer.
       if (!call_op->getResult(i).use_empty()) return failure();
     }
@@ -160,8 +157,9 @@ LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
       if (call_op && op->getAttrOfType<SymbolRefAttr>("f").getRootReference() ==
                          lstm_func.getName()) {
         // Keras LSTM have 5 outputs.
-        // We should make sure only the second output is consumed.
-        if (failed(CheckOutputConsumer(call_op, 5, {1}))) check_failed = true;
+        // We should make sure only the first or the second output are consumed.
+        if (failed(CheckOutputConsumer(call_op, 5, {0, 1})))
+          check_failed = true;
       }
     });
   }

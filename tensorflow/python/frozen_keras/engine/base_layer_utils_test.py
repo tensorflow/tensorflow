@@ -20,8 +20,8 @@ from absl.testing import parameterized
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.frozen_keras import backend
 from tensorflow.python.frozen_keras.engine import base_layer_utils
-from tensorflow.python.keras import backend
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.platform import test
 

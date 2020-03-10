@@ -38,7 +38,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("local_devices", &PyTpuClient::local_devices)
       .def("host_id", &PyTpuClient::host_id)
       .def("GetDefaultDeviceAssignment",
-           [](PyLocalClient* client, int num_replicas, int num_partitions)
+           [](PyTpuClient* client, int num_replicas, int num_partitions)
                -> StatusOr<std::vector<std::vector<std::shared_ptr<Device>>>> {
              TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
                                  client->GetDefaultDeviceAssignment(

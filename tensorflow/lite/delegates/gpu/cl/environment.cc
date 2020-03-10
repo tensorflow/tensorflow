@@ -238,6 +238,28 @@ TensorStorageType GetFastestStorageType(const CLDevice& gpu) {
   return TensorStorageType::BUFFER;
 }
 
+TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
+    const CLDevice& gpu) {
+  if (gpu.IsAdreno()) {
+    if (gpu.IsAdreno3xx() || gpu.IsAdreno4xx()) {
+      return TensorStorageType::BUFFER;
+    } else {
+      return TensorStorageType::IMAGE_BUFFER;
+    }
+  } else if (gpu.IsPowerVR()) {
+    return TensorStorageType::BUFFER;
+  } else if (gpu.IsMali()) {
+    return TensorStorageType::BUFFER;
+  } else if (gpu.IsNvidia()) {
+    return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
+                                     : TensorStorageType::BUFFER;
+  } else if (gpu.IsAMD()) {
+    return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
+                                     : TensorStorageType::BUFFER;
+  }
+  return TensorStorageType::BUFFER;
+}
+
 Status CreateEnvironment(Environment* result) {
   CLDevice gpu;
   RETURN_IF_ERROR(CreateDefaultGPUDevice(&gpu));

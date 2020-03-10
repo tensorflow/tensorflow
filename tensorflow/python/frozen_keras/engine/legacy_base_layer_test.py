@@ -35,10 +35,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.frozen_keras.engine import legacy_base_layer
+from tensorflow.python.frozen_keras.utils import tf_utils
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.optimizer_v2 import rmsprop
-from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.layers import core as legacy_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops

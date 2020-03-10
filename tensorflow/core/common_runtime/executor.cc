@@ -414,6 +414,9 @@ class ExecutorImpl : public Executor {
   // the overhead of constructing it for each executor instance.
   gtl::FlatMap<string, FrameInfo*> frame_info_;
 
+  // Shallow copies of the constant tensors used in the graph.
+  std::vector<Tensor> const_tensors_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(ExecutorImpl);
 };
 
@@ -667,7 +670,14 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     CHECK(item->kernel);
     item->kernel_is_async = (item->kernel->AsAsync() != nullptr);
     item->is_merge = IsMerge(n);
-    item->const_tensor = item->kernel->const_tensor();
+    const Tensor* const_tensor = item->kernel->const_tensor();
+    if (const_tensor) {
+      // Hold onto a shallow copy of the constant tensor in `*this` so that the
+      // reference count does not drop to 1. This prevents the constant tensor
+      // from being forwarded, and its buffer reused.
+      const_tensors_.emplace_back(*const_tensor);
+    }
+    item->const_tensor = const_tensor;
     item->is_noop = (item->kernel->type_string_view() == "NoOp");
     item->is_enter = IsEnter(n);
     if (item->is_enter) {
@@ -918,72 +928,107 @@ class ExecutorState {
 
  private:
   // Either a tensor pointer (pass-by-reference) or a tensor (pass-by-value).
-  // TODO(yuanbyu): A better way to do "has_value"?
   struct Entry {
-    Entry() {}
+    enum class State {
+      NO_VALUE = 0,      // The default state for a newly-created Entry.
+      HAS_VALUE,         // `this->val` is valid.
+      HAS_CONST_TENSOR,  // `this->const_tensor` is valid.
+      HAS_REF_TENSOR,    // `this->ref_tensor` is valid.
+    };
+
+    Entry() : state(State::NO_VALUE) {}
     Entry(const Entry& other)
-        : ref(other.ref),
-          ref_mu(other.ref_mu),
-          has_value(other.has_value),
-          val_field_is_set(other.val_field_is_set),
-          alloc_attr(other.alloc_attr) {
-      if (val_field_is_set) {
-        val.Init(*other.val);
+        : state(other.state), alloc_attr(other.alloc_attr) {
+      switch (state) {
+        case State::NO_VALUE:
+          break;
+        case State::HAS_VALUE:
+          val.Init(*other.val);
+          break;
+        case State::HAS_CONST_TENSOR:
+          const_tensor = other.const_tensor;
+          break;
+        case State::HAS_REF_TENSOR:
+          ref_tensor = other.ref_tensor;
+          break;
       }
     }
+
     ~Entry() {
-      if (val_field_is_set) val.Destroy();
+      if (state == State::HAS_VALUE) val.Destroy();
     }
 
     Entry& operator=(const Entry& other) {
-      if (val_field_is_set) {
+      if (state == State::HAS_VALUE) {
         val.Destroy();
       }
-      ref = other.ref;
-      ref_mu = other.ref_mu;
-      has_value = other.has_value;
-      val_field_is_set = other.val_field_is_set;
+      state = other.state;
       alloc_attr = other.alloc_attr;
-      if (val_field_is_set) {
-        val.Init(*other.val);
+      switch (state) {
+        case State::NO_VALUE:
+          break;
+        case State::HAS_VALUE:
+          val.Init(*other.val);
+          break;
+        case State::HAS_CONST_TENSOR:
+          const_tensor = other.const_tensor;
+          break;
+        case State::HAS_REF_TENSOR:
+          ref_tensor = other.ref_tensor;
+          break;
       }
       return *this;
     }
 
     Entry& operator=(Entry&& other) {
-      if (val_field_is_set) {
+      if (state == State::HAS_VALUE) {
         val.Destroy();
       }
-      ref = other.ref;
-      ref_mu = other.ref_mu;
-      has_value = other.has_value;
-      val_field_is_set = other.val_field_is_set;
+      state = other.state;
       alloc_attr = other.alloc_attr;
-      if (val_field_is_set) {
-        val.Init(std::move(*other.val));
+      switch (state) {
+        case State::NO_VALUE:
+          break;
+        case State::HAS_VALUE:
+          val.Init(std::move(*other.val));
+          break;
+        case State::HAS_CONST_TENSOR:
+          const_tensor = other.const_tensor;
+          break;
+        case State::HAS_REF_TENSOR:
+          ref_tensor = other.ref_tensor;
+          break;
       }
       return *this;
     }
 
-    // Clears the <val> field.
+    // Clears the <val> field, and sets this entry to the `NO_VALUE` state.
     void ClearVal() {
-      if (val_field_is_set) {
+      if (state == State::HAS_VALUE) {
         val.Destroy();
-        val_field_is_set = false;
-        has_value = false;
       }
+      state = State::NO_VALUE;
     }
 
-    // A tensor value, if val_field_is_set.
-    ManualConstructor<Tensor> val;
+    union {
+      // A tensor value. Valid iff `state_ == HAS_VALUE`.
+      ManualConstructor<Tensor> val;
 
-    Tensor* ref = nullptr;    // A tensor reference.
-    mutex* ref_mu = nullptr;  // mutex for *ref if ref is not nullptr.
+      // A pointer to a constant tensor value. Valid iff `state_ ==
+      // HAS_CONST_TENSOR`.
+      const Tensor* const_tensor;
 
-    // Whether the value exists, either in <val> or <ref>.
-    bool has_value = false;
+      // A tensor reference and associated mutex. Valid iff `state_ ==
+      // HAS_REF_TENSOR`.
+      struct {
+        Tensor* tensor;
+        mutex* mu;
+      } ref_tensor;
+    };
 
-    bool val_field_is_set = false;
+    // The current state of this entry, indicating which member of the above
+    // union is active.
+    State state;
 
     // The attributes of the allocator that creates the tensor.
     AllocatorAttributes alloc_attr;
@@ -1921,10 +1966,9 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           // Special case for ConstantOp, which is very common.
           nodestats::SetOpEnd(stats);
           outputs.resize(1);
-          outputs[0].has_value = true;
-          outputs[0].val_field_is_set = true;
+          outputs[0].state = Entry::State::HAS_CONST_TENSOR;
+          outputs[0].const_tensor = item.const_tensor;
           outputs[0].alloc_attr = ctx.output_alloc_attr(0);
-          outputs[0].val.Init(*item.const_tensor);
         } else {
           // In the common case, avoid creating any tracing objects.
           if (op_kernel->IsExpensive()) {
@@ -2002,68 +2046,91 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
     // i-th input.
     TensorValue* inp = &(*inputs)[i];
 
-    // Only merge and transfer nodes can have no-value inputs.
-    if (!entry->has_value) {
-      if (!is_merge) {
-        DCHECK(item.is_transfer_node)
-            << item.kernel->name() << " - input " << i;
-        DCHECK(!entry->val_field_is_set)
-            << item.kernel->name() << " - input " << i;
-        entry->has_value = true;
-        entry->val_field_is_set = true;
-        entry->val.Init(*kEmptyTensor);
-        inp->tensor = entry->val.get();
-        *is_input_dead = true;
-      }
-      continue;
-    }
-    if (entry->ref == nullptr) {
-      if (expect_ref) {
-        return AttachDef(
-            errors::InvalidArgument(i, "-th input expects a ref type"),
-            item.kernel->def());
-      }
-      inp->tensor = entry->val.get();
-    } else {
-      {
-        tf_shared_lock ml(*entry->ref_mu);
-        if (!entry->ref->IsInitialized() && !item.is_initialization_op) {
-          return AttachDef(errors::FailedPrecondition(
-                               "Attempting to use uninitialized value ",
-                               item.kernel->requested_input(i)),
-                           item.kernel->def());
+    switch (entry->state) {
+      case Entry::State::NO_VALUE: {
+        // Only merge and transfer nodes can have no-value inputs.
+        if (!is_merge) {
+          DCHECK(item.is_transfer_node)
+              << item.kernel->name() << " - input " << i;
+          entry->state = Entry::State::HAS_CONST_TENSOR;
+          entry->const_tensor = kEmptyTensor;
+          // NOTE(mrry): This `const_cast` is necessary because `TensorValue`
+          // stores a non-const `Tensor*`, and relies on the `OpKernelContext`
+          // accessors making dynamic checks that prevent using an immutable
+          // tensor as a mutable tensor.
+          inp->tensor = const_cast<Tensor*>(kEmptyTensor);
+          *is_input_dead = true;
         }
+        break;
       }
-      if (expect_ref) {
-        inp->mutex_if_ref = entry->ref_mu;
-        inp->tensor = entry->ref;
-      } else {
-        // Automatically deref the tensor ref when the op expects a
-        // tensor but is given a ref to a tensor.  Need to deref it
-        // under the mutex.
-        {
-          tf_shared_lock l(*(entry->ref_mu));
-          DCHECK(!entry->val_field_is_set);
-          entry->val.Init(*entry->ref);
-          entry->val_field_is_set = true;
-        }
-        entry->ref = nullptr;
-        entry->ref_mu = nullptr;
 
-        inp->tensor = entry->val.get();
-        // The dtype of entry->ref could have been changed by another operation
-        // that ran after the operation that "produced" it executed, so
-        // re-validate that the type of the dereferenced tensor matches the
-        // expected input type.
-        if (item.input_type(i) != inp->tensor->dtype()) {
+      case Entry::State::HAS_VALUE: {
+        if (expect_ref) {
           return AttachDef(
-              errors::InvalidArgument(
-                  i, "-th input expects type ",
-                  DataTypeString(item.input_type(i)),
-                  " but automatically dereferenced input tensor has type ",
-                  DataTypeString(inp->tensor->dtype())),
+              errors::InvalidArgument(i, "-th input expects a ref type"),
               item.kernel->def());
         }
+        inp->tensor = entry->val.get();
+        break;
+      }
+
+      case Entry::State::HAS_CONST_TENSOR: {
+        if (expect_ref) {
+          return AttachDef(
+              errors::InvalidArgument(i, "-th input expects a ref type"),
+              item.kernel->def());
+        }
+        // NOTE(mrry): This `const_cast` is necessary because `TensorValue`
+        // stores a non-const `Tensor*`, and relies on the `OpKernelContext`
+        // accessors making dynamic checks that prevent using an immutable
+        // tensor as a mutable tensor.
+        inp->tensor = const_cast<Tensor*>(entry->const_tensor);
+        break;
+      }
+
+      case Entry::State::HAS_REF_TENSOR: {
+        {
+          tf_shared_lock ml(*entry->ref_tensor.mu);
+          if (!entry->ref_tensor.tensor->IsInitialized() &&
+              !item.is_initialization_op) {
+            return AttachDef(errors::FailedPrecondition(
+                                 "Attempting to use uninitialized value ",
+                                 item.kernel->requested_input(i)),
+                             item.kernel->def());
+          }
+        }
+
+        if (expect_ref) {
+          inp->mutex_if_ref = entry->ref_tensor.mu;
+          inp->tensor = entry->ref_tensor.tensor;
+        } else {
+          // Automatically deref the tensor ref when the op expects a
+          // tensor but is given a ref to a tensor.  Need to deref it
+          // under the mutex.
+          {
+            mutex* ref_mu = entry->ref_tensor.mu;
+            Tensor* ref_tensor = entry->ref_tensor.tensor;
+            tf_shared_lock l(*ref_mu);
+            entry->val.Init(*ref_tensor);
+          }
+          entry->state = Entry::State::HAS_VALUE;
+
+          inp->tensor = entry->val.get();
+          // The dtype of entry->ref_tensor.tensor could have been changed by
+          // another operation that ran after the operation that "produced" it
+          // executed, so re-validate that the type of the dereferenced tensor
+          // matches the expected input type.
+          if (item.input_type(i) != inp->tensor->dtype()) {
+            return AttachDef(
+                errors::InvalidArgument(
+                    i, "-th input expects type ",
+                    DataTypeString(item.input_type(i)),
+                    " but automatically dereferenced input tensor has type ",
+                    DataTypeString(inp->tensor->dtype())),
+                item.kernel->def());
+          }
+        }
+        break;
       }
     }
   }
@@ -2127,15 +2194,15 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
           nodestats::SetOutput(stats, i, val.tensor);
         }
         if (val.is_ref()) {
-          out->has_value = true;
-          out->ref = val.tensor;
-          out->ref_mu = val.mutex_if_ref;
+          out->state = Entry::State::HAS_REF_TENSOR;
+          out->ref_tensor.tensor = val.tensor;
+          out->ref_tensor.mu = val.mutex_if_ref;
           if (log_memory_) {
             Tensor to_log;
             {
               // Dereference the tensor under the lock.
-              tf_shared_lock l(*out->ref_mu);
-              to_log = *out->ref;
+              tf_shared_lock l(*out->ref_tensor.mu);
+              to_log = *out->ref_tensor.tensor;
             }
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
                                           ctx->step_id(), i, to_log);
@@ -2143,9 +2210,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
         } else {
           // NOTE that std::move is used here, so val.tensor goes to
           // uninitialized state (val.tensor->IsInitialized return false).
-          DCHECK(!out->val_field_is_set);
-          out->has_value = true;
-          out->val_field_is_set = true;
+          out->state = Entry::State::HAS_VALUE;
           out->val.Init(std::move(*val.tensor));
           if (log_memory_) {
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
@@ -2418,12 +2483,15 @@ inline void ExecutorState::MaybeMarkCompleted(FrameState* frame, int64 iter,
 }
 
 const Tensor* ExecutorState::GetTensorValueForDump(const Entry& input) {
-  if (!input.has_value) {
-    return kEmptyTensor;
-  } else if (input.ref == nullptr) {
-    return input.val.get();
-  } else {
-    return input.ref;
+  switch (input.state) {
+    case Entry::State::NO_VALUE:
+      return kEmptyTensor;
+    case Entry::State::HAS_VALUE:
+      return input.val.get();
+    case Entry::State::HAS_CONST_TENSOR:
+      return input.const_tensor;
+    case Entry::State::HAS_REF_TENSOR:
+      return input.ref_tensor.tensor;
   }
 }
 
@@ -2821,7 +2889,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
         dst_dead = (dead_cnt == dst_item->num_inputs);
         dst_ready = (count == 0) || ((count == 1) && dst_dead);
       } else {
-        if ((*outputs)[src_slot].has_value) {
+        if ((*outputs)[src_slot].state != Entry::State::NO_VALUE) {
           // This is a live data input.
           int count = iter_state->pending(dst_pending_id);
           iter_state->mark_live(dst_pending_id);
@@ -2848,7 +2916,8 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
       }
     } else {
       const bool increment_dead =
-          (is_dead || (!is_control_edge && !(*outputs)[src_slot].has_value));
+          (is_dead || (!is_control_edge &&
+                       (*outputs)[src_slot].state == Entry::State::NO_VALUE));
       int pending, dead;
       iter_state->adjust_for_activation(dst_pending_id, increment_dead,
                                         &pending, &dead);
@@ -2882,7 +2951,7 @@ void ExecutorState::FrameState::ActivateNexts(const GraphView* gview,
   for (auto& node_entry : next_iter_roots) {
     const NodeItem* item = node_entry.first;
     const Entry& entry = node_entry.second;
-    const bool is_dead = !entry.has_value;
+    const bool is_dead = entry.state == Entry::State::NO_VALUE;
     EntryVector outputs{entry};
     ActivateNodes(item, is_dead, iter, &outputs, ready);
   }
@@ -2896,7 +2965,7 @@ void ExecutorState::FrameState::ActivateLoopInvs(const GraphView* gview,
   for (auto& node_entry : inv_values) {
     const NodeItem* item = node_entry.first;
     const Entry& entry = node_entry.second;
-    const bool is_dead = !entry.has_value;
+    const bool is_dead = entry.state == Entry::State::NO_VALUE;
     EntryVector outputs{entry};
     ActivateNodes(item, is_dead, iter, &outputs, ready);
   }
@@ -2909,7 +2978,7 @@ void ExecutorState::FrameState::AddLoopInv(const NodeItem* item,
   inv_values.push_back({item, entry});
 
   // Make this value available to all iterations.
-  const bool is_dead = !entry.has_value;
+  const bool is_dead = entry.state == Entry::State::NO_VALUE;
   for (int i = 0; i <= iteration_count; ++i) {
     EntryVector outputs{entry};
     ActivateNodes(item, is_dead, i, &outputs, ready);

@@ -519,10 +519,9 @@ class RowPartition(object):
       if nrows is None:
         if const_row_length is None:
           # Avoid division by zero if uniform_row_length==0 (and nvals==0).
-          rowlen_or_1 = control_flow_ops.cond(
-              math_ops.equal(uniform_row_length, 0),
-              lambda: constant_op.constant(1, uniform_row_length.dtype),
-              lambda: uniform_row_length)
+          rowlen_or_1 = math_ops.maximum(
+              uniform_row_length,
+              constant_op.constant(1, uniform_row_length.dtype))
           nrows = nvals // rowlen_or_1
         elif const_row_length == 0:
           nrows = 0

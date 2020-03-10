@@ -24,7 +24,7 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras import backend
+from tensorflow.python.frozen_keras import backend
 from tensorflow.python.util import nest
 
 
