@@ -97,7 +97,7 @@ PREPROCESS_INPUT_RET_DOC_CAFFE = """
 @keras_export('keras.applications.imagenet_utils.preprocess_input')
 def preprocess_input(x, data_format=None, mode='caffe'):
   """Preprocesses a tensor or Numpy array encoding a batch of images."""
-  if mode not in {'caffe', 'tf','torch'}:
+  if mode not in {'caffe', 'tf', 'torch'}:
     raise ValueError('Unknown mode ' + str(mode))
 
   if data_format is None:
