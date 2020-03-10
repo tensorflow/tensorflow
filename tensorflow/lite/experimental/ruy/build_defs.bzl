@@ -1,10 +1,5 @@
 """Build definitions for Ruy."""
 
-def ruy_visibility():
-    return [
-        "//tensorflow/lite/kernels:__subpackages__",
-    ]
-
 # 1. Enable -mfpu=neon unconditionally on ARM32. If it turns out that we need to support
 #    ARM32 without NEON then we'll implement runtime detection and dispatch at that point.
 # 2. Explicitly pass -O3 on optimization configs where just "-c opt" means "optimize for code size".

@@ -2,12 +2,12 @@
 
 # TODO(b/123403203) actually make TFLite use ruy.
 
-load(":build_defs.bzl", "ruy_copts_avx2", "ruy_copts_avxvnni", "ruy_copts_base", "ruy_copts_skylake", "ruy_copts_sse42", "ruy_visibility")
+load(":build_defs.bzl", "ruy_copts_avx2", "ruy_copts_avxvnni", "ruy_copts_base", "ruy_copts_skylake", "ruy_copts_sse42")
 load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
 load(":ruy_test.bzl", "ruy_benchmark", "ruy_test")
 
 package(
-    default_visibility = ["//visibility:private"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -236,7 +236,6 @@ cc_library(
         "thread_pool.h",
     ],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [
         ":blocking_counter",
         ":check_macros",
@@ -253,7 +252,6 @@ cc_library(
         "detect_arm.h",
     ],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
 )
 
 cc_library(
@@ -265,7 +263,6 @@ cc_library(
         "detect_x86.h",
     ],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [
         ":platform",
     ],
@@ -275,7 +272,6 @@ cc_library(
     name = "path",
     hdrs = ["path.h"],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [
         ":platform",
         ":size_util",
@@ -286,7 +282,6 @@ cc_library(
     name = "cpu_cache_size",
     hdrs = ["cpu_cache_size.h"],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [
         ":path",
         ":platform",
@@ -314,7 +309,6 @@ cc_library(
     name = "matrix",
     hdrs = ["matrix.h"],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [":check_macros"],
 )
 
@@ -322,7 +316,6 @@ cc_library(
     name = "spec",
     hdrs = ["spec.h"],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [
         ":cpu_cache_size",
         ":matrix",
@@ -732,7 +725,6 @@ cc_library(
         "context.h",
     ],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [
         ":allocator",
         ":check_macros",
@@ -807,7 +799,6 @@ cc_library(
         "ruy_advanced.h",
     ],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [
         ":check_macros",
         ":common",
