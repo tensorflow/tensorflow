@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,19 +15,16 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/tf2xla/mlir_bridge_pass.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/graph_optimization_pass.h"
 
 namespace tensorflow {
 namespace {
-constexpr int kMlirBridgePriority = 10;
+constexpr int kMlirGraphOptimizationPriority = 0;
 }
 
 static mlir_pass_registration::MlirOptimizationPassRegistration
-    register_mlir_bridge_pass(kMlirBridgePriority,
-                              std::make_unique<MlirBridgePass>());
-
-static mlir_pass_registration::MlirV1CompatOptimizationPassRegistration
-    register_v1_compat_mlir_bridge_pass(
-        kMlirBridgePriority, std::make_unique<MlirBridgeV1CompatPass>());
+    register_mlir_graph_optimization_pass(
+        kMlirGraphOptimizationPriority,
+        std::make_unique<MlirGraphOptimizationPass>());
 
 }  // namespace tensorflow

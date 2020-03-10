@@ -428,6 +428,28 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "graph_optimization_pass",
+    srcs = ["transforms/graph_optimization_pass.cc"],
+    hdrs = ["transforms/graph_optimization_pass.h"],
+    deps = [
+        ":tensorflow_passes",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "graph_optimization_pass_registration",
+    srcs = ["transforms/graph_optimization_pass_registration.cc"],
+    deps = [
+        ":graph_optimization_pass",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
+    ],
+    alwayslink = 1,
+)
+
 # Library with TensorFlow dialect static initialization.
 cc_library(
     name = "tensorflow_dialect_registration",

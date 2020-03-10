@@ -698,6 +698,7 @@ cc_library(
     srcs = ["mlir_bridge_pass.cc"],
     hdrs = ["mlir_bridge_pass.h"],
     deps = [
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
@@ -717,6 +718,7 @@ cc_library(
     ],
     deps = [
         ":mlir_bridge_pass",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
         "//tensorflow/core:core_cpu",
     ],
     alwayslink = 1,

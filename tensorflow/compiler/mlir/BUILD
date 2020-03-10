@@ -102,6 +102,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mlir_graph_optimization_pass",
+    srcs = ["mlir_graph_optimization_pass.cc"],
+    hdrs = ["mlir_graph_optimization_pass.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:device_util",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/core:core_cpu",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "mlir_graph_optimization_pass_registration",
+    srcs = [
+        "mlir_graph_optimization_pass_registration.cc",
+    ],
+    deps = [
+        ":mlir_graph_optimization_pass",
+        "//tensorflow/core:core_cpu",
+    ],
+    alwayslink = 1,
+)
+
 tf_cc_binary(
     name = "tf-opt",
     deps = [
