@@ -92,8 +92,10 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
         return None
 
       if len(output_shape) < 1:
-        raise ValueError("Input shape should have at least one dimension. "
-                         "Perhaps your input dataset is not batched?")
+        raise ValueError("Expected a dataset whose elements have rank >= 1 "
+                         "but found a dataset whose elements are scalars. "
+                         "You can fix the issue by adding the `batch` "
+                         "transformation to the dataset.")
       output_dims = [d.value for d in output_shape.dims]
 
       if output_dims[0] is not None and output_dims[0] % num_replicas == 0:
