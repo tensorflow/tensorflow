@@ -489,8 +489,9 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
   }
 
   // Eliminate the size one dimensions.
-  TF_ASSIGN_OR_RETURN(XlaOp reshaped_operand,
-                      ReshapeInternal(reshaped_shape, operand));
+  TF_ASSIGN_OR_RETURN(
+      XlaOp reshaped_operand,
+      ReshapeInternal(reshaped_shape, operand, /*inferred_dimension=*/-1));
   // Broadcast 'reshape' up to the larger size.
   return InDimBroadcast(broadcast_shape, reshaped_operand,
                         broadcast_dimensions);

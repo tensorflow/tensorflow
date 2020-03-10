@@ -668,8 +668,9 @@ class XlaBuilder {
   XlaOp RngOp(RandomDistribution distribution,
               absl::Span<const XlaOp> parameters, const Shape& shape);
 
-  StatusOr<XlaOp> InDimBroadcast(const Shape& shape, XlaOp operand,
-                                 absl::Span<const int64> broadcast_dimensions);
+  virtual StatusOr<XlaOp> InDimBroadcast(
+      const Shape& shape, XlaOp operand,
+      absl::Span<const int64> broadcast_dimensions);
 
   // Internal helper method that creates a sequence of instructions that
   // performs an explicit broadcast of the operand to the target shape.
@@ -678,8 +679,8 @@ class XlaBuilder {
 
   // Internal helper method for creating a Reshape op with the already inferred
   // shape.
-  StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
-                                  int64 inferred_dimension = -1);
+  virtual StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
+                                          int64 inferred_dimension);
 
   // Returns the (inferred) result for the program shape using the given root.
   StatusOr<ProgramShape> GetProgramShape(int64 root_id) const;
