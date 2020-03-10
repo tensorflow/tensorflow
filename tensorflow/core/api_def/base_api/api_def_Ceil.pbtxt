@@ -1,4 +1,15 @@
 op {
   graph_op_name: "Ceil"
   summary: "Returns element-wise smallest integer not less than x."
+  description: <<END
+Given a tensor `x`, this operation returns a tensor containing the 
+ceiling of each element in `x`. Ceiling of a scalar x can be defined as 
+the smallest integer i, such that \\(i >= x\\).
+
+For Example :
+
+>>> x = tf.constant([1.2,1.7,2.5,2], dtype=tf.float16)
+>>> tf.math.ceil(x)
+<tf.Tensor: shape=(4,), dtype=float16, numpy=array([2., 2., 3., 2.], dtype=float16)>
+END
 }
