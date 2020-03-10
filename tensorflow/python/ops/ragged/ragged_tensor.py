@@ -2330,6 +2330,10 @@ class RaggedTensorType(object):
   ragged_rank = property(lambda self: self._ragged_rank)
   row_splits_dtype = property(lambda self: self._row_splits_dtype)
 
+  def __repr__(self):
+    return "RaggedTensorType(%r, %r, %r)" % (
+        self.dtype, self.ragged_rank, self.row_splits_dtype)
+
 
 #===============================================================================
 # Helper Functions
