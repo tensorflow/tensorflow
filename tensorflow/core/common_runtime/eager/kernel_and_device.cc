@@ -287,7 +287,7 @@ Status KernelAndDeviceOp::Run(
 
   if (nvtx::IsNvtxRangesEnabled()) {
     nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(
-        nvtx::eager::MaybeNvtxDomainRangeStartMsg<EagerKernelArgs,OpKernel>(
+        nvtx::eager::GetNvtxRangeMessage<EagerKernelArgs,OpKernel>(
             inputs, kernel_),
         kernel_->def().op()
     );

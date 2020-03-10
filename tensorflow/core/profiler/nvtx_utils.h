@@ -122,7 +122,7 @@ string GetNvtxRangeMessage(T1& inputs, T2* kernel_)
 
 }
 
-}  // namespace HLO
+}  // namespace eager
 
 }  // namespace nvtx
 }  // namespace tensorflow
