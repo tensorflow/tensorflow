@@ -566,6 +566,16 @@ void BatchMatMulOp::getCanonicalizationPatterns(
 // BatchMatMulV2Op
 //===----------------------------------------------------------------------===//
 
+static LogicalResult Verify(BatchMatMulV2Op op) {
+  if (!HasRankAtLeast(op.x(), 2)) {
+    return op.emitOpError("requires lhs operand to have rank at least two");
+  }
+  if (!HasRankAtLeast(op.y(), 2)) {
+    return op.emitOpError("requires rhs operand to have rank at least two");
+  }
+  return success();
+}
+
 void BatchMatMulV2Op::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<BatchMatMulV2ToMatMul>(context);
