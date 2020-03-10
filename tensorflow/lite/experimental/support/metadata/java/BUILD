@@ -14,7 +14,6 @@ android_library(
     srcs = glob(["src/java/org/tensorflow/lite/support/metadata/**/*.java"]),
     manifest = "AndroidManifest.xml",
     deps = [
-        "//tensorflow/lite/experimental/support/java:tensorflow-lite-support-precondition-lib-android",
         "//tensorflow/lite/experimental/support/metadata:metadata_schema_fbs_android",
         "//tensorflow/lite/experimental/support/metadata:schema_fbs_android",
         "//tensorflow/lite/java:tensorflowlite",
@@ -27,7 +26,6 @@ java_library(
     srcs = glob(["src/java/org/tensorflow/lite/support/metadata/**/*.java"]),
     javacopts = JAVACOPTS,
     deps = [
-        "//tensorflow/lite/experimental/support/java:tensorflow-lite-support-precondition",
         "//tensorflow/lite/experimental/support/metadata:metadata_schema_java",
         "//tensorflow/lite/experimental/support/metadata:schema_fbs_java",
         "//tensorflow/lite/java:tensorflowlitelib",

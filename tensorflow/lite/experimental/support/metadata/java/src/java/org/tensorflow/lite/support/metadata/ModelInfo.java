@@ -15,6 +15,9 @@ limitations under the License.
 
 package org.tensorflow.lite.support.metadata;
 
+import static org.tensorflow.lite.support.metadata.Preconditions.checkArgument;
+import static org.tensorflow.lite.support.metadata.Preconditions.checkNotNull;
+
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,7 +34,6 @@ import org.tensorflow.lite.schema.QuantizationParameters;
 import org.tensorflow.lite.schema.SubGraph;
 import org.tensorflow.lite.schema.Tensor;
 import org.tensorflow.lite.schema.TensorType;
-import org.tensorflow.lite.support.common.SupportPreconditions;
 
 /** Extracts model information out of TFLite model FLatBuffer. */
 final class ModelInfo {
@@ -64,11 +66,10 @@ final class ModelInfo {
    * @throws IllegalArgumentException if the model does not contain any subgraph.
    */
   ModelInfo(ByteBuffer buffer) {
-    SupportPreconditions.checkNotNull(buffer, "Model flatbuffer cannot be null.");
+    checkNotNull(buffer, "Model flatbuffer cannot be null.");
 
     model = Model.getRootAsModel(buffer);
-    SupportPreconditions.checkArgument(
-        model.subgraphsLength() > 0, "The model does not contain any subgraph.");
+    checkArgument(model.subgraphsLength() > 0, "The model does not contain any subgraph.");
 
     inputTensors = getInputTensors(model);
     outputTensors = getOutputTensors(model);
@@ -83,7 +84,7 @@ final class ModelInfo {
    */
   @Nullable
   Tensor getInputTensor(int inputIndex) {
-    SupportPreconditions.checkArgument(
+    checkArgument(
         inputIndex >= 0 && inputIndex < inputTensors.size(),
         "The inputIndex specified is invalid.");
     return inputTensors.get(inputIndex);
@@ -140,7 +141,7 @@ final class ModelInfo {
    */
   @Nullable
   Tensor getOutputTensor(int outputIndex) {
-    SupportPreconditions.checkArgument(
+    checkArgument(
         outputIndex >= 0 && outputIndex < outputTensors.size(),
         "The outputIndex specified is invalid.");
     return outputTensors.get(outputIndex);
@@ -192,7 +193,7 @@ final class ModelInfo {
    *     QuantizationParameters} are not single values.
    */
   QuantizationParams getQuantizationParams(Tensor tensor) {
-    SupportPreconditions.checkNotNull(tensor, "Tensor cannot be null.");
+    checkNotNull(tensor, "Tensor cannot be null.");
 
     float scale;
     int zeroPoint;
@@ -208,10 +209,10 @@ final class ModelInfo {
 
     // Tensors that are not quantized do not have quantization parameters.
     // quantization.scaleLength() and quantization.zeroPointLength() may both return 0.
-    SupportPreconditions.checkArgument(
+    checkArgument(
         quantization.scaleLength() <= 1,
         "Input and output tensors do not support per-channel quantization.");
-    SupportPreconditions.checkArgument(
+    checkArgument(
         quantization.zeroPointLength() <= 1,
         "Input and output tensors do not support per-channel quantization.");
 
@@ -233,7 +234,7 @@ final class ModelInfo {
    * @throws IllegalArgumentException if the tensor type is not supported.
    */
   private DataType getDataType(byte tensorType) {
-    SupportPreconditions.checkArgument(
+    checkArgument(
         tensorTypeToDataTypeMap.containsKey(tensorType),
         String.format("Tensor type %d is not supported.", tensorType));
     return tensorTypeToDataTypeMap.get(tensorType);
@@ -246,7 +247,7 @@ final class ModelInfo {
    * @throws NullPointerException if the tensor is null.
    */
   private static int[] getShape(Tensor tensor) {
-    SupportPreconditions.checkNotNull(tensor, "Tensor cannot be null.");
+    checkNotNull(tensor, "Tensor cannot be null.");
     int shapeDim = tensor.shapeLength();
     int[] tensorShape = new int[shapeDim];
     for (int i = 0; i < shapeDim; i++) {

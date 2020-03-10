@@ -15,8 +15,8 @@ limitations under the License.
 
 package org.tensorflow.lite.support.metadata;
 
-import static org.tensorflow.lite.support.common.SupportPreconditions.checkArgument;
-import static org.tensorflow.lite.support.common.SupportPreconditions.checkNotNull;
+import static org.tensorflow.lite.support.metadata.Preconditions.checkArgument;
+import static org.tensorflow.lite.support.metadata.Preconditions.checkNotNull;
 
 import java.io.Closeable;
 import java.io.EOFException;

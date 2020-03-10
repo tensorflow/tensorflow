@@ -15,7 +15,7 @@ limitations under the License.
 
 package org.tensorflow.lite.support.metadata;
 
-import static org.tensorflow.lite.support.common.SupportPreconditions.checkArgument;
+import static org.tensorflow.lite.support.metadata.Preconditions.checkArgument;
 
 import java.io.IOException;
 import java.io.InputStream;

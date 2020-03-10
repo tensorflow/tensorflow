@@ -15,12 +15,14 @@ limitations under the License.
 
 package org.tensorflow.lite.support.metadata;
 
+import static org.tensorflow.lite.support.metadata.Preconditions.checkArgument;
+import static org.tensorflow.lite.support.metadata.Preconditions.checkNotNull;
+
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.checkerframework.checker.nullness.qual.Nullable;
-import org.tensorflow.lite.support.common.SupportPreconditions;
 import org.tensorflow.lite.support.metadata.schema.ModelMetadata;
 import org.tensorflow.lite.support.metadata.schema.SubGraphMetadata;
 import org.tensorflow.lite.support.metadata.schema.TensorMetadata;
@@ -41,10 +43,10 @@ final class ModelMetadataInfo {
    * @throws IllegalArgumentException if the metadata does not contain any subgraph metadata.
    */
   ModelMetadataInfo(ByteBuffer buffer) {
-    SupportPreconditions.checkNotNull(buffer, "Metadata flatbuffer cannot be null.");
+    checkNotNull(buffer, "Metadata flatbuffer cannot be null.");
 
     ModelMetadata modelMetadata = ModelMetadata.getRootAsModelMetadata(buffer);
-    SupportPreconditions.checkArgument(
+    checkArgument(
         modelMetadata.subgraphMetadataLength() > 0,
         "The metadata flatbuffer does not contain any subgraph metadata.");
 
@@ -65,7 +67,7 @@ final class ModelMetadataInfo {
    */
   @Nullable
   TensorMetadata getInputTensorMetadata(int inputIndex) {
-    SupportPreconditions.checkArgument(
+    checkArgument(
         inputIndex >= 0 && inputIndex < inputsMetadata.size(),
         "The inputIndex specified is invalid.");
     return inputsMetadata.get(inputIndex);
@@ -84,7 +86,7 @@ final class ModelMetadataInfo {
    */
   @Nullable
   TensorMetadata getOutputTensorMetadata(int outputIndex) {
-    SupportPreconditions.checkArgument(
+    checkArgument(
         outputIndex >= 0 && outputIndex < outputsMetadata.size(),
         "The outputIndex specified is invalid.");
     return outputsMetadata.get(outputIndex);
