@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for third_party.tensorflow.python.ops.ragged_tensor."""
+"""Tests for tf.ragged.RowPartition."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -32,94 +32,8 @@ from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.platform import googletest
 
 
-class _SliceBuilder(object):
-  """Helper to construct arguments for __getitem__.
-
-  Usage: _SliceBuilder()[<expr>] slice_spec Python generates for <expr>.
-  """
-
-  def __getitem__(self, slice_spec):
-    return slice_spec
-
-
-SLICE_BUILDER = _SliceBuilder()
-
-
-def _make_tensor_slice_spec(slice_spec, use_constant=True):
-  """Wraps all integers in an extended slice spec w/ a tensor.
-
-  This function is used to help test slicing when the slice spec contains
-  tensors, rather than integers.
-
-  Args:
-    slice_spec: The extended slice spec.
-    use_constant: If true, then wrap each integer with a tf.constant.  If false,
-      then wrap each integer with a tf.placeholder.
-
-  Returns:
-    A copy of slice_spec, but with each integer i replaced with tf.constant(i).
-  """
-
-  def make_piece_scalar(piece):
-    if isinstance(piece, int):
-      scalar = constant_op.constant(piece)
-      if use_constant:
-        return scalar
-      else:
-        return array_ops.placeholder_with_default(scalar, [])
-    elif isinstance(piece, slice):
-      return slice(
-          make_piece_scalar(piece.start), make_piece_scalar(piece.stop),
-          make_piece_scalar(piece.step))
-    else:
-      return piece
-
-  if isinstance(slice_spec, tuple):
-    return tuple(make_piece_scalar(piece) for piece in slice_spec)
-  else:
-    return make_piece_scalar(slice_spec)
-
-
-# Example 2D ragged tensor value with one ragged dimension and with scalar
-# values, expressed as nested python lists and as splits+values.
-EXAMPLE_RAGGED_TENSOR_2D = [[b'a', b'b'], [b'c', b'd', b'e'], [b'f'], [],
-                            [b'g']]
-EXAMPLE_RAGGED_TENSOR_2D_SPLITS = [0, 2, 5, 6, 6, 7]
-EXAMPLE_RAGGED_TENSOR_2D_VALUES = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
-
-# Example 4D ragged tensor value, with two ragged dimensions and with values
-# whose shape is [2], expressed as nested python lists and as splits+values.
-EXAMPLE_RAGGED_TENSOR_4D = [
-    [                                       # rt[0]
-        [[1, 2], [3, 4], [5, 6]],           # rt[0][0]
-        [[7, 8], [9, 10], [11, 12]]],       # rt[0][1]
-    [],                                     # rt[1]
-    [                                       # rt[2]
-        [[13, 14], [15, 16], [17, 18]]],    # rt[2][0]
-    [                                       # rt[3]
-        [[19, 20]]]                         # rt[3][0]
-]  # pyformat: disable
-EXAMPLE_RAGGED_TENSOR_4D_SPLITS1 = [0, 2, 2, 3, 4]
-EXAMPLE_RAGGED_TENSOR_4D_SPLITS2 = [0, 3, 6, 9, 10]
-EXAMPLE_RAGGED_TENSOR_4D_VALUES = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10],
-                                   [11, 12], [13, 14], [15, 16], [17, 18],
-                                   [19, 20]]
-
-# Example 3D ragged tensor with uniform_row_lengths.
-EXAMPLE_RAGGED_TENSOR_3D = [[[1, 2, 3], [4], [5, 6]], [[], [7, 8, 9], []]]
-EXAMPLE_RAGGED_TENSOR_3D_ROWLEN = 3
-EXAMPLE_RAGGED_TENSOR_3D_SPLITS = [0, 3, 4, 6, 6, 9, 9]
-EXAMPLE_RAGGED_TENSOR_3D_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-
-
-def int32array(values):
-  return np.array(values, dtype=np.int32)
-
-
 @test_util.run_all_in_graph_and_eager_modes
 class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
-  longMessage = True  # Property in unittest.Testcase. pylint: disable=invalid-name
-
   #=============================================================================
   # RaggedTensor class docstring examples
   #=============================================================================
