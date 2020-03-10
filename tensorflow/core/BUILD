@@ -175,6 +175,9 @@ exports_files([
 
 package_group(name = "experimental_access")
 
+# Authorized users go here.
+package_group(name = "friends")
+
 # -----------------------------------------------------------------------------
 # Public targets
 

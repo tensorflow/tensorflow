@@ -61,6 +61,9 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+# Authorized users go here.
+package_group(name = "friends")
+
 exports_files(
     [
         "context.h",
