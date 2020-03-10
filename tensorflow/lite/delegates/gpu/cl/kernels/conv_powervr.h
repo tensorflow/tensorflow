@@ -111,9 +111,9 @@ class ConvPowerVR : public GPUOperation {
       const CreationContext& creation_context, const OperationDef& definition,
       const Convolution2DAttributes& attr, ConvPowerVR* result);
 
-  friend std::string GenerateConvPowerVR1x1(
-      const OperationDef& op_def, bool stride_correction,
-      const ConvParams& conv_params,
+  friend std::string GenerateConv(
+      const CLDevice& device, const OperationDef& op_def,
+      bool stride_correction, const ConvParams& conv_params,
       const std::vector<ElementwiseOperation*>& linked_operations);
 
   ConvParams GuessBestParams(const CLDevice& device,
