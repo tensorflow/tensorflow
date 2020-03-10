@@ -2525,7 +2525,8 @@ def pybind_extension(
         licenses = None,
         compatible_with = None,
         restricted_to = None,
-        deprecation = None):
+        deprecation = None,
+        link_in_framework = False):
     """Builds a generic Python extension module."""
     _ignore = [module_name]
     p = name.rfind("/")
@@ -2559,6 +2560,12 @@ def pybind_extension(
         visibility = ["//visibility:private"],
         testonly = testonly,
     )
+
+    # If we are to link to libtensorflow_framework.so, add
+    # it as a source.
+    if link_in_framework:
+        srcs += tf_binary_additional_srcs()
+
     cc_binary(
         name = so_file,
         srcs = srcs + hdrs,
@@ -2636,12 +2643,14 @@ def tf_python_pybind_extension(
         visibility = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
+    Please do not use it anywhere else as it may behave unexpectedly. b/146445820
+
     It is used for targets under //third_party/tensorflow/python that link
     against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
     """
     pybind_extension(
         name,
-        srcs + tf_binary_additional_srcs(),
+        srcs,
         module_name,
         features = features,
         copts = copts,
@@ -2649,6 +2658,7 @@ def tf_python_pybind_extension(
         deps = deps + tf_binary_pybind_deps() + mkl_deps(),
         defines = defines,
         visibility = visibility,
+        link_in_framework = True,
     )
 
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None):
