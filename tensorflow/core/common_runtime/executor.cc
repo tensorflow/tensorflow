@@ -301,8 +301,9 @@ class GraphView {
     DCHECK_GE(id, 0);
     DCHECK_LT(id, num_nodes_);
     uint32 offset = node_offsets_[id];
-    return ((offset == kuint32max) ? nullptr : reinterpret_cast<NodeItem*>(
-                                                   space_ + node_offsets_[id]));
+    return ((offset == kuint32max)
+                ? nullptr
+                : reinterpret_cast<NodeItem*>(space_ + node_offsets_[id]));
   }
 
   int32 num_nodes() const { return num_nodes_; }
@@ -1689,8 +1690,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         if (step_container_ && step_container_->step_id()) {
           id = step_container_->step_id();
         }
-        return absl::StrCat("ExecutorState::Process#id=", id, ",iter_num=",
-                            tagged_node.input_iter, "#");
+        return absl::StrCat("ExecutorState::Process#id=", id,
+                            ",iter_num=", tagged_node.input_iter, "#");
       },
       2);
   WithContext wc(context_);
@@ -2025,10 +2026,10 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
     // Only merge and transfer nodes can have no-value inputs.
     if (!entry->has_value) {
       if (!is_merge) {
-        DCHECK(item.is_transfer_node) << item.kernel->name() << " - input "
-                                      << i;
-        DCHECK(!entry->val_field_is_set) << item.kernel->name() << " - input "
-                                         << i;
+        DCHECK(item.is_transfer_node)
+            << item.kernel->name() << " - input " << i;
+        DCHECK(!entry->val_field_is_set)
+            << item.kernel->name() << " - input " << i;
         entry->has_value = true;
         entry->val_field_is_set = true;
         entry->val.Init(*kEmptyTensor);
@@ -2378,7 +2379,7 @@ void ExecutorState::ScheduleReady(TaggedNodeSeq* ready,
       // regardless of the `runner_` implementation, all kernels will run
       // sequentially on the same thread, and thread wakeup overhead and
       // executor mutex contention will be minimized.
-      runner_([ this, ready = std::move(*ready), scheduled_nsec ]() {
+      runner_([this, ready = std::move(*ready), scheduled_nsec]() {
         for (auto& tagged_node : ready) {
           Process(tagged_node, scheduled_nsec);
         }
@@ -2525,10 +2526,10 @@ void ExecutorState::DumpIterationState(const FrameState* frame,
     const Tensor* tensor = GetTensorValueForDump(input);
     if (tensor->IsInitialized()) {
       LOG(WARNING) << "    Input " << i << ": "
-                   << strings::StrCat("Tensor<type: ",
-                                      DataTypeString(tensor->dtype()),
-                                      " shape: ", tensor->shape().DebugString(),
-                                      ", bytes: ", tensor->TotalBytes(), ">");
+                   << strings::StrCat(
+                          "Tensor<type: ", DataTypeString(tensor->dtype()),
+                          " shape: ", tensor->shape().DebugString(),
+                          ", bytes: ", tensor->TotalBytes(), ">");
       total_bytes += tensor->TotalBytes();
     }
   }
@@ -2620,7 +2621,7 @@ void ExecutorState::Finish() {
       }
     }
     delete this;
-    runner([ step_id, status, done_cb = std::move(done_cb) ]() {
+    runner([step_id, status, done_cb = std::move(done_cb)]() {
       profiler::TraceMe traceme(
           [&] {
             return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
@@ -2636,11 +2637,10 @@ void ExecutorState::Finish() {
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    device->Sync([
-      this, step_id, runner = std::move(runner), done_cb = std::move(done_cb)
-    ](const Status& status) mutable {
+    device->Sync([this, step_id, runner = std::move(runner),
+                  done_cb = std::move(done_cb)](const Status& status) mutable {
       delete this;
-      runner([ step_id, status, done_cb = std::move(done_cb) ]() {
+      runner([step_id, status, done_cb = std::move(done_cb)]() {
         profiler::TraceMe traceme(
             [&] {
               return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
@@ -2651,7 +2651,7 @@ void ExecutorState::Finish() {
     });
   } else {
     delete this;
-    runner([ step_id, status, done_cb = std::move(done_cb) ]() {
+    runner([step_id, status, done_cb = std::move(done_cb)]() {
       profiler::TraceMe traceme(
           [&] {
             return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
