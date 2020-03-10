@@ -128,7 +128,8 @@ void DeleteLoggingDevice(void* device_info) {
 }
 
 void RegisterLoggingDevice(TFE_Context* context, const char* name,
-                           bool* arrived_flag, bool* executed_flag) {
+                           bool* arrived_flag, bool* executed_flag,
+                           TF_Status* status) {
   TFE_CustomDevice custom_device;
   custom_device.copy_tensor_to_device = &CopyToLoggingDevice;
   custom_device.copy_tensor_from_device = &CopyTensorFromLoggingDevice;
@@ -140,7 +141,7 @@ void RegisterLoggingDevice(TFE_Context* context, const char* name,
   device->executed_flag = executed_flag;
   device->device_name = name;
   device->underlying_device = "/job:localhost/replica:0/task:0/device:CPU:0";
-  TFE_RegisterCustomDevice(context, custom_device, name, device);
+  TFE_RegisterCustomDevice(context, custom_device, name, device, status);
 }
 
 TEST(CUSTOM_DEVICE, RegisterSimpleDevice) {
@@ -153,7 +154,8 @@ TEST(CUSTOM_DEVICE, RegisterSimpleDevice) {
   bool arrived = false;
   bool executed = false;
   const char* name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  RegisterLoggingDevice(context, name, &arrived, &executed);
+  RegisterLoggingDevice(context, name, &arrived, &executed, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   TFE_TensorHandle* hcpu = TestMatrixTensorHandle();
   ASSERT_FALSE(arrived);
   TFE_TensorHandle* hdevice =
@@ -189,7 +191,9 @@ TEST(CUSTOM_DEVICE, ResetOperation) {
   bool executed = false;
   const char* custom_device_name =
       "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  RegisterLoggingDevice(context.get(), custom_device_name, &arrived, &executed);
+  RegisterLoggingDevice(context.get(), custom_device_name, &arrived, &executed,
+                        status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> reused_op(
       TFE_NewOp(context.get(), "Identity", status.get()), TFE_DeleteOp);
@@ -217,7 +221,8 @@ TEST(CUSTOM_DEVICE, MakeVariable) {
   bool arrived = false;
   bool executed = false;
   const char* name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  RegisterLoggingDevice(context.get(), name, &arrived, &executed);
+  RegisterLoggingDevice(context.get(), name, &arrived, &executed, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create a variable handle placed on the custom device.
   std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> op(
@@ -289,6 +294,35 @@ TEST(CUSTOM_DEVICE, MakeVariable) {
   num_retvals = 0;
   TFE_Execute(op.get(), nullptr, &num_retvals, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+}
+
+TEST(CUSTOM_DEVICE, InvalidRegistrationError) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  std::unique_ptr<TFE_ContextOptions, decltype(&TFE_DeleteContextOptions)> opts(
+      TFE_NewContextOptions(), TFE_DeleteContextOptions);
+  std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> context(
+      TFE_NewContext(opts.get(), status.get()), TFE_DeleteContext);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  bool arrived = false;
+  bool executed = false;
+  RegisterLoggingDevice(context.get(), "/device:CUSTOM:0", &arrived, &executed,
+                        status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_INVALID_ARGUMENT)
+      << TF_Message(status.get());
+
+  const char* name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
+  RegisterLoggingDevice(context.get(), name, &arrived, &executed, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  RegisterLoggingDevice(context.get(), name, &arrived, &executed, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_ALREADY_EXISTS)
+      << TF_Message(status.get());
+
+  RegisterLoggingDevice(context.get(),
+                        "/job:localhost/replica:0/task:0/device:CPU:0",
+                        &arrived, &executed, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_ALREADY_EXISTS)
+      << TF_Message(status.get());
 }
 
 }  // namespace
