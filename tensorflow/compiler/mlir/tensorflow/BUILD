@@ -62,6 +62,14 @@ gentbl(
             "-gen-op-doc",
             "g3doc/tf_ops.md",
         ),
+        (
+            "-gen-struct-attr-decls",
+            "ir/tf_structs.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "ir/tf_structs.cc.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_ops.td",
@@ -167,6 +175,21 @@ cc_library(
         "ir/tf_types.h",
     ],
     deps = [
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "tensorflow_structs",
+    srcs = [
+        "ir/tf_structs.cc",
+    ],
+    hdrs = [
+        "ir/tf_structs.h",
+    ],
+    deps = [
+        ":tensorflow_ops_inc_gen",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
     ],
@@ -1117,6 +1140,7 @@ cc_library(
     srcs = ["utils/device_util.cc"],
     hdrs = ["utils/device_util.h"],
     deps = [
+        ":tensorflow_structs",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "@llvm-project//llvm:support",
