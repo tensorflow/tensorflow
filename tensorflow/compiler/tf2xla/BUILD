@@ -237,11 +237,11 @@ cc_library(
     features = ["fully_static_link"],
     linkstatic = 1,
     visibility = [":friends"],
-    # Note, we specifically remove MKL dependencies so the standalone does
-    # not require the MKL binary blob.
+    # Note, we specifically removed MKL and multithreaded dependencies so the
+    # standalone does not require the MKL binary blob or threading libraries.
     #
-    # TODO(ebrevdo): Remove tf_additoinal_tensor_coding_deps in favor of absl/strings:cord when
-    # we update absl to a newer version.
+    # TODO(ebrevdo): Remove tf_additoinal_tensor_coding_deps in favor of
+    # absl/strings:cord when we update absl to a newer version.
     deps = [
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
