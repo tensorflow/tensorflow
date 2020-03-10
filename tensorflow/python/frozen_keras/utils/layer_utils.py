@@ -27,10 +27,8 @@ from tensorflow.python.frozen_keras.utils.conv_utils import convert_kernel
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.utils.get_source_inputs')
 def get_source_inputs(tensor, layer=None, node_index=None):
   """Returns the list of input tensors necessary to compute `tensor`.
 
@@ -329,7 +327,6 @@ def gather_non_trainable_weights(trainable, sub_layers, extra_variables):
 @deprecation.deprecated('2020-06-23',
                         'The Theano kernel format is legacy; '
                         'this utility will be removed.')
-@keras_export('keras.utils.convert_all_kernels_in_model')
 def convert_all_kernels_in_model(model):
   """Converts all convolution kernels in a model from Theano to TensorFlow.
 
