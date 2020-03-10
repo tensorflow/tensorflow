@@ -262,8 +262,8 @@ struct NodeItem {
     return reinterpret_cast<EdgeInfo*>(var());
   }
   AllocatorAttributes* output_attr_base() const {
-    return reinterpret_cast<AllocatorAttributes*>(
-        var() + sizeof(EdgeInfo) * num_output_edges);
+    return reinterpret_cast<AllocatorAttributes*>(var() + sizeof(EdgeInfo) *
+                                                              num_output_edges);
   }
   int* forward_from_base() const {
     return reinterpret_cast<int*>(var() + sizeof(EdgeInfo) * num_output_edges +
