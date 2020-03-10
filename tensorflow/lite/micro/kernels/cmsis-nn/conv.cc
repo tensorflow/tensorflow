@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
-#include "tensorflow/lite/micro/kernels/cmsis-nn/scratch_buffer.h"
 
 namespace tflite {
 namespace ops {
@@ -111,12 +110,59 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
+  void* raw;
+  context->AllocatePersistentBuffer(
+      context, sizeof(int), &raw);
+  return raw;
 }
 
 void Free(TfLiteContext* context, void* buffer) {}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+#if defined(__ARM_FEATURE_DSP)
+  OpData data;
+  int32_t buf_size;
+
+  auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
+
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
+  const TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  RuntimeShape input_shape = GetTensorShape(input);
+
+  const int input_depth = input_shape.Dims(3);
+  const int input_width = input->dims->data[2];
+  const int input_height = input->dims->data[1];
+  const int filter_width = filter->dims->data[2];
+  const int filter_height = filter->dims->data[1];
+  const int output_width = output->dims->data[2];
+  const int output_height = output->dims->data[1];
+
+  int* buffer_idx = reinterpret_cast<int*>(node->user_data);
+
+  TF_LITE_ENSURE_STATUS(CalculateOpData(
+      context, node, params, input_width, input_height, filter_width,
+      filter_height, output_width, output_height, input->type, &data));
+
+  if (data.padding.width == 0 &&
+      data.padding.height == 0 && (input_depth % 4 == 0) &&
+      params->stride_width == 1 &&
+      params->stride_height == 1 && filter_width == 1 && filter_height == 1) {
+    buf_size = arm_convolve_1x1_s8_fast_get_buffer_size(input_depth);
+  }
+  else
+  {
+    buf_size = arm_convolve_s8_get_buffer_size(input_depth, filter_width, filter_height);
+  }
+
+  node->user_data = buffer_idx;
+  if (buf_size > 0)  {
+    context->RequestScratchBufferInArena(context, buf_size, buffer_idx);
+  } else {
+    *buffer_idx = -1;
+  }
+#endif
   return kTfLiteOk;
 }
 
@@ -200,15 +246,16 @@ TfLiteStatus EvalQuantizedPerChannel(
   const int output_width = output_shape.Dims(2);
   int16_t* buf = nullptr;
 
+  auto* buffer_idx = reinterpret_cast<int*>(node->user_data);
+  if (*buffer_idx > -1) {
+    void *raw = context->GetScratchBuffer(context, *buffer_idx);
+    buf = reinterpret_cast<int16_t*>(raw);
+  }
+
   if (op_params.padding_values.width == 0 &&
       op_params.padding_values.height == 0 && (input_depth % 4 == 0) &&
       (output_depth % 2 == 0) && op_params.stride_width == 1 &&
       op_params.stride_height == 1 && filter_width == 1 && filter_height == 1) {
-    const int32_t buf_size =
-        arm_convolve_1x1_s8_fast_get_buffer_size(input_depth);
-    if (get_cmsis_scratch_buffer(context, &buf, buf_size) != kTfLiteOk) {
-      return kTfLiteError;
-    }
     if (arm_convolve_1x1_s8_fast(
             GetTensorData<int8_t>(input), input_width, input_height,
             input_depth, batches, GetTensorData<int8_t>(filter), output_depth,
@@ -222,11 +269,6 @@ TfLiteStatus EvalQuantizedPerChannel(
       return kTfLiteError;
     }
   } else {
-    const int32_t buf_size = arm_convolve_s8_get_buffer_size(
-        input_depth, filter_width, filter_height);
-    if (get_cmsis_scratch_buffer(context, &buf, buf_size) != kTfLiteOk) {
-      return kTfLiteError;
-    }
     if (arm_convolve_s8(
             GetTensorData<int8_t>(input), input_width, input_height,
             input_depth, batches, GetTensorData<int8_t>(filter), output_depth,
