@@ -82,7 +82,7 @@ COMMON_PIP_DEPS = [
     "README",
     "setup.py",
     ":included_headers",
-    ":xla_compiled_cpu_runtime_srcs.txt",
+    ":xla_compiled_cpu_runtime_srcs.txt_file",
     "//tensorflow:tensorflow_py",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_hdrs",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",

@@ -2710,7 +2710,7 @@ def tf_external_workspace_visible(visibility):
     # External workspaces can see this target.
     return ["//visibility:public"]
 
-def _filegroup_as_file(ctx):
+def _filegroup_as_file_impl(ctx):
     out = ctx.actions.declare_file(ctx.label.name)
     ctx.actions.write(
         output = out,
@@ -2718,9 +2718,18 @@ def _filegroup_as_file(ctx):
     )
     return DefaultInfo(files = depset([out]))
 
-filegroup_as_file = rule(
-    implementation = _filegroup_as_file,
+_filegroup_as_file = rule(
+    implementation = _filegroup_as_file_impl,
     attrs = {
         "dep": attr.label(),
     },
 )
+
+def filegroup_as_file(name, dep, visibility = []):
+    """Creates a filegroup ${name}_file which contains the file ${name}."""
+    _filegroup_as_file(name = name, dep = dep)
+    native.filegroup(
+        name = name + "_file",
+        srcs = [name],
+        visibility = visibility,
+    )
