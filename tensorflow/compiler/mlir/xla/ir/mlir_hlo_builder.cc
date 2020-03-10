@@ -39,6 +39,19 @@ static std::string ToString(mlir::Type ty) {
   return str;
 }
 
+// Returns 1D 64-bit dense elements attribute with the given values.
+static mlir::DenseIntElementsAttr GetI64ElementsAttr(
+    absl::Span<const int64> values, mlir::Builder* builder) {
+  auto ty = mlir::RankedTensorType::get({static_cast<int64_t>(values.size())},
+                                        builder->getIntegerType(64));
+  llvm::SmallVector<int64_t, 4> mlir_values;
+  mlir_values.reserve(values.size());
+  for (const auto& value : values) {
+    mlir_values.push_back(value);
+  }
+  return mlir::DenseIntElementsAttr::get(ty, mlir_values);
+}
+
 MlirHloBuilder::~MlirHloBuilder() = default;
 
 StatusOr<XlaOp> MlirHloBuilder::MakeXlaOp(mlir::Value val) {
@@ -51,6 +64,32 @@ StatusOr<XlaOp> MlirHloBuilder::MakeXlaOp(mlir::Value val) {
   int64 handle = reinterpret_cast<int64>(val.getAsOpaquePointer());
   handle_to_shape_[handle] = std::move(shape);
   return XlaOp(handle, this);
+}
+
+StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,
+                                                XlaOp operand,
+                                                int64 inferred_dimension) {
+  TF_RETURN_IF_ERROR(first_error());
+
+  if (inferred_dimension != -1)
+    return Unimplemented("inferred_dimension not yet supported for Reshape op");
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  mlir::Value value = GetValue(operand);
+  auto op = builder_.create<mlir::xla_hlo::ReshapeOp>(loc_, ty, value);
+  return MakeXlaOp(op.getResult());
+}
+
+StatusOr<XlaOp> MlirHloBuilder::InDimBroadcast(
+    const Shape& shape, XlaOp operand,
+    absl::Span<const int64> broadcast_dimensions) {
+  TF_RETURN_IF_ERROR(first_error());
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  mlir::Value value = GetValue(operand);
+  auto op = builder_.create<mlir::xla_hlo::BroadcastInDimOp>(
+      loc_, ty, value, GetI64ElementsAttr(broadcast_dimensions, &builder_));
+  return MakeXlaOp(op.getResult());
 }
 
 XlaOp MlirHloBuilder::UnaryOp(HloOpcode unop, XlaOp operand) {
