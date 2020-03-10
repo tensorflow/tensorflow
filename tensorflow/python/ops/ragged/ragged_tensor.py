@@ -308,7 +308,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       raise TypeError("validate must have type bool")
     values, row_partition = cls._convert_values_and_partition(
         values, row_partition, "partition")
-    if row_partition.has_cached_value_rowids():
+    if row_partition.has_precomputed_value_rowids():
       value_rowids_shape = row_partition.value_rowids().shape
       values.shape[:1].assert_is_compatible_with(value_rowids_shape)
     if validate:
@@ -2500,7 +2500,7 @@ def _get_row_partition_type_tensor_pairs_tail(partition):
   Returns:
     A list of (row_partition_type, row_partition_tensor) pairs.
   """
-  if partition.has_cached_value_rowids():
+  if partition.has_precomputed_value_rowids():
     return ("VALUE_ROWIDS", partition.value_rowids())
   else:
     return ("ROW_SPLITS", partition.row_splits)
