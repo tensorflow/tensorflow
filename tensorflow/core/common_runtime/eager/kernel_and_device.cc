@@ -408,8 +408,8 @@ Status KernelAndDeviceFunc::Run(
   {
     profiler::TraceMe activity(
         [&] {
-          return absl::StrCat("FunctionRun#name=", name(), ",id=",
-                              opts->step_id, "#");
+          return absl::StrCat("FunctionRun#name=", name(),
+                              ",id=", opts->step_id, "#");
         },
         profiler::TraceMeLevel::kInfo);
     pflr_->Run(*opts, handle_, inputs, outputs,
