@@ -2180,8 +2180,11 @@ def async_scope():
   try:
     os.environ[remote_async_env_var] = str(True)
     yield
-  finally:
+    # Note: sync local and remote executors iff the async block does not raise
+    # an exception. Triggering sync after an exception may lead to derived
+    # runtime errors and unexpected exception types.
     context().sync_executors()
+  finally:
     if old_policy is None:
       del os.environ[remote_async_env_var]
     else:
