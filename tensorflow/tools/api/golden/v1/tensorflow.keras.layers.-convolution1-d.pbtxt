@@ -1,5 +1,6 @@
 path: "tensorflow.keras.layers.Convolution1D"
 tf_class {
+  is_instance:python3 -c "import tensorflow as tf; print(tf.reduce_sum(tf.random.normal([1000, 1000])))"
   is_instance: "<class \'tensorflow.python.keras.layers.convolutional.Conv1D\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.convolutional.Conv\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
