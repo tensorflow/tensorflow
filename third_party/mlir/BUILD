@@ -323,9 +323,7 @@ cc_library(
     hdrs = glob([
         "include/mlir/Dialect/AffineOps/*.h",
         "include/mlir/Dialect/AffineOps/EDSC/*.h",
-    ]) + [
-        "include/mlir/Transforms/SideEffectsInterface.h",
-    ],
+    ]),
     includes = ["include"],
     deps = [
         ":AffineOpsIncGen",
@@ -391,7 +389,6 @@ cc_library(
         "include/mlir/Dialect/LoopOps/EDSC/*.h",
     ]) + [
         "include/mlir/Transforms/LoopLikeInterface.h",
-        "include/mlir/Transforms/SideEffectsInterface.h",
     ],
     includes = ["include"],
     deps = [
