@@ -152,8 +152,8 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
       }
 
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-      bool cancelled_ GUARDED_BY(mu_) = false;
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+      bool cancelled_ TF_GUARDED_BY(mu_) = false;
       std::function<void()> deregister_fn_;
     };
 

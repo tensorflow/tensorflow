@@ -1947,7 +1947,7 @@ TEST(MutableGraphViewTest, SwapRegularFaninsByPorts) {
                                /*to_port=*/2, /*success=*/true, error_msg,
                                {"a", "b:2", "b:2", "^c", "^d"});
 
-  // Swaping fanins at out of bounds ports.
+  // Swapping fanins at out of bounds ports.
   // Node with no regular fanins and no controls.
   error_msg =
       "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_5', "

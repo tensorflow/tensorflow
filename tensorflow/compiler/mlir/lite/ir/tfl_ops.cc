@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -66,13 +67,29 @@ struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
   }
 };
 
+struct TensorFlowLiteOpFolderDialectInterface
+    : public OpFolderDialectInterface {
+  using OpFolderDialectInterface::OpFolderDialectInterface;
+
+  // Registered hook to check if the given region, which is attached to an
+  // operation that is *not* isolated from above (i.e. no internal regions
+  // reference values defined in an enclosing region), should be used when
+  // materializing constants.
+  // In the TFLite dialect we materialize inside a while regions as slightly
+  // more efficient computationally.
+  bool shouldMaterializeInto(Region *region) const final {
+    return isa<WhileOp>(region->getParentOp());
+  }
+};
+
 TensorFlowLiteDialect::TensorFlowLiteDialect(mlir::MLIRContext *context)
     : Dialect(/*name=*/"tfl", context) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
       >();
-  addInterfaces<TensorFlowLiteInlinerInterface>();
+  addInterfaces<TensorFlowLiteInlinerInterface,
+                TensorFlowLiteOpFolderDialectInterface>();
 }
 
 //===----------------------------------------------------------------------===//

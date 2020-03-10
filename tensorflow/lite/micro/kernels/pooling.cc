@@ -174,7 +174,7 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, input, output, &data));
 
-  // Inputs and outputs share the same type, guarenteed by the converter.
+  // Inputs and outputs share the same type, guaranteed by the converter.
   switch (input->type) {
     case kTfLiteFloat32:
       AverageEvalFloat(context, node, params, &data, input, output);

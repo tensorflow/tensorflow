@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -1178,4 +1179,23 @@ def partitioned_call(args,
     op_attrs[xla_compile_attr] = f.definition.attr[xla_compile_attr]
   op = graph.create_op(op_name, args, tout, name=op_name, attrs=op_attrs)
   outputs = op.outputs
+  if hasattr(f, "graph"):
+    _set_read_only_resource_inputs_attr(op, f.graph)
+    if hasattr(f.graph, "collective_manager_ids_used"):
+      ops.set_int_list_attr(
+          op, acd.COLLECTIVE_MANAGER_IDS, f.graph.collective_manager_ids_used)
   return outputs if outputs else op
+
+
+def _set_read_only_resource_inputs_attr(op, func_graph):
+  """Sets the list of resource inputs which are read-only.
+
+  This is used by AutomaticControlDependencies.
+
+  Args:
+    op: PartitionedCall Operation.
+    func_graph: FuncGraph.
+  """
+  read_only_indices = acd.get_read_only_resource_input_indices_graph(func_graph)
+  ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
+                        read_only_indices)

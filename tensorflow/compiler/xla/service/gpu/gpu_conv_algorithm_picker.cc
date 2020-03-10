@@ -268,9 +268,9 @@ ConvCacheKey AutotuneCacheKeyfromInstruction(
 }
 
 tensorflow::mutex autotune_cache_lock(tensorflow::LINKER_INITIALIZED);
-auto& autotune_cache GUARDED_BY(autotune_cache_lock) =
+auto& autotune_cache TF_GUARDED_BY(autotune_cache_lock) =
     *new absl::flat_hash_map<ConvCacheKey, AutotuneResult>();
-auto& autotune_cache_stats GUARDED_BY(autotune_cache_lock) =
+auto& autotune_cache_stats TF_GUARDED_BY(autotune_cache_lock) =
     *new ConvCacheStats();
 }  // anonymous namespace
 

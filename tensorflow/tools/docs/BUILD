@@ -34,6 +34,7 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/preprocessing",
         "//third_party/py/numpy",
     ],
 )

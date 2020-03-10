@@ -524,7 +524,7 @@ bool IsWhiteListedOpTypeForEvaluateNode(const string& op_type) {
           "TruncateDiv",
           "TruncateMod",
           "RealDiv",
-          // N-ary arithemtic ops
+          // N-ary arithmetic ops
           "AddN",
           // Others
           "StridedSlice",
@@ -1313,7 +1313,7 @@ class SymbolicShapeRefiner {
     return true;
   }
 
-  // Create input tensors from the NodeConext.
+  // Create input tensors from the NodeContext.
   void CreateInputTensors(NodeContext* c,
                           std::vector<Tensor>* input_tensor_vector,
                           TensorVector* inputs) {
@@ -1362,7 +1362,7 @@ class SymbolicShapeRefiner {
 
     // Input to EvaluateNode()
     TensorVector inputs;
-    // Container for temporaily created tensor object.
+    // Container for temporarily created tensor object.
     std::vector<Tensor> input_tensor_vector(ic->num_inputs());
     CreateInputTensors(c, &input_tensor_vector, &inputs);
 

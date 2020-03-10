@@ -169,7 +169,7 @@ class MultiDeviceIterator : public ResourceBase {
       Reset();
     }
 
-    void Reset() LOCKS_EXCLUDED(mu_) {
+    void Reset() TF_LOCKS_EXCLUDED(mu_) {
       {
         mutex_lock l(mu_);
         if (background_thread_ && !background_thread_finished_) {
@@ -237,7 +237,7 @@ class MultiDeviceIterator : public ResourceBase {
 
    private:
     void EnsureBackgroundThreadStarted(IteratorContext* ctx)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!background_thread_) {
         auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
         background_thread_ =
@@ -249,7 +249,7 @@ class MultiDeviceIterator : public ResourceBase {
       }
     }
 
-    void RunPendingCallbacks() LOCKS_EXCLUDED(mu_) {
+    void RunPendingCallbacks() TF_LOCKS_EXCLUDED(mu_) {
       // Run all remaining callbacks.
       std::vector<MultiDeviceIteratorCallback> cancellation_callbacks;
       std::vector<HostBufferElement> cancellation_elements;
@@ -354,12 +354,12 @@ class MultiDeviceIterator : public ResourceBase {
     };
 
     mutex mu_;
-    std::unique_ptr<Thread> background_thread_ GUARDED_BY(mu_);
-    bool background_thread_finished_ GUARDED_BY(mu_) = false;
-    bool background_thread_started_ GUARDED_BY(mu_) = false;
-    bool end_of_iterator_ GUARDED_BY(mu_) = false;
-    bool cancelled_ GUARDED_BY(mu_) = false;
-    condition_variable shutdown_cond_var_ GUARDED_BY(mu_);
+    std::unique_ptr<Thread> background_thread_ TF_GUARDED_BY(mu_);
+    bool background_thread_finished_ TF_GUARDED_BY(mu_) = false;
+    bool background_thread_started_ TF_GUARDED_BY(mu_) = false;
+    bool end_of_iterator_ TF_GUARDED_BY(mu_) = false;
+    bool cancelled_ TF_GUARDED_BY(mu_) = false;
+    condition_variable shutdown_cond_var_ TF_GUARDED_BY(mu_);
 
     std::vector<HostBuffer> buffer_;
 
@@ -382,8 +382,8 @@ class MultiDeviceIterator : public ResourceBase {
   ResourceMgr resource_mgr_;
   CancellationManager cancellation_manager_;
 
-  int64 incarnation_id_ GUARDED_BY(mu_) = 0;
-  std::unique_ptr<MultiDeviceBuffer> multi_device_buffer_ GUARDED_BY(mu_);
+  int64 incarnation_id_ TF_GUARDED_BY(mu_) = 0;
+  std::unique_ptr<MultiDeviceBuffer> multi_device_buffer_ TF_GUARDED_BY(mu_);
 };
 
 // Used to generate unique names for anonymous multi device iterators.
@@ -417,7 +417,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
     }
   }
 
-  void Compute(OpKernelContext* context) override LOCKS_EXCLUDED(mu_) {
+  void Compute(OpKernelContext* context) override TF_LOCKS_EXCLUDED(mu_) {
     string unique_name = cinfo_.name();
     string container_name = cinfo_.container();
     {
@@ -455,7 +455,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
                              container_name, unique_name, &resource,
                              [this, context, flr, &flib_def, &pflr,
                               &function_handle_cache](MultiDeviceIterator** ret)
-                                 EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                                 TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                                    *ret = new MultiDeviceIterator(
                                        context->env(), output_types_,
                                        output_shapes_, devices_,
@@ -494,7 +494,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
 
   mutex mu_;
   ContainerInfo cinfo_;  // Written once under mu_ then constant afterwards.
-  MultiDeviceIterator* resource_ GUARDED_BY(mu_) = nullptr;
+  MultiDeviceIterator* resource_ TF_GUARDED_BY(mu_) = nullptr;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   const int graph_def_version_;
@@ -573,7 +573,8 @@ class MultiDeviceIteratorInitOp : public OpKernel {
 
     IteratorContext iter_ctx(std::move(params));
     OP_REQUIRES_OK(
-        ctx, dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));
+        ctx, dataset->MakeIterator(std::move(iter_ctx), /*parent=*/nullptr,
+                                   "Iterator", &iterator));
     int64 incarnation_id;
     OP_REQUIRES_OK(ctx, resource->Init(std::move(iterator), max_buffer_size,
                                        &incarnation_id));

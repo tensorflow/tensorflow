@@ -95,6 +95,7 @@ filegroup(
     srcs = [
         "c_api_experimental.h",
         "c_api_internal.h",
+        "dlpack.h",
         "operation_interface.h",
         "tensor_handle_interface.h",
     ],
@@ -328,8 +329,31 @@ filegroup(
     srcs = [
         "c_api.h",
         "c_api_experimental.h",
+        "dlpack.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+cc_library(
+    name = "dlpack",
+    srcs = ["dlpack.cc"],
+    hdrs = ["dlpack.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_internal",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "@dlpack",
+    ],
 )
 
 # TODO(karllessard): only used by //tensorflow/core:mobile_srcs_only_runtime
@@ -345,6 +369,7 @@ filegroup(
         exclude = [
             "c_api_experimental.cc",
             "*test*",
+            "*dlpack*",
         ],
     ),
     visibility = ["//visibility:public"],

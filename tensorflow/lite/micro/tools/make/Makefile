@@ -1,4 +1,3 @@
-
 ifneq (3.82,$(firstword $(sort $(MAKE_VERSION) 3.82)))
   $(error "Requires make version 3.82 or later (current is $(MAKE_VERSION))")
 endif
@@ -65,17 +64,23 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
 MICROLITE_LIBS := -lm
 
-# There are no rules for compiling objects for the host system (since we don't
-# generate things like the protobuf compiler that require that), so all of
-# these settings are for the target compiler.
-CXXFLAGS := -O3
-CXXFLAGS += -std=c++11 -g -DTF_LITE_STATIC_MEMORY
-CXXFLAGS += -fno-rtti
-CCFLAGS := -g -DTF_LITE_STATIC_MEMORY
-LDOPTS := -L/usr/local/lib
+# TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
+CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY
+CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY
 ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
 CC_PREFIX :=
+
+ifeq ($(BUILD_TYPE), debug)
+	CXXFLAGS += -DDEBUG -g
+	CCFLAGS  += -DDEBUG -g
+else ifeq ($(BUILD_TYPE), release)
+	CXXFLAGS += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
+	CCFLAGS  += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
+else
+	CXXFLAGS += -O3
+	CCFLAGS  += -O3
+endif
 
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
@@ -87,6 +92,9 @@ MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/micro/*test.cc) \
 $(wildcard tensorflow/lite/micro/kernels/*test.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
+
+MICROLITE_BENCHMARK_SRCS := \
+$(wildcard tensorflow/lite/micro/kernels/xtensa-hifimini/*benchmark.cc)
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
@@ -101,9 +109,11 @@ tensorflow/lite/core/api/flatbuffer_conversions.cc \
 tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/core/api/tensor_utils.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc \
-tensorflow/lite/kernels/kernel_util.cc
+tensorflow/lite/kernels/kernel_util.cc \
+tensorflow/lite/micro/testing/test_utils.cc
 
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
+MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_BENCHMARK_SRCS), $(MICROLITE_CC_SRCS))
 
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/micro/*.h) \

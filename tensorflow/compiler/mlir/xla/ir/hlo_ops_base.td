@@ -18,7 +18,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 
-def HLO_Int : IntOfWidths<[8, 16, 32, 64]>;
+def HLO_Int : SignlessIntOfWidths<[8, 16, 32, 64]>;
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
 // The broadcasting dimensions correspond to a tuple that describes how a
@@ -703,8 +703,8 @@ class BASE_HLO_AllToAllOp {
     AllToAll is a collective operation that sends data from all cores to all
     cores. It has two phases:
     - The scatter phase. On each core, the operand is split into `split_count`
-      number of blocks along the `split_dimensions`, and the blocks are
-      scattered to all cores, e.g., the i-th block is send to the i-th core.
+      number of blocks along the `split_dimension`, and the blocks are
+      scattered to all cores, e.g., the i-th block is sent to the i-th core.
     - The gather phase. Each core concatenates the received blocks along the
       `concat_dimension`.
 
@@ -718,7 +718,7 @@ class BASE_HLO_AllToAllOp {
       will be concatenated in the same order of 1, 2, 3. Then, another AllToAll
       will be applied within replicas 4, 5, 0, and the concatenation order is
       also 4, 5, 0. If `replica_groups` is empty, all replicas belong to one
-      group, in the concatenation order of their appearance.
+      group, and the concatenation order is the numerical order (0, 1, 2, ...).
 
     Prerequisites:
     - The dimension size of the operand on the split_dimension is divisible by

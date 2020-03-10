@@ -37,6 +37,7 @@
 #     v2: Build TF v2
 #
 # Feature and Third party library support options:
+#     xla:          Build TF with XLA
 #     using_cuda:   CUDA is available to build system.
 #     cuda:         Build with full cuda support.
 #     rocm:         Build with AMD GPU support (rocm).
@@ -45,7 +46,6 @@
 #     sycl_asan:
 #     sycl_trisycl:
 #     mkl:          Enable full mkl support.
-#     mkl_open_source_only: Enable MKL support only using open source MKL libraries.
 #     tensorrt:     Enable Tensorrt support.
 #     ngraph:       Enable ngraph support.
 #     numa:         Enable numa using hwloc.
@@ -136,14 +136,8 @@ build --host_java_toolchain=//third_party/toolchains/java:tf_java_toolchain
 # environment variable "TF_MKL_ROOT" every time before build.
 build:mkl --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl --define=tensorflow_mkldnn_contraction_kernel=0
+build:mkl --define=build_with_mkl_dnn_v1_only=true
 build:mkl -c opt
-
-# This config option is used to enable MKL-DNN open source library only,
-# without depending on MKL binary version.
-build:mkl_open_source_only --define=build_with_mkl_dnn_only=true
-build:mkl_open_source_only --define=build_with_mkl_dnn_v1_only=true
-build:mkl_open_source_only --define=build_with_mkl=true --define=enable_mkl=true
-build:mkl_open_source_only --define=tensorflow_mkldnn_contraction_kernel=0
 
 # This config refers to building with CUDA available. It does not necessarily
 # mean that we build CUDA op kernels.
@@ -226,14 +220,6 @@ build --noincompatible_remove_legacy_whole_archive
 # https://github.com/tensorflow/community/pull/179
 build --noincompatible_prohibit_aapt1
 
-# Enable XLA
-build --action_env=TF_ENABLE_XLA=1
-build --define=with_xla_support=true
-
-# Keep config XLA until all build scripts are cleaned up.
-build:xla --action_env=TF_ENABLE_XLA=1
-build:xla --define=with_xla_support=true
-
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
@@ -254,6 +240,7 @@ build:windows --copt=/w
 # Tensorflow uses M_* math constants that only get defined by MSVC headers if
 # _USE_MATH_DEFINES is defined.
 build:windows --copt=/D_USE_MATH_DEFINES
+build:windows --host_copt=/D_USE_MATH_DEFINES
 
 # Default paths for TF_SYSTEM_LIBS
 build:linux --define=PREFIX=/usr
@@ -319,6 +306,10 @@ build:v2 --action_env=TF2_BEHAVIOR=1
 build --config=v2
 test --config=v2
 
+# Enable XLA
+build:xla --action_env=TF_ENABLE_XLA=1
+build:xla --define=with_xla_support=true
+
 # BEGIN TF REMOTE BUILD EXECUTION OPTIONS
 # Options when using remote execution
 # WARNING: THESE OPTIONS WONT WORK IF YOU DO NOT HAVE PROPER AUTHENTICATION AND PERMISSIONS
@@ -351,6 +342,7 @@ build:rbe_linux --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
 build:rbe_linux --java_toolchain=@bazel_tools//tools/jdk:toolchain_hostjdk8
 
 # Non-rbe settings we should include because we do not run configure
+build:rbe_linux --config=xla
 build:rbe_linux --config=avx_linux
 build:rbe_linux --config=short_logs
 # TODO(gunan): Check why we need this specified in rbe, but not in other builds.
@@ -365,13 +357,14 @@ build:rbe_cpu_linux --host_platform="@org_tensorflow//third_party/toolchains:rbe
 build:rbe_cpu_linux --platforms="@org_tensorflow//third_party/toolchains:rbe_ubuntu16.04-manylinux2010"
 
 build:rbe_linux_cuda_nvcc --config=rbe_linux
-build:rbe_linux_cuda_nvcc --crosstool_top="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain"
-build:rbe_linux_cuda_nvcc --extra_toolchains="//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain-linux-x86_64"
-build:rbe_linux_cuda_nvcc --extra_execution_platforms="@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010,@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010"
-build:rbe_linux_cuda_nvcc --host_platform="@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010"
-build:rbe_linux_cuda_nvcc --platforms="@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010"
-build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/cuda10.1-cudnn7"
-build:rbe_linux_cuda_nvcc --repo_env=TF_TENSORRT_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/tensorrt6.0"
+build:rbe_linux_cuda_nvcc --crosstool_top="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda_nvcc --extra_toolchains="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cuda_nvcc --extra_execution_platforms="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
+build:rbe_linux_cuda_nvcc --host_platform="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
+build:rbe_linux_cuda_nvcc --platforms="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
+build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda"
+build:rbe_linux_cuda_nvcc --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_tensorrt"
+build:rbe_linux_cuda_nvcc --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_nccl"
 build:rbe_linux_cuda_nvcc --repo_env=TF_NEED_TENSORRT=1
 build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_VERSION=10
 build:rbe_linux_cuda_nvcc --repo_env=TF_CUDNN_VERSION=7
@@ -392,13 +385,13 @@ build:rbe_linux_py3 --python_path="/usr/bin/python3"
 build:rbe_linux_py3 --repo_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-manylinux2010-py3_config_python"
 
 build:rbe_win --config=rbe
-build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win_1803/bazel_121:toolchain"
-build:rbe_win --extra_execution_platforms="@org_tensorflow//third_party/toolchains/preconfig/win_1803:rbe_windows_1803"
-build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win_1803/bazel_121:cc-toolchain-x64_windows"
-build:rbe_win --host_javabase="@org_tensorflow//third_party/toolchains/preconfig/win_1803:windows_jdk8"
-build:rbe_win --host_platform="@org_tensorflow//third_party/toolchains/preconfig/win_1803:rbe_windows_1803"
-build:rbe_win --javabase="@org_tensorflow//third_party/toolchains/preconfig/win_1803:windows_jdk8"
-build:rbe_win --platforms="@org_tensorflow//third_party/toolchains/preconfig/win_1803:rbe_windows_1803"
+build:rbe_win --crosstool_top="@org_tensorflow//third_party/toolchains/preconfig/win/bazel_211:toolchain"
+build:rbe_win --extra_toolchains="@org_tensorflow//third_party/toolchains/preconfig/win/bazel_211:cc-toolchain-x64_windows"
+build:rbe_win --host_javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
+build:rbe_win --javabase="@org_tensorflow//third_party/toolchains/preconfig/win:windows_jdk8"
+build:rbe_win --extra_execution_platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
+build:rbe_win --host_platform="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
+build:rbe_win --platforms="@org_tensorflow//third_party/toolchains/preconfig/win:rbe_windows_ltsc2019"
 build:rbe_win --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 
 # TODO(gunan): Remove once we use MSVC 2019 with latest patches.
@@ -424,7 +417,6 @@ build:tensorflow_testing_rbe_linux --config=rbe_linux
 
 common:tensorflow_testing_rbe_win --remote_instance_name=projects/tensorflow-testing/instances/windows
 build:tensorflow_testing_rbe_win --config=tensorflow_testing_rbe
-build:tensorflow_testing_rbe_win --config=rbe_win
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
 # Default options should come above this line

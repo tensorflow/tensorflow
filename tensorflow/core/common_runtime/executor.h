@@ -83,9 +83,6 @@ class Executor {
   //
   // RunAsync() dispatches closures to "runner". Typically, "runner"
   // is backed up by a bounded threadpool.
-  typedef std::function<Status(const int64, const DeviceMgr*, Rendezvous** r)>
-      RendezvousFactory;
-
   struct Args {
     int64 step_id = 0;
     RendezvousInterface* rendezvous = nullptr;
@@ -149,9 +146,8 @@ struct LocalExecutorParams {
                        OpKernel**)>
       create_kernel;
   std::function<void(OpKernel*)> delete_kernel;
-
-  Executor::RendezvousFactory rendezvous_factory;
 };
+
 ::tensorflow::Status NewLocalExecutor(const LocalExecutorParams& params,
                                       const Graph& graph, Executor** executor);
 
@@ -188,8 +184,8 @@ class ExecutorBarrier {
   StatusCallback done_cb_ = nullptr;
 
   mutable mutex mu_;
-  int pending_ GUARDED_BY(mu_) = 0;
-  StatusGroup status_group_ GUARDED_BY(mu_);
+  int pending_ TF_GUARDED_BY(mu_) = 0;
+  StatusGroup status_group_ TF_GUARDED_BY(mu_);
 
   void WhenDone(const Status& s) {
     Rendezvous* error_rendez = nullptr;

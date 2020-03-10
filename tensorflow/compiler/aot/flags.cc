@@ -24,6 +24,13 @@ void AppendMainFlags(std::vector<Flag>* flag_list, MainFlags* flags) {
        "Input GraphDef file.  If the file ends in '.pbtxt' it is expected to "
        "be in the human-readable proto text format, otherwise it is expected "
        "to be in the proto binary format."},
+      {"debug_info", &flags->debug_info,
+       "Graph debug info file.  If the file ends in '.pbtxt' it is expected to "
+       "be in the human-readable proto text format, otherwise it is expected "
+       "to be in the proto binary format."},
+      {"debug_info_path_begin_marker", &flags->debug_info_path_begin_marker,
+       "If not none, only keep the file path in the debug information after the"
+       " marker. The default value is empty"},
       {"config", &flags->config,
        "Input file containing Config proto.  If the file ends in '.pbtxt' it "
        "is expected to be in the human-readable proto text format, otherwise "

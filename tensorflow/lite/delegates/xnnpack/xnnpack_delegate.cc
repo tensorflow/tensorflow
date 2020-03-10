@@ -98,7 +98,7 @@ class Subgraph {
         /*external_value_ids=*/context->tensors_size, /*flags=*/0,
         &subgraph_ptr);
     if (status != xnn_status_success) {
-      context->ReportError(context, "failed to create XNNPACK subgraph");
+      TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK subgraph");
       return nullptr;
     }
 
@@ -138,7 +138,7 @@ class Subgraph {
     std::vector<uint32_t> xnnpack_tensors(tensors.back() + 1);
     for (int t : tensors) {
       if (context->tensors[t].type != kTfLiteFloat32) {
-        context->ReportError(
+        TF_LITE_KERNEL_LOG(
             context,
             "unsupported datatype (%s) of tensor %d in XNNPACK delegate",
             TfLiteTypeGetName(context->tensors[t].type), t);
@@ -168,8 +168,8 @@ class Subgraph {
           subgraph.get(), xnn_datatype_fp32, dims.size(), dims.data(), data,
           static_cast<uint32_t>(t), flags, &xnnpack_tensors[t]);
       if (status != xnn_status_success) {
-        context->ReportError(context,
-                             "failed to create XNNPACK Value for tensor %d", t);
+        TF_LITE_KERNEL_LOG(context,
+                           "failed to create XNNPACK Value for tensor %d", t);
         return nullptr;
       }
     }
@@ -194,7 +194,7 @@ class Subgraph {
     status = xnn_create_runtime_v2(subgraph.get(), threadpool, /*flags=*/0,
                                    &runtime_ptr);
     if (status != xnn_status_success) {
-      context->ReportError(context, "failed to create XNNPACK runtime");
+      TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
       return nullptr;
     }
 
@@ -216,7 +216,7 @@ class Subgraph {
       const xnn_status status = xnn_setup_runtime(
           runtime_.get(), external_values.size(), external_values.data());
       if (status != xnn_status_success) {
-        context->ReportError(context, "failed to setup XNNPACK runtime");
+        TF_LITE_KERNEL_LOG(context, "failed to setup XNNPACK runtime");
         return kTfLiteError;
       }
 
@@ -225,7 +225,7 @@ class Subgraph {
 
     const xnn_status status = xnn_invoke_runtime(runtime_.get());
     if (status != xnn_status_success) {
-      context->ReportError(context, "failed to invoke XNNPACK runtime");
+      TF_LITE_KERNEL_LOG(context, "failed to invoke XNNPACK runtime");
       return kTfLiteError;
     }
 
@@ -245,8 +245,8 @@ class Subgraph {
         return kTfLiteOk;
       default:
         if (context != nullptr) {
-          context->ReportError(context, "invalid padding mode (%d) in node #%d",
-                               static_cast<int>(padding), node_index);
+          TF_LITE_KERNEL_LOG(context, "invalid padding mode (%d) in node #%d",
+                             static_cast<int>(padding), node_index);
         }
         return kTfLiteError;
     }
@@ -274,30 +274,30 @@ class Subgraph {
         return kTfLiteOk;
       case kTfLiteActTanh:
         if (context != nullptr) {
-          context->ReportError(
-              context, "unsupported fused activation (Tanh) in node #%d",
-              node_index);
+          TF_LITE_KERNEL_LOG(context,
+                             "unsupported fused activation (Tanh) in node #%d",
+                             node_index);
         }
         return kTfLiteError;
       case kTfLiteActSignBit:
         if (context != nullptr) {
-          context->ReportError(
-              context, "unsupported fused activation (Sign) in node #%d",
-              node_index);
+          TF_LITE_KERNEL_LOG(context,
+                             "unsupported fused activation (Sign) in node #%d",
+                             node_index);
         }
         return kTfLiteError;
       case kTfLiteActSigmoid:
         if (context != nullptr) {
-          context->ReportError(
+          TF_LITE_KERNEL_LOG(
               context, "unsupported fused activation (Sigmoid) in node #%d",
               node_index);
         }
         return kTfLiteError;
       default:
         if (context != nullptr) {
-          context->ReportError(context,
-                               "invalid fused activation (%d) in node #%d",
-                               static_cast<int>(activation), node_index);
+          TF_LITE_KERNEL_LOG(context,
+                             "invalid fused activation (%d) in node #%d",
+                             static_cast<int>(activation), node_index);
         }
         return kTfLiteError;
     }
@@ -308,32 +308,32 @@ class Subgraph {
                                              int node_index) {
     if (params->stride_width <= 0) {
       if (context != nullptr) {
-        context->ReportError(context, "invalid stride width %d in node #%d",
-                             params->stride_width, node_index);
+        TF_LITE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
+                           params->stride_width, node_index);
       }
       return kTfLiteError;
     }
     if (params->stride_height <= 0) {
       if (context != nullptr) {
-        context->ReportError(context, "invalid stride height %d in node #%d",
-                             params->stride_height, node_index);
+        TF_LITE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
+                           params->stride_height, node_index);
       }
       return kTfLiteError;
     }
 
     if (params->dilation_width_factor <= 0) {
       if (context != nullptr) {
-        context->ReportError(context,
-                             "invalid dilation width factor %d in node #%d",
-                             params->dilation_width_factor, node_index);
+        TF_LITE_KERNEL_LOG(context,
+                           "invalid dilation width factor %d in node #%d",
+                           params->dilation_width_factor, node_index);
       }
       return kTfLiteError;
     }
     if (params->dilation_height_factor <= 0) {
       if (context != nullptr) {
-        context->ReportError(context,
-                             "invalid dilation height factor %d in node #%d",
-                             params->dilation_height_factor, node_index);
+        TF_LITE_KERNEL_LOG(context,
+                           "invalid dilation height factor %d in node #%d",
+                           params->dilation_height_factor, node_index);
       }
       return kTfLiteError;
     }
@@ -346,50 +346,50 @@ class Subgraph {
       int output_channels, int node_index) {
     if (params->stride_width <= 0) {
       if (context != nullptr) {
-        context->ReportError(context, "invalid stride width %d in node #%d",
-                             params->stride_width, node_index);
+        TF_LITE_KERNEL_LOG(context, "invalid stride width %d in node #%d",
+                           params->stride_width, node_index);
       }
       return kTfLiteError;
     }
     if (params->stride_height <= 0) {
       if (context != nullptr) {
-        context->ReportError(context, "invalid stride height %d in node #%d",
-                             params->stride_height, node_index);
+        TF_LITE_KERNEL_LOG(context, "invalid stride height %d in node #%d",
+                           params->stride_height, node_index);
       }
       return kTfLiteError;
     }
 
     if (params->depth_multiplier <= 0) {
       if (context != nullptr) {
-        context->ReportError(context, "invalid depth multiplier %d in node #%d",
-                             params->depth_multiplier, node_index);
+        TF_LITE_KERNEL_LOG(context, "invalid depth multiplier %d in node #%d",
+                           params->depth_multiplier, node_index);
       }
       return kTfLiteError;
     }
     if (output_channels % params->depth_multiplier != 0) {
       if (context != nullptr) {
-        context->ReportError(context,
-                             "depth multiplier %d is incompatible with "
-                             "number of output channels %d in node #%d",
-                             params->depth_multiplier, output_channels,
-                             node_index);
+        TF_LITE_KERNEL_LOG(context,
+                           "depth multiplier %d is incompatible with "
+                           "number of output channels %d in node #%d",
+                           params->depth_multiplier, output_channels,
+                           node_index);
       }
       return kTfLiteError;
     }
 
     if (params->dilation_width_factor <= 0) {
       if (context != nullptr) {
-        context->ReportError(context,
-                             "invalid dilation width factor %d in node #%d",
-                             params->dilation_width_factor, node_index);
+        TF_LITE_KERNEL_LOG(context,
+                           "invalid dilation width factor %d in node #%d",
+                           params->dilation_width_factor, node_index);
       }
       return kTfLiteError;
     }
     if (params->dilation_height_factor <= 0) {
       if (context != nullptr) {
-        context->ReportError(context,
-                             "invalid dilation height factor %d in node #%d",
-                             params->dilation_height_factor, node_index);
+        TF_LITE_KERNEL_LOG(context,
+                           "invalid dilation height factor %d in node #%d",
+                           params->dilation_height_factor, node_index);
       }
       return kTfLiteError;
     }
@@ -404,15 +404,15 @@ class Subgraph {
                                                int node_index) {
     if (node->inputs->size != expected_num_inputs) {
       if (context != nullptr) {
-        context->ReportError(
-            context, "unexpected number of inputs (%d != %d) in node #%d",
-            node->inputs->size, expected_num_inputs, node_index);
+        TF_LITE_KERNEL_LOG(context,
+                           "unexpected number of inputs (%d != %d) in node #%d",
+                           node->inputs->size, expected_num_inputs, node_index);
       }
       return kTfLiteError;
     }
     if (node->outputs->size != expected_num_outputs) {
       if (context != nullptr) {
-        context->ReportError(
+        TF_LITE_KERNEL_LOG(
             context, "unexpected number of output (%d != %d) in node #%d",
             node->outputs->size, expected_num_outputs, node_index);
       }
@@ -426,7 +426,7 @@ class Subgraph {
                                            int tensor_index, int node_index) {
     if (tensor.type != kTfLiteFloat32) {
       if (context != nullptr) {
-        context->ReportError(
+        TF_LITE_KERNEL_LOG(
             context, "unsupported type %s in tensor #%d in node #%d",
             TfLiteTypeGetName(tensor.type), tensor_index, node_index);
       }
@@ -441,7 +441,7 @@ class Subgraph {
                                        int tensor_index) {
     if (tensor.dims->size != expected_num_dims) {
       if (context != nullptr) {
-        context->ReportError(
+        TF_LITE_KERNEL_LOG(
             context,
             "unexpected number of shape dimensions (%d != %d) in tensor #%d",
             tensor.dims->size, expected_num_dims, tensor_index);
@@ -450,9 +450,8 @@ class Subgraph {
     }
     for (int i = 0; i < tensor.dims->size; i++) {
       if (tensor.dims->data[i] <= 0) {
-        context->ReportError(context,
-                             "invalid dimension #%d (%d) in tensor #%d", i,
-                             tensor.dims->data[i], tensor_index);
+        TF_LITE_KERNEL_LOG(context, "invalid dimension #%d (%d) in tensor #%d",
+                           i, tensor.dims->data[i], tensor_index);
         return kTfLiteError;
       }
     }
@@ -464,11 +463,11 @@ class Subgraph {
                                             int tensor_index, int node_index) {
     if (tensor.dims->size < 1) {
       if (context != nullptr) {
-        context->ReportError(context,
-                             "unexpected number of shape dimensions (%d) in "
-                             "tensor #%d in node #%d: "
-                             "expected at least a 1D tensor",
-                             tensor.dims->size, tensor_index, node_index);
+        TF_LITE_KERNEL_LOG(context,
+                           "unexpected number of shape dimensions (%d) in "
+                           "tensor #%d in node #%d: "
+                           "expected at least a 1D tensor",
+                           tensor.dims->size, tensor_index, node_index);
       }
       return kTfLiteError;
     }
@@ -476,11 +475,11 @@ class Subgraph {
     for (int i = 0; i < tensor.dims->size - 1; i++) {
       if (tensor.dims->data[i] != 1) {
         if (context != nullptr) {
-          context->ReportError(context,
-                               "unexpected value %d of shape dimension #%d in "
-                               "tensor #%d in node #%d: "
-                               "expected 1 for non-channel dimensions",
-                               tensor.dims[i], i, tensor_index, node_index);
+          TF_LITE_KERNEL_LOG(context,
+                             "unexpected value %d of shape dimension #%d in "
+                             "tensor #%d in node #%d: "
+                             "expected 1 for non-channel dimensions",
+                             tensor.dims[i], i, tensor_index, node_index);
         }
         return kTfLiteError;
       }
@@ -494,11 +493,10 @@ class Subgraph {
     // TODO(b/149120844): remove checks once dynamic tensors are supported
     if (tensor.allocation_type == kTfLiteDynamic) {
       if (context != nullptr) {
-        context->ReportError(
-            context,
-            "invalid allocation type in tensor #%d in node #%d: "
-            "expected non-dynamic tensor",
-            tensor_index, node_index);
+        TF_LITE_KERNEL_LOG(context,
+                           "invalid allocation type in tensor #%d in node #%d: "
+                           "expected non-dynamic tensor",
+                           tensor_index, node_index);
       }
       return kTfLiteError;
     }
@@ -512,11 +510,10 @@ class Subgraph {
     if (tensor.allocation_type != kTfLiteMmapRo ||
         tensor.data.raw_const == nullptr) {
       if (context != nullptr) {
-        context->ReportError(
-            context,
-            "invalid allocation type in tensor #%d in node #%d: "
-            "expected static read-only tensor",
-            tensor_index, node_index);
+        TF_LITE_KERNEL_LOG(context,
+                           "invalid allocation type in tensor #%d in node #%d: "
+                           "expected static read-only tensor",
+                           tensor_index, node_index);
       }
       return kTfLiteError;
     }
@@ -636,8 +633,8 @@ class Subgraph {
           /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        logging_context->ReportError(
-            logging_context, "failed to delegate ADD node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate ADD node #%d",
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -722,8 +719,8 @@ class Subgraph {
           /*bias_id=*/xnnpack_tensors[node->inputs->data[2]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
       if (status != xnn_status_success) {
-        logging_context->ReportError(
-            logging_context, "failed to delegate CONV_2D node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate CONV_2D node #%d", node_index);
         return kTfLiteError;
       }
     }
@@ -810,9 +807,9 @@ class Subgraph {
           /*bias_id=*/xnnpack_tensors[node->inputs->data[2]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], flags);
       if (status != xnn_status_success) {
-        logging_context->ReportError(
-            logging_context, "failed to delegate DEPTHWISE_CONV_2D node #%d",
-            node_index);
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate DEPTHWISE_CONV_2D node #%d",
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -844,9 +841,9 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        logging_context->ReportError(logging_context,
-                                     "failed to delegate HARD_SWISH node #%d",
-                                     node_index);
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate HARD_SWISH node #%d",
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -878,8 +875,8 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        logging_context->ReportError(
-            logging_context, "failed to delegate SIGMOID node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate SIGMOID node #%d", node_index);
         return kTfLiteError;
       }
     }
@@ -928,8 +925,8 @@ class Subgraph {
           /*input2_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        logging_context->ReportError(
-            logging_context, "failed to delegate MUL node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate MUL node #%d",
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -974,8 +971,8 @@ class Subgraph {
           /*slope_id=*/xnnpack_tensors[node->inputs->data[1]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        logging_context->ReportError(
-            logging_context, "failed to delegate PRELU node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate PRELU node #%d",
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -1008,8 +1005,8 @@ class Subgraph {
           /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        logging_context->ReportError(
-            logging_context, "failed to delegate RELU node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate RELU node #%d",
+                           node_index);
         return kTfLiteError;
       }
     }
@@ -1024,9 +1021,9 @@ class Subgraph {
       const std::vector<uint32_t>& xnnpack_tensors) {
     if (params->beta != 1.0f) {
       if (logging_context != nullptr) {
-        logging_context->ReportError(
-            logging_context, "unsupported beta value %.7f in SOFTMAX node #%d",
-            params->beta, node_index);
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "unsupported beta value %.7f in SOFTMAX node #%d",
+                           params->beta, node_index);
       }
       return kTfLiteError;
     }
@@ -1051,8 +1048,8 @@ class Subgraph {
           subgraph, /*input_id=*/xnnpack_tensors[node->inputs->data[0]],
           /*output_id=*/xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
       if (status != xnn_status_success) {
-        logging_context->ReportError(
-            logging_context, "failed to delegate SOFTMAX node #%d", node_index);
+        TF_LITE_KERNEL_LOG(logging_context,
+                           "failed to delegate SOFTMAX node #%d", node_index);
         return kTfLiteError;
       }
     }
@@ -1077,7 +1074,7 @@ class Subgraph {
 TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
   TfLiteIntArray* execution_plan = nullptr;
   if (context->GetExecutionPlan(context, &execution_plan) != kTfLiteOk) {
-    context->ReportError(context, "Unable to get graph execution plan.");
+    TF_LITE_KERNEL_LOG(context, "Unable to get graph execution plan.");
     return nullptr;
   }
 
@@ -1091,9 +1088,9 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
     TfLiteRegistration* registration = nullptr;
     if (context->GetNodeAndRegistration(context, node_index, &node,
                                         &registration) != kTfLiteOk) {
-      context->ReportError(context,
-                           "Unable to get node and registration for node %d.",
-                           node_index);
+      TF_LITE_KERNEL_LOG(context,
+                         "Unable to get node and registration for node %d.",
+                         node_index);
       continue;  // Soft error (skip this node).
     }
 

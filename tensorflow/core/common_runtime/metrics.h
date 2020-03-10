@@ -53,7 +53,7 @@ void RecordTFDataFingerprint(const string& name);
 // Records the number of independent graph changes resulting from the
 // application of a tf.data optimization.
 //
-// The `name` argument identifies the optimization (e.g. "noop_eliminiation").
+// The `name` argument identifies the optimization (e.g. "noop_elimination").
 void RecordTFDataOptimization(const string& name, int64 num_changes);
 
 // Records parsing of dense tensor features.

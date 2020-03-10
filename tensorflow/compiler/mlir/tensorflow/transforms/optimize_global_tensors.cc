@@ -20,6 +20,7 @@ limitations under the License.
 #include <set>
 
 #include "llvm/ADT/DenseMap.h"
+#include "mlir/Analysis/CallInterfaces.h"  // TF:llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -64,21 +65,6 @@ static bool IsResourceType(Type type) {
 
 static bool IsResource(Value value) { return IsResourceType(value.getType()); }
 
-static bool DoesOpUseResources(Operation* op) {
-  for (auto operand : op->getOperands()) {
-    if (IsResource(operand)) {
-      return true;
-    }
-  }
-  bool uses_resources = false;
-  visitUsedValuesDefinedAbove(op->getRegions(), [&](OpOperand* operand) {
-    if (IsResource(operand->get())) {
-      uses_resources = true;
-    }
-  });
-  return uses_resources;
-}
-
 class ResourceAnalyzer {
  public:
   explicit ResourceAnalyzer(ModuleOp module) {
@@ -117,16 +103,10 @@ class ResourceAnalyzer {
         SetPotentiallyWritten(assign_variable.resource());
         return;
       }
-      // TODO(ashwinm): Combine these two using CallOpInterface
-      if (auto call = dyn_cast<TF::StatefulPartitionedCallOp>(op)) {
-        PropagatePotentiallyWrittenUpFromCallee(call.f(), call.getOperands(),
-                                                symbol_table);
-        return;
-      }
-      if (auto call = dyn_cast<TF::PartitionedCallOp>(op)) {
+      if (auto call = dyn_cast<CallOpInterface>(op)) {
         if (auto sym = op->getAttrOfType<SymbolRefAttr>("f")) {
           PropagatePotentiallyWrittenUpFromCallee(
-              sym.cast<FlatSymbolRefAttr>().getValue(), call.getOperands(),
+              sym.cast<FlatSymbolRefAttr>().getValue(), call.getArgOperands(),
               symbol_table);
         }
         return;
@@ -145,15 +125,34 @@ class ResourceAnalyzer {
         }
         return;
       }
-      // TODO(ashwinm): This should not error but refactor DoesOpUseResources
-      // to tell us which resource, so that it can be set as potentially written
-      // to.
-      if (DoesOpUseResources(op)) {
-        op->emitError() << "unknown op that uses resources";
+      // For all other ops, we assume it mutates all resources it uses, so
+      // this errs on the side of being conservative. We should improve
+      // this by using either a property or a trait that clearly
+      // identifies ops with resource mutating behavior.
+      if (PropagatePotentiallyWrittenWithinUnhandledOp(op)) {
         return;
       }
     });
     return success();
+  }
+
+  // If an op is not one of the handled ones, we assume all resource usages
+  // within its purview are mutating in nature.
+  bool PropagatePotentiallyWrittenWithinUnhandledOp(Operation* op) {
+    for (auto operand : op->getOperands()) {
+      if (IsResource(operand)) {
+        SetPotentiallyWritten(operand);
+        return true;
+      }
+    }
+    bool uses_resources = false;
+    visitUsedValuesDefinedAbove(op->getRegions(), [&](OpOperand* operand) {
+      if (IsResource(operand->get())) {
+        SetPotentiallyWritten(operand->get());
+        uses_resources = true;
+      }
+    });
+    return uses_resources;
   }
 
   // Given a funcOp associated with the callee and operands from the

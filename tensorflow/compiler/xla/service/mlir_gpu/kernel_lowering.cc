@@ -259,8 +259,8 @@ void EnableIRPrinting(mlir::PassManager* passManager) {
   auto enable_if_vlog_is_on = [](mlir::Pass* pass, mlir::Operation* op) {
     return VLOG_IS_ON(1);
   };
-  passManager->enableIRPrinting(/*shouldPrintBeforePass=*/{},
-                                /*shouldPrintAfterPass=*/enable_if_vlog_is_on,
+  passManager->enableIRPrinting(/*shouldPrintBeforePass=*/enable_if_vlog_is_on,
+                                /*shouldPrintAfterPass=*/{},
                                 /*printModuleScope=*/false,
                                 /*printAfterOnlyOnChange=*/true, llvm::dbgs());
   passManager->disableMultithreading();
@@ -277,7 +277,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
   // Remove unnecessary Lhlo copies.
-  pm.addPass(::mlir::xla_hlo::createLhloCopyRemovalPass());
+  pm.addPass(::mlir::xla_lhlo::createLhloCopyRemovalPass());
   // Transform lhlo operations to LinAlg.
   pm.addPass(::mlir::xla_lhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations. This will yield a single tiled loop nest where

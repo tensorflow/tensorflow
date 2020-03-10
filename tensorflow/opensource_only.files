@@ -119,6 +119,7 @@ tensorflow/third_party/mkl/mkl.BUILD
 tensorflow/third_party/mkl_dnn/LICENSE
 tensorflow/third_party/mkl_dnn/build_defs.bzl
 tensorflow/third_party/mkl_dnn/mkldnn.BUILD
+tensorflow/third_party/mkl_dnn/mkldnn_v1.BUILD
 tensorflow/third_party/mpi/.gitignore
 tensorflow/third_party/nanopb.BUILD
 tensorflow/third_party/nccl/BUILD
@@ -225,8 +226,6 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/cc_toolchain_confi
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/dummy_toolchain.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang_manylinux2010-cuda10.0/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang_manylinux2010-cuda10.0/cc_toolchain_config.bzl
-tensorflow/third_party/toolchains/preconfig/ubuntu16.04/cuda10.1-cudnn7/cuda/BUILD
-tensorflow/third_party/toolchains/preconfig/ubuntu16.04/cuda10.1-cudnn7/cuda/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc5-rocm/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc5-rocm/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0/BUILD
@@ -238,13 +237,9 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010/cc_to
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010/dummy_toolchain.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/py/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5/BUILD
-tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt6.0/BUILD
-tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt6.0/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/win/BUILD
+tensorflow/third_party/toolchains/preconfig/win/bazel_211/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
-tensorflow/third_party/toolchains/preconfig/win_1803/bazel_025/BUILD
-tensorflow/third_party/toolchains/preconfig/win_1803/bazel_026/BUILD
-tensorflow/third_party/toolchains/preconfig/win_1803/bazel_121/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py37/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py38/BUILD
@@ -404,5 +399,6 @@ tensorflow/tools/pip_package/pip_smoke_test.py
 tensorflow/tools/pip_package/setup.py
 tensorflow/tools/pip_package/simple_console.py
 tensorflow/tools/pip_package/simple_console_for_windows.py
+tensorflow/tools/pip_package/xla_build/CMakeLists.txt
 tensorflow/virtual_root_template_v1.__init__.py
 tensorflow/virtual_root_template_v2.__init__.py

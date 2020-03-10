@@ -63,8 +63,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         optimizer,
         loss,
         metrics=metrics,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((10, 3), np.float32)
     targets = np.zeros((10, 4), np.float32)
@@ -89,8 +88,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         optimizer,
         loss,
         metrics=metrics,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((10, 3), np.float32)
     targets = np.zeros((10, 4), np.float32)
@@ -151,8 +149,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     input_a_np = np.random.random((10, 3)).astype(dtype=np.float32)
     input_b_np = np.random.random((10, 3)).astype(dtype=np.float32)
@@ -200,8 +197,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         optimizer,
         loss,
         metrics=metrics,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((10, 3), np.float32)
     targets = np.zeros((10, 4), np.float32)
@@ -247,8 +243,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         optimizer,
         loss='sparse_categorical_crossentropy',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((10, 3), dtype=np.float32)
     targets = np.random.randint(0, 4, size=10, dtype=np.int32)
@@ -272,8 +267,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         'rmsprop',
         loss='mae',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((40, 2), dtype=np.float32)
     inputs[10:20, :] = 2
@@ -344,8 +338,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         'rmsprop',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((100, 3), dtype=np.float32)
     targets = np.random.randint(0, 4, size=100, dtype=np.int32)
@@ -368,8 +361,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         'rmsprop',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((100, 3), dtype=np.float32)
     targets = np.random.randint(0, 4, size=100, dtype=np.int32)
@@ -408,8 +400,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         'rmsprop',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((100, 3), dtype=np.float32)
     targets = np.random.randint(0, 4, size=100, dtype=np.int32)
@@ -445,8 +436,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         'rmsprop',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((100, 3), dtype=np.float32)
     targets = np.random.randint(0, 4, size=100, dtype=np.int32)
@@ -501,8 +491,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model = keras.Model(inp, out)
     model.compile(
         'rmsprop', loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((100, 4), dtype=np.float32)
     targets = np.random.randint(0, 2, size=100, dtype=np.int32)
@@ -551,8 +540,7 @@ class TestMetricsWithDatasets(keras_parameterized.TestCase):
         loss='binary_crossentropy',
         metrics=['accuracy', metrics_module.BinaryAccuracy()],
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     np.random.seed(123)
     x = np.random.randint(10, size=(100, 4)).astype(np.float32)

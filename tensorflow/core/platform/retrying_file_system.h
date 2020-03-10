@@ -121,6 +121,11 @@ class RetryingFileSystem : public FileSystem {
         retry_config_);
   }
 
+  Status HasAtomicMove(const string& path, bool* has_atomic_move) override {
+    // this method does not need to be retried
+    return base_file_system_->HasAtomicMove(path, has_atomic_move);
+  }
+
   Status DeleteRecursively(const string& dirname, int64* undeleted_files,
                            int64* undeleted_dirs) override {
     return RetryingUtils::DeleteWithRetries(

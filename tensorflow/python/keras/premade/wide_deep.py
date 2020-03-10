@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import backprop
-from tensorflow.python.framework import ops
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import layers as layer_module
@@ -110,7 +109,7 @@ class WideDeepModel(keras_training.Model):
     return output
 
   # This does not support gradient scaling and LossScaleOptimizer.
-  def _train_step(self, data):
+  def train_step(self, data):
     x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
     x, y, sample_weight = data_adapter.expand_1d((x, y, sample_weight))
 
@@ -137,9 +136,6 @@ class WideDeepModel(keras_training.Model):
     return {m.name: m.result() for m in self.metrics}
 
   def _make_train_function(self):
-    if ops.executing_eagerly_outside_functions():
-      return super(WideDeepModel, self)._make_train_function()
-
     # Only needed for graph mode and model_to_estimator.
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()
     self._check_trainable_weights_consistency()

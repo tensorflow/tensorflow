@@ -617,15 +617,6 @@ static LogicalResult Verify(BiasAddOp op) {
   return success();
 }
 
-// TODO(ezhulenev): BiasAddOp is not really layout sensitive, it must only
-// support folding operand transposes.
-LogicalResult BiasAddOp::UpdateDataFormat(StringRef data_format) {
-  auto ranked = value().getType().dyn_cast<RankedTensorType>();
-  if (!ranked || ranked.getRank() != 4) return failure();
-
-  return ::mlir::TF::UpdateDataFormat(data_format, this);
-}
-
 //===----------------------------------------------------------------------===//
 // BiasAddGradOp
 //===----------------------------------------------------------------------===//
@@ -1493,6 +1484,15 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
   results.insert<LogOfSoftmax>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// ReadVariableOp
+//===----------------------------------------------------------------------===//
+
+void ReadVariableOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ReadVariableOfCast>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2612,9 +2612,8 @@ constexpr void CopyBit(const T &src, unsigned src_index, T &dst,
 // dimensions. For example, sparse spec for foo[..., 3:10] for foo of shape (2,
 // 4, 8) would have dims = 2.
 struct SparseSliceSpec {
-  const int64_t dims;
-  const uint64_t begin_mask, end_mask, ellipsis_mask, new_axis_mask,
-      shrink_axis_mask;
+  int64_t dims;
+  int32_t begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask;
   const ArrayRef<int64_t> &begin;
   const ArrayRef<int64_t> &end;
   const ArrayRef<int64_t> &strides;
@@ -2625,7 +2624,7 @@ struct SparseSliceSpec {
 // in operand tensor.
 struct DenseSliceSpec {
   int64_t dims;
-  uint64_t begin_mask, end_mask, shrink_axis_mask;
+  int32_t begin_mask, end_mask, shrink_axis_mask;
   SmallVectorImpl<int64_t> &begin;
   SmallVectorImpl<int64_t> &end;
   SmallVectorImpl<int64_t> &strides;
@@ -2638,8 +2637,8 @@ struct DenseSliceSpec {
 // For example suppose foo[...,3:, 2] on foo.shape=(2,2,3,4) then
 // we need to produce the missing begin_mask, end_mask for the first two
 // dimensions i.e. foo[:, :, 3:, 2].
-static LogicalResult BuildDenseSliceSpec(const SparseSliceSpec &sparse,
-                                         DenseSliceSpec *dense) {
+static void BuildDenseSliceSpec(const SparseSliceSpec &sparse,
+                                DenseSliceSpec *dense) {
   // Build expanded dense begin, end, strides, begin_mask, end_mask, and
   // shrink_axis_mask.
   dense->begin.resize(dense->dims);
@@ -2689,7 +2688,6 @@ static LogicalResult BuildDenseSliceSpec(const SparseSliceSpec &sparse,
             dense_index);
     dense_index++;
   }
-  return success();
 }
 
 // For the given `input_shape`, calculates the sliced shape using the given
@@ -2699,7 +2697,7 @@ static LogicalResult BuildDenseSliceSpec(const SparseSliceSpec &sparse,
 // dimensions in `input_shape`; it will turn them into 1s. At the same time,
 // canonicalizes `begin`, `end`, and `strides. The calculation follows
 // tf.StridedSlice op semantics.
-static void CalculateSlicedShapeAndBoundRanges(
+static void CalculateSlicedShapeFromDenseIndices(
     MutableArrayRef<int64_t> input_shape, int32_t begin_mask, int32_t end_mask,
     int32_t shrink_axis_mask, MutableArrayRef<int64_t> begin,
     MutableArrayRef<int64_t> end, MutableArrayRef<int64_t> stride) {
@@ -2759,21 +2757,59 @@ static void CalculateSlicedShapeAndBoundRanges(
   }
 }
 
+// For the given `input_shape`, calculates the sliced shape using the given
+// `sparse_begin`, `sparse_end`, and `sparse_strides` ranges and `begin_mask`,
+// `end_mask`, `ellipsis_mask` , `new_axis_mask` and `shrink_axis_mask` masks.
+// Updates the result back to `input_shape`.
+static void CalculateSlicedShapeFromSparseIndices(
+    MutableArrayRef<int64_t> input_shape, ArrayRef<int64_t> sparse_begin,
+    ArrayRef<int64_t> sparse_end, ArrayRef<int64_t> sparse_strides,
+    int32_t begin_mask, int32_t end_mask, int32_t ellipsis_mask,
+    int32_t new_axis_mask, int32_t shrink_axis_mask,
+    SmallVectorImpl<int64_t> *begin, SmallVectorImpl<int64_t> *end,
+    SmallVectorImpl<int64_t> *stride) {
+  int64_t num_sparse_indices = sparse_begin.size();
+  SparseSliceSpec sparse = {num_sparse_indices, begin_mask,    end_mask,
+                            ellipsis_mask,      new_axis_mask, shrink_axis_mask,
+                            sparse_begin,       sparse_end,    sparse_strides};
+
+  // If no ellipsis_mask exists then an implicit ellipsis_mask at the end is
+  // inserted. This handles cases where foo[2:4] (foo.shape() = [4, 8]) yields
+  // a tensor of shape [2, 8], i.e., foo[2:4] is same as foo[2:4, ...].
+  if (sparse.ellipsis_mask == 0) {
+    Set(sparse.ellipsis_mask, sparse.dims);
+    sparse.dims++;
+  }
+
+  int64_t dims = input_shape.size();
+  DenseSliceSpec dense = {dims,
+                          /*begin_mask = */ 0,
+                          /*end_mask = */ 0,
+                          /*shrink_axis_mask = */ 0,
+                          *begin,
+                          *end,
+                          *stride};
+
+  BuildDenseSliceSpec(sparse, &dense);
+  CalculateSlicedShapeFromDenseIndices(input_shape, dense.begin_mask,
+                                       dense.end_mask, dense.shrink_axis_mask,
+                                       *begin, *end, *stride);
+}
+
 bool StridedSliceOp::GetSlicedBoundRanges(
-    SmallVectorImpl<int64_t> *begin_indices,
-    SmallVectorImpl<int64_t> *end_indices, SmallVectorImpl<int64_t> *strides) {
+    SmallVectorImpl<int64_t> *slice_begin, SmallVectorImpl<int64_t> *slice_end,
+    SmallVectorImpl<int64_t> *slice_stride) {
   // TODO(hinsu): Support lowering for ops with dynamic begin and end values
   // when it is possible to derive indices based on mask attributes.
   DenseIntElementsAttr sparse_begin_attr, sparse_end_attr, sparse_strides_attr;
-  if (!matchPattern(this->begin(), m_Constant(&sparse_begin_attr)) ||
-      !matchPattern(this->end(), m_Constant(&sparse_end_attr)) ||
-      !matchPattern(this->strides(), m_Constant(&sparse_strides_attr)))
+  if (!matchPattern(begin(), m_Constant(&sparse_begin_attr)) ||
+      !matchPattern(end(), m_Constant(&sparse_end_attr)) ||
+      !matchPattern(strides(), m_Constant(&sparse_strides_attr)))
     return false;
 
   auto input_ty = this->input().getType().dyn_cast<RankedTensorType>();
   if (!input_ty || !input_ty.hasStaticShape()) return false;
   auto input_shape = llvm::to_vector<4>(input_ty.getShape());
-  int rank = input_shape.size();
 
   SmallVector<int64_t, 4> sparse_begin, sparse_end, sparse_strides;
 
@@ -2784,30 +2820,11 @@ bool StridedSliceOp::GetSlicedBoundRanges(
   for (const APInt &stride : sparse_strides_attr)
     sparse_strides.push_back(stride.getSExtValue());
 
-  auto num_sparse_indices = sparse_begin_attr.getNumElements();
-  SparseSliceSpec sparse = {num_sparse_indices,
-                            this->begin_mask().getZExtValue(),
-                            this->end_mask().getZExtValue(),
-                            this->ellipsis_mask().getZExtValue(),
-                            this->new_axis_mask().getZExtValue(),
-                            this->shrink_axis_mask().getZExtValue(),
-                            sparse_begin,
-                            sparse_end,
-                            sparse_strides};
-
-  DenseSliceSpec dense = {rank,
-                          /*begin_mask = */ 0,
-                          /*end_mask = */ 0,
-                          /*shrink_axis_mask = */ 0,
-                          *begin_indices,
-                          *end_indices,
-                          *strides};
-
-  if (failed(BuildDenseSliceSpec(sparse, &dense))) return false;
-
-  CalculateSlicedShapeAndBoundRanges(input_shape, dense.begin_mask,
-                                     dense.end_mask, dense.shrink_axis_mask,
-                                     *begin_indices, *end_indices, *strides);
+  CalculateSlicedShapeFromSparseIndices(
+      input_shape, sparse_begin, sparse_end, sparse_strides,
+      begin_mask().getZExtValue(), end_mask().getZExtValue(),
+      ellipsis_mask().getZExtValue(), new_axis_mask().getZExtValue(),
+      shrink_axis_mask().getZExtValue(), slice_begin, slice_end, slice_stride);
   return true;
 }
 
@@ -2830,44 +2847,38 @@ static LogicalResult Verify(StridedSliceGradOp op) {
 }
 
 bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
-    SmallVectorImpl<int64_t> *shape, SmallVectorImpl<int64_t> *begin_indices,
-    SmallVectorImpl<int64_t> *end_indices, SmallVectorImpl<int64_t> *strides) {
-  if (this->ellipsis_mask().getZExtValue() ||
-      this->new_axis_mask().getZExtValue() ||
-      this->shrink_axis_mask().getZExtValue())
-    return false;  // TODO(b/146512589): support these masks
-
+    SmallVectorImpl<int64_t> *input_shape,
+    SmallVectorImpl<int64_t> *slice_begin, SmallVectorImpl<int64_t> *slice_end,
+    SmallVectorImpl<int64_t> *slice_stride) {
   DenseIntElementsAttr shape_attr;
-  DenseIntElementsAttr begin_indices_attr, end_indices_attr, strides_attr;
-  if (!matchPattern(this->shape(), m_Constant(&shape_attr)) ||
-      !matchPattern(this->begin(), m_Constant(&begin_indices_attr)) ||
-      !matchPattern(this->end(), m_Constant(&end_indices_attr)) ||
-      !matchPattern(this->strides(), m_Constant(&strides_attr)))
+  DenseIntElementsAttr sparse_begin_attr, sparse_end_attr, sparse_strides_attr;
+  if (!matchPattern(shape(), m_Constant(&shape_attr)) ||
+      !matchPattern(begin(), m_Constant(&sparse_begin_attr)) ||
+      !matchPattern(end(), m_Constant(&sparse_end_attr)) ||
+      !matchPattern(strides(), m_Constant(&sparse_strides_attr)))
     return false;
 
   int rank = std::distance(shape_attr.begin(), shape_attr.end());
 
-  shape->clear();
-  shape->reserve(rank);
-  begin_indices->clear();
-  begin_indices->reserve(rank);
-  end_indices->clear();
-  end_indices->reserve(rank);
-  strides->clear();
-  strides->reserve(rank);
+  input_shape->clear();
+  input_shape->reserve(rank);
+  for (const APInt &dim : shape_attr)
+    input_shape->push_back(dim.getSExtValue());
 
-  for (const APInt &dim : shape_attr) shape->push_back(dim.getSExtValue());
-  for (const APInt &index : begin_indices_attr)
-    begin_indices->push_back(index.getSExtValue());
-  for (const APInt &index : end_indices_attr)
-    end_indices->push_back(index.getSExtValue());
-  for (const APInt &stride : strides_attr)
-    strides->push_back(stride.getSExtValue());
+  SmallVector<int64_t, 4> sparse_begin, sparse_end, sparse_strides;
 
-  CalculateSlicedShapeAndBoundRanges(*shape, this->begin_mask().getZExtValue(),
-                                     this->end_mask().getZExtValue(),
-                                     this->shrink_axis_mask().getZExtValue(),
-                                     *begin_indices, *end_indices, *strides);
+  for (const APInt &index : sparse_begin_attr)
+    sparse_begin.push_back(index.getSExtValue());
+  for (const APInt &index : sparse_end_attr)
+    sparse_end.push_back(index.getSExtValue());
+  for (const APInt &stride : sparse_strides_attr)
+    sparse_strides.push_back(stride.getSExtValue());
+
+  CalculateSlicedShapeFromSparseIndices(
+      *input_shape, sparse_begin, sparse_end, sparse_strides,
+      begin_mask().getZExtValue(), end_mask().getZExtValue(),
+      ellipsis_mask().getZExtValue(), new_axis_mask().getZExtValue(),
+      shrink_axis_mask().getZExtValue(), slice_begin, slice_end, slice_stride);
   return true;
 }
 
@@ -2885,6 +2896,19 @@ static LogicalResult Verify(TensorListReserveOp op) {
     return op.emitOpError("requires num_elements operand to be 0D tensor");
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TensorListElementShapeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult TensorListElementShapeOp::fold(ArrayRef<Attribute> operands) {
+  int width =
+      getType().cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
+  auto variant_type =
+      getElementTypeOrSelf(getOperand().getType()).cast<TF::VariantType>();
+  if (variant_type.getSubtypes().empty()) return {};
+  return ConvertShapeToAttr(variant_type.getSubtypes()[0], width);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3155,6 +3179,15 @@ static LogicalResult Verify(VariableShapeOp op) {
       return op.emitOpError(
           "requires resource input type to have at most 1 subtype");
   }
+}
+
+OpFoldResult VariableShapeOp::fold(ArrayRef<Attribute> operands) {
+  int width =
+      getType().cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
+  auto resource_type =
+      getElementTypeOrSelf(getOperand().getType()).cast<TF::ResourceType>();
+  if (resource_type.getSubtypes().empty()) return {};
+  return ConvertShapeToAttr(resource_type.getSubtypes()[0], width);
 }
 
 //===----------------------------------------------------------------------===//

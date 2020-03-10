@@ -723,6 +723,15 @@ class ParameterServerStrategyTest(
     # Verify isolate_session_state
     self.assertTrue(new_config.isolate_session_state)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testInMultiWorkerMode(self):
+    strategy, _, _ = create_test_objects(
+        cluster_spec=self._cluster_spec,
+        task_type='worker',
+        task_id=1,
+        num_gpus=0)
+    self.assertTrue(strategy.extended._in_multi_worker_mode())
+
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                                            parameterized.TestCase):
@@ -800,6 +809,11 @@ class CentralStorageStrategyTest(strategy_test_lib.DistributionTestBase,
   def testNumpyDataset(self):
     strategy, _, _ = create_test_objects(num_gpus=2)
     self._test_numpy_dataset(strategy)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testInMultiWorkerMode(self):
+    strategy, _, _ = create_test_objects(num_gpus=0)
+    self.assertFalse(strategy.extended._in_multi_worker_mode())
 
 
 if __name__ == '__main__':

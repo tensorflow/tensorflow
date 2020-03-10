@@ -102,6 +102,20 @@ func @exp(%input: memref<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @log
+func @log(%input: memref<2x2xf32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.log"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = log %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
 // CHECK-LABEL: func @copy
 func @copy(%input: memref<2x4x8xf32>,
            %result: memref<2x4x8xf32>) {
@@ -210,7 +224,6 @@ func @broadcast(%operand: memref<5x7x1xf32>, %result: memref<7x10x6x4x5xf32>) {
 
 // -----
 
-// CHECK-DAG: #[[OPERAND_MPA:.*]] = affine_map<(d0, d1, d2) -> (0)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK-LABEL: func @broadcast_scalar
 func @broadcast_scalar(%operand: memref<f32>, %result: memref<7x10x6xf32>) {
@@ -219,9 +232,10 @@ func @broadcast_scalar(%operand: memref<f32>, %result: memref<7x10x6xf32>) {
     : (memref<f32>, memref<7x10x6xf32>) -> ()
   return
 }
-// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
-// CHECK-NEXT: ^bb0(%[[OPERAND:[a-zA-Z0-9_]*]]: f32, %[[RESULT:.*]]: f32):
-// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[RESULT:.*]]: f32):
+// CHECK-NEXT: %[[CONST:.*]] = load %{{.*}} : memref<f32>
+// CHECK-NEXT:   linalg.yield %[[CONST]] : f32
 
 // -----
 
@@ -401,6 +415,20 @@ func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @rsqrt
+func @rsqrt(%input: memref<2x2xf32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.rsqrt"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = rsqrt %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
 // CHECK-LABEL: func @sign
 func @sign(%input: memref<2x2xf32>,
           %result: memref<2x2xf32>) {
@@ -412,6 +440,20 @@ func @sign(%input: memref<2x2xf32>,
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
 // CHECK-NEXT:   %[[CST:.*]] = constant 1.000000e+00 : f32
 // CHECK-NEXT:   %[[RESULT:.*]] = copysign %[[CST]], %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @sqrt
+func @sqrt(%input: memref<2x2xf32>,
+          %result: memref<2x2xf32>) {
+  "xla_lhlo.sqrt"(%input, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = sqrt %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
 
 // -----

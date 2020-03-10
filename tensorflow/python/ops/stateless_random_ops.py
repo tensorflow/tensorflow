@@ -66,7 +66,7 @@ def stateless_random_uniform(shape,
   `maxval - minval` significantly smaller than the range of the output (either
   `2**32` or `2**64`).
 
-  For full full-range (i.e. inclusive of both max and min) random integers, pass
+  For full-range (i.e. inclusive of both max and min) random integers, pass
   `minval=None` and `maxval=None` with an integer `dtype`. For an integer dtype
   either both `minval` and `maxval` must be `None` or neither may be `None`. For
   example:
@@ -78,12 +78,15 @@ def stateless_random_uniform(shape,
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
     seed: A shape [2] integer Tensor of seeds to the random number generator.
-    minval: A 0-D Tensor or Python value of type `dtype`. The lower bound on the
-      range of random values to generate. Pass `None` for full-range integers.
-      Defaults to 0.
-    maxval: A 0-D Tensor or Python value of type `dtype`. The upper bound on the
-      range of random values to generate.  Defaults to 1 if `dtype` is floating
-      point. Pass `None` for full-range integers.
+    minval: A Tensor or Python value of type `dtype`, broadcastable with
+      `shape` (for integer types, broadcasting is not supported, so it needs to
+      be a scalar). The lower bound on the range of random values to
+      generate. Pass `None` for full-range integers.  Defaults to 0.
+    maxval: A Tensor or Python value of type `dtype`, broadcastable with
+      `shape` (for integer types, broadcasting is not supported, so it needs to
+      be a scalar). The upper bound on the range of random values to generate.
+      Defaults to 1 if `dtype` is floating point. Pass `None` for full-range
+      integers.
     dtype: The type of the output: `float16`, `float32`, `float64`, `int32`, or
       `int64`. For unbounded uniform ints (`minval`, `maxval` both `None`),
       `uint32` and `uint64` may be used.

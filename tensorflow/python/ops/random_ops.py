@@ -253,10 +253,12 @@ def random_uniform(shape,
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
     minval: A Tensor or Python value of type `dtype`, broadcastable with
-      `maxval`. The lower bound on the range of random values to generate
+      `shape` (for integer types, broadcasting is not supported, so it needs to
+      be a scalar). The lower bound on the range of random values to generate
       (inclusive).  Defaults to 0.
     maxval: A Tensor or Python value of type `dtype`, broadcastable with
-      `minval`. The upper bound on the range of random values to generate
+      `shape` (for integer types, broadcasting is not supported, so it needs to
+      be a scalar). The upper bound on the range of random values to generate
       (exclusive). Defaults to 1 if `dtype` is floating point.
     dtype: The type of the output: `float16`, `float32`, `float64`, `int32`,
       or `int64`.

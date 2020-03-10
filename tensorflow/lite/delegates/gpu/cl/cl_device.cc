@@ -177,6 +177,24 @@ int GetAdrenoGPUVersion(const std::string& gpu_version) {
   return -1;
 }
 
+MaliGPU GetMaliGPUVersion(const std::string& device_name) {
+  const std::map<std::string, MaliGPU> kMapping = {
+      {"T604", MaliGPU::T604}, {"T622", MaliGPU::T622}, {"T624", MaliGPU::T624},
+      {"T628", MaliGPU::T628}, {"T658", MaliGPU::T658}, {"T678", MaliGPU::T678},
+      {"T720", MaliGPU::T720}, {"T760", MaliGPU::T760}, {"T820", MaliGPU::T820},
+      {"T830", MaliGPU::T830}, {"T860", MaliGPU::T860}, {"T880", MaliGPU::T880},
+      {"G31", MaliGPU::G31},   {"G51", MaliGPU::G51},   {"G71", MaliGPU::G71},
+      {"G52", MaliGPU::G52},   {"G72", MaliGPU::G72},   {"G76", MaliGPU::G76},
+      {"G57", MaliGPU::G57},   {"G77", MaliGPU::G77},
+  };
+  for (auto v : kMapping) {
+    if (device_name.find(v.first) != std::string::npos) {
+      return v.second;
+    }
+  }
+  return MaliGPU::UNKNOWN;
+}
+
 std::string VendorToString(Vendor v) {
   switch (v) {
     case Vendor::QUALCOMM:
@@ -257,13 +275,21 @@ int AdrenoInfo::GetWaveSize(bool full_wave) const {
   }
 }
 
-DeviceInfo::DeviceInfo(cl_device_id id)
-    : adreno_info(GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION)) {
+MaliInfo::MaliInfo(const std::string& device_name)
+    : gpu_version(GetMaliGPUVersion(device_name)) {}
+
+DeviceInfo::DeviceInfo(cl_device_id id) {
   const auto device_name = GetDeviceInfo<std::string>(id, CL_DEVICE_NAME);
   const auto vendor_name = GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
+  const auto opencl_c_version =
+      GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION);
   vendor = ParseVendor(device_name, vendor_name);
-  cl_version = ParseCLVersion(
-      GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION));
+  if (vendor == Vendor::QUALCOMM) {
+    adreno_info = AdrenoInfo(opencl_c_version);
+  } else if (vendor == Vendor::MALI) {
+    mali_info = MaliInfo(device_name);
+  }
+  cl_version = ParseCLVersion(opencl_c_version);
   extensions =
       absl::StrSplit(GetDeviceInfo<std::string>(id, CL_DEVICE_EXTENSIONS), ' ');
   supports_fp16 = false;

@@ -1,6 +1,6 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_copts")
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
@@ -191,6 +191,15 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
     ],
+)
+
+filegroup(
+    name = "xla_cpu_runtime_srcs",
+    srcs = [
+        "cord.h",
+        "dynamic_annotations.h",
+        "integral_types.h",
+    ] + if_not_windows(["env_time.cc"]),
 )
 
 cc_library(

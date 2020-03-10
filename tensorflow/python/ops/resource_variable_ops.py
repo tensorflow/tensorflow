@@ -29,6 +29,7 @@ from tensorflow.python import _pywrap_utils
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
@@ -50,7 +51,13 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
-from tensorflow.python.util.deprecation import deprecated_args
+
+
+acd.register_read_only_resource_op("ReadVariableOp")
+acd.register_read_only_resource_op("VariableShape")
+acd.register_read_only_resource_op("ResourceGather")
+acd.register_read_only_resource_op("ResourceGatherNd")
+acd.register_read_only_resource_op("_ReadVariablesOp")
 
 
 def get_resource_handle_data(graph_op):
@@ -326,10 +333,7 @@ def variable_accessed(variable):
 class BaseResourceVariable(variables.VariableV1):
   """A python variable from an existing handle."""
 
-  @deprecated_args(
-      None,
-      "If using Keras pass *_constraint arguments to layers.",
-      "constraint")
+  # TODO(wangpeng): Deprecate `constraint` when callers no long pass it in.
   def __init__(  # pylint: disable=super-init-not-called
       self,
       trainable=None,

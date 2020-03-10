@@ -186,25 +186,25 @@ class LRUCache {
   void LRU_Append(LRUHandle* list, LRUHandle* e);
   void Ref(LRUHandle* e);
   void Unref(LRUHandle* e);
-  bool FinishErase(LRUHandle* e) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  bool FinishErase(LRUHandle* e) TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Initialized before use.
   size_t capacity_;
 
   // mutex_ protects the following state.
   mutable mutex mutex_;
-  size_t usage_ GUARDED_BY(mutex_);
+  size_t usage_ TF_GUARDED_BY(mutex_);
 
   // Dummy head of LRU list.
   // lru.prev is newest entry, lru.next is oldest entry.
   // Entries have refs==1 and in_cache==true.
-  LRUHandle lru_ GUARDED_BY(mutex_);
+  LRUHandle lru_ TF_GUARDED_BY(mutex_);
 
   // Dummy head of in-use list.
   // Entries are in use by clients, and have refs >= 2 and in_cache==true.
-  LRUHandle in_use_ GUARDED_BY(mutex_);
+  LRUHandle in_use_ TF_GUARDED_BY(mutex_);
 
-  HandleTable table_ GUARDED_BY(mutex_);
+  HandleTable table_ TF_GUARDED_BY(mutex_);
 };
 
 LRUCache::LRUCache() : capacity_(0), usage_(0) {

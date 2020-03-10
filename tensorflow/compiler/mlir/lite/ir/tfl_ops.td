@@ -48,13 +48,6 @@ def TFL_Str : Type<CPred<"$_self.isa<mlir::TF::StringType>()">,
              BuildableType<"getType<mlir::TF::StringType>()">;
 
 //===----------------------------------------------------------------------===//
-// TFLite dialect uint8 type - uses the TF uint8 type as implementation
-//===----------------------------------------------------------------------===//
-def TFL_Uint8 : Type<CPred<"$_self.isa<mlir::TF::Uint8Type>()">,
-                    "TFLite uint8 type">,
-              BuildableType<"getType<mlir::TF::Uint8Type>()">;
-
-//===----------------------------------------------------------------------===//
 // TFLite dialect quint8 type - uses the TF quint8 type as implementation
 //===----------------------------------------------------------------------===//
 def TFL_Quint8 : Type<CPred<"$_self.isa<mlir::TF::Quint8Type>()">,
@@ -141,7 +134,8 @@ class TFL_VariadicTensorOf<list<Type> allowedRuntimeTypes,
   Variadic<TensorOf<allowedOpTypes>>,
   TFL_RuntimeType<Variadic<TensorOf<allowedRuntimeTypes>>>;
 
-def TFL_Int32Or64 : IntOfWidths<[32, 64]>;
+def TFL_Uint8 : UI<8>;
+def TFL_Int32Or64 : SignlessIntOfWidths<[32, 64]>;
 
 def TFL_BoolTensor : TFL_TensorOf<[I1]>;
 def TFL_FpOrI32OrI64Tensor : TFL_TensorOf<[AnyFloat, TFL_Int32Or64]>;
@@ -223,9 +217,9 @@ class TFL_Operand0DOr1ElementTensor<int x> :
 class TFL_TFTypesWithSameBits<int i, int j, int num> :
   And<[
     Or<[CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isa<mlir::TF::Quint" # num # "Type>()">,
-        CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isa<mlir::TF::Uint" # num # "Type>()">]>,
+        CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isUnsignedInteger(" # num # ")">]>,
     Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Quint" # num # "Type>()">,
-        CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Uint" # num # "Type>()">]>]>;
+        CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isUnsignedInteger(" # num # ")">]>]>;
 
 class TFL_OperandHasRankLessThan<int n, int m> :
   PredOpTrait<"operand " # n # " is maximum " # m # "-D",
@@ -534,7 +528,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
   let summary = "ArgMin operator";
 
   let description = [{
-    Returns the index with the smallest value across dimensions of a tensor."
+    Returns the index with the smallest value across dimensions of a tensor.
       a = [1, 10, 26.9, 2.8, 166.32, 62.3]
       b = tf.math.argmin(input = a)
       c = tf.keras.backend.eval(b)
@@ -2716,7 +2710,7 @@ def TFL_SplitOp : TFL_Op<"split", [
   let arguments = (ins
     TFL_TensorOf<[I32]>:$split_dim,
     TFL_TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$value,
-    PositiveI32Attr:$num_splits
+    Confined<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs
@@ -2741,7 +2735,7 @@ def TFL_SplitVOp : TFL_Op<"split_v", [NoSideEffect, SameOperandsAndResultsScale]
     TFL_TensorOf<[F32, I16, I32, I64, QI8, QUI8, QI16]>:$value,
     TFL_1DTensorOf<[I32], [I32]>:$size_splits,
     TFL_0DTensorOf<[I32], [I32]>:$split_dim,
-    PositiveI32Attr:$num_splits
+    Confined<I32Attr, [IntPositive]>:$num_splits
   );
 
   let results = (outs
@@ -3100,7 +3094,9 @@ def LstmMandatoryInputsConstraint : PredOpTrait<
   "mandatory operands element types should match",
   // TODO(ashwinm): Replace the indices with input tensor names when that
   // support is available.
-  TCopVTEtAreSameAt<[0, 2, 3, 4, 6, 7, 8, 13, 14, 15, 18, 19]>>;
+  Or<[
+    TCopVTEtAreSameAt<[0, 2, 3, 4, 6, 7, 8, 13, 14, 15, 18, 19]>,
+    Neg<TypeIsPred<"input", F32>>]>>;
 
 def LstmOptionalPeepholeWeightConstraint : PredOpTrait<
   "the optional peephole weights should all be specified or none",
@@ -3126,7 +3122,7 @@ def LstmProjectionWeightBiasConstraint : PredOpTrait<
 
 def LstmResultConstraint : PredOpTrait<
   "the input and result tensor elemental types must be same",
-  TCresVTEtIsSameAsOp<0, 0>>;
+  TFL_TCresVTEtIsSameAsOp<0, 0>>;
 
 // This is the basic kernel type LSTM op.
 // TODO(b/142417845): Refactor this part to return its tflite node name as
@@ -3179,63 +3175,63 @@ def TFL_LSTMOp :
 Long short-term memory unit (LSTM) recurrent network layer.
 The default non-peephole implementation is based on:
 http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf
-S. Hochreiter and J. Schmidhuber. "Long Short-Term Memory". Neural Computation,
+S. Hochreiter and J. Schmidhuber. 'Long Short-Term Memory'. Neural Computation,
 9(8):1735-1780, 1997.
 The peephole implementation is based on:
 https://research.google.com/pubs/archive/43905.pdf
-Hasim Sak, Andrew Senior, and Francoise Beaufays. "Long short-term memory
-recurrent neural network architectures for large scale acoustic modeling.
+Hasim Sak, Andrew Senior, and Francoise Beaufays. 'Long short-term memory
+recurrent neural network architectures for large scale acoustic modeling.'
 INTERSPEECH, 2014.
 The coupling of input and forget gate (CIFG) is based on:
 http://arxiv.org/pdf/1503.04069.pdf
-Greff et al. "LSTM: A Search Space Odyssey"
+Greff et al. 'LSTM: A Search Space Odyssey'
 The layer normalization is based on:
 https://arxiv.org/pdf/1607.06450.pdf
-Ba et al. “Layer Normalization”
+Ba et al. 'Layer Normalization'
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32]>:$input,
+    ins TFL_TensorOf<[F32, QI8]>:$input,
 
     // Weights
-    TFL_TensorOfOrNone<[F32, I8]>:$input_to_input_weights,
-    TFL_TensorOf<[F32, I8]>:$input_to_forget_weights,
-    TFL_TensorOf<[F32, I8]>:$input_to_cell_weights,
-    TFL_TensorOf<[F32, I8]>:$input_to_output_weights,
+    TFL_TensorOfOrNone<[F32, I8, QI8]>:$input_to_input_weights,
+    TFL_TensorOf<[F32, I8, QI8]>:$input_to_forget_weights,
+    TFL_TensorOf<[F32, I8, QI8]>:$input_to_cell_weights,
+    TFL_TensorOf<[F32, I8, QI8]>:$input_to_output_weights,
 
     // Recurrent weights
-    TFL_TensorOfOrNone<[F32, I8]>:$recurrent_to_input_weights,
-    TFL_TensorOf<[F32, I8]>:$recurrent_to_forget_weights,
-    TFL_TensorOf<[F32, I8]>:$recurrent_to_cell_weights,
-    TFL_TensorOf<[F32, I8]>:$recurrent_to_output_weights,
+    TFL_TensorOfOrNone<[F32, I8, QI8]>:$recurrent_to_input_weights,
+    TFL_TensorOf<[F32, I8, QI8]>:$recurrent_to_forget_weights,
+    TFL_TensorOf<[F32, I8, QI8]>:$recurrent_to_cell_weights,
+    TFL_TensorOf<[F32, I8, QI8]>:$recurrent_to_output_weights,
 
     // Cell weights
-    TFL_TensorOfOrNone<[F32, I8]>:$cell_to_input_weights,
+    TFL_TensorOfOrNone<[F32, I8, QI16]>:$cell_to_input_weights,
     // Optional input
-    TFL_TensorOfOrNone<[F32, I8]>:$cell_to_forget_weights,
+    TFL_TensorOfOrNone<[F32, I8, QI16]>:$cell_to_forget_weights,
     // Optional input
-    TFL_TensorOfOrNone<[F32, I8]>:$cell_to_output_weights,
+    TFL_TensorOfOrNone<[F32, I8, QI16]>:$cell_to_output_weights,
 
     // Bias
-    TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
-    TFL_TensorOf<[F32]>:$forget_gate_bias,
-    TFL_TensorOf<[F32]>:$cell_bias,
-    TFL_TensorOf<[F32]>:$output_gate_bias,
+    TFL_TensorOfOrNone<[F32, QI32]>:$input_gate_bias,
+    TFL_TensorOf<[F32, QI32]>:$forget_gate_bias,
+    TFL_TensorOf<[F32, QI32]>:$cell_bias,
+    TFL_TensorOf<[F32, QI32]>:$output_gate_bias,
 
     // Projection weight and bias
-    TFL_TensorOfOrNone<[F32, I8]>:$projection_weights,
+    TFL_TensorOfOrNone<[F32, I8, QI8]>:$projection_weights,
     // Optional input
-    TFL_TensorOfOrNone<[F32]>:$projection_bias,
+    TFL_TensorOfOrNone<[F32, QI32]>:$projection_bias,
 
     // Stateful activation and cell states.
     TFL_StatefulTensor:$input_activation_state,
     TFL_StatefulTensor:$input_cell_state,
 
     // Layer norm coefficients
-    TFL_TensorOfOrNone<[F32]>:$input_layer_norm_coefficients,
-    TFL_TensorOfOrNone<[F32]>:$forget_layer_norm_coefficients,
-    TFL_TensorOfOrNone<[F32]>:$cell_layer_norm_coefficients,
-    TFL_TensorOfOrNone<[F32]>:$output_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32, QI16]>:$input_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32, QI16]>:$forget_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32, QI16]>:$cell_layer_norm_coefficients,
+    TFL_TensorOfOrNone<[F32, QI16]>:$output_layer_norm_coefficients,
 
     // Attributes
     TFL_AFAttr:$fused_activation_function,

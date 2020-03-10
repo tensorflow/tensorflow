@@ -81,7 +81,7 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
                             "Please file an issue with the TensorFlow Team.";
             }
           } else {
-            retvals[i]->Poison(status);
+            retvals[i]->PoisonRemote(status, device, context_view_id);
           }
           retvals[i]->Unref();
         }

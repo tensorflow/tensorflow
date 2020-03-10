@@ -40,11 +40,13 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Analysis/Verifier.h"  // TF:llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/IR/Identifier.h"  // TF:llvm-project
 #include "mlir/IR/Location.h"  // TF:llvm-project
@@ -63,7 +65,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -137,24 +141,6 @@ class NameUniquifier : public OpOrArgNameMapper {
   const FunctionLibraryDefinition& flib_;
 };
 
-// Populates the tf.versions attribute on a module, given a corresponding
-// graph VersionDef proto.
-void PopulateTfVersions(mlir::ModuleOp module,
-                        const VersionDef& graph_versions) {
-  mlir::Builder b(module.getContext());
-  auto producer = b.getNamedAttr(
-      "producer", b.getI32IntegerAttr(graph_versions.producer()));
-  auto min_consumer = b.getNamedAttr(
-      "min_consumer", b.getI32IntegerAttr(graph_versions.min_consumer()));
-  auto bad_consumers = b.getNamedAttr(
-      "bad_consumers", b.getI32ArrayAttr(llvm::ArrayRef<int32_t>(
-                           graph_versions.bad_consumers().begin(),
-                           graph_versions.bad_consumers().end())));
-  module.setAttr("tf.versions",
-                 b.getDictionaryAttr(llvm::ArrayRef<mlir::NamedAttribute>(
-                     {producer, min_consumer, bad_consumers})));
-}
-
 // Stateful helper class to import a TensorFlow model into an MLIR Module.
 //
 // This is the base class that contains common utilities shared between the
@@ -179,7 +165,8 @@ class ImporterBase {
         specs_(specs),
         debug_info_(debug_info),
         function_name_for_debug_info_(function_name_for_debug_info),
-        function_name_uniquifier_(function_name_uniquifier) {}
+        function_name_uniquifier_(function_name_uniquifier),
+        error_handler_(module.getContext()) {}
 
   // Returns the inferred function signature of the given function body. Input
   // types are unranked tensor of the respective datatype in the function and
@@ -335,8 +322,9 @@ class ImporterBase {
   // the location.
   mlir::Location GetLocation(const NodeDef& node);
 
-  // Gets the location information string for the given node.
-  std::string GetLocationStr(const Node& node, bool includeNodeName = false);
+  // Appends the location string for the node to the error message and returns
+  // the combined error status.
+  Status EmitErrorWithLocationStr(const Node& node, const Status& error_status);
 
   // Inserts a placeholder node in the graph to replace a feed output tensor,
   // and returns the new placeholder node and a boolean indicating if the
@@ -385,6 +373,7 @@ class ImporterBase {
   NodeValueMap node_values_;
   std::unique_ptr<ShapeRefiner> shape_refiner_;
   NameUniquifier* function_name_uniquifier_;
+  mlir::StatusScopedDiagnosticHandler error_handler_;
 
  protected:
   // Maps feed as TensorId to new Placeholder node name.
@@ -686,9 +675,10 @@ Status ImporterBase::AddNodesToShapeRefiner() {
           remapped_feeds_[{it->first, index}] = placeholder_node->name();
           node_name_map[placeholder_node->name()] = placeholder_node;
           // Add the new placeholder node to the shape refiner.
-          TF_RETURN_WITH_CONTEXT_IF_ERROR(
-              shape_refiner_->AddNode(placeholder_node),
-              GetLocationStr(*placeholder_node));
+          Status status = shape_refiner_->AddNode(placeholder_node);
+          if (!status.ok()) {
+            return EmitErrorWithLocationStr(*placeholder_node, status);
+          }
         }
       } else {
         auto index_it = it->second.find(0);
@@ -708,8 +698,10 @@ Status ImporterBase::AddNodesToShapeRefiner() {
     }
     if (!node_added_to_shape_refiner) {
       // Add the node to the shape refiner if the node hasn't been removed.
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(shape_refiner_->AddNode(node),
-                                      GetLocationStr(*node));
+      Status status = shape_refiner_->AddNode(node);
+      if (!status.ok()) {
+        return EmitErrorWithLocationStr(*node, status);
+      }
     }
 
     auto set_shape_from_list_attr = [&](const AttrValue* attr) {
@@ -717,9 +709,11 @@ Status ImporterBase::AddNodesToShapeRefiner() {
       for (auto shape : llvm::enumerate(list.shape())) {
         auto* node_context = shape_refiner_->GetContext(node);
         shape_inference::ShapeHandle handle;
-        TF_RETURN_WITH_CONTEXT_IF_ERROR(
-            node_context->MakeShapeFromShapeProto(shape.value(), &handle),
-            GetLocationStr(*node));
+        Status status =
+            node_context->MakeShapeFromShapeProto(shape.value(), &handle);
+        if (!status.ok()) {
+          return EmitErrorWithLocationStr(*node, status);
+        }
         node_context->set_output(shape.index(), handle);
       }
       return Status::OK();
@@ -752,9 +746,11 @@ Status ImporterBase::AddNodesToShapeRefiner() {
       DCHECK(node_context != nullptr);
       if (const AttrValue* attr = node->attrs().Find("shape")) {
         shape_inference::ShapeHandle handle;
-        TF_RETURN_WITH_CONTEXT_IF_ERROR(
-            node_context->MakeShapeFromShapeProto(attr->shape(), &handle),
-            GetLocationStr(*node));
+        Status status =
+            node_context->MakeShapeFromShapeProto(attr->shape(), &handle);
+        if (!status.ok()) {
+          return EmitErrorWithLocationStr(*node, status);
+        }
         node_context->set_output(0, handle);
       } else if (const AttrValue* attr = node->attrs().Find("_output_shapes")) {
         TF_RETURN_IF_ERROR(set_shape_from_list_attr(attr));
@@ -830,9 +826,12 @@ Status ImporterBase::AddNodesToShapeRefiner() {
         existing.push_back(shape_context->output(o));
       }
       bool inferred = false;
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(
-          shape_refiner_->UpdateNode(node, /*relax=*/false, &inferred),
-          GetLocationStr(*node));
+      shape_inference::ShapeHandle handle;
+      Status status =
+          shape_refiner_->UpdateNode(node, /*relax=*/false, &inferred);
+      if (!status.ok()) {
+        return EmitErrorWithLocationStr(*node, status);
+      }
       for (int o = 0; o < shape_context->num_outputs(); ++o) {
         if (!same_inferred_shape(shape_context, shape_context->output(o),
                                  existing[o])) {
@@ -1363,18 +1362,11 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
   }
 }
 
-std::string ImporterBase::GetLocationStr(const Node& node,
-                                         bool includeNodeName) {
-  const auto location = GetLocation(node.def());
-  std::string s;
-  llvm::raw_string_ostream ss(s);
-  location.print(ss);
-  ss.flush();
-  // Removes the node name prefix if it exists.
-  if (!s.empty() && s[0] == '\"' && s.find_first_of(node.name()) == 1) {
-    return s.replace(0, node.name().size() + 3, "");
-  }
-  return s;
+Status ImporterBase::EmitErrorWithLocationStr(const Node& node,
+                                              const Status& error_status) {
+  const mlir::Location location = GetLocation(node.def());
+  mlir::emitError(location);
+  return error_handler_.Combine(error_status);
 }
 
 mlir::Operation* ImporterBase::createOperation(
@@ -1866,8 +1858,8 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     TF_ASSIGN_OR_RETURN(func_type, importer.InferMainFunctionType(
                                        specs, context, &arg_nodes, &ret_nodes));
 
-    // TODO(prakalps): Refactor to keep attribute strings (tf.entry_function,
-    // tf.versions) shared by importer and exporter in a centralized place.
+    // TODO(prakalps): Refactor to keep tf.entry_function attribute encoding and
+    // decoding in a centralized place.
     // Record the input and output mapping.
     if (!specs.inputs.empty() || !specs.outputs.empty()) {
       mlir::Builder b(context);

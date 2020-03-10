@@ -1177,8 +1177,8 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    rank = len(inputs.shape)
-    if rank > 2:
+    rank = inputs.shape.rank
+    if rank is not None and rank > 2:
       # Broadcasting is required for the inputs.
       outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
       # Reshape the output back to the original ndim of the input.

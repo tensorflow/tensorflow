@@ -22,6 +22,7 @@ cc_library(
         "add.cc",
         "arg_min_max.cc",
         "ceil.cc",
+        "circular_buffer.cc",
         "comparisons.cc",
         "concatenation.cc",
         "conv.cc",
@@ -92,6 +93,7 @@ cc_library(
         "add.cc",
         "arg_min_max.cc",
         "ceil.cc",
+        "circular_buffer.cc",
         "comparisons.cc",
         "concatenation.cc",
         "conv.cc",
@@ -375,9 +377,9 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
+        ":micro_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -497,9 +499,9 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
+        ":micro_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -511,9 +513,9 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
+        ":micro_utils",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
-        "//tensorflow/lite/micro/kernels:micro_utils",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -585,6 +587,19 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "circular_buffer_test",
+    srcs = [
+        "circular_buffer_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        ":micro_ops",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro/testing:micro_test",
     ],

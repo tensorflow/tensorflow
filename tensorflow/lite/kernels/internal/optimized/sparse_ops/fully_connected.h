@@ -40,8 +40,7 @@ inline void FullyConnectedSparseWeight(
   const int output_depth = MatchingDim(weights_shape, weights_dims_count - 2,
                                        output_shape, output_dims_count - 1);
   const int accum_depth = weights_shape.Dims(weights_dims_count - 1);
-  const int* w0_segments = sparsity.dim_metadata[0].array_segments->data;
-  const int* w0_indices = sparsity.dim_metadata[0].array_indices->data;
+  const int w0_size = sparsity.dim_metadata[0].dense_size;
   const int* w1_segments = sparsity.dim_metadata[1].array_segments->data;
   const int* w1_indices = sparsity.dim_metadata[1].array_indices->data;
 
@@ -50,9 +49,8 @@ inline void FullyConnectedSparseWeight(
   }
 
   for (int b = 0; b < batches; ++b) {
-    for (int pw0 = w0_segments[0]; pw0 < w0_segments[1]; ++pw0) {
-      int idx_0 = w0_indices[pw0];
-      for (int pw1 = w1_segments[pw0]; pw1 < w1_segments[pw0 + 1]; ++pw1) {
+    for (int idx_0 = 0; idx_0 < w0_size; ++idx_0) {
+      for (int pw1 = w1_segments[idx_0]; pw1 < w1_segments[idx_0 + 1]; ++pw1) {
         int idx_1 = w1_indices[pw1];
         output_data[b * output_depth + idx_0] +=
             weights_data[pw1] * input_data[b * accum_depth + idx_1];

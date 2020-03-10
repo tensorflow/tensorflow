@@ -12,16 +12,23 @@
 ifeq ($(TARGET), hexagon)
   TARGET_ARCH := hexagon
 
+  ifndef HEXAGON_SDK_PREFIX
+    $(error HEXAGON_SDK_PREFIX is undefined)
+  endif
+
+  ifndef HEXAGON_CPU_VER
+    $(error HEXAGON_CPU_VER is undefined)
+  endif
+
   PLATFORM_ARGS = \
+    -DTF_LITE_MCU_DEBUG_LOG \
     -DHEXAGON_ASM \
     -DMALLOC_IN_STDLIB \
-    -DNDEBUG \
     -DPTHREAD_STUBS \
-    -DTF_LITE_STATIC_MEMORY \
     -DUSE_PREALLOCATED_BUFFER \
     -D_HAS_C9X \
     -MMD \
-    -O3 -DNDEBUG -DHEXAGON \
+    -DHEXAGON \
     -Wall \
     -Wextra \
     -Wno-missing-field-initializers \
@@ -51,27 +58,15 @@ ifeq ($(TARGET), hexagon)
   CXX_TOOL := clang++
   CC_TOOL := clang
 
-  CXXFLAGS = $(PLATFORM_ARGS) -std=c++11
-  CCFLAGS = $(PLATFORM_ARGS) -std=c11
+  CXXFLAGS += $(PLATFORM_ARGS)
+  CCFLAGS += $(PLATFORM_ARGS)
   LDFLAGS += \
     -Wl,--gc-sections -lhexagon \
     $(HEXAGON_SDK_PREFIX)/tools/HEXAGON_Tools/8.3.07/Tools/target/hexagon/lib/v66/libstdc++.a
-
-  ifndef HEXAGON_SDK_PREFIX
-    $(error HEXAGON_SDK_PREFIX is undefined)
-  endif
 
   INCLUDES += \
     -I$(HEXAGON_SDK_PREFIX)/libs/common/qurt/computev66/include/posix \
     -I$(HEXAGON_SDK_PREFIX)/libs/common/qurt/computev66/include/qurt
 
   TEST_SCRIPT := tensorflow/lite/micro/testing/test_hexagon_binary.sh
-
-  # These are microcontroller-specific rules for converting the ELF output
-  # of the linker into a binary image that can be loaded directly.
-  OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
-
-  $(BINDIR)/%.bin: $(BINDIR)/%
-	  @mkdir -p $(dir $@)
-	  $(OBJCOPY) $< $@ -O binary
 endif
