@@ -66,7 +66,7 @@ PREPROCESS_INPUT_DOC = """
       {ret}
 
   Raises:
-      ValueError: In case of unknown `mode` or `data_format` argument.
+      {error}
   """
 
 PREPROCESS_INPUT_MODE_DOC = """
@@ -82,12 +82,21 @@ PREPROCESS_INPUT_MODE_DOC = """
           ImageNet dataset.
   """
 
+PREPROCESS_INPUT_DEFAULT_ERROR_DOC = """
+    ValueError: In case of unknown `mode` or `data_format` argument.
+  """
+
+PREPROCESS_INPUT_ERROR_DOC = """
+    ValueError: In case of unknown `data_format` argument.
+  """
+
+
 PREPROCESS_INPUT_RET_DOC_TF = """
       The inputs pixel values are scaled between -1 and 1, sample-wise."""
 
 PREPROCESS_INPUT_RET_DOC_TORCH = """
       The input pixels values are scaled between 0 and 1 and each channel is
-      normalized with respect to the InageNet dataset."""
+      normalized with respect to the ImageNet dataset."""
 
 PREPROCESS_INPUT_RET_DOC_CAFFE = """
       The images are converted from RGB to BGR, then each color channel is
@@ -114,7 +123,8 @@ def preprocess_input(x, data_format=None, mode='caffe'):
 
 
 preprocess_input.__doc__ = PREPROCESS_INPUT_DOC.format(
-    mode=PREPROCESS_INPUT_MODE_DOC, ret='')
+    mode=PREPROCESS_INPUT_MODE_DOC, ret='', 
+    error=PREPROCESS_INPUT_DEFAULT_ERROR_DOC)
 
 
 @keras_export('keras.applications.imagenet_utils.decode_predictions')
