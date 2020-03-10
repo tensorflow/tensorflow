@@ -1350,23 +1350,17 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     elif from_metric_obj:
       name = value._metric_obj.name
 
-    if in_call_context:
+    if not in_call_context and not is_symbolic:
+      raise ValueError('Expected a symbolic Tensor for the metric value, '
+                       'received: ' + str(value))
+
+    # If a metric was added in a Layer's `call` or `build`.
+    if in_call_context or not getattr(self, '_is_graph_network', False):
       # TF Function path should take the eager path.
       if is_symbolic and not base_layer_utils.is_in_tf_function():
-        self._symbolic_add_metric(value, aggregation, name)
-      else:
-        self._eager_add_metric(value, aggregation, name)
+        base_layer_utils.check_graph_consistency(value, method='add_metric')
+      self._add_metric(value, aggregation, name)
     else:
-      if not is_symbolic:
-        raise ValueError('Expected a symbolic Tensor for the metric value, '
-                         'received: ' + str(value))
-
-      # Possible a metric was added in a Layer's `build`.
-      if not getattr(self, '_is_graph_network', False):
-        with backend.get_graph().as_default():
-          self._symbolic_add_metric(value, aggregation, name)
-        return
-
       if from_metric_obj:
         raise ValueError('Using the result of calling a `Metric` object '
                          'when calling `add_metric` on a Functional '
@@ -2104,7 +2098,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           'We found {} metrics with the name: "{}"'.format(len(match), name))
     return match[0]
 
-  def _eager_add_metric(self, value, aggregation=None, name=None):
+  def _add_metric(self, value, aggregation=None, name=None):
     # If the given metric is available in `metrics` list we just update state
     # on it, otherwise we create a new metric instance and
     # add it to the `metrics` list.
@@ -2132,43 +2126,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if should_update_state:
       metric_obj(value)
     return
-
-  def _symbolic_add_metric(self, value, aggregation=None, name=None):
-    base_layer_utils.check_graph_consistency(value, method='add_metric')
-    match = self._get_existing_metric(name)
-    if aggregation is None:
-      # Iterate over the metrics and check if the given metric exists already.
-      # This can happen when a metric instance is created in subclassed model
-      # layer `__init__` and we have tracked that instance already in
-      # model.__setattr__.
-      if match:
-        result_tensor = value
-        metric_obj = match
-      elif hasattr(value, '_metric_obj'):
-        # We track the instance using the metadata on the result tensor.
-        result_tensor = value
-        metric_obj = result_tensor._metric_obj
-        self._metrics.append(metric_obj)
-      else:
-        raise ValueError(
-            'We do not support adding an aggregated metric result tensor that '
-            'is not the output of a `tf.keras.metrics.Metric` metric instance. '
-            'Without having access to the metric instance we cannot reset the '
-            'state of a metric after every epoch during training. You can '
-            'create a `tf.keras.metrics.Metric` instance and pass the result '
-            'here or pass an un-aggregated result with `aggregation` parameter '
-            'set as `mean`. For example: `self.add_metric(tf.reduce_sum(inputs)'
-            ', name=\'mean_activation\', aggregation=\'mean\')`')
-    else:
-      # If a non-aggregated tensor is given as input (ie. `aggregation` is
-      # explicitly set to `mean`), we wrap the tensor in `Mean` metric.
-      if match:
-        result_tensor = match(value)
-        metric_obj = match
-      else:
-        metric_obj, result_tensor = base_layer_utils.create_mean_metric(
-            value, name)
-        self._metrics.append(metric_obj)
 
   def _handle_weight_regularization(self, name, variable, regularizer):
     """Create lambdas which compute regularization losses."""
