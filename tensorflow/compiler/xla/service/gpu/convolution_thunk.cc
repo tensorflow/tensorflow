@@ -73,7 +73,7 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Write the output tuple.
   const int kNumOutputs = 2;
-  auto ptrs = absl::make_unique<void* []>(kNumOutputs);
+  auto ptrs = absl::make_unique<void*[]>(kNumOutputs);
   ptrs[0] = result_buffer.opaque();
   ptrs[1] = scratch.opaque();
   se::DeviceMemory<void*> tuple_addr(

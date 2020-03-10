@@ -271,14 +271,16 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kTranspose:
-      instruction = CreateTranspose(
-          shape, operands(0), std::vector<int64>(proto.dimensions().begin(),
-                                                 proto.dimensions().end()));
+      instruction =
+          CreateTranspose(shape, operands(0),
+                          std::vector<int64>(proto.dimensions().begin(),
+                                             proto.dimensions().end()));
       break;
     case HloOpcode::kBroadcast:
-      instruction = CreateBroadcast(
-          shape, operands(0), std::vector<int64>(proto.dimensions().begin(),
-                                                 proto.dimensions().end()));
+      instruction =
+          CreateBroadcast(shape, operands(0),
+                          std::vector<int64>(proto.dimensions().begin(),
+                                             proto.dimensions().end()));
       break;
     case HloOpcode::kMap:
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
@@ -674,8 +676,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
               computation_map.at(computation_id));
         }
       }
-      TF_RET_CHECK(!proto.has_precision_config()) << instruction->opcode()
-                                                  << proto.DebugString();
+      TF_RET_CHECK(!proto.has_precision_config())
+          << instruction->opcode() << proto.DebugString();
       TF_RET_CHECK(!proto.has_dot_dimension_numbers()) << instruction->opcode();
       break;
     }
@@ -696,10 +698,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       proto.outer_dimension_partitions().begin(),
       proto.outer_dimension_partitions().end());
 
-  TF_RET_CHECK(proto.id() >= 0) << "Instruction with negative id: "
-                                << proto.id();
-  TF_RET_CHECK(proto.id() <= INT_MAX) << "Instruction with id > INT_MAX: "
-                                      << proto.id();
+  TF_RET_CHECK(proto.id() >= 0)
+      << "Instruction with negative id: " << proto.id();
+  TF_RET_CHECK(proto.id() <= INT_MAX)
+      << "Instruction with id > INT_MAX: " << proto.id();
   instruction->unique_id_ = proto.id();
 
   if (proto.has_sharding()) {
@@ -3111,8 +3113,8 @@ Status HloInstruction::AcceptWithOperandOrder(
     bool call_finish_visit) {
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder(%" << name() << ")";
   InternalCompareFunction func = [&operand_order](
-      std::pair<int, const HloInstruction*> a,
-      std::pair<int, const HloInstruction*> b) {
+                                     std::pair<int, const HloInstruction*> a,
+                                     std::pair<int, const HloInstruction*> b) {
     // Call the client's comparison function on the actual HloInstruction*
     // objects (ignoring the internal ids we also have in our stack entries)
     return operand_order(a.second, b.second);

@@ -240,10 +240,9 @@ Status RunGemm(const HloInstruction *gemm,
   MatrixDescriptor rhs_matrix = make_descriptor(
       rhs_buffer, rhs_shape, dim_nums.rhs_contracting_dimensions(0) == col_dim);
   std::unique_ptr<ScopedInstructionProfiler> op_profiler =
-      profiler
-          ? profiler->MakeScopedInstructionProfiler(
-                implements_whole_instruction ? gemm : nullptr)
-          : nullptr;
+      profiler ? profiler->MakeScopedInstructionProfiler(
+                     implements_whole_instruction ? gemm : nullptr)
+               : nullptr;
 
   if (LayoutUtil::Minor(output_shape.layout(), row_dim) != 0) {
     std::swap(lhs_matrix, rhs_matrix);
