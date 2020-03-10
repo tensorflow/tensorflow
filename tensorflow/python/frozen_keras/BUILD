@@ -20,6 +20,18 @@ py_library(
 )
 
 py_library(
+    name = "activations",
+    srcs = ["activations.py"],
+    deps = [
+        ":backend",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python/frozen_keras/utils:generic_utils",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "backend",
     srcs = ["backend.py"],
     deps = [
