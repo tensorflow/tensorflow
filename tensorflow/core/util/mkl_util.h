@@ -131,6 +131,17 @@ enum class MklQuantization {
 static const int kSmallBatchSize = 32;
 
 #ifdef ENABLE_MKLDNN_V1
+inline void execute_primitives(
+    std::vector<mkldnn::primitive>& primitives, std::shared_ptr<stream> stream,
+    std::vector<std::unordered_map<int, memory>>& net_args) {
+  DCHECK_EQ(primitives.size(), net_args.size());
+  for (size_t i = 0; i < primitives.size(); ++i) {
+    primitives.at(i).execute(*stream, net_args.at(i));
+  }
+}
+
+#endif  // ENABLE_MKLDNN_V1
+#ifdef ENABLE_MKLDNN_V1
 // In MKL-DNN v1.x, the format (ex. NCHW) used to initialize a memory descriptor
 // (md) structure will no longer be recorded in its `format` field. Instead, it
 // will be set to a canonical `blocked` format for every fully described md.
@@ -1304,8 +1315,15 @@ inline void CreateAndExecuteReorder(const ReorderPd& reorder_desc,
   ExecutePrimitive(net, NET_ARGS_PTR, engine);
 }
 
+class MklReorderPrimitive;
+
 template <typename T>
+#ifdef ENABLE_MKLDNN_V1
+inline MklReorderPrimitive* FindOrCreateReorder(const memory* from,
+                                                const memory* to);
+#else
 inline primitive FindOrCreateReorder(const memory* from, const memory* to);
+#endif  // ENABLE_MKLDNN_V1
 
 // Class to represent all the resources corresponding to a tensor in TensorFlow
 // that are required to execute an operation (such as Convolution).
@@ -1610,11 +1628,7 @@ class MklDnnData {
     return false;
   }
 
-/// TODO: this is a faster path with reorder primitive cache compared with
-/// CheckReorderToOpMem(..., std::vector<primitive>* net).
-/// TODO(gzmkl): Remove the slower path.
 #ifdef ENABLE_MKLDNN_V1
-  /// TODO(bhavanis): Need to use reorder cache here for better performance.
   inline bool CheckReorderToOpMem(const memory::desc& op_md,
                                   const engine& engine) {
     DCHECK(user_memory_);
@@ -1623,9 +1637,13 @@ class MklDnnData {
       // primitive reuse don't allow two same reorder prim in
       // one stream, so submit it immediately
       reorder_memory_ = new memory(op_md, engine);
-      stream cpu_stream(engine);
-      reorder(*user_memory_, *reorder_memory_)
-          .execute(cpu_stream, *user_memory_, *reorder_memory_);
+      std::vector<primitive> net;
+      auto* prim = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
+      net.push_back(*(prim->GetPrimitive()));
+      std::vector<MemoryArgsMap> net_args;
+      net_args.push_back({{MKLDNN_ARG_FROM, *user_memory_},
+                          {MKLDNN_ARG_TO, *reorder_memory_}});
+      execute_primitives(net, prim->GetStream(), net_args);
 #else
   inline bool CheckReorderToOpMem(const memory::primitive_desc& op_pd) {
     CHECK_NOTNULL(user_memory_);
@@ -1699,9 +1717,13 @@ class MklDnnData {
       // primitive reuse don't allow two same reorder prim in
       // one stream, so submit it immediately
       reorder_memory_ = new memory(op_md, engine, reorder_data_handle);
-      stream cpu_stream(engine);
-      reorder(*user_memory_, *reorder_memory_)
-          .execute(cpu_stream, *user_memory_, *reorder_memory_);
+      std::vector<primitive> net;
+      auto* prim = FindOrCreateReorder<T>(user_memory_, reorder_memory_);
+      net.push_back(*(prim->GetPrimitive()));
+      std::vector<MemoryArgsMap> net_args;
+      net_args.push_back({{MKLDNN_ARG_FROM, *user_memory_},
+                          {MKLDNN_ARG_TO, *reorder_memory_}});
+      execute_primitives(net, prim->GetStream(), net_args);
 #else
   inline bool CheckReorderToOpMem(const memory::primitive_desc& op_pd,
                                   void* reorder_data_handle) {
@@ -1830,15 +1852,18 @@ class MklDnnData {
     // one stream, so submit it immediately
     std::vector<primitive> net;
 #ifdef ENABLE_MKLDNN_V1
+    auto* prim = FindOrCreateReorder<T>(reorder_memory_, user_memory_);
+    net.push_back(*(prim->GetPrimitive()));
     std::vector<MemoryArgsMap> net_args;
-    // TODO(bhavanis): Need to use reorder cache here for better performance.
-    net.push_back(CreateReorder(reorder_memory_, user_memory_));
-    net_args.push_back(MemoryArgsMap{{MKLDNN_ARG_FROM, *reorder_memory_},
-                                     {MKLDNN_ARG_TO, *user_memory_}});
+    net_args.push_back(
+        {{MKLDNN_ARG_FROM, *reorder_memory_}, {MKLDNN_ARG_TO, *user_memory_}});
+    std::shared_ptr<stream> cpu_stream;
+    cpu_stream.reset(new stream(*cpu_engine_));
+    execute_primitives(net, prim->GetStream(), net_args);
 #else
     net.push_back(FindOrCreateReorder<T>(reorder_memory_, user_memory_));
-#endif  // ENABLE_MKLDNN_V1
     ExecutePrimitive(net, NET_ARGS_PTR, *cpu_engine_);
+#endif  // ENABLE_MKLDNN_V1
   }
 };
 
@@ -2046,6 +2071,8 @@ class MklReorderPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(to->get_data_handle());
   }
 
+  std::shared_ptr<mkldnn::stream> GetStream() { return stream_; }
+
  private:
   struct ReorderContext {
     std::shared_ptr<mkldnn::memory> src_mem;
@@ -2056,6 +2083,7 @@ class MklReorderPrimitive : public MklPrimitive {
   } context_;
 
   engine cpu_engine_ = engine(ENGINE_CPU, 0);
+  std::shared_ptr<mkldnn::stream> stream_;
 
   void Setup(const memory* from, const memory* to) {
     context_.src_mem.reset(
@@ -2064,6 +2092,7 @@ class MklReorderPrimitive : public MklPrimitive {
         new MEMORY_CONSTRUCTOR_WITH_MEM_PD(to, cpu_engine_, DummyData));
     context_.reorder_prim = std::make_shared<mkldnn::reorder>(
         reorder(*context_.src_mem, *context_.dst_mem));
+    stream_.reset(new CPU_STREAM(cpu_engine_));
   }
 };
 
@@ -2096,6 +2125,22 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
     memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
     auto from_strides = from_desc.MEMORY_FORMAT_DESC.blocking.strides;
+#ifdef ENABLE_MKLDNN_V1
+    // As DNNL memory desc has C style array and only init the used
+    // part, so need use the valid part as key.
+    auto from_inner_nblks = from_desc.MEMORY_FORMAT_DESC.blocking.inner_nblks;
+    auto from_inner_blks = from_desc.MEMORY_FORMAT_DESC.blocking.inner_blks;
+    auto from_inner_idxs = from_desc.MEMORY_FORMAT_DESC.blocking.inner_idxs;
+    memory::dims from_inner_blks_1(from_inner_blks,
+                                   &from_inner_blks[from_inner_nblks]);
+    memory::dims from_inner_idxs_1(from_inner_idxs,
+                                   &from_inner_idxs[from_inner_nblks]);
+    auto to_inner_nblks = to_desc.MEMORY_FORMAT_DESC.blocking.inner_nblks;
+    auto to_inner_blks = to_desc.MEMORY_FORMAT_DESC.blocking.inner_blks;
+    auto to_inner_idxs = to_desc.MEMORY_FORMAT_DESC.blocking.inner_idxs;
+    memory::dims to_inner_blks_1(to_inner_blks, &to_inner_blks[to_inner_nblks]);
+    memory::dims to_inner_idxs_1(to_inner_idxs, &to_inner_idxs[to_inner_nblks]);
+#endif  // ENABLE_MKLDNN_V1
     auto to_strides = to_desc.MEMORY_FORMAT_DESC.blocking.strides;
     memory::dims from_strides_outer_blocks(
         GET_BLOCK_STRIDES(from_strides, kIdxFirstStride),
@@ -2109,12 +2154,22 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     // `format_kind` is not added in v1.x since it will always set to
     // `mkldnn_blocked`
     key_creator.AddAsKey(static_cast<int>(from_desc.format));
+#else
+    key_creator.AddAsKey(static_cast<int>(from_desc.extra.flags));
+    key_creator.AddAsKey(static_cast<int>(from_inner_nblks));
+    key_creator.AddAsKey(from_inner_blks_1);
+    key_creator.AddAsKey(from_inner_idxs_1);
 #endif  // !ENABLE_MKLDNN_V1
     key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
     key_creator.AddAsKey(from_dims);
     key_creator.AddAsKey(from_strides_outer_blocks);
 #ifndef ENABLE_MKLDNN_V1
     key_creator.AddAsKey(static_cast<int>(to_desc.format));
+#else
+    key_creator.AddAsKey(static_cast<int>(to_desc.extra.flags));
+    key_creator.AddAsKey(static_cast<int>(to_inner_nblks));
+    key_creator.AddAsKey(to_inner_blks_1);
+    key_creator.AddAsKey(to_inner_idxs_1);
 #endif  // !ENABLE_MKLDNN_V1
     key_creator.AddAsKey(static_cast<int>(to_desc.data_type));
     key_creator.AddAsKey(to_dims);
@@ -2142,12 +2197,21 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
 /// get primitive from pool if it is cached.
 /// Returns the primitive.
 template <typename T>
+#ifdef ENABLE_MKLDNN_V1
+inline MklReorderPrimitive* FindOrCreateReorder(const memory* from,
+                                                const memory* to) {
+#else
 inline primitive FindOrCreateReorder(const memory* from, const memory* to) {
+#endif  // ENABLE_MKLDNN_V1
   CHECK_NOTNULL(from);
   CHECK_NOTNULL(to);
   MklReorderPrimitive* reorder_prim =
       MklReorderPrimitiveFactory<T>::Get(from, to);
+#ifdef ENABLE_MKLDNN_V1
+  return reorder_prim;
+#else
   return *reorder_prim->GetPrimitive();
+#endif  // ENABLE_MKLDNN_V1
 }
 
 // utility function to determine if it is conv 1x1 and stride != 1
@@ -2159,17 +2223,6 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
   return ((filter_dims[2] == 1) && (filter_dims[3] == 1) &&
           ((strides[0] != 1) || (strides[1] != 1)));
 }
-
-#ifdef ENABLE_MKLDNN_V1
-inline void execute_primitives(
-    std::vector<mkldnn::primitive>& primitives, std::shared_ptr<stream> stream,
-    std::vector<std::unordered_map<int, memory>>& net_args) {
-  DCHECK_EQ(primitives.size(), net_args.size());
-  for (size_t i = 0; i < primitives.size(); ++i) {
-    primitives.at(i).execute(*stream, net_args.at(i));
-  }
-}
-#endif  // ENABLE_MKLDNN_V1
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL
