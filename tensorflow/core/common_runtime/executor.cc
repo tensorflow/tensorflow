@@ -924,13 +924,13 @@ Status InferAllocAttr(const Node* n, const Node* dst,
 // ExecutorState dispatches nodes when they become ready and keeps
 // track of how many predecessors of a node have not done (pending_).
 class ExecutorState {
+
  public:
   ExecutorState(const Executor::Args& args, ExecutorImpl* impl);
   ~ExecutorState();
 
   void RunAsync(Executor::DoneCallback done);
 
- private:
   // Either a tensor pointer (pass-by-reference) or a tensor (pass-by-value).
   struct Entry {
     enum class State {
@@ -1014,6 +1014,19 @@ class ExecutorState {
       state = State::NO_VALUE;
     }
 
+    const Tensor* GetTensorValueForDump() const {
+      switch (state) {
+        case Entry::State::NO_VALUE:
+          return kEmptyTensor;
+        case Entry::State::HAS_VALUE:
+          return val.get();
+        case Entry::State::HAS_CONST_TENSOR:
+          return const_tensor;
+        case Entry::State::HAS_REF_TENSOR:
+          return ref_tensor.tensor;
+      }
+    }
+
     union {
       // A tensor value. Valid iff `state_ == HAS_VALUE`.
       ManualConstructor<Tensor> val;
@@ -1037,6 +1050,8 @@ class ExecutorState {
     // The attributes of the allocator that creates the tensor.
     AllocatorAttributes alloc_attr;
   };
+
+ private:
 
   // Contains the device context assigned by the device at the beginning of a
   // step.
@@ -1490,7 +1505,6 @@ class ExecutorState {
 
   // Provide debugging output of the state of the executor.
   void DumpState();
-  const Tensor* GetTensorValueForDump(const Entry& input);
 
   // Clean up when this executor is done.
   void Finish();
@@ -1853,7 +1867,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     outputs.clear();
 
     nvtxRangeId_t nvtx_range = nvtx::MaybeNvtxDomainRangeStartMsg(
-      nvtx::MaybeGetNvtxDomainRangeMessage(item, first_input),
+      nvtx::MaybeGetNvtxDomainRangeMessage<NodeItem, Entry>(item, first_input),
       item.kernel->def().op()
     );
 
@@ -2498,19 +2512,6 @@ inline void ExecutorState::MaybeMarkCompleted(FrameState* frame, int64 iter,
   }
 }
 
-const Tensor* ExecutorState::GetTensorValueForDump(const Entry& input) {
-  switch (input.state) {
-    case Entry::State::NO_VALUE:
-      return kEmptyTensor;
-    case Entry::State::HAS_VALUE:
-      return input.val.get();
-    case Entry::State::HAS_CONST_TENSOR:
-      return input.const_tensor;
-    case Entry::State::HAS_REF_TENSOR:
-      return input.ref_tensor.tensor;
-  }
-}
-
 void ExecutorState::DumpPendingNodeState(
     const int node_id, const Entry* input_vector,
     const bool show_nodes_with_no_ready_inputs) {
@@ -2520,7 +2521,7 @@ void ExecutorState::DumpPendingNodeState(
     bool has_ready_input = false;
     for (int i = 0; i < node_item.num_inputs; ++i) {
       const Entry& input = input_vector[input_base + i];
-      const Tensor* tensor = GetTensorValueForDump(input);
+      const Tensor* tensor = input.GetTensorValueForDump();
       if (tensor->IsInitialized()) {
         has_ready_input = true;
         break;
@@ -2533,7 +2534,7 @@ void ExecutorState::DumpPendingNodeState(
   LOG(WARNING) << "    Pending Node: " << node_item.DebugString();
   for (int i = 0; i < node_item.num_inputs; ++i) {
     const Entry& input = input_vector[input_base + i];
-    const Tensor* tensor = GetTensorValueForDump(input);
+    const Tensor* tensor = input.GetTensorValueForDump();
     if (tensor->IsInitialized()) {
       LOG(WARNING) << "      Input " << i << ": "
                    << strings::StrCat(
@@ -2552,7 +2553,7 @@ void ExecutorState::DumpActiveNodeState(const int node_id,
   const int input_base = node_item.input_start;
   for (int i = 0; i < node_item.num_inputs; ++i) {
     const Entry& input = input_vector[input_base + i];
-    const Tensor* tensor = GetTensorValueForDump(input);
+    const Tensor* tensor = input.GetTensorValueForDump();
     if (tensor->IsInitialized()) {
       LOG(WARNING) << "      Input " << i << ": "
                    << strings::StrCat(
@@ -2587,7 +2588,7 @@ void ExecutorState::DumpIterationState(const FrameState* frame,
   size_t total_bytes = 0;
   for (int i = 0; i < total_input_tensors; ++i) {
     const Entry& input = iteration->input_tensors[i];
-    const Tensor* tensor = GetTensorValueForDump(input);
+    const Tensor* tensor = input.GetTensorValueForDump();
     if (tensor->IsInitialized()) {
       LOG(WARNING) << "    Input " << i << ": "
                    << strings::StrCat(

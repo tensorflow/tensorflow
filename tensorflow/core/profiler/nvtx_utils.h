@@ -59,26 +59,6 @@ string DataTypeToNumpyString(DataType dtype);
 // TODO(benbarsdell): This is a bit crude and hacky (and inefficient).
 string AttrValueToJson(const AttrValue& attr_value);
 
-/*
-string MaybeGetNvtxDomainRangeMessage(
-    const OpKernel* op_kernel, const int num_inputs,
-    std::vector<const TensorShape*> input_shape_array);
-*/
-namespace{
-static const Tensor* const kEmptyTensor = new Tensor;
-
-template <typename T1>
-const Tensor* GetTensorValueForDump(const T1& input) {
-  if (!input.has_value) {
-    return kEmptyTensor;
-  } else if (input.ref == nullptr) {
-    return input.val.get();
-  } else {
-    return input.ref;
-  }
-}
-}
-
 template <typename T1, typename T2>
 string MaybeGetNvtxDomainRangeMessage(const T1& item, T2* first_input) {
 
@@ -87,28 +67,25 @@ string MaybeGetNvtxDomainRangeMessage(const T1& item, T2* first_input) {
   } else {
 
     const OpKernel* kernel = item.kernel;
-    const int num_inputs = item.num_inputs;
 
     if (IsNvtxRangesDetailedEnabled()) {
 
       std::vector<string> args_pieces;
       std::vector<string> attrs_pieces;
 
-      std::vector<const TensorShape*> input_shape_array;
-
       for (int i = 0; i < item.num_inputs; ++i) {
-        input_shape_array.push_back(
-            &GetTensorValueForDump(first_input[i])->shape());
-      }
-
-      for (int i = 0; i < num_inputs; ++i) {
         if (i == 10) {
           // Truncate long arg lists and indicate with an ending null value.
           args_pieces.push_back("null");
           break;
         }
-        const TensorShape& shape = *(input_shape_array[i]);
-        string shape_str = shape.unknown_rank() ? "null" : shape.DebugString();
+
+        const TensorShape* t_shape = &(first_input[i]
+          .GetTensorValueForDump()->shape());
+
+        string shape_str = (!t_shape || t_shape->unknown_rank()) ?
+          "null" :
+          t_shape->DebugString();
         args_pieces.push_back(strings::StrCat("{\"name\":\"",
                                               kernel->def().input(i),
                                               "\",\"shape\":", shape_str, "}"));
