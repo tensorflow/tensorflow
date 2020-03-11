@@ -58,12 +58,13 @@ static void UpdateFuncType(FuncOp func) {
 
 // TODO(jpienaar): Remove when recursive side-effect modeling is added.
 static bool IsSideEffectFree(FuncOp func) {
-  return func.getBody()
-      .walk([&](Operation* op) {
-        if (!op->hasNoSideEffect()) return WalkResult::interrupt();
-        return WalkResult::advance();
-      })
-      .wasInterrupted();
+  return !func.getBody()
+              .walk([&](Operation* op) {
+                if (!op->isKnownTerminator() && !op->hasNoSideEffect())
+                  return WalkResult::interrupt();
+                return WalkResult::advance();
+              })
+              .wasInterrupted();
 }
 
 // Folds TensorFlow If op with constant conditional operand by inlining the
