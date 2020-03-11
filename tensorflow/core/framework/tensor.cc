@@ -656,15 +656,15 @@ bool Tensor::IsInitialized() const {
 }
 
 void Tensor::CheckType(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype)
-      << " " << DataTypeString(expected_dtype) << " expected, got "
-      << DataTypeString(dtype());
+  CHECK_EQ(dtype(), expected_dtype) << " " << DataTypeString(expected_dtype)
+                                    << " expected, got "
+                                    << DataTypeString(dtype());
 }
 
 void Tensor::CheckTypeAndIsAligned(DataType expected_dtype) const {
-  CHECK_EQ(dtype(), expected_dtype)
-      << " " << DataTypeString(expected_dtype) << " expected, got "
-      << DataTypeString(dtype());
+  CHECK_EQ(dtype(), expected_dtype) << " " << DataTypeString(expected_dtype)
+                                    << " expected, got "
+                                    << DataTypeString(dtype());
   CHECK(IsAligned()) << "ptr = " << base<void>();
 }
 
@@ -764,9 +764,10 @@ bool Tensor::RefCountIsOne() const {
       break;                                                   \
   }
 
-#define CASES(TYPE_ENUM, STMTS)                                      \
-  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, LOG(FATAL) << "Type not set"; \
-                     , LOG(FATAL) << "Unexpected type: " << TYPE_ENUM;)
+#define CASES(TYPE_ENUM, STMTS)                                          \
+  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, LOG(FATAL) << "Unexpected type: " \
+                                                  << TYPE_ENUM;          \
+                     , LOG(FATAL) << "Type not set";)
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
     : shape_(shape), buf_(nullptr) {
@@ -1255,14 +1256,14 @@ bool Tensor::SharesBufferWith(const Tensor& b) const {
 }
 
 string Tensor::DebugString(int num_values) const {
-  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
-                         " shape: ", shape().DebugString(),
-                         " values: ", SummarizeValue(num_values), ">");
+  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()), " shape: ",
+                         shape().DebugString(), " values: ",
+                         SummarizeValue(num_values), ">");
 }
 
 string Tensor::DeviceSafeDebugString() const {
-  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()),
-                         " shape: ", shape().DebugString(), ">");
+  return strings::StrCat("Tensor<type: ", DataTypeString(dtype()), " shape: ",
+                         shape().DebugString(), ">");
 }
 
 void Tensor::FillDescription(TensorDescription* description) const {
