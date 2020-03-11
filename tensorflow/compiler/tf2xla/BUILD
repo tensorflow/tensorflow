@@ -38,6 +38,7 @@ package_group(
         "//learning/brain/tools/tf_replay/...",
         "//tensorflow/...",
         "//tensorflow_models/...",
+        "//third_party/mlperf/submissions/training/v0_7/models/...",
     ],
 )
 
